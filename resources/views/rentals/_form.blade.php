@@ -1,0 +1,2557 @@
+﻿@php
+    $isEdit = isset($rental);
+    $selectedAssetIds = collect(old('asset_ids', $isEdit ? $rental->activeRentalAssets->pluck('asset_id')->all() : []))
+        ->filter(fn ($value) => filled($value))
+        ->map(fn ($value) => (int) $value)
+        ->values()
+        ->all();
+    $existingRentalItems = $isEdit ? ($rental->rentalItems ?? collect()) : collect();
+    $additionalRentalRows = collect(old('rental_items', $existingRentalItems->skip(1)->map(function ($item) {
+        return [
+            'product_id' => $item->product_id,
+            'asset_ids' => collect($item->asset_ids ?? [])->filter(fn ($value) => filled($value))->map(fn ($value) => (int) $value)->values()->all(),
+            'quantity' => $item->quantity,
+            'unit_rental_amount' => $item->unit_rental_amount,
+            'notes' => $item->notes,
+        ];
+    })->all()))
+        ->filter(fn ($item) => filled(data_get($item, 'product_id')) || filled(data_get($item, 'quantity')))
+        ->values()
+        ->all();
+    $sellableProducts = $products->filter(fn ($product) => (bool) ($product->is_sellable ?? true))->values();
+    $saleItemRows = collect(old('sale_items', $isEdit ? ($rental->saleItems ?? collect())->map(function ($item) {
+        return [
+            'product_id' => $item->product_id,
+            'asset_id' => $item->asset_id,
+            'warehouse_id' => $item->warehouse_id,
+            'quantity' => $item->quantity,
+            'unit_price' => $item->unit_price,
+            'notes' => $item->notes,
+        ];
+    })->all() : []))
+        ->filter(fn ($item) => filled(data_get($item, 'product_id')) || filled(data_get($item, 'quantity')))
+        ->values()
+        ->all();
+    $saleAssetRows = collect($saleAssets ?? collect())->map(function ($asset) {
+        return [
+            'id' => $asset->id,
+            'product_id' => $asset->product_id,
+            'warehouse_id' => $asset->warehouse_id,
+            'label' => e(collect([
+                $asset->serial_number ?: ($asset->asset_name ?: ('Asset #' . $asset->id)),
+                $asset->product?->name,
+                $asset->warehouse?->name,
+            ])->filter()->implode(' | ')),
+        ];
+    })->values()->all();
+    $additionalRentalExpanded = count($additionalRentalRows) > 0;
+    $newProductsExpanded = count($saleItemRows) > 0;
+    $selectedDeliveryAssignment = old('delivery_staff_id');
+    $vendorDeliveryMembers = collect($staffMembers ?? collect())->filter(function ($staff) {
+        return ($staff->effective_role ?? null) === 'vendor';
+    })->values();
+    $thirdPartyDeliveryMembers = collect($staffMembers ?? collect())->filter(function ($staff) {
+        return ($staff->effective_role ?? null) === 'third_party';
+    })->values();
+    $otherAssignableStaffMembers = collect($staffMembers ?? collect())->reject(function ($staff) {
+        return in_array($staff->effective_role ?? null, ['vendor', 'third_party'], true);
+    })->values();
+    $phoneParts = \App\Support\PhoneNumber::split(old('phone', $isEdit ? $rental->phone : ''));
+    $countryCodeOptions = \App\Support\PhoneNumber::countryCodeOptions();
+
+    if ($selectedDeliveryAssignment === null && $isEdit) {
+        $selectedDeliveryAssignment = ($rental->deliveryRecord?->assignment_type ?? null) === 'third_party'
+            ? 'third_party'
+            : ($rental->deliveryRecord?->assigned_user_id
+                ? 'user:' . $rental->deliveryRecord->assigned_user_id
+                : (($rental->deliveryRecord?->assigned_staff_id ?? $rental->delivery_staff_id)
+                    ? 'staff:' . ($rental->deliveryRecord?->assigned_staff_id ?? $rental->delivery_staff_id)
+                    : ''));
+    }
+
+    $thirdPartyNameValue = old('third_party_name', $isEdit ? ($rental->deliveryRecord?->third_party_name ?? '') : '');
+    $thirdPartyContactValue = old('third_party_contact', $isEdit ? ($rental->deliveryRecord?->third_party_contact ?? '') : '');
+    $thirdPartyPhoneValue = old('third_party_phone', $isEdit ? ($rental->deliveryRecord?->third_party_phone ?? '') : '');
+
+    $hasFieldError = function (string ...$keys) use ($errors): bool {
+        foreach ($keys as $key) {
+            if ($errors->has($key)) {
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    $fieldError = function (string ...$keys) use ($errors): ?string {
+        foreach ($keys as $key) {
+            if ($errors->has($key)) {
+                return $errors->first($key);
+            }
+        }
+
+        return null;
+    };
+
+    $hasRentalItemsError = collect($errors->keys())->contains(fn ($key) => str_starts_with($key, 'rental_items'));
+    $hasSaleItemsError = collect($errors->keys())->contains(fn ($key) => str_starts_with($key, 'sale_items'));
+@endphp
+
+<style>
+    .rental-shell { display:grid; gap:18px; }
+    .rental-toolbar { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:4px; }
+    .rental-title h1 { margin:0; font-size:26px; color:#0f172a; }
+    .rental-title p { margin:6px 0 0; color:#64748b; font-size:13px; }
+    .rental-actions { display:flex; gap:8px; flex-wrap:wrap; }
+    .rental-card { background:#fff; border:1px solid #dbe3ef; border-radius:14px; padding:16px; box-shadow:0 8px 24px rgba(15, 23, 42, 0.04); }
+    .rental-card h2 { margin:0 0 4px; font-size:16px; color:#0f172a; }
+    .rental-card p.section-copy { margin:0 0 10px; font-size:11px; color:#64748b; }
+    .rental-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:12px; }
+    .rental-col-3 { grid-column:span 3; }
+    .rental-col-4 { grid-column:span 4; }
+    .rental-col-5 { grid-column:span 5; }
+    .rental-col-6 { grid-column:span 6; }
+    .rental-col-7 { grid-column:span 7; }
+    .rental-col-8 { grid-column:span 8; }
+    .rental-col-12 { grid-column:span 12; }
+    .rental-field { display:flex; flex-direction:column; gap:4px; }
+    .rental-field label { font-size:11px; font-weight:700; color:#334155; letter-spacing:0.03em; text-transform:uppercase; }
+    .rental-field .hint { font-size:10px; color:#94a3b8; line-height:1.35; }
+    .rental-field input,
+    .rental-field select,
+    .rental-field textarea {
+        width:100%;
+        border:1px solid #cbd5e1;
+        border-radius:9px;
+        padding:8px 11px;
+        font-size:13px;
+        color:#0f172a;
+        background:#fff;
+        box-sizing:border-box;
+    }
+    .rental-field textarea { min-height:78px; resize:vertical; }
+    .rental-field.is-error label { color:#b91c1c; }
+    .rental-field.is-error input,
+    .rental-field.is-error select,
+    .rental-field.is-error textarea {
+        border-color:#ef4444;
+        box-shadow:0 0 0 3px rgba(239, 68, 68, 0.10);
+        background:#fffafa;
+    }
+    .rental-field input:focus,
+    .rental-field select:focus,
+    .rental-field textarea:focus {
+        outline:none;
+        border-color:#2563eb;
+        box-shadow:0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+    .field-error {
+        font-size:11px;
+        color:#b91c1c;
+        line-height:1.35;
+    }
+    .field-warning {
+        display:none;
+        padding:10px 12px;
+        border-radius:10px;
+        border:1px solid #fecaca;
+        background:#fef2f2;
+        color:#991b1b;
+        font-size:12px;
+        line-height:1.4;
+    }
+    .rental-inline-note {
+        padding:10px 12px;
+        border-radius:10px;
+        background:#f8fafc;
+        border:1px solid #e2e8f0;
+        font-size:12px;
+        color:#475569;
+    }
+    .rental-summary {
+        display:grid;
+        grid-template-columns:repeat(4, minmax(0, 1fr));
+        gap:10px;
+    }
+    .rental-metric {
+        border:1px solid #e2e8f0;
+        border-radius:12px;
+        padding:12px;
+        background:#f8fafc;
+    }
+    .rental-metric span { display:block; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:#64748b; }
+    .rental-metric strong { display:block; margin-top:5px; font-size:18px; color:#0f172a; }
+    .asset-panel {
+        border:1px solid #dbe3ef;
+        border-radius:12px;
+        padding:14px;
+        background:#fcfdff;
+    }
+    .asset-toolbar {
+        display:flex;
+        justify-content:space-between;
+        align-items:flex-start;
+        gap:10px;
+        flex-wrap:wrap;
+        margin-bottom:10px;
+    }
+    .asset-toolbar-actions {
+        display:flex;
+        align-items:center;
+        justify-content:flex-end;
+        gap:8px;
+        flex-wrap:wrap;
+        margin-left:auto;
+    }
+    .asset-search {
+        width:260px;
+        max-width:100%;
+        border:1px solid #cbd5e1;
+        border-radius:10px;
+        padding:9px 12px;
+        font-size:14px;
+    }
+    .asset-helper { font-size:12px; color:#64748b; }
+    .asset-summary-grid {
+        display:grid;
+        grid-template-columns:repeat(4, minmax(0, 1fr));
+        gap:10px;
+        margin-bottom:12px;
+    }
+    .asset-summary-box {
+        border:1px solid #dbe3ef;
+        border-radius:12px;
+        padding:12px;
+        background:#fff;
+        display:grid;
+        gap:4px;
+    }
+    .asset-summary-box span {
+        font-size:11px;
+        text-transform:uppercase;
+        letter-spacing:0.04em;
+        color:#64748b;
+        font-weight:700;
+    }
+    .asset-summary-box strong {
+        font-size:18px;
+        color:#0f172a;
+        line-height:1.2;
+    }
+    .asset-summary-box small {
+        font-size:12px;
+        color:#64748b;
+        line-height:1.4;
+    }
+    .asset-summary-box.is-primary {
+        border-color:#93c5fd;
+        background:#eff6ff;
+    }
+    .asset-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:10px; }
+    .asset-card {
+        border:1px solid #dbe3ef;
+        border-radius:12px;
+        padding:12px;
+        background:#fff;
+        display:flex;
+        flex-direction:column;
+        gap:6px;
+        cursor:pointer;
+        transition:border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+    }
+    .asset-card:hover { border-color:#93c5fd; transform:translateY(-1px); }
+    .asset-card.is-selected {
+        border-color:#2563eb;
+        box-shadow:0 0 0 3px rgba(37, 99, 235, 0.12);
+        background:#eff6ff;
+    }
+    .asset-card-head {
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        gap:8px;
+    }
+    .asset-card strong { color:#0f172a; font-size:14px; }
+    .asset-card small { color:#64748b; font-size:12px; }
+    .asset-card input { display:none; }
+    .asset-card-pill {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        min-width:74px;
+        padding:4px 9px;
+        border-radius:999px;
+        border:1px solid #cbd5e1;
+        background:#fff;
+        color:#475569;
+        font-size:11px;
+        font-weight:700;
+        text-transform:uppercase;
+        letter-spacing:0.03em;
+    }
+    .asset-card-pill.is-selected {
+        border-color:#2563eb;
+        background:#2563eb;
+        color:#fff;
+    }
+    .asset-card-note {
+        margin-top:2px;
+        font-size:12px;
+        font-weight:600;
+        color:#2563eb;
+    }
+    .asset-empty,
+    .asset-warning {
+        border:1px dashed #cbd5e1;
+        border-radius:12px;
+        padding:18px;
+        text-align:center;
+        font-size:13px;
+        color:#64748b;
+        background:#fff;
+    }
+    .asset-warning {
+        border-style:solid;
+        border-color:#fde68a;
+        background:#fffbeb;
+        color:#92400e;
+        text-align:left;
+    }
+    .asset-load-more {
+        display:flex;
+        justify-content:center;
+        margin-top:12px;
+    }
+    .ops-button,
+    .ops-button-secondary,
+    .ops-link {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        gap:6px;
+        border-radius:10px;
+        padding:10px 14px;
+        font-size:13px;
+        font-weight:600;
+        text-decoration:none;
+        border:1px solid transparent;
+        cursor:pointer;
+    }
+    .ops-button { background:#2563eb; color:#fff; }
+    .ops-button-secondary { background:#fff; border-color:#cbd5e1; color:#334155; }
+    .ops-link { padding:0; border:none; background:none; color:#2563eb; }
+    .rental-error {
+        border:1px solid #fecaca;
+        background:#fef2f2;
+        color:#b91c1c;
+        border-radius:12px;
+        padding:14px 16px;
+    }
+    .badge {
+        display:inline-flex;
+        align-items:center;
+        padding:4px 10px;
+        border-radius:999px;
+        font-size:11px;
+        font-weight:700;
+        letter-spacing:0.03em;
+        text-transform:uppercase;
+    }
+    .badge-blue { background:#dbeafe; color:#1d4ed8; }
+    .badge-amber { background:#fef3c7; color:#b45309; }
+    .badge-slate { background:#e2e8f0; color:#475569; }
+    .sale-item-panel {
+        border:1px solid #dbe3ef;
+        border-radius:12px;
+        background:#fcfdff;
+        overflow:hidden;
+    }
+    .sale-item-head,
+    .sale-item-row {
+        display:grid;
+        grid-template-columns:minmax(0, 2.2fr) 90px 120px 120px 190px;
+        gap:10px;
+        align-items:start;
+        padding:12px 14px;
+    }
+    .sale-item-panel.is-sale-items .sale-item-head,
+    .sale-item-panel.is-sale-items .sale-item-row {
+        grid-template-columns:minmax(0, 2fr) minmax(140px, 1fr) 90px 140px 190px;
+    }
+    .sale-item-head {
+        background:#f8fafc;
+        border-bottom:1px solid #e2e8f0;
+        font-size:11px;
+        font-weight:700;
+        color:#64748b;
+        text-transform:uppercase;
+        letter-spacing:.05em;
+    }
+    .sale-item-row + .sale-item-row { border-top:1px solid #e2e8f0; }
+    .sale-item-entry + .sale-item-entry { border-top:1px solid #e2e8f0; }
+    .sale-item-row select,
+    .sale-item-row input,
+    .sale-item-row textarea {
+        width:100%;
+        border:1px solid #cbd5e1;
+        border-radius:10px;
+        padding:9px 10px;
+        font-size:13px;
+        box-sizing:border-box;
+        background:#fff;
+        color:#0f172a;
+    }
+    .sale-item-row textarea { min-height:42px; resize:vertical; }
+    .sale-item-subnote {
+        margin-top:6px;
+        font-size:11px;
+        color:#64748b;
+        line-height:1.4;
+    }
+    .sale-item-detail {
+        padding:0 14px 14px;
+        background:#fcfdff;
+    }
+    .sale-item-detail[hidden] { display:none !important; }
+    .sale-item-detail-grid {
+        display:grid;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:12px;
+        padding:12px 14px;
+        border:1px dashed #dbe3ef;
+        border-radius:12px;
+        background:#fff;
+    }
+    .sale-item-detail-field {
+        display:flex;
+        flex-direction:column;
+        gap:6px;
+    }
+    .sale-item-detail-field label {
+        font-size:11px;
+        font-weight:700;
+        text-transform:uppercase;
+        letter-spacing:.04em;
+        color:#475569;
+    }
+    .rental-line-asset-picker {
+        display:grid;
+        gap:8px;
+        max-height:220px;
+        overflow:auto;
+        padding:10px;
+        border:1px solid #cbd5e1;
+        border-radius:10px;
+        background:#fff;
+    }
+    .rental-line-asset-option {
+        display:flex;
+        align-items:flex-start;
+        gap:8px;
+        font-size:12px;
+        color:#334155;
+        line-height:1.4;
+    }
+    .rental-line-asset-option input {
+        margin-top:2px;
+        flex:0 0 auto;
+    }
+    .rental-line-asset-empty {
+        font-size:12px;
+        color:#64748b;
+    }
+    .line-asset-search {
+        width:100%;
+        border:1px solid #cbd5e1;
+        border-radius:10px;
+        padding:8px 10px;
+        font-size:12px;
+        box-sizing:border-box;
+        background:#fff;
+        color:#0f172a;
+    }
+    .line-asset-load-more {
+        display:flex;
+        justify-content:flex-start;
+        margin-top:8px;
+    }
+    .sale-section-disclosure {
+        border:1px solid #dbe3ef;
+        border-radius:14px;
+        background:#fff;
+        overflow:hidden;
+    }
+    .sale-section-disclosure.is-error {
+        border-color:#ef4444;
+        box-shadow:0 0 0 3px rgba(239, 68, 68, 0.08);
+    }
+    .sale-section-disclosure summary {
+        list-style:none;
+        cursor:pointer;
+        display:flex;
+        justify-content:space-between;
+        align-items:flex-start;
+        gap:16px;
+        padding:16px 18px;
+    }
+    .sale-section-disclosure summary::-webkit-details-marker { display:none; }
+    .sale-section-heading {
+        display:grid;
+        gap:6px;
+        min-width:0;
+    }
+    .sale-section-heading strong {
+        font-size:20px;
+        color:#0f172a;
+        line-height:1.2;
+    }
+    .sale-section-heading span {
+        font-size:13px;
+        color:#64748b;
+        line-height:1.5;
+    }
+    .sale-section-meta {
+        display:flex;
+        align-items:center;
+        justify-content:flex-end;
+        gap:8px;
+        flex-wrap:wrap;
+    }
+    .sale-section-chip {
+        display:inline-flex;
+        align-items:center;
+        gap:6px;
+        padding:8px 11px;
+        border-radius:999px;
+        border:1px solid #dbe3ef;
+        background:#f8fafc;
+        font-size:12px;
+        color:#475569;
+        white-space:nowrap;
+    }
+    .sale-section-chip strong {
+        color:#0f172a;
+        font-size:13px;
+    }
+    .sale-section-state .is-open { display:none; }
+    .sale-section-disclosure[open] .sale-section-state .is-open { display:inline; }
+    .sale-section-disclosure[open] .sale-section-state .is-collapsed { display:none; }
+    .sale-section-body {
+        border-top:1px solid #e2e8f0;
+        padding:0 18px 18px;
+        display:grid;
+        gap:12px;
+    }
+    .compact-section-disclosure summary {
+        padding:14px 18px;
+        align-items:center;
+    }
+    .compact-section-title {
+        display:inline-flex;
+        align-items:center;
+        gap:8px;
+        font-size:16px;
+        font-weight:700;
+        color:#0f172a;
+        line-height:1.3;
+    }
+    .compact-section-title .is-open { display:none; }
+    .compact-section-disclosure[open] .compact-section-title .is-open { display:inline; }
+    .compact-section-disclosure[open] .compact-section-title .is-collapsed { display:none; }
+    .compact-section-summary {
+        display:flex;
+        align-items:center;
+        gap:8px;
+        flex-wrap:wrap;
+        justify-content:flex-end;
+    }
+    .compact-section-summary .sale-section-chip {
+        padding:7px 10px;
+    }
+    .sale-item-total {
+        display:flex;
+        align-items:center;
+        min-height:42px;
+        font-size:13px;
+        font-weight:700;
+        color:#0f172a;
+    }
+    .sale-item-actions {
+        display:flex;
+        justify-content:flex-end;
+        align-items:center;
+        gap:8px;
+        flex-wrap:wrap;
+    }
+    .sale-item-empty {
+        padding:18px 14px;
+        color:#64748b;
+        font-size:13px;
+        text-align:center;
+        background:#fff;
+    }
+    .sale-item-summary {
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:10px;
+        flex-wrap:wrap;
+        margin-top:12px;
+        padding:12px 14px;
+        border:1px solid #e2e8f0;
+        border-radius:12px;
+        background:#f8fafc;
+        font-size:13px;
+        color:#475569;
+    }
+    .rental-inline-stack { display:flex; gap:8px; align-items:flex-end; flex-wrap:nowrap; }
+    .rental-inline-stack .rental-field { flex:1 1 auto; min-width:0; }
+    .ops-button-secondary.is-compact { padding:8px 12px; white-space:nowrap; }
+    .quick-customer-modal {
+        position:fixed;
+        inset:0;
+        z-index:1050;
+        display:grid;
+        place-items:center;
+        padding:18px;
+    }
+    .quick-customer-modal[hidden] {
+        display:none !important;
+    }
+    .quick-customer-backdrop {
+        position:absolute;
+        inset:0;
+        background:rgba(15, 23, 42, 0.52);
+    }
+    .quick-customer-dialog {
+        position:relative;
+        width:min(760px, 100%);
+        background:#fff;
+        border-radius:18px;
+        border:1px solid #dbe3ef;
+        box-shadow:0 24px 60px rgba(15, 23, 42, 0.22);
+        overflow:hidden;
+    }
+    .quick-customer-header {
+        display:flex;
+        justify-content:space-between;
+        align-items:flex-start;
+        gap:12px;
+        padding:16px 18px 10px;
+        border-bottom:1px solid #e2e8f0;
+    }
+    .quick-customer-header h3 { margin:0; font-size:18px; color:#0f172a; }
+    .quick-customer-header p { margin:5px 0 0; color:#64748b; font-size:12px; }
+    .quick-customer-close {
+        width:34px;
+        height:34px;
+        border:none;
+        border-radius:999px;
+        background:#f1f5f9;
+        color:#334155;
+        cursor:pointer;
+        font-size:22px;
+        line-height:1;
+    }
+    .quick-customer-form { padding:14px 18px 18px; display:grid; gap:12px; }
+    .quick-customer-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:12px; }
+    .quick-col-4 { grid-column:span 4; }
+    .quick-col-8 { grid-column:span 8; }
+    .quick-col-12 { grid-column:span 12; }
+    .quick-inline-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; }
+    .quick-field { display:flex; flex-direction:column; gap:6px; }
+    .quick-field label {
+        font-size:11px;
+        font-weight:700;
+        color:#475569;
+        letter-spacing:.04em;
+        text-transform:uppercase;
+    }
+    .quick-field input,
+    .quick-field select,
+    .quick-field textarea {
+        width:100%;
+        box-sizing:border-box;
+        padding:9px 11px;
+        border-radius:10px;
+        border:1px solid #cbd5e1;
+        background:#fff;
+        color:#0f172a;
+        font-size:14px;
+    }
+    .quick-field textarea { resize:vertical; min-height:76px; }
+    .quick-customer-actions {
+        display:flex;
+        justify-content:flex-end;
+        gap:8px;
+        flex-wrap:wrap;
+    }
+    .quick-btn {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        gap:6px;
+        padding:8px 12px;
+        border-radius:10px;
+        font-size:13px;
+        font-weight:600;
+        border:1px solid transparent;
+        cursor:pointer;
+    }
+    .quick-btn-primary { background:#0f172a; color:#fff; }
+    .quick-btn-light { background:#fff; color:#334155; border-color:#cbd5e1; }
+    .quick-customer-alert {
+        border-radius:10px;
+        padding:10px 12px;
+        font-size:12px;
+        border:1px solid transparent;
+    }
+    .quick-customer-alert.is-error {
+        background:#fef2f2;
+        border-color:#fecaca;
+        color:#b91c1c;
+    }
+    .quick-customer-alert.is-success {
+        background:#dcfce7;
+        border-color:#bbf7d0;
+        color:#166534;
+    }
+    body.modal-open { overflow:hidden; }
+    @media (max-width: 980px) {
+        .rental-col-3,
+        .rental-col-4,
+        .rental-col-5,
+        .rental-col-6,
+        .rental-col-7,
+        .rental-col-8 { grid-column:span 12; }
+        .rental-summary { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+        .asset-summary-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+        .sale-item-head { display:none; }
+        .sale-item-row { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+        .sale-item-detail-grid { grid-template-columns:1fr; }
+        .sale-section-disclosure summary { flex-direction:column; }
+        .sale-section-meta { justify-content:flex-start; }
+        .compact-section-summary { justify-content:flex-start; }
+        .rental-inline-stack { flex-wrap:wrap; }
+    }
+    @media (max-width: 640px) {
+        .rental-toolbar {
+            flex-direction:column;
+            margin-bottom:0;
+        }
+        .rental-actions {
+            width:100%;
+        }
+        .rental-actions > * {
+            flex:1 1 calc(50% - 8px);
+            min-width:0;
+        }
+        .rental-summary { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+        .asset-toolbar { align-items:stretch; }
+        .asset-toolbar-actions { justify-content:stretch; margin-left:0; }
+        .asset-toolbar-actions .ops-button-secondary { flex:1 1 140px; }
+        .asset-summary-grid { grid-template-columns:1fr; }
+        .asset-search { width:100%; }
+        .quick-col-4,
+        .quick-col-8 { grid-column:span 12; }
+        .quick-inline-grid { grid-template-columns:1fr; }
+        .sale-item-row { grid-template-columns:1fr; }
+        .rental-snapshot-card { display:none; }
+        .rental-card { border-radius:14px !important; }
+        .rental-card h2 { font-size:18px !important; }
+        .rental-inline-stack { flex-direction:column; align-items:stretch; }
+        .rental-inline-stack > * { width:100%; }
+        .ops-button,
+        .ops-button-secondary {
+            min-height:44px;
+        }
+    }
+</style>
+
+<div class="rental-shell">
+    <div class="rental-toolbar">
+        <div class="rental-title">
+            <h1>{{ $isEdit ? 'Edit Rental' : 'New Rental' }}</h1>
+            @if($isEdit)
+                <p>Update booking, assets, and delivery.</p>
+            @endif
+        </div>
+        <div class="rental-actions">
+            <a href="{{ route('rentals.index') }}" class="ops-button-secondary">Back to Rentals</a>
+            @if($isEdit)
+                <a href="{{ route('rentals.show', $rental) }}" class="ops-button-secondary">View Rental</a>
+            @endif
+        </div>
+    </div>
+
+    @if ($errors->any())
+        <div class="rental-error">
+            <strong>Please review the highlighted rental details.</strong>
+            <ul style="margin:8px 0 0 18px; padding:0;">
+                @foreach ($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
+    <div class="rental-card">
+        <h2>Rental Snapshot</h2>
+        <div class="rental-summary">
+            <div class="rental-metric">
+                <span>Mode</span>
+                <strong>{{ $isEdit ? 'Update Existing' : 'Create Fresh' }}</strong>
+            </div>
+            <div class="rental-metric">
+                <span>Assigned Assets</span>
+                <strong id="selectedAssetCount">{{ count($selectedAssetIds) }}</strong>
+            </div>
+            <div class="rental-metric">
+                <span>Requested Quantity</span>
+                <strong id="quantityMetric">{{ old('quantity', $isEdit ? $rental->quantity : 1) }}</strong>
+            </div>
+            <div class="rental-metric">
+                <span>Dispatch Warehouse</span>
+                <strong id="warehouseMetric">{{ old('dispatch_warehouse_id', $isEdit ? $rental->dispatch_warehouse_id : '') ? optional($warehouses->firstWhere('id', (int) old('dispatch_warehouse_id', $isEdit ? $rental->dispatch_warehouse_id : '')))->name : 'Any warehouse' }}</strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="rental-card">
+        <h2>Customer & Rental Details</h2>
+        <div class="rental-grid">
+            <div class="rental-col-4">
+                <div class="rental-inline-stack">
+                    <div class="rental-field{{ $hasFieldError('customer_id') ? ' is-error' : '' }}">
+                        <label for="customer_id">Customer</label>
+                        <select name="customer_id" id="customer_id" required>
+                    <option value="">Select customer</option>
+                    @foreach($customers as $customer)
+                        <option
+                            value="{{ $customer->id }}"
+                            data-name="{{ $customer->name }}"
+                            data-phone="{{ \App\Support\PhoneNumber::local($customer->phone) }}"
+                            data-phone-country="{{ \App\Support\PhoneNumber::countryCode($customer->phone) }}"
+                            {{ (int) old('customer_id', $isEdit ? $rental->customer_id : null) === $customer->id ? 'selected' : '' }}>
+                            {{ $customer->name }}{{ $customer->phone ? ' â€¢ ' . $customer->phone : '' }}
+                        </option>
+                    @endforeach
+                        </select>
+                        @if($hasFieldError('customer_id'))
+                            <span class="field-error">{{ $fieldError('customer_id') }}</span>
+                        @endif
+                    </div>
+                    <button type="button" class="ops-button-secondary is-compact" data-open-modal="rentalQuickCustomerModal">Add Customer</button>
+                </div>
+            </div>
+
+            <div class="rental-field rental-col-4{{ $hasFieldError('customer_name') ? ' is-error' : '' }}">
+                <label for="customer_name">Name</label>
+                <input type="text" name="customer_name" id="customer_name" value="{{ old('customer_name', $isEdit ? $rental->customer_name : '') }}" required>
+                @if($hasFieldError('customer_name'))
+                    <span class="field-error">{{ $fieldError('customer_name') }}</span>
+                @endif
+            </div>
+
+            <div class="rental-field rental-col-4{{ $hasFieldError('phone') ? ' is-error' : '' }}">
+                <label for="phone">Phone</label>
+                <div style="display:flex; align-items:center; border:1px solid #cbd5e1; border-radius:12px; overflow:visible; background:#fff;">
+                    @include('partials.country-code-picker', [
+                        'name' => 'phone_country_code',
+                        'pickerId' => 'phone_country_code',
+                        'value' => old('phone_country_code', $phoneParts['code']),
+                        'options' => $countryCodeOptions,
+                        'dividerColor' => '#cbd5e1',
+                        'width' => '92px',
+                    ])
+                    <input type="text" name="phone" id="phone" value="{{ $phoneParts['local'] }}" required inputmode="numeric" maxlength="15" pattern="[0-9]{6,15}" data-phone-local style="border:none; box-shadow:none; background:transparent;">
+                </div>
+                @if($hasFieldError('phone'))
+                    <span class="field-error">{{ $fieldError('phone') }}</span>
+                @endif
+            </div>
+
+            <div class="rental-field rental-col-4{{ $hasFieldError('product_id', 'rental_items') ? ' is-error' : '' }}">
+                <label for="product_id">Product</label>
+                <select name="product_id" id="product_id" required>
+                    <option value="">Select product</option>
+                    @foreach($products as $product)
+                        <option
+                            value="{{ $product->id }}"
+                            data-available="{{ $product->rental_available_quantity ?? $product->display_available_quantity ?? $product->available_quantity }}"
+                            data-rental-available="{{ $product->rental_available_quantity ?? $product->display_available_quantity ?? $product->available_quantity }}"
+                            data-rental-status="{{ $product->rental_availability_status }}"
+                            data-rental-label="{{ $product->rental_dropdown_label }}"
+                            data-rental-warehouse-quantities="{{ e(json_encode($product->rental_warehouse_quantities ?? [])) }}"
+                            data-tracks-rental="{{ $product->tracksRentalStock() ? 1 : 0 }}"
+                            data-product-name="{{ $product->name }}"
+                            data-price-per-day="{{ (float) ($product->price_per_day ?? 0) }}"
+                            data-rental-price="{{ (float) ($product->rental_price ?? 0) }}"
+                            data-rental-price-15="{{ (float) ($product->rental_price_15_days ?? 0) }}"
+                            data-rental-price-30="{{ (float) ($product->rental_price_30_days ?? 0) }}"
+                            data-rental-price-90="{{ (float) ($product->rental_price_3_months ?? 0) }}"
+                            {{ (int) old('product_id', $isEdit ? $rental->product_id : null) === $product->id ? 'selected' : '' }}>
+                            {{ $product->name }} • {{ $product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity)) }}
+                        </option>
+                    @endforeach
+                </select>
+                <div class="field-warning" id="productRentalWarning"></div>
+                @if($hasFieldError('product_id', 'rental_items'))
+                    <span class="field-error">{{ $fieldError('product_id', 'rental_items') }}</span>
+                @endif
+            </div>
+
+            <div class="rental-field rental-col-4{{ $hasFieldError('dispatch_warehouse_id') ? ' is-error' : '' }}">
+                <label for="dispatch_warehouse_id">Warehouse</label>
+                <select name="dispatch_warehouse_id" id="dispatch_warehouse_id">
+                    <option value="">Any warehouse</option>
+                    @foreach($warehouses as $warehouse)
+                        <option value="{{ $warehouse->id }}" {{ (int) old('dispatch_warehouse_id', $isEdit ? $rental->dispatch_warehouse_id : null) === $warehouse->id ? 'selected' : '' }}>
+                            {{ $warehouse->name }}
+                        </option>
+                    @endforeach
+                </select>
+                @if($hasFieldError('dispatch_warehouse_id'))
+                    <span class="field-error">{{ $fieldError('dispatch_warehouse_id') }}</span>
+                @endif
+            </div>
+
+            <div class="rental-field rental-col-4{{ $hasFieldError('quantity', 'asset_ids', 'rental_items') ? ' is-error' : '' }}">
+                <label for="quantity">Quantity</label>
+                <input type="number" name="quantity" id="quantity" min="1" value="{{ old('quantity', $isEdit ? $rental->quantity : 1) }}" required>
+                <span class="hint" id="productAvailabilityHint">Rental availability will show here.</span>
+                @if($hasFieldError('quantity', 'asset_ids', 'rental_items'))
+                    <span class="field-error">{{ $fieldError('quantity', 'asset_ids', 'rental_items') }}</span>
+                @endif
+            </div>
+
+            <div class="rental-field rental-col-3{{ $hasFieldError('duration_preset') ? ' is-error' : '' }}">
+                <label for="duration_preset">Duration</label>
+                <select id="duration_preset" name="duration_preset">
+                    <option value="custom">Custom</option>
+                    <option value="7_days">7 Days</option>
+                    <option value="15_days">15 Days</option>
+                    <option value="30_days">30 Days</option>
+                    <option value="3_months">3 Months</option>
+                    <option value="6_months">6 Months</option>
+                </select>
+            </div>
+
+            <div class="rental-field rental-col-3{{ $hasFieldError('start_date') ? ' is-error' : '' }}">
+                <label for="start_date">Start Date</label>
+                <input type="date" name="start_date" id="start_date" value="{{ old('start_date', $isEdit && $rental->start_date ? $rental->start_date->format('Y-m-d') : '') }}" required>
+                @if($hasFieldError('start_date'))
+                    <span class="field-error">{{ $fieldError('start_date') }}</span>
+                @endif
+            </div>
+
+            <div class="rental-field rental-col-3{{ $hasFieldError('end_date') ? ' is-error' : '' }}">
+                <label for="end_date">End Date</label>
+                <input type="date" name="end_date" id="end_date" value="{{ old('end_date', $isEdit && $rental->end_date ? $rental->end_date->format('Y-m-d') : '') }}" required>
+                @if($hasFieldError('end_date'))
+                    <span class="field-error">{{ $fieldError('end_date') }}</span>
+                @endif
+            </div>
+
+            <div class="rental-field rental-col-3{{ $hasFieldError('rental_amount') ? ' is-error' : '' }}">
+                <label for="rental_amount">Rental Amount</label>
+                <input type="number" step="0.01" min="0" name="rental_amount" id="rental_amount" value="{{ old('rental_amount', $isEdit ? $rental->rental_amount : 0) }}">
+                @if($hasFieldError('rental_amount'))
+                    <span class="field-error">{{ $fieldError('rental_amount') }}</span>
+                @endif
+            </div>
+
+            <div class="rental-field rental-col-3{{ $hasFieldError('deposit_amount') ? ' is-error' : '' }}">
+                <label for="deposit_amount">Deposit</label>
+                <input type="number" step="0.01" min="0" name="deposit_amount" id="deposit_amount" value="{{ old('deposit_amount', $isEdit ? $rental->deposit_amount : 0) }}">
+                @if($hasFieldError('deposit_amount'))
+                    <span class="field-error">{{ $fieldError('deposit_amount') }}</span>
+                @endif
+            </div>
+
+            <div class="rental-field rental-col-3{{ $hasFieldError('transport_amount') ? ' is-error' : '' }}">
+                <label for="transport_amount">Transport</label>
+                <input type="number" step="0.01" min="0" name="transport_amount" id="transport_amount" value="{{ old('transport_amount', $isEdit ? $rental->transport_amount : 0) }}">
+                @if($hasFieldError('transport_amount'))
+                    <span class="field-error">{{ $fieldError('transport_amount') }}</span>
+                @endif
+            </div>
+
+            <div class="rental-field rental-col-3{{ $hasFieldError('other_amount') ? ' is-error' : '' }}">
+                <label for="other_amount">Other</label>
+                <input type="number" step="0.01" min="0" name="other_amount" id="other_amount" value="{{ old('other_amount', $isEdit ? $rental->other_amount : 0) }}">
+                @if($hasFieldError('other_amount'))
+                    <span class="field-error">{{ $fieldError('other_amount') }}</span>
+                @endif
+            </div>
+
+            <div class="rental-field {{ $isEdit ? 'rental-col-3' : 'rental-col-6' }}{{ $hasFieldError('delivery_staff_id') ? ' is-error' : '' }}">
+                <label for="delivery_staff_id">Delivery Assignment</label>
+                <select name="delivery_staff_id" id="delivery_staff_id">
+                    <option value="">Select delivery partner</option>
+                    @if(($assignableUsers ?? collect())->isNotEmpty())
+                        <optgroup label="Internal Delivery Staff">
+                            @foreach($assignableUsers as $user)
+                                <option value="user:{{ $user->id }}" {{ $selectedDeliveryAssignment === 'user:' . $user->id ? 'selected' : '' }}>
+                                    {{ $user->name }} - {{ ucwords(str_replace('_', ' ', $user->effective_role ?? $user->role ?? 'delivery')) }}
+                                </option>
+                            @endforeach
+                        </optgroup>
+                    @endif
+                    @if($thirdPartyDeliveryMembers->isNotEmpty())
+                        <optgroup label="Third-Party Delivery">
+                            <option value="third_party" {{ $selectedDeliveryAssignment === 'third_party' ? 'selected' : '' }}>One-time Third-Party Partner</option>
+                            @foreach($thirdPartyDeliveryMembers as $staff)
+                                <option value="staff:{{ $staff->id }}" {{ $selectedDeliveryAssignment === 'staff:' . $staff->id ? 'selected' : '' }}>
+                                    {{ $staff->name }} - {{ $staff->role_display }}
+                                </option>
+                            @endforeach
+                        </optgroup>
+                    @else
+                        <optgroup label="Third-Party Delivery">
+                            <option value="third_party" {{ $selectedDeliveryAssignment === 'third_party' ? 'selected' : '' }}>One-time Third-Party Partner</option>
+                        </optgroup>
+                    @endif
+                    @if($vendorDeliveryMembers->isNotEmpty())
+                        <optgroup label="Vendor Delivery">
+                            @foreach($vendorDeliveryMembers as $staff)
+                                <option value="staff:{{ $staff->id }}" {{ $selectedDeliveryAssignment === 'staff:' . $staff->id ? 'selected' : '' }}>
+                                    {{ $staff->name }} - {{ $staff->role_display }}
+                                </option>
+                            @endforeach
+                        </optgroup>
+                    @endif
+                    @if($otherAssignableStaffMembers->isNotEmpty())
+                        <optgroup label="Other Assignment Records">
+                            @foreach($otherAssignableStaffMembers as $staff)
+                                <option value="staff:{{ $staff->id }}" {{ $selectedDeliveryAssignment === 'staff:' . $staff->id ? 'selected' : '' }}>
+                                    {{ $staff->name }} - {{ $staff->role_display }}
+                                </option>
+                            @endforeach
+                        </optgroup>
+                    @endif
+                </select>
+                <div class="ops-muted" style="margin-top:6px;">Choose internal staff or a third-party/vendor delivery partner.</div>
+                @if($hasFieldError('delivery_staff_id'))
+                    <span class="field-error">{{ $fieldError('delivery_staff_id') }}</span>
+                @endif
+            </div>
+
+            <div
+                class="rental-col-12"
+                id="thirdPartyDeliveryFields"
+                style="{{ $selectedDeliveryAssignment === 'third_party' ? '' : 'display:none;' }}"
+            >
+                <div class="rental-card" style="margin:0;">
+                    <h2>Third-Party Delivery Details</h2>
+                    <p class="section-copy">Use this when the delivery partner is not in your saved vendor/staff list.</p>
+                    <div class="rental-grid">
+                        <div class="rental-field rental-col-4{{ $hasFieldError('third_party_name') ? ' is-error' : '' }}">
+                            <label for="third_party_name">Partner Name</label>
+                            <input type="text" name="third_party_name" id="third_party_name" value="{{ $thirdPartyNameValue }}" placeholder="Enter partner or company name">
+                            @if($hasFieldError('third_party_name'))
+                                <span class="field-error">{{ $fieldError('third_party_name') }}</span>
+                            @endif
+                        </div>
+                        <div class="rental-field rental-col-4{{ $hasFieldError('third_party_contact') ? ' is-error' : '' }}">
+                            <label for="third_party_contact">Contact Person</label>
+                            <input type="text" name="third_party_contact" id="third_party_contact" value="{{ $thirdPartyContactValue }}" placeholder="Enter contact person">
+                            @if($hasFieldError('third_party_contact'))
+                                <span class="field-error">{{ $fieldError('third_party_contact') }}</span>
+                            @endif
+                        </div>
+                        <div class="rental-field rental-col-4{{ $hasFieldError('third_party_phone') ? ' is-error' : '' }}">
+                            <label for="third_party_phone">Contact Phone</label>
+                            <input type="text" name="third_party_phone" id="third_party_phone" value="{{ $thirdPartyPhoneValue }}" placeholder="Enter phone number">
+                            @if($hasFieldError('third_party_phone'))
+                                <span class="field-error">{{ $fieldError('third_party_phone') }}</span>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @if($isEdit)
+            <div class="rental-field rental-col-3{{ $hasFieldError('pickup_staff_id') ? ' is-error' : '' }}">
+                <label for="pickup_staff_id">Pickup</label>
+                <select name="pickup_staff_id" id="pickup_staff_id">
+                    <option value="">Select pickup</option>
+                    @foreach($staffMembers as $staff)
+                        <option value="{{ $staff->id }}" {{ (int) old('pickup_staff_id', $rental->pickup_staff_id) === $staff->id ? 'selected' : '' }}>
+                            {{ $staff->name }} - {{ $staff->role_display }}
+                        </option>
+                    @endforeach
+                </select>
+                @if($hasFieldError('pickup_staff_id'))
+                    <span class="field-error">{{ $fieldError('pickup_staff_id') }}</span>
+                @endif
+            </div>
+            @endif
+
+            <div class="rental-field rental-col-12">
+                <label for="internal_notes">Ops Note</label>
+                <textarea id="internal_notes" disabled placeholder="Use delivery notes after save.">{{ $isEdit ? 'Adjust delivery or assets after save.' : 'Delivery opens after save.' }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="rental-card{{ $hasFieldError('asset_ids') ? ' is-error' : '' }}">
+        <h2>Asset Assignment</h2>
+        <p class="section-copy">Select rental assets.</p>
+        <div class="asset-panel">
+            <div class="asset-toolbar">
+                <div>
+                    <span class="badge badge-blue">Asset linked rental</span>
+                    <div class="asset-helper" id="assetCountNote">Select product to load assets.</div>
+                </div>
+                <div class="asset-toolbar-actions">
+                    <button type="button" class="ops-button-secondary" id="selectSuggestedAssets">Auto Select</button>
+                    <button type="button" class="ops-button-secondary" id="clearSelectedAssets">Clear</button>
+                    <input type="text" id="assetSearch" class="asset-search" placeholder="Search serial, barcode, or asset name">
+                </div>
+            </div>
+            <div class="asset-summary-grid">
+                <div class="asset-summary-box is-primary">
+                    <span>Status</span>
+                    <strong id="assetSelectionStatus">Select product</strong>
+                    <small id="assetSelectionHelp">Load assets from product.</small>
+                </div>
+                <div class="asset-summary-box">
+                    <span>Required</span>
+                    <strong id="assetRequiredCount">{{ (int) old('quantity', $isEdit ? $rental->quantity : 1) }}</strong>
+                    <small>Match qty</small>
+                </div>
+                <div class="asset-summary-box">
+                    <span>Selected</span>
+                    <strong id="assetSelectedCountInline">{{ count($selectedAssetIds) }}</strong>
+                    <small id="assetSelectedLabel">{{ count($selectedAssetIds) }} chosen</small>
+                </div>
+                <div class="asset-summary-box">
+                    <span>Select</span>
+                    <strong>Click card</strong>
+                    <small>Blue means assigned</small>
+                </div>
+            </div>
+            <div id="assetSelectionAlert" class="asset-warning" style="display:none;"></div>
+            <div id="assetGrid" class="asset-grid"></div>
+            <div class="asset-load-more" id="assetLoadMoreWrap" style="display:none;">
+                <button type="button" class="ops-button-secondary" id="assetLoadMoreButton">Load More</button>
+            </div>
+            <div id="assetEmptyState" class="asset-empty">Select product</div>
+            @if($hasFieldError('asset_ids'))
+                <div class="field-error" style="margin-top:10px;">{{ $fieldError('asset_ids') }}</div>
+            @endif
+        </div>
+    </div>
+
+    <div class="rental-card">
+        <details class="sale-section-disclosure compact-section-disclosure{{ $hasRentalItemsError ? ' is-error' : '' }}" id="additionalRentalDisclosure" {{ $additionalRentalExpanded ? 'open' : '' }}>
+            <summary>
+                <span class="compact-section-title">
+                    Add More rental products
+                    <span class="is-collapsed">+</span>
+                    <span class="is-open">-</span>
+                </span>
+                <div class="compact-section-summary">
+                    <span class="sale-section-chip"><strong id="rentalItemsCountSummary">{{ count($additionalRentalRows) }}</strong> line(s)</span>
+                    <span class="sale-section-chip">Total <strong id="rentalItemsGrandTotalSummary">0.00</strong></span>
+                </div>
+            </summary>
+            <div class="sale-section-body">
+                @if($hasRentalItemsError)
+                    <div class="field-error" style="margin:0 0 10px;">{{ $fieldError('rental_items', 'rental_items.0.asset_ids', 'rental_items.0.product_id', 'rental_items.0.quantity') }}</div>
+                @endif
+                <div class="sale-item-panel">
+                    <div class="sale-item-head">
+                        <div>Rental Product</div>
+                        <div>Qty</div>
+                        <div>Unit Rental</div>
+                        <div>Line Total</div>
+                        <div>Options</div>
+                    </div>
+                    <div id="rentalItemsList">
+                        <div class="sale-item-empty" id="rentalItemEmptyState">No extra rental products added yet.</div>
+                    </div>
+                </div>
+                <div class="sale-item-summary">
+                    <div><strong id="rentalItemsCount">0</strong> additional rental line(s)</div>
+                    <div>Additional rental total: <strong id="rentalItemsGrandTotal">0.00</strong></div>
+                    <div class="sale-item-actions">
+                        <button type="button" class="ops-button-secondary" id="addRentalItemButton">Add Rental Product</button>
+                    </div>
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <div class="rental-card">
+        <details class="sale-section-disclosure{{ $hasSaleItemsError ? ' is-error' : '' }}" id="newProductsDisclosure" {{ $newProductsExpanded ? 'open' : '' }}>
+            <summary>
+                <div class="sale-section-heading">
+                    <strong>New Products Alongside Rental</strong>
+                    <span>Optional sale lines.</span>
+                </div>
+                <div class="sale-section-meta">
+                    <span class="sale-section-chip"><strong id="saleItemsCountSummary">{{ count($saleItemRows) }}</strong> line(s)</span>
+                    <span class="sale-section-chip">Total <strong id="saleItemsGrandTotalSummary">0.00</strong></span>
+                    <span class="sale-section-chip sale-section-state">
+                        <span class="is-collapsed">Expand</span>
+                        <span class="is-open">Collapse</span>
+                    </span>
+                </div>
+            </summary>
+            <div class="sale-section-body">
+                @if($hasSaleItemsError)
+                    <div class="field-error" style="margin:0 0 10px;">{{ $fieldError('sale_items', 'sale_items.0.asset_id', 'sale_items.0.product_id', 'sale_items.0.quantity') }}</div>
+                @endif
+                <div class="sale-item-panel is-sale-items">
+                    <div class="sale-item-head">
+                        <div>New Product</div>
+                        <div>Warehouse</div>
+                        <div>Qty</div>
+                        <div>Unit Price</div>
+                        <div>Options</div>
+                    </div>
+                    <div id="saleItemsList">
+                        <div class="sale-item-empty" id="saleItemEmptyState">No new products added yet.</div>
+                    </div>
+                </div>
+                <div class="sale-item-summary">
+                    <div><strong id="saleItemsCount">0</strong> new product line(s) attached</div>
+                    <div>New products total: <strong id="saleItemsGrandTotal">0.00</strong></div>
+                    <div class="sale-item-actions">
+                        <button type="button" class="ops-button-secondary" id="addSaleItemButton">Add New Product</button>
+                    </div>
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <div class="rental-toolbar" style="margin-top:-4px;">
+        <div class="rental-inline-note" id="rentalSaveGuidance">
+            Match rental asset count with quantity.
+        </div>
+        <div class="rental-actions">
+            <a href="{{ route('rentals.index') }}" class="ops-button-secondary">Cancel</a>
+            <button type="submit" class="ops-button" id="rentalSubmitButton">{{ $isEdit ? 'Update Rental' : 'Save Rental' }}</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        const customerSelect = document.getElementById('customer_id');
+        const customerName = document.getElementById('customer_name');
+        const phoneInput = document.getElementById('phone');
+        const phoneCountryCodeInput = document.getElementById('phone_country_code');
+        const productSelect = document.getElementById('product_id');
+        const warehouseSelect = document.getElementById('dispatch_warehouse_id');
+        const deliveryAssignmentSelect = document.getElementById('delivery_staff_id');
+        const thirdPartyDeliveryFields = document.getElementById('thirdPartyDeliveryFields');
+        const quantityInput = document.getElementById('quantity');
+        const startDateInput = document.getElementById('start_date');
+        const endDateInput = document.getElementById('end_date');
+        const durationPresetSelect = document.getElementById('duration_preset');
+        const rentalAmountInput = document.getElementById('rental_amount');
+        const assetGrid = document.getElementById('assetGrid');
+        const assetEmptyState = document.getElementById('assetEmptyState');
+        const assetSearch = document.getElementById('assetSearch');
+        const assetCountNote = document.getElementById('assetCountNote');
+        const selectionAlert = document.getElementById('assetSelectionAlert');
+        const selectedAssetCount = document.getElementById('selectedAssetCount');
+        const quantityMetric = document.getElementById('quantityMetric');
+        const warehouseMetric = document.getElementById('warehouseMetric');
+        const availabilityHint = document.getElementById('productAvailabilityHint');
+        const saleItemsList = document.getElementById('saleItemsList');
+        const saleItemEmptyState = document.getElementById('saleItemEmptyState');
+        const saleItemsCount = document.getElementById('saleItemsCount');
+        const saleItemsCountSummary = document.getElementById('saleItemsCountSummary');
+        const saleItemsGrandTotal = document.getElementById('saleItemsGrandTotal');
+        const saleItemsGrandTotalSummary = document.getElementById('saleItemsGrandTotalSummary');
+        const addSaleItemButton = document.getElementById('addSaleItemButton');
+        const newProductsDisclosure = document.getElementById('newProductsDisclosure');
+        const rentalItemsList = document.getElementById('rentalItemsList');
+        const rentalItemEmptyState = document.getElementById('rentalItemEmptyState');
+        const rentalItemsCount = document.getElementById('rentalItemsCount');
+        const rentalItemsCountSummary = document.getElementById('rentalItemsCountSummary');
+        const rentalItemsGrandTotal = document.getElementById('rentalItemsGrandTotal');
+        const rentalItemsGrandTotalSummary = document.getElementById('rentalItemsGrandTotalSummary');
+        const addRentalItemButton = document.getElementById('addRentalItemButton');
+        const additionalRentalDisclosure = document.getElementById('additionalRentalDisclosure');
+        const assetSelectionStatus = document.getElementById('assetSelectionStatus');
+        const assetSelectionHelp = document.getElementById('assetSelectionHelp');
+        const assetRequiredCount = document.getElementById('assetRequiredCount');
+        const assetSelectedCountInline = document.getElementById('assetSelectedCountInline');
+        const assetSelectedLabel = document.getElementById('assetSelectedLabel');
+        const selectSuggestedAssetsButton = document.getElementById('selectSuggestedAssets');
+        const clearSelectedAssetsButton = document.getElementById('clearSelectedAssets');
+        const assetLoadMoreWrap = document.getElementById('assetLoadMoreWrap');
+        const assetLoadMoreButton = document.getElementById('assetLoadMoreButton');
+        const productRentalWarning = document.getElementById('productRentalWarning');
+        const rentalSubmitButton = document.getElementById('rentalSubmitButton');
+        const rentalSaveGuidance = document.getElementById('rentalSaveGuidance');
+        const unavailableRentalMessage = 'No rental asset is available for this product. Add rental asset or convert sale unit to rental first.';
+
+        let selectedAssetIds = @json($selectedAssetIds);
+        let currentAssets = [];
+        let rentalItems = @json($additionalRentalRows);
+        let saleItems = @json($saleItemRows);
+        let rentalAmountTouched = Boolean(@json($isEdit || (old('rental_amount') !== null && old('rental_amount') !== '')));
+        const assetVisibleStep = 3;
+        let visibleAssetCount = assetVisibleStep;
+        const currentRentalId = @json($isEdit ? $rental->id : null);
+        const rentalProductOptionsHtml = `<option value="">Select rental product</option>@foreach($products as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->rental_price ?? $product->price_per_day ?? 0) }}">{{ e($product->name) }} | {{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}</option>@endforeach`;
+        const saleProductOptionsHtml = `<option value="">Select new product</option>@foreach($sellableProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->sale_price ?? 0) }}">{{ e($product->name) }} | Sale {{ number_format((float) ($product->sale_price ?? 0), 2) }}</option>@endforeach`;
+        const saleAssetOptions = @json($saleAssetRows);
+        const warehouseOptionsHtml = `<option value="">Auto / best stock</option>@foreach($warehouses as $warehouse)<option value="{{ $warehouse->id }}">{{ e($warehouse->name) }}</option>@endforeach`;
+        const rentalItemAssetCache = {};
+        const rentalItemAssetRequests = {};
+        const inlineAssetVisibleStep = 3;
+        let primaryAvailabilityLoadedFor = null;
+
+        function normalizeIdArray(values) {
+            const source = Array.isArray(values) ? values : (values ? [values] : []);
+
+            return Array.from(new Set(source
+                .map(function (value) {
+                    return parseInt(value || '0', 10);
+                })
+                .filter(function (value) {
+                    return value > 0;
+                })));
+        }
+
+        function syncCustomerFields() {
+            const selected = customerSelect.options[customerSelect.selectedIndex];
+
+            if (!selected || !customerSelect.value) {
+                return;
+            }
+
+            customerName.value = selected.getAttribute('data-name') || customerName.value;
+            phoneInput.value = selected.getAttribute('data-phone') || phoneInput.value;
+            if (phoneCountryCodeInput) {
+                phoneCountryCodeInput.value = selected.getAttribute('data-phone-country') || phoneCountryCodeInput.value;
+            }
+        }
+
+        if (phoneInput) {
+            phoneInput.addEventListener('input', function () {
+                phoneInput.value = phoneInput.value.replace(/\D+/g, '').slice(0, 15);
+            });
+        }
+
+        function syncThirdPartyDeliveryFields() {
+            if (!deliveryAssignmentSelect || !thirdPartyDeliveryFields) {
+                return;
+            }
+
+            thirdPartyDeliveryFields.style.display = deliveryAssignmentSelect.value === 'third_party' ? '' : 'none';
+        }
+
+        function updateWarehouseMetric() {
+            const selected = warehouseSelect.options[warehouseSelect.selectedIndex];
+            warehouseMetric.textContent = warehouseSelect.value ? selected.textContent.trim() : 'Any warehouse';
+        }
+
+        function parseRentalWarehouseQuantities(selected) {
+            if (!selected) {
+                return {};
+            }
+
+            try {
+                return JSON.parse(selected.getAttribute('data-rental-warehouse-quantities') || '{}');
+            } catch (error) {
+                return {};
+            }
+        }
+
+        function selectedPrimaryRentalState() {
+            const selected = productSelect.options[productSelect.selectedIndex];
+
+            if (!selected || !productSelect.value) {
+                return null;
+            }
+
+            let available = parseInt(selected.getAttribute('data-rental-available') || selected.getAttribute('data-available') || '0', 10);
+            let status = selected.getAttribute('data-rental-status') || 'no_rental_assets';
+            let label = selected.getAttribute('data-rental-label') || '';
+            const warehouseQuantities = parseRentalWarehouseQuantities(selected);
+            const tracksRental = selected.getAttribute('data-tracks-rental') === '1';
+
+            if (warehouseSelect.value && tracksRental && status !== 'sale_only') {
+                available = parseInt(warehouseQuantities[warehouseSelect.value] || '0', 10);
+                status = available > 0 ? 'rental_available' : 'no_rental_assets';
+                label = available > 0 ? 'Rental Available ' + available : 'No rental assets available';
+            }
+
+            if (tracksRental && status !== 'sale_only' && primaryAvailabilityLoadedFor === productSelect.value) {
+                available = currentAssets.length;
+                status = available > 0 ? 'rental_available' : 'no_rental_assets';
+                label = available > 0 ? 'Rental Available ' + available : 'No rental assets available';
+            }
+
+            return {
+                name: selected.getAttribute('data-product-name') || '',
+                available: Number.isNaN(available) ? 0 : available,
+                status: status,
+                label: label || 'No rental assets available'
+            };
+        }
+
+        function updateAvailabilityHint() {
+            const state = selectedPrimaryRentalState();
+
+            if (!state) {
+                availabilityHint.textContent = 'Rental availability will show here.';
+                return;
+            }
+
+            if (state.status === 'sale_only') {
+                availabilityHint.textContent = 'Sale only. Not available for rental.';
+                return;
+            }
+
+            availabilityHint.textContent = warehouseSelect.value
+                ? state.label + ' in selected warehouse.'
+                : state.label + '.';
+        }
+
+        function updatePrimaryRentalFeedback() {
+            const state = selectedPrimaryRentalState();
+            const requestedQuantity = Math.max(parseInt(quantityInput.value || '0', 10), 0);
+            let warningText = '';
+            let disableSubmit = false;
+
+            if (!state) {
+                productRentalWarning.style.display = 'none';
+                productRentalWarning.textContent = '';
+                rentalSaveGuidance.textContent = 'Match rental asset count with quantity.';
+                rentalSubmitButton.disabled = false;
+                return;
+            }
+
+            if (state.status === 'sale_only' || state.available <= 0) {
+                warningText = unavailableRentalMessage;
+                disableSubmit = true;
+            } else if (requestedQuantity > state.available) {
+                warningText = 'Only ' + state.available + ' rental asset(s) are available for this product' + (warehouseSelect.value ? ' in the selected warehouse.' : '.');
+                disableSubmit = true;
+            }
+
+            productRentalWarning.textContent = warningText;
+            productRentalWarning.style.display = warningText ? 'block' : 'none';
+            rentalSaveGuidance.textContent = warningText || 'Match rental asset count with quantity.';
+            rentalSubmitButton.disabled = disableSubmit;
+        }
+
+        function selectedProductPricing() {
+            const selected = productSelect.options[productSelect.selectedIndex];
+
+            if (!selected || !productSelect.value) {
+                return null;
+            }
+
+            return {
+                perDay: parseFloat(selected.getAttribute('data-price-per-day') || '0'),
+                fallback: parseFloat(selected.getAttribute('data-rental-price') || '0'),
+                days15: parseFloat(selected.getAttribute('data-rental-price-15') || '0'),
+                days30: parseFloat(selected.getAttribute('data-rental-price-30') || '0'),
+                days90: parseFloat(selected.getAttribute('data-rental-price-90') || '0')
+            };
+        }
+
+        function activeRentalDays() {
+            if (durationPresetSelect.value === '7_days') {
+                return 7;
+            }
+
+            if (durationPresetSelect.value === '15_days') {
+                return 15;
+            }
+
+            if (durationPresetSelect.value === '30_days') {
+                return 30;
+            }
+
+            if (durationPresetSelect.value === '3_months') {
+                return 90;
+            }
+
+            if (durationPresetSelect.value === '6_months') {
+                return 180;
+            }
+
+            if (!startDateInput.value || !endDateInput.value) {
+                return 0;
+            }
+
+            const startDate = new Date(startDateInput.value + 'T00:00:00');
+            const endDate = new Date(endDateInput.value + 'T00:00:00');
+
+            if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate < startDate) {
+                return 0;
+            }
+
+            const millisecondsPerDay = 24 * 60 * 60 * 1000;
+
+            return Math.floor((endDate.getTime() - startDate.getTime()) / millisecondsPerDay) + 1;
+        }
+
+        function defaultRentalUnitPrice() {
+            const pricing = selectedProductPricing();
+
+            if (!pricing) {
+                return 0;
+            }
+
+            const days = activeRentalDays();
+            const preset = durationPresetSelect?.value || 'custom';
+
+            if (days === 15 && pricing.days15 > 0) {
+                return pricing.days15;
+            }
+
+            if (days === 30 && (pricing.days30 > 0 || pricing.fallback > 0)) {
+                return pricing.days30 > 0 ? pricing.days30 : pricing.fallback;
+            }
+
+            if (days === 90 && pricing.days90 > 0) {
+                return pricing.days90;
+            }
+
+            if (days === 180) {
+                if (pricing.days90 > 0) {
+                    return pricing.days90 * 2;
+                }
+
+                if (pricing.fallback > 0) {
+                    return pricing.fallback * 2;
+                }
+
+                if (pricing.perDay > 0) {
+                    return pricing.perDay * 180;
+                }
+            }
+
+            if (preset !== 'custom') {
+                if (pricing.fallback > 0) {
+                    return pricing.fallback;
+                }
+
+                if (pricing.perDay > 0) {
+                    return pricing.perDay;
+                }
+            }
+
+            if (days > 0 && pricing.perDay > 0) {
+                return pricing.perDay * days;
+            }
+
+            if (pricing.days30 > 0) {
+                return pricing.days30;
+            }
+
+            if (pricing.fallback > 0) {
+                return pricing.fallback;
+            }
+
+            return pricing.perDay > 0 && days > 0 ? pricing.perDay * days : pricing.perDay;
+        }
+
+        function syncPrimaryRentalAmount(forceUpdate) {
+            if (!rentalAmountInput) {
+                return;
+            }
+
+            if (!forceUpdate && rentalAmountTouched) {
+                return;
+            }
+
+            const quantity = Math.max(parseInt(quantityInput.value || '0', 10), 0);
+            const unitPrice = defaultRentalUnitPrice();
+            const lineTotal = unitPrice > 0 && quantity > 0 ? unitPrice * quantity : 0;
+
+            rentalAmountInput.value = lineTotal > 0 ? lineTotal.toFixed(2) : '0';
+        }
+
+        function handlePrimaryProductChange() {
+            rentalAmountTouched = false;
+            primaryAvailabilityLoadedFor = null;
+            updateAvailabilityHint();
+            updatePrimaryRentalFeedback();
+            fetchAssets();
+            syncPrimaryRentalAmount(true);
+
+            window.requestAnimationFrame(function () {
+                syncPrimaryRentalAmount(true);
+            });
+        }
+
+        function getFilteredAssets() {
+            const term = (assetSearch.value || '').trim().toLowerCase();
+
+            return currentAssets.filter(function (asset) {
+                return !term || [
+                    asset.label,
+                    asset.serial_number,
+                    asset.barcode_value,
+                    asset.warehouse,
+                    asset.condition_status,
+                    asset.asset_status
+                ].join(' ').toLowerCase().includes(term);
+            });
+        }
+
+        function findSaleAsset(assetId) {
+            const normalizedId = parseInt(assetId || '0', 10);
+            return saleAssetOptions.find(function (asset) {
+                return asset.id === normalizedId;
+            }) || null;
+        }
+
+        function availableSaleAssetsForItem(item) {
+            const selectedAssetId = parseInt(item.asset_id || '0', 10);
+            const selectedProductId = parseInt(item.product_id || '0', 10);
+            const selectedWarehouseId = parseInt(item.warehouse_id || '0', 10);
+
+            return saleAssetOptions.filter(function (asset) {
+                if (selectedAssetId && asset.id === selectedAssetId) {
+                    return true;
+                }
+
+                if (selectedProductId && parseInt(asset.product_id || '0', 10) !== selectedProductId) {
+                    return false;
+                }
+
+                if (selectedWarehouseId && parseInt(asset.warehouse_id || '0', 10) !== selectedWarehouseId) {
+                    return false;
+                }
+
+                return true;
+            });
+        }
+
+        function buildSaleAssetOptions(item) {
+            const options = ['<option value="">No serialized asset link</option>'];
+
+            availableSaleAssetsForItem(item).forEach(function (asset) {
+                options.push(`<option value="${asset.id}" ${parseInt(item.asset_id || '0', 10) === asset.id ? 'selected' : ''}>${asset.label}</option>`);
+            });
+
+            return options.join('');
+        }
+
+        function updateSelectionMetrics() {
+            const quantity = parseInt(quantityInput.value || '0', 10);
+            const selectedCount = selectedAssetIds.length;
+            const hasAssets = currentAssets.length > 0;
+
+            quantityMetric.textContent = quantity || 0;
+            selectedAssetCount.textContent = selectedCount;
+            assetRequiredCount.textContent = quantity || 0;
+            assetSelectedCountInline.textContent = selectedCount;
+            assetSelectedLabel.textContent = selectedCount + ' chosen';
+
+            if (!productSelect.value) {
+                assetSelectionStatus.textContent = 'Select product';
+                assetSelectionHelp.textContent = 'Load assets from product.';
+                selectionAlert.style.display = 'none';
+                return;
+            }
+
+            if (selectedCount === 0) {
+                assetSelectionStatus.textContent = 'Select asset';
+                assetSelectionHelp.textContent = hasAssets
+                    ? 'Pick from the list below.'
+                    : 'No assets available.';
+
+                if (hasAssets) {
+                    selectionAlert.style.display = 'block';
+                    selectionAlert.textContent = 'Select asset before save.';
+                } else {
+                    selectionAlert.style.display = 'none';
+                }
+
+                return;
+            }
+
+            if (quantity && selectedCount !== quantity) {
+                assetSelectionStatus.textContent = 'Qty mismatch';
+                assetSelectionHelp.textContent = selectedCount + ' of ' + quantity + ' selected.';
+                selectionAlert.style.display = 'block';
+                selectionAlert.textContent = 'Selected ' + selectedCount + ', required ' + quantity + '.';
+            } else {
+                assetSelectionStatus.textContent = 'Ready';
+                assetSelectionHelp.textContent = 'Assets will be linked.';
+                selectionAlert.style.display = 'none';
+            }
+        }
+
+        function syncDurationPreset() {
+            if (!startDateInput.value || !durationPresetSelect.value || durationPresetSelect.value === 'custom') {
+                syncPrimaryRentalAmount(false);
+                return;
+            }
+
+            const startDate = new Date(startDateInput.value + 'T00:00:00');
+
+            if (Number.isNaN(startDate.getTime())) {
+                return;
+            }
+
+            const endDate = new Date(startDate.getTime());
+
+            switch (durationPresetSelect.value) {
+                case '7_days':
+                    endDate.setDate(endDate.getDate() + 6);
+                    break;
+                case '15_days':
+                    endDate.setDate(endDate.getDate() + 14);
+                    break;
+                case '30_days':
+                    endDate.setDate(endDate.getDate() + 29);
+                    break;
+                case '3_months':
+                    endDate.setMonth(endDate.getMonth() + 3);
+                    endDate.setDate(endDate.getDate() - 1);
+                    break;
+                case '6_months':
+                    endDate.setMonth(endDate.getMonth() + 6);
+                    endDate.setDate(endDate.getDate() - 1);
+                    break;
+                default:
+                    return;
+            }
+
+            const year = endDate.getFullYear();
+            const month = String(endDate.getMonth() + 1).padStart(2, '0');
+            const day = String(endDate.getDate()).padStart(2, '0');
+
+            endDateInput.value = `${year}-${month}-${day}`;
+            syncPrimaryRentalAmount(false);
+        }
+
+        function getAssetCardLabel(asset) {
+            return asset.label || asset.serial_number;
+        }
+
+        function toggleAssetSelection(assetId) {
+            if (!selectedAssetIds.includes(assetId)) {
+                selectedAssetIds.push(assetId);
+            } else {
+                selectedAssetIds = selectedAssetIds.filter(function (selectedId) {
+                    return selectedId !== assetId;
+                });
+            }
+
+            renderAssets();
+            updateSelectionMetrics();
+            renderRentalItems();
+        }
+
+        function renderAssets() {
+            assetGrid.innerHTML = '';
+
+            const filtered = getFilteredAssets();
+            const prioritizedAssets = filtered.slice().sort(function (left, right) {
+                return Number(selectedAssetIds.includes(right.id)) - Number(selectedAssetIds.includes(left.id));
+            });
+            const displayCount = Math.max(visibleAssetCount, selectedAssetIds.length);
+            const visibleAssets = prioritizedAssets.slice(0, displayCount);
+
+            if (!productSelect.value) {
+                assetEmptyState.style.display = 'block';
+                assetEmptyState.textContent = 'Select product';
+                assetLoadMoreWrap.style.display = 'none';
+                return;
+            }
+
+            if (!filtered.length) {
+                assetEmptyState.style.display = 'block';
+                assetEmptyState.textContent = currentAssets.length
+                    ? 'No match found.'
+                    : 'No assets available.';
+                assetLoadMoreWrap.style.display = 'none';
+                return;
+            }
+
+            assetEmptyState.style.display = 'none';
+
+            visibleAssets.forEach(function (asset) {
+                const isSelected = selectedAssetIds.includes(asset.id);
+                const card = document.createElement('label');
+                card.className = 'asset-card' + (isSelected ? ' is-selected' : '');
+                card.setAttribute('role', 'button');
+                card.setAttribute('tabindex', '0');
+                card.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+                card.innerHTML = `
+                    <input type="checkbox" name="asset_ids[]" value="${asset.id}" ${isSelected ? 'checked' : ''}>
+                    <div class="asset-card-head">
+                        <strong>${getAssetCardLabel(asset)}</strong>
+                        <span class="asset-card-pill${isSelected ? ' is-selected' : ''}">${isSelected ? 'Assigned' : 'Select'}</span>
+                    </div>
+                    <small>Serial: ${asset.serial_number || '-'}</small>
+                    <small>Barcode: ${asset.barcode_value || '-'}</small>
+                    <small>Warehouse: ${asset.warehouse || 'Not set'}</small>
+                    <small>Status: ${asset.asset_status || '-'} | Condition: ${asset.condition_status || '-'}</small>
+                `;
+
+                card.addEventListener('click', function (event) {
+                    event.preventDefault();
+                    toggleAssetSelection(asset.id);
+                });
+
+                card.addEventListener('keydown', function (event) {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        toggleAssetSelection(asset.id);
+                    }
+                });
+
+                assetGrid.appendChild(card);
+            });
+
+            assetCountNote.textContent = filtered.length + ' asset(s). Showing ' + visibleAssets.length + '.';
+
+            if (prioritizedAssets.length > visibleAssets.length) {
+                assetLoadMoreWrap.style.display = 'flex';
+                assetLoadMoreButton.textContent = 'Load More (' + (prioritizedAssets.length - visibleAssets.length) + ' remaining)';
+            } else {
+                assetLoadMoreWrap.style.display = 'none';
+            }
+        }
+
+        function fetchAssets() {
+            currentAssets = [];
+            primaryAvailabilityLoadedFor = null;
+            visibleAssetCount = assetVisibleStep;
+            renderAssets();
+            updateAvailabilityHint();
+            updatePrimaryRentalFeedback();
+
+            if (!productSelect.value) {
+                assetCountNote.textContent = 'Select product to load assets.';
+                return;
+            }
+
+            assetEmptyState.style.display = 'block';
+            assetEmptyState.textContent = 'Loading assets...';
+
+            const params = new URLSearchParams({
+                product_id: productSelect.value
+            });
+
+            if (warehouseSelect.value) {
+                params.append('dispatch_warehouse_id', warehouseSelect.value);
+            }
+
+            @if($isEdit)
+                params.append('rental_id', '{{ $rental->id }}');
+            @endif
+
+            fetch('{{ route('rentals.available-assets') }}?' + params.toString(), {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+                .then(function (response) {
+                    if (!response.ok) {
+                        throw new Error('Unable to load assets');
+                    }
+
+                    return response.json();
+                })
+                .then(function (payload) {
+                    primaryAvailabilityLoadedFor = productSelect.value;
+                    currentAssets = Array.isArray(payload.data) ? payload.data : [];
+                    selectedAssetIds = selectedAssetIds.filter(function (assetId) {
+                        return currentAssets.some(function (asset) {
+                            return asset.id === assetId;
+                        });
+                    });
+                    updateAvailabilityHint();
+                    updatePrimaryRentalFeedback();
+                    renderAssets();
+                    updateSelectionMetrics();
+                    renderRentalItems();
+                })
+                .catch(function () {
+                    primaryAvailabilityLoadedFor = productSelect.value;
+                    currentAssets = [];
+                    assetGrid.innerHTML = '';
+                    assetEmptyState.style.display = 'block';
+                    assetEmptyState.textContent = 'Unable to load assets.';
+                    assetCountNote.textContent = 'Load failed.';
+                    updateAvailabilityHint();
+                    updatePrimaryRentalFeedback();
+                });
+        }
+
+        function saleItemLineTotal(item) {
+            const quantity = parseInt(item.quantity || '0', 10);
+            const unitPrice = parseFloat(item.unit_price || '0');
+
+            return (quantity * unitPrice).toFixed(2);
+        }
+
+        function rentalItemLineTotal(item) {
+            const quantity = parseInt(item.quantity || '0', 10);
+            const unitPrice = parseFloat(item.unit_rental_amount || '0');
+
+            return (quantity * unitPrice).toFixed(2);
+        }
+
+        function rentalItemAssetCacheKey(productId) {
+            return [parseInt(productId || '0', 10), parseInt(warehouseSelect.value || '0', 10), parseInt(currentRentalId || '0', 10)].join(':');
+        }
+
+        function selectedAdditionalRentalAssetIds(excludeIndex) {
+            const selectedIds = [];
+
+            rentalItems.forEach(function (item, index) {
+                if (index === excludeIndex) {
+                    return;
+                }
+
+                normalizeIdArray(item.asset_ids).forEach(function (assetId) {
+                    selectedIds.push(assetId);
+                });
+            });
+
+            selectedAssetIds.forEach(function (assetId) {
+                selectedIds.push(parseInt(assetId, 10));
+            });
+
+            return Array.from(new Set(selectedIds.filter(function (assetId) {
+                return assetId > 0;
+            })));
+        }
+
+        function ensureInlineAssetState(item) {
+            if (typeof item.assetSearch !== 'string') {
+                item.assetSearch = '';
+            }
+
+            if (typeof item.assetVisibleCount !== 'number' || item.assetVisibleCount < inlineAssetVisibleStep) {
+                item.assetVisibleCount = inlineAssetVisibleStep;
+            }
+        }
+
+        function ensureRentalItemAssetsLoaded(item) {
+            if (!item.product_id) {
+                return;
+            }
+
+            const cacheKey = rentalItemAssetCacheKey(item.product_id);
+
+            if (rentalItemAssetCache[cacheKey] || rentalItemAssetRequests[cacheKey]) {
+                return;
+            }
+
+            const params = new URLSearchParams({
+                product_id: String(item.product_id)
+            });
+
+            if (warehouseSelect.value) {
+                params.append('dispatch_warehouse_id', warehouseSelect.value);
+            }
+
+            if (currentRentalId) {
+                params.append('rental_id', String(currentRentalId));
+            }
+
+            rentalItemAssetRequests[cacheKey] = fetch('{{ route('rentals.available-assets') }}?' + params.toString(), {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+                .then(function (response) {
+                    if (!response.ok) {
+                        throw new Error('Unable to load assets');
+                    }
+
+                    return response.json();
+                })
+                .then(function (payload) {
+                    rentalItemAssetCache[cacheKey] = Array.isArray(payload.data) ? payload.data : [];
+                    delete rentalItemAssetRequests[cacheKey];
+                    renderRentalItems();
+                })
+                .catch(function () {
+                    rentalItemAssetCache[cacheKey] = [];
+                    delete rentalItemAssetRequests[cacheKey];
+                    renderRentalItems();
+                });
+        }
+
+        function rentalItemAssetChoices(item, index) {
+            const cacheKey = rentalItemAssetCacheKey(item.product_id);
+            const cachedAssets = rentalItemAssetCache[cacheKey] || [];
+            const selectedIds = normalizeIdArray(item.asset_ids);
+            const usedElsewhere = selectedAdditionalRentalAssetIds(index);
+
+            return cachedAssets.filter(function (asset) {
+                return selectedIds.includes(asset.id) || !usedElsewhere.includes(asset.id);
+            });
+        }
+
+        function renderRentalItems() {
+            rentalItemsList.innerHTML = '';
+
+            if (!rentalItems.length) {
+                rentalItemsList.appendChild(rentalItemEmptyState);
+                rentalItemEmptyState.style.display = 'block';
+                rentalItemsCount.textContent = '0';
+                rentalItemsCountSummary.textContent = '0';
+                rentalItemsGrandTotal.textContent = '0.00';
+                rentalItemsGrandTotalSummary.textContent = '0.00';
+                return;
+            }
+
+            rentalItemEmptyState.style.display = 'none';
+
+            let total = 0;
+
+            rentalItems.forEach(function (item, index) {
+                if (typeof item.expanded !== 'boolean') {
+                    item.expanded = Boolean((item.notes && item.notes.trim()) || normalizeIdArray(item.asset_ids).length);
+                }
+                ensureInlineAssetState(item);
+
+                ensureRentalItemAssetsLoaded(item);
+
+                const selectedIds = normalizeIdArray(item.asset_ids);
+                const cacheKey = rentalItemAssetCacheKey(item.product_id);
+                const hasCachedAssets = Object.prototype.hasOwnProperty.call(rentalItemAssetCache, cacheKey);
+                const cachedAssets = rentalItemAssetCache[cacheKey] || [];
+                const cachedAssetIds = cachedAssets.map(function (asset) {
+                    return asset.id;
+                });
+
+                if (hasCachedAssets && selectedIds.some(function (assetId) {
+                    return !cachedAssetIds.includes(assetId);
+                })) {
+                    rentalItems[index].asset_ids = selectedIds.filter(function (assetId) {
+                        return cachedAssetIds.includes(assetId);
+                    });
+                    renderRentalItems();
+                    return;
+                }
+
+                const assetChoices = rentalItemAssetChoices(item, index);
+                const filteredAssetChoices = assetChoices
+                    .filter(function (asset) {
+                        const term = (item.assetSearch || '').trim().toLowerCase();
+
+                        if (!term) {
+                            return true;
+                        }
+
+                        return [
+                            asset.label,
+                            asset.serial_number,
+                            asset.barcode_value,
+                            asset.warehouse,
+                        ].join(' ').toLowerCase().includes(term);
+                    })
+                    .sort(function (left, right) {
+                        return Number(selectedIds.includes(right.id)) - Number(selectedIds.includes(left.id));
+                    });
+                const visibleAssets = filteredAssetChoices.slice(0, Math.max(item.assetVisibleCount, selectedIds.length));
+                const isLoadingAssets = Boolean(item.product_id && rentalItemAssetRequests[cacheKey]);
+                const quantity = Math.max(parseInt(item.quantity || '0', 10), 0);
+                const toggleLabel = item.expanded
+                    ? 'Hide Details'
+                    : (selectedIds.length ? 'Show Assets' : (item.notes ? 'Show Note' : 'Assets / Note'));
+                const assetHelpText = !item.product_id
+                    ? 'Select product first.'
+                    : (isLoadingAssets
+                        ? 'Loading assets...'
+                        : (assetChoices.length
+                            ? (selectedIds.length && selectedIds.length !== quantity
+                                ? 'Selected ' + selectedIds.length + ' of ' + quantity + '.'
+                                : assetChoices.length + ' asset(s) available.')
+                            : 'No matching assets.'));
+                const entry = document.createElement('div');
+                entry.className = 'sale-item-entry';
+                const row = document.createElement('div');
+                row.className = 'sale-item-row';
+                row.innerHTML = `
+                    <div>
+                        <select name="rental_items[${index}][product_id]" data-rental-product-index="${index}">
+                            ${rentalProductOptionsHtml}
+                        </select>
+                    </div>
+                    <div>
+                        <input type="number" min="1" name="rental_items[${index}][quantity]" value="${item.quantity || 1}" data-rental-quantity-index="${index}">
+                    </div>
+                    <div>
+                        <input type="number" step="0.01" min="0" name="rental_items[${index}][unit_rental_amount]" value="${item.unit_rental_amount || ''}" data-rental-price-index="${index}">
+                    </div>
+                    <div class="sale-item-total">Total ${rentalItemLineTotal(item)}</div>
+                    <div class="sale-item-actions">
+                        <button type="button" class="ops-button-secondary" data-toggle-rental-item="${index}">${toggleLabel}</button>
+                        <button type="button" class="ops-button-secondary" data-remove-rental-item="${index}">Remove</button>
+                    </div>
+                `;
+                entry.appendChild(row);
+
+                const detail = document.createElement('div');
+                detail.className = 'sale-item-detail';
+                detail.hidden = !item.expanded;
+                detail.innerHTML = `
+                    <div class="sale-item-detail-grid">
+                        <div class="sale-item-detail-field">
+                            <label>Assets</label>
+                            <input type="text" class="line-asset-search" placeholder="Search asset" value="${item.assetSearch || ''}" data-rental-asset-search="${index}">
+                            <div class="rental-line-asset-picker" data-rental-asset-picker="${index}">
+                                ${visibleAssets.length
+                                    ? visibleAssets.map(function (asset) {
+                                        return `<label class="rental-line-asset-option"><input type="checkbox" name="rental_items[${index}][asset_ids][]" value="${asset.id}" data-rental-asset-input="${index}" ${selectedIds.includes(asset.id) ? 'checked' : ''}><span>${asset.label}</span></label>`;
+                                    }).join('')
+                                    : `<div class="rental-line-asset-empty">${item.product_id ? (isLoadingAssets ? 'Loading assets...' : 'No assets available') : 'Select product first'}</div>`}
+                            </div>
+                            ${filteredAssetChoices.length > visibleAssets.length
+                                ? `<div class="line-asset-load-more"><button type="button" class="ops-button-secondary" data-rental-asset-load-more="${index}">Load More</button></div>`
+                                : ''}
+                            <div class="sale-item-subnote">${assetHelpText}</div>
+                        </div>
+                        <div class="sale-item-detail-field">
+                            <label>Notes</label>
+                            <textarea name="rental_items[${index}][notes]" placeholder="Optional note">${item.notes || ''}</textarea>
+                        </div>
+                    </div>
+                `;
+                entry.appendChild(detail);
+
+                rentalItemsList.appendChild(entry);
+
+                const productSelectEl = row.querySelector(`[data-rental-product-index="${index}"]`);
+                const quantityInputEl = row.querySelector(`[data-rental-quantity-index="${index}"]`);
+                const priceInputEl = row.querySelector(`[data-rental-price-index="${index}"]`);
+                const assetSearchEl = detail.querySelector(`[data-rental-asset-search="${index}"]`);
+                const assetCheckboxes = detail.querySelectorAll(`[data-rental-asset-input="${index}"]`);
+                const assetLoadMoreButton = detail.querySelector(`[data-rental-asset-load-more="${index}"]`);
+                const notesInputEl = detail.querySelector(`textarea[name="rental_items[${index}][notes]"]`);
+                const toggleButton = row.querySelector(`[data-toggle-rental-item="${index}"]`);
+                const removeButton = row.querySelector(`[data-remove-rental-item="${index}"]`);
+
+                productSelectEl.value = item.product_id || '';
+
+                productSelectEl.addEventListener('change', function () {
+                    rentalItems[index].product_id = this.value ? parseInt(this.value, 10) : null;
+                    rentalItems[index].asset_ids = [];
+
+                    if (!priceInputEl.value) {
+                        const selected = this.options[this.selectedIndex];
+                        const defaultPrice = selected ? parseFloat(selected.getAttribute('data-default-price') || '0') : 0;
+                        rentalItems[index].unit_rental_amount = defaultPrice ? defaultPrice.toFixed(2) : '';
+                    }
+
+                    renderRentalItems();
+                });
+
+                quantityInputEl.addEventListener('input', function () {
+                    rentalItems[index].quantity = Math.max(parseInt(this.value || '0', 10), 0);
+                    renderRentalItems();
+                });
+
+                priceInputEl.addEventListener('input', function () {
+                    rentalItems[index].unit_rental_amount = this.value || '';
+                    renderRentalItems();
+                });
+
+                assetSearchEl.addEventListener('input', function () {
+                    rentalItems[index].assetSearch = this.value || '';
+                    rentalItems[index].assetVisibleCount = inlineAssetVisibleStep;
+                    renderRentalItems();
+                });
+
+                assetCheckboxes.forEach(function (checkbox) {
+                    checkbox.addEventListener('change', function () {
+                        rentalItems[index].asset_ids = Array.from(detail.querySelectorAll(`[data-rental-asset-input="${index}"]:checked`))
+                            .map(function (option) {
+                                return parseInt(option.value || '0', 10);
+                            })
+                            .filter(function (value) {
+                                return value > 0;
+                            });
+                        renderRentalItems();
+                    });
+                });
+
+                if (assetLoadMoreButton) {
+                    assetLoadMoreButton.addEventListener('click', function () {
+                        rentalItems[index].assetVisibleCount += inlineAssetVisibleStep;
+                        renderRentalItems();
+                    });
+                }
+
+                notesInputEl.addEventListener('input', function () {
+                    rentalItems[index].notes = this.value || '';
+                });
+
+                toggleButton.addEventListener('click', function () {
+                    rentalItems[index].expanded = !rentalItems[index].expanded;
+                    renderRentalItems();
+                });
+
+                removeButton.addEventListener('click', function () {
+                    rentalItems.splice(index, 1);
+                    renderRentalItems();
+                });
+
+                total += parseFloat(rentalItemLineTotal(item));
+            });
+
+            rentalItemsCount.textContent = String(rentalItems.length);
+            rentalItemsCountSummary.textContent = String(rentalItems.length);
+            rentalItemsGrandTotal.textContent = total.toFixed(2);
+            rentalItemsGrandTotalSummary.textContent = total.toFixed(2);
+        }
+
+        function renderSaleItems() {
+            saleItemsList.innerHTML = '';
+
+            if (!saleItems.length) {
+                saleItemsList.appendChild(saleItemEmptyState);
+                saleItemEmptyState.style.display = 'block';
+                saleItemsCount.textContent = '0';
+                saleItemsCountSummary.textContent = '0';
+                saleItemsGrandTotal.textContent = '0.00';
+                saleItemsGrandTotalSummary.textContent = '0.00';
+                return;
+            }
+
+            saleItemEmptyState.style.display = 'none';
+
+            let total = 0;
+
+            saleItems.forEach(function (item, index) {
+                if (typeof item.expanded !== 'boolean') {
+                    item.expanded = Boolean(item.asset_id || item.notes);
+                }
+                ensureInlineAssetState(item);
+
+                const linkedAsset = findSaleAsset(item.asset_id);
+
+                if (linkedAsset) {
+                    item.quantity = 1;
+                }
+
+                const assetChoices = availableSaleAssetsForItem(item);
+                const filteredAssetChoices = assetChoices
+                    .filter(function (asset) {
+                        const term = (item.assetSearch || '').trim().toLowerCase();
+
+                        if (!term) {
+                            return true;
+                        }
+
+                        return [
+                            asset.label,
+                            asset.serial_number,
+                            asset.barcode_value,
+                            asset.warehouse,
+                        ].join(' ').toLowerCase().includes(term);
+                    })
+                    .sort(function (left, right) {
+                        return Number(parseInt(item.asset_id || '0', 10) === right.id) - Number(parseInt(item.asset_id || '0', 10) === left.id);
+                    });
+                const visibleAssets = filteredAssetChoices.slice(0, Math.max(item.assetVisibleCount, item.asset_id ? 1 : 0));
+                const toggleLabel = item.expanded
+                    ? 'Hide Details'
+                    : (linkedAsset
+                        ? 'Show Linked Asset'
+                        : (item.notes ? 'Show Note' : 'Add Asset / Note'));
+                const assetHelpText = linkedAsset
+                    ? 'Serialized asset linked. Quantity is fixed to 1 and warehouse follows the asset.'
+                    : (item.product_id
+                        ? (assetChoices.length ? 'Optional for serialized new-stock units.' : 'No serialized assets available for this product and warehouse yet.')
+                        : 'Select new product first to see matching serialized assets.');
+                const entry = document.createElement('div');
+                entry.className = 'sale-item-entry';
+                const row = document.createElement('div');
+                row.className = 'sale-item-row';
+                row.innerHTML = `
+                    <div>
+                        <select name="sale_items[${index}][product_id]" data-sale-product-index="${index}">
+                            ${saleProductOptionsHtml}
+                        </select>
+                    </div>
+                    <div>
+                        <select name="sale_items[${index}][warehouse_id]" data-sale-warehouse-index="${index}">
+                            ${warehouseOptionsHtml}
+                        </select>
+                    </div>
+                    <div>
+                        <input type="number" min="1" name="sale_items[${index}][quantity]" value="${item.quantity || 1}" data-sale-quantity-index="${index}" ${linkedAsset ? 'readonly' : ''}>
+                    </div>
+                    <div>
+                        <input type="number" step="0.01" min="0" name="sale_items[${index}][unit_price]" value="${item.unit_price || ''}" data-sale-price-index="${index}">
+                        <div class="sale-item-total">Total ${saleItemLineTotal(item)}</div>
+                    </div>
+                    <div class="sale-item-actions">
+                        <button type="button" class="ops-button-secondary" data-toggle-sale-item="${index}">${toggleLabel}</button>
+                        <button type="button" class="ops-button-secondary" data-remove-sale-item="${index}">Remove</button>
+                    </div>
+                `;
+                entry.appendChild(row);
+
+                const detail = document.createElement('div');
+                detail.className = 'sale-item-detail';
+                detail.hidden = !item.expanded;
+                detail.innerHTML = `
+                    <div class="sale-item-detail-grid">
+                        <div class="sale-item-detail-field">
+                            <label>Asset Link</label>
+                            <input type="text" class="line-asset-search" placeholder="Search asset" value="${item.assetSearch || ''}" data-sale-asset-search="${index}">
+                            <div class="rental-line-asset-picker" data-sale-asset-picker="${index}">
+                                <label class="rental-line-asset-option">
+                                    <input type="radio" name="sale_items[${index}][asset_id]" value="" data-sale-asset-input="${index}" ${item.asset_id ? '' : 'checked'}>
+                                    <span>No serialized asset link</span>
+                                </label>
+                                ${visibleAssets.map(function (asset) {
+                                    return `<label class="rental-line-asset-option"><input type="radio" name="sale_items[${index}][asset_id]" value="${asset.id}" data-sale-asset-input="${index}" ${parseInt(item.asset_id || '0', 10) === asset.id ? 'checked' : ''}><span>${asset.label}</span></label>`;
+                                }).join('')}
+                                ${!visibleAssets.length && item.product_id ? `<div class="rental-line-asset-empty">No assets available</div>` : ''}
+                            </div>
+                            ${filteredAssetChoices.length > visibleAssets.length
+                                ? `<div class="line-asset-load-more"><button type="button" class="ops-button-secondary" data-sale-asset-load-more="${index}">Load More</button></div>`
+                                : ''}
+                            <div class="sale-item-subnote">${assetHelpText}</div>
+                        </div>
+                        <div class="sale-item-detail-field">
+                            <label>Notes</label>
+                            <textarea name="sale_items[${index}][notes]" placeholder="Optional note">${item.notes || ''}</textarea>
+                        </div>
+                    </div>
+                `;
+                entry.appendChild(detail);
+                saleItemsList.appendChild(entry);
+
+                const productSelectEl = row.querySelector(`[data-sale-product-index="${index}"]`);
+                const warehouseSelectEl = row.querySelector(`[data-sale-warehouse-index="${index}"]`);
+                const assetSearchEl = detail.querySelector(`[data-sale-asset-search="${index}"]`);
+                const assetInputs = detail.querySelectorAll(`[data-sale-asset-input="${index}"]`);
+                const assetLoadMoreButton = detail.querySelector(`[data-sale-asset-load-more="${index}"]`);
+                const quantityInputEl = row.querySelector(`[data-sale-quantity-index="${index}"]`);
+                const priceInputEl = row.querySelector(`[data-sale-price-index="${index}"]`);
+                const notesInputEl = detail.querySelector(`textarea[name="sale_items[${index}][notes]"]`);
+                const toggleButton = row.querySelector(`[data-toggle-sale-item="${index}"]`);
+                const removeButton = row.querySelector(`[data-remove-sale-item="${index}"]`);
+
+                productSelectEl.value = item.product_id || '';
+                warehouseSelectEl.value = item.warehouse_id || '';
+
+                productSelectEl.addEventListener('change', function () {
+                    saleItems[index].product_id = this.value ? parseInt(this.value, 10) : null;
+                    saleItems[index].assetSearch = '';
+                    saleItems[index].assetVisibleCount = inlineAssetVisibleStep;
+
+                    const selectedAsset = findSaleAsset(saleItems[index].asset_id);
+                    if (selectedAsset && parseInt(selectedAsset.product_id || '0', 10) !== parseInt(this.value || '0', 10)) {
+                        saleItems[index].asset_id = null;
+                    }
+
+                    if (!priceInputEl.value) {
+                        const selected = this.options[this.selectedIndex];
+                        const defaultPrice = selected ? parseFloat(selected.getAttribute('data-default-price') || '0') : 0;
+                        saleItems[index].unit_price = defaultPrice ? defaultPrice.toFixed(2) : '';
+                    }
+
+                    renderSaleItems();
+                });
+
+                warehouseSelectEl.addEventListener('change', function () {
+                    saleItems[index].warehouse_id = this.value ? parseInt(this.value, 10) : null;
+                    saleItems[index].assetSearch = '';
+                    saleItems[index].assetVisibleCount = inlineAssetVisibleStep;
+                    const selectedAsset = findSaleAsset(saleItems[index].asset_id);
+
+                    if (
+                        selectedAsset &&
+                        saleItems[index].warehouse_id &&
+                        parseInt(selectedAsset.warehouse_id || '0', 10) !== saleItems[index].warehouse_id
+                    ) {
+                        saleItems[index].asset_id = null;
+                    }
+
+                    renderSaleItems();
+                });
+
+                assetSearchEl.addEventListener('input', function () {
+                    saleItems[index].assetSearch = this.value || '';
+                    saleItems[index].assetVisibleCount = inlineAssetVisibleStep;
+                    renderSaleItems();
+                });
+
+                assetInputs.forEach(function (input) {
+                    input.addEventListener('change', function () {
+                        saleItems[index].asset_id = this.value ? parseInt(this.value, 10) : null;
+
+                        if (saleItems[index].asset_id) {
+                            const selectedAsset = findSaleAsset(saleItems[index].asset_id);
+                            saleItems[index].quantity = 1;
+
+                            if (selectedAsset && selectedAsset.warehouse_id) {
+                                saleItems[index].warehouse_id = parseInt(selectedAsset.warehouse_id, 10);
+                            }
+                        }
+
+                        renderSaleItems();
+                    });
+                });
+
+                if (assetLoadMoreButton) {
+                    assetLoadMoreButton.addEventListener('click', function () {
+                        saleItems[index].assetVisibleCount += inlineAssetVisibleStep;
+                        renderSaleItems();
+                    });
+                }
+
+                quantityInputEl.addEventListener('input', function () {
+                    saleItems[index].quantity = saleItems[index].asset_id
+                        ? 1
+                        : Math.max(parseInt(this.value || '0', 10), 0);
+                    renderSaleItems();
+                });
+
+                priceInputEl.addEventListener('input', function () {
+                    saleItems[index].unit_price = this.value || '';
+                    renderSaleItems();
+                });
+
+                notesInputEl.addEventListener('input', function () {
+                    saleItems[index].notes = this.value || '';
+                });
+
+                toggleButton.addEventListener('click', function () {
+                    saleItems[index].expanded = !saleItems[index].expanded;
+                    renderSaleItems();
+                });
+
+                removeButton.addEventListener('click', function () {
+                    saleItems.splice(index, 1);
+                    renderSaleItems();
+                });
+
+                total += parseFloat(saleItemLineTotal(item));
+            });
+
+            saleItemsCount.textContent = String(saleItems.length);
+            saleItemsCountSummary.textContent = String(saleItems.length);
+            saleItemsGrandTotal.textContent = total.toFixed(2);
+            saleItemsGrandTotalSummary.textContent = total.toFixed(2);
+        }
+
+        customerSelect.addEventListener('change', syncCustomerFields);
+        productSelect.addEventListener('change', handlePrimaryProductChange);
+        productSelect.addEventListener('input', handlePrimaryProductChange);
+        warehouseSelect.addEventListener('change', function () {
+            updateWarehouseMetric();
+            primaryAvailabilityLoadedFor = null;
+            updateAvailabilityHint();
+            updatePrimaryRentalFeedback();
+            fetchAssets();
+            Object.keys(rentalItemAssetCache).forEach(function (key) {
+                delete rentalItemAssetCache[key];
+            });
+            renderRentalItems();
+        });
+        quantityInput.addEventListener('input', function () {
+            updateSelectionMetrics();
+            updatePrimaryRentalFeedback();
+            syncPrimaryRentalAmount(false);
+        });
+        startDateInput.addEventListener('change', function () {
+            syncDurationPreset();
+            syncPrimaryRentalAmount(false);
+        });
+        endDateInput.addEventListener('change', function () {
+            syncPrimaryRentalAmount(false);
+        });
+        durationPresetSelect.addEventListener('change', function () {
+            rentalAmountTouched = false;
+            syncDurationPreset();
+            syncPrimaryRentalAmount(true);
+        });
+        deliveryAssignmentSelect?.addEventListener('change', syncThirdPartyDeliveryFields);
+        rentalAmountInput.addEventListener('input', function () {
+            rentalAmountTouched = true;
+        });
+        assetSearch.addEventListener('input', function () {
+            visibleAssetCount = assetVisibleStep;
+            renderAssets();
+        });
+        selectSuggestedAssetsButton.addEventListener('click', function () {
+            const quantity = Math.max(parseInt(quantityInput.value || '0', 10), 0);
+            const filtered = getFilteredAssets();
+            const maxSelectable = quantity > 0 ? quantity : filtered.length;
+
+            selectedAssetIds = filtered.slice(0, maxSelectable).map(function (asset) {
+                return asset.id;
+            });
+
+            renderAssets();
+            updateSelectionMetrics();
+            renderRentalItems();
+        });
+        clearSelectedAssetsButton.addEventListener('click', function () {
+            selectedAssetIds = [];
+            renderAssets();
+            updateSelectionMetrics();
+            renderRentalItems();
+        });
+        assetLoadMoreButton.addEventListener('click', function () {
+            visibleAssetCount += assetVisibleStep;
+            renderAssets();
+        });
+        addRentalItemButton.addEventListener('click', function () {
+            additionalRentalDisclosure.open = true;
+            rentalItems.push({
+                product_id: null,
+                asset_ids: [],
+                quantity: 1,
+                unit_rental_amount: '',
+                notes: '',
+                expanded: false
+            });
+
+            renderRentalItems();
+        });
+        addSaleItemButton.addEventListener('click', function () {
+            newProductsDisclosure.open = true;
+            saleItems.push({
+                product_id: null,
+                asset_id: null,
+                warehouse_id: warehouseSelect.value ? parseInt(warehouseSelect.value, 10) : null,
+                quantity: 1,
+                unit_price: '',
+                notes: '',
+                expanded: false
+            });
+
+            renderSaleItems();
+        });
+
+        syncCustomerFields();
+        updateWarehouseMetric();
+        updateAvailabilityHint();
+        updatePrimaryRentalFeedback();
+        updateSelectionMetrics();
+        fetchAssets();
+        syncDurationPreset();
+        syncPrimaryRentalAmount(false);
+        syncThirdPartyDeliveryFields();
+        window.setTimeout(function () {
+            syncPrimaryRentalAmount(false);
+        }, 0);
+        renderRentalItems();
+        renderSaleItems();
+    })();
+</script>
+
