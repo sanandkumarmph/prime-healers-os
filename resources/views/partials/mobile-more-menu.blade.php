@@ -4,8 +4,8 @@
             <div style="display:flex; align-items:center; gap:10px;">
                 <x-application-logo style="width:34px; height:auto;" />
                 <div style="display:grid; gap:2px;">
-                    <strong>Rentnexis</strong>
-                    <span style="font-size:11px; color:#64748b;">Smarter Rental Operations</span>
+                    <strong>Prime Healers OS</strong>
+                    <span style="font-size:11px; color:#64748b;">Rental, sales, and care operations</span>
                 </div>
             </div>
             <button type="button" class="mobile-icon-button" data-mobile-more-close aria-label="Close mobile menu">
@@ -35,7 +35,7 @@
             <div class="mobile-more-user">
                 <div class="mobile-more-user-avatar">{{ $userInitials ?? 'RX' }}</div>
                 <div style="min-width:0;">
-                    <strong>{{ $currentUser?->name ?: 'Rentnexis User' }}</strong>
+                    <strong>{{ $currentUser?->name ?: 'Prime Healers OS User' }}</strong>
                     <span>{{ $userRoleLabel ?? 'User' }}</span>
                 </div>
             </div>

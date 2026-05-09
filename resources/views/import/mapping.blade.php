@@ -6,7 +6,7 @@
         <div>
             <a href="{{ route('imports.module', $module) }}" class="import-back">← Back to Upload</a>
             <h1>Map Columns</h1>
-            <p>Map each Rentnexis field to a column in <strong>{{ $upload['original_name'] ?? 'uploaded file' }}</strong>.</p>
+            <p>Map each Prime Healers OS field to a column in <strong>{{ $upload['original_name'] ?? 'uploaded file' }}</strong>.</p>
         </div>
     </div>
 

@@ -9,7 +9,7 @@
 
 <img
     src="{{ asset('images/logo-rentnexis.png') }}"
-    alt="Rentnexis - Smarter Rental Operations"
+    alt="Prime Healers OS"
     onerror="this.onerror=null;this.src='{{ $logoFallback }}';"
     {{ $attributes->merge(['class' => 'h-14 w-auto max-w-[220px] object-contain']) }}
 />

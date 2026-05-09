@@ -1,5 +1,5 @@
 @php
-    $title = collect($breadcrumbItems ?? [])->last()['label'] ?? 'Rentnexis';
+    $title = collect($breadcrumbItems ?? [])->last()['label'] ?? 'Prime Healers OS';
     $subtitle = $currentUser?->organization?->name ?? 'Rental & inventory operations';
     $mobileBackCrumb = collect($breadcrumbItems ?? [])
         ->slice(0, -1)
@@ -13,16 +13,16 @@
 @endphp
 
 <header class="mobile-topbar">
-    <a href="{{ route('dashboard') }}" class="mobile-brand" aria-label="Rentnexis home">
+    <a href="{{ route('dashboard') }}" class="mobile-brand" aria-label="Prime Healers OS home">
         <x-application-logo class="mobile-brand-logo" />
         <span class="mobile-brand-copy">
-            <strong>Rentnexis</strong>
-            <small>Smarter Rental Operations</small>
+            <strong>Prime Healers OS</strong>
+            <small>Rental, sales, and care operations</small>
         </span>
     </a>
     <button type="button" class="mobile-topbar-search" aria-label="Search shell">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
-        <span>{{ $title === 'Rentnexis' ? 'Search customers, rentals, invoices...' : $title }}</span>
+        <span>{{ $title === 'Prime Healers OS' ? 'Search customers, rentals, invoices...' : $title }}</span>
     </button>
     <button type="button" class="mobile-icon-button" data-mobile-more-open aria-label="Open mobile menu">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle><circle cx="12" cy="19" r="1.5"></circle></svg>

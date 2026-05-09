@@ -29,7 +29,7 @@
             <h2>Import Flow</h2>
             <ol class="import-flow">
                 <li>Upload CSV or Excel file</li>
-                <li>Map spreadsheet columns to Rentnexis fields</li>
+                <li>Map spreadsheet columns to Prime Healers OS fields</li>
                 <li>Review valid and invalid rows</li>
                 <li>Import valid rows in chunks</li>
             </ol>

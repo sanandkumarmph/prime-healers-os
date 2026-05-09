@@ -85,7 +85,7 @@
                     <div style="display:inline-flex; align-items:center; gap:8px; width:max-content; min-height:30px; padding:6px 10px; border-radius:999px; background:#eff6ff; border:1px solid #bfdbfe; color:#1d4ed8; font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase;">Knowledge Hub</div>
                     <div>
                         <h1 style="margin:0; font-size:30px; line-height:1.08; color:#0f172a;">Knowledge Hub</h1>
-                        <p style="margin:10px 0 0; max-width:760px; color:#64748b; font-size:14px; line-height:1.7;">Help guides, SOPs, tutorials, FAQs, and internal documentation for daily Rentnexis operations.</p>
+                        <p style="margin:10px 0 0; max-width:760px; color:#64748b; font-size:14px; line-height:1.7;">Help guides, SOPs, tutorials, FAQs, and internal documentation for daily Prime Healers operations.</p>
                     </div>
                 </div>
             </div>

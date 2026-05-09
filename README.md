@@ -1,6 +1,6 @@
-# Rentnexis
+# Prime Healers OS
 
-Rentnexis is a Laravel-based rental and sales operations platform for equipment workflows. It covers customer onboarding, product master, asset tracking, rentals, sales, deliveries, pickups, invoices, payments, CSV imports, renewals, returns, reporting, organization settings, role-based access, and an internal Knowledge Hub.
+Prime Healers OS is a Laravel-based rental and sales operations platform for equipment workflows. It covers customer onboarding, product master, asset tracking, rentals, sales, deliveries, pickups, invoices, payments, CSV imports, renewals, returns, reporting, organization settings, role-based access, and an internal Knowledge Hub.
 
 ## Project Overview
 
@@ -70,7 +70,7 @@ Typical UAT host requirements:
 Typical UAT refresh flow:
 
 ```bash
-cd /path/to/rentnexis
+cd /path/to/prime-healers-os
 git fetch origin
 git reset --hard origin/uat
 composer install --no-interaction --prefer-dist --optimize-autoloader
@@ -123,7 +123,7 @@ After deployment:
 Minimum app/runtime variables:
 
 ```env
-APP_NAME=Rentnexis
+APP_NAME="Prime Healers OS"
 APP_ENV=local
 APP_KEY=
 APP_DEBUG=true
@@ -132,7 +132,7 @@ APP_URL=http://127.0.0.1:8000
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
-DB_DATABASE=rentnexis
+DB_DATABASE=prime_healers_os
 DB_USERNAME=root
 DB_PASSWORD=
 
@@ -190,7 +190,7 @@ Windows local example:
 
 ```env
 PDF_NODE_BINARY=node
-PDF_NODE_MODULE_PATH=C:\Users\sanan\rentnexis\node_modules
+PDF_NODE_MODULE_PATH=C:\Users\sanan\prime-healers-os\node_modules
 PDF_BROWSER_PATH=C:\Program Files\Google\Chrome\Application\chrome.exe
 PDF_DISABLE_SANDBOX=false
 ```
@@ -204,7 +204,7 @@ Linux / UAT example:
 
 ```env
 PDF_NODE_BINARY=node
-PDF_NODE_MODULE_PATH=/var/www/rentnexis/node_modules
+PDF_NODE_MODULE_PATH=/var/www/prime-healers-os/node_modules
 PDF_BROWSER_PATH=/usr/bin/chromium-browser
 PDF_DISABLE_SANDBOX=true
 ```
@@ -328,7 +328,7 @@ php artisan test
 ```
 
 Note:
-- the project is configured to use SQLite in-memory for tests via [phpunit.xml](/C:/Users/sanan/rentnexis/phpunit.xml)
+- the project is configured to use SQLite in-memory for tests via [phpunit.xml](/C:/Users/sanan/prime-healers-os/phpunit.xml)
 - if `php artisan test` behaves unexpectedly after caching, run the cache clear commands below first
 
 ## Cache Commands

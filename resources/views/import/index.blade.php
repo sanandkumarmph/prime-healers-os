@@ -6,7 +6,7 @@
         <div>
             <div class="import-eyebrow">Data Import</div>
             <h1>Data Import</h1>
-            <p>Download templates, fill your data, and upload them to migrate into Rentnexis.</p>
+            <p>Download templates, fill your data, and upload them into Prime Healers OS.</p>
         </div>
     </div>
 

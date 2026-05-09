@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
-        <title>{{ config('app.name', 'Rentnexis') }}</title>
+        <title>{{ config('app.name', 'Prime Healers OS') }}</title>
         <link rel="icon" type="image/png" href="{{ asset('images/rentnexis-favicon.png') }}">
         <link rel="shortcut icon" href="{{ asset('favicon.ico') }}">
         <link rel="apple-touch-icon" href="{{ asset('images/rentnexis-favicon.png') }}">
@@ -278,7 +278,7 @@
                     gap: 10px;
                 }
                 .auth-form-mobile-brand .auth-brand-link .rn-brand-logo,
-                .auth-form-mobile-brand .auth-brand-link img[src*="logo-rentnexis"] {
+                .auth-form-mobile-brand .auth-brand-link img[src*="logo-"] {
                     width: auto !important;
                     height: auto !important;
                     max-width: 180px !important;
@@ -318,8 +318,8 @@
                             <a href="/" class="auth-brand-link">
                                 <x-application-logo class="rn-brand-logo" style="width:56px;height:auto;max-width:220px;margin:0;filter:drop-shadow(0 10px 30px rgba(56,189,248,0.25));" />
                                 <div>
-                                    <p class="auth-brand-title">Rentnexis</p>
-                                    <p class="auth-brand-copy">Smarter Rental Operations</p>
+                                    <p class="auth-brand-title">Prime Healers OS</p>
+                                    <p class="auth-brand-copy">Rental, sales, and care operations</p>
                                 </div>
                             </a>
                         </div>
@@ -338,8 +338,8 @@
                             <a href="/" class="auth-brand-link">
                                 <x-application-logo class="login-logo" style="width:auto;height:auto;max-width:220px;max-height:64px;margin:0;" />
                                 <div>
-                                    <p class="auth-brand-title" style="font-size:1.7rem; color:#0f172a;">Rentnexis</p>
-                                    <p class="auth-brand-copy" style="margin:8px 0 0;font-size:12px;color:#64748b;">Smarter Rental Operations</p>
+                                    <p class="auth-brand-title" style="font-size:1.7rem; color:#0f172a;">Prime Healers OS</p>
+                                    <p class="auth-brand-copy" style="margin:8px 0 0;font-size:12px;color:#64748b;">Rental, sales, and care operations</p>
                                 </div>
                             </a>
                         </div>

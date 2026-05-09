@@ -1,8 +1,8 @@
 @echo off
-cd /d C:\Users\sanan\rentnexis
+cd /d C:\Users\sanan\prime-healers-os
 
 echo ================================
-echo Rentnexis - Push to GitHub UAT
+echo Prime Healers OS - Push to GitHub UAT
 echo ================================
 
 git branch --show-current

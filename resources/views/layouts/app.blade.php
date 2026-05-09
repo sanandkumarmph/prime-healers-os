@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Rentnexis</title>
+    <title>{{ config('app.name', 'Prime Healers OS') }}</title>
     <link rel="icon" type="image/png" href="{{ asset('images/rentnexis-favicon.png') }}">
     <link rel="shortcut icon" href="{{ asset('favicon.ico') }}">
     <link rel="apple-touch-icon" href="{{ asset('images/rentnexis-favicon.png') }}">
@@ -20,7 +20,9 @@
         $parts = collect(preg_split('/\s+/', trim((string) $name)))->filter()->take(2)->map(fn ($part) => strtoupper(mb_substr($part, 0, 1)));
         return $parts->isNotEmpty() ? $parts->implode('') : 'RX';
     };
-    $paymentsIndexHref = ($currentUser?->canAccessModule('payments', 'read') ?? false) ? $safeRoute('payments.index') : null;
+    $paymentsIndexHref = (($currentUser?->canAccessModule('payments', 'read') ?? false) && \Illuminate\Support\Facades\Route::has('payments.index'))
+        ? route('payments.index')
+        : null;
     $reportsIndexHref = ($currentUser?->canAccessModule('reports', 'read') ?? false) ? $safeRoute('reports.index') : null;
     $isDeliveryFacingMenuRole = in_array($currentUser?->effective_role, [
         \App\Models\User::ROLE_DELIVERY,
@@ -32,7 +34,9 @@
     $userRoleLabel = \Illuminate\Support\Str::title($userRoleLabel);
     $userInitials = $makeInitials($currentUser?->name);
     $pickupsHref = ($currentUser?->canAccessModule('deliveries', 'read') ?? false) ? $safeRoute('pickups.assigned') : null;
-    $depositsHref = ($currentUser?->canAccessModule('deposits', 'read') ?? false) ? $safeRoute('deposits.index') : null;
+    $depositsHref = (($currentUser?->canAccessModule('deposits', 'read') ?? false) && \Illuminate\Support\Facades\Route::has('deposits.index'))
+        ? route('deposits.index')
+        : null;
     $organizationSettingsHref = ($currentUser?->canAccessModule('settings', 'read') ?? false) ? $safeRoute('organization.settings.edit') : null;
     $companyHref = $organizationSettingsHref ? $organizationSettingsHref . '#company' : null;
     $preferencesHref = $organizationSettingsHref ? $organizationSettingsHref . '#preferences' : null;
@@ -1640,8 +1644,8 @@
             <div class="brand-mark">
                 <x-application-logo class="brand-logo" />
                 <div>
-                    <div class="brand-title">Rentnexis</div>
-                    <div class="brand-subtitle">Smarter Rental Operations</div>
+                    <div class="brand-title">Prime Healers OS</div>
+                    <div class="brand-subtitle">Rental, sales, and care operations</div>
                 </div>
             </div>
             @if(auth()->check() && auth()->user()->organization)
@@ -1848,13 +1852,13 @@
                         <div class="topbar-user-avatar">{{ $userInitials }}</div>
                         <div class="topbar-user-meta">
                             <strong>{{ $currentUser?->name ?: 'User' }}</strong>
-                            <span>{{ $currentUser?->organization?->name ?: 'Rentnexis' }}</span>
+                            <span>{{ $currentUser?->organization?->name ?: 'Prime Healers OS' }}</span>
                         </div>
                     </summary>
                     <div class="topbar-user-panel">
                         <div class="topbar-user-head">
-                            <strong>{{ $currentUser?->name ?: 'Rentnexis User' }}</strong>
-                            <span>{{ $currentUser?->organization?->name ?: 'Rentnexis' }}</span>
+                            <strong>{{ $currentUser?->name ?: 'Prime Healers OS User' }}</strong>
+                            <span>{{ $currentUser?->organization?->name ?: 'Prime Healers OS' }}</span>
                             @if(!empty($userRoleLabel))
                                 <span class="rn-badge topbar-user-role">{{ $userRoleLabel }}</span>
                             @endif

@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ config('app.name', 'Rentnexis') }}</title>
+    <title>{{ config('app.name', 'Prime Healers OS') }}</title>
     <link rel="icon" type="image/png" href="{{ asset('images/rentnexis-favicon.png') }}">
     <link rel="shortcut icon" href="{{ asset('favicon.ico') }}">
 
@@ -17,12 +17,12 @@
             <div style="display:flex; align-items:center; gap:16px; margin-bottom:20px;">
                 <img
                     src="{{ asset('images/logo-rentnexis.png') }}"
-                    alt="Rentnexis - Smarter Rental Operations"
+                    alt="Prime Healers OS"
                     style="width:52px; height:52px; object-fit:contain; border-radius:14px; flex:0 0 52px;"
                 >
                 <div>
-                    <div style="font-size:28px; font-weight:800; letter-spacing:-0.04em; line-height:1;">Rentnexis</div>
-                    <div style="margin-top:4px; font-size:14px; color:#64748b;">Smarter Rental Operations</div>
+                    <div style="font-size:28px; font-weight:800; letter-spacing:-0.04em; line-height:1;">Prime Healers OS</div>
+                    <div style="margin-top:4px; font-size:14px; color:#64748b;">Rental, sales, and care operations</div>
                 </div>
             </div>
 

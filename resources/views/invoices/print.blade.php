@@ -6,6 +6,7 @@
     <link rel="icon" type="image/png" href="{{ asset('images/rentnexis-favicon.png') }}">
     <link rel="shortcut icon" href="{{ asset('favicon.ico') }}">
     <link rel="apple-touch-icon" href="{{ asset('images/rentnexis-favicon.png') }}">
+    <meta name="application-name" content="Prime Healers OS">
     <style>
         @page {
             size: A4 portrait;

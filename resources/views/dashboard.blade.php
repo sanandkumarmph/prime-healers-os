@@ -1152,7 +1152,7 @@
         <div class="dashboard-hero-header">
             <div class="dashboard-hero-copy">
                 <div class="dashboard-hero-meta">
-                    <span class="rx-eyebrow">Rentnexis Control</span>
+                    <span class="rx-eyebrow">Prime Healers Control</span>
                     <span class="dashboard-hero-date">{{ $dashboardDateLabel }}</span>
                 </div>
                 <div>

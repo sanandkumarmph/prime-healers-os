@@ -18,7 +18,7 @@
     $mapUrl = $customer->openMapUrl();
     $proofUrl = filled($customer->id_proof_file_path) ? route('customers.id-proof.download', $customer->id) : null;
 
-    $generalWhatsAppUrl = \App\Support\WhatsAppHelper::chatUrl($customerWhatsapp, $customerWhatsapp ? "Hello {$customerName}, this is a quick update from Rentnexis." : null);
+    $generalWhatsAppUrl = \App\Support\WhatsAppHelper::chatUrl($customerWhatsapp, $customerWhatsapp ? "Hello {$customerName}, this is a quick update from Prime Healers." : null);
 
     $latestRental = $customer->rentals->first();
     $latestInvoice = $customer->invoices->first();

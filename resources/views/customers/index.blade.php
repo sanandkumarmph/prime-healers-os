@@ -30,7 +30,7 @@
     $whatsAppUrl = function ($customer) {
         $number = \App\Support\WhatsAppHelper::resolveCustomerNumber($customer);
 
-        return \App\Support\WhatsAppHelper::chatUrl($number, $number ? "Hello {$customer->name}, this is a quick update from Rentnexis." : null);
+        return \App\Support\WhatsAppHelper::chatUrl($number, $number ? "Hello {$customer->name}, this is a quick update from Prime Healers." : null);
     };
     $customerInitials = function (?string $name): string {
         $parts = collect(preg_split('/\s+/', trim((string) $name)))->filter()->take(2)->map(fn ($part) => strtoupper(mb_substr($part, 0, 1)));
