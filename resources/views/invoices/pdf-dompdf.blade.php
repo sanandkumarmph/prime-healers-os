@@ -11,7 +11,7 @@
 
         body {
             margin: 0;
-            color: #1f2937;
+            color: #24384f;
             font-family: DejaVu Sans, sans-serif;
             font-size: 11px;
             line-height: 1.45;
@@ -50,7 +50,7 @@
         .totals-table td,
         .payments-table td,
         .payments-table th {
-            border: 1px solid #d1d5db;
+            border: 1px solid #d7e1ec;
             padding: 6px 7px;
             vertical-align: top;
         }
@@ -64,7 +64,7 @@
         .company-logo {
             width: 92px;
             height: 62px;
-            border: 1px solid #d1d5db;
+            border: 1px solid #d7e1ec;
             text-align: center;
             vertical-align: middle;
         }
@@ -78,7 +78,7 @@
         .company-name {
             font-size: 18px;
             font-weight: bold;
-            color: #111827;
+            color: #12263F;
             margin-bottom: 5px;
         }
 
@@ -87,32 +87,32 @@
             font-weight: bold;
             text-transform: uppercase;
             text-align: right;
-            color: #111827;
+            color: #12263F;
         }
 
         .status-badge {
             display: inline-block;
             margin-top: 6px;
             padding: 4px 10px;
-            border: 1px solid #9ca3af;
+            border: 1px solid #c2d0de;
             font-size: 10px;
             font-weight: bold;
             text-transform: uppercase;
-            color: #111827;
-            background: #f3f4f6;
+            color: #12263F;
+            background: #EEF3F8;
         }
 
         .section-title {
             font-size: 10px;
             font-weight: bold;
             text-transform: uppercase;
-            color: #374151;
+            color: #5B6E84;
             margin-bottom: 4px;
         }
 
         .meta-label {
             display: block;
-            color: #6b7280;
+            color: #5B6E84;
             font-size: 9px;
             font-weight: bold;
             margin-bottom: 2px;
@@ -121,7 +121,7 @@
 
         .meta-value {
             display: block;
-            color: #111827;
+            color: #12263F;
             font-size: 11px;
             font-weight: bold;
         }
@@ -129,19 +129,19 @@
         .subject-box,
         .notes-box,
         .signature-box {
-            border: 1px solid #d1d5db;
+            border: 1px solid #d7e1ec;
             padding: 8px;
             margin-bottom: 10px;
         }
 
         .subject-box {
-            background: #f9fafb;
+            background: #F8FBFE;
         }
 
         .items-table th,
         .payments-table th {
-            background: #e5e7eb;
-            color: #111827;
+            background: #F0F6FB;
+            color: #12263F;
             font-size: 9px;
             font-weight: bold;
             text-transform: uppercase;
@@ -154,12 +154,12 @@
 
         .item-title {
             font-weight: bold;
-            color: #111827;
+            color: #12263F;
         }
 
         .item-subtext {
             margin-top: 3px;
-            color: #6b7280;
+            color: #5B6E84;
             font-size: 9px;
         }
 
@@ -171,8 +171,8 @@
         .grand-total td,
         .balance-due td {
             font-weight: bold;
-            color: #111827;
-            background: #f3f4f6;
+            color: #12263F;
+            background: #EEF3F8;
         }
 
         .signature-box {
@@ -191,7 +191,7 @@
         .signature-line {
             width: 140px;
             height: 46px;
-            border-bottom: 1px solid #9ca3af;
+            border-bottom: 1px solid #c2d0de;
             margin-left: auto;
             margin-bottom: 8px;
         }
@@ -206,7 +206,7 @@
 
         .footer-table td {
             border: 0;
-            color: #6b7280;
+            color: #5B6E84;
             font-size: 9px;
             padding: 0;
         }

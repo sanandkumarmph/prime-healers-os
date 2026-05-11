@@ -8,11 +8,11 @@
     $canDeleteInvoices = $currentUser?->canAccessModule('invoices', 'delete') ?? false;
     $canCreatePayments = $currentUser?->canAccessModule('payments', 'create') ?? false;
     $canViewFinance = $currentUser?->canViewFinance() ?? false;
-    $totalInvoices = $invoices->count();
-    $paidInvoices = $invoices->where('payment_status', 'paid')->count();
-    $unpaidInvoices = $invoices->whereIn('payment_status', ['unpaid', 'overdue'])->count();
-    $outstandingAmount = $invoices->sum('balance_amount');
-    $totalBilled = $invoices->sum('total_amount');
+    $totalInvoices = (int) ($invoiceStats['totalInvoices'] ?? $invoices->total());
+    $paidInvoices = (int) ($invoiceStats['paidInvoices'] ?? 0);
+    $unpaidInvoices = (int) ($invoiceStats['unpaidInvoices'] ?? 0);
+    $outstandingAmount = (float) ($invoiceStats['outstandingAmount'] ?? 0);
+    $totalBilled = (float) ($invoiceStats['totalBilled'] ?? 0);
     $invoiceUrl = function (array $overrides = []) use ($search, $status, $customerId, $city, $fromDate, $toDate) {
         return route('invoices.index', array_filter(array_merge([
             'search' => $search ?: null,
@@ -44,10 +44,10 @@
             align-items: center;
             gap: 14px;
             padding: 14px 16px;
-            border: 1px solid #dbe7f3;
+            border: 1px solid var(--ph-color-border);
             border-radius: 18px;
             background: #ffffff;
-            box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
+            box-shadow: var(--ph-shadow-soft);
             overflow: visible;
             min-width: 0;
         }
@@ -58,15 +58,16 @@
 
         .invoice-toolbar h1 {
             margin: 0 0 4px;
-            color: #0f172a;
+            color: var(--ph-color-text);
             font-size: 26px;
             letter-spacing: -0.03em;
             line-height: 1.05;
+            font-family: var(--ph-font-heading);
         }
 
         .invoice-toolbar p {
             margin: 0;
-            color: #64748b;
+            color: var(--ph-color-text-soft);
             font-size: 13px;
             line-height: 1.45;
             max-width: 100%;
@@ -95,9 +96,9 @@
             min-height: 34px;
             padding: 8px 10px;
             border-radius: 10px;
-            border: 1px solid #cbd5e1;
+            border: 1px solid var(--ph-color-border-strong);
             background: #ffffff;
-            color: #0f172a;
+            color: var(--ph-color-text);
             text-decoration: none;
             font-size: 12px;
             font-weight: 800;
@@ -107,21 +108,21 @@
         }
 
         .invoice-btn.primary {
-            border-color: #0f172a;
-            background: #0f172a;
+            border-color: var(--ph-color-primary);
+            background: var(--ph-color-primary);
             color: #ffffff;
         }
 
         .invoice-btn.soft {
-            border-color: #dbeafe;
-            background: #eff6ff;
-            color: #1d4ed8;
+            border-color: rgba(23,119,189,.18);
+            background: var(--ph-color-info-soft);
+            color: var(--ph-color-primary);
         }
 
         .invoice-btn.danger {
-            border-color: #fecdd3;
-            background: #fff1f2;
-            color: #be123c;
+            border-color: rgba(179,13,35,.18);
+            background: var(--ph-color-danger-soft);
+            color: var(--ph-color-danger);
         }
 
         .invoice-summary-strip {
@@ -138,20 +139,21 @@
             gap: 10px;
             min-width: 0;
             padding: 9px 11px;
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--ph-color-border);
             border-radius: 14px;
             background: #ffffff;
-            color: #0f172a;
+            color: var(--ph-color-text);
             text-decoration: none;
         }
 
         .invoice-summary-tile span {
             display: block;
-            color: #64748b;
+            color: var(--ph-color-text-soft);
             font-size: 10px;
             font-weight: 900;
             letter-spacing: 0.08em;
             text-transform: uppercase;
+            font-family: var(--ph-font-heading);
         }
 
         .invoice-summary-tile strong {
@@ -167,7 +169,7 @@
 
         .invoice-filter-card {
             padding: 12px;
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--ph-color-border);
             border-radius: 16px;
             background: #ffffff;
         }
@@ -175,10 +177,10 @@
         .invoice-filter-toggle { padding: 0; }
         .invoice-filter-toggle summary {
             list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 10px;
-            padding: 12px; color: #0f172a; font-size: 15px; font-weight: 900;
+            padding: 12px; color: var(--ph-color-text); font-size: 15px; font-weight: 900; font-family: var(--ph-font-heading);
         }
         .invoice-filter-toggle summary::-webkit-details-marker { display: none; }
-        .invoice-filter-toggle summary span { color: #64748b; font-size: 12px; font-weight: 700; }
+        .invoice-filter-toggle summary span { color: var(--ph-color-text-soft); font-size: 12px; font-weight: 700; }
         .invoice-filter-toggle form { padding: 0 12px 12px; }
 
         .invoice-filter-grid {
@@ -195,7 +197,7 @@
         }
 
         .invoice-field label {
-            color: #64748b;
+            color: var(--ph-color-text-soft);
             font-size: 10px;
             font-weight: 900;
             letter-spacing: 0.08em;
@@ -207,20 +209,20 @@
             width: 100%;
             min-height: 36px;
             padding: 8px 10px;
-            border: 1px solid #cbd5e1;
+            border: 1px solid var(--ph-color-border-strong);
             border-radius: 10px;
             background: #ffffff;
-            color: #0f172a;
+            color: var(--ph-color-text);
             font-size: 13px;
             box-sizing: border-box;
         }
 
         .invoice-list-shell {
             overflow: visible;
-            border: 1px solid #dbe3ef;
+            border: 1px solid var(--ph-color-border);
             border-radius: 16px;
             background: #ffffff;
-            box-shadow: 0 16px 36px rgba(15, 23, 42, 0.05);
+            box-shadow: var(--ph-shadow-soft);
         }
 
         .invoice-list-top {
@@ -229,14 +231,14 @@
             align-items: center;
             gap: 12px;
             padding: 10px 12px;
-            border-bottom: 1px solid #e2e8f0;
+            border-bottom: 1px solid var(--ph-color-border);
             flex-wrap: wrap;
             overflow: visible;
             min-width: 0;
         }
 
         .invoice-selected-count {
-            color: #64748b;
+            color: var(--ph-color-text-soft);
             font-size: 12px;
             font-weight: 800;
         }
@@ -247,7 +249,7 @@
             overflow-y: visible;
             padding-bottom: 170px;
             margin-bottom: -170px;
-            scrollbar-color: #94a3b8 #e2e8f0;
+            scrollbar-color: #94a3b8 var(--ph-color-border);
             scrollbar-width: thin;
         }
 
@@ -256,7 +258,7 @@
         }
 
         .invoice-table-wrap::-webkit-scrollbar-track {
-            background: #e2e8f0;
+            background: var(--ph-color-border);
             border-radius: 999px;
         }
 
@@ -274,8 +276,8 @@
 
         .invoice-table th {
             padding: 8px 6px;
-            background: #f8fafc;
-            color: #64748b;
+            background: var(--ph-color-surface-soft);
+            color: var(--ph-color-text-soft);
             font-size: 11px;
             font-weight: 900;
             letter-spacing: 0.08em;
@@ -799,6 +801,12 @@
             @endif
         </form>
     </div>
+
+    @if(method_exists($invoices, 'links'))
+        <div class="ph-card" style="padding:14px 16px;">
+            {{ $invoices->links() }}
+        </div>
+    @endif
 
     @foreach($invoices as $invoice)
         @if($canCreatePayments && !in_array($invoice->payment_status, ['paid', 'cancelled'], true) && $invoice->status !== 'cancelled')

@@ -60,6 +60,9 @@ class CustomerProfileSupport
         $phoneRules = [
             ...PhoneNumber::validationRules(),
         ];
+        $whatsAppRules = [
+            ...PhoneNumber::validationRules(),
+        ];
         $emailRules = ['nullable', 'email', 'max:255'];
 
         if ($organizationId !== null) {
@@ -85,6 +88,27 @@ class CustomerProfileSupport
 
                 if ($exists) {
                     $fail('This mobile number is already in use.');
+                }
+            };
+
+            $whatsAppRules[] = function (string $attribute, mixed $value, \Closure $fail) use ($organizationId, $ignoreCustomerId): void {
+                $normalized = PhoneNumber::normalize(
+                    (string) $value,
+                    request()->input($attribute . '_country_code')
+                );
+
+                if ($normalized === null) {
+                    return;
+                }
+
+                $exists = DB::table('customers')
+                    ->where('organization_id', $organizationId)
+                    ->where('whatsapp_number', $normalized)
+                    ->when($ignoreCustomerId, fn ($query) => $query->where('id', '!=', $ignoreCustomerId))
+                    ->exists();
+
+                if ($exists) {
+                    $fail('This WhatsApp number is already in use.');
                 }
             };
         }
@@ -116,7 +140,7 @@ class CustomerProfileSupport
         ];
 
         if ($hasWhatsappNumberColumn) {
-            $rules['whatsapp_number'] = PhoneNumber::validationRules();
+            $rules['whatsapp_number'] = $whatsAppRules;
         }
 
         $rules['phone_country_code'] = 'nullable|string|max:8';

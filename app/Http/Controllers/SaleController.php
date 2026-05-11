@@ -14,6 +14,7 @@ use App\Models\Rental;
 use App\Models\SaleInventory;
 use App\Services\Finance\InvoiceLinkResolver;
 use App\Services\Finance\InvoiceSyncService;
+use App\Services\Finance\AmountReductionGuardService;
 use App\Services\Finance\PaymentSyncService;
 use App\Services\Imports\ImportMatchSignatureService;
 use App\Services\Imports\SaleImportExecutor;
@@ -85,19 +86,23 @@ class SaleController extends Controller
         return redirect()->route('sales.show', $sale)->with('error', $message);
     }
 
-    private function baseSalesQuery()
+    private function baseSalesQuery(bool $includeRelations = true)
     {
-        $relations = ['customer', 'product', 'asset.warehouse', 'rental'];
+        $query = Sale::query()
+            ->where('organization_id', $this->orgId());
 
-        if ($this->hasDeliverySaleColumn()) {
-            $relations[] = 'deliveryRecord.assignedStaff';
-            $relations[] = 'deliveryRecord.assignedUser';
+        if ($includeRelations) {
+            $relations = ['customer', 'product', 'asset.warehouse', 'rental'];
+
+            if ($this->hasDeliverySaleColumn()) {
+                $relations[] = 'deliveryRecord.assignedStaff';
+                $relations[] = 'deliveryRecord.assignedUser';
+            }
+
+            $query->with($relations);
         }
 
-        return $this->applySalesScope(
-            Sale::with($relations)
-                ->where('organization_id', $this->orgId())
-        );
+        return $this->applySalesScope($query);
     }
 
     private function hasDeliverySaleColumn(): bool
@@ -1043,26 +1048,33 @@ class SaleController extends Controller
         $toDate = trim((string) $request->get('to_date', $request->get('date', '')));
         $sortBy = (string) $request->get('sort_by', 'latest');
 
-        $salesQuery = $this->baseSalesQuery()
-            ->when($customerId !== '', fn ($query) => $query->where('customer_id', $customerId))
-            ->when($paymentStatus !== '', fn ($query) => $query->where('payment_status', $paymentStatus))
-            ->when($search !== '', function ($query) use ($search) {
-                $query->where(function ($nestedQuery) use ($search) {
-                    $nestedQuery->whereHas('customer', function ($customerQuery) use ($search) {
-                        $customerQuery->where('name', 'like', '%' . $search . '%')
-                            ->orWhere('phone', 'like', '%' . $search . '%')
-                            ->orWhere('email', 'like', '%' . $search . '%');
+        $applyIndexFilters = function ($query) use ($customerId, $paymentStatus, $search, $fromDate, $toDate) {
+            $query
+                ->when($customerId !== '', fn ($innerQuery) => $innerQuery->where('customer_id', $customerId))
+                ->when($paymentStatus !== '', fn ($innerQuery) => $innerQuery->where('payment_status', $paymentStatus))
+                ->when($search !== '', function ($innerQuery) use ($search) {
+                    $innerQuery->where(function ($nestedQuery) use ($search) {
+                        $nestedQuery->whereHas('customer', function ($customerQuery) use ($search) {
+                            $customerQuery->where('name', 'like', '%' . $search . '%')
+                                ->orWhere('phone', 'like', '%' . $search . '%')
+                                ->orWhere('email', 'like', '%' . $search . '%');
 
-                        if (Customer::hasWhatsappNumberColumn()) {
-                            $customerQuery->orWhere('whatsapp_number', 'like', '%' . $search . '%');
-                        }
-                    })->orWhereHas('product', function ($productQuery) use ($search) {
-                        $productQuery->where('name', 'like', '%' . $search . '%');
-                    })->orWhere('notes', 'like', '%' . $search . '%');
+                            if (Customer::hasWhatsappNumberColumn()) {
+                                $customerQuery->orWhere('whatsapp_number', 'like', '%' . $search . '%');
+                            }
+                        })->orWhereHas('product', function ($productQuery) use ($search) {
+                            $productQuery->where('name', 'like', '%' . $search . '%');
+                        })->orWhere('notes', 'like', '%' . $search . '%');
+                    });
                 });
-            });
 
-        $this->applyDateRangeFilter($salesQuery, $fromDate, $toDate);
+            $this->applyDateRangeFilter($query, $fromDate, $toDate);
+
+            return $query;
+        };
+
+        $salesQuery = $applyIndexFilters($this->baseSalesQuery(true));
+        $summaryQuery = $applyIndexFilters($this->baseSalesQuery(false));
 
         $sales = $this->applySorting(clone $salesQuery, $sortBy)
             ->paginate(20)
@@ -1070,7 +1082,6 @@ class SaleController extends Controller
 
         $this->attachLinkedInvoiceIds($sales->getCollection());
 
-        $summaryQuery = clone $salesQuery;
         $totalSales = (clone $summaryQuery)->count();
         $paidSales = (clone $summaryQuery)->where('payment_status', 'paid')->count();
         $pendingSales = (clone $summaryQuery)->whereIn('payment_status', ['pending', 'partial'])->count();
@@ -1527,6 +1538,15 @@ class SaleController extends Controller
             (float) ($request->tax_percentage ?? 0),
             (string) ($request->tax_calculation_mode ?? 'exclusive')
         );
+
+        $linkedInvoice = $this->saleInvoice($sale->loadMissing(['customer', 'product']));
+        if ($linkedInvoice) {
+            app(AmountReductionGuardService::class)->assertTotalNotBelowReceivedPayments(
+                $linkedInvoice,
+                (float) ($commercials['sale_amount'] ?? 0),
+                'This sale update'
+            );
+        }
 
         DB::transaction(function () use ($sale, $customer, $product, $request, $commercials) {
             $originalSale = Sale::query()

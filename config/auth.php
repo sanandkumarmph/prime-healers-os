@@ -4,7 +4,8 @@ use App\Models\User;
 
 return [
 
-    'allow_public_registration' => (bool) env('ALLOW_PUBLIC_REGISTRATION', false),
+    'allow_public_registration' => (bool) env('ALLOW_PUBLIC_REGISTRATION', false)
+        && !filter_var(env('INTERNAL_SINGLE_ORG_MODE', true), FILTER_VALIDATE_BOOL),
 
     /*
     |--------------------------------------------------------------------------

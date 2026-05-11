@@ -21,11 +21,14 @@ use App\Policies\RentalPolicy;
 use App\Policies\SalePolicy;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\ReportController;
+use App\Support\InternalOrganization;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\View;
 
 class AppServiceProvider extends ServiceProvider
@@ -37,7 +40,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        View::share('internalSingleOrgMode', InternalOrganization::enabled());
+        View::share('internalCompanyName', InternalOrganization::companyName());
     }
 
     /**
@@ -46,6 +50,28 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Paginator::useBootstrapFive();
+
+        Event::listen('eloquent.creating: *', function (string $eventName, array $data): void {
+            $model = $data[0] ?? null;
+
+            if (!$model instanceof \Illuminate\Database\Eloquent\Model) {
+                return;
+            }
+
+            if (!$this->shouldApplyDefaultOrganization($model)) {
+                return;
+            }
+
+            if ((int) ($model->getAttribute('organization_id') ?? 0) > 0) {
+                return;
+            }
+
+            $organizationId = InternalOrganization::id(auth()->user());
+
+            if ($organizationId) {
+                $model->setAttribute('organization_id', $organizationId);
+            }
+        });
 
         Gate::policy(Customer::class, CustomerPolicy::class);
         Gate::policy(Delivery::class, DeliveryPolicy::class);
@@ -71,6 +97,7 @@ class AppServiceProvider extends ServiceProvider
             }
 
             $user = auth()->user();
+            $user->loadMissing(['assignedRole', 'organization']);
             $organizationId = $user?->organization_id;
 
             if (!$organizationId) {
@@ -260,5 +287,27 @@ class AppServiceProvider extends ServiceProvider
             'pickupsToday' => $pickupsToday,
             'maintenanceAssets' => $maintenanceAssets,
         ];
+    }
+
+    private function shouldApplyDefaultOrganization(\Illuminate\Database\Eloquent\Model $model): bool
+    {
+        if ($model instanceof Organization) {
+            return false;
+        }
+
+        if (!InternalOrganization::enabled()) {
+            return false;
+        }
+
+        static $columnCache = [];
+
+        $connection = $model->getConnectionName() ?: config('database.default');
+        $cacheKey = $connection.':'.$model->getTable();
+
+        if (!array_key_exists($cacheKey, $columnCache)) {
+            $columnCache[$cacheKey] = Schema::connection($connection)->hasColumn($model->getTable(), 'organization_id');
+        }
+
+        return $columnCache[$cacheKey];
     }
 }

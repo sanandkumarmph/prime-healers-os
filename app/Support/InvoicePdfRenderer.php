@@ -85,7 +85,9 @@ class InvoicePdfRenderer
                     ->timeout(90)
             );
 
-            return $browsershot->pdf();
+            return $this->browsershotConfigurator->runInPdfWorkingDirectory(
+                fn () => $browsershot->pdf()
+            );
         } catch (Throwable $exception) {
             throw new RuntimeException(
                 'Invoice PDF could not be generated with Browsershot. Check PDF_BROWSER_PATH, PDF_NODE_BINARY, PDF_DISABLE_SANDBOX, and Chromium runtime configuration.',

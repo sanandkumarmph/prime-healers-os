@@ -82,17 +82,34 @@ class InventoryDashboardController extends Controller
             ->orderBy('name')
             ->get()
             ->map(function (Product $product) {
-                $rentalTotal = (int) $product->rental_assets_total_count;
-                $rentalAvailable = (int) $product->rental_available_count;
+                $usesUntrackedStock = $product->usesUntrackedStock();
+                $openingTotalQuantity = max((int) ($product->total_quantity ?? 0), 0);
+                $openingAvailableQuantity = max((int) ($product->available_quantity ?? 0), 0);
+
+                $rentalTotal = $usesUntrackedStock && $product->product_type === Product::TYPE_RENTABLE
+                    ? $openingTotalQuantity
+                    : (int) $product->rental_assets_total_count;
+                $rentalAvailable = $usesUntrackedStock && $product->product_type === Product::TYPE_RENTABLE
+                    ? $openingAvailableQuantity
+                    : (int) $product->rental_available_count;
                 $rentalOut = (int) $product->rental_out_count;
                 $awaitingVerification = (int) $product->awaiting_verification_count;
                 $underRepair = (int) $product->under_repair_count;
                 $retiredRental = (int) $product->retired_rental_count;
-                $saleTotal = (int) $product->sale_units_total_count;
-                $saleAvailable = (int) $product->sale_available_count;
+                $saleTotal = $usesUntrackedStock && $product->product_type === Product::TYPE_SELLABLE
+                    ? $openingTotalQuantity
+                    : (int) $product->sale_units_total_count;
+                $saleAvailable = $usesUntrackedStock && $product->product_type === Product::TYPE_SELLABLE
+                    ? $openingAvailableQuantity
+                    : (int) $product->sale_available_count;
                 $saleReserved = (int) $product->sale_reserved_count;
                 $soldUnits = (int) $product->sold_units_count;
                 $retiredSale = (int) $product->retired_sale_count;
+
+                $product->setAttribute('effective_rental_assets_total_count', $rentalTotal);
+                $product->setAttribute('effective_rental_available_count', $rentalAvailable);
+                $product->setAttribute('effective_sale_units_total_count', $saleTotal);
+                $product->setAttribute('effective_sale_available_count', $saleAvailable);
 
                 $signals = collect();
 
@@ -130,10 +147,10 @@ class InventoryDashboardController extends Controller
             });
 
         $productStockRows = match ($stockView) {
-            'rental_active' => $productStockRows->filter(fn ($product) => ((int) $product->rental_assets_total_count) > 0)->values(),
-            'sales_active' => $productStockRows->filter(fn ($product) => ((int) $product->sale_units_total_count) > 0)->values(),
-            'low_stock' => $productStockRows->filter(fn ($product) => ((int) $product->sale_available_count) <= 1 && ((int) $product->sale_units_total_count) > 0
-                || ((int) $product->rental_available_count) <= 1 && ((int) $product->rental_assets_total_count) > 0)->values(),
+            'rental_active' => $productStockRows->filter(fn ($product) => ((int) $product->effective_rental_assets_total_count) > 0)->values(),
+            'sales_active' => $productStockRows->filter(fn ($product) => ((int) $product->effective_sale_units_total_count) > 0)->values(),
+            'low_stock' => $productStockRows->filter(fn ($product) => ((int) $product->effective_sale_available_count) <= 1 && ((int) $product->effective_sale_units_total_count) > 0
+                || ((int) $product->effective_rental_available_count) <= 1 && ((int) $product->effective_rental_assets_total_count) > 0)->values(),
             'awaiting_verification' => $productStockRows->filter(fn ($product) => ((int) $product->awaiting_verification_count) > 0)->values(),
             default => $productStockRows,
         };

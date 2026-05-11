@@ -9,6 +9,7 @@ use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Rental;
 use App\Models\Sale;
+use App\Services\Finance\AmountReductionGuardService;
 use App\Services\Finance\PaymentSyncService;
 use App\Support\ActivityLogger;
 use App\Support\CustomerProfileSupport;
@@ -151,13 +152,16 @@ class InvoiceController extends Controller
         );
     }
 
-    private function invoiceBaseQuery()
+    private function invoiceBaseQuery(bool $includeRelations = true)
     {
-        return $this->applyInvoiceScope(
-            Invoice::query()
-                ->with(['customer', 'items', 'payments'])
-                ->forOrganization($this->orgId())
-        );
+        $query = Invoice::query()
+            ->forOrganization($this->orgId());
+
+        if ($includeRelations) {
+            $query->with(['customer', 'items', 'payments']);
+        }
+
+        return $this->applyInvoiceScope($query);
     }
 
     private function paymentsRentalIdIsNullable(): bool
@@ -166,6 +170,18 @@ class InvoiceController extends Controller
 
         if ($isNullable !== null) {
             return $isNullable;
+        }
+
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            $columns = DB::select("PRAGMA table_info('payments')");
+
+            foreach ($columns as $column) {
+                if (($column->name ?? null) === 'rental_id') {
+                    return $isNullable = ((int) ($column->notnull ?? 1)) === 0;
+                }
+            }
+
+            return $isNullable = true;
         }
 
         $column = DB::table('information_schema.columns')
@@ -456,15 +472,26 @@ class InvoiceController extends Controller
         $fromDate = trim((string) $request->get('from_date', ''));
         $toDate = trim((string) $request->get('to_date', ''));
 
-        $invoices = $this->applyInvoiceFilters($this->invoiceBaseQuery(), $request)
+        $invoices = $this->applyInvoiceFilters($this->invoiceBaseQuery(true), $request)
             ->latest('invoice_date')
             ->latest('id')
-            ->get();
+            ->paginate(20)
+            ->withQueryString();
 
-        $this->syncInvoiceCollectionStatuses($invoices);
+        $summaryQuery = $this->applyInvoiceFilters($this->invoiceBaseQuery(false), $request);
+        $invoiceStats = [
+            'totalInvoices' => (clone $summaryQuery)->count(),
+            'paidInvoices' => (clone $summaryQuery)->where('payment_status', 'paid')->count(),
+            'unpaidInvoices' => (clone $summaryQuery)->whereIn('payment_status', ['unpaid', 'overdue'])->count(),
+            'outstandingAmount' => (float) ((clone $summaryQuery)->sum('balance_amount') ?? 0),
+            'totalBilled' => (float) ((clone $summaryQuery)->sum('total_amount') ?? 0),
+        ];
+
+        $this->syncInvoiceCollectionStatuses($invoices->getCollection());
 
         return view('invoices.index', compact(
             'invoices',
+            'invoiceStats',
             'customers',
             'cities',
             'search',
@@ -784,6 +811,12 @@ class InvoiceController extends Controller
         $this->validateInvoice($request, $invoice->id);
 
         [$invoiceData, $itemsToCreate] = $this->prepareInvoiceData($request, $organization, $organizationId, $invoice->id);
+
+        app(AmountReductionGuardService::class)->assertTotalNotBelowReceivedPayments(
+            $invoice,
+            (float) ($invoiceData['total_amount'] ?? 0),
+            'This invoice update'
+        );
 
         $invoice->update($invoiceData);
         $invoice->items()->delete();

@@ -3,9 +3,11 @@
 <head>
     <meta charset="utf-8">
     <title>{{ $invoice->invoice_number }}</title>
-    <link rel="icon" type="image/png" href="{{ asset('images/rentnexis-favicon.png') }}">
+    <link rel="icon" type="image/png" href="{{ asset('images/prime-healers-favicon.png') }}">
     <link rel="shortcut icon" href="{{ asset('favicon.ico') }}">
-    <link rel="apple-touch-icon" href="{{ asset('images/rentnexis-favicon.png') }}">
+    <link rel="apple-touch-icon" href="{{ asset('images/prime-healers-favicon.png') }}">
+    <link rel="preconnect" href="https://fonts.bunny.net">
+    <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700,800&family=manrope:600,700,800&display=swap" rel="stylesheet" />
     <meta name="application-name" content="Prime Healers OS">
     <style>
         @page {
@@ -28,7 +30,7 @@
             font-family: 'Inter', 'Segoe UI', Roboto, Arial, sans-serif;
             font-size: 11px;
             line-height: 1.45;
-            color: #1e293b;
+            color: #24384f;
             font-variant-numeric: tabular-nums;
             -webkit-font-smoothing: antialiased;
         }
@@ -51,7 +53,7 @@
 
         .header-table {
             margin-bottom: 10px;
-            border-bottom: 1px solid #d9e2ec;
+            border-bottom: 1px solid #d7e1ec;
         }
 
         .header-table td {
@@ -67,8 +69,8 @@
         .header-logo-box {
             width: 32mm;
             height: 22mm;
-            border: 1px solid #d9e2ec;
-            border-radius: 6px;
+            border: 1px solid #d7e1ec;
+            border-radius: 8px;
             background: #ffffff;
             text-align: center;
             vertical-align: middle;
@@ -84,7 +86,7 @@
 
         .header-logo-fallback {
             padding: 8px 6px 0;
-            color: #334155;
+            color: #24384f;
             font-size: 10px;
             font-weight: 700;
             line-height: 1.25;
@@ -96,15 +98,16 @@
 
         .header-company-name {
             margin: 0 0 5px;
-            color: #0f172a;
+            color: #12263F;
             font-size: 15px;
             font-weight: 700;
             line-height: 1.2;
+            font-family: 'Manrope', 'Inter', 'Segoe UI', sans-serif;
         }
 
         .header-company-line {
             margin: 0;
-            color: #1e293b;
+            color: #24384f;
             font-size: 9.8px;
             line-height: 1.45;
         }
@@ -118,11 +121,12 @@
 
         .header-invoice-title {
             margin: 0 0 8px;
-            color: #0f172a;
+            color: #12263F;
             font-size: 22px;
             font-weight: 700;
             line-height: 1;
             text-transform: uppercase;
+            font-family: 'Manrope', 'Inter', 'Segoe UI', sans-serif;
         }
 
         .status-badge {
@@ -136,40 +140,40 @@
         }
 
         .status-paid {
-            color: #16a34a;
-            background: #dcfce7;
-            border-color: #16a34a;
+            color: #0E9F4B;
+            background: #EAF8F0;
+            border-color: #0E9F4B;
         }
 
         .status-partial {
-            color: #d97706;
-            background: #fef3c7;
-            border-color: #d97706;
+            color: #B7791F;
+            background: #FFF7E8;
+            border-color: #B7791F;
         }
 
         .status-unpaid {
-            color: #dc2626;
-            background: #fee2e2;
-            border-color: #dc2626;
+            color: #B30D23;
+            background: #FDECEF;
+            border-color: #B30D23;
         }
 
         .status-draft {
-            color: #475569;
-            background: #e2e8f0;
-            border-color: #475569;
+            color: #5B6E84;
+            background: #EEF3F8;
+            border-color: #C2D0DE;
         }
 
         .meta-table {
             margin-bottom: 8px;
-            border: 1px solid #d9e2ec;
+            border: 1px solid #d7e1ec;
         }
 
         .meta-table td {
             width: 33.33%;
             padding: 7px 10px;
-            background: #f8fafc;
-            border-right: 1px solid #d9e2ec;
-            border-bottom: 1px solid #d9e2ec;
+            background: #F8FBFE;
+            border-right: 1px solid #d7e1ec;
+            border-bottom: 1px solid #d7e1ec;
             vertical-align: top;
         }
 
@@ -184,7 +188,7 @@
         .meta-label {
             display: block;
             margin-bottom: 3px;
-            color: #64748b;
+            color: #5B6E84;
             font-size: 8.5px;
             font-weight: 700;
             text-transform: uppercase;
@@ -193,7 +197,7 @@
 
         .meta-value {
             display: block;
-            color: #0f172a;
+            color: #12263F;
             font-size: 10.5px;
             font-weight: 700;
             word-break: break-word;
@@ -201,7 +205,7 @@
 
         .party-table {
             margin-bottom: 8px;
-            border: 1px solid #d9e2ec;
+            border: 1px solid #d7e1ec;
         }
 
         .party-table td {
@@ -211,21 +215,22 @@
         }
 
         .party-table td:first-child {
-            border-right: 1px solid #d9e2ec;
+            border-right: 1px solid #d7e1ec;
         }
 
         .section-title {
             margin: 0 0 5px;
-            color: #475569;
+            color: #5B6E84;
             font-size: 10px;
             font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 0.3px;
+            font-family: 'Manrope', 'Inter', 'Segoe UI', sans-serif;
         }
 
         .party-line {
             margin: 0 0 3px;
-            color: #1e293b;
+            color: #24384f;
             font-size: 10px;
             line-height: 1.45;
             word-break: break-word;
@@ -234,9 +239,9 @@
         .subject-row {
             margin-bottom: 8px;
             padding: 7px 10px;
-            border: 1px solid #d9e2ec;
-            background: #fbfdff;
-            color: #1e293b;
+            border: 1px solid #d7e1ec;
+            background: #F8FBFE;
+            color: #24384f;
             font-size: 10px;
         }
 
@@ -254,21 +259,22 @@
 
         .items-table th,
         .items-table td {
-            border: 1px solid #d9e2ec;
+            border: 1px solid #d7e1ec;
             padding: 7px 6px;
             vertical-align: top;
         }
 
         .items-table th {
-            background: #e2e8f0;
-            color: #0f172a;
+            background: #F0F6FB;
+            color: #12263F;
             font-size: 9px;
             font-weight: 800;
             text-align: left;
+            font-family: 'Manrope', 'Inter', 'Segoe UI', sans-serif;
         }
 
         .items-table td {
-            color: #1e293b;
+            color: #24384f;
             font-size: 9.7px;
         }
 
@@ -279,7 +285,7 @@
 
         .item-title {
             display: block;
-            color: #0f172a;
+            color: #12263F;
             font-weight: 700;
             line-height: 1.35;
         }
@@ -287,7 +293,7 @@
         .item-subtext {
             display: block;
             margin-top: 2px;
-            color: #64748b;
+            color: #5B6E84;
             font-size: 8.7px;
             line-height: 1.35;
         }
@@ -307,14 +313,14 @@
 
         .notes-box,
         .signature-box {
-            border: 1px solid #d9e2ec;
+            border: 1px solid #d7e1ec;
             padding: 9px 11px;
         }
 
         .notes-box p,
         .notes-box ul {
             margin: 0 0 7px;
-            color: #1e293b;
+            color: #24384f;
             font-size: 9.6px;
             line-height: 1.45;
         }
@@ -337,9 +343,9 @@
         }
 
         .totals-table td {
-            border: 1px solid #d9e2ec;
+            border: 1px solid #d7e1ec;
             padding: 7px 8px;
-            color: #1e293b;
+            color: #24384f;
             font-size: 10px;
         }
 
@@ -349,17 +355,19 @@
         }
 
         .grand-total td {
-            background: #f1f5f9;
-            color: #0f172a;
+            background: #EEF3F8;
+            color: #12263F;
             font-size: 11.5px;
             font-weight: 800;
+            font-family: 'Manrope', 'Inter', 'Segoe UI', sans-serif;
         }
 
         .balance-due td {
-            background: #ecfdf5;
-            color: #0f172a;
+            background: #EAF8F0;
+            color: #12263F;
             font-size: 11.5px;
             font-weight: 800;
+            font-family: 'Manrope', 'Inter', 'Segoe UI', sans-serif;
         }
 
         .signature-box {
@@ -380,7 +388,7 @@
         .signature-line {
             width: 42mm;
             height: 18mm;
-            border-bottom: 1px solid #cbd5e1;
+            border-bottom: 1px solid #c2d0de;
             margin-left: auto;
             margin-bottom: 5px;
         }
@@ -390,7 +398,7 @@
         }
 
         .footer-table td {
-            color: #64748b;
+            color: #5B6E84;
             font-size: 8.8px;
             vertical-align: top;
         }

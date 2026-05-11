@@ -124,6 +124,7 @@ class PdfBrowsershotConfigurator
     public function blockedUrls(): array
     {
         $urls = [
+            asset('images/prime-healers-favicon.png'),
             asset('images/rentnexis-favicon.png'),
             asset('favicon.ico'),
         ];
@@ -136,16 +137,38 @@ class PdfBrowsershotConfigurator
 
     public function tempPath(): string
     {
+        $configuredPath = trim((string) config('pdf.temp_path', ''));
+
         return $this->ensureDirectory(
-            (string) config('pdf.temp_path', storage_path('app/pdf-runtime/tmp'))
+            $configuredPath !== '' ? $configuredPath : storage_path('app/pdf-runtime/tmp')
         );
     }
 
     public function userDataDir(): string
     {
+        $configuredPath = trim((string) config('pdf.user_data_dir', ''));
+
         return $this->ensureDirectory(
-            (string) config('pdf.user_data_dir', storage_path('app/pdf-runtime/profile'))
+            $configuredPath !== '' ? $configuredPath : storage_path('app/pdf-runtime/profile')
         );
+    }
+
+    public function runInPdfWorkingDirectory(callable $callback): mixed
+    {
+        $workingDirectory = $this->tempPath();
+        $previousDirectory = getcwd();
+
+        if (! @chdir($workingDirectory)) {
+            throw new RuntimeException("Unable to switch into the PDF runtime working directory: {$workingDirectory}");
+        }
+
+        try {
+            return $callback();
+        } finally {
+            if (is_string($previousDirectory) && $previousDirectory !== '' && is_dir($previousDirectory)) {
+                @chdir($previousDirectory);
+            }
+        }
     }
 
     private function ensureDirectory(string $path): string

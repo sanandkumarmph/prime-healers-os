@@ -148,8 +148,8 @@ class InvoiceSyncService
 
         $invoice->forceFill([
             'organization_id' => $organizationId,
-            'invoice_date' => now()->toDateString(),
-            'due_date' => now()->toDateString(),
+            'invoice_date' => $invoice->invoice_date ?: now()->toDateString(),
+            'due_date' => $invoice->due_date ?: ($invoice->invoice_date ?: now()->toDateString()),
             'customer_id' => $rental->customer_id,
             'bill_to_name' => $rental->customer_name,
             'bill_to_phone' => $rental->phone,

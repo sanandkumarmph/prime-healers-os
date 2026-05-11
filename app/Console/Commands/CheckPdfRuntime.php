@@ -16,19 +16,20 @@ class CheckPdfRuntime extends Command
 
     public function handle(): int
     {
+        $configurator = app(PdfBrowsershotConfigurator::class);
         $nodeBinary = (string) config('pdf.node_binary', 'node');
         $nodeModulePath = (string) config('pdf.node_module_path', base_path('node_modules'));
         $configuredBrowserPath = trim((string) config('pdf.browser_path', ''));
         $disableSandbox = config('pdf.disable_sandbox');
-        $tempPath = (string) config('pdf.temp_path', storage_path('app/pdf-runtime/tmp'));
-        $userDataDir = (string) config('pdf.user_data_dir', storage_path('app/pdf-runtime/profile'));
-        $environmentOptions = app(PdfBrowsershotConfigurator::class)->environmentOptions();
-        $chromiumArguments = app(PdfBrowsershotConfigurator::class)->chromiumArguments();
+        $tempPath = $configurator->tempPath();
+        $userDataDir = $configurator->userDataDir();
+        $environmentOptions = $configurator->environmentOptions();
+        $chromiumArguments = $configurator->chromiumArguments();
 
         $checks = [];
 
         $checks[] = $this->checkNodeBinaryConfigured($nodeBinary);
-        $checks[] = $this->checkNodeBinaryExecutable($nodeBinary);
+        $checks[] = $this->checkNodeBinaryExecutable($nodeBinary, $tempPath);
         $checks[] = $this->checkNodeModulesPath($nodeModulePath);
         $checks[] = $this->checkNodeDependencyPath($nodeModulePath, 'puppeteer');
         $checks[] = $this->checkNodeDependencyPath($nodeModulePath, 'puppeteer-core');
@@ -94,10 +95,16 @@ class CheckPdfRuntime extends Command
         return $this->result('PASS', 'Node binary configured', "Using configured binary: {$nodeBinary}");
     }
 
-    private function checkNodeBinaryExecutable(string $nodeBinary): array
+    private function checkNodeBinaryExecutable(string $nodeBinary, string $workingDirectory): array
     {
         try {
-            $result = Process::path(base_path())->timeout(10)->run([$nodeBinary, '--version']);
+            $process = Process::timeout(10);
+
+            if (is_dir($workingDirectory)) {
+                $process = $process->path($workingDirectory);
+            }
+
+            $result = $process->run([$nodeBinary, '--version']);
         } catch (\Throwable $exception) {
             return $this->result('FAIL', 'Node command executable', $exception->getMessage());
         }

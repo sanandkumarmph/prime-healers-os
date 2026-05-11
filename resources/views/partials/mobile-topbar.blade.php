@@ -14,7 +14,9 @@
 
 <header class="mobile-topbar">
     <a href="{{ route('dashboard') }}" class="mobile-brand" aria-label="Prime Healers OS home">
-        <x-application-logo class="mobile-brand-logo" />
+        <span class="mobile-brand-badge" aria-hidden="true">
+            <x-application-logo class="mobile-brand-logo" />
+        </span>
         <span class="mobile-brand-copy">
             <strong>Prime Healers OS</strong>
             <small>Rental, sales, and care operations</small>

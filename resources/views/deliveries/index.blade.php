@@ -104,17 +104,24 @@
         default => ucfirst(str_replace('_', ' ', $status ?: 'pending')),
     };
 
-    $statusBadgeClass = function ($delivery, bool $isOverdue = false) {
+    $taskStatusBadgeClass = function (?string $status, bool $isOverdue = false) {
         if ($isOverdue) {
             return 'rn-badge-danger';
         }
 
-        return match ($delivery->status) {
-            'completed' => 'rn-badge-success',
-            'in_progress' => 'rn-badge-active',
+        return match ($status) {
+            'completed', 'delivered', 'picked_up', 'returned' => 'rn-badge-success',
+            'in_progress', 'partially_delivered', 'partial_return' => 'rn-badge-active',
             'cancelled' => 'rn-badge-muted',
             default => 'rn-badge-warning',
         };
+    };
+
+    $taskStatusLabel = fn (?string $status) => match ($status) {
+        'partially_delivered' => 'Partial Delivery',
+        'partial_return' => 'Partial Pickup',
+        'picked_up' => 'Picked Up',
+        default => ucfirst(str_replace('_', ' ', $status ?: 'pending')),
     };
 
     $navIcon = function (string $icon): string {
@@ -180,54 +187,54 @@
     .ops-board { display:grid; gap:16px; max-width:100%; min-width:0; overflow-x:hidden; }
     .ops-board-header { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; }
     .ops-board-title { display:grid; gap:8px; max-width:760px; }
-    .ops-board-title h1 { margin:0; font-size:28px; line-height:1.08; letter-spacing:-0.03em; color:#0f172a; }
-    .ops-board-title p { margin:0; color:#64748b; font-size:13px; line-height:1.6; }
+    .ops-board-title h1 { margin:0; font-size:28px; line-height:1.08; letter-spacing:-0.03em; color:var(--ph-color-text); font-family: var(--ph-font-heading); }
+    .ops-board-title p { margin:0; color:var(--ph-color-text-soft); font-size:13px; line-height:1.6; }
     .ops-board-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     .ops-board-actions .rn-btn,
     .ops-board-actions .rn-btn-primary { min-height:40px; padding:0 14px; border-radius:12px; }
     .ops-stats { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:12px; }
     .ops-stat-card {
         display:grid; gap:10px; padding:14px 15px; text-decoration:none; color:inherit;
-        border:1px solid #e2e8f0; border-radius:18px; background:#fff;
-        box-shadow:0 10px 26px rgba(15, 23, 42, 0.05);
+        border:1px solid var(--ph-color-border); border-radius:18px; background:#fff;
+        box-shadow:var(--ph-shadow-soft);
         transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
         min-height:132px;
     }
     .ops-stat-card:hover { transform:translateY(-2px); box-shadow:0 16px 34px rgba(15,23,42,.08); }
     .ops-stat-top { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
-    .ops-stat-top span { display:block; font-size:12px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:#64748b; line-height:1.3; }
-    .ops-stat-value { font-size:29px; font-weight:800; line-height:1.05; color:#0f172a; }
-    .ops-stat-copy { font-size:12px; line-height:1.45; color:#64748b; }
+    .ops-stat-top span { display:block; font-size:12px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--ph-color-text-soft); line-height:1.3; }
+    .ops-stat-value { font-size:29px; font-weight:800; line-height:1.05; color:var(--ph-color-text); }
+    .ops-stat-copy { font-size:12px; line-height:1.45; color:var(--ph-color-text-soft); }
     .ops-stat-icon {
         width:40px; height:40px; border-radius:14px; display:grid; place-items:center; flex:0 0 40px;
-        border:1px solid #dbeafe; background:#eff6ff; color:#1d4ed8;
+        border:1px solid rgba(23,119,189,.18); background:var(--ph-color-info-soft); color:var(--ph-color-primary);
     }
-    .ops-stat-card.is-pickup .ops-stat-icon { background:#fff7ed; border-color:#fed7aa; color:#c2410c; }
-    .ops-stat-card.is-danger .ops-stat-icon { background:#fef2f2; border-color:#fecaca; color:#dc2626; }
-    .ops-stat-card.is-success .ops-stat-icon { background:#ecfdf5; border-color:#bbf7d0; color:#15803d; }
+    .ops-stat-card.is-pickup .ops-stat-icon { background:var(--ph-color-warning-soft); border-color:rgba(183,121,31,.18); color:var(--ph-color-warning); }
+    .ops-stat-card.is-danger .ops-stat-icon { background:var(--ph-color-danger-soft); border-color:rgba(179,13,35,.18); color:var(--ph-color-danger); }
+    .ops-stat-card.is-success .ops-stat-icon { background:var(--ph-color-success-soft); border-color:rgba(14,159,75,.18); color:var(--ph-color-success); }
     .ops-filters-shell,
     .ops-filters-card,
     .ops-task-shell,
     .ops-widget-card {
-        background:#fff; border:1px solid #e2e8f0; border-radius:18px; box-shadow:0 10px 26px rgba(15,23,42,.05);
+        background:#fff; border:1px solid var(--ph-color-border); border-radius:18px; box-shadow:var(--ph-shadow-soft);
     }
     .ops-filters-shell { padding:12px 14px; display:grid; gap:12px; }
     .ops-filters-card { display:grid; gap:12px; }
     .ops-filter-toggle summary {
         list-style:none; cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:10px;
-        padding:12px 14px; border-radius:14px; border:1px solid #e2e8f0; background:#f8fafc;
+        padding:12px 14px; border-radius:14px; border:1px solid var(--ph-color-border); background:var(--ph-color-surface-soft);
     }
     .ops-filter-toggle summary::-webkit-details-marker { display:none; }
-    .ops-filter-toggle summary h2 { margin:0; font-size:14px; line-height:1.3; color:#0f172a; }
-    .ops-filter-toggle summary span { color:#64748b; font-size:12px; font-weight:700; }
+    .ops-filter-toggle summary h2 { margin:0; font-size:14px; line-height:1.3; color:var(--ph-color-text); font-family: var(--ph-font-heading); }
+    .ops-filter-toggle summary span { color:var(--ph-color-text-soft); font-size:12px; font-weight:700; }
     .ops-filter-body { padding:12px 2px 0; }
     .ops-tabs { display:flex; gap:8px; flex-wrap:wrap; }
     .ops-tab {
         display:inline-flex; align-items:center; justify-content:center; min-height:36px; padding:0 13px;
-        border-radius:999px; border:1px solid #dbe3ef; background:#fff; color:#475569;
+        border-radius:999px; border:1px solid var(--ph-color-border); background:#fff; color:var(--ph-color-text-soft);
         text-decoration:none; font-size:12px; font-weight:800; letter-spacing:.02em;
     }
-    .ops-tab.is-active { background:#0f172a; border-color:#0f172a; color:#fff; box-shadow:0 8px 22px rgba(15,23,42,.16); }
+    .ops-tab.is-active { background:var(--ph-color-sidebar); border-color:var(--ph-color-sidebar); color:#fff; box-shadow:0 8px 22px rgba(11,35,66,.18); }
     .ops-filter-grid {
         display:grid;
         grid-template-columns:minmax(0, 1.2fr) repeat(5, minmax(150px, 1fr)) auto;
@@ -235,34 +242,39 @@
         align-items:end;
     }
     .ops-filter-field { display:grid; gap:6px; min-width:0; }
-    .ops-filter-field label { color:#64748b; font-size:11px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
+    .ops-filter-field label { color:var(--ph-color-text-soft); font-size:11px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
     .ops-filter-field input,
     .ops-filter-field select {
         width:100%; min-width:0; min-height:42px; padding:0 12px; border-radius:12px;
-        border:1px solid #cbd5e1; background:#fff; color:#0f172a; font-size:14px; box-sizing:border-box;
+        border:1px solid var(--ph-color-border-strong); background:#fff; color:var(--ph-color-text); font-size:14px; box-sizing:border-box;
     }
     .ops-filter-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
     .ops-board-grid { display:grid; grid-template-columns:minmax(0, 1.9fr) minmax(280px, 0.9fr); gap:16px; align-items:start; }
     .ops-task-shell { overflow:hidden; }
     .ops-task-head {
         display:flex; align-items:flex-start; justify-content:space-between; gap:10px;
-        padding:14px 16px; border-bottom:1px solid #e2e8f0; flex-wrap:wrap;
+        padding:14px 16px; border-bottom:1px solid var(--ph-color-border); flex-wrap:wrap;
     }
-    .ops-task-head h2 { margin:0; font-size:16px; line-height:1.3; color:#0f172a; }
-    .ops-task-head p { margin:4px 0 0; font-size:12px; line-height:1.5; color:#64748b; }
-    .ops-task-count { font-size:12px; font-weight:800; color:#475569; padding:8px 10px; border-radius:999px; background:#f8fafc; border:1px solid #e2e8f0; }
+    .ops-task-head h2 { margin:0; font-size:16px; line-height:1.3; color:var(--ph-color-text); font-family: var(--ph-font-heading); }
+    .ops-task-head p { margin:4px 0 0; font-size:12px; line-height:1.5; color:var(--ph-color-text-soft); }
+    .ops-task-count { font-size:12px; font-weight:800; color:var(--ph-color-text-soft); padding:8px 10px; border-radius:999px; background:var(--ph-color-surface-soft); border:1px solid var(--ph-color-border); }
+    .ops-task-meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .ops-selected-count { display:none; font-size:12px; font-weight:800; color:var(--ph-color-primary); padding:8px 10px; border-radius:999px; background:var(--ph-color-info-soft); border:1px solid rgba(23,119,189,.18); }
+    .ops-selected-count.is-visible { display:inline-flex; }
     .ops-table-wrap { width:100%; overflow-x:auto; }
-    .ops-table { width:100%; min-width:1160px; border-collapse:separate; border-spacing:0; table-layout:auto; }
+    .ops-table { width:100%; min-width:1230px; border-collapse:separate; border-spacing:0; table-layout:auto; }
     .ops-table th,
     .ops-table td { padding:12px 14px; border-bottom:1px solid #eef2f7; text-align:left; vertical-align:top; word-break:normal; overflow-wrap:break-word; }
     .ops-table th {
-        position:sticky; top:0; z-index:1; background:#f8fafc; color:#64748b;
+        position:sticky; top:0; z-index:1; background:var(--ph-color-surface-soft); color:var(--ph-color-text-soft);
         font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase;
     }
     .ops-table tbody tr { transition:background .16s ease; }
     .ops-table tbody tr:hover { background:#fbfdff; }
-    .ops-table tbody tr.is-overdue { background:#fff7f7; }
-    .ops-table td { font-size:13px; color:#0f172a; line-height:1.5; }
+    .ops-table tbody tr.is-overdue { background:var(--ph-color-danger-soft); }
+    .ops-table td { font-size:13px; color:var(--ph-color-text); line-height:1.5; }
+    .ops-col-serial { width:56px; min-width:56px; text-align:center !important; }
+    .ops-col-select { width:58px; min-width:58px; text-align:center !important; }
     .ops-col-type { width:96px; }
     .ops-col-order { width:164px; }
     .ops-col-customer { width:26%; min-width:220px; }
@@ -270,6 +282,13 @@
     .ops-col-staff { width:156px; }
     .ops-col-status { width:156px; }
     .ops-col-actions { width:252px; }
+    .ops-serial-cell { font-weight:800; color:#475569; }
+    .ops-checkbox-cell,
+    .ops-checkbox-head { text-align:center !important; }
+    .ops-task-checkbox,
+    .ops-select-all {
+        width:18px; height:18px; accent-color:var(--ph-color-primary); cursor:pointer;
+    }
     .ops-type-badge {
         display:inline-flex; align-items:center; gap:6px; padding:5px 9px; border-radius:999px;
         font-size:11px; font-weight:800; letter-spacing:.04em; text-transform:uppercase;
@@ -331,6 +350,9 @@
     .ops-mobile-card:last-child { border-bottom:none; }
     .ops-mobile-top { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
     .ops-mobile-title { display:grid; gap:5px; min-width:0; }
+    .ops-mobile-select { display:flex; align-items:flex-start; gap:10px; }
+    .ops-mobile-select .ops-mobile-title { flex:1 1 auto; }
+    .ops-mobile-serial { font-size:12px; font-weight:800; color:#475569; }
     .ops-mobile-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
     .ops-mobile-meta { display:grid; gap:3px; }
     .ops-mobile-meta span:first-child { color:#64748b; font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
@@ -436,7 +458,12 @@
         }
         .ops-board-actions { width:100%; }
         .ops-board-actions .rn-btn,
-        .ops-board-actions .rn-btn-primary { flex:1 1 100%; justify-content:center; }
+        .ops-board-actions .rn-btn-primary {
+            flex:1 1 100%;
+            width:100%;
+            max-width:100%;
+            justify-content:center;
+        }
         .ops-tab { min-height:34px; padding:0 11px; font-size:11px; }
         .ops-action-panel { position:static; min-width:0; box-shadow:none; margin-top:8px; }
     }
@@ -588,16 +615,28 @@
                     <h2>{{ collect($tabs)->firstWhere('key', $tab)['label'] ?? 'All Tasks' }}</h2>
                     <p>Direct actions stay visible here, so staff can call, map, start, complete, and open tasks without hopping through separate modules.</p>
                 </div>
-                <div class="ops-task-count">{{ $tasks->count() }} tasks</div>
+                <div class="ops-task-meta">
+                    <span id="deliverySelectedCount" class="ops-selected-count" aria-live="polite">0 selected</span>
+                    <div class="ops-task-count">{{ $taskResultsCount ?? $tasks->count() }} tasks</div>
+                </div>
             </div>
 
             @if($tasks->isEmpty())
                 <div class="ops-empty">No delivery or pickup tasks match the current board and filters right now.</div>
             @else
+                @php
+                    $taskStartIndex = method_exists($tasks, 'firstItem')
+                        ? ((int) ($tasks->firstItem() ?? 1))
+                        : 1;
+                @endphp
                 <div class="ops-table-wrap">
                     <table class="ops-table">
                         <thead>
                             <tr>
+                                <th class="ops-col-serial">#</th>
+                                <th class="ops-col-select ops-checkbox-head">
+                                    <input type="checkbox" id="deliverySelectAll" class="ops-select-all" aria-label="Select all visible tasks">
+                                </th>
                                 <th class="ops-col-type">Type</th>
                                 <th class="ops-col-order">Order / Rental</th>
                                 <th class="ops-col-customer">Customer</th>
@@ -610,6 +649,7 @@
                         <tbody>
                             @foreach($tasks as $delivery)
                                 @php
+                                    $serialNumber = $taskStartIndex + $loop->index;
                                     $isSaleTask = (bool) $delivery->sale_id;
                                     $customer = $isSaleTask ? $delivery->sale?->customer : $delivery->rental?->customer;
                                     $customerName = $customer?->displayName() ?: ($delivery->rental?->customer_name ?? 'Customer');
@@ -637,6 +677,22 @@
                                     $progressStatus = $isSaleTask
                                         ? $delivery->status
                                         : ($delivery->type === 'delivery' ? $delivery->rental?->deliveryStatus() : $delivery->rental?->pickupStatus());
+                                    $displayStatus = $delivery->status;
+                                    if (!$isSaleTask && $progressStatus) {
+                                        $displayStatus = match ($delivery->type) {
+                                            'delivery' => match ($progressStatus) {
+                                                'completed' => 'delivered',
+                                                'partially_delivered' => 'partially_delivered',
+                                                default => $delivery->status,
+                                            },
+                                            'pickup' => match ($progressStatus) {
+                                                'completed' => 'picked_up',
+                                                'partial_return' => 'partial_return',
+                                                default => $delivery->status,
+                                            },
+                                            default => $delivery->status,
+                                        };
+                                    }
                                     $progressCopy = $formatTaskProgress($delivery);
                                     $isOverdue = in_array($delivery->status, ['pending', 'in_progress'], true)
                                         && $delivery->scheduled_at?->isPast()
@@ -659,8 +715,19 @@
                                             ($delivery->type === 'delivery' && $delivery->rental && $delivery->rental->pendingDeliveryQuantityTotal() > 0)
                                             || ($delivery->type === 'pickup' && $delivery->rental && $delivery->rental->pendingPickupQuantityTotal() > 0)
                                         );
+                                    $taskEffectivelyCompleted = !$isSaleTask && $progressStatus === 'completed';
                                 @endphp
                                 <tr class="{{ $isOverdue ? 'is-overdue' : '' }}">
+                                    <td class="ops-col-serial ops-serial-cell" data-label="No.">{{ $serialNumber }}</td>
+                                    <td class="ops-col-select ops-checkbox-cell" data-label="Select">
+                                        <input
+                                            type="checkbox"
+                                            class="ops-task-checkbox"
+                                            value="{{ $delivery->id }}"
+                                            data-task-id="{{ $delivery->id }}"
+                                            aria-label="Select task {{ $serialNumber }}"
+                                        >
+                                    </td>
                                     <td class="ops-col-type">
                                         <span class="ops-type-badge {{ $delivery->type === 'pickup' ? 'ops-type-pickup' : 'ops-type-delivery' }}">
                                             {!! $navIcon($delivery->type === 'pickup' ? 'pickup' : 'delivery') !!}
@@ -724,10 +791,10 @@
                                     </td>
                                     <td class="ops-col-status">
                                         <div class="ops-status-stack">
-                                            <span class="rn-badge {{ $statusBadgeClass($delivery, $isOverdue) }}">
-                                                {{ ucfirst(str_replace('_', ' ', $delivery->status)) }}
+                                            <span class="rn-badge {{ $taskStatusBadgeClass($displayStatus, $isOverdue) }}">
+                                                {{ $taskStatusLabel($displayStatus) }}
                                             </span>
-                                            @if(!$isSaleTask && $progressStatus && $progressStatus !== $delivery->status)
+                                            @if(!$isSaleTask && $progressStatus && $progressStatus !== $delivery->status && $progressStatus !== $displayStatus)
                                                 <span class="rn-badge {{ $progressBadgeClass($progressStatus) }}">{{ $progressLabel($progressStatus) }}</span>
                                             @endif
                                             @if($progressCopy)
@@ -761,7 +828,7 @@
                                                     <span>View</span>
                                                 </a>
                                             @endif
-                                            @if($canUpdateDeliveries && $delivery->status === 'pending')
+                                            @if($canUpdateDeliveries && $delivery->status === 'pending' && !$taskEffectivelyCompleted)
                                                 <form action="{{ route('deliveries.in_progress', $delivery) }}" method="POST">
                                                     @csrf
                                                     @method('PUT')
@@ -771,7 +838,7 @@
                                                     </button>
                                                 </form>
                                             @endif
-                                            @if($canUpdateDeliveries && $delivery->status === 'in_progress')
+                                            @if($canUpdateDeliveries && $delivery->status === 'in_progress' && !$taskEffectivelyCompleted)
                                                 <form action="{{ route('deliveries.complete', $delivery) }}" method="POST">
                                                     @csrf
                                                     @method('PUT')
@@ -810,6 +877,7 @@
                 <div class="ops-mobile-list">
                     @foreach($tasks as $delivery)
                         @php
+                            $serialNumber = $taskStartIndex + $loop->index;
                             $isSaleTask = (bool) $delivery->sale_id;
                             $customer = $isSaleTask ? $delivery->sale?->customer : $delivery->rental?->customer;
                             $customerName = $customer?->displayName() ?: ($delivery->rental?->customer_name ?? 'Customer');
@@ -837,6 +905,22 @@
                             $progressStatus = $isSaleTask
                                 ? $delivery->status
                                 : ($delivery->type === 'delivery' ? $delivery->rental?->deliveryStatus() : $delivery->rental?->pickupStatus());
+                            $displayStatus = $delivery->status;
+                            if (!$isSaleTask && $progressStatus) {
+                                $displayStatus = match ($delivery->type) {
+                                    'delivery' => match ($progressStatus) {
+                                        'completed' => 'delivered',
+                                        'partially_delivered' => 'partially_delivered',
+                                        default => $delivery->status,
+                                    },
+                                    'pickup' => match ($progressStatus) {
+                                        'completed' => 'picked_up',
+                                        'partial_return' => 'partial_return',
+                                        default => $delivery->status,
+                                    },
+                                    default => $delivery->status,
+                                };
+                            }
                             $progressCopy = $formatTaskProgress($delivery);
                             $isOverdue = in_array($delivery->status, ['pending', 'in_progress'], true)
                                 && $delivery->scheduled_at?->isPast()
@@ -850,24 +934,35 @@
                                     ($delivery->type === 'delivery' && $delivery->rental && $delivery->rental->pendingDeliveryQuantityTotal() > 0)
                                     || ($delivery->type === 'pickup' && $delivery->rental && $delivery->rental->pendingPickupQuantityTotal() > 0)
                                 );
+                            $taskEffectivelyCompleted = !$isSaleTask && $progressStatus === 'completed';
                         @endphp
                         <div class="ops-mobile-card {{ $isOverdue ? 'is-overdue' : '' }}">
                             <div class="ops-mobile-top">
-                                <div class="ops-mobile-title">
-                                    <div class="ops-inline">
-                                        <span class="ops-type-badge {{ $delivery->type === 'pickup' ? 'ops-type-pickup' : 'ops-type-delivery' }}">
-                                            {!! $navIcon($delivery->type === 'pickup' ? 'pickup' : 'delivery') !!}
-                                            {{ ucfirst($delivery->type) }}
-                                        </span>
-                                        <span class="rn-badge {{ $statusBadgeClass($delivery, $isOverdue) }}">{{ ucfirst(str_replace('_', ' ', $delivery->status)) }}</span>
+                                <div class="ops-mobile-select">
+                                    <input
+                                        type="checkbox"
+                                        class="ops-task-checkbox"
+                                        value="{{ $delivery->id }}"
+                                        data-task-id="{{ $delivery->id }}"
+                                        aria-label="Select task {{ $serialNumber }}"
+                                    >
+                                    <div class="ops-mobile-title">
+                                        <div class="ops-inline">
+                                            <span class="ops-mobile-serial">#{{ $serialNumber }}</span>
+                                            <span class="ops-type-badge {{ $delivery->type === 'pickup' ? 'ops-type-pickup' : 'ops-type-delivery' }}">
+                                                {!! $navIcon($delivery->type === 'pickup' ? 'pickup' : 'delivery') !!}
+                                                {{ ucfirst($delivery->type) }}
+                                            </span>
+                                            <span class="rn-badge {{ $taskStatusBadgeClass($displayStatus, $isOverdue) }}">{{ $taskStatusLabel($displayStatus) }}</span>
+                                        </div>
+                                        @if($isSaleTask && \Illuminate\Support\Facades\Route::has('sales.show') && $delivery->sale)
+                                            <a href="{{ route('sales.show', $delivery->sale) }}" class="ops-record-link">Sale #{{ $delivery->sale->id }}</a>
+                                        @elseif(!$isSaleTask && \Illuminate\Support\Facades\Route::has('rentals.show') && $delivery->rental)
+                                            <a href="{{ route('rentals.show', $delivery->rental) }}" class="ops-record-link">Rental #{{ $delivery->rental->id }}</a>
+                                        @else
+                                            <strong>Task #{{ $delivery->id }}</strong>
+                                        @endif
                                     </div>
-                                    @if($isSaleTask && \Illuminate\Support\Facades\Route::has('sales.show') && $delivery->sale)
-                                        <a href="{{ route('sales.show', $delivery->sale) }}" class="ops-record-link">Sale #{{ $delivery->sale->id }}</a>
-                                    @elseif(!$isSaleTask && \Illuminate\Support\Facades\Route::has('rentals.show') && $delivery->rental)
-                                        <a href="{{ route('rentals.show', $delivery->rental) }}" class="ops-record-link">Rental #{{ $delivery->rental->id }}</a>
-                                    @else
-                                        <strong>Task #{{ $delivery->id }}</strong>
-                                    @endif
                                 </div>
                                 <details class="ops-action-menu">
                                     <summary aria-label="More actions for task {{ $delivery->id }}">{!! $navIcon('menu') !!}</summary>
@@ -908,9 +1003,9 @@
                                 </div>
                             </div>
 
-                            @if($progressCopy || (!$isSaleTask && $progressStatus && $progressStatus !== $delivery->status))
+                            @if($progressCopy || (!$isSaleTask && $progressStatus && $progressStatus !== $delivery->status && $progressStatus !== $displayStatus))
                                 <div class="ops-stack">
-                                    @if(!$isSaleTask && $progressStatus && $progressStatus !== $delivery->status)
+                                    @if(!$isSaleTask && $progressStatus && $progressStatus !== $delivery->status && $progressStatus !== $displayStatus)
                                         <span class="rn-badge {{ $progressBadgeClass($progressStatus) }}">{{ $progressLabel($progressStatus) }}</span>
                                     @endif
                                     @if($progressCopy)
@@ -944,7 +1039,7 @@
                                         <span>View</span>
                                     </a>
                                 @endif
-                                @if($canUpdateDeliveries && $delivery->status === 'pending')
+                                @if($canUpdateDeliveries && $delivery->status === 'pending' && !$taskEffectivelyCompleted)
                                     <form action="{{ route('deliveries.in_progress', $delivery) }}" method="POST" class="mobile-task-primary-form">
                                         @csrf
                                         @method('PUT')
@@ -954,7 +1049,7 @@
                                         </button>
                                     </form>
                                 @endif
-                                @if($canUpdateDeliveries && $delivery->status === 'in_progress')
+                                @if($canUpdateDeliveries && $delivery->status === 'in_progress' && !$taskEffectivelyCompleted)
                                     <form action="{{ route('deliveries.complete', $delivery) }}" method="POST" class="mobile-task-primary-form">
                                         @csrf
                                         @method('PUT')
@@ -971,6 +1066,12 @@
                         </div>
                     @endforeach
                 </div>
+
+                @if(method_exists($tasks, 'links'))
+                    <div class="ph-card" style="margin:12px 12px 0; padding:14px 16px;">
+                        {{ $tasks->links() }}
+                    </div>
+                @endif
             @endif
         </div>
 
@@ -1078,3 +1179,56 @@
     </div>
 </div>
 @endsection
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const selectAll = document.getElementById('deliverySelectAll');
+    const selectedCount = document.getElementById('deliverySelectedCount');
+
+    if (!selectAll || !selectedCount) {
+        return;
+    }
+
+    const rowChecks = Array.from(document.querySelectorAll('.ops-task-checkbox'));
+
+    const syncSelectionState = () => {
+        const uniqueSelected = new Set(
+            rowChecks
+                .filter((checkbox) => checkbox.checked)
+                .map((checkbox) => checkbox.dataset.taskId)
+        );
+        const selectedVisibleCount = uniqueSelected.size;
+        const allSelected = rowChecks.length > 0 && rowChecks.every((checkbox) => checkbox.checked);
+
+        selectAll.checked = allSelected;
+        selectAll.indeterminate = !allSelected && selectedVisibleCount > 0;
+        selectedCount.textContent = selectedVisibleCount + ' selected';
+        selectedCount.classList.toggle('is-visible', selectedVisibleCount > 0);
+    };
+
+    const syncMatchingCheckboxes = (changedCheckbox) => {
+        rowChecks.forEach((checkbox) => {
+            if (checkbox !== changedCheckbox && checkbox.dataset.taskId === changedCheckbox.dataset.taskId) {
+                checkbox.checked = changedCheckbox.checked;
+            }
+        });
+    };
+
+    selectAll.addEventListener('change', function () {
+        rowChecks.forEach((checkbox) => {
+            checkbox.checked = selectAll.checked;
+        });
+
+        syncSelectionState();
+    });
+
+    rowChecks.forEach((checkbox) => {
+        checkbox.addEventListener('change', function () {
+            syncMatchingCheckboxes(checkbox);
+            syncSelectionState();
+        });
+    });
+
+    syncSelectionState();
+});
+</script>

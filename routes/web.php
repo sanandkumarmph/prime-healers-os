@@ -4,6 +4,7 @@ use App\Http\Controllers\AssetController;
 use App\Http\Controllers\CityController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\DeliveryController;
+use App\Http\Controllers\GlobalSearchController;
 use App\Http\Controllers\InventoryDashboardController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\ImportController;
@@ -52,10 +53,18 @@ Route::middleware('auth')->group(function () {
     Route::post('/products/{product}/convert-to-sellable', [ProductController::class, 'convertToSellable'])
         ->middleware('module:products,update')
         ->name('products.convert-to-sellable');
+    Route::get('/products/export/csv', [ProductController::class, 'exportCsv'])
+        ->middleware('module:products,read')
+        ->name('products.export.csv');
+    Route::get('/assets/export/csv', [AssetController::class, 'exportCsv'])
+        ->middleware('module:assets,read')
+        ->name('assets.export.csv');
 
     Route::get('/customers/export/csv', [CustomerController::class, 'exportCsv'])
         ->middleware('permission:customers.export')
         ->name('customers.export.csv');
+    Route::get('/search', [GlobalSearchController::class, 'index'])
+        ->name('search.global');
     Route::get('/customers/{id}/id-proof', [CustomerController::class, 'downloadIdProof'])
         ->middleware('permission:customers.proof.download')
         ->name('customers.id-proof.download');

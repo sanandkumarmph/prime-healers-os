@@ -269,8 +269,8 @@
     <div class="org-settings-shell">
         <div class="org-settings-hero">
             <div>
-                <h1>Organization Settings</h1>
-                <p>Manage organization-level invoice, payment, and branding defaults from the same admin control center used for users, roles, cities, warehouses, and vendors.</p>
+                <h1>Company Settings</h1>
+                <p>Manage Prime Healers invoice, payment, and branding defaults from the same internal admin control center used for users, roles, cities, warehouses, and vendors.</p>
             </div>
             <div class="org-settings-badge">Super Admin</div>
         </div>
@@ -323,14 +323,14 @@
             <div class="org-panel-grid">
                 <div class="org-panel">
                     <div class="org-panel-header" id="company">
-                        <h2 class="org-panel-title">Organization Details</h2>
+                        <h2 class="org-panel-title">Company Details</h2>
                         <p class="org-panel-subtitle">These values appear in invoice headers and customer-facing communication.</p>
                     </div>
 
                     <div class="org-panel-body">
                         <div class="org-grid-2">
                             <div>
-                                <label class="org-label">Organization Name</label>
+                                <label class="org-label">Company Name</label>
                                 <input type="text" name="name" value="{{ old('name', $organization->name) }}" class="org-input">
                             </div>
 
@@ -520,7 +520,7 @@
                 </div>
 
                 <div class="org-actions">
-                    <button type="submit" class="org-save-button">Save Organization Settings</button>
+                    <button type="submit" class="org-save-button">Save Company Settings</button>
                 </div>
             </div>
         </form>

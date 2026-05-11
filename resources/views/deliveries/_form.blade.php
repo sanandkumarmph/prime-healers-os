@@ -2,6 +2,7 @@
     $isEdit = isset($delivery);
     $selectedAssignmentType = old('assignment_type', $isEdit ? ($delivery->assignment_type ?? 'delivery_team') : 'delivery_team');
     $selectedTypeValue = old('type', $isEdit ? $delivery->type : ($selectedType ?? 'delivery'));
+    $selectedStatusValue = old('status', $isEdit ? $delivery->status : 'pending');
     $selectedRentalValue = old('rental_id', $isEdit ? $delivery->rental_id : ($selectedRentalId ?? null));
     $selectedSaleValue = old('sale_id', $isEdit ? ($delivery->sale_id ?? null) : ($selectedSaleId ?? null));
     $selectedSaleAssetValue = old('sale_asset_id', $isEdit ? ($delivery->sale?->asset_id ?? null) : null);
@@ -19,6 +20,14 @@
     })->values()->all();
     $hasFieldError = fn (string $field) => $errors->has($field);
     $fieldError = fn (string $field) => $errors->first($field);
+    $statusDisplayLabel = function (string $type, ?string $status): string {
+        return match ($status) {
+            'completed' => $type === 'pickup' ? 'Picked Up' : 'Delivered',
+            'in_progress' => 'In Progress',
+            'cancelled' => 'Cancelled',
+            default => 'Pending',
+        };
+    };
     $thirdPartyPhoneParts = \App\Support\PhoneNumber::split(old('third_party_phone', $isEdit ? $delivery->third_party_phone : ''));
     $countryCodeOptions = \App\Support\PhoneNumber::countryCodeOptions();
 @endphp
@@ -157,7 +166,7 @@
             </div>
             <div class="summary-box">
                 <span>Status</span>
-                <strong id="summaryStatus">{{ ucfirst(str_replace('_', ' ', old('status', $isEdit ? $delivery->status : 'pending'))) }}</strong>
+                <strong id="summaryStatus">{{ $statusDisplayLabel($selectedTypeValue, $selectedStatusValue) }}</strong>
             </div>
         </div>
     </div>
@@ -233,10 +242,10 @@
             <div class="ops-field span-3 {{ $hasFieldError('status') ? 'is-error' : '' }}">
                 <label for="status">Status</label>
                 <select name="status" id="status" required>
-                    <option value="pending" {{ old('status', $isEdit ? $delivery->status : 'pending') === 'pending' ? 'selected' : '' }}>Pending</option>
-                    <option value="in_progress" {{ old('status', $isEdit ? $delivery->status : 'pending') === 'in_progress' ? 'selected' : '' }}>In Progress</option>
-                    <option value="completed" {{ old('status', $isEdit ? $delivery->status : 'pending') === 'completed' ? 'selected' : '' }}>Completed</option>
-                    @if(old('status', $isEdit ? $delivery->status : 'pending') === 'cancelled')
+                    <option value="pending" {{ $selectedStatusValue === 'pending' ? 'selected' : '' }}>Pending</option>
+                    <option value="in_progress" {{ $selectedStatusValue === 'in_progress' ? 'selected' : '' }}>In Progress</option>
+                    <option value="completed" {{ $selectedStatusValue === 'completed' ? 'selected' : '' }} data-delivery-label="Delivered" data-pickup-label="Picked Up">{{ $statusDisplayLabel($selectedTypeValue, 'completed') }}</option>
+                    @if($selectedStatusValue === 'cancelled')
                         <option value="cancelled" selected>Cancelled</option>
                     @endif
                 </select>
@@ -400,7 +409,19 @@
             });
         });
 
+        function syncStatusLabels() {
+            const completedOption = statusSelect.querySelector('option[value="completed"]');
+            if (!completedOption) {
+                return;
+            }
+
+            const deliveryLabel = completedOption.getAttribute('data-delivery-label') || 'Delivered';
+            const pickupLabel = completedOption.getAttribute('data-pickup-label') || 'Picked Up';
+            completedOption.textContent = typeSelect.value === 'pickup' ? pickupLabel : deliveryLabel;
+        }
+
         function updateSummary() {
+            syncStatusLabels();
             summaryType.textContent = typeSelect.options[typeSelect.selectedIndex].textContent.trim();
             summaryAssignment.textContent = assignmentTypeSelect.options[assignmentTypeSelect.selectedIndex].textContent.trim();
             summaryStatus.textContent = statusSelect.options[statusSelect.selectedIndex].textContent.trim();

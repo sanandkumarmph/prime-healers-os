@@ -273,6 +273,7 @@ class ImportService
         $assetPrecheck = [
             'untracked_products' => [],
         ];
+        $productIdentityRows = [];
 
         foreach (($upload['rows'] ?? []) as $index => $row) {
             $rowNumber = $index + 2;
@@ -304,6 +305,27 @@ class ImportService
                     }
                 }
                 continue;
+            }
+
+            if ($module === self::PRODUCT) {
+                $identityKey = $this->productImportIdentityKey($normalized);
+
+                if ($identityKey !== null) {
+                    $existingRowNumber = $productIdentityRows[$identityKey] ?? null;
+
+                    if ($existingRowNumber !== null) {
+                        $invalidRows[] = [
+                            'row_number' => $rowNumber,
+                            'source' => $row,
+                            'mapped' => $mapped,
+                            'errors' => ['This file contains another row with the same Product Name, Brand, and Model (row '.$existingRowNumber.').'],
+                            'guidance' => $guidance,
+                        ];
+                        continue;
+                    }
+
+                    $productIdentityRows[$identityKey] = $rowNumber;
+                }
             }
 
             if (!empty($normalized['import_action'])) {
@@ -363,6 +385,9 @@ class ImportService
 
         $rows = collect($preview['valid_rows'] ?? []);
         $chunkSize = (int) ($this->module($module)['chunk_size'] ?? 100);
+        $productUpsertWhitelistIds = $module === self::PRODUCT
+            ? Product::query()->where('organization_id', $organizationId)->pluck('id')->map(fn ($id) => (int) $id)->all()
+            : null;
         $result = [
             'processed' => 0,
             'created' => 0,
@@ -372,8 +397,8 @@ class ImportService
             'error_report_available' => false,
         ];
 
-        $rows->chunk($chunkSize)->each(function (Collection $chunk) use ($module, $organizationId, $userId, &$result) {
-            DB::transaction(function () use ($chunk, $module, $organizationId, $userId, &$result) {
+        $rows->chunk($chunkSize)->each(function (Collection $chunk) use ($module, $organizationId, $userId, $productUpsertWhitelistIds, &$result) {
+            DB::transaction(function () use ($chunk, $module, $organizationId, $userId, $productUpsertWhitelistIds, &$result) {
                 $touchedProductIds = [];
 
                 foreach ($chunk as $row) {
@@ -383,7 +408,7 @@ class ImportService
 
                         $action = match ($module) {
                             self::CUSTOMER => $this->importCustomerRow($payload, $organizationId),
-                            self::PRODUCT => $this->importProductRow($payload, $organizationId),
+                            self::PRODUCT => $this->importProductRow($payload, $organizationId, $productUpsertWhitelistIds),
                             self::ASSET => $this->importAssetRow($payload, $organizationId, $userId, $touchedProductIds),
                             self::RENTAL => $this->importRentalRow($payload, $organizationId, $userId),
                             default => throw new RuntimeException('Unsupported import module.'),
@@ -493,9 +518,9 @@ class ImportService
         return 'created';
     }
 
-    private function importProductRow(array $payload, int $organizationId): string
+    private function importProductRow(array $payload, int $organizationId, ?array $upsertWhitelistIds = null): string
     {
-        $product = $this->findProductForImportUpsert($organizationId, $payload);
+        $product = $this->findProductForImportUpsert($organizationId, $payload, $upsertWhitelistIds);
 
         if ($product) {
             $product->fill($payload)->save();
@@ -684,6 +709,12 @@ class ImportService
 
         $pricePerDay = $this->normalizeDecimal($mapped['price_per_day'] ?? null)
             ?? $this->normalizeDecimal($mapped['rental_price'] ?? null);
+        $rentalPrice = $this->normalizeDecimal($mapped['rental_price'] ?? null);
+        $salePrice = $this->normalizeDecimal($mapped['sale_price'] ?? null);
+
+        if ($productType === Product::TYPE_SELLABLE && $pricePerDay === null) {
+            $pricePerDay = 0.0;
+        }
 
         if ($productType === Product::TYPE_RENTABLE && $pricePerDay === null) {
             $errors[] = 'Price per day or rental price is required for rentable products.';
@@ -704,8 +735,8 @@ class ImportService
             'rental_price_15_days' => $this->normalizeDecimal($mapped['rental_price_15_days'] ?? null),
             'rental_price_30_days' => $this->normalizeDecimal($mapped['rental_price_30_days'] ?? null),
             'rental_price_3_months' => $this->normalizeDecimal($mapped['rental_price_3_months'] ?? null),
-            'sale_price' => $this->normalizeDecimal($mapped['sale_price'] ?? null),
-            'rental_price' => $this->normalizeDecimal($mapped['rental_price'] ?? null),
+            'sale_price' => $salePrice,
+            'rental_price' => $rentalPrice,
         ], $errors];
     }
 
@@ -1579,9 +1610,14 @@ class ImportService
         return null;
     }
 
-    private function findProductForImportUpsert(int $organizationId, array $payload): ?Product
+    private function findProductForImportUpsert(int $organizationId, array $payload, ?array $upsertWhitelistIds = null): ?Product
     {
         $query = Product::query()->where('organization_id', $organizationId);
+
+        if (is_array($upsertWhitelistIds)) {
+            $query->whereIn('id', $upsertWhitelistIds);
+        }
+
         $code = $this->cleanText($payload['product_code'] ?? null);
         $sku = $this->cleanText($payload['sku'] ?? null);
         $name = $this->cleanText($payload['name'] ?? null);
@@ -1616,6 +1652,21 @@ class ImportService
         }
 
         return $nameMatches->count() === 1 ? $nameMatches->first() : null;
+    }
+
+    private function productImportIdentityKey(array $payload): ?string
+    {
+        $name = Str::lower($this->cleanText($payload['name'] ?? null));
+
+        if ($name === '') {
+            return null;
+        }
+
+        return implode('|', [
+            $name,
+            Str::lower($this->cleanText($payload['brand'] ?? null)),
+            Str::lower($this->cleanText($payload['model_name'] ?? null)),
+        ]);
     }
 
     private function pendingSerialPrefix(Product $product): string

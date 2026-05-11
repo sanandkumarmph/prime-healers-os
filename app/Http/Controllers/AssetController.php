@@ -353,6 +353,37 @@ class AssetController extends Controller
         ]);
     }
 
+    private function assetIndexQuery(int $organizationId)
+    {
+        return Asset::with([
+            'product:id,name,brand,model_name,product_code,sku',
+            'warehouse',
+            'activeRentalAssignments.rental.customer',
+            'rentalAssignments.rental.customer',
+            'sales.customer',
+        ])->where('organization_id', $organizationId);
+    }
+
+    private function applyAssetIndexFilters($query, Request $request)
+    {
+        return $query
+            ->when($request->filled('search'), function ($query) use ($request) {
+                $search = trim((string) $request->search);
+
+                $query->where(function ($innerQuery) use ($search) {
+                    $innerQuery->where('serial_number', 'like', '%' . $search . '%')
+                        ->orWhere('barcode_value', 'like', '%' . $search . '%')
+                        ->orWhere('asset_name', 'like', '%' . $search . '%')
+                        ->orWhereHas('product', fn ($productQuery) => $productQuery->where('name', 'like', '%' . $search . '%'));
+                });
+            })
+            ->when($request->filled('product_id'), fn ($query) => $query->where('product_id', $request->product_id))
+            ->when($request->filled('asset_stage'), fn ($query) => $query->where('asset_stage', $request->asset_stage))
+            ->when($request->filled('warehouse_id'), fn ($query) => $query->where('warehouse_id', $request->warehouse_id))
+            ->when($request->filled('asset_status'), fn ($query) => $query->where('asset_status', $request->asset_status))
+            ->when($request->filled('condition_status'), fn ($query) => $query->where('condition_status', $request->condition_status));
+    }
+
     public function index(Request $request)
     {
         $organizationId = $this->orgId();
@@ -375,29 +406,7 @@ class AssetController extends Controller
             'maintenance_assets' => Asset::where('organization_id', $organizationId)->where('asset_stage', Asset::STAGE_RENTAL_STOCK)->where('asset_status', 'maintenance')->count(),
         ];
 
-        $assets = Asset::with([
-                'product:id,name,brand,model_name,product_code,sku',
-                'warehouse',
-                'activeRentalAssignments.rental.customer',
-                'rentalAssignments.rental.customer',
-                'sales.customer',
-            ])
-            ->where('organization_id', $organizationId)
-            ->when($request->filled('search'), function ($query) use ($request) {
-                $search = trim((string) $request->search);
-
-                $query->where(function ($innerQuery) use ($search) {
-                    $innerQuery->where('serial_number', 'like', '%' . $search . '%')
-                        ->orWhere('barcode_value', 'like', '%' . $search . '%')
-                        ->orWhere('asset_name', 'like', '%' . $search . '%')
-                        ->orWhereHas('product', fn ($productQuery) => $productQuery->where('name', 'like', '%' . $search . '%'));
-                });
-            })
-            ->when($request->filled('product_id'), fn ($query) => $query->where('product_id', $request->product_id))
-            ->when($request->filled('asset_stage'), fn ($query) => $query->where('asset_stage', $request->asset_stage))
-            ->when($request->filled('warehouse_id'), fn ($query) => $query->where('warehouse_id', $request->warehouse_id))
-            ->when($request->filled('asset_status'), fn ($query) => $query->where('asset_status', $request->asset_status))
-            ->when($request->filled('condition_status'), fn ($query) => $query->where('condition_status', $request->condition_status))
+        $assets = $this->applyAssetIndexFilters($this->assetIndexQuery($organizationId), $request)
             ->latest()
             ->paginate(12)
             ->withQueryString();
@@ -421,6 +430,57 @@ class AssetController extends Controller
             'summary' => $summary,
             'duplicateProductNameGroups' => $duplicateProductNameGroups,
             'mixedAssetProductGroups' => $mixedAssetProductGroups,
+        ]);
+    }
+
+    public function exportCsv(Request $request)
+    {
+        $assets = $this->applyAssetIndexFilters($this->assetIndexQuery($this->orgId()), $request)
+            ->latest()
+            ->get();
+
+        return response()->streamDownload(function () use ($assets) {
+            $output = fopen('php://output', 'w');
+
+            fputcsv($output, [
+                '#',
+                'Product',
+                'Brand',
+                'Model',
+                'Unit Type',
+                'Serial Number',
+                'Barcode',
+                'Warehouse',
+                'Asset Status',
+                'Condition',
+                'Asset Name',
+                'Product Code',
+                'SKU',
+                'Created Date',
+            ]);
+
+            foreach ($assets as $index => $asset) {
+                fputcsv($output, [
+                    $index + 1,
+                    $asset->product?->name,
+                    $asset->product?->brand,
+                    $asset->product?->model_name,
+                    $asset->asset_stage,
+                    $asset->serial_number,
+                    $asset->barcode_value,
+                    $asset->warehouse?->name,
+                    $asset->asset_status,
+                    $asset->condition_status,
+                    $asset->asset_name,
+                    $asset->product?->product_code,
+                    $asset->product?->sku,
+                    optional($asset->created_at)->format('Y-m-d H:i:s'),
+                ]);
+            }
+
+            fclose($output);
+        }, 'asset-register-' . now()->format('Ymd-His') . '.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
 

@@ -12,6 +12,11 @@
     $rental30DayValue = old('rental_price_30_days', $product->rental_price_30_days ?? $product->rental_price);
     $rental3MonthValue = old('rental_price_3_months', $product->rental_price_3_months);
     $quantityValue = old('quantity', (int) ($product->total_quantity ?? 0));
+    $gstTaxTypeValue = old('gst_tax_type', $product->gst_tax_type);
+    $gstCalculationModeValue = old('gst_calculation_mode', $product->gst_calculation_mode ?? 'exclusive');
+    $cgstRateValue = old('cgst_rate', $product->cgst_rate ?? 0);
+    $sgstRateValue = old('sgst_rate', $product->sgst_rate ?? 0);
+    $igstRateValue = old('igst_rate', $product->igst_rate ?? 0);
     $managedSaleUnitsCount = $isEdit ? (int) $product->saleUnits()->count() : 0;
     $managedRentalAssetsCount = $isEdit
         ? (int) $product->assets()->where('asset_stage', \App\Models\Asset::STAGE_RENTAL_STOCK)->count()
@@ -397,6 +402,69 @@
                                 </div>
                             </div>
                         </div>
+
+                        <div style="display:grid; gap:14px; margin-top:4px;">
+                            <div>
+                                <div style="font-size:11px; color:#0f766e; font-weight:800; text-transform:uppercase; letter-spacing:0.08em;">GST Setup</div>
+                                <div style="margin-top:6px; color:#64748b; font-size:13px;">Save the product-level GST structure so it can be reviewed and modified later.</div>
+                            </div>
+
+                            <div class="product-form-two-col">
+                                <div>
+                                    <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">GST Type</label>
+                                    <select name="gst_tax_type" id="gst_tax_type"
+                                           style="{{ $fieldStyle('gst_tax_type', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
+                                        <option value="">Not set</option>
+                                        <option value="{{ \App\Models\Product::GST_TAX_TYPE_CGST_SGST }}" @selected($gstTaxTypeValue === \App\Models\Product::GST_TAX_TYPE_CGST_SGST)>CGST + SGST</option>
+                                        <option value="{{ \App\Models\Product::GST_TAX_TYPE_IGST }}" @selected($gstTaxTypeValue === \App\Models\Product::GST_TAX_TYPE_IGST)>IGST</option>
+                                    </select>
+                                    @if($fieldError('gst_tax_type'))
+                                        <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('gst_tax_type') }}</div>
+                                    @endif
+                                </div>
+
+                                <div>
+                                    <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">GST Mode</label>
+                                    <select name="gst_calculation_mode" id="gst_calculation_mode"
+                                           style="{{ $fieldStyle('gst_calculation_mode', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
+                                        <option value="exclusive" @selected($gstCalculationModeValue === 'exclusive')>Exclusive</option>
+                                        <option value="inclusive" @selected($gstCalculationModeValue === 'inclusive')>Inclusive</option>
+                                    </select>
+                                    @if($fieldError('gst_calculation_mode'))
+                                        <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('gst_calculation_mode') }}</div>
+                                    @endif
+                                </div>
+                            </div>
+
+                            <div id="gstSplitRates" class="product-form-two-col {{ $gstTaxTypeValue === \App\Models\Product::GST_TAX_TYPE_CGST_SGST ? '' : 'is-hidden' }}">
+                                <div>
+                                    <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">CGST Rate %</label>
+                                    <input type="number" min="0" max="100" step="0.01" name="cgst_rate" id="cgst_rate" value="{{ $cgstRateValue }}"
+                                           style="{{ $fieldStyle('cgst_rate', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
+                                    @if($fieldError('cgst_rate'))
+                                        <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('cgst_rate') }}</div>
+                                    @endif
+                                </div>
+
+                                <div>
+                                    <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">SGST Rate %</label>
+                                    <input type="number" min="0" max="100" step="0.01" name="sgst_rate" id="sgst_rate" value="{{ $sgstRateValue }}"
+                                           style="{{ $fieldStyle('sgst_rate', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
+                                    @if($fieldError('sgst_rate'))
+                                        <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('sgst_rate') }}</div>
+                                    @endif
+                                </div>
+                            </div>
+
+                            <div id="gstIgstRateWrap" class="{{ $gstTaxTypeValue === \App\Models\Product::GST_TAX_TYPE_IGST ? '' : 'is-hidden' }}">
+                                <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">IGST Rate %</label>
+                                <input type="number" min="0" max="100" step="0.01" name="igst_rate" id="igst_rate" value="{{ $igstRateValue }}"
+                                       style="{{ $fieldStyle('igst_rate', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
+                                @if($fieldError('igst_rate'))
+                                    <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('igst_rate') }}</div>
+                                @endif
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -421,7 +489,13 @@
                             Per Day {{ $pricePerDayValue !== null && $pricePerDayValue !== '' ? $rupee . ' ' . number_format((float) $pricePerDayValue, 2) : 'not set' }}<br>
                             15 Days {{ $rental15DayValue !== null && $rental15DayValue !== '' ? $rupee . ' ' . number_format((float) $rental15DayValue, 2) : 'not set' }}<br>
                             30 Days {{ $rental30DayValue !== null && $rental30DayValue !== '' ? $rupee . ' ' . number_format((float) $rental30DayValue, 2) : 'not set' }}<br>
-                            3 Months {{ $rental3MonthValue !== null && $rental3MonthValue !== '' ? $rupee . ' ' . number_format((float) $rental3MonthValue, 2) : 'not set' }}
+                            3 Months {{ $rental3MonthValue !== null && $rental3MonthValue !== '' ? $rupee . ' ' . number_format((float) $rental3MonthValue, 2) : 'not set' }}<br>
+                            GST {{ $gstTaxTypeValue === \App\Models\Product::GST_TAX_TYPE_CGST_SGST
+                                ? 'CGST '.number_format((float) $cgstRateValue, 2).'% + SGST '.number_format((float) $sgstRateValue, 2).'%'
+                                : ($gstTaxTypeValue === \App\Models\Product::GST_TAX_TYPE_IGST
+                                    ? 'IGST '.number_format((float) $igstRateValue, 2).'%'
+                                    : 'not set') }} /
+                            {{ $gstCalculationModeValue === 'inclusive' ? 'Inclusive' : 'Exclusive' }}
                         </div>
                     </div>
                 </div>
@@ -445,6 +519,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const productType = document.getElementById('product_type');
     const stockMessages = Array.from(document.querySelectorAll('.product-stock-message'));
     const pricePerDay = document.getElementById('price_per_day');
+    const gstTaxType = document.getElementById('gst_tax_type');
+    const gstSplitRates = document.getElementById('gstSplitRates');
+    const gstIgstRateWrap = document.getElementById('gstIgstRateWrap');
 
     if (!productType) {
         return;
@@ -466,8 +543,26 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     };
 
+    const syncGstMode = function () {
+        if (!gstTaxType) {
+            return;
+        }
+
+        const value = gstTaxType.value || '';
+
+        if (gstSplitRates) {
+            gstSplitRates.classList.toggle('is-hidden', value !== '{{ \App\Models\Product::GST_TAX_TYPE_CGST_SGST }}');
+        }
+
+        if (gstIgstRateWrap) {
+            gstIgstRateWrap.classList.toggle('is-hidden', value !== '{{ \App\Models\Product::GST_TAX_TYPE_IGST }}');
+        }
+    };
+
     productType.addEventListener('change', syncMode);
+    gstTaxType?.addEventListener('change', syncGstMode);
     syncMode();
+    syncGstMode();
 });
 </script>
 @endpush

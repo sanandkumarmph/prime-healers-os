@@ -402,6 +402,353 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
         $this->assertSame(Asset::STATUS_RENTED, $asset->fresh()->asset_status);
     }
 
+    public function test_delivery_detail_prefers_delivered_status_and_pickup_not_assigned_copy(): void
+    {
+        $organization = TestData::organization();
+        $this->actingAs(TestData::user($organization));
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Delivery Detail Customer',
+            'phone' => '8888888899',
+        ]);
+
+        $warehouse = Warehouse::create([
+            'organization_id' => $organization->id,
+            'name' => 'Delivery Detail Warehouse',
+            'code' => 'DDW',
+            'is_active' => true,
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Oxygen Concentrator 5 LP',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_RENTAL,
+            'price_per_day' => 1800,
+            'sale_price' => 0,
+            'rental_price' => 1800,
+            'available_quantity' => 0,
+            'total_quantity' => 0,
+        ]);
+
+        $asset = Asset::create([
+            'organization_id' => $organization->id,
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'asset_name' => 'Delivery Detail Asset',
+            'serial_number' => 'DD-001',
+            'asset_stage' => Asset::STAGE_RENTAL_STOCK,
+            'condition_status' => 'good',
+            'asset_status' => Asset::STATUS_RENTED,
+        ]);
+
+        $rental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'dispatch_warehouse_id' => $warehouse->id,
+            'quantity' => 1,
+            'start_date' => now()->toDateString(),
+            'end_date' => now()->addDays(3)->toDateString(),
+            'rental_amount' => 1800,
+            'status' => 'active',
+        ]);
+
+        RentalItem::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'product_id' => $product->id,
+            'asset_ids' => [$asset->id],
+            'quantity' => 1,
+            'delivered_quantity' => 1,
+            'returned_quantity' => 0,
+            'unit_rental_amount' => 1800,
+            'line_total' => 1800,
+        ]);
+
+        RentalAsset::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'asset_id' => $asset->id,
+            'assigned_at' => now()->subHour(),
+        ]);
+
+        $delivery = Delivery::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'type' => 'delivery',
+            'scheduled_at' => now(),
+            'status' => 'in_progress',
+            'notes' => 'Delivery detail wording task',
+        ]);
+
+        $response = $this->get(route('deliveries.show', $delivery));
+
+        $response->assertOk();
+        $response->assertSee('>Delivered<', false);
+        $response->assertDontSee('>In Progress<', false);
+        $response->assertSeeText('Pickup Not Assigned');
+        $response->assertDontSeeText('Pickup Pending');
+        $response->assertDontSee('>Completed<', false);
+        $response->assertDontSee('>Pending<', false);
+    }
+
+    public function test_delivery_index_prefers_delivered_status_badge_for_fully_delivered_rental(): void
+    {
+        $organization = TestData::organization();
+        $this->actingAs(TestData::user($organization));
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Delivery Index Customer',
+            'phone' => '8888888800',
+        ]);
+
+        $warehouse = Warehouse::create([
+            'organization_id' => $organization->id,
+            'name' => 'Delivery Index Warehouse',
+            'code' => 'DIW',
+            'is_active' => true,
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'BiPAP Machine',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_RENTAL,
+            'price_per_day' => 2200,
+            'sale_price' => 0,
+            'rental_price' => 2200,
+            'available_quantity' => 0,
+            'total_quantity' => 0,
+        ]);
+
+        $asset = Asset::create([
+            'organization_id' => $organization->id,
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'asset_name' => 'Delivery Index Asset',
+            'serial_number' => 'DI-001',
+            'asset_stage' => Asset::STAGE_RENTAL_STOCK,
+            'condition_status' => 'good',
+            'asset_status' => Asset::STATUS_RENTED,
+        ]);
+
+        $rental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'dispatch_warehouse_id' => $warehouse->id,
+            'quantity' => 1,
+            'start_date' => now()->toDateString(),
+            'end_date' => now()->addDays(5)->toDateString(),
+            'rental_amount' => 2200,
+            'status' => 'active',
+        ]);
+
+        RentalItem::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'product_id' => $product->id,
+            'asset_ids' => [$asset->id],
+            'quantity' => 1,
+            'delivered_quantity' => 1,
+            'returned_quantity' => 0,
+            'unit_rental_amount' => 2200,
+            'line_total' => 2200,
+        ]);
+
+        RentalAsset::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'asset_id' => $asset->id,
+            'assigned_at' => now()->subHour(),
+        ]);
+
+        Delivery::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'type' => 'delivery',
+            'scheduled_at' => now(),
+            'status' => 'in_progress',
+            'notes' => 'Delivery index wording task',
+        ]);
+
+        $response = $this->get(route('deliveries.index'));
+
+        $response->assertOk();
+        $response->assertSee('>Delivered<', false);
+        $response->assertDontSee('class="rn-badge rn-badge-active">In Progress</span>', false);
+        $response->assertSeeText('1/1 delivered');
+    }
+
+    public function test_delivery_index_excludes_completed_pickups_from_pending_widget_and_hides_complete_action(): void
+    {
+        $organization = TestData::organization();
+        $this->actingAs(TestData::user($organization));
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Pickup Widget Customer',
+            'phone' => '8888888801',
+        ]);
+
+        $warehouse = Warehouse::create([
+            'organization_id' => $organization->id,
+            'name' => 'Pickup Widget Warehouse',
+            'code' => 'PWW',
+            'is_active' => true,
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Suction Machine',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_RENTAL,
+            'price_per_day' => 1900,
+            'sale_price' => 0,
+            'rental_price' => 1900,
+            'available_quantity' => 0,
+            'total_quantity' => 0,
+        ]);
+
+        $asset = Asset::create([
+            'organization_id' => $organization->id,
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'asset_name' => 'Pickup Widget Asset',
+            'serial_number' => 'PW-001',
+            'asset_stage' => Asset::STAGE_RENTAL_STOCK,
+            'condition_status' => 'good',
+            'asset_status' => Asset::STATUS_AWAITING_VERIFICATION,
+        ]);
+
+        $rental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'dispatch_warehouse_id' => $warehouse->id,
+            'quantity' => 1,
+            'start_date' => now()->subDays(4)->toDateString(),
+            'end_date' => now()->subDay()->toDateString(),
+            'rental_amount' => 1900,
+            'status' => 'returned',
+            'returned_at' => now()->subHour(),
+        ]);
+
+        RentalItem::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'product_id' => $product->id,
+            'asset_ids' => [$asset->id],
+            'quantity' => 1,
+            'delivered_quantity' => 1,
+            'returned_quantity' => 1,
+            'unit_rental_amount' => 1900,
+            'line_total' => 1900,
+        ]);
+
+        RentalAsset::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'asset_id' => $asset->id,
+            'assigned_at' => now()->subDays(2),
+            'returned_at' => now()->subHour(),
+        ]);
+
+        $pickup = Delivery::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'type' => 'pickup',
+            'scheduled_at' => now(),
+            'status' => 'in_progress',
+            'notes' => 'Pickup widget wording task',
+        ]);
+
+        $response = $this->get(route('deliveries.index'));
+
+        $response->assertOk();
+        $response->assertSee('>Picked Up<', false);
+        $response->assertSeeText('No pending pickups');
+        $response->assertDontSee('title="Complete task"', false);
+        $response->assertDontSee('title="Complete partial task"', false);
+    }
+
+    public function test_delivery_index_shows_serial_and_select_all_checkbox_markup(): void
+    {
+        $organization = TestData::organization();
+        $this->actingAs(TestData::user($organization));
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Board Selection Customer',
+            'phone' => '8888888802',
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Board Selection Product',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'price_per_day' => 1800,
+            'sale_price' => 0,
+            'rental_price' => 1800,
+            'available_quantity' => 5,
+            'total_quantity' => 5,
+        ]);
+
+        $rental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'start_date' => now()->toDateString(),
+            'end_date' => now()->addDays(3)->toDateString(),
+            'rental_amount' => 1800,
+            'status' => 'active',
+        ]);
+
+        RentalItem::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'delivered_quantity' => 0,
+            'returned_quantity' => 0,
+            'unit_rental_amount' => 1800,
+            'line_total' => 1800,
+        ]);
+
+        Delivery::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'type' => 'delivery',
+            'scheduled_at' => now(),
+            'status' => 'pending',
+            'notes' => 'Board selection task',
+        ]);
+
+        $response = $this->get(route('deliveries.index'));
+
+        $response->assertOk()
+            ->assertSee('id="deliverySelectAll"', false)
+            ->assertSee('class="ops-task-checkbox"', false);
+
+        $this->assertMatchesRegularExpression(
+            '/<td class="ops-col-serial ops-serial-cell" data-label="No\.">\s*1\s*<\/td>/',
+            $response->getContent()
+        );
+    }
+
     public function test_marking_sale_delivery_completed_marks_sale_asset_sold(): void
     {
         $organization = TestData::organization();
@@ -887,6 +1234,39 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
                     && $dashboard['available_assets'] === 1
                     && $dashboard['rented_assets'] === 1;
             });
+    }
+
+    public function test_inventory_dashboard_product_stock_position_uses_opening_quantity_for_untracked_products(): void
+    {
+        $organization = TestData::organization();
+        $this->actingAs(TestData::user($organization, [
+            'email' => 'inventory-untracked@example.com',
+        ]));
+
+        Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'BiPAP Disposable Filter',
+            'category' => 'Consumables',
+            'brand' => 'ResMed',
+            'model_name' => 'Filter Pack',
+            'product_type' => Product::TYPE_SELLABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'price_per_day' => 0,
+            'sale_price' => 180,
+            'rental_price' => null,
+            'available_quantity' => 1,
+            'total_quantity' => 1,
+        ]);
+
+        $response = $this->get(route('inventory.dashboard'));
+
+        $response->assertOk()
+            ->assertSee('Product Stock Position')
+            ->assertSee('untracked products use the opening quantity from Product Master')
+            ->assertSee('BiPAP Disposable Filter')
+            ->assertSee('Untracked Opening Stock')
+            ->assertSeeInOrder(['Sale Units', 'Available to Sell'], false)
+            ->assertSeeInOrder(['BiPAP Disposable Filter', '>1<', '>1<'], false);
     }
 
     public function test_permissions_and_mobile_critical_routes_do_not_error(): void

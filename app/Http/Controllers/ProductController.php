@@ -18,6 +18,85 @@ use Illuminate\Validation\ValidationException;
 
 class ProductController extends Controller
 {
+    private function productCatalogQuery()
+    {
+        return Product::query()
+            ->withCount([
+                'assets as assets_count' => fn ($query) => $query->where('asset_stage', Asset::STAGE_RENTAL_STOCK),
+                'assets as available_assets_count' => fn ($query) => $query->where('asset_stage', Asset::STAGE_RENTAL_STOCK)->where('asset_status', 'available'),
+                'assets as rented_assets_count' => fn ($query) => $query->where('asset_stage', Asset::STAGE_RENTAL_STOCK)->where('asset_status', 'rented'),
+                'assets as maintenance_assets_count' => fn ($query) => $query->where('asset_stage', Asset::STAGE_RENTAL_STOCK)->where('asset_status', 'maintenance'),
+                'saleUnits as sale_stock_quantity' => fn ($query) => $query->where('asset_status', 'available_for_sale'),
+                'saleUnits as sold_units_count' => fn ($query) => $query->where('asset_status', 'sold'),
+                'saleUnits as converted_sale_units_count' => fn ($query) => $query->where('asset_status', 'converted_to_rental'),
+            ])
+            ->with([
+                'assets' => fn ($query) => $query
+                    ->select(['id', 'product_id', 'warehouse_id', 'asset_status', 'asset_stage'])
+                    ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
+                    ->with('warehouse:id,name'),
+                'saleUnits' => fn ($query) => $query
+                    ->select(['id', 'product_id', 'warehouse_id', 'asset_status', 'asset_stage'])
+                    ->where('asset_stage', Asset::STAGE_NEW_STOCK)
+                    ->whereIn('asset_status', ['available_for_sale', 'sold', 'converted_to_rental'])
+                    ->with('warehouse:id,name'),
+            ])
+            ->where('organization_id', $this->orgId());
+    }
+
+    private function applyProductCatalogFilters($query, string $search, string $category, string $typeFilter, string $stockStatus, string $brand)
+    {
+        return $query
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($innerQuery) use ($search) {
+                    $like = '%' . $search . '%';
+
+                    $innerQuery->where('name', 'like', $like)
+                        ->orWhere('brand', 'like', $like)
+                        ->orWhere('model_name', 'like', $like)
+                        ->orWhere('sku', 'like', $like)
+                        ->orWhere('product_code', 'like', $like);
+                });
+            })
+            ->when($category !== '', fn ($query) => $query->where('category', $category))
+            ->when($brand !== '', fn ($query) => $query->where('brand', $brand))
+            ->when($typeFilter !== '', function ($query) use ($typeFilter) {
+                match ($typeFilter) {
+                    'rentable' => $query->where('product_type', Product::TYPE_RENTABLE),
+                    'sale_only' => $query
+                        ->where('product_type', Product::TYPE_SELLABLE)
+                        ->where('stock_mode', '!=', Product::STOCK_MODE_TRACKED_BOTH),
+                    'both' => $query->where('stock_mode', Product::STOCK_MODE_TRACKED_BOTH),
+                    'untracked' => $query->where('stock_mode', Product::STOCK_MODE_UNTRACKED),
+                    default => null,
+                };
+            })
+            ->when($stockStatus !== '', function ($query) use ($stockStatus) {
+                match ($stockStatus) {
+                    'available_to_rent' => $query->whereHas('assets', fn ($assetQuery) => $assetQuery
+                        ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
+                        ->where('asset_status', Asset::STATUS_AVAILABLE)),
+                    'rented_out' => $query->whereHas('assets', fn ($assetQuery) => $assetQuery
+                        ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
+                        ->where('asset_status', Asset::STATUS_RENTED)),
+                    'maintenance' => $query->whereHas('assets', fn ($assetQuery) => $assetQuery
+                        ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
+                        ->where('asset_status', Asset::STATUS_MAINTENANCE)),
+                    'out_of_stock' => $query
+                        ->whereDoesntHave('assets', fn ($assetQuery) => $assetQuery
+                            ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
+                            ->where('asset_status', Asset::STATUS_AVAILABLE))
+                        ->whereDoesntHave('saleUnits', fn ($assetQuery) => $assetQuery
+                            ->where('asset_status', Asset::STATUS_AVAILABLE_FOR_SALE))
+                        ->where(function ($innerQuery) {
+                            $innerQuery->where('stock_mode', '!=', Product::STOCK_MODE_UNTRACKED)
+                                ->orWhere('available_quantity', '<=', 0);
+                        }),
+                    default => null,
+                };
+            });
+    }
+
     private function orgId(): int
     {
         return (int) auth()->user()->organization_id;
@@ -63,6 +142,11 @@ class ProductController extends Controller
             'sale_price' => 'nullable|numeric|min:0',
             'rental_price' => 'nullable|numeric|min:0',
             'quantity' => 'nullable|integer|min:0',
+            'gst_tax_type' => ['nullable', Rule::in(Product::GST_TAX_TYPES)],
+            'gst_calculation_mode' => ['nullable', Rule::in(Product::GST_CALCULATION_MODES)],
+            'cgst_rate' => 'nullable|numeric|min:0|max:100',
+            'sgst_rate' => 'nullable|numeric|min:0|max:100',
+            'igst_rate' => 'nullable|numeric|min:0|max:100',
         ];
     }
 
@@ -82,6 +166,27 @@ class ProductController extends Controller
         $currentType = $product?->product_type ?: ($product?->isRentableProduct() ? Product::TYPE_RENTABLE : Product::TYPE_SELLABLE);
         $manualQuantity = max((int) ($validated['quantity'] ?? ($product?->total_quantity ?? 0)), 0);
         $trackedStockExists = ($saleUnitCount + $rentalAssetCount) > 0 || $product?->hasTrackedStock();
+        $validated['gst_tax_type'] = in_array(($validated['gst_tax_type'] ?? null), Product::GST_TAX_TYPES, true)
+            ? $validated['gst_tax_type']
+            : null;
+        $validated['gst_calculation_mode'] = ($validated['gst_calculation_mode'] ?? 'exclusive') === 'inclusive'
+            ? 'inclusive'
+            : 'exclusive';
+        $validated['cgst_rate'] = (float) ($validated['cgst_rate'] ?? 0);
+        $validated['sgst_rate'] = (float) ($validated['sgst_rate'] ?? 0);
+        $validated['igst_rate'] = (float) ($validated['igst_rate'] ?? 0);
+
+        if ($validated['gst_tax_type'] === Product::GST_TAX_TYPE_CGST_SGST) {
+            $validated['igst_rate'] = 0;
+        } elseif ($validated['gst_tax_type'] === Product::GST_TAX_TYPE_IGST) {
+            $validated['cgst_rate'] = 0;
+            $validated['sgst_rate'] = 0;
+        } else {
+            $validated['cgst_rate'] = 0;
+            $validated['sgst_rate'] = 0;
+            $validated['igst_rate'] = 0;
+            $validated['gst_calculation_mode'] = 'exclusive';
+        }
 
         if ($productType === Product::TYPE_SELLABLE) {
             $validated['price_per_day'] = (float) ($validated['price_per_day'] ?? 0);
@@ -206,34 +311,172 @@ class ProductController extends Controller
         ])->saveQuietly();
     }
 
-    public function index()
+    public function index(Request $request)
     {
-        $duplicateProductNameGroups = $this->duplicateProductNameGroups();
-        $products = Product::withCount([
-            'assets as assets_count' => fn ($query) => $query->where('asset_stage', Asset::STAGE_RENTAL_STOCK),
-            'assets as available_assets_count' => fn ($query) => $query->where('asset_stage', Asset::STAGE_RENTAL_STOCK)->where('asset_status', 'available'),
-            'assets as rented_assets_count' => fn ($query) => $query->where('asset_stage', Asset::STAGE_RENTAL_STOCK)->where('asset_status', 'rented'),
-            'assets as maintenance_assets_count' => fn ($query) => $query->where('asset_stage', Asset::STAGE_RENTAL_STOCK)->where('asset_status', 'maintenance'),
-            'saleUnits as sale_stock_quantity' => fn ($query) => $query->where('asset_status', 'available_for_sale'),
-            'saleUnits as sold_units_count' => fn ($query) => $query->where('asset_status', 'sold'),
-            'saleUnits as converted_sale_units_count' => fn ($query) => $query->where('asset_status', 'converted_to_rental'),
-        ])
-            ->with([
-                'assets' => fn ($query) => $query
-                    ->select(['id', 'product_id', 'warehouse_id', 'asset_status', 'asset_stage'])
-                    ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
-                    ->with('warehouse:id,name'),
-                'saleUnits' => fn ($query) => $query
-                    ->select(['id', 'product_id', 'warehouse_id', 'asset_status', 'asset_stage'])
-                    ->where('asset_stage', Asset::STAGE_NEW_STOCK)
-                    ->whereIn('asset_status', ['available_for_sale', 'sold', 'converted_to_rental'])
-                    ->with('warehouse:id,name'),
-            ])
-            ->where('organization_id', $this->orgId())
-            ->orderBy('name')
-            ->paginate(12);
+        $search = trim((string) $request->query('search', ''));
+        $category = trim((string) $request->query('category', ''));
+        $typeFilter = trim((string) $request->query('type', ''));
+        $stockStatus = trim((string) $request->query('stock_status', ''));
+        $brand = trim((string) $request->query('brand', ''));
+        $allowedSorts = [
+            'name' => 'products.name',
+            'category' => 'products.category',
+            'brand' => 'products.brand',
+            'model' => 'products.model_name',
+            'available_units' => 'available_assets_count',
+            'rented_units' => 'rented_assets_count',
+            'sale_price' => 'products.sale_price',
+            'daily_rent' => 'products.price_per_day',
+            'created_at' => 'products.created_at',
+        ];
+        $sort = (string) $request->query('sort', 'created_at');
 
-        return view('products.index', compact('products', 'duplicateProductNameGroups'));
+        if (!array_key_exists($sort, $allowedSorts)) {
+            $sort = 'created_at';
+        }
+
+        $defaultDirection = $sort === 'created_at' ? 'desc' : 'asc';
+        $direction = strtolower((string) $request->query('direction', $defaultDirection));
+
+        if (!in_array($direction, ['asc', 'desc'], true)) {
+            $direction = $defaultDirection;
+        }
+
+        $duplicateProductNameGroups = $this->duplicateProductNameGroups();
+        $products = $this->applyProductCatalogFilters(
+            $this->productCatalogQuery(),
+            $search,
+            $category,
+            $typeFilter,
+            $stockStatus,
+            $brand
+        )
+            ->orderBy($allowedSorts[$sort], $direction)
+            ->orderBy('products.id', $direction === 'asc' ? 'asc' : 'desc')
+            ->paginate(12)
+            ->withQueryString();
+
+        $categoryOptions = Product::query()
+            ->where('organization_id', $this->orgId())
+            ->whereNotNull('category')
+            ->where('category', '!=', '')
+            ->distinct()
+            ->orderBy('category')
+            ->pluck('category');
+
+        $brandOptions = Product::query()
+            ->where('organization_id', $this->orgId())
+            ->whereNotNull('brand')
+            ->where('brand', '!=', '')
+            ->distinct()
+            ->orderBy('brand')
+            ->pluck('brand');
+
+        return view('products.index', compact(
+            'products',
+            'duplicateProductNameGroups',
+            'search',
+            'category',
+            'typeFilter',
+            'stockStatus',
+            'brand',
+            'sort',
+            'direction',
+            'categoryOptions',
+            'brandOptions'
+        ));
+    }
+
+    public function exportCsv(Request $request)
+    {
+        $search = trim((string) $request->query('search', ''));
+        $category = trim((string) $request->query('category', ''));
+        $typeFilter = trim((string) $request->query('type', ''));
+        $stockStatus = trim((string) $request->query('stock_status', ''));
+        $brand = trim((string) $request->query('brand', ''));
+        $allowedSorts = [
+            'name' => 'products.name',
+            'category' => 'products.category',
+            'brand' => 'products.brand',
+            'model' => 'products.model_name',
+            'available_units' => 'available_assets_count',
+            'rented_units' => 'rented_assets_count',
+            'sale_price' => 'products.sale_price',
+            'daily_rent' => 'products.price_per_day',
+            'created_at' => 'products.created_at',
+        ];
+        $sort = (string) $request->query('sort', 'created_at');
+
+        if (!array_key_exists($sort, $allowedSorts)) {
+            $sort = 'created_at';
+        }
+
+        $defaultDirection = $sort === 'created_at' ? 'desc' : 'asc';
+        $direction = strtolower((string) $request->query('direction', $defaultDirection));
+
+        if (!in_array($direction, ['asc', 'desc'], true)) {
+            $direction = $defaultDirection;
+        }
+
+        $products = $this->applyProductCatalogFilters(
+            $this->productCatalogQuery(),
+            $search,
+            $category,
+            $typeFilter,
+            $stockStatus,
+            $brand
+        )
+            ->orderBy($allowedSorts[$sort], $direction)
+            ->orderBy('products.id', $direction === 'asc' ? 'asc' : 'desc')
+            ->get();
+
+        return response()->streamDownload(function () use ($products) {
+            $output = fopen('php://output', 'w');
+
+            fputcsv($output, [
+                '#',
+                'Product',
+                'Category',
+                'Brand',
+                'Model',
+                'SKU',
+                'Product Code',
+                'Type',
+                'Stock Mode',
+                'Available Rental Units',
+                'Rented Units',
+                'Maintenance Units',
+                'Available Sale Units',
+                'Sale Price',
+                'Daily Rental Price',
+                'Created Date',
+            ]);
+
+            foreach ($products as $index => $product) {
+                fputcsv($output, [
+                    $index + 1,
+                    $product->name,
+                    $product->category,
+                    $product->brand,
+                    $product->model_name,
+                    $product->sku,
+                    $product->product_code,
+                    $product->product_type,
+                    $product->stockModeLabel(),
+                    (int) ($product->available_assets_count ?? 0),
+                    (int) ($product->rented_assets_count ?? 0),
+                    (int) ($product->maintenance_assets_count ?? 0),
+                    (int) ($product->sale_stock_quantity ?? 0),
+                    $product->sale_price,
+                    $product->price_per_day,
+                    optional($product->created_at)->format('Y-m-d H:i:s'),
+                ]);
+            }
+
+            fclose($output);
+        }, 'product-master-' . now()->format('Ymd-His') . '.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
     }
 
     public function create()

@@ -107,6 +107,108 @@
         font-size:12px;
         line-height:1.4;
     }
+    .searchable-select-native {
+        position:absolute !important;
+        width:1px !important;
+        height:1px !important;
+        padding:0 !important;
+        margin:-1px !important;
+        overflow:hidden !important;
+        clip:rect(0, 0, 0, 0) !important;
+        white-space:nowrap !important;
+        border:0 !important;
+    }
+    .searchable-select {
+        position:relative;
+    }
+    .searchable-select-trigger {
+        width:100%;
+        min-height:44px;
+        padding:10px 12px;
+        border-radius:10px;
+        border:1px solid #cbd5e1;
+        background:#fff;
+        color:#0f172a;
+        font-size:14px;
+        text-align:left;
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+        cursor:pointer;
+    }
+    .searchable-select-trigger::after {
+        content:"";
+        width:8px;
+        height:8px;
+        border-right:2px solid #64748b;
+        border-bottom:2px solid #64748b;
+        transform:rotate(45deg);
+        flex:0 0 8px;
+        margin-top:-4px;
+    }
+    .searchable-select.is-open .searchable-select-trigger,
+    .searchable-select-trigger:focus {
+        outline:none;
+        border-color:#2563eb;
+        box-shadow:0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+    .searchable-select-panel {
+        position:absolute;
+        top:calc(100% + 6px);
+        left:0;
+        right:0;
+        z-index:35;
+        padding:10px;
+        border:1px solid #cbd5e1;
+        border-radius:12px;
+        background:#fff;
+        box-shadow:0 18px 40px rgba(15, 23, 42, 0.14);
+        display:grid;
+        gap:8px;
+    }
+    .searchable-select-panel[hidden] { display:none !important; }
+    .searchable-select-search {
+        width:100%;
+        padding:9px 11px;
+        border-radius:10px;
+        border:1px solid #cbd5e1;
+        font-size:13px;
+        box-sizing:border-box;
+    }
+    .searchable-select-options {
+        max-height:220px;
+        overflow:auto;
+        display:grid;
+        gap:4px;
+    }
+    .searchable-select-option,
+    .searchable-select-empty {
+        width:100%;
+        padding:9px 11px;
+        border:none;
+        border-radius:9px;
+        background:#fff;
+        color:#0f172a;
+        font-size:13px;
+        text-align:left;
+    }
+    .searchable-select-option {
+        cursor:pointer;
+    }
+    .searchable-select-option:hover,
+    .searchable-select-option.is-selected {
+        background:#eff6ff;
+        color:#1d4ed8;
+    }
+    .searchable-select-empty {
+        color:#64748b;
+    }
+    .sales-field.is-error .searchable-select-trigger {
+        border-color:#dc2626;
+        box-shadow:0 0 0 3px rgba(220, 38, 38, 0.12);
+        background:#fff7f7;
+    }
     .sales-inline {
         display:flex;
         gap:8px;
@@ -375,13 +477,14 @@
                 <div class="sales-inline">
                     <div class="sales-field {{ $hasFieldError('customer_id') ? 'is-error' : '' }}">
                         <label for="customer_id">Customer</label>
-                        <select name="customer_id" id="customer_id" required>
+                        <select name="customer_id" id="customer_id" required data-searchable-select data-search-placeholder="Search customer by name or phone">
                             <option value="">Select customer</option>
                             @foreach($customers as $customer)
                                 <option
                                     value="{{ $customer->id }}"
                                     data-name="{{ $customer->name }}"
                                     data-phone="{{ $customer->phone }}"
+                                    data-search="{{ trim(implode(' ', array_filter([$customer->name, $customer->phone, $customer->email, $customer->city]))) }}"
                                     {{ (int) $selectedCustomerId === $customer->id ? 'selected' : '' }}>
                                     {{ $customer->name }}{{ $customer->phone ? ' - ' . $customer->phone : '' }}
                                 </option>
@@ -397,12 +500,13 @@
 
             <div class="sales-field sales-col-5 {{ $hasFieldError('product_id') ? 'is-error' : '' }}">
                 <label for="product_id">Product</label>
-                <select name="product_id" id="product_id" required>
+                <select name="product_id" id="product_id" required data-searchable-select data-search-placeholder="Search product by name, brand, model, SKU, or code">
                     <option value="">Select product</option>
                     @foreach($products as $product)
                         <option
                             value="{{ $product->id }}"
                             data-sale-price="{{ (float) ($product->sale_price ?? 0) }}"
+                            data-search="{{ trim(implode(' ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code]))) }}"
                             {{ (int) $selectedProductId === $product->id ? 'selected' : '' }}>
                             {{ $product->name }}
                         </option>
@@ -639,6 +743,137 @@
         const assetSubtle = document.getElementById('saleAssetSubtle');
         const rentalMetric = document.getElementById('saleRentalMetric');
         const rentalSubtle = document.getElementById('saleRentalSubtle');
+
+        function enhanceSearchableSelect(select) {
+            if (!select || select.dataset.searchableEnhanced === 'true') {
+                return;
+            }
+
+            select.dataset.searchableEnhanced = 'true';
+            select.classList.add('searchable-select-native');
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'searchable-select';
+
+            const trigger = document.createElement('button');
+            trigger.type = 'button';
+            trigger.className = 'searchable-select-trigger';
+            trigger.setAttribute('aria-haspopup', 'listbox');
+            trigger.setAttribute('aria-expanded', 'false');
+
+            const triggerLabel = document.createElement('span');
+            trigger.appendChild(triggerLabel);
+
+            const panel = document.createElement('div');
+            panel.className = 'searchable-select-panel';
+            panel.hidden = true;
+
+            const searchInput = document.createElement('input');
+            searchInput.type = 'search';
+            searchInput.className = 'searchable-select-search';
+            searchInput.placeholder = select.getAttribute('data-search-placeholder') || 'Search options';
+
+            const optionsWrap = document.createElement('div');
+            optionsWrap.className = 'searchable-select-options';
+
+            panel.appendChild(searchInput);
+            panel.appendChild(optionsWrap);
+
+            select.insertAdjacentElement('afterend', wrapper);
+            wrapper.appendChild(trigger);
+            wrapper.appendChild(panel);
+
+            let optionButtons = [];
+
+            function syncTriggerLabel() {
+                const selected = select.options[select.selectedIndex];
+                triggerLabel.textContent = selected ? selected.textContent.trim() : 'Select option';
+            }
+
+            function closePanel() {
+                wrapper.classList.remove('is-open');
+                panel.hidden = true;
+                trigger.setAttribute('aria-expanded', 'false');
+            }
+
+            function openPanel() {
+                wrapper.classList.add('is-open');
+                panel.hidden = false;
+                trigger.setAttribute('aria-expanded', 'true');
+                searchInput.value = '';
+                renderOptions();
+                window.requestAnimationFrame(function () {
+                    searchInput.focus();
+                });
+            }
+
+            function renderOptions() {
+                const query = searchInput.value.trim().toLowerCase();
+                optionsWrap.innerHTML = '';
+                optionButtons = [];
+
+                Array.from(select.options).forEach(function (option) {
+                    const searchText = (option.getAttribute('data-search') || option.textContent || '').toLowerCase();
+
+                    if (query && !searchText.includes(query)) {
+                        return;
+                    }
+
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'searchable-select-option' + (option.selected ? ' is-selected' : '');
+                    button.textContent = option.textContent.trim();
+                    button.dataset.value = option.value;
+                    button.addEventListener('click', function () {
+                        select.value = option.value;
+                        select.dispatchEvent(new Event('change', { bubbles: true }));
+                        syncTriggerLabel();
+                        closePanel();
+                        trigger.focus();
+                    });
+                    optionsWrap.appendChild(button);
+                    optionButtons.push(button);
+                });
+
+                if (!optionButtons.length) {
+                    const empty = document.createElement('div');
+                    empty.className = 'searchable-select-empty';
+                    empty.textContent = 'No matching options';
+                    optionsWrap.appendChild(empty);
+                }
+            }
+
+            function refresh() {
+                syncTriggerLabel();
+                renderOptions();
+            }
+
+            trigger.addEventListener('click', function () {
+                if (panel.hidden) {
+                    openPanel();
+                } else {
+                    closePanel();
+                }
+            });
+
+            searchInput.addEventListener('input', renderOptions);
+            select.addEventListener('change', refresh);
+
+            document.addEventListener('click', function (event) {
+                if (!wrapper.contains(event.target)) {
+                    closePanel();
+                }
+            });
+
+            const observer = new MutationObserver(refresh);
+            observer.observe(select, { childList: true, subtree: true, attributes: true, attributeFilter: ['selected'] });
+
+            select._searchableSelect = { refresh: refresh };
+            refresh();
+        }
+
+        enhanceSearchableSelect(customerSelect);
+        enhanceSearchableSelect(productSelect);
 
         function formatCurrency(value) {
             return new Intl.NumberFormat('en-IN', {

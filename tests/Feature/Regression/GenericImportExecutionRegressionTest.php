@@ -137,6 +137,95 @@ class GenericImportExecutionRegressionTest extends TestCase
         $this->assertSame(4500.0, (float) $philips->fresh()->rental_price);
     }
 
+    public function test_product_import_preview_rejects_duplicate_product_identity_within_same_file(): void
+    {
+        $organization = TestData::organization();
+        $user = TestData::user($organization);
+        $this->actingAs($user);
+
+        [$service, $preview] = $this->buildPreview('products', [
+            'Product Name,Category,Brand,Model Name,SKU,Product Code,Sellable,Rentable,Stock Mode,Price Per Day,Rental Price,Sale Price,Deposit',
+            'Oxygen Concentrator 5 LPM,Respiratory,,,,,No,Yes,tracked_rental,4500,4500,,',
+            'Oxygen Concentrator 5 LPM,Respiratory,,,,,No,Yes,tracked_rental,4800,4800,,',
+        ]);
+
+        $this->assertSame(1, count($preview['valid_rows']));
+        $this->assertSame(1, count($preview['invalid_rows']));
+        $this->assertStringContainsString(
+            'This file contains another row with the same Product Name, Brand, and Model',
+            implode(' | ', $preview['invalid_rows'][0]['errors'] ?? [])
+        );
+    }
+
+    public function test_product_import_creates_two_distinct_variants_from_same_file(): void
+    {
+        $organization = TestData::organization();
+        $user = TestData::user($organization);
+        $this->actingAs($user);
+
+        [$service, $preview] = $this->buildPreview('products', [
+            'Product Name,Category,Brand,Model Name,SKU,Product Code,Sellable,Rentable,Stock Mode,Price Per Day,Rental Price,Sale Price,Deposit',
+            'Oxygen Concentrator 5 LPM,Respiratory,Philips,SimplyGo,,,No,Yes,tracked_rental,4500,4500,,',
+            'Oxygen Concentrator 5 LPM,Respiratory,Oxymed,Mini,,,No,Yes,tracked_rental,4200,4200,,',
+        ]);
+
+        $this->assertSame(2, count($preview['valid_rows']));
+
+        $result = $service->executePreview('products', $preview['key'], $organization->id, $user->id);
+
+        $this->assertSame(2, $result['created']);
+        $this->assertSame(0, $result['updated']);
+        $this->assertSame(2, Product::query()->where('organization_id', $organization->id)->count());
+        $this->assertDatabaseHas('products', [
+            'organization_id' => $organization->id,
+            'name' => 'Oxygen Concentrator 5 LPM',
+            'brand' => 'Philips',
+            'model_name' => 'SimplyGo',
+        ]);
+        $this->assertDatabaseHas('products', [
+            'organization_id' => $organization->id,
+            'name' => 'Oxygen Concentrator 5 LPM',
+            'brand' => 'Oxymed',
+            'model_name' => 'Mini',
+        ]);
+    }
+
+    public function test_product_import_allows_sellable_bipap_row_with_blank_rental_price(): void
+    {
+        $organization = TestData::organization();
+        $user = TestData::user($organization);
+        $this->actingAs($user);
+
+        [$service, $preview] = $this->buildPreview('products', [
+            'Product Name,Category,Brand,Model Name,SKU,Product Code,Sellable,Rentable,Stock Mode,Sale Price,Rental Price,Deposit',
+            'BiPAP Disposable Filter,Consumables,ResMed,Filter Pack,BF-180,BIPAP-FLTR,Yes,No,untracked,180,,0',
+        ]);
+
+        $this->assertSame(1, count($preview['valid_rows']));
+
+        $result = $service->executePreview('products', $preview['key'], $organization->id, $user->id);
+
+        $this->assertSame(1, $result['created']);
+        $this->assertSame(0, $result['skipped']);
+        $this->assertDatabaseHas('products', [
+            'organization_id' => $organization->id,
+            'name' => 'BiPAP Disposable Filter',
+            'brand' => 'ResMed',
+            'model_name' => 'Filter Pack',
+            'sku' => 'BF-180',
+            'product_code' => 'BIPAP-FLTR',
+            'product_type' => Product::TYPE_SELLABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+        ]);
+        $this->assertSame(
+            0.0,
+            (float) Product::query()
+                ->where('organization_id', $organization->id)
+                ->where('sku', 'BF-180')
+                ->value('price_per_day')
+        );
+    }
+
     public function test_asset_import_allows_existing_serial_update_and_generic_preview_is_idempotent(): void
     {
         $organization = TestData::organization();

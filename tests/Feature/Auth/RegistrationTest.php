@@ -1,17 +1,22 @@
 <?php
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
+use App\Models\User;
 use Tests\TestCase;
 
 uses(TestCase::class, RefreshDatabase::class);
 
-test('registration screen can be rendered', function () {
+test('public registration screen is not available', function () {
+    expect(config('auth.allow_public_registration'))->toBeFalse();
+    expect(Route::has('register'))->toBeFalse();
+
     $response = $this->get('/register');
 
-    $response->assertStatus(200);
+    $response->assertNotFound();
 });
 
-test('new users can register', function () {
+test('public self registration is blocked', function () {
     $response = $this->post('/register', [
         'name' => 'Test User',
         'email' => 'test@example.com',
@@ -19,6 +24,7 @@ test('new users can register', function () {
         'password_confirmation' => 'password',
     ]);
 
-    $this->assertAuthenticated();
-    $response->assertRedirect(auth()->user()?->defaultRedirectPath() ?? route('profile.edit', absolute: false));
+    $response->assertNotFound();
+    $this->assertGuest();
+    expect(User::query()->where('email', 'test@example.com')->exists())->toBeFalse();
 });

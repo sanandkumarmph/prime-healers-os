@@ -23,6 +23,7 @@ class ReportController extends Controller
     private ?bool $paymentsHaveOrganizationColumn = null;
     private ?bool $paymentsHaveCustomerColumn = null;
     private ?bool $paymentsHaveInvoiceColumn = null;
+    private ?bool $paymentsHaveRentalColumn = null;
 
     private function orgId(): int
     {
@@ -42,6 +43,18 @@ class ReportController extends Controller
     private function paymentsHaveInvoiceColumn(): bool
     {
         return $this->paymentsHaveInvoiceColumn ??= Schema::hasColumn('payments', 'invoice_id');
+    }
+
+    private function paymentsHaveRentalColumn(): bool
+    {
+        return $this->paymentsHaveRentalColumn ??= Schema::hasColumn('payments', 'rental_id');
+    }
+
+    private function yearMonthExpression(string $column): string
+    {
+        return DB::connection()->getDriverName() === 'sqlite'
+            ? "strftime('%Y-%m', {$column})"
+            : "DATE_FORMAT({$column}, '%Y-%m')";
     }
 
     private function filters(Request $request): array
@@ -205,6 +218,29 @@ class ReportController extends Controller
         } else {
             $query->whereHas('rental', fn ($rentalQuery) => $rentalQuery->where('organization_id', $this->orgId()));
         }
+
+        $query->where(function ($linkedPaymentQuery) {
+            $hasLinkedSource = false;
+
+            if ($this->paymentsHaveInvoiceColumn()) {
+                $hasLinkedSource = true;
+                $linkedPaymentQuery->whereHas('invoice');
+            }
+
+            if ($this->paymentsHaveRentalColumn()) {
+                $hasLinkedSource = true;
+
+                if ($this->paymentsHaveInvoiceColumn()) {
+                    $linkedPaymentQuery->orWhereHas('rental');
+                } else {
+                    $linkedPaymentQuery->whereHas('rental');
+                }
+            }
+
+            if (!$hasLinkedSource) {
+                $linkedPaymentQuery->whereRaw('1 = 0');
+            }
+        });
 
         if ($filters['customer_id'] !== '') {
             if ($this->paymentsHaveCustomerColumn()) {
@@ -397,8 +433,10 @@ class ReportController extends Controller
 
     private function monthlyTrendData($query, string $dateColumn, string $valueExpression = 'count(*)')
     {
+        $monthExpression = $this->yearMonthExpression($dateColumn);
+
         return (clone $query)
-            ->selectRaw("DATE_FORMAT({$dateColumn}, '%Y-%m') as month_key")
+            ->selectRaw("{$monthExpression} as month_key")
             ->selectRaw("{$valueExpression} as aggregate_value")
             ->groupBy('month_key')
             ->orderBy('month_key')
@@ -505,8 +543,10 @@ class ReportController extends Controller
             ->limit(10)
             ->get(['id', 'name', 'city']);
 
+        $customerMonthExpression = $this->yearMonthExpression('customers.created_at');
+
         $newCustomersByMonth = (clone $customerAggregateQuery)
-            ->selectRaw("DATE_FORMAT(customers.created_at, '%Y-%m') as month_key, COUNT(customers.id) as total")
+            ->selectRaw("{$customerMonthExpression} as month_key, COUNT(customers.id) as total")
             ->groupBy('month_key')
             ->orderBy('month_key')
             ->get()

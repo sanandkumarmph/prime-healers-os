@@ -324,11 +324,20 @@ class CustomerController extends Controller
             ->withQueryString();
 
         $summaryBaseQuery = $this->applyCustomerFilters($this->customerBaseQuery(), $request);
-        $totalCustomers = (clone $summaryBaseQuery)->count();
-        $totalRentals = (clone $summaryBaseQuery)->get()->sum('rentals_count');
-        $activeRentals = (clone $summaryBaseQuery)->get()->sum('active_rentals_count');
-        $totalSales = (clone $summaryBaseQuery)->get()->sum('sales_count');
-        $totalInvoices = (clone $summaryBaseQuery)->get()->sum('invoices_count');
+        $summaryCustomers = (clone $summaryBaseQuery)
+            ->get([
+                'customers.id',
+                'rentals_count',
+                'active_rentals_count',
+                'sales_count',
+                'invoices_count',
+            ]);
+
+        $totalCustomers = $summaryCustomers->count();
+        $totalRentals = (int) $summaryCustomers->sum('rentals_count');
+        $activeRentals = (int) $summaryCustomers->sum('active_rentals_count');
+        $totalSales = (int) $summaryCustomers->sum('sales_count');
+        $totalInvoices = (int) $summaryCustomers->sum('invoices_count');
 
         return view('customers.index', array_merge($this->filterOptions(), compact(
             'customers',
@@ -483,7 +492,7 @@ class CustomerController extends Controller
         $customer = Customer::where('organization_id', $this->orgId())->findOrFail($id);
         $this->authorize('update', $customer);
 
-        $validated = $this->validateCustomer($request);
+        $validated = $this->validateCustomer($request, false, $customer);
 
         $customer->update($this->customerPayload($validated, false));
         $this->syncCustomerUploads($request, $customer);
@@ -618,15 +627,20 @@ class CustomerController extends Controller
         ];
     }
 
-    private function validateCustomer(Request $request, bool $quickMode = false): array
+    private function validateCustomer(Request $request, bool $quickMode = false, ?Customer $existingCustomer = null): array
     {
-        $customerId = $request->route('id');
+        $routeCustomer = $request->route('customer');
+        $customerId = $existingCustomer?->id
+            ?? ($routeCustomer instanceof Customer ? $routeCustomer->id : null)
+            ?? ($routeCustomer ? (int) $routeCustomer : null)
+            ?? ($request->route('id') ? (int) $request->route('id') : null);
+
         $validated = $request->validate(
             CustomerProfileSupport::validationRules(
                 Customer::hasWhatsappNumberColumn(),
                 true,
                 (int) $this->orgId(),
-                $customerId ? (int) $customerId : null
+                $customerId
             )
         );
 

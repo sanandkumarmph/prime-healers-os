@@ -10,7 +10,7 @@ class TestData
     public static function organization(array $attributes = []): Organization
     {
         return Organization::create(array_merge([
-            'name' => 'Test Org',
+            'name' => 'Prime Healers',
             'is_internal' => true,
             'is_active' => true,
             'plan' => 'internal',

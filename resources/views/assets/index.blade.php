@@ -6,17 +6,17 @@
     $canUpdateAssets = $currentUser?->canAccessModule('assets', 'update') ?? false;
     $canDeleteAssets = $currentUser?->canAccessModule('assets', 'delete') ?? false;
     $statusBadge = fn ($status) => match($status) {
-        'available' => ['#ecfdf5', '#166534'],
-        'awaiting_verification' => ['#fef3c7', '#b45309'],
-        'rented' => ['#eff6ff', '#1d4ed8'],
-        'maintenance' => ['#fff7ed', '#c2410c'],
-        'reserved' => ['#f5f3ff', '#6d28d9'],
-        'retired' => ['#f8fafc', '#475569'],
-        'available_for_sale' => ['#fff7ed', '#9a3412'],
-        'reserved_for_sale' => ['#fef3c7', '#b45309'],
-        'sold' => ['#f3f4f6', '#4b5563'],
-        'converted_to_rental' => ['#ecfeff', '#0f766e'],
-        default => ['#f8fafc', '#334155'],
+        'available' => 'is-success',
+        'awaiting_verification' => 'is-warning',
+        'rented' => 'is-info',
+        'maintenance' => 'is-warning',
+        'reserved' => 'is-accent',
+        'retired' => 'is-neutral',
+        'available_for_sale' => 'is-warning',
+        'reserved_for_sale' => 'is-warning',
+        'sold' => 'is-neutral',
+        'converted_to_rental' => 'is-success',
+        default => 'is-neutral',
     };
     $assetStageFilter = request('asset_stage');
     $assetStatusFilter = request('asset_status');
@@ -63,6 +63,9 @@
             display: grid;
             gap: 18px;
         }
+        .asset-hero {
+            margin-bottom: 0 !important;
+        }
         .asset-chip-row {
             display: flex;
             flex-wrap: wrap;
@@ -75,16 +78,16 @@
             min-height: 38px;
             padding: 8px 14px;
             border-radius: 999px;
-            border: 1px solid #dbe3ef;
+            border: 1px solid var(--ph-color-border);
             background: #ffffff;
-            color: #334155;
+            color: var(--ph-color-text);
             text-decoration: none;
             font-size: 12px;
             font-weight: 800;
         }
         .asset-chip.is-active {
-            background: #0f172a;
-            border-color: #0f172a;
+            background: var(--ph-color-primary);
+            border-color: var(--ph-color-primary);
             color: #ffffff;
         }
         .asset-register-summary {
@@ -96,26 +99,136 @@
             display: block;
             padding: 18px;
             border-radius: 20px;
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--ph-color-border);
             background: #ffffff;
             text-decoration: none;
             color: inherit;
+            box-shadow: var(--ph-shadow-soft);
+            transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+        }
+        .asset-register-summary-card:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--ph-shadow-card);
+        }
+        .asset-register-summary-card.is-warning {
+            background: var(--ph-color-warning-soft);
+            border-color: rgba(183,121,31,.18);
+        }
+        .asset-register-summary-card.is-info {
+            background: var(--ph-color-info-soft);
+            border-color: rgba(23,119,189,.18);
+        }
+        .asset-register-summary-card.is-alert {
+            background: #fff7ed;
+            border-color: rgba(183,121,31,.22);
+        }
+        .asset-summary-label {
+            font-size: 11px;
+            color: var(--ph-color-text-soft);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-family: var(--ph-font-heading);
+        }
+        .asset-summary-value {
+            margin-top: 8px;
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--ph-color-text);
+            font-family: var(--ph-font-heading);
+        }
+        .asset-register-summary-card.is-warning .asset-summary-label,
+        .asset-register-summary-card.is-warning .asset-summary-value,
+        .asset-register-summary-card.is-alert .asset-summary-label,
+        .asset-register-summary-card.is-alert .asset-summary-value { color: var(--ph-color-warning); }
+        .asset-register-summary-card.is-info .asset-summary-label,
+        .asset-register-summary-card.is-info .asset-summary-value { color: var(--ph-color-primary); }
+        .asset-card {
+            background: #fff;
+            border: 1px solid var(--ph-color-border);
+            border-radius: 22px;
+            box-shadow: var(--ph-shadow-soft);
         }
         .asset-register-shell {
             background: #ffffff;
-            border: 1px solid #e2e8f0;
+            border: 1px solid var(--ph-color-border);
             border-radius: 22px;
             overflow: hidden;
+            box-shadow: var(--ph-shadow-soft);
         }
         .asset-register-shell-header {
             padding: 20px 22px;
-            border-bottom: 1px solid #e2e8f0;
+            border-bottom: 1px solid var(--ph-color-border);
             display: flex;
             justify-content: space-between;
             gap: 12px;
             align-items: flex-start;
             flex-wrap: wrap;
         }
+        .asset-register-shell-header h2 {
+            margin: 0;
+            font-size: 22px;
+            color: var(--ph-color-text);
+            font-family: var(--ph-font-heading);
+        }
+        .asset-register-shell-header p {
+            margin: 8px 0 0;
+            color: var(--ph-color-text-soft);
+        }
+        .asset-filter-summary {
+            cursor: pointer;
+            list-style: none;
+            padding: 16px 20px;
+            font-weight: 800;
+            color: var(--ph-color-text);
+            font-family: var(--ph-font-heading);
+        }
+        .asset-filter-summary span {
+            color: var(--ph-color-text-soft);
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .asset-filter-form {
+            padding: 0 20px 20px;
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto;
+            gap: 12px;
+            align-items: end;
+        }
+        .asset-field label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--ph-color-text-soft);
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .asset-field input,
+        .asset-field select {
+            width: 100%;
+            padding: 12px 14px;
+            border: 1px solid var(--ph-color-border-strong);
+            border-radius: 14px;
+            color: var(--ph-color-text);
+            background: #fff;
+        }
+        .asset-filter-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .asset-badge {
+            display: inline-flex;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            border: 1px solid transparent;
+        }
+        .asset-badge.is-warning { background: var(--ph-color-warning-soft); color: var(--ph-color-warning); border-color: rgba(183,121,31,.18); }
+        .asset-badge.is-info { background: var(--ph-color-info-soft); color: var(--ph-color-primary); border-color: rgba(23,119,189,.18); }
+        .asset-badge.is-success { background: var(--ph-color-success-soft); color: var(--ph-color-success); border-color: rgba(14,159,75,.18); }
+        .asset-badge.is-neutral { background: var(--ph-color-surface-soft); color: var(--ph-color-text-soft); border-color: var(--ph-color-border); }
+        .asset-badge.is-accent { background: #f5f3ff; color: #6d28d9; border-color: rgba(109,40,217,.16); }
         .asset-table-shell {
             width: 100%;
             overflow: auto;
@@ -125,10 +238,22 @@
             min-width: 1200px;
             border-collapse: collapse;
         }
+        .asset-table-head { background: var(--ph-color-surface-soft); }
+        .asset-table-head th {
+            text-align: left;
+            padding: 14px 18px;
+            font-size: 12px;
+            color: var(--ph-color-text-soft);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-family: var(--ph-font-heading);
+        }
+        .asset-row { border-top: 1px solid var(--ph-color-border); }
+        .asset-cell { padding: 16px 18px; }
         .asset-table-checkbox {
             width: 18px;
             height: 18px;
-            accent-color: #2563eb;
+            accent-color: var(--ph-color-primary);
             cursor: pointer;
         }
         .asset-action-menu {
@@ -140,9 +265,9 @@
             width: 38px;
             height: 38px;
             border-radius: 12px;
-            border: 1px solid #dbe3ef;
+            border: 1px solid var(--ph-color-border);
             background: #fff;
-            color: #0f172a;
+            color: var(--ph-color-text);
             display: grid;
             place-items: center;
             cursor: pointer;
@@ -152,9 +277,9 @@
             display: none;
         }
         .asset-action-menu[open] summary {
-            background: #eff6ff;
-            color: #1d4ed8;
-            border-color: #bfdbfe;
+            background: var(--ph-color-info-soft);
+            color: var(--ph-color-primary);
+            border-color: rgba(23,119,189,.18);
         }
         .asset-action-panel {
             position: absolute;
@@ -165,10 +290,10 @@
             display: grid;
             gap: 6px;
             padding: 8px;
-            border: 1px solid #dbe3ef;
+            border: 1px solid var(--ph-color-border);
             border-radius: 14px;
             background: #fff;
-            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.14);
+            box-shadow: var(--ph-shadow-float);
         }
         .asset-action-link,
         .asset-action-panel button {
@@ -178,18 +303,18 @@
             min-height: 36px;
             padding: 8px 10px;
             border-radius: 10px;
-            border: 1px solid #edf2f7;
+            border: 1px solid var(--ph-color-border);
             background: #fff;
-            color: #334155;
+            color: var(--ph-color-text);
             text-decoration: none;
             font-size: 12px;
             font-weight: 700;
             cursor: pointer;
         }
         .asset-action-panel .danger {
-            background: #fff1f2;
-            border-color: #fecdd3;
-            color: #be123c;
+            background: var(--ph-color-danger-soft);
+            border-color: rgba(179,13,35,.18);
+            color: var(--ph-color-danger);
         }
         .asset-copy-pill {
             display: inline-flex;
@@ -205,7 +330,7 @@
             text-overflow: ellipsis;
             white-space: nowrap;
             font-weight: 700;
-            color: #0f172a;
+            color: var(--ph-color-text);
         }
         .asset-copy-btn {
             display: inline-flex;
@@ -213,10 +338,10 @@
             justify-content: center;
             min-height: 28px;
             padding: 5px 8px;
-            border: 1px solid #cbd5e1;
+            border: 1px solid var(--ph-color-border-strong);
             border-radius: 999px;
             background: #fff;
-            color: #334155;
+            color: var(--ph-color-text);
             font-size: 11px;
             font-weight: 700;
             cursor: pointer;
@@ -227,7 +352,7 @@
         }
         .asset-mobile-card {
             padding: 16px;
-            border-top: 1px solid #e2e8f0;
+            border-top: 1px solid var(--ph-color-border);
             display: grid;
             gap: 14px;
         }
@@ -254,8 +379,86 @@
             word-break: normal;
             overflow-wrap: anywhere;
         }
+        .asset-product-title {
+            font-size: 15px;
+            color: var(--ph-color-text);
+            font-family: var(--ph-font-heading);
+        }
+        .asset-product-subtitle {
+            font-size: 13px;
+            color: var(--ph-color-text-soft);
+        }
+        .asset-meta-card {
+            padding: 12px;
+            border-radius: 14px;
+            background: var(--ph-color-surface-soft);
+            border: 1px solid var(--ph-color-border);
+        }
+        .asset-meta-label {
+            font-size: 10px;
+            color: var(--ph-color-text-soft);
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            font-family: var(--ph-font-heading);
+        }
+        .asset-meta-value {
+            margin-top: 6px;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--ph-color-text);
+        }
+        .asset-meta-subtle {
+            margin-top: 4px;
+            font-size: 12px;
+            color: var(--ph-color-text-soft);
+        }
+        .asset-link-soft {
+            color: var(--ph-color-primary);
+            text-decoration: none;
+        }
+        .asset-quickscan-head {
+            display:flex;
+            justify-content:space-between;
+            align-items:flex-start;
+            gap:16px;
+            margin-bottom:14px;
+            flex-wrap:wrap;
+        }
+        .asset-quickscan-head h2 {
+            margin:0;
+            font-size:22px;
+            color: var(--ph-color-text);
+            font-family: var(--ph-font-heading);
+        }
+        .asset-quickscan-head p {
+            margin:8px 0 0;
+            color: var(--ph-color-text-soft);
+        }
+        .asset-quickscan-form {
+            display:flex;
+            gap:12px;
+            flex-wrap:wrap;
+        }
+        .asset-quickscan-input {
+            flex:1;
+            min-width:280px;
+            padding:14px 16px;
+            border:1px solid var(--ph-color-border-strong);
+            border-radius:14px;
+            background:#ffffff;
+            font-size:15px;
+            color: var(--ph-color-text);
+        }
+        .asset-mobile-empty,
+        .asset-empty {
+            color: var(--ph-color-text-soft);
+        }
         @media (max-width: 991px) {
             .asset-register-summary {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .asset-filter-form {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
         }
@@ -294,13 +497,19 @@
             .asset-mobile-actions {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
+            .asset-filter-form {
+                grid-template-columns: 1fr;
+            }
+            .asset-quickscan-form {
+                display: grid;
+            }
         }
     </style>
 
     <div class="asset-register-page">
-        <div class="rx-page-header" style="margin-bottom:0;">
+        <div class="rx-page-header asset-hero">
             <div>
-                <div class="rx-eyebrow" style="background:#eff6ff; color:#1d4ed8;">Asset Register</div>
+                <div class="rx-eyebrow" style="background:var(--ph-color-info-soft); color:var(--ph-color-primary);">Asset Register</div>
                 <h1 class="rx-page-title">Asset Register</h1>
                 <p class="rx-page-subtitle">Track sale units, rental assets, serial numbers, barcodes, condition, and workflow status.</p>
             </div>
@@ -315,22 +524,22 @@
         </div>
 
         @if(session('success'))
-            <div style="padding:14px 16px; border-radius:16px; background:#ecfdf5; border:1px solid #bbf7d0; color:#166534;">{{ session('success') }}</div>
+            <div style="padding:14px 16px; border-radius:16px; background:var(--ph-color-success-soft); border:1px solid rgba(14,159,75,.18); color:var(--ph-color-success);">{{ session('success') }}</div>
         @endif
 
         @if(session('error'))
-            <div style="padding:14px 16px; border-radius:16px; background:#fff1f2; border:1px solid #fecaca; color:#991b1b;">{{ session('error') }}</div>
+            <div style="padding:14px 16px; border-radius:16px; background:var(--ph-color-danger-soft); border:1px solid rgba(179,13,35,.18); color:var(--ph-color-danger);">{{ session('error') }}</div>
         @endif
 
         @if(($duplicateProductNameGroups ?? collect())->isNotEmpty())
-            <div style="padding:14px 16px; border-radius:16px; background:#fff7ed; border:1px solid #fed7aa; color:#9a3412;">
+            <div style="padding:14px 16px; border-radius:16px; background:var(--ph-color-warning-soft); border:1px solid rgba(183,121,31,.18); color:var(--ph-color-warning);">
                 <strong>{{ $duplicateProductNameGroups->count() }} Product Master name {{ $duplicateProductNameGroups->count() === 1 ? 'group has' : 'groups have' }} multiple variants.</strong>
                 Asset Register now shows only the linked Product Master identity. Review duplicate names in Product Master when brand/model variants share the same name.
             </div>
         @endif
 
         @if(($mixedAssetProductGroups ?? collect())->isNotEmpty())
-            <div style="padding:14px 16px; border-radius:16px; background:#fff1f2; border:1px solid #fecaca; color:#991b1b;">
+            <div style="padding:14px 16px; border-radius:16px; background:var(--ph-color-danger-soft); border:1px solid rgba(179,13,35,.18); color:var(--ph-color-danger);">
                 <strong>{{ $mixedAssetProductGroups->count() }} asset name {{ $mixedAssetProductGroups->count() === 1 ? 'group is' : 'groups are' }} already linked across multiple Product Master records.</strong>
                 Review those assets before relying on name-only matching.
             </div>
@@ -348,96 +557,95 @@
 
         <div class="asset-register-summary">
             <a href="{{ route('assets.index') }}" class="asset-register-summary-card">
-                <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">All Units</div>
-                <div style="margin-top:8px; font-size:28px; font-weight:800; color:#0f172a;">{{ $summary['total_assets'] }}</div>
+                <div class="asset-summary-label">All Units</div>
+                <div class="asset-summary-value">{{ $summary['total_assets'] }}</div>
             </a>
-            <a href="{{ route('assets.index', ['asset_stage' => 'new_stock']) }}" class="asset-register-summary-card" style="background:#fff7ed; border-color:#fed7aa;">
-                <div style="font-size:11px; color:#9a3412; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">Sale Units</div>
-                <div style="margin-top:8px; font-size:28px; font-weight:800; color:#9a3412;">{{ $summary['sale_stock'] }}</div>
+            <a href="{{ route('assets.index', ['asset_stage' => 'new_stock']) }}" class="asset-register-summary-card is-warning">
+                <div class="asset-summary-label">Sale Units</div>
+                <div class="asset-summary-value">{{ $summary['sale_stock'] }}</div>
             </a>
-            <a href="{{ route('assets.index', ['asset_stage' => 'rental_stock']) }}" class="asset-register-summary-card" style="background:#eff6ff; border-color:#bfdbfe;">
-                <div style="font-size:11px; color:#1d4ed8; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">Rental Assets</div>
-                <div style="margin-top:8px; font-size:28px; font-weight:800; color:#1d4ed8;">{{ $summary['rental_stock_assets'] }}</div>
+            <a href="{{ route('assets.index', ['asset_stage' => 'rental_stock']) }}" class="asset-register-summary-card is-info">
+                <div class="asset-summary-label">Rental Assets</div>
+                <div class="asset-summary-value">{{ $summary['rental_stock_assets'] }}</div>
             </a>
-            <a href="{{ route('assets.pending-verification') }}" class="asset-register-summary-card" style="background:#fef3c7; border-color:#fde68a;">
-                <div style="font-size:11px; color:#b45309; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">Awaiting Verification</div>
-                <div style="margin-top:8px; font-size:28px; font-weight:800; color:#b45309;">{{ $summary['awaiting_verification_assets'] }}</div>
+            <a href="{{ route('assets.pending-verification') }}" class="asset-register-summary-card is-alert">
+                <div class="asset-summary-label">Awaiting Verification</div>
+                <div class="asset-summary-value">{{ $summary['awaiting_verification_assets'] }}</div>
             </a>
         </div>
 
-        <div class="rx-card" style="border-radius:22px;">
+        <div class="asset-card">
             <div class="rx-card-body" style="padding:20px 22px;">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:14px; flex-wrap:wrap;">
+                <div class="asset-quickscan-head">
                     <div>
-                        <h2 style="margin:0; font-size:22px;">Quick Scan / Jump to Asset</h2>
-                        <p style="margin:8px 0 0; color:#64748b;">Scan or type a serial or barcode to open the exact physical unit fast.</p>
+                        <h2>Quick Scan / Jump to Asset</h2>
+                        <p>Scan or type a serial or barcode to open the exact equipment unit fast.</p>
                     </div>
                     <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                        <span style="display:inline-flex; padding:8px 12px; border-radius:999px; background:#fff7ed; color:#9a3412; font-size:12px; font-weight:700;">Sale Unit</span>
-                        <span style="display:inline-flex; padding:8px 12px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:12px; font-weight:700;">Rental Asset</span>
+                        <span class="asset-badge is-warning">Sale Unit</span>
+                        <span class="asset-badge is-info">Rental Asset</span>
                     </div>
                 </div>
 
-                <form method="GET" action="{{ route('assets.scan-lookup') }}" id="assetLookupForm" style="display:flex; gap:12px; flex-wrap:wrap;">
+                <form method="GET" action="{{ route('assets.scan-lookup') }}" id="assetLookupForm" class="asset-quickscan-form">
                     <input type="text" name="lookup" id="assetLookupInput" placeholder="Scan barcode / enter serial number" autocomplete="off" spellcheck="false"
-                           style="flex:1; min-width:280px; padding:14px 16px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff; font-size:15px;">
+                           class="asset-quickscan-input">
                     <input type="file" id="assetLookupCameraInput" accept="image/*" capture="environment" style="display:none;">
-                    <button type="button" id="assetLookupCameraButton" style="display:inline-flex; align-items:center; justify-content:center; padding:0 18px; min-height:48px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff; color:#0f172a; font-weight:700; cursor:pointer;">
+                    <button type="button" id="assetLookupCameraButton" class="ph-btn-secondary">
                         Open Camera
                     </button>
-                    <button type="submit" style="display:inline-flex; align-items:center; justify-content:center; padding:0 18px; min-height:48px; border:none; border-radius:14px; background:#0f172a; color:#ffffff; font-weight:700; cursor:pointer;">
+                    <button type="submit" class="ph-btn">
                         Open Asset
                     </button>
                 </form>
             </div>
         </div>
 
-        <details class="rx-card" style="border-radius:22px;">
-            <summary style="cursor:pointer; list-style:none; padding:16px 20px; font-weight:800; color:#0f172a;">Filters &amp; Sorting <span style="color:#64748b; font-size:12px; font-weight:700;">{{ request()->hasAny(['search', 'asset_stage', 'warehouse_id', 'asset_status', 'condition_status']) ? 'Active' : 'Expand' }}</span></summary>
-            <form method="GET" action="{{ route('assets.index') }}" style="padding:0 20px 20px; display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr auto; gap:12px; align-items:end;">
-                <div>
-                    <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Search</label>
-                    <input type="text" name="search" value="{{ request('search') }}" placeholder="Serial number / barcode / product"
-                           style="width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px;">
+        <details class="asset-card">
+            <summary class="asset-filter-summary">Filters &amp; Sorting <span>{{ request()->hasAny(['search', 'asset_stage', 'warehouse_id', 'asset_status', 'condition_status']) ? 'Active' : 'Expand' }}</span></summary>
+            <form method="GET" action="{{ route('assets.index') }}" class="asset-filter-form">
+                <div class="asset-field">
+                    <label>Search</label>
+                    <input type="text" name="search" value="{{ request('search') }}" placeholder="Serial number / barcode / product">
                 </div>
-                <div>
-                    <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Unit Type</label>
-                    <select name="asset_stage" style="width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px;">
+                <div class="asset-field">
+                    <label>Unit Type</label>
+                    <select name="asset_stage">
                         <option value="">All units</option>
                         <option value="new_stock" @selected(request('asset_stage') === 'new_stock')>Sale Unit</option>
                         <option value="rental_stock" @selected(request('asset_stage') === 'rental_stock')>Rental Asset</option>
                     </select>
                 </div>
-                <div>
-                    <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Warehouse</label>
-                    <select name="warehouse_id" style="width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px;">
+                <div class="asset-field">
+                    <label>Warehouse</label>
+                    <select name="warehouse_id">
                         <option value="">All warehouses</option>
                         @foreach($warehouses as $warehouse)
                             <option value="{{ $warehouse->id }}" @selected(request('warehouse_id') == $warehouse->id)>{{ $warehouse->name }}</option>
                         @endforeach
                     </select>
                 </div>
-                <div>
-                    <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Status</label>
-                    <select name="asset_status" style="width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px;">
+                <div class="asset-field">
+                    <label>Status</label>
+                    <select name="asset_status">
                         <option value="">All statuses</option>
                         @foreach($assetStatuses as $status)
                             <option value="{{ $status }}" @selected(request('asset_status') === $status)>{{ ucwords(str_replace('_', ' ', $status)) }}</option>
                         @endforeach
                     </select>
                 </div>
-                <div>
-                    <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Condition</label>
-                    <select name="condition_status" style="width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px;">
+                <div class="asset-field">
+                    <label>Condition</label>
+                    <select name="condition_status">
                         <option value="">All conditions</option>
                         @foreach($conditionStatuses as $status)
                             <option value="{{ $status }}" @selected(request('condition_status') === $status)>{{ ucfirst($status) }}</option>
                         @endforeach
                     </select>
                 </div>
-                <div style="display:flex; gap:10px;">
-                    <button type="submit" style="padding:12px 16px; border:none; border-radius:14px; background:#0f172a; color:#ffffff; font-weight:700; cursor:pointer;">Filter</button>
-                    <a href="{{ route('assets.index') }}" style="display:inline-flex; align-items:center; justify-content:center; padding:12px 16px; border-radius:14px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:600;">Reset</a>
+                <div class="asset-filter-actions">
+                    <button type="submit" class="ph-btn">Filter</button>
+                    <a href="{{ route('assets.index') }}" class="ph-btn-secondary">Reset</a>
                 </div>
             </form>
         </details>
@@ -445,30 +653,33 @@
         <div class="asset-register-shell">
             <div class="asset-register-shell-header">
                 <div>
-                    <h2 style="margin:0; font-size:22px;">Asset Register Workspace</h2>
-                    <p style="margin:8px 0 0; color:#64748b;">Every physical unit with stage, serial, barcode, warehouse, and workflow status in one place.</p>
+                    <h2>Equipment Fleet Workspace</h2>
+                    <p>Every physical unit with stage, serial, barcode, warehouse, and workflow status in one operational register.</p>
                 </div>
-                <span style="display:inline-flex; padding:8px 12px; border-radius:999px; background:#f8fafc; color:#334155; font-size:12px; font-weight:700;">
-                    Physical units only
-                </span>
+                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                    <a href="{{ route('assets.export.csv', request()->query()) }}" class="ph-btn-secondary">Export CSV</a>
+                    <span class="asset-badge is-neutral" style="padding:8px 12px;">
+                        Physical units only
+                    </span>
+                </div>
             </div>
 
             <div class="asset-table-shell">
                 <table class="asset-table">
-                    <thead style="background:#f8fafc;">
+                    <thead class="asset-table-head">
                         <tr>
-                            <th style="text-align:center; padding:14px 12px; font-size:12px; color:#64748b; text-transform:uppercase; letter-spacing:0.08em;">
+                            <th style="text-align:center; padding:14px 12px;">
                                 <input type="checkbox" id="assetSelectAll" class="asset-table-checkbox" aria-label="Select all visible assets">
                             </th>
-                            <th style="text-align:left; padding:14px 12px; font-size:12px; color:#64748b; text-transform:uppercase; letter-spacing:0.08em;">Sl No.</th>
-                            <th style="text-align:left; padding:14px 18px; font-size:12px; color:#64748b; text-transform:uppercase; letter-spacing:0.08em;">Asset / Product</th>
-                            <th style="text-align:left; padding:14px 18px; font-size:12px; color:#64748b; text-transform:uppercase; letter-spacing:0.08em;">Type</th>
-                            <th style="text-align:left; padding:14px 18px; font-size:12px; color:#64748b; text-transform:uppercase; letter-spacing:0.08em;">Serial</th>
-                            <th style="text-align:left; padding:14px 18px; font-size:12px; color:#64748b; text-transform:uppercase; letter-spacing:0.08em;">Barcode</th>
-                            <th style="text-align:left; padding:14px 18px; font-size:12px; color:#64748b; text-transform:uppercase; letter-spacing:0.08em;">Warehouse</th>
-                            <th style="text-align:left; padding:14px 18px; font-size:12px; color:#64748b; text-transform:uppercase; letter-spacing:0.08em;">Current Link</th>
-                            <th style="text-align:left; padding:14px 18px; font-size:12px; color:#64748b; text-transform:uppercase; letter-spacing:0.08em;">Status</th>
-                            <th style="text-align:right; padding:14px 18px; font-size:12px; color:#64748b; text-transform:uppercase; letter-spacing:0.08em;">Actions</th>
+                            <th style="text-align:left; padding:14px 12px;">Sl No.</th>
+                            <th>Asset / Product</th>
+                            <th>Type</th>
+                            <th>Serial</th>
+                            <th>Barcode</th>
+                            <th>Warehouse</th>
+                            <th>Current Link</th>
+                            <th>Status</th>
+                            <th style="text-align:right;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -484,12 +695,12 @@
                             $activeCustomer = $activeRental?->customer;
                             $latestSale = $asset->sales->sortByDesc(fn ($sale) => $sale->sale_date ?? $sale->created_at)->first();
                         @endphp
-                        <tr style="border-top:1px solid #e2e8f0;">
-                            <td style="padding:16px 12px; text-align:center;">
+                        <tr class="asset-row">
+                            <td class="asset-cell" style="padding:16px 12px; text-align:center;">
                                 <input type="checkbox" class="asset-table-checkbox asset-row-checkbox" value="{{ $asset->id }}" aria-label="Select asset {{ $asset->serial_number ?: $asset->id }}">
                             </td>
-                            <td style="padding:16px 12px; color:#64748b; font-weight:700;">{{ $rowNumber }}</td>
-                            <td style="padding:16px 18px;">
+                            <td class="asset-cell" style="padding:16px 12px; color:var(--ph-color-text-soft); font-weight:700;">{{ $rowNumber }}</td>
+                            <td class="asset-cell">
                                 <div style="display:grid; gap:6px;">
                                     @php
                                         $productIdentity = $assetProductIdentity($asset->product);
@@ -498,72 +709,70 @@
                                     @if($asset->product && \Illuminate\Support\Facades\Route::has('products.show'))
                                         <a href="{{ route('products.show', $asset->product) }}" class="rn-record-link-subtle asset-product-subtitle" style="font-size:13px;">{{ $productIdentity['secondary'] }}</a>
                                     @else
-                                        <div class="asset-product-subtitle" style="font-size:13px; color:#64748b;">{{ $productIdentity['secondary'] }}</div>
+                                        <div class="asset-product-subtitle">{{ $productIdentity['secondary'] }}</div>
                                     @endif
                                     @if($asset->variant_identity_warning)
-                                        <span style="display:inline-flex; width:max-content; padding:5px 9px; border-radius:999px; background:#fff7ed; color:#9a3412; font-size:10px; font-weight:800; text-transform:uppercase;">
-                                            Check linked variant
-                                        </span>
+                                        <span class="asset-badge is-warning" style="width:max-content; padding:5px 9px; font-size:10px; font-weight:800;">Check linked variant</span>
                                     @endif
                                 </div>
                             </td>
-                            <td style="padding:16px 18px;">
+                            <td class="asset-cell">
                                 @if($asset->asset_stage === 'new_stock')
-                                    <span style="display:inline-flex; padding:6px 10px; border-radius:999px; background:#fff7ed; color:#9a3412; font-size:11px; font-weight:700; text-transform:uppercase;">Sale Unit</span>
+                                    <span class="asset-badge is-warning">Sale Unit</span>
                                 @else
-                                    <span style="display:inline-flex; padding:6px 10px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:11px; font-weight:700; text-transform:uppercase;">Rental Asset</span>
+                                    <span class="asset-badge is-info">Rental Asset</span>
                                 @endif
                             </td>
-                            <td style="padding:16px 18px;">
+                            <td class="asset-cell">
                                 <div style="display:grid; gap:6px;">
                                     <div class="asset-copy-pill">
                                         <span class="asset-copy-pill-value" title="{{ $asset->serial_number }}">{{ $compactCode($asset->serial_number) }}</span>
                                         <button type="button" class="asset-copy-btn" data-copy-text="{{ $asset->serial_number }}">Copy</button>
                                     </div>
                                     @if($asset->isSerialPending())
-                                        <span style="display:inline-flex; width:max-content; padding:5px 9px; border-radius:999px; background:#fff7ed; color:#9a3412; font-size:10px; font-weight:800; text-transform:uppercase;">Serial Pending</span>
+                                        <span class="asset-badge is-warning" style="width:max-content; padding:5px 9px; font-size:10px; font-weight:800;">Serial Pending</span>
                                     @endif
                                 </div>
                             </td>
-                            <td style="padding:16px 18px;">
+                            <td class="asset-cell">
                                 @if($asset->barcode_value)
                                     <div class="asset-copy-pill">
                                         <span class="asset-copy-pill-value" title="{{ $asset->barcode_value }}">{{ $compactCode($asset->barcode_value) }}</span>
                                         <button type="button" class="asset-copy-btn" data-copy-text="{{ $asset->barcode_value }}">Copy</button>
                                     </div>
                                 @else
-                                    <span style="color:#64748b;">N/A</span>
+                                    <span style="color:var(--ph-color-text-soft);">N/A</span>
                                 @endif
                             </td>
-                            <td style="padding:16px 18px;">{{ optional($asset->warehouse)->name ?: 'N/A' }}</td>
-                            <td style="padding:16px 18px;">
+                            <td class="asset-cell">{{ optional($asset->warehouse)->name ?: 'N/A' }}</td>
+                            <td class="asset-cell">
                                 @if($activeRental && \Illuminate\Support\Facades\Route::has('rentals.show'))
                                     <div style="display:grid; gap:4px;">
                                         <a href="{{ route('rentals.show', $activeRental) }}" class="rn-record-link-subtle">Rental #{{ $activeRental->id }}</a>
-                                        <span style="font-size:12px; color:#64748b;">{{ $activeCustomer?->name ?: 'Customer linked' }}</span>
+                                        <span class="asset-meta-subtle" style="margin-top:0;">{{ $activeCustomer?->name ?: 'Customer linked' }}</span>
                                     </div>
                                 @elseif($latestSale && \Illuminate\Support\Facades\Route::has('sales.show'))
                                     <div style="display:grid; gap:4px;">
                                         <a href="{{ route('sales.show', $latestSale) }}" class="rn-record-link-subtle">Sale #{{ $latestSale->id }}</a>
-                                        <span style="font-size:12px; color:#64748b;">{{ $latestSale->customer?->name ?: 'Customer linked' }}</span>
+                                        <span class="asset-meta-subtle" style="margin-top:0;">{{ $latestSale->customer?->name ?: 'Customer linked' }}</span>
                                     </div>
                                 @else
                                     <div style="display:grid; gap:4px;">
-                                        <span style="color:#64748b;">Standalone unit</span>
+                                        <span style="color:var(--ph-color-text-soft);">Standalone unit</span>
                                         @if($asset->variant_identity_warning)
-                                            <span style="font-size:12px; color:#9a3412;">{{ $asset->variant_identity_warning['message'] }}</span>
+                                            <span style="font-size:12px; color:var(--ph-color-warning);">{{ $asset->variant_identity_warning['message'] }}</span>
                                         @endif
                                     </div>
                                 @endif
                             </td>
-                            <td style="padding:16px 18px;">
-                                <span style="display:inline-flex; padding:6px 10px; border-radius:999px; background:{{ $badge[0] }}; color:{{ $badge[1] }}; font-size:11px; font-weight:700; text-transform:uppercase;">
+                            <td class="asset-cell">
+                                <span class="asset-badge {{ $badge }}">
                                     {{ str_replace('_', ' ', $asset->asset_status) }}
                                 </span>
                             </td>
-                            <td style="padding:16px 18px; text-align:right;">
+                            <td class="asset-cell" style="text-align:right;">
                                 <div style="display:inline-flex; gap:10px; flex-wrap:wrap; justify-content:flex-end;">
-                                    <a href="{{ route('assets.show', $asset) }}" style="display:inline-flex; align-items:center; justify-content:center; padding:9px 12px; border-radius:12px; background:#0f172a; color:#ffffff; text-decoration:none; font-weight:700; font-size:13px;">View</a>
+                                    <a href="{{ route('assets.show', $asset) }}" class="ph-btn">View</a>
                                     <details class="asset-action-menu">
                                         <summary aria-label="More actions for {{ $asset->serial_number }}">...</summary>
                                         <div class="asset-action-panel">
@@ -588,7 +797,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="10" style="padding:24px 18px; color:#64748b;">No units match this view right now. Try a broader filter or register a new sale unit or rental asset.</td>
+                            <td colspan="10" class="asset-empty" style="padding:24px 18px;">No units match this view right now. Try a broader filter or register a new sale unit or rental asset.</td>
                         </tr>
                     @endforelse
                     </tbody>
@@ -612,81 +821,81 @@
                             @endphp
                             <div style="display:grid; gap:6px; min-width:0;">
                                 <a href="{{ route('assets.show', $asset) }}" class="rn-record-link asset-product-title" style="font-size:15px;">{{ $productIdentity['primary'] }}</a>
-                                <div class="asset-product-subtitle" style="font-size:13px; color:#64748b;">{{ $productIdentity['secondary'] }}</div>
+                                <div class="asset-product-subtitle">{{ $productIdentity['secondary'] }}</div>
                                 @if($asset->variant_identity_warning)
-                                    <span style="display:inline-flex; width:max-content; padding:5px 9px; border-radius:999px; background:#fff7ed; color:#9a3412; font-size:10px; font-weight:800; text-transform:uppercase;">Check linked variant</span>
+                                    <span class="asset-badge is-warning" style="width:max-content; padding:5px 9px; font-size:10px; font-weight:800;">Check linked variant</span>
                                 @endif
                                 @if($asset->isSerialPending())
-                                    <span style="display:inline-flex; width:max-content; padding:5px 9px; border-radius:999px; background:#fff7ed; color:#9a3412; font-size:10px; font-weight:800; text-transform:uppercase;">Serial Pending</span>
+                                    <span class="asset-badge is-warning" style="width:max-content; padding:5px 9px; font-size:10px; font-weight:800;">Serial Pending</span>
                                 @endif
                             </div>
                             <div style="display:grid; gap:6px; justify-items:end;">
                                 @if($asset->asset_stage === 'new_stock')
-                                    <span style="display:inline-flex; padding:6px 10px; border-radius:999px; background:#fff7ed; color:#9a3412; font-size:11px; font-weight:700; text-transform:uppercase;">Sale Unit</span>
+                                    <span class="asset-badge is-warning">Sale Unit</span>
                                 @else
-                                    <span style="display:inline-flex; padding:6px 10px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:11px; font-weight:700; text-transform:uppercase;">Rental Asset</span>
+                                    <span class="asset-badge is-info">Rental Asset</span>
                                 @endif
-                                <span style="display:inline-flex; padding:6px 10px; border-radius:999px; background:{{ $badge[0] }}; color:{{ $badge[1] }}; font-size:11px; font-weight:700; text-transform:uppercase;">
+                                <span class="asset-badge {{ $badge }}">
                                     {{ str_replace('_', ' ', $asset->asset_status) }}
                                 </span>
                             </div>
                         </div>
 
                         <div class="asset-mobile-meta">
-                            <div style="padding:12px; border-radius:14px; background:#f8fafc; border:1px solid #e2e8f0;">
-                                <div style="font-size:10px; color:#64748b; font-weight:800; text-transform:uppercase; letter-spacing:.06em;">Serial</div>
+                            <div class="asset-meta-card">
+                                <div class="asset-meta-label">Serial</div>
                                 <div class="asset-copy-pill" style="margin-top:6px;">
                                     <span class="asset-copy-pill-value" title="{{ $asset->serial_number }}">{{ $compactCode($asset->serial_number) }}</span>
                                     <button type="button" class="asset-copy-btn" data-copy-text="{{ $asset->serial_number }}">Copy</button>
                                 </div>
                                 @if($asset->isSerialPending())
-                                    <div style="margin-top:6px;"><span style="display:inline-flex; width:max-content; padding:5px 9px; border-radius:999px; background:#fff7ed; color:#9a3412; font-size:10px; font-weight:800; text-transform:uppercase;">Serial Pending</span></div>
+                                    <div style="margin-top:6px;"><span class="asset-badge is-warning" style="width:max-content; padding:5px 9px; font-size:10px; font-weight:800;">Serial Pending</span></div>
                                 @endif
                             </div>
-                            <div style="padding:12px; border-radius:14px; background:#f8fafc; border:1px solid #e2e8f0;">
-                                <div style="font-size:10px; color:#64748b; font-weight:800; text-transform:uppercase; letter-spacing:.06em;">Barcode</div>
+                            <div class="asset-meta-card">
+                                <div class="asset-meta-label">Barcode</div>
                                 @if($asset->barcode_value)
                                     <div class="asset-copy-pill" style="margin-top:6px;">
                                         <span class="asset-copy-pill-value" title="{{ $asset->barcode_value }}">{{ $compactCode($asset->barcode_value) }}</span>
                                         <button type="button" class="asset-copy-btn" data-copy-text="{{ $asset->barcode_value }}">Copy</button>
                                     </div>
                                 @else
-                                    <div style="margin-top:6px; font-size:13px; font-weight:700; color:#0f172a;">N/A</div>
+                                    <div class="asset-meta-value">N/A</div>
                                 @endif
                             </div>
-                            <div style="padding:12px; border-radius:14px; background:#f8fafc; border:1px solid #e2e8f0;">
-                                <div style="font-size:10px; color:#64748b; font-weight:800; text-transform:uppercase; letter-spacing:.06em;">Warehouse</div>
-                                <div style="margin-top:6px; font-size:13px; font-weight:700; color:#0f172a;">{{ optional($asset->warehouse)->name ?: 'N/A' }}</div>
+                            <div class="asset-meta-card">
+                                <div class="asset-meta-label">Warehouse</div>
+                                <div class="asset-meta-value">{{ optional($asset->warehouse)->name ?: 'N/A' }}</div>
                             </div>
-                            <div style="padding:12px; border-radius:14px; background:#f8fafc; border:1px solid #e2e8f0;">
-                                <div style="font-size:10px; color:#64748b; font-weight:800; text-transform:uppercase; letter-spacing:.06em;">Current Link</div>
-                                <div style="margin-top:6px; font-size:13px; font-weight:700; color:#0f172a;">
+                            <div class="asset-meta-card">
+                                <div class="asset-meta-label">Current Link</div>
+                                <div class="asset-meta-value">
                                     @if($activeRental && \Illuminate\Support\Facades\Route::has('rentals.show'))
-                                        <a href="{{ route('rentals.show', $activeRental) }}" style="color:#1d4ed8; text-decoration:none;">Rental #{{ $activeRental->id }}</a>
+                                        <a href="{{ route('rentals.show', $activeRental) }}" class="asset-link-soft">Rental #{{ $activeRental->id }}</a>
                                     @elseif($latestSale && \Illuminate\Support\Facades\Route::has('sales.show'))
-                                        <a href="{{ route('sales.show', $latestSale) }}" style="color:#1d4ed8; text-decoration:none;">Sale #{{ $latestSale->id }}</a>
+                                        <a href="{{ route('sales.show', $latestSale) }}" class="asset-link-soft">Sale #{{ $latestSale->id }}</a>
                                     @else
                                         Standalone
                                     @endif
                                 </div>
                                 @if($activeCustomer)
-                                    <div style="margin-top:4px; font-size:12px; color:#64748b;">{{ $activeCustomer->name }}</div>
+                                    <div class="asset-meta-subtle">{{ $activeCustomer->name }}</div>
                                 @elseif($latestSale?->customer)
-                                    <div style="margin-top:4px; font-size:12px; color:#64748b;">{{ $latestSale->customer->name }}</div>
+                                    <div class="asset-meta-subtle">{{ $latestSale->customer->name }}</div>
                                 @elseif($asset->variant_identity_warning)
-                                    <div style="margin-top:4px; font-size:12px; color:#9a3412;">{{ $asset->variant_identity_warning['message'] }}</div>
+                                    <div style="margin-top:4px; font-size:12px; color:var(--ph-color-warning);">{{ $asset->variant_identity_warning['message'] }}</div>
                                 @endif
                             </div>
                         </div>
 
                         <div class="asset-mobile-actions">
-                            <a href="{{ route('assets.show', $asset) }}" style="display:inline-flex; align-items:center; justify-content:center; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:700;">View</a>
+                            <a href="{{ route('assets.show', $asset) }}" class="ph-btn-secondary">View</a>
                             @if($canUpdateAssets)
-                                <a href="{{ route('assets.edit', $asset) }}" style="display:inline-flex; align-items:center; justify-content:center; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:700;">Edit</a>
+                                <a href="{{ route('assets.edit', $asset) }}" class="ph-btn-secondary">Edit</a>
                                 @if($asset->asset_status === 'awaiting_verification')
-                                    <a href="{{ route('assets.verify-return', $asset) }}" style="display:inline-flex; align-items:center; justify-content:center; border:none; background:#fef3c7; color:#b45309; text-decoration:none; font-weight:800;">Verify</a>
+                                    <a href="{{ route('assets.verify-return', $asset) }}" class="ph-btn-soft" style="background:var(--ph-color-warning-soft); color:var(--ph-color-warning); border-color:rgba(183,121,31,.18);">Verify</a>
                                 @else
-                                    <a href="{{ route('assets.transfer', $asset) }}" style="display:inline-flex; align-items:center; justify-content:center; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:700;">Transfer</a>
+                                    <a href="{{ route('assets.transfer', $asset) }}" class="ph-btn-secondary">Transfer</a>
                                 @endif
                                 <details class="asset-action-menu">
                                     <summary aria-label="More actions for {{ $asset->serial_number }}">...</summary>
@@ -708,7 +917,7 @@
                         </div>
                     </div>
                 @empty
-                    <div style="padding:18px 16px; color:#64748b;">No units match this view right now. Try a broader filter or register a new unit.</div>
+                    <div class="asset-mobile-empty" style="padding:18px 16px;">No units match this view right now. Try a broader filter or register a new unit.</div>
                 @endforelse
             </div>
 

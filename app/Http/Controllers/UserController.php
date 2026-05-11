@@ -9,6 +9,7 @@ use App\Models\Rental;
 use App\Models\Role;
 use App\Models\Sale;
 use App\Models\User;
+use App\Support\InternalOrganization;
 use App\Support\PhoneNumber;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -19,7 +20,7 @@ class UserController extends Controller
 {
     private function orgId(): int
     {
-        return (int) auth()->user()->organization_id;
+        return (int) (InternalOrganization::id(auth()->user()) ?? auth()->user()->organization_id);
     }
 
     private function scopedUser(User $user): User
@@ -111,6 +112,7 @@ class UserController extends Controller
             'role_id' => $role->id,
             'role' => $role->slug,
             'city_id' => $validated['city_id'] ?? null,
+            'is_internal' => true,
             'is_active' => (bool) ($validated['is_active'] ?? false),
         ]);
 

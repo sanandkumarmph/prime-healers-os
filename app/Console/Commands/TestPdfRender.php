@@ -53,7 +53,9 @@ HTML;
                     ->timeout(90)
             );
 
-            $browsershot->savePdf($outputPath);
+            $configurator->runInPdfWorkingDirectory(
+                fn () => $browsershot->savePdf($outputPath)
+            );
         } catch (\Throwable $exception) {
             $this->error('PDF render failed: ' . $exception::class);
             $this->line($exception->getMessage());

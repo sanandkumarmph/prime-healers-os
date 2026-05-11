@@ -7,6 +7,8 @@
     $linkedPhone = $linkedCustomer?->phone ?: ($delivery->rental?->phone ?? null);
     $rentalAssets = $delivery->rental?->activeRentalAssets ?? collect();
     $rentalSaleItems = $delivery->rental?->saleItems ?? collect();
+    $pickupRecord = $delivery->rental?->pickupRecord;
+    $pickupAssigned = $pickupRecord && $pickupRecord->status !== 'cancelled';
     $deliverySaleAssets = $delivery->type === 'delivery'
         ? $rentalSaleItems
         ->filter(fn ($item) => $item->asset)
@@ -31,10 +33,28 @@
     $showThirdPartyDetails = filled($delivery->third_party_name)
         || filled($delivery->third_party_contact)
         || filled($delivery->third_party_phone);
-    $statusStyle = match ($delivery->status) {
+    $displayStatus = $delivery->status;
+
+    if (!$isSaleTask && $delivery->rental) {
+        if ($delivery->type === 'delivery') {
+            $displayStatus = match ($delivery->rental->deliveryStatus()) {
+                'completed', 'delivered' => 'delivered',
+                'partially_delivered' => 'in_progress',
+                default => $delivery->status,
+            };
+        } elseif ($delivery->type === 'pickup') {
+            $displayStatus = match ($delivery->rental->pickupStatus()) {
+                'completed', 'picked_up', 'returned' => 'picked_up',
+                'partial_return' => 'in_progress',
+                default => $delivery->status,
+            };
+        }
+    }
+
+    $statusStyle = match ($displayStatus) {
         'pending' => 'background:#e2e8f0;color:#334155;',
         'in_progress' => 'background:#fef3c7;color:#b45309;',
-        'completed' => 'background:#dcfce7;color:#166534;',
+        'delivered', 'picked_up', 'completed' => 'background:#dcfce7;color:#166534;',
         'cancelled' => 'background:#f1f5f9;color:#64748b;',
         default => 'background:#f1f5f9;color:#475569;',
     };
@@ -43,6 +63,7 @@
         'delivered', 'picked_up', 'completed', 'returned' => 'background:#dcfce7;color:#166534;',
         'awaiting_verification' => 'background:#fef3c7;color:#b45309;',
         'pickup_pending', 'delivery_pending' => 'background:#fef3c7;color:#b45309;',
+        'pickup_not_assigned' => 'background:#e2e8f0;color:#475569;',
         default => 'background:#fef3c7;color:#b45309;',
     };
     $itemProgressLabel = fn (?string $status) => match ($status) {
@@ -54,11 +75,17 @@
         'partially_returned' => 'Partially Returned',
         'with_customer' => 'With Customer',
         'pickup_pending' => 'Pickup Pending',
+        'pickup_not_assigned' => 'Pickup Not Assigned',
         'delivery_pending' => 'Delivery Pending',
         'returned' => 'Returned',
         'awaiting_verification' => 'Awaiting Verification',
         'completed' => 'Completed',
         default => ucfirst(str_replace('_', ' ', $status ?: 'pending')),
+    };
+    $displayStatusLabel = match ($displayStatus) {
+        'delivered' => 'Delivered',
+        'picked_up' => 'Picked Up',
+        default => ucfirst(str_replace('_', ' ', $displayStatus)),
     };
 @endphp
 
@@ -225,7 +252,7 @@
         <div class="detail-grid">
             <div class="span-4">
                 <span class="label">Status</span>
-                <span class="status-badge" style="{{ $statusStyle }}">{{ ucfirst(str_replace('_', ' ', $delivery->status)) }}</span>
+                <span class="status-badge" style="{{ $statusStyle }}">{{ $displayStatusLabel }}</span>
             </div>
             <div class="span-4">
                 <span class="label">Assignment Type</span>
@@ -244,10 +271,6 @@
             <div>
                 <h2 style="margin:0;">Item Progress</h2>
                 <div style="margin-top:6px; color:#64748b; font-size:13px;">Record delivered and picked-up quantities per rental item without closing the entire rental at once.</div>
-            </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                <span class="status-badge" style="{{ $itemProgressBadge($delivery->rental?->deliveryStatus()) }}">{{ $itemProgressLabel($delivery->rental?->deliveryStatus()) }}</span>
-                <span class="status-badge" style="{{ $itemProgressBadge($delivery->rental?->pickupStatus()) }}">{{ $itemProgressLabel($delivery->rental?->pickupStatus()) }}</span>
             </div>
         </div>
         <div style="overflow:auto; margin-top:14px;">
@@ -293,7 +316,11 @@
                             }
 
                             if ($pendingPickupQty > 0) {
-                                $itemLifecycleStatuses->push($returnedQty > 0 ? 'partially_returned' : 'pickup_pending');
+                                if (!$pickupAssigned) {
+                                    $itemLifecycleStatuses->push('pickup_not_assigned');
+                                } else {
+                                    $itemLifecycleStatuses->push($returnedQty > 0 ? 'partially_returned' : 'pickup_pending');
+                                }
                             } elseif ($deliveredQty > 0 && $returnedQty === $deliveredQty) {
                                 $itemLifecycleStatuses->push($hasAwaitingVerificationAsset ? 'awaiting_verification' : 'returned');
                             }

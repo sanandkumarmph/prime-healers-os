@@ -23,6 +23,7 @@
 
     $canSell = $product->canSell();
     $canRent = $product->canRent();
+    $usesUntrackedStock = $product->usesUntrackedStock();
     $productType = $product->product_type === \App\Models\Product::TYPE_RENTABLE
         ? \App\Models\Product::TYPE_RENTABLE
         : \App\Models\Product::TYPE_SELLABLE;
@@ -32,6 +33,8 @@
         default => 'Sellable Product',
     };
     $stockModeLabel = $product->stockModeLabel();
+    $gstTaxTypeLabel = $product->gstTaxTypeLabel();
+    $gstRateSummary = $product->gstRateSummary();
     [$stockModeBackground, $stockModeColor] = match ($product->stock_mode) {
         \App\Models\Product::STOCK_MODE_TRACKED_SALE => ['#fff7ed', '#9a3412'],
         \App\Models\Product::STOCK_MODE_TRACKED_RENTAL => ['#eff6ff', '#1d4ed8'],
@@ -61,11 +64,21 @@
         return mb_substr($value, 0, $visible) . '...';
     };
 
-    $saleUnitCount = (int) ($saleInventorySummary['total_new_stock'] ?? 0);
-    $saleAvailableCount = (int) ($saleInventorySummary['available_new_stock'] ?? 0);
+    $openingTotalQuantity = max((int) ($product->total_quantity ?? 0), 0);
+    $openingAvailableQuantity = max((int) ($product->available_quantity ?? 0), 0);
+    $saleUnitCount = $usesUntrackedStock && $productType === \App\Models\Product::TYPE_SELLABLE
+        ? $openingTotalQuantity
+        : (int) ($saleInventorySummary['total_new_stock'] ?? 0);
+    $saleAvailableCount = $usesUntrackedStock && $productType === \App\Models\Product::TYPE_SELLABLE
+        ? $openingAvailableQuantity
+        : (int) ($saleInventorySummary['available_new_stock'] ?? 0);
     $soldUnitCount = (int) ($saleInventorySummary['sold_new_stock'] ?? 0);
-    $rentalAssetCount = (int) ($assetStats['total_assets'] ?? 0);
-    $availableForRentCount = (int) ($assetStats['available_assets'] ?? 0);
+    $rentalAssetCount = $usesUntrackedStock && $productType === \App\Models\Product::TYPE_RENTABLE
+        ? $openingTotalQuantity
+        : (int) ($assetStats['total_assets'] ?? 0);
+    $availableForRentCount = $usesUntrackedStock && $productType === \App\Models\Product::TYPE_RENTABLE
+        ? $openingAvailableQuantity
+        : (int) ($assetStats['available_assets'] ?? 0);
     $rentedOutCount = (int) ($assetStats['rented_assets'] ?? 0);
     $underRepairCount = (int) ($assetStats['maintenance_assets'] ?? 0);
     $reservedRentalCount = (int) ($assetStats['reserved_assets'] ?? 0);
@@ -110,6 +123,9 @@
         ['label' => '15 Days', 'value' => $product->rental_price_15_days !== null ? $rupee . ' ' . number_format($product->rental_price_15_days, 2) : null],
         ['label' => '30 Days', 'value' => $product->rental_price_30_days !== null ? $rupee . ' ' . number_format($product->rental_price_30_days, 2) : null],
         ['label' => '3 Months', 'value' => $product->rental_price_3_months !== null ? $rupee . ' ' . number_format($product->rental_price_3_months, 2) : null],
+        ['label' => 'GST Type', 'value' => $gstTaxTypeLabel],
+        ['label' => 'GST Rate', 'value' => $gstRateSummary],
+        ['label' => 'GST Mode', 'value' => $gstTaxTypeLabel ? ucfirst((string) ($product->gst_calculation_mode ?? 'exclusive')) : null],
     ])->filter(fn ($item) => filled($item['value']))->values();
 
     $stockCards = collect([
@@ -490,7 +506,11 @@
 
             <div class="product-detail-card">
                 <h2 style="margin:0;">Stock Summary</h2>
-                <p style="margin:8px 0 0; color:#64748b;">The quickest read on how many sale units and rental assets exist right now.</p>
+                <p style="margin:8px 0 0; color:#64748b;">
+                    {{ $usesUntrackedStock
+                        ? 'For untracked products, this summary reflects the opening quantity stored in Product Master.'
+                        : 'The quickest read on how many sale units and rental assets exist right now.' }}
+                </p>
 
                 <div class="product-stock-grid">
                     @foreach($stockCards as $card)

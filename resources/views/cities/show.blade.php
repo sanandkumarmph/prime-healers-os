@@ -4,7 +4,7 @@
 <div style="max-width:1180px; margin:0 auto;">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:24px;">
         <div>
-            <div style="display:inline-flex; padding:6px 10px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">Organization &amp; Settings</div>
+            <div style="display:inline-flex; padding:6px 10px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">Company Settings</div>
             <h1 style="margin:12px 0 8px; font-size:34px; letter-spacing:-0.03em;">{{ $city->name }}</h1>
             <p style="margin:0; color:#64748b;">Shared city master used across users, warehouses, and vendors.</p>
         </div>

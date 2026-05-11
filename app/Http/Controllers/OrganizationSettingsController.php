@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Organization;
+use App\Support\InternalOrganization;
 use App\Support\PhoneNumber;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -71,21 +72,9 @@ class OrganizationSettingsController extends Controller
     private function organization(): Organization
     {
         $user = Auth::user();
-        $organizationId = (int) ($user?->organization_id ?? 0);
+        $organization = InternalOrganization::resolve($user);
 
-        if ($organizationId > 0) {
-            $organization = Organization::find($organizationId);
-
-            if ($organization) {
-                return $organization;
-            }
-        }
-
-        $fallbackOrganization = Organization::query()->orderBy('id')->get();
-
-        if ($fallbackOrganization->count() === 1) {
-            $organization = $fallbackOrganization->first();
-
+        if ($organization) {
             if ($user && (int) ($user->organization_id ?? 0) !== (int) $organization->id) {
                 $user->forceFill([
                     'organization_id' => $organization->id,

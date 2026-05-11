@@ -10,9 +10,9 @@
 <div style="max-width:1280px; margin:0 auto;">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:24px;">
         <div>
-            <div style="display:inline-flex; padding:6px 10px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">Organization &amp; Settings</div>
+            <div style="display:inline-flex; padding:6px 10px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">Company Settings</div>
             <h1 style="margin:12px 0 8px; font-size:34px; letter-spacing:-0.03em;">Users</h1>
-            <p style="margin:0; color:#64748b;">Manage login accounts, role mapping, city mapping, and who is active in the organization.</p>
+            <p style="margin:0; color:#64748b;">Manage login accounts, role mapping, city mapping, and who is active across Prime Healers.</p>
         </div>
         @if($canCreateUsers)
             <a href="{{ route('users.create') }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; background:#1d4ed8; color:#ffffff; text-decoration:none; font-weight:700;">+ Add User</a>

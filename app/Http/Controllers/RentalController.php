@@ -20,6 +20,7 @@ use App\Models\SaleInventory;
 use App\Models\Sale;
 use App\Services\Finance\InvoiceLinkResolver;
 use App\Services\Finance\InvoiceSyncService;
+use App\Services\Finance\AmountReductionGuardService;
 use App\Services\Finance\PaymentSyncService;
 use App\Services\Finance\RenewalFinanceService;
 use App\Services\Imports\ImportMatchSignatureService;
@@ -79,6 +80,13 @@ class RentalController extends Controller
     private function importMatchSignatureService(): ImportMatchSignatureService
     {
         return app(ImportMatchSignatureService::class);
+    }
+
+    private function yearMonthExpression(string $column): string
+    {
+        return DB::connection()->getDriverName() === 'sqlite'
+            ? "strftime('%Y-%m', {$column})"
+            : "DATE_FORMAT({$column}, '%Y-%m')";
     }
 
     private function hasDeliveryAssignedStaffColumn(): bool
@@ -1216,6 +1224,28 @@ class RentalController extends Controller
             $this->hasInvoiceRentalColumn(),
             $this->hasRentalItemsTable()
         );
+    }
+
+    private function projectedRentalInvoiceTotal(Rental $rental, ?Invoice $invoice, array $rentalItems, Request $request): float
+    {
+        $subtotal = round((float) collect($rentalItems)->sum(fn (array $item) => (float) ($item['line_total'] ?? 0)), 2);
+        $depositAmount = round((float) ($request->deposit_amount ?? 0), 2);
+        $transportAmount = round((float) ($request->transport_amount ?? 0), 2);
+        $otherAmount = round((float) ($request->other_amount ?? 0), 2);
+
+        $preservedExtraTotal = 0.0;
+
+        if ($invoice) {
+            $preservedExtraTotal = round((float) $invoice->items()
+                ->where(function ($query) use ($rental) {
+                    $query
+                        ->where('source_type', '!=', 'rental')
+                        ->where('description', '!=', 'Other charge for rental #' . $rental->id);
+                })
+                ->sum('line_total'), 2);
+        }
+
+        return round($subtotal + $depositAmount + $transportAmount + $otherAmount + $preservedExtraTotal, 2);
     }
 
     private function createRenewalInvoice(Rental $rental, RentalRenewal $renewal): Invoice
@@ -2963,6 +2993,29 @@ class RentalController extends Controller
             });
         }
 
+        $query->where(function ($linkedPaymentQuery) {
+            $hasLinkedSource = false;
+
+            if ($this->hasPaymentInvoiceColumn()) {
+                $hasLinkedSource = true;
+                $linkedPaymentQuery->whereHas('invoice');
+            }
+
+            if ($this->hasPaymentRentalColumn()) {
+                $hasLinkedSource = true;
+
+                if ($this->hasPaymentInvoiceColumn()) {
+                    $linkedPaymentQuery->orWhereHas('rental');
+                } else {
+                    $linkedPaymentQuery->whereHas('rental');
+                }
+            }
+
+            if (!$hasLinkedSource) {
+                $linkedPaymentQuery->whereRaw('1 = 0');
+            }
+        });
+
         if ($includeRelations) {
             $with = [];
 
@@ -3384,10 +3437,13 @@ class RentalController extends Controller
 
         $rentalAggregateQuery = $this->filteredRentalAggregateQuery($request)->toBase();
 
+        $monthPeriodExpression = $this->yearMonthExpression('start_date');
+        $salesPeriodExpression = $this->yearMonthExpression('sale_date');
+
         $rentalRows = (clone $rentalAggregateQuery)
             ->whereDate('start_date', '>=', $startMonth->toDateString())
             ->selectRaw("
-                DATE_FORMAT(start_date, '%Y-%m') as period,
+                {$monthPeriodExpression} as period,
                 SUM(COALESCE(rental_amount, 0) + COALESCE(deposit_amount, 0) + COALESCE(transport_amount, 0) + COALESCE(other_amount, 0)) as total
             ")
             ->groupBy('period')
@@ -3395,7 +3451,7 @@ class RentalController extends Controller
 
         $salesRows = $this->filteredSalesQuery($request, false)
             ->whereDate('sale_date', '>=', $startMonth->toDateString())
-            ->selectRaw("DATE_FORMAT(sale_date, '%Y-%m') as period, SUM(COALESCE(sale_amount, 0)) as total")
+            ->selectRaw("{$salesPeriodExpression} as period, SUM(COALESCE(sale_amount, 0)) as total")
             ->groupBy('period')
             ->pluck('total', 'period');
 
@@ -3507,7 +3563,23 @@ class RentalController extends Controller
         )
             ->limit(10)
             ->get();
-        $dashboardRentalCollection = $this->filteredRentalQuery($baseFilterRequest, true)->get();
+        $dashboardSummaryQuery = $this->filteredRentalQuery($baseFilterRequest, false)
+            ->with([
+                'customer:id,name,city',
+                'dispatchWarehouse:id,name',
+                'deliveryRecord:id,rental_id,type,status,assigned_user_id,assigned_staff_id,third_party_name,assignment_type,completed_at,updated_at',
+                'deliveryRecord.assignedUser:id,name',
+                'deliveryRecord.assignedStaff:id,name,assignment_role',
+                'pickupRecord:id,rental_id,type,status,assigned_user_id,assigned_staff_id,third_party_name,assignment_type,completed_at,updated_at',
+                'pickupRecord.assignedUser:id,name',
+                'pickupRecord.assignedStaff:id,name,assignment_role',
+            ]);
+
+        if ($this->hasRentalItemsTable()) {
+            $dashboardSummaryQuery->with(['rentalItems:id,rental_id,product_id,quantity,ordered_quantity,delivered_quantity,returned_quantity', 'rentalItems.product:id,name']);
+        }
+
+        $dashboardRentalCollection = $dashboardSummaryQuery->get();
 
         if (!$this->hasRentalAssetsTable()) {
             $recentRentals->each(fn ($rental) => $rental->setRelation('activeRentalAssets', collect()));
@@ -4900,6 +4972,15 @@ class RentalController extends Controller
         );
         $this->validateTrackedRentalAssetAssignments($rentalItems, $rental);
 
+        $linkedInvoice = $this->rentalInvoice($rental->loadMissing('renewals'));
+        if ($linkedInvoice) {
+            app(AmountReductionGuardService::class)->assertTotalNotBelowReceivedPayments(
+                $linkedInvoice,
+                $this->projectedRentalInvoiceTotal($rental, $linkedInvoice, $rentalItems, $request),
+                'This rental update'
+            );
+        }
+
         DB::transaction(function () use ($request, $rental, $customer, $selectedAssets, $saleItems, $rentalItems, $deliveryAssignment) {
             $this->restoreRentalItemStock($rental);
             $this->consumeRentalItemStock($rentalItems);
@@ -4981,6 +5062,11 @@ class RentalController extends Controller
             $this->restoreRentalSaleItemsStock($rental);
             $this->syncRentalSaleItems($rental, $saleItems);
             $this->syncAutoGeneratedRentalSales($rental);
+
+            $linkedInvoice = $this->rentalInvoice($rental->fresh());
+            if ($linkedInvoice) {
+                $this->syncRentalInvoiceFromRental($rental->fresh(), $linkedInvoice->fresh());
+            }
         });
 
         return redirect()->route('rentals.show', $rental)->with('success', 'Rental updated successfully.');

@@ -460,12 +460,10 @@
         display: grid;
         gap: 10px;
         padding: 16px 18px;
-        border: 1px solid #dbe3ef;
-        border-radius: 20px;
-        background:
-            radial-gradient(circle at top right, rgba(37, 99, 235, 0.10), transparent 26%),
-            linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-        box-shadow: 0 14px 32px rgba(15, 23, 42, 0.05);
+        border: 1px solid var(--ph-color-border);
+        border-radius: var(--ph-radius-xl);
+        background: linear-gradient(180deg, #ffffff 0%, var(--ph-color-surface-soft) 100%);
+        box-shadow: var(--ph-shadow-card);
     }
     .dashboard-hero-header {
         display: flex;
@@ -491,9 +489,9 @@
         min-height: 26px;
         padding: 5px 10px;
         border-radius: 999px;
-        background: #eff6ff;
-        color: #1d4ed8;
-        border: 1px solid #bfdbfe;
+        background: var(--ph-color-info-soft);
+        color: var(--ph-color-primary);
+        border: 1px solid rgba(23, 119, 189, 0.18);
         font-size: 11px;
         font-weight: 700;
         line-height: 1;
@@ -501,7 +499,7 @@
     .dashboard-hero-summary {
         margin: 0;
         max-width: 760px;
-        color: #475569;
+        color: var(--ph-color-text-soft);
         font-size: 13px;
         line-height: 1.5;
     }
@@ -520,7 +518,7 @@
         min-width: 122px;
     }
     .dashboard-hero-actions .rx-btn {
-        box-shadow: 0 16px 34px rgba(15, 23, 42, 0.12);
+        box-shadow: 0 16px 34px rgba(23, 119, 189, 0.16);
     }
     .dashboard-hero-actions .rx-btn-secondary {
         background: rgba(255, 255, 255, 0.95);
@@ -543,6 +541,10 @@
     .dashboard-priority-grid,
     .dashboard-sales-grid {
         grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    }
+    .dashboard-sales-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: stretch;
     }
     .dashboard-finance-grid {
         grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
@@ -579,9 +581,9 @@
         min-height: 82px;
         padding: 10px 12px;
         border-radius: 16px;
-        border: 1px solid #e2e8f0;
+        border: 1px solid var(--ph-color-border);
         background: #ffffff;
-        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+        box-shadow: var(--ph-shadow-soft);
         text-decoration: none;
         color: inherit;
     }
@@ -590,8 +592,8 @@
         min-height: 92px;
         padding: 13px 14px;
         border-radius: 18px;
-        background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-        box-shadow: 0 14px 28px rgba(15, 23, 42, 0.06);
+        background: #ffffff;
+        box-shadow: 0 14px 28px rgba(11, 35, 66, 0.08);
     }
     .dashboard-kpi-card:hover,
     .dashboard-priority-card:hover,
@@ -602,7 +604,7 @@
     .dashboard-rank-link:hover,
     .dashboard-queue-card:hover {
         transform: translateY(-1px);
-        box-shadow: 0 16px 30px rgba(15, 23, 42, 0.08);
+        box-shadow: 0 16px 30px rgba(11, 35, 66, 0.1);
     }
     .dashboard-kpi-head,
     .dashboard-card-head,
@@ -617,7 +619,7 @@
     .dashboard-kpi-label,
     .dashboard-card-label,
     .dashboard-logistics-label {
-        color: #64748b;
+        color: var(--ph-color-text-soft);
         display: block;
         max-width: calc(100% - 46px);
         font-size: 10px;
@@ -629,7 +631,7 @@
         text-wrap: balance;
     }
     .dashboard-kpi-subtitle {
-        color: #475569;
+        color: var(--ph-color-text-soft);
         font-size: 12px;
         line-height: 1.35;
         font-weight: 700;
@@ -642,9 +644,9 @@
         border-radius: 9px;
         display: grid;
         place-items: center;
-        background: #f8fafc;
-        color: #2563eb;
-        border: 1px solid #e2e8f0;
+        background: var(--ph-color-surface-soft);
+        color: var(--ph-color-primary);
+        border: 1px solid var(--ph-color-border);
         flex: 0 0 28px;
     }
     .dashboard-kpi-icon svg,
@@ -654,7 +656,7 @@
     }
     .dashboard-kpi-value,
     .dashboard-card-value {
-        color: #0f172a;
+        color: var(--ph-color-text);
         max-width: 100%;
         font-size: 24px;
         font-weight: 800;
@@ -669,7 +671,7 @@
     .dashboard-rank-copy,
     .dashboard-queue-copy,
     .dashboard-trend-copy {
-        color: #64748b;
+        color: var(--ph-color-text-soft);
         font-size: 11px;
         line-height: 1.4;
         overflow-wrap: anywhere;
@@ -679,9 +681,9 @@
     .dashboard-sales-card.is-success .dashboard-card-icon,
     .dashboard-finance-card.is-success .dashboard-card-icon,
     .dashboard-logistics-card.is-success .dashboard-card-icon {
-        color: #16a34a;
-        background: #f0fdf4;
-        border-color: #bbf7d0;
+        color: var(--ph-color-success);
+        background: var(--ph-color-success-soft);
+        border-color: rgba(14, 159, 75, 0.18);
     }
     .dashboard-kpi-card.is-warning .dashboard-kpi-icon,
     .dashboard-priority-card.is-warning .dashboard-card-icon,
@@ -689,9 +691,9 @@
     .dashboard-finance-card.is-warning .dashboard-card-icon,
     .dashboard-logistics-card.is-warning .dashboard-card-icon,
     .dashboard-action-card.is-warning .dashboard-card-icon {
-        color: #d97706;
-        background: #fffbeb;
-        border-color: #fde68a;
+        color: var(--ph-color-warning);
+        background: var(--ph-color-warning-soft);
+        border-color: rgba(183, 121, 31, 0.18);
     }
     .dashboard-kpi-card.is-danger .dashboard-kpi-icon,
     .dashboard-priority-card.is-danger .dashboard-card-icon,
@@ -699,9 +701,9 @@
     .dashboard-finance-card.is-danger .dashboard-card-icon,
     .dashboard-logistics-card.is-danger .dashboard-card-icon,
     .dashboard-action-card.is-danger .dashboard-card-icon {
-        color: #dc2626;
-        background: #fff1f2;
-        border-color: #fecdd3;
+        color: var(--ph-color-danger);
+        background: var(--ph-color-danger-soft);
+        border-color: rgba(179, 13, 35, 0.18);
     }
     .dashboard-kpi-card.is-info .dashboard-kpi-icon,
     .dashboard-priority-card.is-info .dashboard-card-icon,
@@ -709,9 +711,9 @@
     .dashboard-finance-card.is-info .dashboard-card-icon,
     .dashboard-logistics-card.is-info .dashboard-card-icon,
     .dashboard-action-card.is-info .dashboard-card-icon {
-        color: #2563eb;
-        background: #eff6ff;
-        border-color: #bfdbfe;
+        color: var(--ph-color-primary);
+        background: var(--ph-color-info-soft);
+        border-color: rgba(23, 119, 189, 0.18);
     }
     .dashboard-finance-card {
         min-height: 78px;
@@ -746,9 +748,9 @@
         height: 28px;
         padding: 0 9px;
         border-radius: 9px;
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        color: #0f172a;
+        background: var(--ph-color-surface-soft);
+        border: 1px solid var(--ph-color-border);
+        color: var(--ph-color-text);
         font-size: 11px;
         font-weight: 800;
     }
@@ -777,7 +779,7 @@
         display: none;
         align-items: center;
         gap: 6px;
-        color: #64748b;
+        color: var(--ph-color-text-soft);
         font-size: 11px;
         font-weight: 800;
         text-transform: uppercase;
@@ -804,20 +806,20 @@
         min-height: 68px;
         padding: 12px 14px;
         border-radius: 16px;
-        border: 1px solid #e2e8f0;
-        background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+        border: 1px solid var(--ph-color-border);
+        background: #ffffff;
+        box-shadow: var(--ph-shadow-soft);
     }
     .dashboard-snapshot-item strong {
         display: block;
-        color: #0f172a;
+        color: var(--ph-color-text);
         font-size: 18px;
         line-height: 1.05;
         letter-spacing: -0.03em;
     }
     .dashboard-snapshot-item span {
         display: block;
-        color: #64748b;
+        color: var(--ph-color-text-soft);
         font-size: 10px;
         font-weight: 800;
         letter-spacing: .08em;
@@ -838,29 +840,29 @@
         border-radius: 12px;
         display: grid;
         place-items: center;
-        border: 1px solid #dbe3ef;
-        background: #f8fafc;
-        color: #2563eb;
+        border: 1px solid var(--ph-color-border);
+        background: var(--ph-color-surface-soft);
+        color: var(--ph-color-primary);
     }
     .dashboard-snapshot-item.is-success .dashboard-snapshot-icon {
-        color: #16a34a;
-        background: #f0fdf4;
-        border-color: #bbf7d0;
+        color: var(--ph-color-success);
+        background: var(--ph-color-success-soft);
+        border-color: rgba(14, 159, 75, 0.18);
     }
     .dashboard-snapshot-item.is-warning .dashboard-snapshot-icon {
-        color: #d97706;
-        background: #fffbeb;
-        border-color: #fde68a;
+        color: var(--ph-color-warning);
+        background: var(--ph-color-warning-soft);
+        border-color: rgba(183, 121, 31, 0.18);
     }
     .dashboard-snapshot-item.is-danger .dashboard-snapshot-icon {
-        color: #dc2626;
-        background: #fff1f2;
-        border-color: #fecdd3;
+        color: var(--ph-color-danger);
+        background: var(--ph-color-danger-soft);
+        border-color: rgba(179, 13, 35, 0.18);
     }
     .dashboard-snapshot-item.is-info .dashboard-snapshot-icon {
-        color: #2563eb;
-        background: #eff6ff;
-        border-color: #bfdbfe;
+        color: var(--ph-color-primary);
+        background: var(--ph-color-info-soft);
+        border-color: rgba(23, 119, 189, 0.18);
     }
     .dashboard-action-card {
         min-height: 108px;
@@ -1547,7 +1549,7 @@
                                     </div>
                                     <span class="dashboard-rank-title">{{ $currency($row['total_amount'] ?? 0) }}</span>
                                 </div>
-                                <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['total_amount'] ?? 0)) / $cityBreakdownMax) * 100, 1) }}%;background:#2563eb;"></div></div>
+                                <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['total_amount'] ?? 0)) / $cityBreakdownMax) * 100, 1) }}%;background:var(--ph-color-primary);"></div></div>
                             </a>
                         @endforeach
                     </div>
@@ -1580,7 +1582,7 @@
                                     </div>
                                     <span class="dashboard-rank-title">{{ $currency($row['total_amount'] ?? 0) }}</span>
                                 </div>
-                                <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['total_amount'] ?? 0)) / $vendorBreakdownMax) * 100, 1) }}%;background:#16a34a;"></div></div>
+                                <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['total_amount'] ?? 0)) / $vendorBreakdownMax) * 100, 1) }}%;background:var(--ph-color-success);"></div></div>
                             </a>
                         @endforeach
                     </div>
@@ -1613,7 +1615,7 @@
                                     </div>
                                     <span class="dashboard-rank-title">{{ $currency($row['total_amount'] ?? 0) }}</span>
                                 </div>
-                                <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['total_amount'] ?? 0)) / $warehouseBreakdownMax) * 100, 1) }}%;background:#d97706;"></div></div>
+                                <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['total_amount'] ?? 0)) / $warehouseBreakdownMax) * 100, 1) }}%;background:var(--ph-color-warning);"></div></div>
                             </a>
                         @endforeach
                     </div>
@@ -1760,9 +1762,9 @@
                                 </div>
                                 <div class="dashboard-trend-pair">
                                     <small class="dashboard-trend-copy">Rentals</small>
-                                    <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['rental_total'] ?? 0)) / $trendMax) * 100, 1) }}%;background:#2563eb;"></div></div>
+                                    <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['rental_total'] ?? 0)) / $trendMax) * 100, 1) }}%;background:var(--ph-color-primary);"></div></div>
                                     <small class="dashboard-trend-copy">Sales</small>
-                                    <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['sales_total'] ?? 0)) / $trendMax) * 100, 1) }}%;background:#16a34a;"></div></div>
+                                    <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['sales_total'] ?? 0)) / $trendMax) * 100, 1) }}%;background:var(--ph-color-success);"></div></div>
                                 </div>
                             </div>
                         @endforeach
@@ -1794,9 +1796,9 @@
                         <div style="text-align:right;">
                             <strong>{{ $availableRentalAssetsCount }}</strong>
                             @if($availableRentalAssetsUrl)
-                                <small><a href="{{ $availableRentalAssetsUrl }}" style="color:#2563eb;text-decoration:none;">Open rental assets</a></small>
+                                <small><a href="{{ $availableRentalAssetsUrl }}" style="color:var(--ph-color-primary);text-decoration:none;">Open rental assets</a></small>
                             @elseif($inventoryUrl)
-                                <small><a href="{{ $inventoryUrl }}" style="color:#2563eb;text-decoration:none;">Inventory dashboard</a></small>
+                                <small><a href="{{ $inventoryUrl }}" style="color:var(--ph-color-primary);text-decoration:none;">Inventory dashboard</a></small>
                             @endif
                         </div>
                     </div>
@@ -1808,9 +1810,9 @@
                         <div style="text-align:right;">
                             <strong>{{ $availableSaleUnitsCount }}</strong>
                             @if($availableSaleUnitsUrl)
-                                <small><a href="{{ $availableSaleUnitsUrl }}" style="color:#2563eb;text-decoration:none;">Open sale units</a></small>
+                                <small><a href="{{ $availableSaleUnitsUrl }}" style="color:var(--ph-color-primary);text-decoration:none;">Open sale units</a></small>
                             @elseif($inventoryUrl)
-                                <small><a href="{{ $inventoryUrl }}" style="color:#2563eb;text-decoration:none;">Inventory dashboard</a></small>
+                                <small><a href="{{ $inventoryUrl }}" style="color:var(--ph-color-primary);text-decoration:none;">Inventory dashboard</a></small>
                             @endif
                         </div>
                     </div>
@@ -1822,7 +1824,7 @@
                         <div style="text-align:right;">
                             <strong>{{ $maintenanceAlertCountValue }}</strong>
                             @if($inventoryUrl)
-                                <small><a href="{{ $inventoryUrl }}" style="color:#2563eb;text-decoration:none;">Inventory dashboard</a></small>
+                                <small><a href="{{ $inventoryUrl }}" style="color:var(--ph-color-primary);text-decoration:none;">Inventory dashboard</a></small>
                             @endif
                         </div>
                     </div>
@@ -1834,7 +1836,7 @@
                         <div style="text-align:right;">
                             <strong>{{ $currency($paymentsReceivedTodayAmount) }}</strong>
                             @if($reportsIndexUrl)
-                                <small><a href="{{ $reportsIndexUrl }}" style="color:#2563eb;text-decoration:none;">Open reports</a></small>
+                                <small><a href="{{ $reportsIndexUrl }}" style="color:var(--ph-color-primary);text-decoration:none;">Open reports</a></small>
                             @endif
                         </div>
                     </div>

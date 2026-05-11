@@ -480,7 +480,7 @@
             <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
                 <div>
                     <h2 style="margin:0; font-size:22px;">Product Stock Position</h2>
-                    <p class="inventory-panel-copy">Combined rental and sales visibility by product. Product Master identifies the item, while Asset Register shows the physical units behind these counts.</p>
+                    <p class="inventory-panel-copy">Combined rental and sales visibility by product. Tracked products use Asset Register counts, while untracked products use the opening quantity from Product Master.</p>
                 </div>
             </div>
             <div class="inventory-filter-chips">
@@ -532,16 +532,19 @@
                                         @if($productRow->tracksSaleStock())
                                             <span class="inventory-type-badge is-sale">Sale Unit</span>
                                         @endif
+                                        @if($productRow->usesUntrackedStock())
+                                            <span class="inventory-type-badge is-category">Untracked Opening Stock</span>
+                                        @endif
                                     </div>
                                 </td>
                                 <td>
                                     <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock']) }}" class="inventory-stock-link">
-                                        <span class="inventory-stock-number">{{ (int) $productRow->rental_assets_total_count }}</span>
+                                        <span class="inventory-stock-number">{{ (int) $productRow->effective_rental_assets_total_count }}</span>
                                     </a>
                                 </td>
                                 <td>
                                     <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock', 'asset_status' => 'available']) }}" class="inventory-stock-link">
-                                        <span class="inventory-stock-number">{{ (int) $productRow->rental_available_count }}</span>
+                                        <span class="inventory-stock-number">{{ (int) $productRow->effective_rental_available_count }}</span>
                                     </a>
                                 </td>
                                 <td>
@@ -562,12 +565,12 @@
                                 </td>
                                 <td>
                                     <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'new_stock']) }}" class="inventory-stock-link">
-                                        <span class="inventory-stock-number">{{ (int) $productRow->sale_units_total_count }}</span>
+                                        <span class="inventory-stock-number">{{ (int) $productRow->effective_sale_units_total_count }}</span>
                                     </a>
                                 </td>
                                 <td>
                                     <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'new_stock', 'asset_status' => 'available_for_sale']) }}" class="inventory-stock-link">
-                                        <span class="inventory-stock-number">{{ (int) $productRow->sale_available_count }}</span>
+                                        <span class="inventory-stock-number">{{ (int) $productRow->effective_sale_available_count }}</span>
                                     </a>
                                 </td>
                                 <td>
@@ -625,6 +628,9 @@
                                 @if($productRow->tracksSaleStock())
                                     <span class="inventory-type-badge is-sale">Sale Unit</span>
                                 @endif
+                                @if($productRow->usesUntrackedStock())
+                                    <span class="inventory-type-badge is-category">Untracked Opening Stock</span>
+                                @endif
                             </div>
                         </div>
 
@@ -632,8 +638,8 @@
                             <div class="inventory-mini-group">
                                 <h3>Rental</h3>
                                 <div class="inventory-mini-stats">
-                                    <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock']) }}" class="inventory-mini-stat inventory-stock-link"><strong>{{ (int) $productRow->rental_assets_total_count }}</strong><span>Total</span></a>
-                                    <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock', 'asset_status' => 'available']) }}" class="inventory-mini-stat inventory-stock-link"><strong>{{ (int) $productRow->rental_available_count }}</strong><span>Avail</span></a>
+                                    <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock']) }}" class="inventory-mini-stat inventory-stock-link"><strong>{{ (int) $productRow->effective_rental_assets_total_count }}</strong><span>Total</span></a>
+                                    <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock', 'asset_status' => 'available']) }}" class="inventory-mini-stat inventory-stock-link"><strong>{{ (int) $productRow->effective_rental_available_count }}</strong><span>Avail</span></a>
                                     <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock']) }}" class="inventory-mini-stat inventory-stock-link"><strong>{{ (int) $productRow->rental_out_count }}</strong><span>Out</span></a>
                                     <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock', 'asset_status' => 'awaiting_verification']) }}" class="inventory-mini-stat inventory-stock-link"><strong>{{ (int) $productRow->awaiting_verification_count }}</strong><span>Verify</span></a>
                                     <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock', 'asset_status' => 'maintenance']) }}" class="inventory-mini-stat inventory-stock-link"><strong>{{ (int) $productRow->under_repair_count }}</strong><span>Repair</span></a>
@@ -643,8 +649,8 @@
                             <div class="inventory-mini-group">
                                 <h3>Sales</h3>
                                 <div class="inventory-mini-stats">
-                                    <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'new_stock']) }}" class="inventory-mini-stat inventory-stock-link"><strong>{{ (int) $productRow->sale_units_total_count }}</strong><span>Total</span></a>
-                                    <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'new_stock', 'asset_status' => 'available_for_sale']) }}" class="inventory-mini-stat inventory-stock-link"><strong>{{ (int) $productRow->sale_available_count }}</strong><span>Avail</span></a>
+                                    <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'new_stock']) }}" class="inventory-mini-stat inventory-stock-link"><strong>{{ (int) $productRow->effective_sale_units_total_count }}</strong><span>Total</span></a>
+                                    <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'new_stock', 'asset_status' => 'available_for_sale']) }}" class="inventory-mini-stat inventory-stock-link"><strong>{{ (int) $productRow->effective_sale_available_count }}</strong><span>Avail</span></a>
                                     <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'new_stock', 'asset_status' => 'reserved_for_sale']) }}" class="inventory-mini-stat inventory-stock-link"><strong>{{ (int) $productRow->sale_reserved_count }}</strong><span>Reserved</span></a>
                                     <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'new_stock', 'asset_status' => 'sold']) }}" class="inventory-mini-stat inventory-stock-link"><strong>{{ (int) $productRow->sold_units_count }}</strong><span>Sold</span></a>
                                     <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'new_stock', 'asset_status' => 'retired']) }}" class="inventory-mini-stat inventory-stock-link"><strong>{{ (int) $productRow->retired_sale_count }}</strong><span>Retired</span></a>

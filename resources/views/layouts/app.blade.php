@@ -5,12 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{{ config('app.name', 'Prime Healers OS') }}</title>
-    <link rel="icon" type="image/png" href="{{ asset('images/rentnexis-favicon.png') }}">
+    <link rel="icon" type="image/png" href="{{ asset('images/prime-healers-favicon.png') }}">
     <link rel="shortcut icon" href="{{ asset('favicon.ico') }}">
-    <link rel="apple-touch-icon" href="{{ asset('images/rentnexis-favicon.png') }}">
+    <link rel="apple-touch-icon" href="{{ asset('images/prime-healers-favicon.png') }}">
+    <link rel="preconnect" href="https://fonts.bunny.net">
+    <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700,800&family=manrope:600,700,800&display=swap" rel="stylesheet" />
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body style="margin:0; width:100%; overflow-x:hidden; background:#f8fafc; color:#0f172a; font-family:Arial, sans-serif;">
+<body style="margin:0; width:100%; overflow-x:hidden; background:var(--ph-color-bg); color:var(--ph-color-text); font-family:var(--ph-font-body);">
 @php
     $currentUser = auth()->user();
     $safeRoute = function (string $routeName, array $parameters = []) {
@@ -46,6 +48,10 @@
     $topbarNotificationCount = (int) ($topbarNotificationCount ?? 0);
     $topbarNotificationsViewAllHref = $topbarNotificationsViewAllHref ?? ($safeRoute('dashboard'));
     $knowledgeHubHref = $safeRoute('knowledge.index');
+    $globalSearchHref = $safeRoute('search.global');
+    $globalSearchValue = request()->routeIs('search.global')
+        ? trim((string) request('q', ''))
+        : '';
     $sidebarPendingCounts = $sidebarPendingCounts ?? [];
     $formatSidebarBadge = function ($value): ?string {
         $count = max((int) $value, 0);
@@ -115,7 +121,7 @@
     ];
 
     $organizationItems = [
-        ['label' => 'Company', 'icon' => 'settings', 'href' => $companyHref, 'active' => request()->routeIs('organization.settings.*'), 'visible' => !empty($companyHref)],
+        ['label' => 'Company Profile', 'icon' => 'settings', 'href' => $companyHref, 'active' => request()->routeIs('organization.settings.*'), 'visible' => !empty($companyHref)],
         ['label' => 'Preferences', 'icon' => 'settings', 'href' => $preferencesHref, 'active' => request()->routeIs('organization.settings.*'), 'visible' => false],
         ['label' => 'Data Import', 'icon' => 'products', 'href' => $safeRoute('imports.index'), 'active' => request()->routeIs('imports.*'), 'visible' => $currentUser?->isSuperAdmin() ?? false],
     ];
@@ -229,7 +235,7 @@
     } elseif ($routeName === 'profile.edit') {
         $breadcrumbItems[] = ['label' => 'Profile', 'href' => null];
     } elseif (str_starts_with((string) $routeName, 'organization.settings.')) {
-        $breadcrumbItems[] = ['label' => 'Organization & Settings', 'href' => null];
+        $breadcrumbItems[] = ['label' => 'Company Settings', 'href' => null];
         $breadcrumbItems[] = ['label' => 'Settings', 'href' => null];
     } elseif ($routeName === 'deliveries.assigned') {
         $breadcrumbItems[] = ['label' => 'Tasks Board', 'href' => route('deliveries.index')];
@@ -239,7 +245,7 @@
         $breadcrumbItems[] = ['label' => 'My Pickups', 'href' => null];
     } elseif ($routeModule && isset($moduleLabels[$routeModule])) {
         if (in_array($routeModule, $adminModules, true)) {
-            $breadcrumbItems[] = ['label' => 'Organization & Settings', 'href' => null];
+            $breadcrumbItems[] = ['label' => 'Company Settings', 'href' => null];
         }
 
         $indexRoute = $routeModule . '.index';
@@ -278,38 +284,83 @@
     .app-shell-sidebar {
         flex:0 0 254px; width:254px; max-width:254px; color:#334155; padding:18px 14px;
         display:flex; flex-direction:column; gap:14px; box-sizing:border-box; overflow:hidden;
-        color:#dbeafe;
+        color:rgba(255,255,255,.96);
         background:
-            radial-gradient(circle at 14% 0%, rgba(56,189,248,.12), transparent 32%),
-            radial-gradient(circle at 84% 12%, rgba(37,99,235,.12), transparent 24%),
-            linear-gradient(180deg, #07162f 0%, #0b1528 56%, #08101d 100%);
-        border-right:1px solid rgba(148,163,184,.16);
-        box-shadow:14px 0 40px rgba(2,6,23,.18);
+            radial-gradient(circle at 16% 6%, rgba(255,255,255,.10), transparent 26%),
+            linear-gradient(180deg, #263A8C 0%, #203178 52%, #17245F 100%);
+        border-right:1px solid rgba(255,255,255,.12);
+        box-shadow:8px 0 18px rgba(18,29,74,.08);
     }
-    .brand-panel { padding:4px 8px 14px; border-bottom:1px solid rgba(148,163,184,.14); }
-    .brand-mark { display:flex; align-items:center; gap:10px; }
+    .brand-panel { padding:8px 8px 14px; border-bottom:1px solid rgba(255,255,255,.12); }
+    .brand-mark {
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        gap:12px;
+        min-width:0;
+        text-align:center;
+    }
+    .brand-badge {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        flex:0 0 auto;
+        width:100%;
+        max-width:210px;
+        padding:16px 18px;
+        border-radius:24px;
+        border:1px solid rgba(223,231,243,.92);
+        background:rgba(255,255,255,.98);
+        box-shadow:0 10px 24px rgba(18,29,74,.10), inset 0 1px 0 rgba(255,255,255,.88);
+    }
     .brand-logo {
-        width:44px;
-        height:44px;
-        max-width:44px;
-        max-height:44px;
+        width:auto;
+        height:auto;
+        max-width:190px;
+        max-height:60px;
         object-fit:contain;
         display:block;
-        flex:0 0 44px;
-        filter:drop-shadow(0 10px 24px rgba(56,189,248,.18));
+        flex:0 0 auto;
+        filter:none;
     }
-    .brand-title { font-size:22px; font-weight:800; letter-spacing:-.04em; color:#ffffff; line-height:1; }
-    .brand-subtitle { margin-top:4px; font-size:11px; color:#93c5fd; }
-    .org-card {
-        margin-top:14px; padding:11px 12px; border-radius:15px;
-        background:linear-gradient(135deg, rgba(15,23,42,.18) 0%, rgba(37,99,235,.14) 100%);
-        border:1px solid rgba(147,197,253,.14);
+    .brand-copy { min-width:0; display:grid; gap:7px; justify-items:center; }
+    .brand-title-lockup {
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        gap:7px;
+        flex-wrap:wrap;
     }
-    .org-card small, .sidebar-section-title {
+    .brand-title {
+        font-family:var(--ph-font-heading);
+        font-size:20px;
+        font-weight:800;
+        letter-spacing:-.04em;
+        color:#ffffff;
+        line-height:1.02;
+    }
+    .brand-title-tag {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        min-height:21px;
+        padding:0 8px;
+        border-radius:999px;
+        border:1px solid rgba(255,255,255,.16);
+        background:rgba(255,255,255,.12);
+        color:rgba(255,255,255,.88);
+        font-family:var(--ph-font-heading);
+        font-size:10px;
+        font-weight:800;
+        letter-spacing:.12em;
+        text-transform:uppercase;
+        line-height:1;
+    }
+    .brand-subtitle { max-width:196px; font-size:11.25px; line-height:1.48; color:rgba(255,255,255,.78); }
+    .sidebar-section-title {
         font-size:10px; letter-spacing:.12em; text-transform:uppercase; font-weight:800;
     }
-    .org-card small { color:#7dd3fc; }
-    .org-card strong { display:block; margin-top:6px; font-size:13px; line-height:1.3; color:#eff6ff; }
     .sidebar-nav { display:flex; flex-direction:column; gap:4px; }
     .sidebar-group {
         display:grid;
@@ -321,25 +372,25 @@
     }
     .sidebar-link {
         position:relative; display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:12px;
-        text-decoration:none; font-size:13px; font-weight:700; color:#d7e3fa;
+        text-decoration:none; font-size:13px; font-weight:700; color:rgba(255,255,255,.84);
         border:1px solid transparent; transition:background .16s ease, color .16s ease, transform .16s ease, border-color .16s ease;
     }
-    .sidebar-link:hover { background:rgba(148,163,184,.10); color:#fff; transform:translateX(2px); border-color:rgba(148,163,184,.14); }
+    .sidebar-link:hover { background:rgba(255,255,255,.14); color:#fff; transform:translateX(2px); border-color:rgba(255,255,255,.16); }
     .sidebar-link.is-active {
-        color:#fff; background:linear-gradient(135deg, rgba(37,99,235,.78), rgba(59,130,246,.64));
-        border-color:rgba(147,197,253,.32); box-shadow:0 10px 22px rgba(37,99,235,.18);
+        color:#fff; background:rgba(255,255,255,.20);
+        border-color:rgba(255,255,255,.22); box-shadow:0 10px 18px rgba(18,29,74,.10);
     }
     .sidebar-link.is-admin-active {
-        color:#e0f2fe; background:rgba(37,99,235,.14);
-        border-color:rgba(96,165,250,.18);
+        color:#eff7ff; background:rgba(255,255,255,.12);
+        border-color:rgba(255,255,255,.14);
     }
     .sidebar-icon {
         width:28px; height:28px; border-radius:10px; display:grid; place-items:center; flex:0 0 28px;
-        color:#7dd3fc; background:rgba(15,23,42,.22); border:1px solid rgba(147,197,253,.12);
+        color:rgba(255,255,255,.92); background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.12);
     }
     .sidebar-icon svg { width:16px; height:16px; }
     .sidebar-link.is-active .sidebar-icon,
-    .sidebar-link.is-admin-active .sidebar-icon { color:inherit; background:rgba(255,255,255,.18); border-color:rgba(255,255,255,.24); }
+    .sidebar-link.is-admin-active .sidebar-icon { color:rgba(255,255,255,.96); background:rgba(255,255,255,.16); border-color:rgba(255,255,255,.16); }
     .sidebar-label { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .sidebar-link-badge {
         margin-left:auto;
@@ -350,26 +401,26 @@
         display:inline-flex;
         align-items:center;
         justify-content:center;
-        background:#dc2626;
+        background:#B30D23;
         color:#fff;
         font-size:10px;
         font-weight:800;
         line-height:1;
-        box-shadow:0 8px 18px rgba(220,38,38,.22);
+        box-shadow:0 8px 16px rgba(179,13,35,.18);
         transform:translateY(-6px);
         flex:0 0 auto;
     }
     .sidebar-link.is-active .sidebar-link-badge,
     .sidebar-link.is-admin-active .sidebar-link-badge {
         background:#fff;
-        color:#1d4ed8;
+        color:#1777BD;
         box-shadow:none;
     }
     .sidebar-section {
         display:flex; flex-direction:column; gap:6px; margin-top:8px; padding-top:14px;
-        border-top:1px solid rgba(148,163,184,.14);
+        border-top:1px solid rgba(255,255,255,.12);
     }
-    .sidebar-section-title { padding:0 12px; color:#7c93bf; font-size:10px; }
+    .sidebar-section-title { padding:0 12px; color:rgba(255,255,255,.78); font-size:10px; }
     .sidebar-section-toggle {
         display:flex;
         align-items:center;
@@ -378,9 +429,9 @@
         width:100%;
         padding:9px 12px;
         border-radius:13px;
-        color:#dbeafe;
-        background:rgba(148,163,184,.07);
-        border:1px solid rgba(148,163,184,.12);
+        color:rgba(255,255,255,.96);
+        background:rgba(255,255,255,.13);
+        border:1px solid rgba(255,255,255,.14);
         font-size:11px;
         font-weight:800;
         letter-spacing:.05em;
@@ -390,8 +441,8 @@
         transition:background .16s ease, border-color .16s ease, color .16s ease;
     }
     .sidebar-section-toggle:hover {
-        background:rgba(148,163,184,.11);
-        border-color:rgba(148,163,184,.16);
+        background:rgba(255,255,255,.14);
+        border-color:rgba(255,255,255,.16);
     }
     .sidebar-section-toggle::-webkit-details-marker { display:none; }
     .sidebar-section-toggle svg {
@@ -628,14 +679,15 @@
         cursor:pointer;
         list-style:none;
         position:relative;
+        overflow:visible;
     }
     .topbar-bell-trigger::-webkit-details-marker {
         display:none;
     }
     .topbar-bell-badge {
         position:absolute;
-        top:-5px;
-        right:-5px;
+        top:-7px;
+        right:-7px;
         min-width:18px;
         height:18px;
         padding:0 5px;
@@ -649,6 +701,7 @@
         font-weight:800;
         line-height:1;
         box-shadow:0 8px 18px rgba(220,38,38,.22);
+        z-index:2;
     }
     .topbar-bell-panel {
         position:absolute;
@@ -915,7 +968,10 @@
     @media (max-width: 900px) {
         .app-shell-sidebar { flex-basis:222px; width:222px; max-width:222px; padding:14px 10px; }
         .app-shell-main { max-width:calc(100vw - 222px) !important; }
-        .brand-title { font-size:20px; }
+        .brand-badge { max-width:188px; padding:14px 14px; }
+        .brand-logo { max-width:170px; max-height:52px; }
+        .brand-title { font-size:19px; }
+        .brand-title-tag { min-height:20px; padding:0 7px; font-size:9px; }
         .sidebar-link { padding:8px 9px; }
     }
     @media (max-width: 767px) {
@@ -994,31 +1050,44 @@
             min-width:0;
             display:flex;
             align-items:center;
-            gap:10px;
+            gap:12px;
             text-decoration:none;
             color:#0f172a;
             flex:0 1 auto;
         }
+        .mobile-brand-badge {
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            flex:0 0 auto;
+            padding:8px 10px;
+            border-radius:16px;
+            border:1px solid #dbe3ef;
+            background:#ffffff;
+            box-shadow:0 12px 28px rgba(15,23,42,.08);
+        }
         .mobile-brand-logo {
-            width:36px;
-            height:36px;
-            max-width:36px;
+            width:auto;
+            height:auto;
+            max-width:126px;
             max-height:36px;
             object-fit:contain;
-            flex:0 0 36px;
+            flex:0 0 auto;
         }
         .mobile-brand-copy {
             min-width:0;
             display:grid;
-            gap:1px;
+            gap:3px;
         }
         .mobile-brand-copy strong {
-            font-size:14px;
-            line-height:1.1;
+            font-size:15px;
+            line-height:1.05;
+            letter-spacing:-.03em;
             color:#0f172a;
         }
         .mobile-brand-copy small {
-            font-size:10px;
+            font-size:10.5px;
+            line-height:1.2;
             color:#64748b;
             white-space:nowrap;
             overflow:hidden;
@@ -1642,18 +1711,17 @@
     <aside class="app-shell-sidebar rn-sidebar">
         <div class="brand-panel">
             <div class="brand-mark">
-                <x-application-logo class="brand-logo" />
-                <div>
-                    <div class="brand-title">Prime Healers OS</div>
-                    <div class="brand-subtitle">Rental, sales, and care operations</div>
+                <span class="brand-badge" aria-hidden="true">
+                    <x-application-logo class="brand-logo" />
+                </span>
+                <div class="brand-copy">
+                    <div class="brand-title-lockup">
+                        <div class="brand-title">Prime Healers</div>
+                        <span class="brand-title-tag">OS</span>
+                    </div>
+                    <div class="brand-subtitle">Rental, sales, dispatch &amp; care operations</div>
                 </div>
             </div>
-            @if(auth()->check() && auth()->user()->organization)
-                <div class="org-card">
-                    <small>Organization</small>
-                    <strong>{{ auth()->user()->organization->name }}</strong>
-                </div>
-            @endif
         </div>
 
         @foreach($visibleSidebarSections as $section)
@@ -1719,7 +1787,7 @@
                     aria-expanded="{{ $organizationMenuOpen ? 'true' : 'false' }}"
                     aria-controls="sidebar-panel-organization-settings"
                 >
-                    <span>Organization &amp; Settings</span>
+                    <span>Company Settings</span>
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
                 </button>
                 <div
@@ -1747,10 +1815,10 @@
     <main class="app-shell-main" style="flex:1 1 0; min-width:0; width:auto; max-width:calc(100vw - 254px); padding:20px 22px; overflow-x:hidden; box-sizing:border-box;">
         <header class="app-shell-topbar">
             <div class="app-shell-topbar-left">
-                <div class="app-shell-search" role="search" aria-label="Universal search shell">
+                <form class="app-shell-search" role="search" aria-label="Universal search shell" method="GET" action="{{ $globalSearchHref ?: url('/search') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
-                    <input type="text" value="" placeholder="Search customers, rentals, invoices, serial no..." autocomplete="off" spellcheck="false" aria-label="Search customers, rentals, invoices, serial no" />
-                </div>
+                    <input type="text" name="q" value="{{ $globalSearchValue }}" placeholder="Search customers, rentals, invoices, serial no..." autocomplete="off" spellcheck="false" aria-label="Search customers, rentals, invoices, serial no" />
+                </form>
             </div>
 
             <div class="app-shell-topbar-right">
@@ -1852,13 +1920,13 @@
                         <div class="topbar-user-avatar">{{ $userInitials }}</div>
                         <div class="topbar-user-meta">
                             <strong>{{ $currentUser?->name ?: 'User' }}</strong>
-                            <span>{{ $currentUser?->organization?->name ?: 'Prime Healers OS' }}</span>
+                            <span>{{ $currentUser?->organization?->name ?: $internalCompanyName }}</span>
                         </div>
                     </summary>
                     <div class="topbar-user-panel">
                         <div class="topbar-user-head">
                             <strong>{{ $currentUser?->name ?: 'Prime Healers OS User' }}</strong>
-                            <span>{{ $currentUser?->organization?->name ?: 'Prime Healers OS' }}</span>
+                            <span>{{ $currentUser?->organization?->name ?: $internalCompanyName }}</span>
                             @if(!empty($userRoleLabel))
                                 <span class="rn-badge topbar-user-role">{{ $userRoleLabel }}</span>
                             @endif
@@ -2043,6 +2111,102 @@
         }, true);
 
         window.addEventListener('DOMContentLoaded', function () {
+            const isDeleteForm = function (form) {
+                if (!(form instanceof HTMLFormElement)) {
+                    return false;
+                }
+
+                const method = (form.getAttribute('method') || 'GET').toUpperCase();
+
+                if (method === 'DELETE') {
+                    return true;
+                }
+
+                const overrideField = form.querySelector('input[name="_method"]');
+
+                return method === 'POST'
+                    && overrideField
+                    && String(overrideField.value || '').toUpperCase() === 'DELETE';
+            };
+
+            const extractConfirmMessage = function (source) {
+                if (!source) {
+                    return null;
+                }
+
+                const match = source.match(/confirm\((['"`])([\s\S]*?)\1\)/i);
+
+                return match ? match[2] : null;
+            };
+
+            const registerDeleteConfirmMessage = function (form, message) {
+                if (!isDeleteForm(form) || !message || form.dataset.deleteConfirmPrimary) {
+                    return;
+                }
+
+                form.dataset.deleteConfirmPrimary = message;
+            };
+
+            Array.from(document.querySelectorAll('form')).forEach(function (form) {
+                if (!isDeleteForm(form)) {
+                    return;
+                }
+
+                registerDeleteConfirmMessage(form, extractConfirmMessage(form.getAttribute('onsubmit')));
+
+                if (form.hasAttribute('onsubmit')) {
+                    form.removeAttribute('onsubmit');
+                }
+            });
+
+            Array.from(document.querySelectorAll('button[onclick], input[type="submit"][onclick], input[type="button"][onclick]')).forEach(function (trigger) {
+                const confirmMessage = extractConfirmMessage(trigger.getAttribute('onclick'));
+
+                if (!confirmMessage) {
+                    return;
+                }
+
+                let targetForm = trigger.form;
+
+                if (!targetForm && trigger instanceof HTMLElement) {
+                    const formId = trigger.getAttribute('form');
+
+                    if (formId) {
+                        targetForm = document.getElementById(formId);
+                    }
+                }
+
+                if (!isDeleteForm(targetForm)) {
+                    return;
+                }
+
+                registerDeleteConfirmMessage(targetForm, confirmMessage);
+                trigger.removeAttribute('onclick');
+            });
+
+            document.addEventListener('submit', function (event) {
+                const form = event.target;
+
+                if (!isDeleteForm(form) || form.dataset.deleteConfirmAccepted === 'true') {
+                    return;
+                }
+
+                const primaryMessage = form.dataset.deleteConfirmPrimary || 'Delete this record?';
+                const secondaryMessage = form.dataset.deleteConfirmSecondary || 'Please confirm again. This action is permanent and cannot be undone.';
+
+                if (!window.confirm(primaryMessage)) {
+                    event.preventDefault();
+                    return;
+                }
+
+                if (!window.confirm(secondaryMessage)) {
+                    event.preventDefault();
+                    return;
+                }
+
+                form.dataset.deleteConfirmAccepted = 'true';
+            }, true);
+
             try {
                 const savedScroll = sessionStorage.getItem(scrollKey);
 

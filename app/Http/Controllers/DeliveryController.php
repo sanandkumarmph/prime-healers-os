@@ -16,6 +16,9 @@ use App\Models\User;
 use App\Support\ActivityLogger;
 use App\Support\PhoneNumber;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Pagination\Paginator;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rules\Exists;
@@ -331,6 +334,19 @@ class DeliveryController extends Controller
             ->values();
     }
 
+    private function pickupTaskNeedsAction(Delivery $delivery): bool
+    {
+        if ($delivery->type !== 'pickup') {
+            return false;
+        }
+
+        if ($delivery->sale_id || !$delivery->rental) {
+            return in_array($delivery->status, ['pending', 'in_progress'], true);
+        }
+
+        return $this->overallPendingPickupQuantity($delivery->rental) > 0;
+    }
+
     private function cancelOlderDuplicateTasks(Delivery $delivery): void
     {
         $this->deliveryWorkflowService()->cancelOlderDuplicateTasks($this->orgId(), $delivery);
@@ -436,11 +452,11 @@ class DeliveryController extends Controller
         $this->deliveryWorkflowService()->finalizePickupCompletionForRental($this->orgId(), $rental, $returnedAt);
     }
 
-    public function index()
+    public function index(Request $request)
     {
         $this->authorize('viewAny', Delivery::class);
 
-        $legacyBoard = strtolower((string) request('board', ''));
+        $legacyBoard = strtolower((string) $request->query('board', ''));
         $legacyBoardDefaults = [
             'pending_delivery' => ['tab' => 'deliveries', 'task_type' => 'delivery', 'status' => 'pending'],
             'out_delivery' => ['tab' => 'in_progress', 'task_type' => 'delivery', 'status' => 'in_progress'],
@@ -452,13 +468,13 @@ class DeliveryController extends Controller
 
         $legacyDefault = $legacyBoardDefaults[$legacyBoard] ?? [];
 
-        $tab = strtolower((string) request('tab', $legacyDefault['tab'] ?? 'all'));
-        $search = trim((string) request('search', ''));
-        $selectedDate = trim((string) request('date', ''));
-        $taskType = strtolower((string) request('task_type', $legacyDefault['task_type'] ?? ''));
-        $staffFilter = trim((string) request('staff', ''));
-        $areaFilter = trim((string) request('area', ''));
-        $statusFilter = strtolower((string) request('status', $legacyDefault['status'] ?? ''));
+        $tab = strtolower((string) $request->query('tab', $legacyDefault['tab'] ?? 'all'));
+        $search = trim((string) $request->query('search', ''));
+        $selectedDate = trim((string) $request->query('date', ''));
+        $taskType = strtolower((string) $request->query('task_type', $legacyDefault['task_type'] ?? ''));
+        $staffFilter = trim((string) $request->query('staff', ''));
+        $areaFilter = trim((string) $request->query('area', ''));
+        $statusFilter = strtolower((string) $request->query('status', $legacyDefault['status'] ?? ''));
 
         $baseLoad = [
             'rental.product',
@@ -485,7 +501,7 @@ class DeliveryController extends Controller
         }
 
         $baseQuery = $this->applyDeliveryScope(
-            Delivery::with($baseLoad)->where('organization_id', $this->orgId())
+            Delivery::query()->where('organization_id', $this->orgId())
         );
 
         if ($search !== '') {
@@ -586,13 +602,48 @@ class DeliveryController extends Controller
             }
         }
 
-        $summaryDeliveries = $this->dedupeDeliveryCollection(
-            (clone $baseQuery)
+        $orderedMinimalDeliveryQuery = function ($query) {
+            return $query
+                ->select([
+                    'id',
+                    'rental_id',
+                    'sale_id',
+                    'type',
+                    'status',
+                    'scheduled_at',
+                    'completed_at',
+                    'updated_at',
+                    'assigned_user_id',
+                    'assigned_staff_id',
+                    'third_party_name',
+                    'assignment_type',
+                    'created_at',
+                ])
                 ->orderByRaw("CASE WHEN status = 'pending' THEN 0 WHEN status = 'in_progress' THEN 1 ELSE 2 END")
                 ->orderByRaw("CASE WHEN scheduled_at IS NULL THEN 1 ELSE 0 END")
                 ->orderBy('scheduled_at')
-                ->orderByDesc('created_at')
+                ->orderByDesc('created_at');
+        };
+
+        $hydrateDeliveries = function (Collection $deliveryIds) use ($baseLoad): Collection {
+            if ($deliveryIds->isEmpty()) {
+                return collect();
+            }
+
+            $deliveries = Delivery::with($baseLoad)
+                ->where('organization_id', $this->orgId())
+                ->whereIn('id', $deliveryIds->all())
                 ->get()
+                ->keyBy('id');
+
+            return $deliveryIds
+                ->map(fn ($deliveryId) => $deliveries->get((int) $deliveryId))
+                ->filter()
+                ->values();
+        };
+
+        $summaryDeliveries = $this->dedupeDeliveryCollection(
+            $orderedMinimalDeliveryQuery(clone $baseQuery)->get()
         );
 
         $deliveriesQuery = clone $baseQuery;
@@ -633,13 +684,29 @@ class DeliveryController extends Controller
                 break;
         }
 
-        $tasks = $this->dedupeDeliveryCollection(
-            $deliveriesQuery
-                ->orderByRaw("CASE WHEN status = 'pending' THEN 0 WHEN status = 'in_progress' THEN 1 ELSE 2 END")
-                ->orderByRaw("CASE WHEN scheduled_at IS NULL THEN 1 ELSE 0 END")
-                ->orderBy('scheduled_at')
-                ->orderByDesc('created_at')
-                ->get()
+        $dedupedTaskIds = $this->dedupeDeliveryCollection(
+            $orderedMinimalDeliveryQuery(clone $deliveriesQuery)->get()
+        )
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
+
+        $perPage = 20;
+        $currentPage = Paginator::resolveCurrentPage('page');
+        $pageDeliveryIds = $dedupedTaskIds->forPage($currentPage, $perPage)->values();
+        $taskCollection = $hydrateDeliveries($pageDeliveryIds);
+        $taskResultsCount = $dedupedTaskIds->count();
+
+        $tasks = new LengthAwarePaginator(
+            $taskCollection,
+            $taskResultsCount,
+            $perPage,
+            $currentPage,
+            [
+                'path' => $request->url(),
+                'query' => $request->query(),
+                'pageName' => 'page',
+            ]
         );
 
         $totalTasksCount = $summaryDeliveries->count();
@@ -658,15 +725,20 @@ class DeliveryController extends Controller
         $todayTaskCount = $summaryDeliveries->filter(fn (Delivery $delivery) => optional($delivery->scheduled_at)?->toDateString() === $today)->count();
         $todayDeliveryCount = $summaryDeliveries->filter(fn (Delivery $delivery) => $delivery->type === 'delivery' && optional($delivery->scheduled_at)?->toDateString() === $today)->count();
         $todayPickupCount = $summaryDeliveries->filter(fn (Delivery $delivery) => $delivery->type === 'pickup' && optional($delivery->scheduled_at)?->toDateString() === $today)->count();
-        $pendingCollectionsCount = $summaryDeliveries->where('type', 'pickup')->whereIn('status', ['pending', 'in_progress'])->count();
+        $pendingCollectionsCount = $summaryDeliveries
+            ->filter(fn (Delivery $delivery) => $this->pickupTaskNeedsAction($delivery))
+            ->count();
 
-        $todayOverviewTasks = $summaryDeliveries
+        $todayOverviewTaskIds = $summaryDeliveries
             ->filter(fn (Delivery $delivery) => optional($delivery->scheduled_at)?->toDateString() === $today)
             ->sortBy(fn (Delivery $delivery) => $delivery->scheduled_at?->timestamp ?? PHP_INT_MAX)
             ->take(5)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
             ->values();
+        $todayOverviewTasks = $hydrateDeliveries($todayOverviewTaskIds);
 
-        $overdueTasks = $summaryDeliveries
+        $overdueTaskIds = $summaryDeliveries
             ->filter(function (Delivery $delivery) use ($today) {
                 return in_array($delivery->status, ['pending', 'in_progress'], true)
                     && optional($delivery->scheduled_at)?->toDateString()
@@ -674,14 +746,19 @@ class DeliveryController extends Controller
             })
             ->sortBy(fn (Delivery $delivery) => $delivery->scheduled_at?->timestamp ?? PHP_INT_MAX)
             ->take(5)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
             ->values();
+        $overdueTasks = $hydrateDeliveries($overdueTaskIds);
 
-        $pendingCollections = $summaryDeliveries
-            ->where('type', 'pickup')
-            ->whereIn('status', ['pending', 'in_progress'])
+        $pendingCollectionIds = $summaryDeliveries
+            ->filter(fn (Delivery $delivery) => $this->pickupTaskNeedsAction($delivery))
             ->sortBy(fn (Delivery $delivery) => $delivery->scheduled_at?->timestamp ?? PHP_INT_MAX)
             ->take(5)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
             ->values();
+        $pendingCollections = $hydrateDeliveries($pendingCollectionIds);
 
         $assignableUsers = $this->assignableUsers();
         $assignableStaffMembers = $this->assignableStaffMembers();
@@ -706,6 +783,7 @@ class DeliveryController extends Controller
             'areaFilter',
             'statusFilter',
             'tasks',
+            'taskResultsCount',
             'totalTasksCount',
             'deliveryTasksCount',
             'pickupTasksCount',
@@ -959,7 +1037,9 @@ class DeliveryController extends Controller
 
         $load = [
             'rental.product',
+            'rental.deliveryRecord',
             'rental.dispatchWarehouse',
+            'rental.pickupRecord',
             'sale.product',
             'sale.customer',
             'sale.asset.warehouse',

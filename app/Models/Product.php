@@ -27,6 +27,17 @@ class Product extends Model
         self::STOCK_MODE_TRACKED_BOTH,
     ];
 
+    public const GST_TAX_TYPE_CGST_SGST = 'cgst_sgst';
+    public const GST_TAX_TYPE_IGST = 'igst';
+    public const GST_TAX_TYPES = [
+        self::GST_TAX_TYPE_CGST_SGST,
+        self::GST_TAX_TYPE_IGST,
+    ];
+    public const GST_CALCULATION_MODES = [
+        'exclusive',
+        'inclusive',
+    ];
+
     protected $fillable = [
         'name',
         'category',
@@ -44,6 +55,11 @@ class Product extends Model
         'rental_price_3_months',
         'sale_price',
         'rental_price',
+        'gst_tax_type',
+        'gst_calculation_mode',
+        'cgst_rate',
+        'sgst_rate',
+        'igst_rate',
         'is_sellable',
         'is_rentable',
         'organization_id',
@@ -56,6 +72,9 @@ class Product extends Model
         'rental_price_3_months' => 'decimal:2',
         'sale_price' => 'decimal:2',
         'rental_price' => 'decimal:2',
+        'cgst_rate' => 'decimal:2',
+        'sgst_rate' => 'decimal:2',
+        'igst_rate' => 'decimal:2',
         'is_sellable' => 'boolean',
         'is_rentable' => 'boolean',
     ];
@@ -69,6 +88,12 @@ class Product extends Model
             $product->is_rentable = $product->product_type === self::TYPE_RENTABLE;
             $stockMode = $product->stock_mode ?: self::STOCK_MODE_UNTRACKED;
             $product->stock_mode = in_array($stockMode, self::STOCK_MODES, true) ? $stockMode : self::STOCK_MODE_UNTRACKED;
+            $product->gst_tax_type = in_array($product->gst_tax_type, self::GST_TAX_TYPES, true)
+                ? $product->gst_tax_type
+                : null;
+            $product->gst_calculation_mode = in_array($product->gst_calculation_mode, self::GST_CALCULATION_MODES, true)
+                ? $product->gst_calculation_mode
+                : 'exclusive';
         });
     }
 
@@ -190,6 +215,25 @@ class Product extends Model
             self::STOCK_MODE_TRACKED_RENTAL => 'Tracked Rental',
             self::STOCK_MODE_TRACKED_BOTH => 'Tracked Both',
             default => 'Untracked',
+        };
+    }
+
+    public function gstTaxTypeLabel(): ?string
+    {
+        return match ($this->gst_tax_type) {
+            self::GST_TAX_TYPE_CGST_SGST => 'CGST + SGST',
+            self::GST_TAX_TYPE_IGST => 'IGST',
+            default => null,
+        };
+    }
+
+    public function gstRateSummary(): ?string
+    {
+        return match ($this->gst_tax_type) {
+            self::GST_TAX_TYPE_CGST_SGST => 'CGST '.number_format((float) ($this->cgst_rate ?? 0), 2).'%' .
+                ' + SGST '.number_format((float) ($this->sgst_rate ?? 0), 2).'%',
+            self::GST_TAX_TYPE_IGST => 'IGST '.number_format((float) ($this->igst_rate ?? 0), 2).'%',
+            default => null,
         };
     }
 
