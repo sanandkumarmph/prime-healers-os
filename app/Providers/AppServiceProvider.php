@@ -49,7 +49,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        Paginator::useBootstrapFive();
+        Paginator::defaultView('vendor.pagination.prime-healers');
+        Paginator::defaultSimpleView('vendor.pagination.prime-healers-simple');
 
         Event::listen('eloquent.creating: *', function (string $eventName, array $data): void {
             $model = $data[0] ?? null;

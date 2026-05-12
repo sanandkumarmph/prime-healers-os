@@ -25,7 +25,7 @@
 @endphp
 
 @if($paginator->hasPages())
-    <div class="ph-pagination {{ $shellClass }}" aria-label="{{ $ariaLabel }}">
+    <nav role="navigation" class="ph-pagination {{ $shellClass }}" aria-label="{{ $ariaLabel }}">
         <div class="ph-pagination-summary">
             Showing {{ $paginator->firstItem() }}-{{ $paginator->lastItem() }} of {{ $paginator->total() }} {{ $summaryLabel }}
         </div>
@@ -53,5 +53,5 @@
                 <span class="ph-page-link is-disabled" aria-disabled="true">Next</span>
             @endif
         </div>
-    </div>
+    </nav>
 @endif

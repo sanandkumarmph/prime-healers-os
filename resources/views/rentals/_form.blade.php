@@ -1,5 +1,6 @@
 ﻿@php
     $isEdit = isset($rental);
+    $rentalProducts = $rentalProducts ?? $products;
     $selectedAssetIds = collect(old('asset_ids', $isEdit ? $rental->activeRentalAssets->pluck('asset_id')->all() : []))
         ->filter(fn ($value) => filled($value))
         ->map(fn ($value) => (int) $value)
@@ -976,7 +977,7 @@
                 <label for="product_id">Product</label>
                 <select name="product_id" id="product_id" required data-searchable-select data-search-placeholder="Search product by name, brand, model, SKU, or code">
                     <option value="">Select product</option>
-                    @foreach($products as $product)
+                    @foreach($rentalProducts as $product)
                         <option
                             value="{{ $product->id }}"
                             data-available="{{ $product->rental_available_quantity ?? $product->display_available_quantity ?? $product->available_quantity }}"
@@ -1402,7 +1403,7 @@
         const assetVisibleStep = 3;
         let visibleAssetCount = assetVisibleStep;
         const currentRentalId = @json($isEdit ? $rental->id : null);
-        const rentalProductOptionsHtml = `<option value="">Select rental product</option>@foreach($products as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->rental_price ?? $product->price_per_day ?? 0) }}">{{ e($product->name) }} | {{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}</option>@endforeach`;
+        const rentalProductOptionsHtml = `<option value="">Select rental product</option>@foreach($rentalProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->rental_price ?? $product->price_per_day ?? 0) }}">{{ e($product->name) }} | {{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}</option>@endforeach`;
         const saleProductOptionsHtml = `<option value="">Select new product</option>@foreach($sellableProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->sale_price ?? 0) }}">{{ e($product->name) }} | Sale {{ number_format((float) ($product->sale_price ?? 0), 2) }}</option>@endforeach`;
         const saleAssetOptions = @json($saleAssetRows);
         const warehouseOptionsHtml = `<option value="">Auto / best stock</option>@foreach($warehouses as $warehouse)<option value="{{ $warehouse->id }}">{{ e($warehouse->name) }}</option>@endforeach`;

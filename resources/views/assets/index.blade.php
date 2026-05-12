@@ -927,11 +927,10 @@
             </div>
 
             <div class="asset-pagination-shell">
-                @include('partials.ph-pagination', [
-                    'paginator' => $assets,
+                {{ $assets->links('vendor.pagination.prime-healers', [
                     'summaryLabel' => 'assets',
                     'ariaLabel' => 'Asset Register pagination',
-                ])
+                ]) }}
             </div>
         </div>
     </div>

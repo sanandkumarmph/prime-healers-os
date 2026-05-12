@@ -182,6 +182,11 @@ class Product extends Model
         return $this->rentalUnits()->exists();
     }
 
+    public function isRentalEligibleForSelection(): bool
+    {
+        return $this->product_type === self::TYPE_RENTABLE || $this->tracksRentalStock();
+    }
+
     public function usesUntrackedStock(): bool
     {
         return $this->stock_mode === self::STOCK_MODE_UNTRACKED;

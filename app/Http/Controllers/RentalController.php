@@ -669,7 +669,7 @@ class RentalController extends Controller
                 ->where('organization_id', $this->orgId())
                 ->findOrFail((int) $productId);
 
-            if (!$product->canRent()) {
+            if (!$product->isRentalEligibleForSelection()) {
                 throw ValidationException::withMessages([
                     'rental_items' => [$product->name . ' is not available for rental under the current product and stock configuration.'],
                 ]);
@@ -840,6 +840,14 @@ class RentalController extends Controller
             ->groupBy('product_id')
             ->pluck('available_count', 'product_id');
 
+        $rentalAssetSupportCount = Asset::query()
+            ->selectRaw('product_id, COUNT(*) as rental_asset_count')
+            ->where('organization_id', $organizationId)
+            ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
+            ->whereIn('product_id', $productIds)
+            ->groupBy('product_id')
+            ->pluck('rental_asset_count', 'product_id');
+
         $rentalAssetAvailableByWarehouse = Asset::query()
             ->selectRaw('product_id, warehouse_id, COUNT(*) as available_count')
             ->where('organization_id', $organizationId)
@@ -855,7 +863,7 @@ class RentalController extends Controller
                 })->all();
             });
 
-        return $products->map(function (Product $product) use ($rentalAssetAvailable, $rentalAssetAvailableByWarehouse) {
+        return $products->map(function (Product $product) use ($rentalAssetAvailable, $rentalAssetAvailableByWarehouse, $rentalAssetSupportCount) {
             $availability = $this->rentalAvailabilityForProduct(
                 $product,
                 null,
@@ -867,14 +875,35 @@ class RentalController extends Controller
             $product->setAttribute('rental_availability_status', $availability['status']);
             $product->setAttribute('rental_dropdown_label', $availability['label']);
             $product->setAttribute('rental_warehouse_quantities', $rentalAssetAvailableByWarehouse[$product->id] ?? []);
+            $product->setAttribute('rental_asset_support_count', (int) ($rentalAssetSupportCount[$product->id] ?? 0));
 
             return $product;
         });
     }
 
+    private function rentalProductsForSelection($products)
+    {
+        return $products
+            ->filter(function (Product $product) {
+                if (!$product->isRentalEligibleForSelection()) {
+                    return false;
+                }
+
+                if (
+                    $product->stock_mode === Product::STOCK_MODE_TRACKED_BOTH
+                    && $product->product_type !== Product::TYPE_RENTABLE
+                ) {
+                    return (int) ($product->rental_asset_support_count ?? 0) > 0;
+                }
+
+                return true;
+            })
+            ->values();
+    }
+
     private function rentalAvailabilityForProduct(Product $product, ?int $warehouseId = null, ?int $preloadedTrackedQuantity = null): array
     {
-        if ($product->stock_mode === Product::STOCK_MODE_TRACKED_SALE) {
+        if (!$product->isRentalEligibleForSelection()) {
             return [
                 'quantity' => 0,
                 'status' => 'sale_only',
@@ -902,12 +931,20 @@ class RentalController extends Controller
             ];
         }
 
-        $quantity = max((int) ($product->available_quantity ?? 0), 0);
+        if ($product->product_type === Product::TYPE_RENTABLE) {
+            $quantity = max((int) $product->available_quantity, 0);
+
+            return [
+                'quantity' => $quantity,
+                'status' => $quantity > 0 ? 'rental_available' : 'no_rental_assets',
+                'label' => $quantity > 0 ? 'Rental Available ' . $quantity : 'No rental units available',
+            ];
+        }
 
         return [
-            'quantity' => $quantity,
-            'status' => $quantity > 0 ? 'rental_available' : 'no_rental_assets',
-            'label' => $quantity > 0 ? 'Rental Available ' . $quantity : 'No rental assets available',
+            'quantity' => 0,
+            'status' => 'no_rental_assets',
+            'label' => 'No rental assets available',
         ];
     }
 
@@ -4192,6 +4229,7 @@ class RentalController extends Controller
         $this->authorize('create', Rental::class);
 
         $products = $this->productsForRentalForm();
+        $rentalProducts = $this->rentalProductsForSelection($products);
         $customers = Customer::where('organization_id', $this->orgId())->orderBy('name')->get();
         $saleAssets = $this->availableSaleAssets();
         $staffMembers = $this->assignableStaffMembers();
@@ -4203,7 +4241,7 @@ class RentalController extends Controller
                 ->get()
             : collect();
 
-        return view('rentals.create', compact('products', 'customers', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses'));
+        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses'));
     }
 
     public function store(Request $request)
@@ -4258,6 +4296,11 @@ class RentalController extends Controller
         }
 
         $product = Product::where('organization_id', $this->orgId())->findOrFail($request->product_id);
+        if (!$product->isRentalEligibleForSelection()) {
+            throw ValidationException::withMessages([
+                'product_id' => [$product->name . ' is sale only and cannot be rented.'],
+            ]);
+        }
         $customer = Customer::where('organization_id', $this->orgId())->findOrFail($request->customer_id);
         $saleItems = $this->normalizedSaleItems($request);
         $rentalItems = $this->combinedRentalItems($request);
@@ -4885,6 +4928,7 @@ class RentalController extends Controller
         $rental->load(['deliveryRecord', 'pickupRecord']);
 
         $products = $this->productsForRentalForm();
+        $rentalProducts = $this->rentalProductsForSelection($products);
         $customers = Customer::where('organization_id', $this->orgId())->orderBy('name')->get();
         $saleAssets = $this->availableSaleAssets($rental);
         $staffMembers = $this->assignableStaffMembers();
@@ -4896,7 +4940,7 @@ class RentalController extends Controller
                 ->get()
             : collect();
 
-        return view('rentals.edit', compact('rental', 'products', 'customers', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses'));
+        return view('rentals.edit', compact('rental', 'products', 'rentalProducts', 'customers', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses'));
     }
 
     public function update(Request $request, Rental $rental)
@@ -4957,6 +5001,11 @@ class RentalController extends Controller
 
         $oldProduct = Product::where('organization_id', $this->orgId())->findOrFail($rental->product_id);
         $newProduct = Product::where('organization_id', $this->orgId())->findOrFail($request->product_id);
+        if (!$newProduct->isRentalEligibleForSelection()) {
+            throw ValidationException::withMessages([
+                'product_id' => [$newProduct->name . ' is sale only and cannot be rented.'],
+            ]);
+        }
         $customer = Customer::where('organization_id', $this->orgId())->findOrFail($request->customer_id);
         $saleItems = $this->normalizedSaleItems($request);
         $rentalItems = $this->combinedRentalItems($request);

@@ -906,11 +906,10 @@
             </div>
 
             <div style="padding:18px 22px 22px; border-top:1px solid var(--ph-color-border); background:var(--ph-color-surface-soft);">
-                @include('partials.ph-pagination', [
-                    'paginator' => $products,
+                {{ $products->links('vendor.pagination.prime-healers', [
                     'summaryLabel' => 'results',
                     'ariaLabel' => 'Product Master pagination',
-                ])
+                ]) }}
             </div>
         </div>
     </div>
