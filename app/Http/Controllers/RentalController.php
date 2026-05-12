@@ -4107,12 +4107,16 @@ class RentalController extends Controller
 
         $this->attachLinkedInvoiceIds($rentals->getCollection());
 
-        $baseFilterRequest = Request::create('/rentals', 'GET', $request->query());
-        $endingSoonRequest = Request::create('/rentals', 'GET', array_merge($baseFilterRequest->query->all(), [
+        $summaryScopeQuery = collect($request->query())
+            ->except(['page', 'sort_by', 'status', 'filter', 'delivery_status', 'pickup_status'])
+            ->all();
+
+        $summaryScopeRequest = Request::create('/rentals', 'GET', $summaryScopeQuery);
+        $endingSoonRequest = Request::create('/rentals', 'GET', array_merge($summaryScopeRequest->query->all(), [
             'filter' => 'ending_soon',
             'status' => null,
         ]));
-        $overdueRequest = Request::create('/rentals', 'GET', array_merge($baseFilterRequest->query->all(), [
+        $overdueRequest = Request::create('/rentals', 'GET', array_merge($summaryScopeRequest->query->all(), [
             'filter' => 'overdue',
             'status' => null,
         ]));
@@ -4127,13 +4131,13 @@ class RentalController extends Controller
             ->limit(5)
             ->get();
 
-        $summaryQuery = $this->filteredRentalQuery($baseFilterRequest, false);
+        $summaryQuery = $this->filteredRentalQuery($summaryScopeRequest, false);
         $totalRentals = (clone $summaryQuery)->count();
         $activeRentals = (clone $summaryQuery)
-            ->where('status', 'active')
+            ->effectivelyActive(Carbon::today())
             ->count();
         $overdueCount = $this->filteredRentalQuery($overdueRequest, false)->count();
-        $returnedRentals = $this->filteredRentalQuery(Request::create('/rentals', 'GET', array_merge($baseFilterRequest->query->all(), [
+        $returnedRentals = $this->filteredRentalQuery(Request::create('/rentals', 'GET', array_merge($summaryScopeRequest->query->all(), [
             'status' => 'returned',
             'filter' => null,
         ])), false)->count();
