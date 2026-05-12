@@ -397,61 +397,6 @@
             color:var(--ph-color-text-soft);
             text-align:center;
         }
-        .product-pagination {
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            gap:12px;
-            flex-wrap:wrap;
-            padding:18px 22px 22px;
-            border-top:1px solid var(--ph-color-border);
-            background:var(--ph-color-surface-soft);
-        }
-        .product-pagination-copy {
-            color:var(--ph-color-text-soft);
-            font-size:13px;
-        }
-        .product-pagination-nav,
-        .product-pagination-pages {
-            display:flex;
-            align-items:center;
-            gap:8px;
-            flex-wrap:wrap;
-        }
-        .product-pagination-link,
-        .product-pagination-current,
-        .product-pagination-separator {
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            min-width:38px;
-            min-height:38px;
-            padding:8px 12px;
-            border-radius:12px;
-            border:1px solid var(--ph-color-border);
-            background:#fff;
-            color:var(--ph-color-text);
-            text-decoration:none;
-            font-size:13px;
-            font-weight:700;
-            box-shadow:var(--ph-shadow-soft);
-        }
-        .product-pagination-link:hover {
-            background:var(--ph-color-info-soft);
-            color:var(--ph-color-primary);
-            border-color:rgba(23,119,189,.18);
-        }
-        .product-pagination-current {
-            background:var(--ph-color-primary);
-            border-color:var(--ph-color-primary);
-            color:#fff;
-        }
-        .product-pagination-separator {
-            background:transparent;
-            box-shadow:none;
-            border-style:dashed;
-            color:var(--ph-color-text-soft);
-        }
         .product-mobile-chip-row { display:none; }
         .product-desktop-links { display:none !important; }
         @media (max-width: 767px) {
@@ -505,26 +450,6 @@
                 text-align:left !important;
             }
             .product-action-panel { position:static; min-width:0; margin-top:8px; box-shadow:none; }
-            .product-pagination {
-                padding:16px;
-                justify-content:center;
-            }
-            .product-pagination-copy {
-                width:100%;
-                text-align:center;
-            }
-            .product-pagination-nav {
-                justify-content:center;
-                width:100%;
-            }
-            .product-pagination-link,
-            .product-pagination-current,
-            .product-pagination-separator {
-                min-width:34px;
-                min-height:34px;
-                padding:7px 10px;
-                font-size:12px;
-            }
         }
     </style>
 
@@ -1003,33 +928,33 @@
                     }
                 @endphp
 
-                <div class="product-pagination" aria-label="Product Master pagination">
-                    <div class="product-pagination-copy">
+                <div class="rn-pagination" style="padding:18px 22px 22px; border-top:1px solid var(--ph-color-border); background:var(--ph-color-surface-soft);" aria-label="Product Master pagination">
+                    <div class="rn-pagination-copy">
                         Showing {{ $products->firstItem() }} to {{ $products->lastItem() }} of {{ $products->total() }} results
                     </div>
-                    <div class="product-pagination-nav">
+                    <div class="rn-pagination-nav">
                         @if($products->onFirstPage())
-                            <span class="product-pagination-separator" aria-disabled="true">Previous</span>
+                            <span class="rn-pagination-separator" aria-disabled="true">Previous</span>
                         @else
-                            <a href="{{ $products->previousPageUrl() }}" class="product-pagination-link" rel="prev">Previous</a>
+                            <a href="{{ $products->previousPageUrl() }}" class="rn-pagination-link" rel="prev">Previous</a>
                         @endif
 
-                        <div class="product-pagination-pages">
+                        <div class="rn-pagination-pages">
                             @foreach($pageWindow as $page)
                                 @if(is_string($page))
-                                    <span class="product-pagination-separator" aria-hidden="true">…</span>
+                                    <span class="rn-pagination-separator" aria-hidden="true">…</span>
                                 @elseif($page === $currentPage)
-                                    <span class="product-pagination-current" aria-current="page">{{ $page }}</span>
+                                    <span class="rn-pagination-current" aria-current="page">{{ $page }}</span>
                                 @else
-                                    <a href="{{ $products->url($page) }}" class="product-pagination-link">{{ $page }}</a>
+                                    <a href="{{ $products->url($page) }}" class="rn-pagination-link">{{ $page }}</a>
                                 @endif
                             @endforeach
                         </div>
 
                         @if($products->hasMorePages())
-                            <a href="{{ $products->nextPageUrl() }}" class="product-pagination-link" rel="next">Next</a>
+                            <a href="{{ $products->nextPageUrl() }}" class="rn-pagination-link" rel="next">Next</a>
                         @else
-                            <span class="product-pagination-separator" aria-disabled="true">Next</span>
+                            <span class="rn-pagination-separator" aria-disabled="true">Next</span>
                         @endif
                     </div>
                 </div>

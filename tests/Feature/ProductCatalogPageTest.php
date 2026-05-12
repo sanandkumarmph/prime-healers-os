@@ -261,7 +261,7 @@ class ProductCatalogPageTest extends TestCase
 
         $response->assertOk()
             ->assertSee('Showing 13 to 13 of 13 results')
-            ->assertSee('class="product-pagination"', false)
+            ->assertSee('class="rn-pagination"', false)
             ->assertSee('?category=Respiratory&amp;page=1', false);
 
         $this->assertMatchesRegularExpression(
@@ -337,6 +337,42 @@ class ProductCatalogPageTest extends TestCase
         $response->assertHeader('content-type', 'text/csv; charset=UTF-8');
         $this->assertStringContainsString('Matching Asset', $response->streamedContent());
         $this->assertStringNotContainsString('Other Asset', $response->streamedContent());
+    }
+
+    public function test_asset_register_pagination_renders_inline_and_preserves_filters(): void
+    {
+        $warehouse = Warehouse::create([
+            'organization_id' => $this->organizationId,
+            'name' => 'Pagination Warehouse',
+            'code' => 'PGW',
+            'is_active' => true,
+        ]);
+
+        $product = $this->makeProduct([
+            'name' => 'Pagination Asset Product',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_RENTAL,
+        ]);
+
+        foreach (range(1, 13) as $index) {
+            Asset::create([
+                'organization_id' => $this->organizationId,
+                'product_id' => $product->id,
+                'warehouse_id' => $warehouse->id,
+                'asset_name' => 'Pagination Asset ' . $index,
+                'serial_number' => 'PAGE-ASSET-' . str_pad((string) $index, 3, '0', STR_PAD_LEFT),
+                'asset_stage' => Asset::STAGE_RENTAL_STOCK,
+                'condition_status' => 'good',
+                'asset_status' => Asset::STATUS_AVAILABLE,
+            ]);
+        }
+
+        $response = $this->get(route('assets.index', ['search' => 'PAGE-ASSET', 'page' => 2]));
+
+        $response->assertOk()
+            ->assertSee('Showing 13 to 13 of 13 results')
+            ->assertSee('class="rn-pagination"', false)
+            ->assertSee('?search=PAGE-ASSET&amp;page=1', false);
     }
 
     public function test_layout_includes_global_double_delete_confirmation_script(): void
