@@ -165,7 +165,7 @@
                     </div>
                 </div>
 
-                <div class="asset-detail-actions">
+                <div class="asset-detail-actions page-header-actions">
                     <a href="{{ route('assets.index') }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:600;">Back to Asset Register</a>
                     @if($canUpdateAssets)
                         @if(!empty($workflowControl['action_label']) && !empty($workflowControl['action_url']))
@@ -344,7 +344,8 @@
                     <div style="margin-top:8px; color:#475569; line-height:1.7;">{{ $asset->notes ?: 'No notes added.' }}</div>
                 </div>
 
-                <div style="margin-top:18px; overflow:auto;">
+                <div class="responsive-table-shell" style="margin-top:18px;">
+                    <div class="responsive-table-scroll">
                     <table style="width:100%; border-collapse:collapse;">
                         <thead style="background:#f8fafc;">
                             <tr>
@@ -371,6 +372,7 @@
                         @endforelse
                         </tbody>
                     </table>
+                    </div>
                 </div>
             </div>
         </div>

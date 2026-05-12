@@ -226,6 +226,40 @@ class GenericImportExecutionRegressionTest extends TestCase
         );
     }
 
+    public function test_product_import_maps_common_human_readable_product_name_header_with_bom(): void
+    {
+        $organization = TestData::organization();
+        $user = TestData::user($organization);
+        $this->actingAs($user);
+
+        [$service, $preview] = $this->buildPreview('products', [
+            "\xEF\xBB\xBFProduct Name,Category,Brand,Model Name,SKU,Product Code,Sellable,Rentable,Stock Mode,Sale Price,Rental Price,Deposit",
+            'BiPAP Disposable Filter,Consumables,ResMed,Filter Pack,BF-180,BIPAP-FLTR,Yes,No,untracked,180,,0',
+        ]);
+
+        $this->assertSame(1, count($preview['valid_rows']));
+        $this->assertSame(0, count($preview['invalid_rows']));
+    }
+
+    public function test_product_import_shows_clear_error_when_product_name_column_cannot_be_mapped(): void
+    {
+        $organization = TestData::organization();
+        $user = TestData::user($organization);
+        $this->actingAs($user);
+
+        [$service, $preview] = $this->buildPreview('products', [
+            'Title,Category,Brand,Model Name,SKU,Product Code,Sellable,Rentable,Stock Mode,Sale Price,Rental Price,Deposit',
+            'BiPAP Disposable Filter,Consumables,ResMed,Filter Pack,BF-180,BIPAP-FLTR,Yes,No,untracked,180,,0',
+        ]);
+
+        $this->assertSame(0, count($preview['valid_rows']));
+        $this->assertNotEmpty($preview['invalid_rows']);
+        $this->assertStringContainsString(
+            'Could not map Product Name column.',
+            implode(' | ', $preview['invalid_rows'][0]['errors'] ?? [])
+        );
+    }
+
     public function test_asset_import_allows_existing_serial_update_and_generic_preview_is_idempotent(): void
     {
         $organization = TestData::organization();

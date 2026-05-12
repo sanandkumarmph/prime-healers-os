@@ -7,15 +7,77 @@
     $canUpdateUsers = $currentUser?->canAccessModule('users', 'update') ?? false;
     $canDeleteUsers = $currentUser?->canAccessModule('users', 'delete') ?? false;
 @endphp
-<div style="max-width:1280px; margin:0 auto;">
-    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:24px;">
+<style>
+    .users-index-page {
+        max-width: 1280px;
+        margin: 0 auto;
+    }
+    .users-index-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+    .users-filter-form {
+        display: grid;
+        grid-template-columns: 2fr repeat(3, minmax(0, 1fr)) auto;
+        gap: 12px;
+        padding: 0 18px 18px;
+    }
+    .users-filter-actions {
+        display: flex;
+        gap: 10px;
+    }
+    .users-table-shell {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 22px;
+    }
+    .users-table-actions {
+        display: inline-flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    @media (max-width: 1024px) {
+        .users-filter-form {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+    @media (max-width: 767px) {
+        .users-index-header {
+            margin-bottom: 18px;
+        }
+        .users-index-header h1 {
+            font-size: 28px !important;
+            overflow-wrap: anywhere;
+        }
+        .users-filter-form {
+            grid-template-columns: 1fr;
+            padding: 0 14px 14px;
+        }
+        .users-filter-actions {
+            display: grid;
+            grid-template-columns: 1fr;
+        }
+        .users-table-shell > div:first-child,
+        .users-table-shell > div:last-child {
+            padding-left: 14px !important;
+            padding-right: 14px !important;
+        }
+    }
+</style>
+<div class="users-index-page">
+    <div class="users-index-header">
         <div>
             <div style="display:inline-flex; padding:6px 10px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">Company Settings</div>
             <h1 style="margin:12px 0 8px; font-size:34px; letter-spacing:-0.03em;">Users</h1>
             <p style="margin:0; color:#64748b;">Manage login accounts, role mapping, city mapping, and who is active across Prime Healers.</p>
         </div>
         @if($canCreateUsers)
-            <a href="{{ route('users.create') }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; background:#1d4ed8; color:#ffffff; text-decoration:none; font-weight:700;">+ Add User</a>
+            <div class="page-header-actions">
+                <a href="{{ route('users.create') }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; background:#1d4ed8; color:#ffffff; text-decoration:none; font-weight:700;">+ Add User</a>
+            </div>
         @endif
     </div>
 
@@ -29,7 +91,7 @@
 
     <details style="margin-bottom:18px; border:1px solid #e2e8f0; border-radius:20px; background:#ffffff;">
         <summary style="cursor:pointer; list-style:none; padding:16px 18px; font-weight:800; color:#0f172a;">Filter / Sort <span style="color:#64748b; font-size:12px;">{{ $search || $roleId || $cityId || $status ? 'Active' : 'Expand' }}</span></summary>
-        <form method="GET" action="{{ route('users.index') }}" style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr auto; gap:12px; padding:0 18px 18px;">
+        <form method="GET" action="{{ route('users.index') }}" class="users-filter-form">
         <input type="text" name="search" value="{{ $search }}" placeholder="Search name, email, phone" style="width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px;">
         <select name="role_id" style="width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;">
             <option value="">All Roles</option>
@@ -48,14 +110,14 @@
             <option value="active" @selected($status === 'active')>Active</option>
             <option value="inactive" @selected($status === 'inactive')>Inactive</option>
         </select>
-        <div style="display:flex; gap:10px;">
+        <div class="users-filter-actions">
             <button type="submit" style="padding:12px 16px; border:none; border-radius:14px; background:#0f172a; color:#ffffff; font-weight:700; cursor:pointer;">Apply</button>
             <a href="{{ route('users.index') }}" style="display:inline-flex; align-items:center; justify-content:center; padding:12px 14px; border-radius:14px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:600;">Reset</a>
         </div>
         </form>
     </details>
 
-    <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:22px; overflow:hidden;">
+    <div class="users-table-shell rn-table-shell responsive-table-shell">
         <div style="padding:18px 22px; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; gap:12px;">
             <div>
                 <h2 style="margin:0; font-size:20px;">Team Directory</h2>
@@ -63,7 +125,7 @@
             </div>
             <div style="color:#64748b; font-size:13px;">{{ $users->total() }} users</div>
         </div>
-        <div style="overflow:auto;">
+        <div class="responsive-table-scroll">
             <table style="width:100%; border-collapse:collapse;">
                 <thead style="background:#f8fafc;">
                     <tr>
@@ -91,7 +153,7 @@
                                 </span>
                             </td>
                             <td style="padding:16px 18px; text-align:right;">
-                                <div style="display:inline-flex; gap:10px; flex-wrap:wrap;">
+                                <div class="users-table-actions">
                                     <a href="{{ route('users.show', $user) }}" style="color:#0f766e; font-weight:700; text-decoration:none;">View</a>
                                     @if($canUpdateUsers)
                                         <a href="{{ route('users.edit', $user) }}" style="color:#1d4ed8; font-weight:700; text-decoration:none;">Edit</a>

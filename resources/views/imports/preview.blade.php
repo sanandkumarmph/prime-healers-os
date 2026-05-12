@@ -38,7 +38,7 @@
             <p>{{ $subtitle }}</p>
         </div>
 
-        <div class="sales-import-preview-actions">
+        <div class="sales-import-preview-actions page-header-actions">
             <a href="{{ $backUrl }}" class="sales-import-preview-secondary">Upload New File</a>
             @if(!empty($templateUrl))
                 <a href="{{ $templateUrl }}" class="sales-import-preview-secondary">Download Template</a>
@@ -85,7 +85,8 @@
                 </div>
             </div>
 
-            <div class="sales-import-preview-table-wrap">
+            <div class="sales-import-preview-table-wrap responsive-table-shell">
+                <div class="responsive-table-scroll">
                 <table class="sales-import-preview-table">
                     <thead>
                         <tr>
@@ -110,6 +111,7 @@
                         @endforelse
                     </tbody>
                 </table>
+                </div>
             </div>
 
             <div class="sales-import-preview-mobile-list">

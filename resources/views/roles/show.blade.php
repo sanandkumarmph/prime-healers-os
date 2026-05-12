@@ -47,7 +47,7 @@
             <h1 style="margin:12px 0 8px; font-size:34px; letter-spacing:-0.03em;">{{ $role->name }}</h1>
             <p style="margin:0; color:#64748b;">Permission matrix and users currently mapped to this role.</p>
         </div>
-        <div class="role-show-actions" style="display:flex; gap:10px; flex-wrap:wrap;">
+        <div class="role-show-actions page-header-actions" style="display:flex; gap:10px; flex-wrap:wrap;">
             @if($canUpdateRoles)
                 <a href="{{ route('roles.edit', $role) }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:600;">Edit</a>
             @endif
@@ -107,11 +107,11 @@
         </div>
     </div>
 
-    <div style="margin-top:18px; background:#ffffff; border:1px solid #e2e8f0; border-radius:22px; overflow:hidden;">
+    <div style="margin-top:18px; background:#ffffff; border:1px solid #e2e8f0; border-radius:22px; overflow:hidden;" class="rn-table-shell responsive-table-shell">
         <div style="padding:18px 22px; border-bottom:1px solid #e2e8f0;">
             <h2 style="margin:0; font-size:20px;">Users Mapped to This Role</h2>
         </div>
-        <div class="role-users-table" style="overflow:auto;">
+        <div class="role-users-table responsive-table-scroll" style="overflow:auto;">
             <table style="width:100%; border-collapse:collapse;">
                 <thead style="background:#f8fafc;">
                     <tr>

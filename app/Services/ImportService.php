@@ -98,7 +98,7 @@ class ImportService
                 'description' => 'Import product master rows with untracked quantity or tracked stock modes.',
                 'priority' => 3,
                 'fields' => [
-                    'name' => ['label' => 'Product Name', 'required' => true, 'aliases' => ['name', 'product_name', 'product']],
+                    'name' => ['label' => 'Product Name', 'required' => true, 'aliases' => ['name', 'product_name', 'product', 'product name']],
                     'category' => ['label' => 'Category', 'aliases' => ['category']],
                     'brand' => ['label' => 'Brand', 'aliases' => ['brand']],
                     'model_name' => ['label' => 'Model Name', 'aliases' => ['model', 'model_name']],
@@ -268,6 +268,7 @@ class ImportService
     public function buildPreview(string $module, string $uploadKey, array $mapping, int $organizationId): array
     {
         $upload = $this->loadSnapshot($uploadKey);
+        $fields = $this->fieldOptions($module);
         $validRows = [];
         $invalidRows = [];
         $assetPrecheck = [
@@ -278,7 +279,7 @@ class ImportService
         foreach (($upload['rows'] ?? []) as $index => $row) {
             $rowNumber = $index + 2;
             $mapped = $this->applyMapping($row, $mapping);
-            [$normalized, $errors] = $this->normalizeRow($module, $mapped, $organizationId, $rowNumber);
+            [$normalized, $errors] = $this->normalizeRow($module, $mapped, $organizationId, $rowNumber, $mapping, $fields);
             $guidance = $module === self::ASSET
                 ? $this->assetStockModeGuidance($mapped, $organizationId)
                 : null;
@@ -590,11 +591,11 @@ class ImportService
         return $result['action'] ?? 'created';
     }
 
-    private function normalizeRow(string $module, array $mapped, int $organizationId, int $rowNumber): array
+    private function normalizeRow(string $module, array $mapped, int $organizationId, int $rowNumber, array $mapping = [], array $fields = []): array
     {
         return match ($module) {
             self::CUSTOMER => $this->normalizeCustomerRow($mapped, $organizationId),
-            self::PRODUCT => $this->normalizeProductRow($mapped, $organizationId),
+            self::PRODUCT => $this->normalizeProductRow($mapped, $organizationId, $mapping, $fields),
             self::ASSET => $this->normalizeAssetRow($mapped, $organizationId),
             self::RENTAL => $this->normalizeRentalRow($mapped, $organizationId),
             default => [[], ['Unsupported import module for row ' . $rowNumber . '.']],
@@ -658,7 +659,7 @@ class ImportService
         ], $errors];
     }
 
-    private function normalizeProductRow(array $mapped, ?int $organizationId = null): array
+    private function normalizeProductRow(array $mapped, ?int $organizationId = null, array $mapping = [], array $fields = []): array
     {
         $name = $this->cleanText($mapped['name'] ?? null);
         $productType = $this->normalizeProductType($mapped['product_type'] ?? null);
@@ -671,7 +672,7 @@ class ImportService
         $errors = [];
 
         if ($name === '') {
-            $errors[] = 'Product name is required.';
+            $errors[] = $this->requiredFieldMappingError('name', 'Product name is required.', $mapping, $fields);
         }
 
         if (!$productType) {
@@ -1272,7 +1273,7 @@ class ImportService
         return collect($headers)
             ->values()
             ->map(function ($header, int $index) {
-                $value = trim((string) $header);
+                $value = $this->cleanHeaderText($header);
                 return $value !== '' ? $value : 'Column ' . ($index + 1);
             })
             ->all();
@@ -1308,7 +1309,26 @@ class ImportService
 
     private function slugKey(?string $value): string
     {
-        return Str::of((string) $value)->lower()->replaceMatches('/[^a-z0-9]+/', '_')->trim('_')->toString();
+        return Str::of($this->cleanHeaderText($value))->lower()->replaceMatches('/[^a-z0-9]+/', '_')->trim('_')->toString();
+    }
+
+    private function cleanHeaderText(?string $value): string
+    {
+        $value = (string) $value;
+        $value = preg_replace('/^\xEF\xBB\xBF/u', '', $value) ?? $value;
+
+        return trim($value);
+    }
+
+    private function requiredFieldMappingError(string $fieldKey, string $fallbackMessage, array $mapping, array $fields): string
+    {
+        if (!filled($mapping[$fieldKey] ?? null)) {
+            $label = $fields[$fieldKey]['label'] ?? Str::of($fieldKey)->replace('_', ' ')->title()->toString();
+
+            return 'Could not map ' . $label . ' column.';
+        }
+
+        return $fallbackMessage;
     }
 
     private function cleanText(?string $value): string

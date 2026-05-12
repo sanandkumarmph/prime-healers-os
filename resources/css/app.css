@@ -1376,9 +1376,82 @@ textarea::placeholder {
         gap: 10px;
     }
 
+    .responsive-table-shell,
+    .responsive-table-scroll,
+    .sales-import-preview-table-wrap,
+    .asset-table-shell {
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    .responsive-table-scroll > table {
+        min-width: 640px;
+    }
+
+    .filter-bar,
+    .mobile-actions,
+    .page-header-actions,
+    .mobile-stack {
+        width: 100%;
+    }
+
+    .filter-bar,
+    .mobile-actions,
+    .page-header-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .mobile-actions,
+    .page-header-actions {
+        display: grid;
+    }
+
+    .filter-bar > *,
+    .mobile-actions > *,
+    .page-header-actions > *,
+    .mobile-stack > *,
+    .mobile-actions form,
+    .page-header-actions form {
+        width: 100%;
+    }
+
+    .form-grid.two-col > * {
+        grid-column: span 12;
+    }
+
+    .customer-form-grid,
+    .staff-form-grid,
+    .product-form-grid,
+    .user-form-grid,
+    .role-form-grid,
+    .invoice-form-grid,
+    .ops-form-grid,
+    .billing-form-grid,
+    .product-form-grid-two {
+        grid-template-columns: 1fr !important;
+    }
+
+    .sales-import-preview-helper,
+    .sales-import-preview-clean-state,
+    .sales-import-preview-empty,
+    .sales-import-preview-invalid-card li {
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+
     .rn-form-section,
     .rx-form-section {
         padding: 14px;
+    }
+}
+
+@media (max-width: 640px) {
+    .responsive-table-scroll > table {
+        min-width: 600px;
+    }
+
+    .table-col-compact {
+        width: 52px;
     }
 }
 
@@ -1654,6 +1727,80 @@ body {
     max-width:100%;
     min-width:0;
     margin:0 auto;
+}
+
+.responsive-table-shell {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.responsive-table-scroll {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+}
+
+.responsive-table-scroll > table {
+    width: 100%;
+    min-width: max-content;
+    border-collapse: collapse;
+}
+
+.responsive-table-scroll th,
+.responsive-table-scroll td {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    vertical-align: top;
+}
+
+.table-col-compact {
+    width: 1%;
+    white-space: nowrap;
+}
+
+.mobile-stack,
+.mobile-actions,
+.page-header-actions,
+.filter-bar {
+    min-width: 0;
+}
+
+.mobile-actions,
+.page-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.filter-bar {
+    display: grid;
+    gap: 12px;
+}
+
+.filter-bar > *,
+.mobile-actions > *,
+.page-header-actions > *,
+.mobile-stack > * {
+    min-width: 0;
+}
+
+.form-grid {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+.form-grid > * {
+    min-width: 0;
+    grid-column: span 12;
+}
+
+.form-grid.two-col > * {
+    grid-column: span 6;
 }
 
 .mobile-card-list {

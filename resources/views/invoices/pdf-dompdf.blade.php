@@ -36,6 +36,8 @@
         .meta-table,
         .party-table,
         .items-table,
+        .summary-table,
+        .payment-details-table,
         .totals-table,
         .payments-table,
         .footer-table {
@@ -62,17 +64,21 @@
         }
 
         .company-logo {
-            width: 92px;
-            height: 62px;
+            width: 120px;
+            height: 70px;
             border: 1px solid #d7e1ec;
             text-align: center;
             vertical-align: middle;
+            background: #ffffff;
         }
 
         .company-logo img {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
+            display: block;
+            width: auto;
+            height: auto;
+            max-width: 118px;
+            max-height: 68px;
+            margin: 0 auto;
         }
 
         .company-name {
@@ -128,6 +134,7 @@
 
         .subject-box,
         .notes-box,
+        .payment-card,
         .signature-box {
             border: 1px solid #d7e1ec;
             padding: 8px;
@@ -163,9 +170,65 @@
             font-size: 9px;
         }
 
-        .totals-table td:first-child,
-        .payments-table td:first-child {
-            width: 60%;
+        .summary-table,
+        .payment-details-table {
+            page-break-inside: avoid;
+        }
+
+        .summary-table td {
+            vertical-align: top;
+        }
+
+        .summary-notes-cell {
+            width: 58%;
+            padding-right: 8px;
+        }
+
+        .summary-totals-cell {
+            width: 42%;
+        }
+
+        .payment-details-table {
+            margin-top: 10px;
+            border: 1px solid #d7e1ec;
+        }
+
+        .payment-details-table td {
+            width: 50%;
+            padding: 0;
+            vertical-align: top;
+        }
+
+        .payment-details-table td:first-child {
+            border-right: 1px solid #d7e1ec;
+        }
+
+        .payment-bank-col {
+            padding-right: 10px;
+        }
+
+        .payment-qr-col {
+            width: 130px;
+            text-align: center;
+        }
+
+        .payment-bank-line {
+            margin-bottom: 4px;
+            color: #24384f;
+        }
+
+        .payment-qr-box {
+            text-align: center;
+        }
+
+        .payment-qr-caption {
+            margin-top: 6px;
+            color: #5B6E84;
+            font-size: 9px;
+        }
+
+        .totals-table td:first-child {
+            width: 64%;
         }
 
         .grand-total td,
@@ -200,8 +263,37 @@
             width: 110px;
             height: 110px;
             display: block;
-            margin-top: 8px;
-            margin-left: auto;
+            margin: 0 auto;
+        }
+
+        .payments-table {
+            page-break-inside: auto;
+        }
+
+        .payments-table th:first-child {
+            width: 18%;
+        }
+
+        .payments-table th:nth-child(2) {
+            width: 16%;
+        }
+
+        .payments-table th:nth-child(3) {
+            width: 46%;
+        }
+
+        .payments-table th:last-child {
+            width: 20%;
+        }
+
+        .payments-table td {
+            word-break: normal;
+            overflow-wrap: break-word;
+        }
+
+        .payments-table td:nth-child(3) {
+            white-space: normal;
+            line-height: 1.45;
         }
 
         .footer-table td {
@@ -324,12 +416,12 @@
 
 <table class="header-table">
     <tr>
-        <td style="width:100px; padding-right:10px;">
+        <td style="width:130px; padding-right:10px;">
             <div class="company-logo">
                 @if($tenantLogo)
                     <img src="{{ $tenantLogo }}" alt="Company Logo">
                 @else
-                    <div style="padding-top:18px; font-size:12px; font-weight:bold;">{{ $organizationInitials ?: 'CO' }}</div>
+                    <div style="padding-top:24px; font-size:12px; font-weight:bold;">{{ $organizationInitials ?: 'CO' }}</div>
                 @endif
             </div>
         </td>
@@ -494,9 +586,9 @@
     </tbody>
 </table>
 
-<table>
+<table class="summary-table">
     <tr>
-        <td style="width:60%; padding-right:8px; vertical-align:top;">
+        <td class="summary-notes-cell">
             <div class="notes-box">
                 <div class="section-title">Amount in Words</div>
                 <div>{{ $amountInWords ?? 'Amount not available' }}</div>
@@ -515,60 +607,9 @@
                     <div class="section-title" style="margin-top:10px;">Terms</div>
                     <div>{{ $billingTerms }}</div>
                 @endif
-
-                <div class="section-title" style="margin-top:10px;">Bank Details</div>
-                @if($organization?->bank_account_name || $organization?->bank_account_number || $organization?->bank_ifsc || $organization?->bank_name || $organization?->bank_branch || $organization?->upi_id)
-                    @if($organization?->bank_account_name)
-                        <div>A/C Name: {{ $organization->bank_account_name }}</div>
-                    @endif
-                    @if($organization?->bank_account_number)
-                        <div>A/C No: {{ $organization->bank_account_number }}</div>
-                    @endif
-                    @if($organization?->bank_ifsc)
-                        <div>IFSC: {{ $organization->bank_ifsc }}</div>
-                    @endif
-                    @if($organization?->bank_name)
-                        <div>Bank: {{ $organization->bank_name }}</div>
-                    @endif
-                    @if($organization?->bank_branch)
-                        <div>Branch: {{ $organization->bank_branch }}</div>
-                    @endif
-                    @if($organization?->upi_id)
-                        <div>UPI ID: {{ $organization->upi_id }}</div>
-                    @endif
-                @else
-                    <div>Bank details are not configured for this company.</div>
-                @endif
-
-                @if($tenantQr)
-                    <img src="{{ $tenantQr }}" alt="Payment QR Code" class="qr-image">
-                @endif
             </div>
-
-            @if($invoice->payments->isNotEmpty())
-                <table class="payments-table">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Method</th>
-                            <th>Notes</th>
-                            <th class="num">Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($invoice->payments as $payment)
-                            <tr>
-                                <td>{{ optional($payment->payment_date)->format('d M Y') ?: 'N/A' }}</td>
-                                <td>{{ strtoupper($payment->payment_method ?: 'other') }}</td>
-                                <td>{{ $payment->notes ?: '-' }}</td>
-                                <td class="num">{!! $currencyHtml !!} {{ number_format((float) $payment->amount, 2) }}</td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            @endif
         </td>
-        <td style="width:40%; vertical-align:top;">
+        <td class="summary-totals-cell">
             <table class="totals-table">
                 <tr>
                     <td>Subtotal</td>
@@ -627,6 +668,71 @@
         </td>
     </tr>
 </table>
+
+<div class="payment-card">
+    <div class="section-title">Payment Details</div>
+    <table class="payment-details-table">
+        <tr>
+            <td class="payment-bank-col">
+                @if($organization?->bank_account_name || $organization?->bank_account_number || $organization?->bank_ifsc || $organization?->bank_name || $organization?->bank_branch || $organization?->upi_id)
+                    @if($organization?->bank_account_name)
+                        <div class="payment-bank-line">A/C Name: {{ $organization->bank_account_name }}</div>
+                    @endif
+                    @if($organization?->bank_account_number)
+                        <div class="payment-bank-line">A/C No: {{ $organization->bank_account_number }}</div>
+                    @endif
+                    @if($organization?->bank_ifsc)
+                        <div class="payment-bank-line">IFSC: {{ $organization->bank_ifsc }}</div>
+                    @endif
+                    @if($organization?->bank_name)
+                        <div class="payment-bank-line">Bank: {{ $organization->bank_name }}</div>
+                    @endif
+                    @if($organization?->bank_branch)
+                        <div class="payment-bank-line">Branch: {{ $organization->bank_branch }}</div>
+                    @endif
+                    @if($organization?->upi_id)
+                        <div class="payment-bank-line">UPI ID: {{ $organization->upi_id }}</div>
+                    @endif
+                @else
+                    <div class="payment-bank-line">Bank details are not configured for this company.</div>
+                @endif
+            </td>
+            <td class="payment-qr-col">
+                <div class="payment-qr-box">
+                    @if($tenantQr)
+                        <img src="{{ $tenantQr }}" alt="Payment QR Code" class="qr-image">
+                        <div class="payment-qr-caption">Scan to pay</div>
+                    @else
+                        <div class="payment-qr-caption">No payment QR configured</div>
+                    @endif
+                </div>
+            </td>
+        </tr>
+    </table>
+</div>
+
+@if($invoice->payments->isNotEmpty())
+    <table class="payments-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Method</th>
+                <th>Notes</th>
+                <th class="num">Amount</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach($invoice->payments as $payment)
+                <tr>
+                    <td>{{ optional($payment->payment_date)->format('d M Y') ?: 'N/A' }}</td>
+                    <td>{{ strtoupper($payment->payment_method ?: 'other') }}</td>
+                    <td>{{ $payment->notes ?: '-' }}</td>
+                    <td class="num">{!! $currencyHtml !!} {{ number_format((float) $payment->amount, 2) }}</td>
+                </tr>
+            @endforeach
+        </tbody>
+    </table>
+@endif
 
 <table class="footer-table">
     <tr>

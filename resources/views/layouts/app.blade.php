@@ -500,6 +500,7 @@
         justify-content:flex-end;
         gap:10px;
         flex-wrap:wrap;
+        min-width:0;
     }
     .app-shell-search {
         flex:1 1 560px;
@@ -884,6 +885,28 @@
         display:grid;
         gap:8px;
     }
+    @media (max-width: 1180px) {
+        .app-shell-topbar {
+            flex-wrap:wrap;
+            align-items:stretch;
+        }
+        .app-shell-topbar-left,
+        .app-shell-topbar-right {
+            width:100%;
+        }
+        .app-shell-topbar-right {
+            justify-content:space-between;
+        }
+        .app-shell-search {
+            flex:1 1 100%;
+            min-width:0;
+            max-width:none;
+        }
+        .topbar-bell-panel,
+        .topbar-user-panel {
+            max-width:min(360px, calc(100vw - 44px));
+        }
+    }
     .topbar-user-head {
         display:grid;
         gap:3px;
@@ -968,6 +991,8 @@
     @media (max-width: 900px) {
         .app-shell-sidebar { flex-basis:222px; width:222px; max-width:222px; padding:14px 10px; }
         .app-shell-main { max-width:calc(100vw - 222px) !important; }
+        .app-shell-topbar { gap:10px; padding:10px 12px; }
+        .app-shell-topbar-right { gap:8px; }
         .brand-badge { max-width:188px; padding:14px 14px; }
         .brand-logo { max-width:170px; max-height:52px; }
         .brand-title { font-size:19px; }
@@ -1701,6 +1726,44 @@
             gap:8px;
             padding-top:10px;
             background:linear-gradient(180deg, rgba(255,255,255,0) 0%, #fff 18px, #fff 100%);
+        }
+    }
+    @media (max-width: 640px) {
+        .app-shell-main {
+            padding-left:10px !important;
+            padding-right:10px !important;
+            padding-top:128px !important;
+            padding-bottom:156px !important;
+        }
+        .mobile-topbar {
+            flex-wrap:wrap;
+            gap:8px;
+            min-height:auto;
+            padding:10px 10px 8px;
+        }
+        .mobile-brand {
+            flex:1 1 calc(100% - 50px);
+            max-width:calc(100% - 50px);
+        }
+        .mobile-brand-copy small {
+            display:none;
+        }
+        .mobile-topbar-search {
+            order:3;
+            flex:1 1 100%;
+        }
+        .mobile-back-row {
+            top:94px;
+            padding-inline:10px;
+        }
+        .mobile-bottom-nav,
+        .mobile-sticky-actions {
+            left:8px;
+            right:8px;
+            max-width:calc(100vw - 16px);
+        }
+        .mobile-fab {
+            right:12px;
         }
     }
 </style>
