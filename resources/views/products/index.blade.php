@@ -905,60 +905,13 @@
                 </table>
             </div>
 
-            @if($products->hasPages())
-                @php
-                    $currentPage = $products->currentPage();
-                    $lastPage = $products->lastPage();
-                    $pageWindow = collect(range(max(1, $currentPage - 2), min($lastPage, $currentPage + 2)));
-
-                    if ($pageWindow->first() > 1) {
-                        $pageWindow->prepend(1);
-                    }
-
-                    if ($pageWindow->count() > 1 && $pageWindow[1] > $pageWindow[0] + 1) {
-                        $pageWindow->splice(1, 0, ['gap-start']);
-                    }
-
-                    if ($pageWindow->last() < $lastPage) {
-                        if ($pageWindow->last() < $lastPage - 1) {
-                            $pageWindow->push('gap-end');
-                        }
-
-                        $pageWindow->push($lastPage);
-                    }
-                @endphp
-
-                <div class="rn-pagination" style="padding:18px 22px 22px; border-top:1px solid var(--ph-color-border); background:var(--ph-color-surface-soft);" aria-label="Product Master pagination">
-                    <div class="rn-pagination-copy">
-                        Showing {{ $products->firstItem() }} to {{ $products->lastItem() }} of {{ $products->total() }} results
-                    </div>
-                    <div class="rn-pagination-nav">
-                        @if($products->onFirstPage())
-                            <span class="rn-pagination-separator" aria-disabled="true">Previous</span>
-                        @else
-                            <a href="{{ $products->previousPageUrl() }}" class="rn-pagination-link" rel="prev">Previous</a>
-                        @endif
-
-                        <div class="rn-pagination-pages">
-                            @foreach($pageWindow as $page)
-                                @if(is_string($page))
-                                    <span class="rn-pagination-separator" aria-hidden="true">…</span>
-                                @elseif($page === $currentPage)
-                                    <span class="rn-pagination-current" aria-current="page">{{ $page }}</span>
-                                @else
-                                    <a href="{{ $products->url($page) }}" class="rn-pagination-link">{{ $page }}</a>
-                                @endif
-                            @endforeach
-                        </div>
-
-                        @if($products->hasMorePages())
-                            <a href="{{ $products->nextPageUrl() }}" class="rn-pagination-link" rel="next">Next</a>
-                        @else
-                            <span class="rn-pagination-separator" aria-disabled="true">Next</span>
-                        @endif
-                    </div>
-                </div>
-            @endif
+            <div style="padding:18px 22px 22px; border-top:1px solid var(--ph-color-border); background:var(--ph-color-surface-soft);">
+                @include('partials.ph-pagination', [
+                    'paginator' => $products,
+                    'summaryLabel' => 'results',
+                    'ariaLabel' => 'Product Master pagination',
+                ])
+            </div>
         </div>
     </div>
 

@@ -926,62 +926,13 @@
                 @endforelse
             </div>
 
-            @if($assets->hasPages())
-                @php
-                    $currentPage = $assets->currentPage();
-                    $lastPage = $assets->lastPage();
-                    $pageWindow = collect(range(max(1, $currentPage - 2), min($lastPage, $currentPage + 2)));
-
-                    if ($pageWindow->first() > 1) {
-                        $pageWindow->prepend(1);
-                    }
-
-                    if ($pageWindow->count() > 1 && $pageWindow[1] > $pageWindow[0] + 1) {
-                        $pageWindow->splice(1, 0, ['gap-start']);
-                    }
-
-                    if ($pageWindow->last() < $lastPage) {
-                        if ($pageWindow->last() < $lastPage - 1) {
-                            $pageWindow->push('gap-end');
-                        }
-
-                        $pageWindow->push($lastPage);
-                    }
-                @endphp
-
-                <div class="asset-pagination-shell">
-                    <div class="rn-pagination" aria-label="Asset Register pagination">
-                        <div class="rn-pagination-copy">
-                            Showing {{ $assets->firstItem() }} to {{ $assets->lastItem() }} of {{ $assets->total() }} results
-                        </div>
-                        <div class="rn-pagination-nav">
-                            @if($assets->onFirstPage())
-                                <span class="rn-pagination-separator" aria-disabled="true">Previous</span>
-                            @else
-                                <a href="{{ $assets->previousPageUrl() }}" class="rn-pagination-link" rel="prev">Previous</a>
-                            @endif
-
-                            <div class="rn-pagination-pages">
-                                @foreach($pageWindow as $page)
-                                    @if(is_string($page))
-                                        <span class="rn-pagination-separator" aria-hidden="true">…</span>
-                                    @elseif($page === $currentPage)
-                                        <span class="rn-pagination-current" aria-current="page">{{ $page }}</span>
-                                    @else
-                                        <a href="{{ $assets->url($page) }}" class="rn-pagination-link">{{ $page }}</a>
-                                    @endif
-                                @endforeach
-                            </div>
-
-                            @if($assets->hasMorePages())
-                                <a href="{{ $assets->nextPageUrl() }}" class="rn-pagination-link" rel="next">Next</a>
-                            @else
-                                <span class="rn-pagination-separator" aria-disabled="true">Next</span>
-                            @endif
-                        </div>
-                    </div>
-                </div>
-            @endif
+            <div class="asset-pagination-shell">
+                @include('partials.ph-pagination', [
+                    'paginator' => $assets,
+                    'summaryLabel' => 'assets',
+                    'ariaLabel' => 'Asset Register pagination',
+                ])
+            </div>
         </div>
     </div>
 @endsection

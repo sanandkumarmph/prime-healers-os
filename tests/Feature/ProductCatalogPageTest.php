@@ -223,7 +223,7 @@ class ProductCatalogPageTest extends TestCase
         $response = $this->get(route('products.index', ['page' => 2]));
 
         $response->assertOk()
-            ->assertSee('Showing 13 to 13 of 13 results');
+            ->assertSee('Showing 13-13 of 13 results');
 
         $content = $response->getContent();
 
@@ -260,8 +260,8 @@ class ProductCatalogPageTest extends TestCase
         $response = $this->get(route('products.index', ['category' => 'Respiratory', 'page' => 2]));
 
         $response->assertOk()
-            ->assertSee('Showing 13 to 13 of 13 results')
-            ->assertSee('class="rn-pagination"', false)
+            ->assertSee('Showing 13-13 of 13 results')
+            ->assertSee('class="ph-pagination', false)
             ->assertSee('?category=Respiratory&amp;page=1', false);
 
         $this->assertMatchesRegularExpression(
@@ -370,8 +370,8 @@ class ProductCatalogPageTest extends TestCase
         $response = $this->get(route('assets.index', ['search' => 'PAGE-ASSET', 'page' => 2]));
 
         $response->assertOk()
-            ->assertSee('Showing 13 to 13 of 13 results')
-            ->assertSee('class="rn-pagination"', false)
+            ->assertSee('Showing 13-13 of 13 assets')
+            ->assertSee('class="ph-pagination', false)
             ->assertSee('?search=PAGE-ASSET&amp;page=1', false);
     }
 
