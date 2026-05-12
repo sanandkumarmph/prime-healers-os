@@ -343,14 +343,60 @@ class ProductController extends Controller
         }
 
         $duplicateProductNameGroups = $this->duplicateProductNameGroups();
-        $products = $this->applyProductCatalogFilters(
+        $filteredProductsQuery = $this->applyProductCatalogFilters(
             $this->productCatalogQuery(),
             $search,
             $category,
             $typeFilter,
             $stockStatus,
             $brand
-        )
+        );
+
+        $catalogProducts = (clone $filteredProductsQuery)->get();
+        $catalogTotals = [
+            'products' => $catalogProducts->count(),
+            'sellable' => $catalogProducts->sum(function (Product $product): int {
+                return (
+                    $product->product_type === Product::TYPE_SELLABLE
+                    || in_array($product->stock_mode, [Product::STOCK_MODE_TRACKED_SALE, Product::STOCK_MODE_TRACKED_BOTH], true)
+                ) ? 1 : 0;
+            }),
+            'rentable' => $catalogProducts->sum(function (Product $product): int {
+                return (
+                    $product->product_type === Product::TYPE_RENTABLE
+                    || in_array($product->stock_mode, [Product::STOCK_MODE_TRACKED_RENTAL, Product::STOCK_MODE_TRACKED_BOTH], true)
+                ) ? 1 : 0;
+            }),
+            'sale_stock' => $catalogProducts->sum(function (Product $product): int {
+                if ($product->usesUntrackedStock()) {
+                    return $product->product_type === Product::TYPE_SELLABLE
+                        ? max((int) ($product->available_quantity ?? 0), 0)
+                        : 0;
+                }
+
+                return (int) ($product->sale_stock_quantity ?? 0);
+            }),
+            'rental_assets' => $catalogProducts->sum(function (Product $product): int {
+                if ($product->usesUntrackedStock()) {
+                    return $product->product_type === Product::TYPE_RENTABLE
+                        ? max((int) ($product->total_quantity ?? 0), 0)
+                        : 0;
+                }
+
+                return (int) ($product->assets_count ?? 0);
+            }),
+            'rental_available' => $catalogProducts->sum(function (Product $product): int {
+                if ($product->usesUntrackedStock()) {
+                    return $product->product_type === Product::TYPE_RENTABLE
+                        ? max((int) ($product->available_quantity ?? 0), 0)
+                        : 0;
+                }
+
+                return (int) ($product->available_assets_count ?? 0);
+            }),
+        ];
+
+        $products = (clone $filteredProductsQuery)
             ->orderBy($allowedSorts[$sort], $direction)
             ->orderBy('products.id', $direction === 'asc' ? 'asc' : 'desc')
             ->paginate(12)
@@ -374,6 +420,7 @@ class ProductController extends Controller
 
         return view('products.index', compact(
             'products',
+            'catalogTotals',
             'duplicateProductNameGroups',
             'search',
             'category',

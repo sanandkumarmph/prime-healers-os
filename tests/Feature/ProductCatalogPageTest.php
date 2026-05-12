@@ -178,6 +178,98 @@ class ProductCatalogPageTest extends TestCase
         );
     }
 
+    public function test_catalog_summary_cards_use_full_filtered_result_set_not_current_page(): void
+    {
+        foreach (range(1, 13) as $index) {
+            $this->makeProduct([
+                'name' => 'Paged Product ' . $index,
+                'category' => $index <= 3 ? 'Respiratory' : 'General',
+                'product_type' => $index <= 4 ? Product::TYPE_SELLABLE : Product::TYPE_RENTABLE,
+                'stock_mode' => $index <= 4 ? Product::STOCK_MODE_UNTRACKED : Product::STOCK_MODE_TRACKED_RENTAL,
+                'available_quantity' => $index <= 4 ? 2 : 0,
+                'total_quantity' => $index <= 4 ? 2 : 0,
+            ])->forceFill([
+                'created_at' => now()->subMinutes(13 - $index),
+                'updated_at' => now()->subMinutes(13 - $index),
+            ])->saveQuietly();
+        }
+
+        $warehouse = Warehouse::create([
+            'organization_id' => $this->organizationId,
+            'name' => 'Catalog Totals Warehouse',
+            'code' => 'CTW',
+            'is_active' => true,
+        ]);
+
+        $rentableProducts = Product::query()
+            ->where('organization_id', $this->organizationId)
+            ->where('product_type', Product::TYPE_RENTABLE)
+            ->orderBy('id')
+            ->get();
+
+        foreach ($rentableProducts->take(3) as $product) {
+            Asset::create([
+                'organization_id' => $this->organizationId,
+                'product_id' => $product->id,
+                'warehouse_id' => $warehouse->id,
+                'asset_name' => $product->name . ' Rental Asset',
+                'serial_number' => 'RA-' . $product->id,
+                'asset_stage' => Asset::STAGE_RENTAL_STOCK,
+                'condition_status' => 'good',
+                'asset_status' => Asset::STATUS_AVAILABLE,
+            ]);
+        }
+
+        $response = $this->get(route('products.index', ['page' => 2]));
+
+        $response->assertOk()
+            ->assertSee('Showing 13 to 13 of 13 results');
+
+        $content = $response->getContent();
+
+        $this->assertMatchesRegularExpression('/Product Master<\/div>\s*<div class="product-kpi-value">13<\/div>/', $content);
+        $this->assertMatchesRegularExpression('/Sellable<\/div>\s*<div class="product-kpi-value">4<\/div>/', $content);
+        $this->assertMatchesRegularExpression('/Rentable<\/div>\s*<div class="product-kpi-value">9<\/div>/', $content);
+        $this->assertMatchesRegularExpression('/Sale Units<\/div>\s*<div class="product-kpi-value">8<\/div>/', $content);
+        $this->assertMatchesRegularExpression('/Rental Available<\/div>\s*<div class="product-kpi-value">3<\/div>/', $content);
+    }
+
+    public function test_catalog_pagination_and_stats_preserve_filter_context(): void
+    {
+        foreach (range(1, 13) as $index) {
+            $this->makeProduct([
+                'name' => 'Resp Product ' . $index,
+                'category' => 'Respiratory',
+                'product_type' => Product::TYPE_SELLABLE,
+                'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+                'available_quantity' => 1,
+                'total_quantity' => 1,
+            ])->forceFill([
+                'created_at' => now()->subMinutes(13 - $index),
+                'updated_at' => now()->subMinutes(13 - $index),
+            ])->saveQuietly();
+        }
+
+        foreach (range(1, 2) as $index) {
+            $this->makeProduct([
+                'name' => 'General Product ' . $index,
+                'category' => 'General',
+            ]);
+        }
+
+        $response = $this->get(route('products.index', ['category' => 'Respiratory', 'page' => 2]));
+
+        $response->assertOk()
+            ->assertSee('Showing 13 to 13 of 13 results')
+            ->assertSee('class="product-pagination"', false)
+            ->assertSee('?category=Respiratory&amp;page=1', false);
+
+        $this->assertMatchesRegularExpression(
+            '/Product Master<\/div>\s*<div class="product-kpi-value">13<\/div>/',
+            $response->getContent()
+        );
+    }
+
     public function test_product_master_export_csv_downloads_filtered_rows(): void
     {
         $this->makeProduct([
