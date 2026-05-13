@@ -165,6 +165,33 @@ class RentalImportExecutionRegressionTest extends TestCase
         $this->assertDatabaseCount('invoices', 1);
     }
 
+    public function test_runtime_skipped_rental_rows_include_clear_reason_details(): void
+    {
+        [$organization] = $this->bootRentalImportContext();
+
+        [$service, $preview] = $this->buildRentalPreview([
+            'Customer Name,Customer Phone,Product Name,Brand,Model Name,Dispatch Warehouse Code,Asset Serials,Quantity,Start Date,End Date,Rental Amount,Deposit Amount,Transport Amount,Status,Payment Status,Paid Amount,Invoice Status,Delivery Status,Delivery Date,Pickup Status,Pickup Date,Notes',
+            'Aarav Sharma,9876543210,Oxygen Concentrator 5 LPM,Philips,SimplyGo,MAIN,RENT-OC-001,1,2026-05-01,2026-05-15,4500,0,0,Active,pending,,generated,assigned,2026-05-01,not_assigned,,Runtime skip row',
+        ]);
+
+        Asset::where('organization_id', $organization->id)
+            ->where('serial_number', 'RENT-OC-001')
+            ->firstOrFail()
+            ->update(['asset_status' => Asset::STATUS_MAINTENANCE]);
+
+        $result = $service->executePreview('rentals', $preview['key'], $organization->id, auth()->id());
+
+        $this->assertSame(0, $result['created']);
+        $this->assertSame(1, $result['skipped']);
+        $this->assertSame(0, $result['failed']);
+        $this->assertCount(1, $result['skipped_rows']);
+        $this->assertSame('business_rule', $result['skipped_rows'][0]['reason_category']);
+        $this->assertStringContainsString('No rental asset is available', $result['skipped_rows'][0]['reason']);
+        $this->assertStringContainsString('Aarav Sharma', $result['skipped_rows'][0]['identifier']);
+        $this->assertSame(1, $result['business_rule_skips_count']);
+        $this->assertNotEmpty($result['reason_groups']);
+    }
+
     public function test_importing_same_rental_row_twice_updates_existing_rental_instead_of_creating_duplicate(): void
     {
         [$organization] = $this->bootRentalImportContext();

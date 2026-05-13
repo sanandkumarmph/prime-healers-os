@@ -186,7 +186,17 @@ class ImportController extends Controller
                 ->with('success', Str::headline($module) . ' import was already completed. Duplicate import was prevented.');
         }
 
-        return redirect()->route('imports.preview', $module)->with('success', Str::headline($module) . ' import finished. ' . $result['processed'] . ' row(s) processed, ' . $result['skipped'] . ' skipped.');
+        return redirect()
+            ->route('imports.preview', $module)
+            ->with(
+                'success',
+                Str::headline($module)
+                . ' import finished. Processed ' . ($result['processed'] ?? 0)
+                . ', created ' . ($result['created'] ?? 0)
+                . ', updated ' . ($result['updated'] ?? 0)
+                . ', skipped ' . ($result['skipped'] ?? 0)
+                . ', failed ' . ($result['failed'] ?? 0) . '.'
+            );
     }
 
     public function template(string $module, ImportService $service)
@@ -218,9 +228,16 @@ class ImportController extends Controller
 
         return response()->streamDownload(function () use ($rows) {
             $output = fopen('php://output', 'w');
-            fputcsv($output, ['Row Number', 'Status', 'Errors', 'Mapped Data']);
+            fputcsv($output, ['Row Number', 'Status', 'Identifier', 'Reason Type', 'Errors', 'Mapped Data']);
             foreach ($rows as $row) {
-                fputcsv($output, [$row['row_number'], $row['status'], $row['errors'], $row['mapped_data']]);
+                fputcsv($output, [
+                    $row['row_number'],
+                    $row['status'],
+                    $row['identifier'] ?? '',
+                    $row['reason_category'] ?? '',
+                    $row['errors'],
+                    $row['mapped_data'],
+                ]);
             }
             fclose($output);
         }, 'import-error-report.csv', [

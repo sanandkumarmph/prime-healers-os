@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use ZipArchive;
 
@@ -237,6 +238,7 @@ class ImportService
             'headers' => $parsed['headers'],
             'rows' => $parsed['rows'],
             'row_count' => count($parsed['rows']),
+            'blank_row_count' => (int) ($parsed['blank_row_count'] ?? 0),
             'created_at' => now()->toIso8601String(),
         ]);
 
@@ -353,6 +355,7 @@ class ImportService
             'asset_precheck' => [
                 'untracked_products' => array_values($assetPrecheck['untracked_products']),
             ],
+            'blank_row_count' => (int) ($upload['blank_row_count'] ?? 0),
             'created_at' => now()->toIso8601String(),
         ]);
 
@@ -370,17 +373,11 @@ class ImportService
         $preview = $this->loadSnapshot($previewKey);
 
         if (!empty($preview['imported_at'])) {
-            $lastResult = $preview['last_result'] ?? [
-                'processed' => 0,
-                'created' => 0,
-                'updated' => 0,
-                'skipped' => count($preview['invalid_rows'] ?? []),
-                'runtime_errors' => [],
-            ];
+            $lastResult = $preview['last_result'] ?? $this->initialExecutionResult($preview);
 
-            return $lastResult + [
+            return $this->finalizeExecutionResult($lastResult) + [
                 'already_imported' => true,
-                'error_report_available' => !empty($preview['invalid_rows']) || !empty($lastResult['runtime_errors'] ?? []),
+                'error_report_available' => !empty($preview['invalid_rows']) || !empty($lastResult['skipped_rows'] ?? []) || !empty($lastResult['failed_rows'] ?? []),
             ];
         }
 
@@ -389,14 +386,7 @@ class ImportService
         $productUpsertWhitelistIds = $module === self::PRODUCT
             ? Product::query()->where('organization_id', $organizationId)->pluck('id')->map(fn ($id) => (int) $id)->all()
             : null;
-        $result = [
-            'processed' => 0,
-            'created' => 0,
-            'updated' => 0,
-            'skipped' => count($preview['invalid_rows'] ?? []),
-            'runtime_errors' => [],
-            'error_report_available' => false,
-        ];
+        $result = $this->initialExecutionResult($preview);
 
         $rows->chunk($chunkSize)->each(function (Collection $chunk) use ($module, $organizationId, $userId, $productUpsertWhitelistIds, &$result) {
             DB::transaction(function () use ($chunk, $module, $organizationId, $userId, $productUpsertWhitelistIds, &$result) {
@@ -423,12 +413,17 @@ class ImportService
                             'row_number' => (int) ($row['row_number'] ?? 0),
                             'message' => $exception->getMessage(),
                         ]);
-                        $result['skipped']++;
-                        $result['runtime_errors'][] = [
-                            'row_number' => (int) ($row['row_number'] ?? 0),
-                            'errors' => [$exception->getMessage()],
-                            'mapped' => $row['mapped'] ?? [],
-                        ];
+                        $issue = $this->buildRuntimeIssue($row, $exception);
+
+                        if ($issue['kind'] === 'failed') {
+                            $result['failed']++;
+                            $result['failed_rows'][] = $issue;
+                        } else {
+                            $result['skipped']++;
+                            $result['skipped_rows'][] = $issue;
+                        }
+
+                        $this->accumulateIssueCounts($result, $issue);
                     }
                 }
 
@@ -446,13 +441,22 @@ class ImportService
             });
         });
 
-        $preview['last_result'] = $result + [
+        $result = $this->finalizeExecutionResult($result) + [
             'executed_at' => now()->toIso8601String(),
         ];
+        $preview['last_result'] = $result;
         $preview['imported_at'] = now()->toIso8601String();
-        $preview['runtime_errors'] = $result['runtime_errors'];
+        $preview['runtime_errors'] = array_map(function (array $issue) {
+            return [
+                'row_number' => $issue['row_number'] ?? 0,
+                'identifier' => $issue['identifier'] ?? '',
+                'reason_category' => $issue['reason_category'] ?? '',
+                'errors' => $issue['errors'] ?? [],
+                'mapped' => $issue['mapped'] ?? [],
+            ];
+        }, array_merge($result['skipped_rows'] ?? [], $result['failed_rows'] ?? []));
         $this->overwriteSnapshot($previewKey, $preview);
-        $result['error_report_available'] = !empty($preview['invalid_rows']) || !empty($result['runtime_errors']);
+        $result['error_report_available'] = !empty($preview['invalid_rows']) || !empty($result['skipped_rows']) || !empty($result['failed_rows']);
 
         return $result;
     }
@@ -460,27 +464,281 @@ class ImportService
     public function errorReportRows(string $previewKey): array
     {
         $preview = $this->loadSnapshot($previewKey);
+        $lastResult = $preview['last_result'] ?? null;
         $rows = [];
 
-        foreach (($preview['invalid_rows'] ?? []) as $row) {
+        foreach (($lastResult['preview_invalid_rows'] ?? []) as $row) {
             $rows[] = [
                 'row_number' => $row['row_number'] ?? '',
-                'status' => 'preview_invalid',
+                'status' => $row['status'] ?? 'preview_invalid',
+                'identifier' => $row['identifier'] ?? '',
+                'reason_category' => $row['reason_category'] ?? '',
                 'errors' => implode(' | ', $row['errors'] ?? []),
                 'mapped_data' => json_encode($row['mapped'] ?? [], JSON_UNESCAPED_UNICODE),
             ];
         }
 
-        foreach (($preview['runtime_errors'] ?? []) as $row) {
+        if (empty($rows)) {
+            foreach (($preview['invalid_rows'] ?? []) as $row) {
+                $issue = $this->buildPreviewInvalidIssue($row);
+                $rows[] = [
+                    'row_number' => $issue['row_number'] ?? '',
+                    'status' => $issue['status'] ?? 'preview_invalid',
+                    'identifier' => $issue['identifier'] ?? '',
+                    'reason_category' => $issue['reason_category'] ?? '',
+                    'errors' => implode(' | ', $issue['errors'] ?? []),
+                    'mapped_data' => json_encode($issue['mapped'] ?? [], JSON_UNESCAPED_UNICODE),
+                ];
+            }
+        }
+
+        foreach (array_merge($lastResult['skipped_rows'] ?? [], $lastResult['failed_rows'] ?? []) as $row) {
             $rows[] = [
                 'row_number' => $row['row_number'] ?? '',
-                'status' => 'import_skipped',
+                'status' => $row['status'] ?? 'import_skipped',
+                'identifier' => $row['identifier'] ?? '',
+                'reason_category' => $row['reason_category'] ?? '',
                 'errors' => implode(' | ', $row['errors'] ?? []),
                 'mapped_data' => json_encode($row['mapped'] ?? [], JSON_UNESCAPED_UNICODE),
             ];
         }
 
         return $rows;
+    }
+
+    private function initialExecutionResult(array $preview): array
+    {
+        $previewInvalidRows = collect($preview['invalid_rows'] ?? [])
+            ->map(fn (array $row) => $this->buildPreviewInvalidIssue($row))
+            ->values()
+            ->all();
+
+        $result = [
+            'processed' => 0,
+            'created' => 0,
+            'updated' => 0,
+            'skipped' => count($previewInvalidRows),
+            'failed' => 0,
+            'duplicate_rows_skipped' => 0,
+            'validation_errors_count' => 0,
+            'lookup_failures_count' => 0,
+            'business_rule_skips_count' => 0,
+            'already_imported_rows_count' => 0,
+            'ignored_blank_rows_count' => (int) ($preview['blank_row_count'] ?? 0),
+            'preview_invalid_rows' => $previewInvalidRows,
+            'skipped_rows' => [],
+            'failed_rows' => [],
+            'reason_groups' => [],
+        ];
+
+        foreach ($previewInvalidRows as $issue) {
+            $this->accumulateIssueCounts($result, $issue);
+        }
+
+        return $this->finalizeExecutionResult($result);
+    }
+
+    private function buildPreviewInvalidIssue(array $row): array
+    {
+        $errors = array_values($row['errors'] ?? []);
+
+        return [
+            'row_number' => (int) ($row['row_number'] ?? 0),
+            'status' => 'preview_invalid',
+            'kind' => 'preview_invalid',
+            'identifier' => $this->rowIdentifier($row['mapped'] ?? [], $row['payload'] ?? []),
+            'reason_category' => $this->classifyIssueCategory($errors),
+            'reason' => $errors[0] ?? 'Preview validation failed.',
+            'errors' => $errors,
+            'mapped' => $row['mapped'] ?? [],
+        ];
+    }
+
+    private function buildRuntimeIssue(array $row, \Throwable $exception): array
+    {
+        $errors = $this->exceptionMessages($exception);
+        $category = $this->classifyIssueCategory($errors, $exception);
+        $kind = $this->isRuntimeFailure($exception, $category) ? 'failed' : 'skipped';
+
+        return [
+            'row_number' => (int) ($row['row_number'] ?? 0),
+            'status' => $kind === 'failed' ? 'import_failed' : 'import_skipped',
+            'kind' => $kind,
+            'identifier' => $this->rowIdentifier($row['mapped'] ?? [], $row['payload'] ?? []),
+            'reason_category' => $category,
+            'reason' => $errors[0] ?? 'Import execution failed.',
+            'errors' => $errors,
+            'mapped' => $row['mapped'] ?? [],
+        ];
+    }
+
+    private function accumulateIssueCounts(array &$result, array $issue): void
+    {
+        $category = $issue['reason_category'] ?? 'validation';
+
+        switch ($category) {
+            case 'duplicate':
+                $result['duplicate_rows_skipped']++;
+                break;
+            case 'lookup_failure':
+                $result['lookup_failures_count']++;
+                break;
+            case 'business_rule':
+                $result['business_rule_skips_count']++;
+                break;
+            case 'already_imported':
+                $result['already_imported_rows_count']++;
+                break;
+            case 'blank_row':
+                $result['ignored_blank_rows_count']++;
+                break;
+            case 'validation':
+            default:
+                $result['validation_errors_count']++;
+                break;
+        }
+    }
+
+    private function finalizeExecutionResult(array $result): array
+    {
+        $issues = collect(array_merge(
+            $result['preview_invalid_rows'] ?? [],
+            $result['skipped_rows'] ?? [],
+            $result['failed_rows'] ?? []
+        ));
+
+        $result['reason_groups'] = $issues
+            ->groupBy(fn (array $issue) => ($issue['reason_category'] ?? 'validation') . '|' . ($issue['reason'] ?? ''))
+            ->map(function (Collection $group) {
+                $first = $group->first();
+
+                return [
+                    'reason_category' => $first['reason_category'] ?? 'validation',
+                    'reason' => $first['reason'] ?? '',
+                    'count' => $group->count(),
+                ];
+            })
+            ->sortByDesc('count')
+            ->values()
+            ->all();
+
+        return $result;
+    }
+
+    private function rowIdentifier(array $mapped = [], array $payload = []): string
+    {
+        $source = array_merge($payload, $mapped);
+
+        $parts = collect([
+            $source['customer_name'] ?? $source['name'] ?? null,
+            $source['product_name'] ?? null,
+            $source['brand'] ?? null,
+            $source['model_name'] ?? $source['model'] ?? null,
+            $source['product_code'] ?? null,
+            $source['sku'] ?? null,
+            $source['serial_number'] ?? null,
+            $source['asset_serials'] ?? null,
+            $source['start_date'] ?? null,
+            $source['sale_date'] ?? null,
+        ])
+            ->map(fn ($value) => $this->cleanText(is_array($value) ? implode(', ', $value) : $value))
+            ->filter()
+            ->unique()
+            ->take(3)
+            ->values()
+            ->all();
+
+        return $parts === [] ? 'Row data' : implode(' • ', $parts);
+    }
+
+    private function exceptionMessages(\Throwable $exception): array
+    {
+        if ($exception instanceof ValidationException) {
+            return collect($exception->errors())
+                ->flatten()
+                ->map(fn ($message) => trim((string) $message))
+                ->filter()
+                ->values()
+                ->all();
+        }
+
+        $message = trim($exception->getMessage());
+
+        return [$message !== '' ? $message : 'Import execution failed.'];
+    }
+
+    private function isRuntimeFailure(\Throwable $exception, string $category): bool
+    {
+        if ($exception instanceof ValidationException) {
+            return false;
+        }
+
+        return $category === 'unknown';
+    }
+
+    private function classifyIssueCategory(array $errors, ?\Throwable $exception = null): string
+    {
+        $haystack = Str::lower(implode(' | ', $errors));
+
+        if ($haystack === '') {
+            return $exception instanceof ValidationException ? 'validation' : 'unknown';
+        }
+
+        if (str_contains($haystack, 'blank row')) {
+            return 'blank_row';
+        }
+
+        if (
+            str_contains($haystack, 'duplicate')
+            || str_contains($haystack, 'already exists')
+            || str_contains($haystack, 'another row with the same')
+        ) {
+            return 'duplicate';
+        }
+
+        if (
+            str_contains($haystack, 'already imported')
+            || str_contains($haystack, 'duplicate import was prevented')
+        ) {
+            return 'already_imported';
+        }
+
+        if (
+            str_contains($haystack, 'lookup failed')
+            || str_contains($haystack, 'not found')
+            || str_contains($haystack, 'no matching')
+            || str_contains($haystack, 'could not map')
+        ) {
+            return 'lookup_failure';
+        }
+
+        if (
+            str_contains($haystack, 'already assigned')
+            || str_contains($haystack, 'not available')
+            || str_contains($haystack, 'no rental asset is available')
+            || str_contains($haystack, 'not sufficient')
+            || str_contains($haystack, 'cannot be rented')
+            || str_contains($haystack, 'requires manual review')
+            || str_contains($haystack, 'review this row manually')
+            || str_contains($haystack, 'must be less than')
+            || str_contains($haystack, 'must be greater than')
+            || str_contains($haystack, 'completed first')
+        ) {
+            return 'business_rule';
+        }
+
+        if (
+            str_contains($haystack, 'required')
+            || str_contains($haystack, 'must be')
+            || str_contains($haystack, 'is not valid')
+            || str_contains($haystack, 'fix the row before importing')
+            || str_contains($haystack, 'select exactly')
+            || str_contains($haystack, 'do not match the product or warehouse')
+        ) {
+            return 'validation';
+        }
+
+        return $exception instanceof ValidationException ? 'validation' : 'unknown';
     }
 
     public function suggestMapping(string $module, array $headers): array
@@ -1133,6 +1391,7 @@ class ImportService
 
         $headers = [];
         $rows = [];
+        $blankRowCount = 0;
 
         while (($row = fgetcsv($handle)) !== false) {
             if ($headers === []) {
@@ -1141,6 +1400,7 @@ class ImportService
             }
 
             if ($this->rowIsEmpty($row)) {
+                $blankRowCount++;
                 continue;
             }
 
@@ -1149,7 +1409,7 @@ class ImportService
 
         fclose($handle);
 
-        return ['headers' => $headers, 'rows' => $rows];
+        return ['headers' => $headers, 'rows' => $rows, 'blank_row_count' => $blankRowCount];
     }
 
     private function parseXlsx(string $path): array
@@ -1171,6 +1431,7 @@ class ImportService
         $worksheet = simplexml_load_string($sheetXml);
         $headers = [];
         $rows = [];
+        $blankRowCount = 0;
 
         foreach ($worksheet->sheetData->row ?? [] as $row) {
             $cells = [];
@@ -1188,6 +1449,7 @@ class ImportService
             }
 
             if ($this->rowIsEmpty($cells)) {
+                $blankRowCount++;
                 continue;
             }
 
@@ -1201,7 +1463,7 @@ class ImportService
 
         $zip->close();
 
-        return ['headers' => $headers, 'rows' => $rows];
+        return ['headers' => $headers, 'rows' => $rows, 'blank_row_count' => $blankRowCount];
     }
 
     private function readSharedStrings(ZipArchive $zip): array

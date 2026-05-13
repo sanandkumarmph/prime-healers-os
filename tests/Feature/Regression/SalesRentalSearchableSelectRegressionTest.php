@@ -31,9 +31,11 @@ class SalesRentalSearchableSelectRegressionTest extends TestCase
 
         $response->assertOk()
             ->assertSee('id="customer_id"', false)
-            ->assertSee('id="product_id"', false)
+            ->assertSee('id="saleItemsList"', false)
+            ->assertSee('Add Product')
+            ->assertSee('Product Items')
             ->assertSee('data-searchable-select', false)
-            ->assertSee('data-search-placeholder="Search customer by name or phone"', false)
+            ->assertSee('data-search-placeholder="Search customer by name, phone, email, or city"', false)
             ->assertSee('data-search-placeholder="Search product by name, brand, model, SKU, or code"', false);
     }
 

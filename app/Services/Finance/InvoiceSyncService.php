@@ -4,6 +4,7 @@ namespace App\Services\Finance;
 
 use App\Models\Invoice;
 use App\Models\Organization;
+use App\Models\Product;
 use App\Models\Rental;
 use App\Models\Sale;
 use Carbon\Carbon;
@@ -25,6 +26,10 @@ class InvoiceSyncService
 
         if ($hasRentalItemsTable) {
             $rental->loadMissing(['rentalItems.product']);
+        }
+
+        if (Rental::hasSaleItemsTable()) {
+            $rental->loadMissing(['saleItems.product']);
         }
 
         return DB::transaction(function () use (
@@ -79,10 +84,13 @@ class InvoiceSyncService
                 $invoice->forceFill(['rental_id' => $rental->id])->save();
             }
 
-            $subtotal = 0.0;
-            foreach ($this->buildRentalLines($rental) as $baseLine) {
-                $invoice->items()->create(array_merge($this->lineDefaults(), $baseLine));
-                $subtotal += (float) $baseLine['line_total'];
+            $invoiceLines = $this->buildRentalInvoiceLines($rental);
+            $lineSummary = $this->summarizeInvoiceLines($invoiceLines);
+
+            foreach ($invoiceLines as $baseLine) {
+                $linePayload = $baseLine;
+                unset($linePayload['line_subtotal']);
+                $invoice->items()->create($linePayload);
             }
 
             $depositAmount = round((float) ($rental->deposit_amount ?? 0), 2);
@@ -90,12 +98,17 @@ class InvoiceSyncService
             $otherAmount = round((float) ($rental->other_amount ?? 0), 2);
 
             $invoice->forceFill([
-                'subtotal' => $subtotal,
-                'taxable_amount' => $subtotal,
+                'tax_type' => $this->resolveInvoiceTaxType($lineSummary),
+                'subtotal' => $lineSummary['subtotal'],
+                'taxable_amount' => $lineSummary['taxable_amount'],
                 'deposit_amount' => $depositAmount,
                 'shipping_charges' => $transportAmount,
-                'total_amount' => round($subtotal + $depositAmount + $transportAmount + $otherAmount, 2),
-                'balance_amount' => $subtotal,
+                'cgst_amount' => $lineSummary['cgst_amount'],
+                'sgst_amount' => $lineSummary['sgst_amount'],
+                'igst_amount' => $lineSummary['igst_amount'],
+                'total_tax_amount' => $lineSummary['total_tax_amount'],
+                'total_amount' => round($lineSummary['line_total'] + $depositAmount + $transportAmount + $otherAmount, 2),
+                'balance_amount' => round($lineSummary['line_total'] + $depositAmount + $transportAmount + $otherAmount, 2),
             ])->save();
 
             if ($otherAmount > 0) {
@@ -123,7 +136,7 @@ class InvoiceSyncService
             }
 
             $invoice->forceFill([
-                'balance_amount' => round($subtotal + $depositAmount + $transportAmount + $otherAmount, 2),
+                'balance_amount' => round($lineSummary['line_total'] + $depositAmount + $transportAmount + $otherAmount, 2),
             ])->save();
 
             $invoice->syncFinancialStatus();
@@ -144,6 +157,10 @@ class InvoiceSyncService
 
         if ($hasRentalItemsTable) {
             $rental->loadMissing(['rentalItems.product']);
+        }
+
+        if (Rental::hasSaleItemsTable()) {
+            $rental->loadMissing(['saleItems.product']);
         }
 
         $invoice->forceFill([
@@ -181,6 +198,8 @@ class InvoiceSyncService
                     $rentalQuery
                         ->where('source_type', 'rental')
                         ->where('source_id', $rental->id);
+                })->orWhere(function ($saleQuery) {
+                    $saleQuery->where('source_type', 'rental_sale');
                 })->orWhere(function ($otherQuery) use ($rental) {
                     $otherQuery
                         ->where('source_type', 'manual')
@@ -189,10 +208,13 @@ class InvoiceSyncService
             })
             ->delete();
 
-        $subtotal = 0.0;
-        foreach ($this->buildRentalLines($rental) as $baseLine) {
-            $invoice->items()->create(array_merge($this->lineDefaults(), $baseLine));
-            $subtotal += (float) $baseLine['line_total'];
+        $invoiceLines = $this->buildRentalInvoiceLines($rental);
+        $lineSummary = $this->summarizeInvoiceLines($invoiceLines);
+
+        foreach ($invoiceLines as $baseLine) {
+            $linePayload = $baseLine;
+            unset($linePayload['line_subtotal']);
+            $invoice->items()->create($linePayload);
         }
 
         $otherAmount = round((float) ($rental->other_amount ?? 0), 2);
@@ -223,7 +245,7 @@ class InvoiceSyncService
         $preservedExtraTotal = (float) $invoice->items()
             ->where(function ($query) use ($rental) {
                 $query
-                    ->where('source_type', '!=', 'rental')
+                    ->whereNotIn('source_type', ['rental', 'rental_sale'])
                     ->where('description', '!=', 'Other charge for rental #' . $rental->id);
             })
             ->sum('line_total');
@@ -232,11 +254,16 @@ class InvoiceSyncService
         $transportAmount = round((float) ($rental->transport_amount ?? 0), 2);
 
         $invoice->forceFill([
-            'subtotal' => $subtotal,
-            'taxable_amount' => $subtotal,
+            'tax_type' => $this->resolveInvoiceTaxType($lineSummary),
+            'subtotal' => $lineSummary['subtotal'],
+            'taxable_amount' => $lineSummary['taxable_amount'],
             'deposit_amount' => $depositAmount,
             'shipping_charges' => $transportAmount,
-            'total_amount' => round($subtotal + $depositAmount + $transportAmount + $otherAmount + $preservedExtraTotal, 2),
+            'cgst_amount' => $lineSummary['cgst_amount'],
+            'sgst_amount' => $lineSummary['sgst_amount'],
+            'igst_amount' => $lineSummary['igst_amount'],
+            'total_tax_amount' => $lineSummary['total_tax_amount'],
+            'total_amount' => round($lineSummary['line_total'] + $depositAmount + $transportAmount + $otherAmount + $preservedExtraTotal, 2),
         ])->save();
 
         $invoice->syncFinancialStatus();
@@ -248,7 +275,7 @@ class InvoiceSyncService
         bool $hasInvoiceSaleColumn,
         string $invoiceNumber,
         array $invoicePayload,
-        array $itemPayload,
+        array $itemPayloads,
         bool $isSalePaid,
         ?int $createdBy
     ): Invoice {
@@ -258,7 +285,7 @@ class InvoiceSyncService
             $hasInvoiceSaleColumn,
             $invoiceNumber,
             $invoicePayload,
-            $itemPayload,
+            $itemPayloads,
             $isSalePaid,
             $createdBy
         ) {
@@ -283,29 +310,48 @@ class InvoiceSyncService
                 $invoice->forceFill(['sale_id' => $sale->id])->save();
             }
 
-            $invoice->items()->create($itemPayload);
+            foreach ($this->normalizeSaleItemPayloads($itemPayloads) as $itemPayload) {
+                $invoice->items()->create($itemPayload);
+            }
             $invoice->syncFinancialStatus();
 
             return $invoice;
         });
     }
 
-    public function syncSaleInvoiceFromPayload(Invoice $invoice, array $invoicePayload, array $itemPayload, int $saleId): void
+    public function syncSaleInvoiceFromPayload(Invoice $invoice, array $invoicePayload, array $itemPayloads, int $saleId): void
     {
         $invoice->update($invoicePayload);
 
-        $saleItem = $invoice->items()
+        $invoice->items()
             ->where('source_type', 'sale')
             ->where('source_id', $saleId)
-            ->first();
+            ->delete();
 
-        if ($saleItem) {
-            $saleItem->update($itemPayload);
-        } else {
+        foreach ($this->normalizeSaleItemPayloads($itemPayloads) as $itemPayload) {
             $invoice->items()->create($itemPayload);
         }
 
         $invoice->refresh()->syncFinancialStatus();
+    }
+
+    private function normalizeSaleItemPayloads(array $itemPayloads): array
+    {
+        if ($itemPayloads === []) {
+            return [];
+        }
+
+        $isSinglePayload = array_key_exists('description', $itemPayloads) || array_key_exists('source_type', $itemPayloads);
+
+        return $isSinglePayload ? [$itemPayloads] : array_values($itemPayloads);
+    }
+
+    private function buildRentalInvoiceLines(Rental $rental): array
+    {
+        return array_merge(
+            $this->buildRentalLines($rental),
+            $this->buildRentalSaleLines($rental),
+        );
     }
 
     private function buildRentalLines(Rental $rental): array
@@ -335,9 +381,10 @@ class InvoiceSyncService
                 'unit' => 'rental',
                 'days' => $rentalDays,
                 'rate' => $rate,
+                'line_subtotal' => $lineTotal,
                 'taxable_amount' => $lineTotal,
                 'line_total' => $lineTotal,
-            ];
+            ] + $this->lineDefaults();
         }
 
         if ($rentalLines === []) {
@@ -350,12 +397,121 @@ class InvoiceSyncService
                 'unit' => 'rental',
                 'days' => $rentalDays,
                 'rate' => (float) ($rental->rental_amount ?? 0),
+                'line_subtotal' => (float) ($rental->rental_amount ?? 0),
                 'taxable_amount' => (float) ($rental->rental_amount ?? 0),
                 'line_total' => (float) ($rental->rental_amount ?? 0),
-            ];
+            ] + $this->lineDefaults();
         }
 
         return $rentalLines;
+    }
+
+    private function buildRentalSaleLines(Rental $rental): array
+    {
+        if (!Rental::hasSaleItemsTable()) {
+            return [];
+        }
+
+        $rental->loadMissing(['saleItems.product']);
+        $saleLines = [];
+
+        foreach ($rental->saleItems as $saleItem) {
+            $product = $saleItem->product;
+            $quantity = max((float) ($saleItem->quantity ?? 1), 1);
+            $unitPrice = round((float) ($saleItem->unit_price ?? 0), 2);
+            $subtotal = round($quantity * $unitPrice, 2);
+
+            $taxType = in_array($product?->gst_tax_type, Product::GST_TAX_TYPES, true)
+                ? $product->gst_tax_type
+                : Product::GST_TAX_TYPE_CGST_SGST;
+            $taxCalculationMode = in_array($product?->gst_calculation_mode, Product::GST_CALCULATION_MODES, true)
+                ? $product->gst_calculation_mode
+                : 'exclusive';
+            $cgstRate = $taxType === Product::GST_TAX_TYPE_CGST_SGST ? round((float) ($product?->cgst_rate ?? 0), 2) : 0.0;
+            $sgstRate = $taxType === Product::GST_TAX_TYPE_CGST_SGST ? round((float) ($product?->sgst_rate ?? 0), 2) : 0.0;
+            $igstRate = $taxType === Product::GST_TAX_TYPE_IGST ? round((float) ($product?->igst_rate ?? 0), 2) : 0.0;
+            $taxPercentage = round($cgstRate + $sgstRate + $igstRate, 2);
+
+            if ($taxCalculationMode === 'inclusive' && $taxPercentage > 0) {
+                $taxableAmount = round($subtotal / (1 + ($taxPercentage / 100)), 2);
+                $totalTaxAmount = round($subtotal - $taxableAmount, 2);
+                $lineTotal = $subtotal;
+            } else {
+                $taxableAmount = $subtotal;
+                $totalTaxAmount = round(($taxableAmount * $taxPercentage) / 100, 2);
+                $lineTotal = round($taxableAmount + $totalTaxAmount, 2);
+            }
+
+            $cgstAmount = $cgstRate > 0 ? round(($taxableAmount * $cgstRate) / 100, 2) : 0.0;
+            $sgstAmount = $sgstRate > 0 ? round(($taxableAmount * $sgstRate) / 100, 2) : 0.0;
+            $igstAmount = $igstRate > 0 ? round(($taxableAmount * $igstRate) / 100, 2) : 0.0;
+
+            $taxDelta = round($totalTaxAmount - ($cgstAmount + $sgstAmount + $igstAmount), 2);
+            if ($taxDelta !== 0.0) {
+                if ($igstRate > 0) {
+                    $igstAmount = round($igstAmount + $taxDelta, 2);
+                } elseif ($sgstRate > 0) {
+                    $sgstAmount = round($sgstAmount + $taxDelta, 2);
+                } elseif ($cgstRate > 0) {
+                    $cgstAmount = round($cgstAmount + $taxDelta, 2);
+                }
+            }
+
+            $saleLines[] = [
+                'product_id' => $saleItem->product_id,
+                'source_type' => 'rental_sale',
+                'source_id' => $saleItem->id,
+                'description' => $product?->name ?? 'New product',
+                'quantity' => $quantity,
+                'unit' => 'sale',
+                'days' => null,
+                'rate' => $unitPrice,
+                'line_subtotal' => $subtotal,
+                'taxable_amount' => $taxableAmount,
+                'tax_percentage' => $taxPercentage,
+                'tax_type' => $taxType,
+                'cgst_rate' => $cgstRate,
+                'sgst_rate' => $sgstRate,
+                'igst_rate' => $igstRate,
+                'cgst_amount' => $cgstAmount,
+                'sgst_amount' => $sgstAmount,
+                'igst_amount' => $igstAmount,
+                'line_total' => $lineTotal,
+                'discount_amount' => 0,
+            ];
+        }
+
+        return $saleLines;
+    }
+
+    private function summarizeInvoiceLines(array $lines): array
+    {
+        $subtotal = round((float) collect($lines)->sum(fn (array $line) => (float) ($line['line_subtotal'] ?? $line['line_total'] ?? 0)), 2);
+        $taxableAmount = round((float) collect($lines)->sum(fn (array $line) => (float) ($line['taxable_amount'] ?? 0)), 2);
+        $cgstAmount = round((float) collect($lines)->sum(fn (array $line) => (float) ($line['cgst_amount'] ?? 0)), 2);
+        $sgstAmount = round((float) collect($lines)->sum(fn (array $line) => (float) ($line['sgst_amount'] ?? 0)), 2);
+        $igstAmount = round((float) collect($lines)->sum(fn (array $line) => (float) ($line['igst_amount'] ?? 0)), 2);
+        $totalTaxAmount = round($cgstAmount + $sgstAmount + $igstAmount, 2);
+        $lineTotal = round((float) collect($lines)->sum(fn (array $line) => (float) ($line['line_total'] ?? 0)), 2);
+
+        return [
+            'subtotal' => $subtotal,
+            'taxable_amount' => $taxableAmount,
+            'cgst_amount' => $cgstAmount,
+            'sgst_amount' => $sgstAmount,
+            'igst_amount' => $igstAmount,
+            'total_tax_amount' => $totalTaxAmount,
+            'line_total' => $lineTotal,
+        ];
+    }
+
+    private function resolveInvoiceTaxType(array $summary): string
+    {
+        if (($summary['igst_amount'] ?? 0) > 0 && ($summary['cgst_amount'] ?? 0) == 0.0 && ($summary['sgst_amount'] ?? 0) == 0.0) {
+            return Product::GST_TAX_TYPE_IGST;
+        }
+
+        return Product::GST_TAX_TYPE_CGST_SGST;
     }
 
     private function lineDefaults(): array

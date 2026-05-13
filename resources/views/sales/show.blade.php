@@ -16,6 +16,9 @@
     $saleInvoiceId = $sale->linked_invoice_id ?? null;
     $saleInvoiceStatus = $saleInvoice?->payment_status ?? null;
     $saleInvoiceDue = (float) ($saleInvoice->balance_amount ?? 0);
+    $saleItems = $sale->displaySaleItems();
+    $saleItemsCount = $saleItems->count();
+    $saleItemsQuantity = (int) $saleItems->sum(fn ($item) => (int) ($item->quantity ?? 0));
     $statusTone = match ($sale->payment_status) {
         'paid' => 'background:#dcfce7;color:#166534;',
         'partial' => 'background:#fef3c7;color:#b45309;',
@@ -415,8 +418,8 @@
             <strong>{{ $sale->customer->phone ?? 'N/A' }}</strong>
         </div>
         <div class="summary-tile">
-            <span>Quantity</span>
-            <strong>{{ $sale->quantity }}</strong>
+            <span>Items / Qty</span>
+            <strong>{{ $saleItemsCount }} line(s) · {{ $saleItemsQuantity }}</strong>
         </div>
         <div class="summary-tile">
             <span>Status</span>
@@ -488,7 +491,7 @@
         <div class="ops-card-body">
             <div class="detail-grid">
                 <div class="detail-item">
-                    <span>Product</span>
+                    <span>Primary Product</span>
                     <strong>{{ $sale->product->name ?? 'N/A' }}</strong>
                 </div>
                 <div class="detail-item">
@@ -592,6 +595,43 @@
                     <span>Notes</span>
                     <div>{{ $sale->notes ?: 'No notes added for this sale.' }}</div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="ops-card">
+        <div class="ops-card-head">
+            <h2>Product Items</h2>
+        </div>
+        <div class="ops-card-body">
+            <div style="display:grid; gap:10px;">
+                @foreach($saleItems as $saleItem)
+                    <div style="border:1px solid #e2e8f0; border-radius:12px; padding:12px 14px; background:#fcfdff;">
+                        <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                            <div>
+                                <strong>{{ $saleItem->product?->name ?? 'Sale product' }}</strong>
+                                <div style="color:#64748b; font-size:12px; margin-top:4px;">
+                                    Qty {{ (int) ($saleItem->quantity ?? 0) }} · Unit {{ $currency($saleItem->unit_price ?? 0) }}
+                                    @if($saleItem->asset)
+                                        · Asset {{ $saleItem->asset->serial_number ?: $saleItem->asset->asset_name ?: ('#' . $saleItem->asset->id) }}
+                                    @endif
+                                </div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div style="color:#64748b; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;">Line Total</div>
+                                <strong>{{ $currency($saleItem->line_total ?? 0) }}</strong>
+                            </div>
+                        </div>
+                        <div style="display:flex; gap:14px; flex-wrap:wrap; color:#475569; font-size:12px; margin-top:8px;">
+                            <span>Discount {{ $currency($saleItem->discount_amount ?? 0) }}</span>
+                            <span>Shipping {{ $currency($saleItem->shipping_charges ?? 0) }}</span>
+                            <span>GST {{ number_format((float) ($saleItem->tax_percentage ?? 0), 2) }}% {{ ucfirst($saleItem->tax_calculation_mode ?? 'exclusive') }}</span>
+                        </div>
+                        @if($saleItem->notes)
+                            <div style="color:#64748b; font-size:12px; margin-top:8px;">{{ $saleItem->notes }}</div>
+                        @endif
+                    </div>
+                @endforeach
             </div>
         </div>
     </div>

@@ -1266,7 +1266,8 @@ class RentalController extends Controller
 
     private function projectedRentalInvoiceTotal(Rental $rental, ?Invoice $invoice, array $rentalItems, Request $request): float
     {
-        $subtotal = round((float) collect($rentalItems)->sum(fn (array $item) => (float) ($item['line_total'] ?? 0)), 2);
+        $rentalLineTotal = round((float) collect($rentalItems)->sum(fn (array $item) => (float) ($item['line_total'] ?? 0)), 2);
+        $saleLineTotal = $this->projectedRentalSaleInvoiceTotal($this->normalizedSaleItems($request));
         $depositAmount = round((float) ($request->deposit_amount ?? 0), 2);
         $transportAmount = round((float) ($request->transport_amount ?? 0), 2);
         $otherAmount = round((float) ($request->other_amount ?? 0), 2);
@@ -1277,13 +1278,59 @@ class RentalController extends Controller
             $preservedExtraTotal = round((float) $invoice->items()
                 ->where(function ($query) use ($rental) {
                     $query
-                        ->where('source_type', '!=', 'rental')
+                        ->whereNotIn('source_type', ['rental', 'rental_sale'])
                         ->where('description', '!=', 'Other charge for rental #' . $rental->id);
                 })
                 ->sum('line_total'), 2);
         }
 
-        return round($subtotal + $depositAmount + $transportAmount + $otherAmount + $preservedExtraTotal, 2);
+        return round($rentalLineTotal + $saleLineTotal + $depositAmount + $transportAmount + $otherAmount + $preservedExtraTotal, 2);
+    }
+
+    private function projectedRentalSaleInvoiceTotal(array $saleItems): float
+    {
+        if ($saleItems === []) {
+            return 0.0;
+        }
+
+        $products = Product::query()
+            ->where('organization_id', $this->orgId())
+            ->whereIn('id', collect($saleItems)->pluck('product_id')->filter()->unique()->values())
+            ->get()
+            ->keyBy('id');
+
+        return round((float) collect($saleItems)->sum(function (array $saleItem) use ($products) {
+            $product = $products->get((int) ($saleItem['product_id'] ?? 0));
+
+            return $this->projectedRentalSaleItemInvoiceTotal($saleItem, $product);
+        }), 2);
+    }
+
+    private function projectedRentalSaleItemInvoiceTotal(array $saleItem, ?Product $product): float
+    {
+        $quantity = max((float) ($saleItem['quantity'] ?? 0), 0);
+        $unitPrice = max((float) ($saleItem['unit_price'] ?? 0), 0);
+        $subtotal = round($quantity * $unitPrice, 2);
+
+        if ($subtotal <= 0) {
+            return 0.0;
+        }
+
+        $taxType = in_array($product?->gst_tax_type, Product::GST_TAX_TYPES, true)
+            ? $product->gst_tax_type
+            : Product::GST_TAX_TYPE_CGST_SGST;
+        $taxPercentage = $taxType === Product::GST_TAX_TYPE_IGST
+            ? round((float) ($product?->igst_rate ?? 0), 2)
+            : round((float) ($product?->cgst_rate ?? 0), 2) + round((float) ($product?->sgst_rate ?? 0), 2);
+        $taxCalculationMode = in_array($product?->gst_calculation_mode, Product::GST_CALCULATION_MODES, true)
+            ? $product->gst_calculation_mode
+            : 'exclusive';
+
+        if ($taxCalculationMode === 'inclusive' && $taxPercentage > 0) {
+            return $subtotal;
+        }
+
+        return round($subtotal + (($subtotal * $taxPercentage) / 100), 2);
     }
 
     private function createRenewalInvoice(Rental $rental, RentalRenewal $renewal): Invoice

@@ -169,6 +169,155 @@ class InvoiceLinkageRegressionTest extends TestCase
         );
     }
 
+    public function test_rental_invoice_includes_new_products_sold_with_rental_in_grand_total(): void
+    {
+        [$organization, $customer, $product] = $this->bootRentalContext();
+
+        $diaperXl = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Adult Diapers Pant Type XL - Svach',
+            'product_type' => Product::TYPE_SELLABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'sale_price' => 750,
+            'rental_price' => 0,
+            'price_per_day' => 0,
+            'available_quantity' => 25,
+            'total_quantity' => 25,
+        ]);
+
+        $diaperL = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Adult Diapers Pant Type L - Svach',
+            'product_type' => Product::TYPE_SELLABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'sale_price' => 700,
+            'rental_price' => 0,
+            'price_per_day' => 0,
+            'available_quantity' => 25,
+            'total_quantity' => 25,
+        ]);
+
+        $this->post(route('rentals.store'), [
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'start_date' => '2026-05-01',
+            'end_date' => '2026-05-10',
+            'rental_amount' => 1000,
+            'deposit_amount' => 2000,
+            'transport_amount' => 800,
+            'other_amount' => 0,
+            'sale_items' => [
+                [
+                    'product_id' => $diaperXl->id,
+                    'quantity' => 1,
+                    'unit_price' => 750,
+                ],
+                [
+                    'product_id' => $diaperL->id,
+                    'quantity' => 1,
+                    'unit_price' => 700,
+                ],
+            ],
+        ])->assertRedirect('/rentals');
+
+        $invoice = Invoice::query()
+            ->where('organization_id', $organization->id)
+            ->with('items')
+            ->firstOrFail();
+
+        $saleLines = $invoice->items->where('source_type', 'rental_sale')->values();
+
+        $this->assertCount(3, $invoice->items);
+        $this->assertCount(2, $saleLines);
+        $this->assertTrue($saleLines->contains(fn ($item) => $item->description === 'Adult Diapers Pant Type XL - Svach' && (float) $item->line_total === 750.0));
+        $this->assertTrue($saleLines->contains(fn ($item) => $item->description === 'Adult Diapers Pant Type L - Svach' && (float) $item->line_total === 700.0));
+        $this->assertSame(2450.0, (float) $invoice->subtotal);
+        $this->assertSame(2000.0, (float) $invoice->deposit_amount);
+        $this->assertSame(800.0, (float) $invoice->shipping_charges);
+        $this->assertSame(5250.0, (float) $invoice->total_amount);
+        $this->assertSame(5250.0, (float) $invoice->balance_amount);
+    }
+
+    public function test_updating_rental_resyncs_invoice_sale_lines_with_product_gst(): void
+    {
+        [$organization, $customer, $product] = $this->bootRentalContext();
+
+        $saleAddon = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'BiPAP Disposable Filter',
+            'product_type' => Product::TYPE_SELLABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'sale_price' => 118,
+            'rental_price' => 0,
+            'price_per_day' => 0,
+            'gst_tax_type' => Product::GST_TAX_TYPE_CGST_SGST,
+            'gst_calculation_mode' => 'inclusive',
+            'cgst_rate' => 9,
+            'sgst_rate' => 9,
+            'available_quantity' => 25,
+            'total_quantity' => 25,
+        ]);
+
+        $this->post(route('rentals.store'), [
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'start_date' => '2026-05-01',
+            'end_date' => '2026-05-10',
+            'rental_amount' => 1000,
+            'deposit_amount' => 0,
+            'transport_amount' => 0,
+            'other_amount' => 0,
+        ])->assertRedirect('/rentals');
+
+        $rental = Rental::query()->where('organization_id', $organization->id)->firstOrFail();
+        $invoice = Invoice::query()->where('organization_id', $organization->id)->firstOrFail();
+
+        $this->put(route('rentals.update', $rental), [
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'start_date' => '2026-05-01',
+            'end_date' => '2026-05-12',
+            'rental_amount' => 1200,
+            'deposit_amount' => 100,
+            'transport_amount' => 50,
+            'other_amount' => 0,
+            'sale_items' => [
+                [
+                    'product_id' => $saleAddon->id,
+                    'quantity' => 1,
+                    'unit_price' => 118,
+                ],
+            ],
+        ])->assertRedirect(route('rentals.show', $rental));
+
+        $invoice->refresh()->load('items');
+
+        $saleLine = $invoice->items
+            ->first(fn ($item) => $item->source_type === 'rental_sale' && $item->product_id === $saleAddon->id);
+
+        $this->assertNotNull($saleLine);
+        $this->assertSame(1318.0, (float) $invoice->subtotal);
+        $this->assertSame(1300.0, (float) $invoice->taxable_amount);
+        $this->assertSame(9.0, (float) $invoice->cgst_amount);
+        $this->assertSame(9.0, (float) $invoice->sgst_amount);
+        $this->assertSame(18.0, (float) $invoice->total_tax_amount);
+        $this->assertSame(1468.0, (float) $invoice->total_amount);
+        $this->assertSame(1468.0, (float) $invoice->balance_amount);
+        $this->assertSame(100.0, (float) $saleLine->taxable_amount);
+        $this->assertSame(9.0, (float) $saleLine->cgst_amount);
+        $this->assertSame(9.0, (float) $saleLine->sgst_amount);
+        $this->assertSame(118.0, (float) $saleLine->line_total);
+    }
+
     public function test_sync_rental_invoices_command_repairs_existing_stale_invoice_totals(): void
     {
         [$organization, $customer, $product] = $this->bootRentalContext();

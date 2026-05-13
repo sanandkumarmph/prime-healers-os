@@ -9,11 +9,17 @@ use App\Models\Product;
 use App\Models\Organization;
 use App\Models\Asset;
 use App\Models\Rental;
+use App\Models\SaleItem;
 use App\Models\Warehouse;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 class Sale extends Model
 {
+    protected static ?bool $hasSaleItemsTable = null;
+
     protected $fillable = [
         'customer_id',
         'product_id',
@@ -71,6 +77,11 @@ class Sale extends Model
             ->withTimestamps();
     }
 
+    public function saleItems(): HasMany
+    {
+        return $this->hasMany(SaleItem::class)->orderBy('sort_order')->orderBy('id');
+    }
+
     public function rental()
     {
         return $this->belongsTo(Rental::class);
@@ -106,5 +117,49 @@ class Sale extends Model
         return ($this->tax_calculation_mode ?? 'exclusive') === 'inclusive'
             ? 'GST Inclusive'
             : 'GST Exclusive';
+    }
+
+    public static function hasSaleItemsTable(): bool
+    {
+        return static::$hasSaleItemsTable ??= Schema::hasTable('sale_items');
+    }
+
+    public function displaySaleItems(): Collection
+    {
+        if (self::hasSaleItemsTable()) {
+            if (!$this->relationLoaded('saleItems')) {
+                $this->load('saleItems.product', 'saleItems.asset', 'saleItems.warehouse');
+            }
+
+            if ($this->saleItems->isNotEmpty()) {
+                return $this->saleItems->sortBy(fn ($item) => [$item->sort_order ?? 0, $item->id])->values();
+            }
+        }
+
+        $fallbackItem = new SaleItem([
+            'organization_id' => $this->organization_id,
+            'sale_id' => $this->id,
+            'product_id' => $this->product_id,
+            'asset_id' => $this->asset_id,
+            'warehouse_id' => $this->warehouse_id,
+            'quantity' => max((int) ($this->quantity ?? 1), 1),
+            'unit_price' => (float) ($this->unit_price ?? 0),
+            'discount_amount' => (float) ($this->discount_amount ?? 0),
+            'shipping_charges' => (float) ($this->shipping_charges ?? 0),
+            'tax_percentage' => (float) ($this->tax_percentage ?? 0),
+            'tax_calculation_mode' => $this->tax_calculation_mode ?? 'exclusive',
+            'taxable_amount' => max((float) (($this->quantity ?? 1) * ($this->unit_price ?? 0)) - (float) ($this->discount_amount ?? 0), 0),
+            'total_tax_amount' => 0,
+            'line_total' => (float) ($this->sale_amount ?? 0),
+            'sort_order' => 0,
+            'asset_ids' => $this->asset_id ? [(int) $this->asset_id] : [],
+            'notes' => $this->notes,
+        ]);
+
+        $fallbackItem->setRelation('product', $this->product);
+        $fallbackItem->setRelation('asset', $this->asset);
+        $fallbackItem->setRelation('warehouse', $this->warehouse);
+
+        return collect([$fallbackItem]);
     }
 }

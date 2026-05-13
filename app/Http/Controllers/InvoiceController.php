@@ -1137,7 +1137,7 @@ class InvoiceController extends Controller
             'item_description.*' => 'nullable|string|max:255',
             'item_custom_name.*' => 'nullable|string|max:255',
             'item_product_id.*' => 'nullable|integer',
-            'item_source_type.*' => 'nullable|string|in:rental,sale,manual,refill',
+            'item_source_type.*' => 'nullable|string|in:rental,rental_sale,sale,manual,refill',
             'item_source_id.*' => 'nullable',
             'item_quantity.*' => 'nullable|numeric|min:0',
             'item_rate.*' => 'nullable|numeric|min:0',
