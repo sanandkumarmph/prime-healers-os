@@ -569,8 +569,12 @@ class InvoiceController extends Controller
         $this->authorize('create', Invoice::class);
 
         $organizationId = $this->orgId();
+        $selectedCustomerId = request()->integer('customer_id') ?: null;
 
         $customers = Customer::where('organization_id', $organizationId)->orderBy('name')->get();
+        $selectedCustomer = $selectedCustomerId
+            ? $customers->firstWhere('id', $selectedCustomerId)
+            : null;
         $products = Product::where('organization_id', $organizationId)->orderBy('name')->get();
         $rentals = Rental::with(['product', 'customer'])
             ->where('organization_id', $organizationId)
@@ -587,6 +591,7 @@ class InvoiceController extends Controller
 
         return view('invoices.create', compact(
             'customers',
+            'selectedCustomer',
             'products',
             'rentals',
             'sales',

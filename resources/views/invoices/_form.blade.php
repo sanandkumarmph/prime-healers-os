@@ -2539,6 +2539,9 @@
 
         const currentCustomer = selectedCustomer();
         updateCustomerTrigger(currentCustomer);
+        if (!@json((bool) $invoice) && currentCustomer) {
+            applyCustomerToInvoice(false);
+        }
         renderCustomerResults('');
         calculateTotals();
     });
