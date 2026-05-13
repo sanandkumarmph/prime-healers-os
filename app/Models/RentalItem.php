@@ -14,6 +14,7 @@ class RentalItem extends Model
         'product_id',
         'asset_ids',
         'quantity',
+        'ordered_quantity',
         'delivered_quantity',
         'returned_quantity',
         'unit_rental_amount',
@@ -24,6 +25,7 @@ class RentalItem extends Model
     protected $casts = [
         'asset_ids' => 'array',
         'quantity' => 'integer',
+        'ordered_quantity' => 'integer',
         'delivered_quantity' => 'integer',
         'returned_quantity' => 'integer',
         'unit_rental_amount' => 'decimal:2',
@@ -62,7 +64,7 @@ class RentalItem extends Model
 
     public function getOrderedQuantityAttribute(): int
     {
-        return max((int) ($this->quantity ?? 0), 0);
+        return max((int) ($this->attributes['ordered_quantity'] ?? $this->quantity ?? 0), 0);
     }
 
     public function getDeliveredQuantityValueAttribute(): int

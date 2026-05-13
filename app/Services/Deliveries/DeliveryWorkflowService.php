@@ -28,6 +28,7 @@ class DeliveryWorkflowService
             'organization_id' => $organizationId,
             'product_id' => $rental->product_id,
             'quantity' => $quantity,
+            'ordered_quantity' => $quantity,
             'delivered_quantity' => 0,
             'returned_quantity' => 0,
             'unit_rental_amount' => $quantity > 0 ? round($lineTotal / $quantity, 2) : $lineTotal,
