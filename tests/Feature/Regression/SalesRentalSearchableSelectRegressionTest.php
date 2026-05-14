@@ -48,7 +48,13 @@ class SalesRentalSearchableSelectRegressionTest extends TestCase
             ->assertSee('id="product_id"', false)
             ->assertSee('data-searchable-select', false)
             ->assertSee('data-search-placeholder="Search customer by name or phone"', false)
-            ->assertSee('data-search-placeholder="Search product by name, brand, model, SKU, or code"', false);
+            ->assertSee('data-search-placeholder="Search product by name, brand, model, SKU, or code"', false)
+            ->assertSee('name="rental_items[${index}][product_id]"', false)
+            ->assertSee('data-rental-product-index="${index}"', false)
+            ->assertSee('enhanceSearchableSelect(productSelectEl);', false)
+            ->assertSee('name="sale_items[${index}][product_id]"', false)
+            ->assertSee('data-sale-product-index="${index}"', false)
+            ->assertSee('data-search-placeholder="Search new product by name, brand, model, SKU, or code"', false);
     }
 
     public function test_rentals_create_page_excludes_sale_only_products_but_keeps_rental_eligible_products(): void

@@ -69,22 +69,25 @@ class RentalIndexSummaryRegressionTest extends TestCase
         $baseline = $this->get(route('rentals.index'));
         $baseline->assertOk();
         $this->assertSame(3, $baseline->viewData('totalRentals'));
-        $this->assertSame(1, $baseline->viewData('activeRentals'));
+        $this->assertSame(2, $baseline->viewData('activeRentals'));
+        $this->assertSame(1, $baseline->viewData('currentRentals'));
         $this->assertSame(1, $baseline->viewData('overdueCount'));
         $this->assertSame(1, $baseline->viewData('returnedRentals'));
 
-        $activeFiltered = $this->get(route('rentals.index', ['status' => 'active']));
+        $activeFiltered = $this->get(route('rentals.index', ['status' => 'live']));
         $activeFiltered->assertOk();
         $this->assertSame(3, $activeFiltered->viewData('totalRentals'));
-        $this->assertSame(1, $activeFiltered->viewData('activeRentals'));
+        $this->assertSame(2, $activeFiltered->viewData('activeRentals'));
+        $this->assertSame(1, $activeFiltered->viewData('currentRentals'));
         $this->assertSame(1, $activeFiltered->viewData('overdueCount'));
         $this->assertSame(1, $activeFiltered->viewData('returnedRentals'));
-        $this->assertSame(1, $activeFiltered->viewData('rentals')->total());
+        $this->assertSame(2, $activeFiltered->viewData('rentals')->total());
 
         $overdueFiltered = $this->get(route('rentals.index', ['filter' => 'overdue']));
         $overdueFiltered->assertOk();
         $this->assertSame(3, $overdueFiltered->viewData('totalRentals'));
-        $this->assertSame(1, $overdueFiltered->viewData('activeRentals'));
+        $this->assertSame(2, $overdueFiltered->viewData('activeRentals'));
+        $this->assertSame(1, $overdueFiltered->viewData('currentRentals'));
         $this->assertSame(1, $overdueFiltered->viewData('overdueCount'));
         $this->assertSame(1, $overdueFiltered->viewData('returnedRentals'));
         $this->assertSame(1, $overdueFiltered->viewData('rentals')->total());

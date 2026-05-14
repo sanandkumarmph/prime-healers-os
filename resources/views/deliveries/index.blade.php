@@ -72,7 +72,7 @@
         [
             'label' => 'Overdue',
             'value' => $overdueTasksCount ?? 0,
-            'copy' => 'Past due and still open',
+            'copy' => 'Included in total tasks',
             'href' => $boardHref(['tab' => 'overdue', 'status' => null]),
             'tone' => 'danger',
             'icon' => 'overdue',
@@ -80,7 +80,7 @@
         [
             'label' => 'Completed Today',
             'value' => $completedTodayCount ?? 0,
-            'copy' => 'Trips closed today',
+            'copy' => 'Tasks closed today',
             'href' => $boardHref(['tab' => 'completed', 'status' => 'completed']),
             'tone' => 'success',
             'icon' => 'completed',
@@ -1111,7 +1111,7 @@
                 <div class="ops-widget-head">
                     <div>
                         <h3>Overdue Tasks</h3>
-                        <p>Past due items still waiting in the field queue.</p>
+                        <p>Included in total tasks; still open past the scheduled window.</p>
                     </div>
                     <span class="rn-badge rn-badge-danger">{{ $overdueTasksCount }}</span>
                 </div>
@@ -1134,7 +1134,7 @@
                 <div class="ops-widget-head">
                     <div>
                         <h3>Pending Pickups</h3>
-                        <p>Pickup-side queue that still needs action.</p>
+                        <p>Open pickup tasks that still need field action.</p>
                     </div>
                     <span class="rn-badge rn-badge-warning">{{ $pendingCollectionsCount }}</span>
                 </div>

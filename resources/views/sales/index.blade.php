@@ -414,7 +414,7 @@
             <span class="rn-summary-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7"/></svg>
             </span>
-            <span>Paid Sales</span>
+            <span>Paid Orders</span>
             <strong>{{ $paidSales }}</strong>
             <small>Fully closed sale records</small>
         </a>
@@ -422,7 +422,7 @@
             <span class="rn-summary-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v5"/><path d="m12 16 .01 0"/><circle cx="12" cy="12" r="9"/></svg>
             </span>
-            <span>Pending / Partial</span>
+            <span>Pending Orders</span>
             <strong>{{ $pendingSales }}</strong>
             <small>Need follow-up or collection</small>
         </a>
@@ -431,15 +431,15 @@
             <span class="rn-summary-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14.5a3.5 3.5 0 0 1 0 7H6"/></svg>
             </span>
-            <span>Sale Value</span>
-            <strong style="font-size:18px;">{{ $currency($totalSaleValue) }}</strong>
-            <small>Filtered sales value excluding transport</small>
+            <span>Sales Value</span>
+            <strong style="font-size:18px;">{{ $currency($totalSalesAmount) }}</strong>
+            <small>{{ $currency($paidSalesAmount) }} paid + {{ $currency($pendingSalesAmount) }} pending</small>
         </a>
         <a href="{{ route('invoices.index', ['status' => 'unpaid']) }}" class="summary-card warning rn-summary-link">
             <span class="rn-summary-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18v10H3z"/><path d="M7 15h5"/><path d="M17 11h.01"/></svg>
             </span>
-            <span>Outstanding Invoices</span>
+            <span>Outstanding Sales Invoices</span>
             <strong style="font-size:18px;">{{ $currency($outstandingInvoiceAmount) }}</strong>
             <small>{{ $outstandingInvoiceCount }} open sales invoices</small>
         </a>
@@ -455,7 +455,7 @@
             <span class="rn-summary-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="m5 15 4-4 4 3 6-8"/></svg>
             </span>
-            <span>Total Pending Sales</span>
+            <span>Pending Sales Amount</span>
             <strong style="font-size:18px;">{{ $currency($totalPendingSalesAmount) }}</strong>
             <small>Outstanding invoices + unbilled sales</small>
         </a>

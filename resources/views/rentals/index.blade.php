@@ -487,13 +487,13 @@
     </div>
 
     <div class="summary-grid desktop-priority-panel">
-        <a href="{{ $rentalUrl(['status' => 'active', 'filter' => null]) }}" class="summary-card accent-active rn-summary-link">
+        <a href="{{ $rentalUrl(['status' => 'live', 'filter' => null]) }}" class="summary-card accent-active rn-summary-link">
             <span class="rn-summary-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v4"/><path d="M17 3v4"/><path d="M4 8h16"/><path d="M5 5h14a1 1 0 0 1 1 1v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1Z"/></svg>
             </span>
             <span>Active Rentals</span>
             <strong>{{ $activeRentals }}</strong>
-            <small>Live rental lifecycle</small>
+            <small>{{ $currentRentals }} current + {{ $overdueCount }} overdue</small>
         </a>
         <a href="{{ $rentalUrl(['status' => null, 'filter' => 'ending_soon']) }}" class="summary-card accent-warning rn-summary-link">
             <span class="rn-summary-icon" aria-hidden="true">
@@ -517,7 +517,7 @@
             </span>
             <span>Total Rentals</span>
             <strong>{{ $totalRentals }}</strong>
-            <small>Current filtered rental set</small>
+            <small>Filtered rentals excluding cancelled</small>
         </a>
         <a href="{{ $rentalUrl(['status' => 'returned', 'filter' => null]) }}" class="summary-card accent-neutral rn-summary-link">
             <span class="rn-summary-icon" aria-hidden="true">
@@ -547,7 +547,7 @@
             <span class="rn-summary-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             </span>
-            <span>Unpaid Renewals</span>
+            <span>Unpaid Renewal Invoices</span>
             <strong>{{ $unpaidRenewalCount }}</strong>
             <small>{{ $currency($unpaidRenewalAmount) }} pending collection</small>
         </a>
@@ -570,7 +570,7 @@
             <a href="{{ $rentalUrl(['status' => null, 'filter' => 'overdue']) }}"><span>Overdue</span><strong>{{ $overdueCount }}</strong></a>
             <a href="{{ $rentalUrl(['status' => null, 'filter' => 'ending_soon']) }}"><span>Renew</span><strong>{{ $renewalQueueCount }}</strong></a>
             <a href="{{ $rentalUrl(['status' => null, 'filter' => null]) }}#renewal-workspace"><span>Unbilled</span><strong>{{ $unbilledRenewalCount }}</strong></a>
-            <a href="{{ route('invoices.index', ['status' => 'unpaid']) }}"><span>Unpaid</span><strong>{{ $unpaidRenewalCount }}</strong></a>
+            <a href="{{ route('invoices.index', ['status' => 'unpaid']) }}"><span>Renewal Due</span><strong>{{ $unpaidRenewalCount }}</strong></a>
         </div>
 
         <div class="mobile-chip-row" aria-label="Rental quick filters">
@@ -620,6 +620,7 @@
                         <label for="status">Rental Status</label>
                         <select id="status" class="ops-select" name="status">
                             <option value="">All</option>
+                            <option value="live" @selected($status === 'live')>Live (Current + Overdue)</option>
                             <option value="active" @selected($status === 'active')>Active</option>
                             <option value="delivery_pending" @selected($status === 'delivery_pending')>Delivery Pending</option>
                             <option value="returned" @selected($status === 'returned')>Returned</option>

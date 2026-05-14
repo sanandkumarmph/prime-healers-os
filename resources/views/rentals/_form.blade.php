@@ -7,12 +7,16 @@
         ->values()
         ->all();
     $existingRentalItems = $isEdit ? ($rental->rentalItems ?? collect()) : collect();
+    $primaryRentalItem = $existingRentalItems->first();
     $additionalRentalRows = collect(old('rental_items', $existingRentalItems->skip(1)->map(function ($item) {
         return [
             'product_id' => $item->product_id,
             'asset_ids' => collect($item->asset_ids ?? [])->filter(fn ($value) => filled($value))->map(fn ($value) => (int) $value)->values()->all(),
             'quantity' => $item->quantity,
             'unit_rental_amount' => $item->unit_rental_amount,
+            'gst_rate' => $item->gst_rate ?? 0,
+            'gst_mode' => $item->gst_mode ?? 'exclusive',
+            'tax_type' => $item->tax_type ?? \App\Models\Product::GST_TAX_TYPE_CGST_SGST,
             'notes' => $item->notes,
         ];
     })->all()))
@@ -27,6 +31,9 @@
             'warehouse_id' => $item->warehouse_id,
             'quantity' => $item->quantity,
             'unit_price' => $item->unit_price,
+            'gst_rate' => $item->gst_rate ?? 0,
+            'gst_mode' => $item->gst_mode ?? 'exclusive',
+            'tax_type' => $item->tax_type ?? \App\Models\Product::GST_TAX_TYPE_CGST_SGST,
             'notes' => $item->notes,
         ];
     })->all() : []))
@@ -239,6 +246,17 @@
     .searchable-select-option.is-selected {
         background:#eff6ff;
         color:#1d4ed8;
+    }
+    .searchable-select-option.is-active {
+        background:#dbeafe;
+        color:#1d4ed8;
+    }
+    .searchable-select-option mark {
+        background:#dbeafe;
+        color:inherit;
+        padding:0 1px;
+        border-radius:4px;
+        font-weight:800;
     }
     .searchable-select-empty { color:#64748b; }
     .rental-field.is-error .searchable-select-trigger {
@@ -933,6 +951,7 @@
                             data-name="{{ $customer->name }}"
                             data-phone="{{ \App\Support\PhoneNumber::local($customer->phone) }}"
                             data-phone-country="{{ \App\Support\PhoneNumber::countryCode($customer->phone) }}"
+                            data-state="{{ $customer->state }}"
                             data-search="{{ trim(implode(' ', array_filter([$customer->name, $customer->phone, $customer->email, $customer->city]))) }}"
                             {{ (int) old('customer_id', $isEdit ? $rental->customer_id : null) === $customer->id ? 'selected' : '' }}>
                             {{ $customer->name }}{{ $customer->phone ? ' â€¢ ' . $customer->phone : '' }}
@@ -992,6 +1011,8 @@
                             data-rental-price-15="{{ (float) ($product->rental_price_15_days ?? 0) }}"
                             data-rental-price-30="{{ (float) ($product->rental_price_30_days ?? 0) }}"
                             data-rental-price-90="{{ (float) ($product->rental_price_3_months ?? 0) }}"
+                            data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}"
+                            data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}"
                             data-search="{{ trim(implode(' ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code]))) }}"
                             {{ (int) old('product_id', $isEdit ? $rental->product_id : null) === $product->id ? 'selected' : '' }}>
                             {{ $product->name }} • {{ $product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity)) }}
@@ -1061,6 +1082,36 @@
                 <input type="number" step="0.01" min="0" name="rental_amount" id="rental_amount" value="{{ old('rental_amount', $isEdit ? $rental->rental_amount : 0) }}">
                 @if($hasFieldError('rental_amount'))
                     <span class="field-error">{{ $fieldError('rental_amount') }}</span>
+                @endif
+            </div>
+
+            <div class="rental-field rental-col-3{{ $hasFieldError('gst_rate') ? ' is-error' : '' }}">
+                <label for="gst_rate">GST %</label>
+                <input type="number" step="0.01" min="0" max="100" name="gst_rate" id="gst_rate" value="{{ old('gst_rate', $primaryRentalItem?->gst_rate ?? 0) }}">
+                @if($hasFieldError('gst_rate'))
+                    <span class="field-error">{{ $fieldError('gst_rate') }}</span>
+                @endif
+            </div>
+
+            <div class="rental-field rental-col-3{{ $hasFieldError('gst_mode') ? ' is-error' : '' }}">
+                <label for="gst_mode">GST Mode</label>
+                <select name="gst_mode" id="gst_mode">
+                    <option value="exclusive" {{ old('gst_mode', $primaryRentalItem?->gst_mode ?? 'exclusive') === 'exclusive' ? 'selected' : '' }}>Exclusive</option>
+                    <option value="inclusive" {{ old('gst_mode', $primaryRentalItem?->gst_mode ?? 'exclusive') === 'inclusive' ? 'selected' : '' }}>Inclusive</option>
+                </select>
+                @if($hasFieldError('gst_mode'))
+                    <span class="field-error">{{ $fieldError('gst_mode') }}</span>
+                @endif
+            </div>
+
+            <div class="rental-field rental-col-3{{ $hasFieldError('tax_type') ? ' is-error' : '' }}">
+                <label for="tax_type">Tax Type</label>
+                <select name="tax_type" id="tax_type">
+                    <option value="{{ \App\Models\Product::GST_TAX_TYPE_CGST_SGST }}" {{ old('tax_type', $primaryRentalItem?->tax_type ?? \App\Models\Product::GST_TAX_TYPE_CGST_SGST) === \App\Models\Product::GST_TAX_TYPE_CGST_SGST ? 'selected' : '' }}>CGST + SGST</option>
+                    <option value="{{ \App\Models\Product::GST_TAX_TYPE_IGST }}" {{ old('tax_type', $primaryRentalItem?->tax_type ?? \App\Models\Product::GST_TAX_TYPE_CGST_SGST) === \App\Models\Product::GST_TAX_TYPE_IGST ? 'selected' : '' }}>IGST</option>
+                </select>
+                @if($hasFieldError('tax_type'))
+                    <span class="field-error">{{ $fieldError('tax_type') }}</span>
                 @endif
             </div>
 
@@ -1356,6 +1407,9 @@
         const endDateInput = document.getElementById('end_date');
         const durationPresetSelect = document.getElementById('duration_preset');
         const rentalAmountInput = document.getElementById('rental_amount');
+        const primaryGstRateInput = document.getElementById('gst_rate');
+        const primaryGstModeSelect = document.getElementById('gst_mode');
+        const primaryTaxTypeSelect = document.getElementById('tax_type');
         const assetGrid = document.getElementById('assetGrid');
         const assetEmptyState = document.getElementById('assetEmptyState');
         const assetSearch = document.getElementById('assetSearch');
@@ -1403,14 +1457,61 @@
         const assetVisibleStep = 3;
         let visibleAssetCount = assetVisibleStep;
         const currentRentalId = @json($isEdit ? $rental->id : null);
-        const rentalProductOptionsHtml = `<option value="">Select rental product</option>@foreach($rentalProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->rental_price ?? $product->price_per_day ?? 0) }}">{{ e($product->name) }} | {{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}</option>@endforeach`;
-        const saleProductOptionsHtml = `<option value="">Select new product</option>@foreach($sellableProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->sale_price ?? 0) }}">{{ e($product->name) }} | Sale {{ number_format((float) ($product->sale_price ?? 0), 2) }}</option>@endforeach`;
+        const organizationState = @json($organization?->state ?? null);
+        const rentalProductOptionsHtml = `<option value="">Select rental product</option>@foreach($rentalProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->rental_price ?? $product->price_per_day ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-search="{{ e(trim(implode(' ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code, $product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))])))) }}">{{ e($product->name) }} | {{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}</option>@endforeach`;
+        const saleProductOptionsHtml = `<option value="">Select new product</option>@foreach($sellableProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->sale_price ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-search="{{ e(trim(implode(' ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code, 'Sale ' . number_format((float) ($product->sale_price ?? 0), 2)])))) }}">{{ e($product->name) }} | Sale {{ number_format((float) ($product->sale_price ?? 0), 2) }}</option>@endforeach`;
         const saleAssetOptions = @json($saleAssetRows);
         const warehouseOptionsHtml = `<option value="">Auto / best stock</option>@foreach($warehouses as $warehouse)<option value="{{ $warehouse->id }}">{{ e($warehouse->name) }}</option>@endforeach`;
         const rentalItemAssetCache = {};
         const rentalItemAssetRequests = {};
         const inlineAssetVisibleStep = 3;
         let primaryAvailabilityLoadedFor = null;
+
+        function escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        rentalItems = (Array.isArray(rentalItems) ? rentalItems : []).map(function (item) {
+            return Object.assign({
+                gst_rate: '0.00',
+                gst_mode: 'exclusive',
+                tax_type: recommendedTaxType(),
+            }, item || {});
+        });
+
+        saleItems = (Array.isArray(saleItems) ? saleItems : []).map(function (item) {
+            return Object.assign({
+                gst_rate: '0.00',
+                gst_mode: 'exclusive',
+                tax_type: recommendedTaxType(),
+            }, item || {});
+        });
+
+        function highlightMatch(text, query) {
+            const source = String(text || '');
+            const term = String(query || '').trim();
+
+            if (!term) {
+                return escapeHtml(source);
+            }
+
+            const lowerSource = source.toLowerCase();
+            const lowerTerm = term.toLowerCase();
+            const start = lowerSource.indexOf(lowerTerm);
+
+            if (start === -1) {
+                return escapeHtml(source);
+            }
+
+            const end = start + term.length;
+
+            return `${escapeHtml(source.slice(0, start))}<mark>${escapeHtml(source.slice(start, end))}</mark>${escapeHtml(source.slice(end))}`;
+        }
 
         function enhanceSearchableSelect(select) {
             if (!select || select.dataset.searchableEnhanced === 'true') {
@@ -1444,6 +1545,9 @@
             const optionsWrap = document.createElement('div');
             optionsWrap.className = 'searchable-select-options';
 
+            let activeIndex = -1;
+            let visibleOptions = [];
+
             panel.appendChild(searchInput);
             panel.appendChild(optionsWrap);
 
@@ -1460,13 +1564,24 @@
                 wrapper.classList.remove('is-open');
                 panel.hidden = true;
                 trigger.setAttribute('aria-expanded', 'false');
+                activeIndex = -1;
+            }
+
+            function syncActiveOption() {
+                Array.from(optionsWrap.querySelectorAll('.searchable-select-option')).forEach(function (button, index) {
+                    button.classList.toggle('is-active', index === activeIndex);
+
+                    if (index === activeIndex) {
+                        button.scrollIntoView({ block: 'nearest' });
+                    }
+                });
             }
 
             function renderOptions() {
                 const query = searchInput.value.trim().toLowerCase();
                 optionsWrap.innerHTML = '';
 
-                const visibleOptions = Array.from(select.options).filter(function (option) {
+                visibleOptions = Array.from(select.options).filter(function (option) {
                     const searchText = (option.getAttribute('data-search') || option.textContent || '').toLowerCase();
                     return !query || searchText.includes(query);
                 });
@@ -1475,7 +1590,7 @@
                     const button = document.createElement('button');
                     button.type = 'button';
                     button.className = 'searchable-select-option' + (option.selected ? ' is-selected' : '');
-                    button.textContent = option.textContent.trim();
+                    button.innerHTML = highlightMatch(option.textContent.trim(), searchInput.value);
                     button.dataset.value = option.value;
                     button.addEventListener('click', function () {
                         select.value = option.value;
@@ -1486,6 +1601,16 @@
                     });
                     optionsWrap.appendChild(button);
                 });
+
+                if (visibleOptions.length) {
+                    const selectedIndex = visibleOptions.findIndex(function (option) {
+                        return option.selected;
+                    });
+                    activeIndex = selectedIndex >= 0 ? selectedIndex : 0;
+                    syncActiveOption();
+                } else {
+                    activeIndex = -1;
+                }
 
                 if (!visibleOptions.length) {
                     const empty = document.createElement('div');
@@ -1520,7 +1645,58 @@
             });
 
             searchInput.addEventListener('input', renderOptions);
+            searchInput.addEventListener('keydown', function (event) {
+                if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+
+                    if (!visibleOptions.length) {
+                        return;
+                    }
+
+                    activeIndex = activeIndex < visibleOptions.length - 1 ? activeIndex + 1 : 0;
+                    syncActiveOption();
+                    return;
+                }
+
+                if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+
+                    if (!visibleOptions.length) {
+                        return;
+                    }
+
+                    activeIndex = activeIndex > 0 ? activeIndex - 1 : visibleOptions.length - 1;
+                    syncActiveOption();
+                    return;
+                }
+
+                if (event.key === 'Enter') {
+                    if (activeIndex < 0 || !visibleOptions[activeIndex]) {
+                        return;
+                    }
+
+                    event.preventDefault();
+                    select.value = visibleOptions[activeIndex].value;
+                    select.dispatchEvent(new Event('change', { bubbles: true }));
+                    syncTriggerLabel();
+                    closePanel();
+                    trigger.focus();
+                    return;
+                }
+
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    closePanel();
+                    trigger.focus();
+                }
+            });
             select.addEventListener('change', refresh);
+            trigger.addEventListener('keydown', function (event) {
+                if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    openPanel();
+                }
+            });
 
             document.addEventListener('click', function (event) {
                 if (!wrapper.contains(event.target)) {
@@ -1690,6 +1866,75 @@
             };
         }
 
+        function normalizeStateName(value) {
+            const normalized = String(value || '').trim().toLowerCase();
+            return normalized || null;
+        }
+
+        function recommendedTaxType() {
+            const customerState = customerSelect?.selectedOptions?.[0]?.getAttribute('data-state') || '';
+            const normalizedCustomerState = normalizeStateName(customerState);
+            const normalizedOrganizationState = normalizeStateName(organizationState);
+
+            if (normalizedCustomerState && normalizedOrganizationState && normalizedCustomerState !== normalizedOrganizationState) {
+                return 'igst';
+            }
+
+            return 'cgst_sgst';
+        }
+
+        function selectedProductTaxDefaults(selectEl) {
+            const selected = selectEl?.options?.[selectEl.selectedIndex];
+
+            if (!selected || !selectEl.value) {
+                return {
+                    gstRate: '0.00',
+                    gstMode: 'exclusive',
+                    taxType: recommendedTaxType(),
+                };
+            }
+
+            return {
+                gstRate: normalizeMoney(selected.getAttribute('data-gst-rate') || '0'),
+                gstMode: selected.getAttribute('data-gst-mode') === 'inclusive' ? 'inclusive' : 'exclusive',
+                taxType: recommendedTaxType(),
+            };
+        }
+
+        function calculateTaxedLineTotal(quantityValue, unitValue, gstRateValue, gstModeValue) {
+            const quantity = Math.max(parseFloat(quantityValue || 0), 0);
+            const unitPrice = Math.max(parseFloat(unitValue || 0), 0);
+            const gstRate = Math.max(parseFloat(gstRateValue || 0), 0);
+            const gstMode = gstModeValue === 'inclusive' ? 'inclusive' : 'exclusive';
+            const subtotal = quantity * unitPrice;
+
+            if (gstMode === 'inclusive' || gstRate <= 0) {
+                return subtotal.toFixed(2);
+            }
+
+            return (subtotal + (subtotal * (gstRate / 100))).toFixed(2);
+        }
+
+        function syncPrimaryTaxDefaults(forceOverride) {
+            if (!primaryGstRateInput || !primaryGstModeSelect || !primaryTaxTypeSelect) {
+                return;
+            }
+
+            const defaults = selectedProductTaxDefaults(productSelect);
+
+            if (forceOverride || !primaryGstRateInput.value) {
+                primaryGstRateInput.value = defaults.gstRate;
+            }
+
+            if (forceOverride || !primaryGstModeSelect.value) {
+                primaryGstModeSelect.value = defaults.gstMode;
+            }
+
+            if (forceOverride || !primaryTaxTypeSelect.value) {
+                primaryTaxTypeSelect.value = defaults.taxType;
+            }
+        }
+
         function activeRentalDays() {
             if (durationPresetSelect.value === '7_days') {
                 return 7;
@@ -1807,6 +2052,7 @@
         function handlePrimaryProductChange() {
             rentalAmountTouched = false;
             primaryAvailabilityLoadedFor = null;
+            syncPrimaryTaxDefaults(true);
             updateAvailabilityHint();
             updatePrimaryRentalFeedback();
             fetchAssets();
@@ -2119,17 +2365,11 @@
         }
 
         function saleItemLineTotal(item) {
-            const quantity = parseInt(item.quantity || '0', 10);
-            const unitPrice = parseFloat(item.unit_price || '0');
-
-            return (quantity * unitPrice).toFixed(2);
+            return calculateTaxedLineTotal(item.quantity, item.unit_price, item.gst_rate, item.gst_mode);
         }
 
         function rentalItemLineTotal(item) {
-            const quantity = parseInt(item.quantity || '0', 10);
-            const unitPrice = parseFloat(item.unit_rental_amount || '0');
-
-            return (quantity * unitPrice).toFixed(2);
+            return calculateTaxedLineTotal(item.quantity, item.unit_rental_amount, item.gst_rate, item.gst_mode);
         }
 
         function rentalItemAssetCacheKey(productId) {
@@ -2310,7 +2550,7 @@
                 row.className = 'sale-item-row';
                 row.innerHTML = `
                     <div>
-                        <select name="rental_items[${index}][product_id]" data-rental-product-index="${index}">
+                        <select name="rental_items[${index}][product_id]" data-rental-product-index="${index}" data-searchable-select data-search-placeholder="Search rental product by name, brand, model, SKU, or code">
                             ${rentalProductOptionsHtml}
                         </select>
                     </div>
@@ -2349,6 +2589,24 @@
                             <div class="sale-item-subnote">${assetHelpText}</div>
                         </div>
                         <div class="sale-item-detail-field">
+                            <label>GST %</label>
+                            <input type="number" min="0" max="100" step="0.01" name="rental_items[${index}][gst_rate]" value="${item.gst_rate || '0.00'}" data-rental-gst-rate="${index}">
+                        </div>
+                        <div class="sale-item-detail-field">
+                            <label>GST Mode</label>
+                            <select name="rental_items[${index}][gst_mode]" data-rental-gst-mode="${index}">
+                                <option value="exclusive"${item.gst_mode === 'inclusive' ? '' : ' selected'}>Exclusive</option>
+                                <option value="inclusive"${item.gst_mode === 'inclusive' ? ' selected' : ''}>Inclusive</option>
+                            </select>
+                        </div>
+                        <div class="sale-item-detail-field">
+                            <label>Tax Type</label>
+                            <select name="rental_items[${index}][tax_type]" data-rental-tax-type="${index}">
+                                <option value="cgst_sgst"${item.tax_type === 'igst' ? '' : ' selected'}>CGST + SGST</option>
+                                <option value="igst"${item.tax_type === 'igst' ? ' selected' : ''}>IGST</option>
+                            </select>
+                        </div>
+                        <div class="sale-item-detail-field">
                             <label>Notes</label>
                             <textarea name="rental_items[${index}][notes]" placeholder="Optional note">${item.notes || ''}</textarea>
                         </div>
@@ -2364,15 +2622,23 @@
                 const assetSearchEl = detail.querySelector(`[data-rental-asset-search="${index}"]`);
                 const assetCheckboxes = detail.querySelectorAll(`[data-rental-asset-input="${index}"]`);
                 const assetLoadMoreButton = detail.querySelector(`[data-rental-asset-load-more="${index}"]`);
+                const gstRateInputEl = detail.querySelector(`[data-rental-gst-rate="${index}"]`);
+                const gstModeSelectEl = detail.querySelector(`[data-rental-gst-mode="${index}"]`);
+                const taxTypeSelectEl = detail.querySelector(`[data-rental-tax-type="${index}"]`);
                 const notesInputEl = detail.querySelector(`textarea[name="rental_items[${index}][notes]"]`);
                 const toggleButton = row.querySelector(`[data-toggle-rental-item="${index}"]`);
                 const removeButton = row.querySelector(`[data-remove-rental-item="${index}"]`);
 
                 productSelectEl.value = item.product_id || '';
+                enhanceSearchableSelect(productSelectEl);
 
                 productSelectEl.addEventListener('change', function () {
                     rentalItems[index].product_id = this.value ? parseInt(this.value, 10) : null;
                     rentalItems[index].asset_ids = [];
+                    const defaults = selectedProductTaxDefaults(this);
+                    rentalItems[index].gst_rate = defaults.gstRate;
+                    rentalItems[index].gst_mode = defaults.gstMode;
+                    rentalItems[index].tax_type = defaults.taxType;
 
                     if (!priceInputEl.value) {
                         const selected = this.options[this.selectedIndex];
@@ -2390,6 +2656,21 @@
 
                 priceInputEl.addEventListener('input', function () {
                     rentalItems[index].unit_rental_amount = this.value || '';
+                    renderRentalItems();
+                });
+
+                gstRateInputEl.addEventListener('input', function () {
+                    rentalItems[index].gst_rate = this.value || '0';
+                    renderRentalItems();
+                });
+
+                gstModeSelectEl.addEventListener('change', function () {
+                    rentalItems[index].gst_mode = this.value === 'inclusive' ? 'inclusive' : 'exclusive';
+                    renderRentalItems();
+                });
+
+                taxTypeSelectEl.addEventListener('change', function () {
+                    rentalItems[index].tax_type = this.value === 'igst' ? 'igst' : 'cgst_sgst';
                     renderRentalItems();
                 });
 
@@ -2507,7 +2788,7 @@
                 row.className = 'sale-item-row';
                 row.innerHTML = `
                     <div>
-                        <select name="sale_items[${index}][product_id]" data-sale-product-index="${index}">
+                        <select name="sale_items[${index}][product_id]" data-sale-product-index="${index}" data-searchable-select data-search-placeholder="Search new product by name, brand, model, SKU, or code">
                             ${saleProductOptionsHtml}
                         </select>
                     </div>
@@ -2554,6 +2835,24 @@
                             <div class="sale-item-subnote">${assetHelpText}</div>
                         </div>
                         <div class="sale-item-detail-field">
+                            <label>GST %</label>
+                            <input type="number" min="0" max="100" step="0.01" name="sale_items[${index}][gst_rate]" value="${item.gst_rate || '0.00'}" data-sale-gst-rate="${index}">
+                        </div>
+                        <div class="sale-item-detail-field">
+                            <label>GST Mode</label>
+                            <select name="sale_items[${index}][gst_mode]" data-sale-gst-mode="${index}">
+                                <option value="exclusive"${item.gst_mode === 'inclusive' ? '' : ' selected'}>Exclusive</option>
+                                <option value="inclusive"${item.gst_mode === 'inclusive' ? ' selected' : ''}>Inclusive</option>
+                            </select>
+                        </div>
+                        <div class="sale-item-detail-field">
+                            <label>Tax Type</label>
+                            <select name="sale_items[${index}][tax_type]" data-sale-tax-type="${index}">
+                                <option value="cgst_sgst"${item.tax_type === 'igst' ? '' : ' selected'}>CGST + SGST</option>
+                                <option value="igst"${item.tax_type === 'igst' ? ' selected' : ''}>IGST</option>
+                            </select>
+                        </div>
+                        <div class="sale-item-detail-field">
                             <label>Notes</label>
                             <textarea name="sale_items[${index}][notes]" placeholder="Optional note">${item.notes || ''}</textarea>
                         </div>
@@ -2569,11 +2868,15 @@
                 const assetLoadMoreButton = detail.querySelector(`[data-sale-asset-load-more="${index}"]`);
                 const quantityInputEl = row.querySelector(`[data-sale-quantity-index="${index}"]`);
                 const priceInputEl = row.querySelector(`[data-sale-price-index="${index}"]`);
+                const gstRateInputEl = detail.querySelector(`[data-sale-gst-rate="${index}"]`);
+                const gstModeSelectEl = detail.querySelector(`[data-sale-gst-mode="${index}"]`);
+                const taxTypeSelectEl = detail.querySelector(`[data-sale-tax-type="${index}"]`);
                 const notesInputEl = detail.querySelector(`textarea[name="sale_items[${index}][notes]"]`);
                 const toggleButton = row.querySelector(`[data-toggle-sale-item="${index}"]`);
                 const removeButton = row.querySelector(`[data-remove-sale-item="${index}"]`);
 
                 productSelectEl.value = item.product_id || '';
+                enhanceSearchableSelect(productSelectEl);
                 warehouseSelectEl.value = item.warehouse_id || '';
 
                 productSelectEl.addEventListener('change', function () {
@@ -2585,6 +2888,11 @@
                     if (selectedAsset && parseInt(selectedAsset.product_id || '0', 10) !== parseInt(this.value || '0', 10)) {
                         saleItems[index].asset_id = null;
                     }
+
+                    const defaults = selectedProductTaxDefaults(this);
+                    saleItems[index].gst_rate = defaults.gstRate;
+                    saleItems[index].gst_mode = defaults.gstMode;
+                    saleItems[index].tax_type = defaults.taxType;
 
                     if (!priceInputEl.value) {
                         const selected = this.options[this.selectedIndex];
@@ -2654,6 +2962,21 @@
                     renderSaleItems();
                 });
 
+                gstRateInputEl.addEventListener('input', function () {
+                    saleItems[index].gst_rate = this.value || '0';
+                    renderSaleItems();
+                });
+
+                gstModeSelectEl.addEventListener('change', function () {
+                    saleItems[index].gst_mode = this.value === 'inclusive' ? 'inclusive' : 'exclusive';
+                    renderSaleItems();
+                });
+
+                taxTypeSelectEl.addEventListener('change', function () {
+                    saleItems[index].tax_type = this.value === 'igst' ? 'igst' : 'cgst_sgst';
+                    renderSaleItems();
+                });
+
                 notesInputEl.addEventListener('input', function () {
                     saleItems[index].notes = this.value || '';
                 });
@@ -2677,7 +3000,20 @@
             saleItemsGrandTotalSummary.textContent = total.toFixed(2);
         }
 
-        customerSelect.addEventListener('change', syncCustomerFields);
+        customerSelect.addEventListener('change', function () {
+            syncCustomerFields();
+            if (primaryTaxTypeSelect) {
+                primaryTaxTypeSelect.value = recommendedTaxType();
+            }
+            rentalItems = rentalItems.map(function (item) {
+                return Object.assign({}, item, { tax_type: recommendedTaxType() });
+            });
+            saleItems = saleItems.map(function (item) {
+                return Object.assign({}, item, { tax_type: recommendedTaxType() });
+            });
+            renderRentalItems();
+            renderSaleItems();
+        });
         productSelect.addEventListener('change', handlePrimaryProductChange);
         productSelect.addEventListener('input', handlePrimaryProductChange);
         warehouseSelect.addEventListener('change', function () {
@@ -2746,6 +3082,9 @@
                 asset_ids: [],
                 quantity: 1,
                 unit_rental_amount: '',
+                gst_rate: '0.00',
+                gst_mode: 'exclusive',
+                tax_type: recommendedTaxType(),
                 notes: '',
                 expanded: false
             });
@@ -2760,6 +3099,9 @@
                 warehouse_id: warehouseSelect.value ? parseInt(warehouseSelect.value, 10) : null,
                 quantity: 1,
                 unit_price: '',
+                gst_rate: '0.00',
+                gst_mode: 'exclusive',
+                tax_type: recommendedTaxType(),
                 notes: '',
                 expanded: false
             });
@@ -2768,6 +3110,7 @@
         });
 
         syncCustomerFields();
+        syncPrimaryTaxDefaults(false);
         updateWarehouseMetric();
         updateAvailabilityHint();
         updatePrimaryRentalFeedback();

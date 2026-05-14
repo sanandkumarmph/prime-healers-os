@@ -11,6 +11,7 @@ use App\Models\RentalItem;
 use App\Models\Role;
 use App\Models\Sale;
 use App\Services\Deliveries\DeliveryWorkflowService;
+use App\Services\Metrics\LogisticsMetricsService;
 use App\Models\Staff;
 use App\Models\User;
 use App\Support\ActivityLogger;
@@ -94,6 +95,11 @@ class DeliveryController extends Controller
     private function deliveryWorkflowService(): DeliveryWorkflowService
     {
         return app(DeliveryWorkflowService::class);
+    }
+
+    private function logisticsMetrics(): LogisticsMetricsService
+    {
+        return app(LogisticsMetricsService::class);
     }
 
     private function availableSaleAssets(?Sale $selectedSale = null)
@@ -642,9 +648,13 @@ class DeliveryController extends Controller
                 ->values();
         };
 
-        $summaryDeliveries = $this->dedupeDeliveryCollection(
+        $summaryTaskIds = $this->dedupeDeliveryCollection(
             $orderedMinimalDeliveryQuery(clone $baseQuery)->get()
-        );
+        )
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
+        $summaryDeliveries = $hydrateDeliveries($summaryTaskIds);
 
         $deliveriesQuery = clone $baseQuery;
 
@@ -709,28 +719,24 @@ class DeliveryController extends Controller
             ]
         );
 
-        $totalTasksCount = $summaryDeliveries->count();
-        $deliveryTasksCount = $summaryDeliveries->where('type', 'delivery')->count();
-        $pickupTasksCount = $summaryDeliveries->where('type', 'pickup')->count();
-        $overdueTasksCount = $summaryDeliveries->filter(function (Delivery $delivery) use ($today) {
-            return in_array($delivery->status, ['pending', 'in_progress'], true)
-                && optional($delivery->scheduled_at)?->toDateString()
-                && optional($delivery->scheduled_at)?->toDateString() < $today;
-        })->count();
-        $completedTodayCount = $summaryDeliveries->filter(function (Delivery $delivery) use ($today) {
-            return $delivery->status === 'completed'
-                && optional($delivery->completed_at)?->toDateString() === $today;
-        })->count();
+        $logisticsSummary = $this->logisticsMetrics()->summary($summaryDeliveries, now()->startOfDay());
+        $totalTasksCount = (int) ($logisticsSummary['totalTasksCount'] ?? 0);
+        $deliveryTasksCount = (int) ($logisticsSummary['deliveryTasksCount'] ?? 0);
+        $pickupTasksCount = (int) ($logisticsSummary['pickupTasksCount'] ?? 0);
+        $overdueTasksCount = (int) ($logisticsSummary['overdueTasksCount'] ?? 0);
+        $completedTodayCount = (int) ($logisticsSummary['completedTodayCount'] ?? 0);
+        $pendingDeliveryCount = (int) ($logisticsSummary['pendingDeliveryCount'] ?? 0);
+        $outForDeliveryCount = (int) ($logisticsSummary['outForDeliveryCount'] ?? 0);
+        $deliveredTodayCount = (int) ($logisticsSummary['deliveredTodayCount'] ?? 0);
+        $pendingPickupCount = (int) ($logisticsSummary['pendingPickupCount'] ?? 0);
+        $outForPickupCount = (int) ($logisticsSummary['outForPickupCount'] ?? 0);
+        $completedPickupCount = (int) ($logisticsSummary['completedPickupCount'] ?? 0);
+        $todayTaskCount = (int) ($logisticsSummary['todayTaskCount'] ?? 0);
+        $todayDeliveryCount = (int) ($logisticsSummary['todayDeliveryCount'] ?? 0);
+        $todayPickupCount = (int) ($logisticsSummary['todayPickupCount'] ?? 0);
+        $pendingCollectionsCount = (int) ($logisticsSummary['pendingCollectionsCount'] ?? 0);
 
-        $todayTaskCount = $summaryDeliveries->filter(fn (Delivery $delivery) => optional($delivery->scheduled_at)?->toDateString() === $today)->count();
-        $todayDeliveryCount = $summaryDeliveries->filter(fn (Delivery $delivery) => $delivery->type === 'delivery' && optional($delivery->scheduled_at)?->toDateString() === $today)->count();
-        $todayPickupCount = $summaryDeliveries->filter(fn (Delivery $delivery) => $delivery->type === 'pickup' && optional($delivery->scheduled_at)?->toDateString() === $today)->count();
-        $pendingCollectionsCount = $summaryDeliveries
-            ->filter(fn (Delivery $delivery) => $this->pickupTaskNeedsAction($delivery))
-            ->count();
-
-        $todayOverviewTaskIds = $summaryDeliveries
-            ->filter(fn (Delivery $delivery) => optional($delivery->scheduled_at)?->toDateString() === $today)
+        $todayOverviewTaskIds = collect($logisticsSummary['todayTasks'] ?? collect())
             ->sortBy(fn (Delivery $delivery) => $delivery->scheduled_at?->timestamp ?? PHP_INT_MAX)
             ->take(5)
             ->pluck('id')
@@ -738,12 +744,7 @@ class DeliveryController extends Controller
             ->values();
         $todayOverviewTasks = $hydrateDeliveries($todayOverviewTaskIds);
 
-        $overdueTaskIds = $summaryDeliveries
-            ->filter(function (Delivery $delivery) use ($today) {
-                return in_array($delivery->status, ['pending', 'in_progress'], true)
-                    && optional($delivery->scheduled_at)?->toDateString()
-                    && optional($delivery->scheduled_at)?->toDateString() < $today;
-            })
+        $overdueTaskIds = collect($logisticsSummary['overdueTasks'] ?? collect())
             ->sortBy(fn (Delivery $delivery) => $delivery->scheduled_at?->timestamp ?? PHP_INT_MAX)
             ->take(5)
             ->pluck('id')
@@ -751,8 +752,7 @@ class DeliveryController extends Controller
             ->values();
         $overdueTasks = $hydrateDeliveries($overdueTaskIds);
 
-        $pendingCollectionIds = $summaryDeliveries
-            ->filter(fn (Delivery $delivery) => $this->pickupTaskNeedsAction($delivery))
+        $pendingCollectionIds = collect($logisticsSummary['pendingPickupTasks'] ?? collect())
             ->sortBy(fn (Delivery $delivery) => $delivery->scheduled_at?->timestamp ?? PHP_INT_MAX)
             ->take(5)
             ->pluck('id')
@@ -789,6 +789,12 @@ class DeliveryController extends Controller
             'pickupTasksCount',
             'overdueTasksCount',
             'completedTodayCount',
+            'pendingDeliveryCount',
+            'outForDeliveryCount',
+            'deliveredTodayCount',
+            'pendingPickupCount',
+            'outForPickupCount',
+            'completedPickupCount',
             'todayTaskCount',
             'todayDeliveryCount',
             'todayPickupCount',

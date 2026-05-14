@@ -339,6 +339,13 @@ class Rental extends Model
             'delivery_progress_status' => $this->deliveryStatus() === 'completed' ? 'delivered' : 'pending',
             'pickup_progress_status' => $this->status === 'returned' ? 'picked_up' : 'pending',
             'unit_rental_amount' => (float) ($this->quantity ? ((float) ($this->rental_amount ?? 0) / max((int) $this->quantity, 1)) : (float) ($this->rental_amount ?? 0)),
+            'gst_rate' => 0.0,
+            'gst_mode' => 'exclusive',
+            'tax_type' => Product::GST_TAX_TYPE_CGST_SGST,
+            'taxable_amount' => (float) ($this->rental_amount ?? 0),
+            'cgst_amount' => 0.0,
+            'sgst_amount' => 0.0,
+            'igst_amount' => 0.0,
             'line_total' => (float) ($this->rental_amount ?? 0),
             'notes' => null,
         ]]);

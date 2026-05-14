@@ -185,6 +185,139 @@
         background:#fff1f2;
         border-color:#fecaca;
     }
+    .rental-cta-shell {
+        position:sticky;
+        bottom:16px;
+        z-index:24;
+        margin-top:8px;
+    }
+    .rental-cta-bar {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:14px;
+        flex-wrap:wrap;
+        padding:14px 16px;
+        border:1px solid #dbe3ef;
+        border-radius:20px;
+        background:rgba(255,255,255,.96);
+        backdrop-filter:blur(14px);
+        box-shadow:0 18px 42px rgba(15,23,42,.12);
+    }
+    .rental-cta-meta {
+        display:grid;
+        gap:4px;
+        min-width:220px;
+    }
+    .rental-cta-eyebrow {
+        color:#64748b;
+        font-size:11px;
+        font-weight:800;
+        text-transform:uppercase;
+        letter-spacing:.05em;
+    }
+    .rental-cta-title {
+        color:#0f172a;
+        font-size:16px;
+        font-weight:800;
+        line-height:1.2;
+    }
+    .rental-cta-subtitle {
+        color:#64748b;
+        font-size:12px;
+        line-height:1.45;
+    }
+    .rental-cta-actions {
+        display:flex;
+        align-items:center;
+        justify-content:flex-end;
+        gap:8px;
+        flex-wrap:wrap;
+        flex:1 1 520px;
+    }
+    .rental-cta-actions > form,
+    .rental-cta-actions > a,
+    .rental-cta-actions > button,
+    .rental-cta-actions > details {
+        margin:0;
+        min-width:0;
+    }
+    .rental-cta-primary {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        gap:6px;
+        min-height:42px;
+        padding:10px 15px;
+        border-radius:14px;
+        background:#0f172a;
+        border:1px solid #0f172a;
+        color:#fff;
+        text-decoration:none;
+        font-size:13px;
+        font-weight:800;
+        line-height:1.2;
+        box-shadow:0 12px 26px rgba(15,23,42,.18);
+    }
+    .rental-cta-primary:hover {
+        transform:translateY(-1px);
+        box-shadow:0 16px 30px rgba(15,23,42,.22);
+    }
+    .rental-cta-more {
+        position:relative;
+    }
+    .rental-cta-more summary {
+        list-style:none;
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        min-height:42px;
+        padding:10px 14px;
+        border-radius:14px;
+        border:1px solid #cbd5e1;
+        background:#fff;
+        color:#0f172a;
+        font-size:13px;
+        font-weight:800;
+        cursor:pointer;
+    }
+    .rental-cta-more summary::-webkit-details-marker { display:none; }
+    .rental-cta-more[open] summary {
+        border-color:#93c5fd;
+        box-shadow:0 0 0 3px rgba(37,99,235,.10);
+    }
+    .rental-cta-panel {
+        position:absolute;
+        right:0;
+        bottom:calc(100% + 10px);
+        width:min(260px, calc(100vw - 32px));
+        display:grid;
+        gap:6px;
+        padding:10px;
+        border:1px solid #dbe3ef;
+        border-radius:16px;
+        background:#fff;
+        box-shadow:0 20px 42px rgba(15,23,42,.18);
+    }
+    .rental-cta-panel a,
+    .rental-cta-panel button {
+        width:100%;
+        justify-content:flex-start;
+        min-height:40px;
+        padding:10px 12px;
+        border-radius:12px;
+        border:1px solid #e2e8f0;
+        background:#fff;
+        color:#0f172a;
+        text-decoration:none;
+        font-size:13px;
+        font-weight:700;
+    }
+    .rental-cta-panel .is-danger {
+        color:#991b1b;
+        border-color:#fecaca;
+        background:#fff1f2;
+    }
     .mobile-charges-grid {
         display:grid;
         grid-template-columns:repeat(2, minmax(0, 1fr));
@@ -237,6 +370,61 @@
         color:#64748b;
         font-size:12px;
         line-height:1.5;
+    }
+    .booking-snapshot-grid {
+        display:grid;
+        grid-template-columns:repeat(12, minmax(0, 1fr));
+        gap:12px;
+        margin-top:14px;
+    }
+    .booking-snapshot-card {
+        grid-column:span 3;
+        display:grid;
+        gap:6px;
+        min-width:0;
+        padding:14px;
+        border:1px solid #e2e8f0;
+        border-radius:14px;
+        background:linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    }
+    .booking-snapshot-card.is-range,
+    .booking-snapshot-card.is-total,
+    .booking-snapshot-card.is-balance,
+    .booking-snapshot-card.is-status {
+        grid-column:span 6;
+    }
+    .booking-snapshot-card .snapshot-label {
+        display:block;
+        color:#64748b;
+        font-size:11px;
+        font-weight:800;
+        text-transform:uppercase;
+        letter-spacing:.05em;
+    }
+    .booking-snapshot-card .snapshot-value {
+        color:#0f172a;
+        font-size:18px;
+        font-weight:800;
+        line-height:1.3;
+        overflow-wrap:anywhere;
+    }
+    .booking-snapshot-card .snapshot-subtle {
+        color:#64748b;
+        font-size:12px;
+        line-height:1.45;
+    }
+    .booking-snapshot-card.is-range .snapshot-value {
+        font-size:16px;
+        line-height:1.45;
+    }
+    .booking-snapshot-card.is-total {
+        background:#f8fafc;
+    }
+    .booking-snapshot-card.is-balance {
+        background:#fffdf7;
+    }
+    .booking-snapshot-card.is-status {
+        align-content:start;
     }
     .detail-btn, .detail-btn-secondary, .detail-btn-danger {
         display:inline-flex; align-items:center; justify-content:center; gap:6px;
@@ -344,6 +532,11 @@
     @media (max-width: 920px) {
         .span-4, .span-6 { grid-column:span 12; }
         .metric-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+        .booking-snapshot-card { grid-column:span 4; }
+        .booking-snapshot-card.is-range,
+        .booking-snapshot-card.is-total,
+        .booking-snapshot-card.is-balance,
+        .booking-snapshot-card.is-status { grid-column:span 6; }
         .renewal-form-grid { grid-template-columns:1fr; }
         .renewal-span-2 { grid-column:span 1; }
         .item-progress-table,
@@ -458,6 +651,29 @@
             grid-template-columns:1fr;
             gap:0;
         }
+        .booking-snapshot-grid {
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+            gap:10px;
+        }
+        .booking-snapshot-card,
+        .booking-snapshot-card.is-total,
+        .booking-snapshot-card.is-balance,
+        .booking-snapshot-card.is-status {
+            grid-column:span 1;
+            padding:12px;
+        }
+        .booking-snapshot-card.is-range,
+        .booking-snapshot-card.is-total,
+        .booking-snapshot-card.is-balance,
+        .booking-snapshot-card.is-status {
+            grid-column:1 / -1;
+        }
+        .booking-snapshot-card .snapshot-value {
+            font-size:16px;
+        }
+        .booking-snapshot-card.is-range .snapshot-value {
+            font-size:15px;
+        }
         .charge-summary-grid {
             grid-template-columns:repeat(2, minmax(0, 1fr));
             gap:10px;
@@ -470,6 +686,9 @@
         }
         .billing-form-grid {
             grid-template-columns:1fr;
+        }
+        .detail-page {
+            padding-bottom:110px;
         }
         .rental-status-grid,
         .payment-history-card,
@@ -486,6 +705,52 @@
             min-height:38px;
             padding:7px 10px;
             font-size:12px;
+        }
+        .rental-cta-shell {
+            position:fixed;
+            left:12px;
+            right:12px;
+            bottom:calc(var(--ph-mobile-actions-offset, 10px) + 4px);
+            margin-top:0;
+            z-index:44;
+        }
+        .rental-cta-bar {
+            padding:12px;
+            border-radius:18px;
+        }
+        .rental-cta-meta {
+            min-width:0;
+            width:100%;
+        }
+        .rental-cta-title {
+            font-size:15px;
+        }
+        .rental-cta-actions {
+            width:100%;
+            justify-content:flex-start;
+        }
+        .rental-cta-actions > form,
+        .rental-cta-actions > a,
+        .rental-cta-actions > details,
+        .rental-cta-actions > button {
+            flex:1 1 calc(50% - 6px);
+        }
+        .rental-cta-actions .rental-cta-more {
+            flex:1 1 calc(50% - 6px);
+        }
+        .rental-cta-primary,
+        .rental-cta-more summary,
+        .rental-cta-actions .detail-btn,
+        .rental-cta-actions .detail-btn-secondary {
+            width:100%;
+            min-height:42px;
+            justify-content:center;
+        }
+        .rental-cta-panel {
+            right:0;
+            left:auto;
+            bottom:calc(100% + 8px);
+            width:min(280px, calc(100vw - 24px));
         }
     }
 </style>
@@ -599,11 +864,13 @@
         </div>
     @endif
 
-    @include('partials.activity-timeline', [
-        'logs' => $activityLogs ?? collect(),
-        'title' => 'Operations History',
-        'subtitle' => 'Renewals, reminders, invoices, delivery updates, and return activity for this rental.',
-    ])
+    <div id="rental-activity-timeline">
+        @include('partials.activity-timeline', [
+            'logs' => $activityLogs ?? collect(),
+            'title' => 'Operations History',
+            'subtitle' => 'Renewals, reminders, invoices, delivery updates, and return activity for this rental.',
+        ])
+    </div>
 
     <div class="detail-card" id="rental-billing-actions">
         <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
@@ -864,42 +1131,49 @@
                 <div class="ops-muted" style="margin-top:6px;">Base rental charges before renewals were added, so the first agreed price and collection stay visible.</div>
             </div>
         </div>
-        <div class="detail-grid" style="margin-top:14px;">
-            <div class="span-3">
-                <span class="label">Original Period</span>
-                <div class="value">{{ optional($rental->start_date)->format('d M Y') }} to {{ optional($initialBookingEndDate)->format('d M Y') ?: '-' }}</div>
+        <div class="booking-snapshot-grid">
+            <div class="booking-snapshot-card is-range">
+                <span class="snapshot-label">Original Period</span>
+                <div class="snapshot-value">
+                    {{ optional($rental->start_date)->format('d M Y') ?: '-' }}
+                    <span style="color:#94a3b8; font-weight:700;">→</span>
+                    {{ optional($initialBookingEndDate)->format('d M Y') ?: '-' }}
+                </div>
+                <div class="snapshot-subtle">Initial agreed rental window before renewals extended the case.</div>
             </div>
-            <div class="span-3">
-                <span class="label">Rental</span>
-                <div class="value">{{ $currency($baseRentalAmount) }}</div>
+            <div class="booking-snapshot-card">
+                <span class="snapshot-label">Rental</span>
+                <div class="snapshot-value">{{ $currency($baseRentalAmount) }}</div>
             </div>
-            <div class="span-2">
-                <span class="label">Deposit</span>
-                <div class="value">{{ $currency($baseDepositAmount) }}</div>
+            <div class="booking-snapshot-card">
+                <span class="snapshot-label">Deposit</span>
+                <div class="snapshot-value">{{ $currency($baseDepositAmount) }}</div>
             </div>
-            <div class="span-2">
-                <span class="label">Transport</span>
-                <div class="value">{{ $currency($baseTransportAmount) }}</div>
+            <div class="booking-snapshot-card">
+                <span class="snapshot-label">Transport</span>
+                <div class="snapshot-value">{{ $currency($baseTransportAmount) }}</div>
             </div>
-            <div class="span-2">
-                <span class="label">Other</span>
-                <div class="value">{{ $currency($baseOtherAmount) }}</div>
+            <div class="booking-snapshot-card">
+                <span class="snapshot-label">Other</span>
+                <div class="snapshot-value">{{ $currency($baseOtherAmount) }}</div>
             </div>
-            <div class="span-3">
-                <span class="label">Original Booking Total</span>
-                <div class="value">{{ $currency($baseBookingTotal) }}</div>
+            <div class="booking-snapshot-card is-total">
+                <span class="snapshot-label">Original Booking Total</span>
+                <div class="snapshot-value">{{ $currency($baseBookingTotal) }}</div>
+                <div class="snapshot-subtle">Base rental value before renewal additions and later adjustments.</div>
             </div>
-            <div class="span-3">
-                <span class="label">Collected Against Base Booking</span>
-                <div class="value">{{ $currency($baseBookingPaidAmount) }}</div>
+            <div class="booking-snapshot-card">
+                <span class="snapshot-label">Collected Against Base Booking</span>
+                <div class="snapshot-value">{{ $currency($baseBookingPaidAmount) }}</div>
             </div>
-            <div class="span-3">
-                <span class="label">Remaining on Base Booking</span>
-                <div class="value">{{ $currency($baseBookingBalance) }}</div>
+            <div class="booking-snapshot-card is-balance">
+                <span class="snapshot-label">Remaining on Base Booking</span>
+                <div class="snapshot-value">{{ $currency($baseBookingBalance) }}</div>
             </div>
-            <div class="span-3">
-                <span class="label">Base Invoice Status</span>
-                <div class="value">{{ strtoupper(str_replace('_', ' ', (string) ($rentalInvoice->payment_status ?? 'not_generated'))) }}</div>
+            <div class="booking-snapshot-card is-status">
+                <span class="snapshot-label">Base Invoice Status</span>
+                <div class="snapshot-value">{{ strtoupper(str_replace('_', ' ', (string) ($rentalInvoice->payment_status ?? 'not_generated'))) }}</div>
+                <div class="snapshot-subtle">Reflects the current invoice workflow state for the original booking.</div>
             </div>
         </div>
     </div>
@@ -1589,86 +1863,102 @@
     </div>
 </div>
 
-<div class="mobile-sticky-actions rental-mobile-actions" aria-label="Rental primary actions">
-    @if($rental->canRenew() && auth()->user()->canAccessModule('rentals', 'update'))
-        <button type="button" class="is-primary" data-open-renewal-modal>Renew</button>
-    @endif
-    @if($canUpdateRentals)
-        <a href="{{ route('rentals.edit', $rental) }}">Edit</a>
-    @endif
-    @if(!empty($rentalInvoice))
-        <a href="{{ route('invoices.show', $rentalInvoice) }}">Invoice</a>
-    @elseif(auth()->user()->canAccessModule('rentals', 'update'))
-        <form action="{{ route('rentals.invoice', $rental) }}" method="POST">
-            @csrf
-            <button type="submit">Invoice</button>
-        </form>
-    @endif
-    @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
-        <form action="{{ route('rentals.markPaid', $rental) }}" method="POST" style="margin:0;">
-            @csrf
-            <button type="submit">Paid</button>
-        </form>
-    @endif
-    @if($rental->canBeReturned())
-        <form action="{{ route('rentals.return', $rental) }}" method="POST" style="margin:0;">
-            @csrf
-            @method('PUT')
-            <button type="submit">Return</button>
-        </form>
-    @elseif($pickupRecord && $hasOpenPickupTask)
-        <a href="{{ route('deliveries.show', $pickupRecord) }}">Return</a>
-    @elseif(!$hasOpenPickupTask && $canAssignPickup)
-        <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'pickup']) }}">Return</a>
-    @endif
-    <details class="mobile-actions-menu">
-        <summary type="button">More</summary>
-        <div class="mobile-actions-panel">
-            @if($rental->phone)
-                <a href="tel:{{ preg_replace('/\D+/', '', $rental->phone) }}">Call Customer</a>
-            @endif
-            @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
-                <form action="{{ route('rentals.markPaid', $rental) }}" method="POST" style="margin:0;">
-                    @csrf
-                    <button type="submit">Mark as Paid</button>
-                </form>
-                <a href="#rental-billing-actions">Partial Payment</a>
-            @endif
-            @if($deliveryRecord && $hasOpenDeliveryTask && auth()->user()?->canAccessModule('deliveries', 'update'))
-                <a href="{{ route('deliveries.edit', $deliveryRecord) }}">Edit Delivery Assignment</a>
-            @endif
-            @if($renewalUrl)
-                <a href="{{ $renewalUrl }}" target="_blank">WhatsApp Renewal</a>
-            @endif
-            @if($rental->canRenew() && auth()->user()->canAccessModule('rentals', 'update'))
-                <form method="POST" action="{{ route('rentals.quick-renew', $rental) }}" style="margin:0;" data-quick-renew-form data-renewal-days="{{ $suggestedRenewalDays }}">
-                    @csrf
-                    <button type="submit">Quick Renew</button>
-                </form>
-            @endif
-            @if($rental->canBeReturned())
-                <form action="{{ route('rentals.return', $rental) }}" method="POST" style="margin:0;">
-                    @csrf
-                    @method('PUT')
-                    <button type="submit">Complete Pickup</button>
-                </form>
-            @endif
-            @if(auth()->user()->canAccessModule('rentals', 'update') && !in_array($rental->status, ['returned', 'cancelled'], true))
-                <form action="{{ route('rentals.cancel', $rental) }}" method="POST" style="margin:0;">
-                    @csrf
-                    @method('PUT')
-                    <button type="submit" class="is-danger" onclick="return confirm('Cancel this rental? This keeps the record for audit history.');">Cancel Rental</button>
-                </form>
-            @endif
-            @if($canDeleteRentals)
-                <form action="{{ route('rentals.destroy', $rental) }}" method="POST" style="margin:0;">
-                    @csrf
-                    @method('DELETE')
-                    <button type="submit" class="is-danger" onclick="return confirm('Delete this rental order permanently? This will be blocked if invoices, payments, deliveries, renewals, or linked sales exist.');">Delete Rental</button>
-                </form>
-            @endif
+<div class="rental-cta-shell" aria-label="Rental bottom actions">
+    <div class="rental-cta-bar">
+        <div class="rental-cta-meta">
+            <span class="rental-cta-eyebrow">Rental Actions</span>
+            <div class="rental-cta-title">Rental #{{ $rental->id }} · {{ $rental->customer_name ?: $rental->customer?->name ?: 'Customer' }}</div>
+            <div class="rental-cta-subtitle">
+                @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
+                    {{ $rentalInvoiceDue > 0 ? 'Invoice due ' . $currency($rentalInvoiceDue) . '. Use Receive Payment or Mark Paid.' : 'Payment action is available for this rental.' }}
+                @else
+                    Keep renewal, invoice, and support actions close by without crowding the page.
+                @endif
+            </div>
         </div>
-    </details>
+
+        <div class="rental-cta-actions">
+            @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
+                <a href="#rental-billing-actions" class="rental-cta-primary">Receive Payment</a>
+            @endif
+
+            @if($rental->canRenew() && auth()->user()->canAccessModule('rentals', 'update'))
+                <button type="button" class="detail-btn" data-open-renewal-modal>Renew</button>
+            @endif
+
+            @if($canUpdateRentals)
+                <a href="{{ route('rentals.edit', $rental) }}" class="detail-btn-secondary">Edit</a>
+            @endif
+
+            @if(!empty($rentalInvoice))
+                <a href="{{ route('invoices.show', $rentalInvoice) }}" class="detail-btn-secondary">Invoice</a>
+            @elseif(auth()->user()->canAccessModule('rentals', 'update'))
+                <form action="{{ route('rentals.invoice', $rental) }}" method="POST">
+                    @csrf
+                    <button type="submit" class="detail-btn-secondary">Invoice</button>
+                </form>
+            @endif
+
+            <details class="rental-cta-more">
+                <summary type="button">More</summary>
+                <div class="rental-cta-panel">
+                    <a href="#rental-activity-timeline">View Timeline</a>
+                    @if($rental->phone)
+                        <a href="tel:{{ preg_replace('/\D+/', '', $rental->phone) }}">Call Customer</a>
+                    @endif
+                    @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
+                        <form action="{{ route('rentals.markPaid', $rental) }}" method="POST" style="margin:0;">
+                            @csrf
+                            <button type="submit">Mark as Paid</button>
+                        </form>
+                        <a href="#rental-billing-actions">Partial Payment</a>
+                    @endif
+                    @if($deliveryRecord && $hasOpenDeliveryTask && auth()->user()?->canAccessModule('deliveries', 'update'))
+                        <a href="{{ route('deliveries.edit', $deliveryRecord) }}">Edit Delivery Assignment</a>
+                    @elseif($canCreateDeliveries && !$hasOpenDeliveryTask && $hasPendingDeliveryItems)
+                        <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'delivery']) }}">Assign Delivery</a>
+                    @endif
+                    @if($pickupRecord && $hasOpenPickupTask && auth()->user()?->canAccessModule('deliveries', 'update'))
+                        <a href="{{ route('deliveries.edit', $pickupRecord) }}">Edit Pickup Assignment</a>
+                    @elseif($canAssignPickup && !$hasOpenPickupTask)
+                        <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'pickup']) }}">Assign Pickup</a>
+                    @endif
+                    @if($renewalUrl)
+                        <a href="{{ $renewalUrl }}" target="_blank">WhatsApp Renewal</a>
+                    @endif
+                    @if($rental->canRenew() && auth()->user()->canAccessModule('rentals', 'update'))
+                        <form method="POST" action="{{ route('rentals.quick-renew', $rental) }}" style="margin:0;" data-quick-renew-form data-renewal-days="{{ $suggestedRenewalDays }}">
+                            @csrf
+                            <button type="submit">Quick Renew</button>
+                        </form>
+                    @endif
+                    @if($rental->canBeReturned())
+                        <form action="{{ route('rentals.return', $rental) }}" method="POST" style="margin:0;">
+                            @csrf
+                            @method('PUT')
+                            <button type="submit">Complete Pickup</button>
+                        </form>
+                    @elseif($pickupRecord && $hasOpenPickupTask)
+                        <a href="{{ route('deliveries.show', $pickupRecord) }}">View Pickup Task</a>
+                    @endif
+                    @if(auth()->user()->canAccessModule('rentals', 'update') && !in_array($rental->status, ['returned', 'cancelled'], true))
+                        <form action="{{ route('rentals.cancel', $rental) }}" method="POST" style="margin:0;">
+                            @csrf
+                            @method('PUT')
+                            <button type="submit" class="is-danger" onclick="return confirm('Cancel this rental? This keeps the record for audit history.');">Cancel Rental</button>
+                        </form>
+                    @endif
+                    @if($canDeleteRentals)
+                        <form action="{{ route('rentals.destroy', $rental) }}" method="POST" style="margin:0;">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" class="is-danger" onclick="return confirm('Delete this rental order permanently? This will be blocked if invoices, payments, deliveries, renewals, or linked sales exist.');">Delete Rental</button>
+                        </form>
+                    @endif
+                </div>
+            </details>
+        </div>
+    </div>
 </div>
 @endsection
 
@@ -1702,6 +1992,7 @@
         const notesInput = form?.querySelector('[name="notes"]');
         const duplicateWarning = document.getElementById('renewalDuplicateWarning');
         const quickRenewForms = document.querySelectorAll('[data-quick-renew-form]');
+        const actionMenus = document.querySelectorAll('.rental-cta-more');
         const modalBody = modal.querySelector('.renewal-modal-body');
         const defaultValues = {
             action: form?.dataset.createAction || '',
@@ -1718,6 +2009,22 @@
             paymentMethod: paymentMethodInput?.value || '',
             notes: notesInput?.value || '',
         };
+
+        document.addEventListener('click', (event) => {
+            actionMenus.forEach((menu) => {
+                if (!menu.contains(event.target)) {
+                    menu.removeAttribute('open');
+                }
+            });
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') {
+                return;
+            }
+
+            actionMenus.forEach((menu) => menu.removeAttribute('open'));
+        });
 
         const applyRenewalPreset = () => {
             if (!durationPreset || !newEndDateInput || !activeCurrentEndDate || durationPreset.value === 'custom') {

@@ -148,6 +148,10 @@
     $paymentsReceivedTodayAmount = (float) ($paymentsReceivedToday ?? 0);
     $paymentsReceivedThisMonthAmount = (float) ($paymentsReceivedThisMonth ?? 0);
     $totalBilledAmountValue = (float) ($totalBilledAmount ?? 0);
+    $grossBilledAmountValue = (float) ($grossBilledAmount ?? 0);
+    $knownUnbilledGapAmountValue = (float) ($knownUnbilledGapAmount ?? 0);
+    $reconciliationGapAmountValue = (float) ($reconciliationGapAmount ?? 0);
+    $adjustmentGapAmountValue = (float) ($adjustmentGapAmount ?? 0);
 
     $activePercent = $safePercent($activeRentalsCount, max(1, $totalRentalsValue));
     $pendingDeliveryPercent = $safePercent($pendingDeliveryCountValue, max(1, $totalRentalsValue));
@@ -191,7 +195,7 @@
             'label' => 'Pending Delivery',
             'value' => $pendingDeliveryCountValue,
             'subtitle' => $outForDeliveryCountValue . ' already in transit',
-            'note' => $pendingDeliveryPercent . '% of rental base',
+            'note' => 'Open delivery tasks awaiting completion',
             'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pending_delivery']) : null,
             'tone' => 'amber',
             'icon' => 'delivery',
@@ -210,7 +214,7 @@
             'value' => $currency($outstandingDueAmountValue),
             'subtitle' => $openInvoiceCountValue . ' open invoices',
             'note' => $overdueInvoiceCountValue . ' overdue now',
-            'href' => $mergeDashboardQuery('invoices.index', ['status' => 'unpaid']),
+            'href' => $mergeDashboardQuery('invoices.index', ['status' => 'open']),
             'tone' => 'blue',
             'icon' => 'payment',
             'visible' => $canViewFinance,
@@ -229,23 +233,25 @@
     $salesCards = collect([
         ['label' => 'Sales Today', 'value' => $todaySalesCount, 'subtitle' => 'Orders created today', 'note' => $currency($paidSalesAmountValue) . ' paid value', 'href' => $mergeDashboardQuery('sales.index', ['date' => now()->toDateString()]), 'tone' => 'green', 'icon' => 'sales'],
         ['label' => 'Sales This Month', 'value' => $salesThisMonthCountValue, 'subtitle' => 'Month-to-date sales volume', 'note' => $currency($salesThisMonthAmountValue), 'href' => $salesIndexUrl, 'tone' => 'blue', 'icon' => 'trend'],
-        ['label' => 'Outstanding Invoices', 'value' => $currency($salesOutstandingInvoiceAmountValue), 'subtitle' => 'Invoice raised, payment pending', 'note' => $salesOutstandingInvoiceCountValue . ' open sales invoices', 'href' => $mergeDashboardQuery('invoices.index', ['status' => 'unpaid']), 'tone' => 'amber', 'icon' => 'payment'],
+        ['label' => 'Outstanding Sales Invoices', 'value' => $currency($salesOutstandingInvoiceAmountValue), 'subtitle' => 'Invoice raised, payment pending', 'note' => $salesOutstandingInvoiceCountValue . ' open sales invoices', 'href' => $salesIndexUrl, 'tone' => 'amber', 'icon' => 'payment'],
         ['label' => 'Unbilled Sales', 'value' => $currency($salesUnbilledAmountValue), 'subtitle' => 'Orders without invoice', 'note' => $salesUnbilledCountValue . ' sales not yet invoiced', 'href' => $salesIndexUrl, 'tone' => 'amber', 'icon' => 'sales'],
         ['label' => 'Total Pending Sales', 'value' => $currency($salesTotalPendingAmountValue), 'subtitle' => 'Total value not fully collected', 'note' => $currency($salesOutstandingInvoiceAmountValue) . ' invoiced + ' . $currency($salesUnbilledAmountValue) . ' unbilled', 'href' => $salesIndexUrl, 'tone' => 'red', 'icon' => 'trend'],
         ['label' => 'Paid Sales Value', 'value' => $currency($paidSalesAmountValue), 'subtitle' => 'Collected sales amount', 'note' => $currency($totalSalesAmountValue) . ' total sales', 'href' => $mergeDashboardQuery('sales.index', ['payment_status' => 'paid']), 'tone' => 'green', 'icon' => 'revenue'],
     ]);
 
     $financeCards = collect([
+        ['label' => 'Gross Components', 'value' => $currency($grossBilledAmountValue), 'href' => $dashboardUrl, 'tone' => 'blue', 'icon' => 'trend', 'note' => 'Rental + sales + deposit + transport + other'],
         ['label' => 'Rental Order Value', 'value' => $currency($totalRentalValueAmount), 'href' => $rentalIndexUrl, 'tone' => 'blue', 'icon' => 'rental'],
         ['label' => 'Sales Order Value', 'value' => $currency($totalSalesAmountValue), 'href' => $salesIndexUrl, 'tone' => 'green', 'icon' => 'sales'],
         ['label' => 'Deposits', 'value' => $currency($totalDepositValueAmount), 'href' => $rentalIndexUrl, 'tone' => null, 'icon' => 'payment'],
         ['label' => 'Transport', 'value' => $currency($totalTransportValueAmount), 'href' => $rentalIndexUrl, 'tone' => null, 'icon' => 'delivery'],
         ['label' => 'Other Charges', 'value' => $currency($totalOtherValueAmount), 'href' => $rentalIndexUrl, 'tone' => null, 'icon' => 'payment'],
         ['label' => 'Unbilled Renewals', 'value' => $currency((float) ($unbilledRenewalAmount ?? 0)), 'href' => $rentalIndexUrl, 'tone' => 'amber', 'icon' => 'rental'],
-        ['label' => 'Unpaid Renewal Invoices', 'value' => $currency((float) ($unpaidRenewalAmount ?? 0)), 'href' => $mergeDashboardQuery('invoices.index', ['status' => 'unpaid']), 'tone' => 'red', 'icon' => 'payment'],
+        ['label' => 'Unpaid Renewal Invoices', 'value' => $currency((float) ($unpaidRenewalAmount ?? 0)), 'href' => $mergeDashboardQuery('invoices.index', ['status' => 'open']), 'tone' => 'red', 'icon' => 'payment'],
         ['label' => 'Collections This Month', 'value' => $currency($paymentsReceivedThisMonthAmount), 'href' => $reportsIndexUrl, 'tone' => 'green', 'icon' => 'revenue'],
-        ['label' => 'Outstanding Dues', 'value' => $currency($outstandingDueAmountValue), 'href' => $mergeDashboardQuery('invoices.index', ['status' => 'unpaid']), 'tone' => 'red', 'icon' => 'payment'],
-        ['label' => 'Total Billed', 'value' => $currency($totalBilledAmountValue), 'href' => $invoiceIndexUrl, 'tone' => 'blue', 'icon' => 'trend'],
+        ['label' => 'Outstanding Dues', 'value' => $currency($outstandingDueAmountValue), 'href' => $mergeDashboardQuery('invoices.index', ['status' => 'open']), 'tone' => 'red', 'icon' => 'payment'],
+        ['label' => 'Net Billed (Invoices)', 'value' => $currency($totalBilledAmountValue), 'href' => $invoiceIndexUrl, 'tone' => 'blue', 'icon' => 'trend', 'note' => $reconciliationGapAmountValue > 0 ? $currency($reconciliationGapAmountValue) . ' still outside invoiced total' : 'Fully invoiced against visible components'],
+        ['label' => 'Unbilled / Gap', 'value' => $currency($reconciliationGapAmountValue), 'href' => $invoiceIndexUrl, 'tone' => $reconciliationGapAmountValue > 0 ? 'amber' : 'green', 'icon' => 'payment', 'note' => $adjustmentGapAmountValue !== 0.0 ? $currency($knownUnbilledGapAmountValue) . ' known unbilled, ' . $currency($adjustmentGapAmountValue) . ' adjustment gap' : $currency($knownUnbilledGapAmountValue) . ' explained by uninvoiced exposure'],
     ]);
 
     $deliveryMiniTiles = collect([
@@ -264,7 +270,7 @@
             'note' => 'Live rental orders on field',
             'subtitle' => $activePercent . '% of rental base',
             'icon' => 'rental',
-            'href' => $mergeDashboardQuery('rentals.index', ['status' => 'active']),
+            'href' => $mergeDashboardQuery('rentals.index', ['status' => 'live']),
             'tone' => 'green',
         ],
         [
@@ -278,12 +284,12 @@
             'visible' => $canReadDeliveries,
         ],
         [
-            'label' => 'Outstanding Invoices',
+            'label' => 'Outstanding Invoices (All)',
             'value' => number_format($outstandingInvoiceCountValue),
             'note' => $canViewFinance ? $currency($outstandingInvoiceAmountValue) . ' unpaid balance' : 'Open invoices awaiting collection',
             'subtitle' => $outstandingInvoiceOverdueCountValue . ' overdue now',
             'icon' => 'payment',
-            'href' => $mergeDashboardQuery('invoices.index', ['status' => 'unpaid']),
+            'href' => $mergeDashboardQuery('invoices.index', ['status' => 'open']),
             'tone' => 'amber',
             'visible' => $canReadInvoices,
         ],
@@ -293,17 +299,17 @@
             'note' => $canViewFinance ? $currency($unbilledRentalReceivableAmountValue) . ' not yet invoiced' : 'Delivered rentals awaiting invoice',
             'subtitle' => 'Delivered rentals without invoice',
             'icon' => 'rental',
-            'href' => $mergeDashboardQuery('rentals.index', ['status' => 'active']),
+            'href' => $mergeDashboardQuery('rentals.index', ['status' => 'live']),
             'tone' => 'amber',
             'visible' => $canReadInvoices,
         ],
         [
-            'label' => 'Unpaid Renewals',
+            'label' => 'Unpaid Renewal Invoices',
             'value' => number_format((int) ($unpaidRenewalCount ?? 0)),
             'note' => $canViewFinance ? $currency((float) ($unpaidRenewalAmount ?? 0)) . ' pending renewal collection' : 'Renewal invoices awaiting payment',
             'subtitle' => number_format((int) ($unbilledRenewalCount ?? 0)) . ' renewal(s) still unbilled',
             'icon' => 'payment',
-            'href' => $mergeDashboardQuery('invoices.index', ['status' => 'unpaid']),
+            'href' => $mergeDashboardQuery('invoices.index', ['status' => 'open']),
             'tone' => 'red',
             'visible' => $canReadInvoices,
         ],
@@ -318,7 +324,7 @@
             'visible' => $canReadInvoices,
         ],
         [
-            'label' => 'Overdue Returns',
+            'label' => 'Overdue Rentals',
             'value' => number_format($overdueReturnsCount),
             'note' => number_format($returnsDueTodayCountValue) . ' due today',
             'subtitle' => 'Past promised return date',
@@ -379,7 +385,7 @@
             'label' => 'Overdue Payments',
             'count' => $overdueInvoiceCountValue,
             'copy' => 'Invoices needing finance follow-up',
-            'href' => $mergeDashboardQuery('invoices.index', ['status' => 'unpaid']),
+            'href' => $mergeDashboardQuery('invoices.index', ['status' => 'open']),
             'icon' => 'payment',
             'tone' => 'red',
         ],
@@ -666,6 +672,7 @@
     }
     .dashboard-card-subtitle,
     .dashboard-card-note,
+    .dashboard-card-subcopy,
     .dashboard-kpi-note,
     .dashboard-overview-copy,
     .dashboard-rank-copy,
@@ -739,6 +746,9 @@
     }
     .dashboard-finance-card .dashboard-card-head {
         gap: 8px;
+    }
+    .dashboard-finance-card .dashboard-card-subcopy {
+        margin-top: 4px;
     }
     .dashboard-compact-chip {
         display: inline-flex;
@@ -1399,6 +1409,9 @@
                                 <span class="dashboard-card-icon">{!! $dashboardIcon($card['icon']) !!}</span>
                             </div>
                             <div class="dashboard-card-value">{{ $card['value'] }}</div>
+                            @if(!empty($card['note']))
+                                <div class="dashboard-card-subcopy">{{ $card['note'] }}</div>
+                            @endif
                         </{{ $tag }}>
                     @endforeach
                 </div>
@@ -1846,14 +1859,14 @@
                             <small>Open unpaid and overdue invoice mix</small>
                         </div>
                         <div style="text-align:right;">
-                            <strong>{{ $unpaidInvoiceCountValue + $overdueInvoiceCountValue }}</strong>
-                            <small>{{ $salesThisMonthCountValue }} sales this month</small>
+                            <strong>{{ $openInvoiceCountValue }}</strong>
+                            <small>{{ $overdueInvoiceCountValue }} overdue now</small>
                         </div>
                     </div>
                     <div class="dashboard-inline-item">
                         <div>
                             <strong>Rental Lifecycle</strong>
-                            <small>Active {{ $activePercent }}% | Pending delivery {{ $pendingDeliveryPercent }}%</small>
+                            <small>Active {{ $lifecycleActivePercent }}% | Pending delivery {{ $lifecyclePendingDeliveryPercent }}%</small>
                         </div>
                         <div style="text-align:right;">
                             <strong>{{ $returnedPercent }}%</strong>

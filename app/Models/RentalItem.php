@@ -18,6 +18,13 @@ class RentalItem extends Model
         'delivered_quantity',
         'returned_quantity',
         'unit_rental_amount',
+        'gst_rate',
+        'gst_mode',
+        'tax_type',
+        'taxable_amount',
+        'cgst_amount',
+        'sgst_amount',
+        'igst_amount',
         'line_total',
         'notes',
     ];
@@ -29,6 +36,11 @@ class RentalItem extends Model
         'delivered_quantity' => 'integer',
         'returned_quantity' => 'integer',
         'unit_rental_amount' => 'decimal:2',
+        'gst_rate' => 'decimal:2',
+        'taxable_amount' => 'decimal:2',
+        'cgst_amount' => 'decimal:2',
+        'sgst_amount' => 'decimal:2',
+        'igst_amount' => 'decimal:2',
         'line_total' => 'decimal:2',
     ];
 

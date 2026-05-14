@@ -366,11 +366,29 @@ class InvoiceSyncService
 
         $rentalLines = [];
         foreach ($rental->displayRentalItems() as $item) {
-            $lineTotal = (float) ($item->line_total ?? 0);
             $quantity = max((float) ($item->quantity ?? 1), 1);
+            $subtotal = round($quantity * (float) ($item->unit_rental_amount ?? 0), 2);
+            $lineTotal = round((float) ($item->line_total ?? $subtotal), 2);
             $rate = $quantity > 0
-                ? ((float) ($item->unit_rental_amount ?? 0) ?: round($lineTotal / $quantity, 2))
+                ? ((float) ($item->unit_rental_amount ?? 0) ?: round(($subtotal > 0 ? $subtotal : $lineTotal) / $quantity, 2))
                 : $lineTotal;
+            $hasStoredTaxSnapshot = (float) ($item->gst_rate ?? 0) > 0
+                || in_array($item->gst_mode, Product::GST_CALCULATION_MODES, true)
+                || in_array($item->tax_type, Product::GST_TAX_TYPES, true)
+                || (float) ($item->cgst_amount ?? 0) > 0
+                || (float) ($item->sgst_amount ?? 0) > 0
+                || (float) ($item->igst_amount ?? 0) > 0;
+            $taxSnapshot = $this->lineTaxSnapshot(
+                $subtotal > 0 ? $subtotal : $lineTotal,
+                (float) ($item->gst_rate ?? 0),
+                $item->gst_mode ?? 'exclusive',
+                $item->tax_type ?? Product::GST_TAX_TYPE_CGST_SGST,
+                $hasStoredTaxSnapshot ? ($item->taxable_amount ?? null) : null,
+                $hasStoredTaxSnapshot ? ($item->cgst_amount ?? null) : null,
+                $hasStoredTaxSnapshot ? ($item->sgst_amount ?? null) : null,
+                $hasStoredTaxSnapshot ? ($item->igst_amount ?? null) : null,
+                $item->line_total ?? null
+            );
 
             $rentalLines[] = [
                 'product_id' => $item->product_id ?: $rental->product_id,
@@ -381,10 +399,18 @@ class InvoiceSyncService
                 'unit' => 'rental',
                 'days' => $rentalDays,
                 'rate' => $rate,
-                'line_subtotal' => $lineTotal,
-                'taxable_amount' => $lineTotal,
-                'line_total' => $lineTotal,
-            ] + $this->lineDefaults();
+                'line_subtotal' => $taxSnapshot['subtotal'],
+                'taxable_amount' => $taxSnapshot['taxable_amount'],
+                'tax_percentage' => $taxSnapshot['gst_rate'],
+                'tax_type' => $taxSnapshot['tax_type'],
+                'cgst_rate' => $taxSnapshot['cgst_rate'],
+                'sgst_rate' => $taxSnapshot['sgst_rate'],
+                'igst_rate' => $taxSnapshot['igst_rate'],
+                'cgst_amount' => $taxSnapshot['cgst_amount'],
+                'sgst_amount' => $taxSnapshot['sgst_amount'],
+                'igst_amount' => $taxSnapshot['igst_amount'],
+                'line_total' => $taxSnapshot['line_total'],
+            ] + $this->lineDefaults(['discount_amount' => 0]);
         }
 
         if ($rentalLines === []) {
@@ -400,7 +426,7 @@ class InvoiceSyncService
                 'line_subtotal' => (float) ($rental->rental_amount ?? 0),
                 'taxable_amount' => (float) ($rental->rental_amount ?? 0),
                 'line_total' => (float) ($rental->rental_amount ?? 0),
-            ] + $this->lineDefaults();
+            ] + $this->lineDefaults(['discount_amount' => 0]);
         }
 
         return $rentalLines;
@@ -420,41 +446,44 @@ class InvoiceSyncService
             $quantity = max((float) ($saleItem->quantity ?? 1), 1);
             $unitPrice = round((float) ($saleItem->unit_price ?? 0), 2);
             $subtotal = round($quantity * $unitPrice, 2);
+            $hasStoredTaxSnapshot = (float) ($saleItem->gst_rate ?? 0) > 0
+                || in_array($saleItem->gst_mode, Product::GST_CALCULATION_MODES, true)
+                || in_array($saleItem->tax_type, Product::GST_TAX_TYPES, true)
+                || (float) ($saleItem->cgst_amount ?? 0) > 0
+                || (float) ($saleItem->sgst_amount ?? 0) > 0
+                || (float) ($saleItem->igst_amount ?? 0) > 0;
 
-            $taxType = in_array($product?->gst_tax_type, Product::GST_TAX_TYPES, true)
-                ? $product->gst_tax_type
-                : Product::GST_TAX_TYPE_CGST_SGST;
-            $taxCalculationMode = in_array($product?->gst_calculation_mode, Product::GST_CALCULATION_MODES, true)
-                ? $product->gst_calculation_mode
-                : 'exclusive';
-            $cgstRate = $taxType === Product::GST_TAX_TYPE_CGST_SGST ? round((float) ($product?->cgst_rate ?? 0), 2) : 0.0;
-            $sgstRate = $taxType === Product::GST_TAX_TYPE_CGST_SGST ? round((float) ($product?->sgst_rate ?? 0), 2) : 0.0;
-            $igstRate = $taxType === Product::GST_TAX_TYPE_IGST ? round((float) ($product?->igst_rate ?? 0), 2) : 0.0;
-            $taxPercentage = round($cgstRate + $sgstRate + $igstRate, 2);
-
-            if ($taxCalculationMode === 'inclusive' && $taxPercentage > 0) {
-                $taxableAmount = round($subtotal / (1 + ($taxPercentage / 100)), 2);
-                $totalTaxAmount = round($subtotal - $taxableAmount, 2);
-                $lineTotal = $subtotal;
+            if ($hasStoredTaxSnapshot) {
+                $taxSnapshot = $this->lineTaxSnapshot(
+                    $subtotal,
+                    (float) ($saleItem->gst_rate ?? 0),
+                    $saleItem->gst_mode ?? 'exclusive',
+                    $saleItem->tax_type ?? Product::GST_TAX_TYPE_CGST_SGST,
+                    $saleItem->taxable_amount ?? null,
+                    $saleItem->cgst_amount ?? null,
+                    $saleItem->sgst_amount ?? null,
+                    $saleItem->igst_amount ?? null,
+                    $saleItem->line_total ?? null
+                );
             } else {
-                $taxableAmount = $subtotal;
-                $totalTaxAmount = round(($taxableAmount * $taxPercentage) / 100, 2);
-                $lineTotal = round($taxableAmount + $totalTaxAmount, 2);
-            }
-
-            $cgstAmount = $cgstRate > 0 ? round(($taxableAmount * $cgstRate) / 100, 2) : 0.0;
-            $sgstAmount = $sgstRate > 0 ? round(($taxableAmount * $sgstRate) / 100, 2) : 0.0;
-            $igstAmount = $igstRate > 0 ? round(($taxableAmount * $igstRate) / 100, 2) : 0.0;
-
-            $taxDelta = round($totalTaxAmount - ($cgstAmount + $sgstAmount + $igstAmount), 2);
-            if ($taxDelta !== 0.0) {
-                if ($igstRate > 0) {
-                    $igstAmount = round($igstAmount + $taxDelta, 2);
-                } elseif ($sgstRate > 0) {
-                    $sgstAmount = round($sgstAmount + $taxDelta, 2);
-                } elseif ($cgstRate > 0) {
-                    $cgstAmount = round($cgstAmount + $taxDelta, 2);
-                }
+                $productTaxType = in_array($product?->gst_tax_type, Product::GST_TAX_TYPES, true)
+                    ? $product->gst_tax_type
+                    : Product::GST_TAX_TYPE_CGST_SGST;
+                $taxSnapshot = $this->lineTaxSnapshot(
+                    $subtotal,
+                    $productTaxType === Product::GST_TAX_TYPE_IGST
+                        ? round((float) ($product?->igst_rate ?? 0), 2)
+                        : round((float) ($product?->cgst_rate ?? 0), 2) + round((float) ($product?->sgst_rate ?? 0), 2),
+                    in_array($product?->gst_calculation_mode, Product::GST_CALCULATION_MODES, true)
+                        ? $product->gst_calculation_mode
+                        : 'exclusive',
+                    $productTaxType,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null
+                );
             }
 
             $saleLines[] = [
@@ -466,17 +495,17 @@ class InvoiceSyncService
                 'unit' => 'sale',
                 'days' => null,
                 'rate' => $unitPrice,
-                'line_subtotal' => $subtotal,
-                'taxable_amount' => $taxableAmount,
-                'tax_percentage' => $taxPercentage,
-                'tax_type' => $taxType,
-                'cgst_rate' => $cgstRate,
-                'sgst_rate' => $sgstRate,
-                'igst_rate' => $igstRate,
-                'cgst_amount' => $cgstAmount,
-                'sgst_amount' => $sgstAmount,
-                'igst_amount' => $igstAmount,
-                'line_total' => $lineTotal,
+                'line_subtotal' => $taxSnapshot['subtotal'],
+                'taxable_amount' => $taxSnapshot['taxable_amount'],
+                'tax_percentage' => $taxSnapshot['gst_rate'],
+                'tax_type' => $taxSnapshot['tax_type'],
+                'cgst_rate' => $taxSnapshot['cgst_rate'],
+                'sgst_rate' => $taxSnapshot['sgst_rate'],
+                'igst_rate' => $taxSnapshot['igst_rate'],
+                'cgst_amount' => $taxSnapshot['cgst_amount'],
+                'sgst_amount' => $taxSnapshot['sgst_amount'],
+                'igst_amount' => $taxSnapshot['igst_amount'],
+                'line_total' => $taxSnapshot['line_total'],
                 'discount_amount' => 0,
             ];
         }
@@ -514,9 +543,69 @@ class InvoiceSyncService
         return Product::GST_TAX_TYPE_CGST_SGST;
     }
 
-    private function lineDefaults(): array
-    {
+    private function lineTaxSnapshot(
+        float $subtotal,
+        float $gstRate,
+        ?string $gstMode,
+        ?string $taxType,
+        mixed $storedTaxableAmount,
+        mixed $storedCgstAmount,
+        mixed $storedSgstAmount,
+        mixed $storedIgstAmount,
+        mixed $storedLineTotal
+    ): array {
+        $gstMode = $gstMode === 'inclusive' ? 'inclusive' : 'exclusive';
+        $taxType = $taxType === Product::GST_TAX_TYPE_IGST
+            ? Product::GST_TAX_TYPE_IGST
+            : Product::GST_TAX_TYPE_CGST_SGST;
+        $gstRate = round(max($gstRate, 0), 2);
+        $subtotal = round(max($subtotal, 0), 2);
+
+        if ($gstMode === 'inclusive' && $gstRate > 0) {
+            $computedTaxable = round($subtotal / (1 + ($gstRate / 100)), 2);
+            $computedTotalTax = round($subtotal - $computedTaxable, 2);
+            $computedLineTotal = $subtotal;
+        } else {
+            $computedTaxable = $subtotal;
+            $computedTotalTax = round(($computedTaxable * $gstRate) / 100, 2);
+            $computedLineTotal = round($computedTaxable + $computedTotalTax, 2);
+        }
+
+        if ($taxType === Product::GST_TAX_TYPE_IGST) {
+            $cgstRate = 0.0;
+            $sgstRate = 0.0;
+            $igstRate = $gstRate;
+        } else {
+            $cgstRate = round($gstRate / 2, 2);
+            $sgstRate = round($gstRate - $cgstRate, 2);
+            $igstRate = 0.0;
+        }
+
+        $taxableAmount = is_numeric($storedTaxableAmount) ? round((float) $storedTaxableAmount, 2) : $computedTaxable;
+        $cgstAmount = is_numeric($storedCgstAmount) ? round((float) $storedCgstAmount, 2) : ($taxType === Product::GST_TAX_TYPE_CGST_SGST ? round($computedTotalTax / 2, 2) : 0.0);
+        $sgstAmount = is_numeric($storedSgstAmount) ? round((float) $storedSgstAmount, 2) : ($taxType === Product::GST_TAX_TYPE_CGST_SGST ? round($computedTotalTax - $cgstAmount, 2) : 0.0);
+        $igstAmount = is_numeric($storedIgstAmount) ? round((float) $storedIgstAmount, 2) : ($taxType === Product::GST_TAX_TYPE_IGST ? $computedTotalTax : 0.0);
+        $lineTotal = is_numeric($storedLineTotal) ? round((float) $storedLineTotal, 2) : $computedLineTotal;
+
         return [
+            'subtotal' => $subtotal,
+            'gst_rate' => $gstRate,
+            'gst_mode' => $gstMode,
+            'tax_type' => $taxType,
+            'taxable_amount' => $taxableAmount,
+            'cgst_rate' => $cgstRate,
+            'sgst_rate' => $sgstRate,
+            'igst_rate' => $igstRate,
+            'cgst_amount' => $cgstAmount,
+            'sgst_amount' => $sgstAmount,
+            'igst_amount' => $igstAmount,
+            'line_total' => $lineTotal,
+        ];
+    }
+
+    private function lineDefaults(array $overrides = []): array
+    {
+        return array_merge([
             'discount_amount' => 0,
             'tax_percentage' => 0,
             'tax_type' => 'cgst_sgst',
@@ -526,7 +615,7 @@ class InvoiceSyncService
             'cgst_amount' => 0,
             'sgst_amount' => 0,
             'igst_amount' => 0,
-        ];
+        ], $overrides);
     }
 
     private function normalizeCarbonDate(mixed $value): ?Carbon

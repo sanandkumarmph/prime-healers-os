@@ -25,6 +25,12 @@ use App\Services\Finance\PaymentSyncService;
 use App\Services\Finance\RenewalFinanceService;
 use App\Services\Imports\ImportMatchSignatureService;
 use App\Services\Imports\RentalImportExecutor;
+use App\Services\Metrics\CollectionMetricsService;
+use App\Services\Metrics\FinanceMetricsService;
+use App\Services\Metrics\InvoiceMetricsService;
+use App\Services\Metrics\LogisticsMetricsService;
+use App\Services\Metrics\RentalMetricsService;
+use App\Services\Metrics\SalesMetricsService;
 use App\Models\Staff;
 use App\Models\User;
 use App\Models\Warehouse;
@@ -61,6 +67,36 @@ class RentalController extends Controller
     private ?bool $hasRentalItemsTable = null;
     private ?bool $hasRentalItemAssetIdsColumn = null;
     private ?bool $hasInvoiceRentalColumn = null;
+
+    private function rentalMetrics(): RentalMetricsService
+    {
+        return app(RentalMetricsService::class);
+    }
+
+    private function salesMetrics(): SalesMetricsService
+    {
+        return app(SalesMetricsService::class);
+    }
+
+    private function invoiceMetrics(): InvoiceMetricsService
+    {
+        return app(InvoiceMetricsService::class);
+    }
+
+    private function collectionMetrics(): CollectionMetricsService
+    {
+        return app(CollectionMetricsService::class);
+    }
+
+    private function financeMetrics(): FinanceMetricsService
+    {
+        return app(FinanceMetricsService::class);
+    }
+
+    private function logisticsMetrics(): LogisticsMetricsService
+    {
+        return app(LogisticsMetricsService::class);
+    }
 
     private function hasRentalAssetsTable(): bool
     {
@@ -481,22 +517,178 @@ class RentalController extends Controller
             ->all();
     }
 
+    private function normalizeStateName(?string $value): ?string
+    {
+        $normalized = strtolower(trim((string) $value));
+
+        return $normalized !== '' ? $normalized : null;
+    }
+
+    private function productTaxPercentage(Product $product): float
+    {
+        return match ($product->gst_tax_type) {
+            Product::GST_TAX_TYPE_CGST_SGST => round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2),
+            Product::GST_TAX_TYPE_IGST => round((float) ($product->igst_rate ?? 0), 2),
+            default => 0.0,
+        };
+    }
+
+    private function normalizedGstMode(?string $value, ?Product $product = null): string
+    {
+        if ($value === 'inclusive') {
+            return 'inclusive';
+        }
+
+        return (($product?->gst_calculation_mode ?? 'exclusive') === 'inclusive') ? 'inclusive' : 'exclusive';
+    }
+
+    private function normalizedTaxType(?string $value): string
+    {
+        return $value === Product::GST_TAX_TYPE_IGST
+            ? Product::GST_TAX_TYPE_IGST
+            : Product::GST_TAX_TYPE_CGST_SGST;
+    }
+
+    private function recommendedTaxTypeForCustomer(?Customer $customer): string
+    {
+        $organizationState = $this->normalizeStateName(Organization::query()->find($this->orgId())?->state);
+        $customerState = $this->normalizeStateName($customer?->state ?? $customer?->place_of_supply);
+
+        if ($organizationState && $customerState && $organizationState !== $customerState) {
+            return Product::GST_TAX_TYPE_IGST;
+        }
+
+        return Product::GST_TAX_TYPE_CGST_SGST;
+    }
+
+    private function calculateLineTaxSnapshot(float $subtotal, float $gstRate, string $gstMode, string $taxType): array
+    {
+        $subtotal = round(max($subtotal, 0), 2);
+        $gstRate = round(max($gstRate, 0), 2);
+        $gstMode = $gstMode === 'inclusive' ? 'inclusive' : 'exclusive';
+        $taxType = $this->normalizedTaxType($taxType);
+
+        if ($gstMode === 'inclusive' && $gstRate > 0) {
+            $taxableAmount = round($subtotal / (1 + ($gstRate / 100)), 2);
+            $totalTaxAmount = round($subtotal - $taxableAmount, 2);
+            $lineTotal = $subtotal;
+        } else {
+            $taxableAmount = $subtotal;
+            $totalTaxAmount = round(($taxableAmount * $gstRate) / 100, 2);
+            $lineTotal = round($taxableAmount + $totalTaxAmount, 2);
+        }
+
+        if ($taxType === Product::GST_TAX_TYPE_IGST) {
+            return [
+                'subtotal' => $subtotal,
+                'gst_rate' => $gstRate,
+                'gst_mode' => $gstMode,
+                'tax_type' => $taxType,
+                'taxable_amount' => $taxableAmount,
+                'cgst_rate' => 0.0,
+                'sgst_rate' => 0.0,
+                'igst_rate' => $gstRate,
+                'cgst_amount' => 0.0,
+                'sgst_amount' => 0.0,
+                'igst_amount' => $totalTaxAmount,
+                'total_tax_amount' => $totalTaxAmount,
+                'line_total' => $lineTotal,
+            ];
+        }
+
+        $cgstRate = round($gstRate / 2, 2);
+        $sgstRate = round($gstRate - $cgstRate, 2);
+        $cgstAmount = round($totalTaxAmount / 2, 2);
+        $sgstAmount = round($totalTaxAmount - $cgstAmount, 2);
+
+        return [
+            'subtotal' => $subtotal,
+            'gst_rate' => $gstRate,
+            'gst_mode' => $gstMode,
+            'tax_type' => Product::GST_TAX_TYPE_CGST_SGST,
+            'taxable_amount' => $taxableAmount,
+            'cgst_rate' => $cgstRate,
+            'sgst_rate' => $sgstRate,
+            'igst_rate' => 0.0,
+            'cgst_amount' => $cgstAmount,
+            'sgst_amount' => $sgstAmount,
+            'igst_amount' => 0.0,
+            'total_tax_amount' => $totalTaxAmount,
+            'line_total' => $lineTotal,
+        ];
+    }
+
     private function normalizedSaleItems(Request $request): array
     {
-        return collect($request->input('sale_items', []))
-            ->map(function ($item) {
-                return [
-                    'product_id' => !empty($item['product_id']) ? (int) $item['product_id'] : null,
-                    'asset_id' => !empty($item['asset_id']) ? (int) $item['asset_id'] : null,
-                    'warehouse_id' => !empty($item['warehouse_id']) ? (int) $item['warehouse_id'] : null,
-                    'quantity' => max((int) ($item['quantity'] ?? 0), 0),
-                    'unit_price' => max((float) ($item['unit_price'] ?? 0), 0),
-                    'notes' => filled($item['notes'] ?? null) ? trim((string) $item['notes']) : null,
-                ];
+        $rows = collect($request->input('sale_items', []))
+            ->map(fn ($row) => is_array($row) ? $row : [])
+            ->filter(function (array $row): bool {
+                return collect([
+                    $row['product_id'] ?? null,
+                    $row['asset_id'] ?? null,
+                    $row['warehouse_id'] ?? null,
+                    $row['quantity'] ?? null,
+                    $row['unit_price'] ?? null,
+                    $row['gst_rate'] ?? null,
+                    $row['notes'] ?? null,
+                ])->contains(fn ($value) => filled($value) && $value !== '0' && $value !== 0 && $value !== '0.00');
             })
-            ->filter(fn ($item) => $item['product_id'] && $item['quantity'] > 0)
-            ->values()
-            ->all();
+            ->values();
+
+        if ($rows->isEmpty()) {
+            return [];
+        }
+
+        $customer = $request->filled('customer_id')
+            ? Customer::query()->where('organization_id', $this->orgId())->find($request->integer('customer_id'))
+            : null;
+        $recommendedTaxType = $this->recommendedTaxTypeForCustomer($customer);
+        $products = Product::query()
+            ->where('organization_id', $this->orgId())
+            ->whereIn('id', $rows->pluck('product_id')->filter()->map(fn ($id) => (int) $id)->unique()->values())
+            ->get()
+            ->keyBy('id');
+
+        return $rows->map(function (array $item, int $index) use ($products, $recommendedTaxType) {
+            $productId = !empty($item['product_id']) ? (int) $item['product_id'] : null;
+            $quantity = max((int) ($item['quantity'] ?? 0), 0);
+            $unitPrice = round(max((float) ($item['unit_price'] ?? 0), 0), 2);
+
+            if (!$productId || $quantity <= 0) {
+                return null;
+            }
+
+            $product = $products->get($productId);
+            if (!$product) {
+                throw ValidationException::withMessages([
+                    "sale_items.$index.product_id" => ['Select a valid new product.'],
+                ]);
+            }
+
+            $gstRate = filled($item['gst_rate'] ?? null)
+                ? round((float) ($item['gst_rate'] ?? 0), 2)
+                : $this->productTaxPercentage($product);
+            $gstMode = $this->normalizedGstMode($item['gst_mode'] ?? null, $product);
+            $taxType = $this->normalizedTaxType($item['tax_type'] ?? $recommendedTaxType);
+            $commercials = $this->calculateLineTaxSnapshot($quantity * $unitPrice, $gstRate, $gstMode, $taxType);
+
+            return [
+                'product_id' => $productId,
+                'asset_id' => !empty($item['asset_id']) ? (int) $item['asset_id'] : null,
+                'warehouse_id' => !empty($item['warehouse_id']) ? (int) $item['warehouse_id'] : null,
+                'quantity' => $quantity,
+                'unit_price' => $unitPrice,
+                'gst_rate' => $commercials['gst_rate'],
+                'gst_mode' => $commercials['gst_mode'],
+                'tax_type' => $commercials['tax_type'],
+                'taxable_amount' => $commercials['taxable_amount'],
+                'cgst_amount' => $commercials['cgst_amount'],
+                'sgst_amount' => $commercials['sgst_amount'],
+                'igst_amount' => $commercials['igst_amount'],
+                'line_total' => $commercials['line_total'],
+                'notes' => filled($item['notes'] ?? null) ? trim((string) $item['notes']) : null,
+            ];
+        })->filter()->values()->all();
     }
 
     private function availableSaleAssets(?Rental $rental = null)
@@ -556,38 +748,99 @@ class RentalController extends Controller
 
     private function normalizedAdditionalRentalItems(Request $request): array
     {
-        return collect($request->input('rental_items', []))
-            ->map(function ($item, $index) {
-                return [
-                    'product_id' => !empty($item['product_id']) ? (int) $item['product_id'] : null,
-                    'asset_ids' => $this->normalizeAssetIds($item['asset_ids'] ?? []),
-                    'quantity' => max((int) ($item['quantity'] ?? 0), 0),
-                    'unit_rental_amount' => max((float) ($item['unit_rental_amount'] ?? 0), 0),
-                    'notes' => filled($item['notes'] ?? null) ? trim((string) $item['notes']) : null,
-                    'form_asset_field' => 'rental_items.' . $index . '.asset_ids',
-                    'line_label' => 'rental line ' . ($index + 2),
-                ];
-            })
-            ->filter(fn ($item) => $item['product_id'] && $item['quantity'] > 0)
-            ->values()
-            ->all();
+        $rows = collect($request->input('rental_items', []))
+            ->map(fn ($row) => is_array($row) ? $row : [])
+            ->values();
+
+        $customer = $request->filled('customer_id')
+            ? Customer::query()->where('organization_id', $this->orgId())->find($request->integer('customer_id'))
+            : null;
+        $recommendedTaxType = $this->recommendedTaxTypeForCustomer($customer);
+        $products = Product::query()
+            ->where('organization_id', $this->orgId())
+            ->whereIn('id', $rows->pluck('product_id')->filter()->map(fn ($id) => (int) $id)->unique()->values())
+            ->get()
+            ->keyBy('id');
+
+        return $rows->map(function ($item, $index) use ($products, $recommendedTaxType) {
+            $productId = !empty($item['product_id']) ? (int) $item['product_id'] : null;
+            $quantity = max((int) ($item['quantity'] ?? 0), 0);
+            $unitRentalAmount = round(max((float) ($item['unit_rental_amount'] ?? 0), 0), 2);
+
+            if (!$productId || $quantity <= 0) {
+                return null;
+            }
+
+            $product = $products->get($productId);
+            if (!$product) {
+                throw ValidationException::withMessages([
+                    "rental_items.$index.product_id" => ['Select a valid rental product.'],
+                ]);
+            }
+
+            $gstRate = filled($item['gst_rate'] ?? null)
+                ? round((float) ($item['gst_rate'] ?? 0), 2)
+                : $this->productTaxPercentage($product);
+            $gstMode = $this->normalizedGstMode($item['gst_mode'] ?? null, $product);
+            $taxType = $this->normalizedTaxType($item['tax_type'] ?? $recommendedTaxType);
+            $commercials = $this->calculateLineTaxSnapshot($quantity * $unitRentalAmount, $gstRate, $gstMode, $taxType);
+
+            return [
+                'product_id' => $productId,
+                'asset_ids' => $this->normalizeAssetIds($item['asset_ids'] ?? []),
+                'quantity' => $quantity,
+                'unit_rental_amount' => $unitRentalAmount,
+                'gst_rate' => $commercials['gst_rate'],
+                'gst_mode' => $commercials['gst_mode'],
+                'tax_type' => $commercials['tax_type'],
+                'taxable_amount' => $commercials['taxable_amount'],
+                'cgst_amount' => $commercials['cgst_amount'],
+                'sgst_amount' => $commercials['sgst_amount'],
+                'igst_amount' => $commercials['igst_amount'],
+                'line_total' => $commercials['line_total'],
+                'notes' => filled($item['notes'] ?? null) ? trim((string) $item['notes']) : null,
+                'form_asset_field' => 'rental_items.' . $index . '.asset_ids',
+                'line_label' => 'rental line ' . ($index + 2),
+            ];
+        })->filter()->values()->all();
     }
 
     private function combinedRentalItems(Request $request): array
     {
         $primaryQuantity = max((int) $request->input('quantity', 0), 0);
         $primaryProductId = (int) $request->input('product_id');
+        $customer = $request->filled('customer_id')
+            ? Customer::query()->where('organization_id', $this->orgId())->find($request->integer('customer_id'))
+            : null;
+        $recommendedTaxType = $this->recommendedTaxTypeForCustomer($customer);
 
         $items = [];
 
         if ($primaryProductId > 0 && $primaryQuantity > 0) {
-            $lineTotal = round((float) ($request->input('rental_amount', 0)), 2);
+            $product = Product::query()
+                ->where('organization_id', $this->orgId())
+                ->findOrFail($primaryProductId);
+            $subtotal = round((float) ($request->input('rental_amount', 0)), 2);
+            $gstRate = filled($request->input('gst_rate'))
+                ? round((float) $request->input('gst_rate', 0), 2)
+                : $this->productTaxPercentage($product);
+            $gstMode = $this->normalizedGstMode($request->input('gst_mode'), $product);
+            $taxType = $this->normalizedTaxType($request->input('tax_type', $recommendedTaxType));
+            $commercials = $this->calculateLineTaxSnapshot($subtotal, $gstRate, $gstMode, $taxType);
+
             $items[] = [
                 'product_id' => $primaryProductId,
                 'asset_ids' => $this->normalizeAssetIds($request->input('asset_ids', [])),
                 'quantity' => $primaryQuantity,
-                'unit_rental_amount' => $primaryQuantity > 0 ? round($lineTotal / $primaryQuantity, 2) : $lineTotal,
-                'line_total' => $lineTotal,
+                'unit_rental_amount' => $primaryQuantity > 0 ? round($commercials['subtotal'] / $primaryQuantity, 2) : $commercials['subtotal'],
+                'gst_rate' => $commercials['gst_rate'],
+                'gst_mode' => $commercials['gst_mode'],
+                'tax_type' => $commercials['tax_type'],
+                'taxable_amount' => $commercials['taxable_amount'],
+                'cgst_amount' => $commercials['cgst_amount'],
+                'sgst_amount' => $commercials['sgst_amount'],
+                'igst_amount' => $commercials['igst_amount'],
+                'line_total' => $commercials['line_total'],
                 'notes' => 'Primary rental line',
                 'form_asset_field' => 'asset_ids',
                 'line_label' => 'primary rental line',
@@ -600,7 +853,14 @@ class RentalController extends Controller
                 'asset_ids' => $item['asset_ids'],
                 'quantity' => $item['quantity'],
                 'unit_rental_amount' => $item['unit_rental_amount'],
-                'line_total' => round($item['quantity'] * $item['unit_rental_amount'], 2),
+                'gst_rate' => $item['gst_rate'],
+                'gst_mode' => $item['gst_mode'],
+                'tax_type' => $item['tax_type'],
+                'taxable_amount' => $item['taxable_amount'],
+                'cgst_amount' => $item['cgst_amount'],
+                'sgst_amount' => $item['sgst_amount'],
+                'igst_amount' => $item['igst_amount'],
+                'line_total' => $item['line_total'],
                 'notes' => $item['notes'],
                 'form_asset_field' => $item['form_asset_field'],
                 'line_label' => $item['line_label'],
@@ -625,6 +885,9 @@ class RentalController extends Controller
             ],
             'rental_items.*.quantity' => 'nullable|integer|min:0',
             'rental_items.*.unit_rental_amount' => 'nullable|numeric|min:0',
+            'rental_items.*.gst_rate' => 'nullable|numeric|min:0|max:100',
+            'rental_items.*.gst_mode' => 'nullable|in:exclusive,inclusive',
+            'rental_items.*.tax_type' => ['nullable', Rule::in(Product::GST_TAX_TYPES)],
             'rental_items.*.notes' => 'nullable|string',
             'sale_items' => 'nullable|array',
             'sale_items.*.product_id' => [
@@ -641,6 +904,9 @@ class RentalController extends Controller
             ],
             'sale_items.*.quantity' => 'nullable|integer|min:0',
             'sale_items.*.unit_price' => 'nullable|numeric|min:0',
+            'sale_items.*.gst_rate' => 'nullable|numeric|min:0|max:100',
+            'sale_items.*.gst_mode' => 'nullable|in:exclusive,inclusive',
+            'sale_items.*.tax_type' => ['nullable', Rule::in(Product::GST_TAX_TYPES)],
             'sale_items.*.notes' => 'nullable|string',
         ];
     }
@@ -801,6 +1067,13 @@ class RentalController extends Controller
                 'delivered_quantity' => min((int) ($matchedExisting->delivered_quantity ?? 0), (int) $item['quantity']),
                 'returned_quantity' => min((int) ($matchedExisting->returned_quantity ?? 0), (int) $item['quantity']),
                 'unit_rental_amount' => $item['unit_rental_amount'],
+                'gst_rate' => $item['gst_rate'] ?? 0,
+                'gst_mode' => $item['gst_mode'] ?? 'exclusive',
+                'tax_type' => $item['tax_type'] ?? Product::GST_TAX_TYPE_CGST_SGST,
+                'taxable_amount' => $item['taxable_amount'] ?? 0,
+                'cgst_amount' => $item['cgst_amount'] ?? 0,
+                'sgst_amount' => $item['sgst_amount'] ?? 0,
+                'igst_amount' => $item['igst_amount'] ?? 0,
                 'line_total' => $item['line_total'],
                 'notes' => $item['notes'],
             ];
@@ -1289,21 +1562,7 @@ class RentalController extends Controller
 
     private function projectedRentalSaleInvoiceTotal(array $saleItems): float
     {
-        if ($saleItems === []) {
-            return 0.0;
-        }
-
-        $products = Product::query()
-            ->where('organization_id', $this->orgId())
-            ->whereIn('id', collect($saleItems)->pluck('product_id')->filter()->unique()->values())
-            ->get()
-            ->keyBy('id');
-
-        return round((float) collect($saleItems)->sum(function (array $saleItem) use ($products) {
-            $product = $products->get((int) ($saleItem['product_id'] ?? 0));
-
-            return $this->projectedRentalSaleItemInvoiceTotal($saleItem, $product);
-        }), 2);
+        return round((float) collect($saleItems)->sum(fn (array $saleItem) => (float) ($saleItem['line_total'] ?? 0)), 2);
     }
 
     private function projectedRentalSaleItemInvoiceTotal(array $saleItem, ?Product $product): float
@@ -1500,8 +1759,8 @@ class RentalController extends Controller
                 'unit_price' => (float) ($saleItem->unit_price ?? 0),
                 'discount_amount' => 0,
                 'shipping_charges' => 0,
-                'tax_percentage' => 0,
-                'tax_calculation_mode' => 'exclusive',
+                'tax_percentage' => (float) ($saleItem->gst_rate ?? 0),
+                'tax_calculation_mode' => ($saleItem->gst_mode ?? 'exclusive') === 'inclusive' ? 'inclusive' : 'exclusive',
                 'sale_date' => optional($rental->created_at)->toDateString() ?? now()->toDateString(),
                 'sale_amount' => (float) ($saleItem->line_total ?? 0),
                 'payment_status' => 'unpaid',
@@ -1610,7 +1869,14 @@ class RentalController extends Controller
                     'warehouse_id' => $asset->warehouse_id,
                     'quantity' => 1,
                     'unit_price' => $unitPrice,
-                    'line_total' => round($unitPrice, 2),
+                    'gst_rate' => $saleItem['gst_rate'] ?? 0,
+                    'gst_mode' => $saleItem['gst_mode'] ?? 'exclusive',
+                    'tax_type' => $saleItem['tax_type'] ?? Product::GST_TAX_TYPE_CGST_SGST,
+                    'taxable_amount' => $saleItem['taxable_amount'] ?? $unitPrice,
+                    'cgst_amount' => $saleItem['cgst_amount'] ?? 0,
+                    'sgst_amount' => $saleItem['sgst_amount'] ?? 0,
+                    'igst_amount' => $saleItem['igst_amount'] ?? 0,
+                    'line_total' => $saleItem['line_total'] ?? round($unitPrice, 2),
                     'notes' => $saleItem['notes'],
                 ]);
 
@@ -1668,7 +1934,14 @@ class RentalController extends Controller
                 'warehouse_id' => $inventory?->warehouse_id ?? $resolvedWarehouseId,
                 'quantity' => (int) $saleItem['quantity'],
                 'unit_price' => $unitPrice,
-                'line_total' => round(((int) $saleItem['quantity']) * $unitPrice, 2),
+                'gst_rate' => $saleItem['gst_rate'] ?? 0,
+                'gst_mode' => $saleItem['gst_mode'] ?? 'exclusive',
+                'tax_type' => $saleItem['tax_type'] ?? Product::GST_TAX_TYPE_CGST_SGST,
+                'taxable_amount' => $saleItem['taxable_amount'] ?? round(((int) $saleItem['quantity']) * $unitPrice, 2),
+                'cgst_amount' => $saleItem['cgst_amount'] ?? 0,
+                'sgst_amount' => $saleItem['sgst_amount'] ?? 0,
+                'igst_amount' => $saleItem['igst_amount'] ?? 0,
+                'line_total' => $saleItem['line_total'] ?? round(((int) $saleItem['quantity']) * $unitPrice, 2),
                 'notes' => $saleItem['notes'],
             ]);
         }
@@ -1973,6 +2246,13 @@ class RentalController extends Controller
             'delivered_quantity' => 0,
             'returned_quantity' => 0,
             'unit_rental_amount' => $quantity > 0 ? round($lineTotal / $quantity, 2) : $lineTotal,
+            'gst_rate' => 0,
+            'gst_mode' => 'exclusive',
+            'tax_type' => Product::GST_TAX_TYPE_CGST_SGST,
+            'taxable_amount' => $lineTotal,
+            'cgst_amount' => 0,
+            'sgst_amount' => 0,
+            'igst_amount' => 0,
             'line_total' => $lineTotal,
             'notes' => 'Backfilled from legacy rental line.',
         ]);
@@ -2322,6 +2602,9 @@ class RentalController extends Controller
         }
 
         switch ($status) {
+            case 'live':
+                return $query->where('status', 'active')->lifecycleStarted();
+
             case 'active':
                 return $query->effectivelyActive($today);
 
@@ -3193,245 +3476,27 @@ class RentalController extends Controller
 
     private function renewalFinanceSnapshot($rentalIds): array
     {
-        if (!$this->hasRentalRenewalsTable()) {
-            return [
-                'unbilledRenewalCount' => 0,
-                'unbilledRenewalAmount' => 0.0,
-                'unpaidRenewalCount' => 0,
-                'unpaidRenewalAmount' => 0.0,
-            ];
-        }
-
-        $normalizedRentalIds = collect($rentalIds)
-            ->filter()
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->values();
-
-        $renewals = RentalRenewal::query()
-            ->where('organization_id', $this->orgId())
-            ->when($normalizedRentalIds->isNotEmpty(), fn ($query) => $query->whereIn('rental_id', $normalizedRentalIds->all()))
-            ->with(['invoice', 'payment'])
-            ->get();
-
-        $unbilledRenewals = $renewals->filter(fn (RentalRenewal $renewal) => !$renewal->invoice_id && $renewal->outstandingAmount() > 0);
-        $unpaidRenewals = $renewals->filter(function (RentalRenewal $renewal) {
-            if (!$renewal->invoice) {
-                return false;
-            }
-
-            return in_array((string) $renewal->invoice->payment_status, ['unpaid', 'partial', 'overdue'], true)
-                && (float) ($renewal->invoice->balance_amount ?? 0) > 0;
-        });
-
-        return [
-            'unbilledRenewalCount' => $unbilledRenewals->count(),
-            'unbilledRenewalAmount' => round((float) $unbilledRenewals->sum(fn (RentalRenewal $renewal) => $renewal->outstandingAmount()), 2),
-            'unpaidRenewalCount' => $unpaidRenewals->count(),
-            'unpaidRenewalAmount' => round((float) $unpaidRenewals->sum(fn (RentalRenewal $renewal) => (float) ($renewal->invoice->balance_amount ?? 0)), 2),
-        ];
+        return $this->rentalMetrics()->renewalFinanceSnapshot($rentalIds, $this->orgId());
     }
 
     private function dashboardPendingReceivablesSnapshot($dashboardRentalCollection, $invoiceQuery, $salesQuery, Carbon $today): array
     {
-        $unpaidInvoiceCount = (clone $invoiceQuery)
-            ->whereIn('payment_status', ['unpaid', 'partial', 'overdue'])
-            ->count();
-
-        $unpaidInvoiceAmount = round((float) (clone $invoiceQuery)
-            ->whereIn('payment_status', ['unpaid', 'partial', 'overdue'])
-            ->sum('balance_amount'), 2);
-
-        $overdueInvoiceCount = (clone $invoiceQuery)
-            ->overdue($today)
-            ->count();
-
-        $rentalIds = $dashboardRentalCollection
-            ->pluck('id')
-            ->filter()
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->values();
-
-        $invoiceLinkedRentalIds = collect();
-        $directRentalPaymentSums = collect();
-
-        if ($rentalIds->isNotEmpty()) {
-            $invoiceLinkedRentalIds = DB::table('invoice_items')
-                ->join('invoices', 'invoices.id', '=', 'invoice_items.invoice_id')
-                ->where('invoices.organization_id', $this->orgId())
-                ->where('invoice_items.source_type', 'rental')
-                ->whereIn('invoice_items.source_id', $rentalIds->all())
-                ->whereNotIn('invoices.payment_status', ['cancelled'])
-                ->pluck('invoice_items.source_id')
-                ->map(fn ($id) => (int) $id)
-                ->unique()
-                ->values();
-
-            if ($this->hasInvoiceRentalColumn()) {
-                $invoiceLinkedRentalIds = $invoiceLinkedRentalIds
-                    ->concat(
-                        Invoice::query()
-                            ->where('organization_id', $this->orgId())
-                            ->whereIn('rental_id', $rentalIds->all())
-                            ->whereNotIn('payment_status', ['cancelled'])
-                            ->pluck('rental_id')
-                            ->map(fn ($id) => (int) $id)
-                    )
-                    ->unique()
-                    ->values();
-            }
-
-            if (Schema::hasTable('payments') && Schema::hasColumn('payments', 'rental_id')) {
-                $directRentalPaymentSums = Payment::query()
-                    ->when($this->hasPaymentOrganizationColumn(), fn ($query) => $query->where('organization_id', $this->orgId()))
-                    ->whereIn('rental_id', $rentalIds->all())
-                    ->when($this->hasPaymentInvoiceColumn(), fn ($query) => $query->whereNull('invoice_id'))
-                    ->selectRaw('rental_id, COALESCE(SUM(amount), 0) as aggregate_amount')
-                    ->groupBy('rental_id')
-                    ->pluck('aggregate_amount', 'rental_id');
-            }
-        }
-
-        $unbilledRentalReceivables = $dashboardRentalCollection
-            ->filter(function (Rental $rental) use ($invoiceLinkedRentalIds) {
-                if ($rental->status === 'cancelled') {
-                    return false;
-                }
-
-                if (!$rental->hasDeliveryStarted()) {
-                    return false;
-                }
-
-                return !$invoiceLinkedRentalIds->contains((int) $rental->id);
-            })
-            ->map(function (Rental $rental) use ($directRentalPaymentSums) {
-                $grossAmount = $this->rentalCommercialTotal($rental);
-                $directPayments = round((float) ($directRentalPaymentSums->get((int) $rental->id) ?? 0), 2);
-                $balance = round(max($grossAmount - $directPayments, 0), 2);
-
-                return [
-                    'rental_id' => (int) $rental->id,
-                    'balance' => $balance,
-                ];
-            })
-            ->filter(fn ($row) => $row['balance'] > 0)
-            ->values();
-
-        $salesCollection = (clone $salesQuery)->get(['id', 'sale_amount', 'payment_status']);
-        $saleIds = $salesCollection
-            ->pluck('id')
-            ->filter()
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->values();
-
-        $invoiceLinkedSaleIds = collect();
-
-        if ($saleIds->isNotEmpty()) {
-            $invoiceLinkedSaleIds = DB::table('invoice_items')
-                ->join('invoices', 'invoices.id', '=', 'invoice_items.invoice_id')
-                ->where('invoices.organization_id', $this->orgId())
-                ->where('invoice_items.source_type', 'sale')
-                ->whereIn('invoice_items.source_id', $saleIds->all())
-                ->whereNotIn('invoices.payment_status', ['cancelled'])
-                ->pluck('invoice_items.source_id')
-                ->map(fn ($id) => (int) $id)
-                ->unique()
-                ->values();
-
-            if (Schema::hasColumn('invoices', 'sale_id')) {
-                $invoiceLinkedSaleIds = $invoiceLinkedSaleIds
-                    ->concat(
-                        Invoice::query()
-                            ->where('organization_id', $this->orgId())
-                            ->whereIn('sale_id', $saleIds->all())
-                            ->whereNotIn('payment_status', ['cancelled'])
-                            ->pluck('sale_id')
-                            ->map(fn ($id) => (int) $id)
-                    )
-                    ->unique()
-                    ->values();
-            }
-        }
-
-        $unbilledSaleReceivables = $salesCollection
-            ->filter(function (Sale $sale) use ($invoiceLinkedSaleIds) {
-                return $sale->payment_status !== 'paid'
-                    && !$invoiceLinkedSaleIds->contains((int) $sale->id);
-            })
-            ->map(fn (Sale $sale) => [
-                'sale_id' => (int) $sale->id,
-                'balance' => round((float) ($sale->sale_amount ?? 0), 2),
-            ])
-            ->filter(fn ($row) => $row['balance'] > 0)
-            ->values();
-
-        return [
-            'pendingReceivableCount' => (int) $unpaidInvoiceCount + $unbilledRentalReceivables->count() + $unbilledSaleReceivables->count(),
-            'pendingReceivableAmount' => round($unpaidInvoiceAmount + $unbilledRentalReceivables->sum('balance') + $unbilledSaleReceivables->sum('balance'), 2),
-            'pendingReceivableOverdueCount' => (int) $overdueInvoiceCount,
-            'unbilledRentalReceivableCount' => (int) $unbilledRentalReceivables->count(),
-            'unbilledRentalReceivableAmount' => round((float) $unbilledRentalReceivables->sum('balance'), 2),
-            'unbilledSaleReceivableCount' => (int) $unbilledSaleReceivables->count(),
-            'unbilledSaleReceivableAmount' => round((float) $unbilledSaleReceivables->sum('balance'), 2),
-        ];
+        return $this->rentalMetrics()->pendingReceivablesSnapshot(
+            $dashboardRentalCollection,
+            $invoiceQuery,
+            $salesQuery,
+            $today,
+            $this->orgId()
+        );
     }
 
     private function dashboardSalesReceivablesSnapshot($salesQuery): array
     {
-        $salesCollection = (clone $salesQuery)->get(['id', 'sale_amount']);
-        $saleIds = $salesCollection
-            ->pluck('id')
-            ->filter()
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->values();
-
-        if ($saleIds->isEmpty()) {
-            return [
-                'outstandingInvoiceCount' => 0,
-                'outstandingInvoiceAmount' => 0.0,
-                'unbilledSalesCount' => 0,
-                'unbilledSalesAmount' => 0.0,
-                'totalPendingSalesAmount' => 0.0,
-            ];
-        }
-
-        $linkedInvoices = DB::table('invoice_items')
-            ->join('invoices', 'invoices.id', '=', 'invoice_items.invoice_id')
-            ->where('invoices.organization_id', $this->orgId())
-            ->where('invoice_items.source_type', 'sale')
-            ->whereIn('invoice_items.source_id', $saleIds->all())
-            ->whereNotIn('invoices.payment_status', ['cancelled'])
-            ->get([
-                'invoice_items.source_id',
-                'invoices.id as invoice_id',
-                'invoices.payment_status',
-                'invoices.balance_amount',
-            ]);
-
-        $linkedSaleIds = $linkedInvoices
-            ->pluck('source_id')
-            ->map(fn ($id) => (int) $id)
-            ->unique();
-
-        $outstandingInvoices = $linkedInvoices
-            ->filter(fn ($invoice) => in_array($invoice->payment_status, ['unpaid', 'partial', 'overdue'], true))
-            ->unique('invoice_id');
-
-        $outstandingInvoiceAmount = round((float) $outstandingInvoices->sum(fn ($invoice) => (float) ($invoice->balance_amount ?? 0)), 2);
-        $unbilledSales = $salesCollection
-            ->filter(fn (Sale $sale) => !$linkedSaleIds->contains((int) $sale->id));
-        $unbilledSalesAmount = round((float) $unbilledSales->sum(fn (Sale $sale) => (float) ($sale->sale_amount ?? 0)), 2);
-
-        return [
-            'outstandingInvoiceCount' => (int) $outstandingInvoices->count(),
-            'outstandingInvoiceAmount' => $outstandingInvoiceAmount,
-            'unbilledSalesCount' => (int) $unbilledSales->count(),
-            'unbilledSalesAmount' => $unbilledSalesAmount,
-            'totalPendingSalesAmount' => round($outstandingInvoiceAmount + $unbilledSalesAmount, 2),
-        ];
+        return $this->salesMetrics()->receivablesSnapshot(
+            $salesQuery,
+            $this->orgId(),
+            Schema::hasColumn('invoices', 'sale_id')
+        );
     }
 
     private function filteredDeliveryQuery(Request $request, bool $includeRelations = false)
@@ -3672,72 +3737,25 @@ class RentalController extends Controller
             $dashboardRentalCollection->each(fn ($rental) => $rental->setRelation('activeRentalAssets', collect()));
         }
 
-        $lifecycleBuckets = $dashboardRentalCollection
-            ->groupBy(function ($rental) use ($today) {
-                if ($rental->status === 'returned') {
-                    return 'returned';
-                }
+        $rentalSummary = $this->rentalMetrics()->headlineSnapshot(clone $summaryQuery, $today);
+        $lifecycleMetrics = $this->rentalMetrics()->dashboardLifecycleSnapshot($dashboardRentalCollection, $today);
 
-                if ($rental->hasDeliveryPending()) {
-                    return 'pending_delivery';
-                }
+        $lifecycleActiveCount = (int) ($lifecycleMetrics['currentRentals'] ?? 0);
+        $lifecyclePendingDeliveryCount = (int) ($lifecycleMetrics['pendingDeliveryCount'] ?? 0);
+        $lifecyclePendingPickupCount = (int) ($lifecycleMetrics['pendingPickupCount'] ?? 0);
+        $lifecycleOverdueCount = (int) ($lifecycleMetrics['overdueRentals'] ?? 0);
+        $lifecycleReturnedCount = (int) ($lifecycleMetrics['returnedRentals'] ?? 0);
 
-                if ($rental->isOverdue($today)) {
-                    return 'overdue';
-                }
-
-                if (in_array($rental->pickupStatus(), ['pending', 'in_progress'], true)) {
-                    return 'pending_pickup';
-                }
-
-                return 'active';
-            });
-
-        $lifecycleActiveCount = $lifecycleBuckets->get('active', collect())->count();
-        $lifecyclePendingDeliveryCount = $lifecycleBuckets->get('pending_delivery', collect())->count();
-        $lifecyclePendingPickupCount = $lifecycleBuckets->get('pending_pickup', collect())->count();
-        $lifecycleOverdueCount = $lifecycleBuckets->get('overdue', collect())->count();
-        $lifecycleReturnedCount = $lifecycleBuckets->get('returned', collect())->count();
-
-        $activeRentals = (clone $summaryQuery)
-            ->where('status', 'active')
-            ->count();
-        $deliveredRentals = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
-            'status' => 'delivered',
-            'filter' => null,
-        ])), false)->count();
-        $pendingDeliveryCount = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
-            'filter' => 'pending_delivery',
-            'status' => null,
-        ])), false)->count();
-        $pendingPickupCount = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
-            'filter' => 'pending_pickup',
-            'status' => null,
-        ])), false)->count();
-        $outForDeliveryCount = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
-            'filter' => 'out_for_delivery',
-            'status' => null,
-        ])), false)->count();
-        $outForPickupCount = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
-            'filter' => 'out_for_pickup',
-            'status' => null,
-        ])), false)->count();
-        $endingSoonCount = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
-            'filter' => 'ending_soon',
-            'status' => null,
-        ])), false)->count();
-        $overdueCount = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
-            'filter' => 'overdue',
-            'status' => null,
-        ])), false)->count();
-        $returnsDueTodayCount = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
-            'filter' => 'returns_due_today',
-            'status' => null,
-        ])), false)->count();
-        $returnedRentals = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
-            'status' => 'returned',
-            'filter' => null,
-        ])), false)->count();
+        $activeRentals = (int) ($rentalSummary['activeRentals'] ?? 0);
+        $deliveredRentals = $activeRentals;
+        $pendingDeliveryCount = (int) ($lifecycleMetrics['pendingDeliveryCount'] ?? 0);
+        $pendingPickupCount = (int) ($lifecycleMetrics['pendingPickupCount'] ?? 0);
+        $outForDeliveryCount = (int) ($lifecycleMetrics['outForDeliveryCount'] ?? 0);
+        $outForPickupCount = (int) ($lifecycleMetrics['outForPickupCount'] ?? 0);
+        $endingSoonCount = (int) ($rentalSummary['endingSoonCount'] ?? 0);
+        $overdueCount = (int) ($rentalSummary['overdueRentals'] ?? 0);
+        $returnsDueTodayCount = (int) ($lifecycleMetrics['returnsDueTodayCount'] ?? 0);
+        $returnedRentals = (int) ($rentalSummary['returnedRentals'] ?? 0);
         $deliveryPendingCount = $pendingDeliveryCount;
 
         $availableRentalAssets = Asset::where('organization_id', $this->orgId())
@@ -3753,9 +3771,14 @@ class RentalController extends Controller
         $salesQuery = $this->filteredSalesQuery($baseFilterRequest, true);
         $invoiceQuery = $this->filteredInvoiceQuery($baseFilterRequest, true);
         $paymentQuery = $this->filteredPaymentQuery($baseFilterRequest, true);
-        $deliveryQuery = $this->filteredDeliveryQuery($baseFilterRequest, false);
+        $deliveryQuery = $this->filteredDeliveryQuery($baseFilterRequest, true);
+
+        if ($this->hasRentalItemsTable()) {
+            $deliveryQuery->with(['rental.rentalItems.product']);
+        }
+
         $dedupedDeliveryRecords = (clone $deliveryQuery)
-            ->get(['id', 'rental_id', 'sale_id', 'type', 'status', 'completed_at', 'updated_at'])
+            ->get()
             ->sortByDesc('id')
             ->unique(function ($delivery) {
                 return $delivery->sale_id
@@ -3763,8 +3786,15 @@ class RentalController extends Controller
                     : 'rental:' . ($delivery->rental_id ?? 'none') . ':' . $delivery->type;
             })
             ->values();
+        $logisticsSummary = $this->logisticsMetrics()->summary($dedupedDeliveryRecords, $today);
 
-        $totalSales = (clone $salesQuery)->count();
+        $salesSummary = $this->salesMetrics()->summary(
+            $salesQuery,
+            $this->orgId(),
+            Schema::hasColumn('invoices', 'sale_id')
+        );
+
+        $totalSales = (int) ($salesSummary['totalSales'] ?? 0);
         $todaySales = (clone $salesQuery)
             ->whereDate('sale_date', $today)
             ->count();
@@ -3776,19 +3806,14 @@ class RentalController extends Controller
             ->whereYear('sale_date', $today->year)
             ->whereMonth('sale_date', $today->month)
             ->sum('sale_amount');
-        $totalSalesAmount = (clone $salesQuery)->sum('sale_amount');
-        $paidSalesAmount = (clone $salesQuery)
-            ->where('payment_status', 'paid')
-            ->sum('sale_amount');
-        $pendingSalesAmount = (clone $salesQuery)
-            ->where('payment_status', 'pending')
-            ->sum('sale_amount');
-        $salesReceivables = $this->dashboardSalesReceivablesSnapshot($salesQuery);
-        $salesOutstandingInvoiceCount = (int) ($salesReceivables['outstandingInvoiceCount'] ?? 0);
-        $salesOutstandingInvoiceAmount = (float) ($salesReceivables['outstandingInvoiceAmount'] ?? 0);
-        $salesUnbilledCount = (int) ($salesReceivables['unbilledSalesCount'] ?? 0);
-        $salesUnbilledAmount = (float) ($salesReceivables['unbilledSalesAmount'] ?? 0);
-        $salesTotalPendingAmount = (float) ($salesReceivables['totalPendingSalesAmount'] ?? 0);
+        $totalSalesAmount = (float) ($salesSummary['totalSalesAmount'] ?? 0);
+        $paidSalesAmount = (float) ($salesSummary['paidSalesAmount'] ?? 0);
+        $pendingSalesAmount = (float) ($salesSummary['pendingSalesAmount'] ?? 0);
+        $salesOutstandingInvoiceCount = (int) ($salesSummary['outstandingInvoiceCount'] ?? 0);
+        $salesOutstandingInvoiceAmount = (float) ($salesSummary['outstandingInvoiceAmount'] ?? 0);
+        $salesUnbilledCount = (int) ($salesSummary['unbilledSalesCount'] ?? 0);
+        $salesUnbilledAmount = (float) ($salesSummary['unbilledSalesAmount'] ?? 0);
+        $salesTotalPendingAmount = (float) ($salesSummary['totalPendingSalesAmount'] ?? 0);
         $recentSales = $this->applyDashboardSalesSorting(
             clone $salesQuery,
             $sortBy
@@ -3796,21 +3821,14 @@ class RentalController extends Controller
             ->limit(5)
             ->get();
 
-        $totalInvoices = (clone $invoiceQuery)->count();
-        $openInvoiceCount = (clone $invoiceQuery)
-            ->whereNotIn('payment_status', ['paid', 'cancelled'])
-            ->count();
-        $unpaidInvoiceCount = (clone $invoiceQuery)
-            ->whereIn('payment_status', ['unpaid', 'partial', 'overdue'])
-            ->count();
-        $overdueInvoiceCount = (clone $invoiceQuery)
-            ->overdue($today)
-            ->count();
-        $totalBilledAmount = (clone $invoiceQuery)->sum('total_amount');
-        $outstandingDueAmount = (clone $invoiceQuery)->sum('balance_amount');
-        $unpaidInvoiceAmount = (clone $invoiceQuery)
-            ->whereIn('payment_status', ['unpaid', 'partial', 'overdue'])
-            ->sum('balance_amount');
+        $invoiceSummary = $this->invoiceMetrics()->summary($invoiceQuery, $today);
+        $totalInvoices = (int) ($invoiceSummary['totalInvoices'] ?? 0);
+        $openInvoiceCount = (int) ($invoiceSummary['openInvoices'] ?? 0);
+        $unpaidInvoiceCount = (int) ($invoiceSummary['openInvoices'] ?? 0);
+        $overdueInvoiceCount = (int) ($invoiceSummary['overdueInvoices'] ?? 0);
+        $totalBilledAmount = (float) ($invoiceSummary['totalBilled'] ?? 0);
+        $outstandingDueAmount = (float) ($invoiceSummary['outstandingAmount'] ?? 0);
+        $unpaidInvoiceAmount = (float) ($invoiceSummary['outstandingAmount'] ?? 0);
         $pendingReceivables = $this->dashboardPendingReceivablesSnapshot(
             $dashboardRentalCollection,
             $invoiceQuery,
@@ -3829,29 +3847,32 @@ class RentalController extends Controller
         $unbilledRenewalAmount = (float) ($renewalFinance['unbilledRenewalAmount'] ?? 0);
         $unpaidRenewalCount = (int) ($renewalFinance['unpaidRenewalCount'] ?? 0);
         $unpaidRenewalAmount = (float) ($renewalFinance['unpaidRenewalAmount'] ?? 0);
+        $financeSummary = $this->financeMetrics()->summary(
+            clone $summaryQuery,
+            $salesSummary,
+            $invoiceSummary,
+            $pendingReceivables,
+            $renewalFinance
+        );
+        $grossBilledAmount = (float) ($financeSummary['grossOrderComponents'] ?? 0);
+        $knownUnbilledGapAmount = (float) ($financeSummary['knownUnbilledGapAmount'] ?? 0);
+        $reconciliationGapAmount = (float) ($financeSummary['reconciliationGapAmount'] ?? 0);
+        $adjustmentGapAmount = (float) ($financeSummary['adjustmentGapAmount'] ?? 0);
+        $totalBilledAmount = (float) ($financeSummary['netBilledAmount'] ?? 0);
+        $outstandingDueAmount = (float) ($financeSummary['outstandingDuesAmount'] ?? 0);
+        $unpaidInvoiceAmount = $outstandingDueAmount;
 
-        $paymentsReceivedToday = (clone $paymentQuery)
-            ->whereDate('payment_date', $today)
-            ->sum('amount');
-        $paymentsReceivedThisMonth = (clone $paymentQuery)
-            ->whereYear('payment_date', $today->year)
-            ->whereMonth('payment_date', $today->month)
-            ->sum('amount');
+        $collectionSummary = $this->collectionMetrics()->summary($paymentQuery, $today);
+        $paymentsReceivedToday = (float) ($collectionSummary['paymentsReceivedToday'] ?? 0);
+        $paymentsReceivedThisMonth = (float) ($collectionSummary['paymentsReceivedThisMonth'] ?? 0);
 
-        $deliveredTodayCount = $dedupedDeliveryRecords
-            ->where('type', 'delivery')
-            ->where('status', 'completed')
-            ->filter(fn ($delivery) => optional($delivery->completed_at ?? $delivery->updated_at)?->toDateString() === $today->toDateString())
-            ->count();
-        $completedPickupCount = $dedupedDeliveryRecords
-            ->where('type', 'pickup')
-            ->where('status', 'completed')
-            ->count();
-        $pickedUpTodayCount = $dedupedDeliveryRecords
-            ->where('type', 'pickup')
-            ->where('status', 'completed')
-            ->filter(fn ($delivery) => optional($delivery->completed_at ?? $delivery->updated_at)?->toDateString() === $today->toDateString())
-            ->count();
+        $pendingDeliveryCount = (int) ($logisticsSummary['pendingDeliveryCount'] ?? 0);
+        $pendingPickupCount = (int) ($logisticsSummary['pendingPickupCount'] ?? 0);
+        $outForDeliveryCount = (int) ($logisticsSummary['outForDeliveryCount'] ?? 0);
+        $outForPickupCount = (int) ($logisticsSummary['outForPickupCount'] ?? 0);
+        $deliveredTodayCount = (int) ($logisticsSummary['deliveredTodayCount'] ?? 0);
+        $completedPickupCount = (int) ($logisticsSummary['completedPickupCount'] ?? 0);
+        $pickedUpTodayCount = (int) ($logisticsSummary['pickedUpTodayCount'] ?? 0);
 
         $endingSoonRentals = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
             'filter' => 'ending_soon',
@@ -3938,7 +3959,7 @@ class RentalController extends Controller
         $monthlyTrend = $this->monthlyDashboardTrend($baseFilterRequest);
 
         $filterOptions = $this->filterOptionData();
-        $totalRentals = (clone $summaryQuery)->count();
+        $totalRentals = (int) ($rentalSummary['totalRentals'] ?? 0);
         $totalRentalValue = (clone $summaryQuery)->sum('rental_amount');
         $totalDepositValue = (clone $summaryQuery)->sum('deposit_amount');
         $totalTransportValue = (clone $summaryQuery)->sum('transport_amount');
@@ -3989,6 +4010,10 @@ class RentalController extends Controller
             'unpaidInvoiceCount',
             'overdueInvoiceCount',
             'totalBilledAmount',
+            'grossBilledAmount',
+            'knownUnbilledGapAmount',
+            'reconciliationGapAmount',
+            'adjustmentGapAmount',
             'outstandingDueAmount',
             'unpaidInvoiceAmount',
             'pendingReceivableCount',
@@ -4012,6 +4037,7 @@ class RentalController extends Controller
             'totalDepositValue',
             'totalTransportValue',
             'totalOtherValue',
+            'financeSummary',
             'recentRentals',
             'endingSoonRentals',
             'overdueRentals',
@@ -4181,16 +4207,13 @@ class RentalController extends Controller
             ->get();
 
         $summaryQuery = $this->filteredRentalQuery($summaryScopeRequest, false);
-        $totalRentals = (clone $summaryQuery)->count();
-        $activeRentals = (clone $summaryQuery)
-            ->effectivelyActive(Carbon::today())
-            ->count();
-        $overdueCount = $this->filteredRentalQuery($overdueRequest, false)->count();
-        $returnedRentals = $this->filteredRentalQuery(Request::create('/rentals', 'GET', array_merge($summaryScopeRequest->query->all(), [
-            'status' => 'returned',
-            'filter' => null,
-        ])), false)->count();
-        $endingSoonCount = $this->filteredRentalQuery($endingSoonRequest, false)->count();
+        $rentalSummary = $this->rentalMetrics()->headlineSnapshot(clone $summaryQuery, Carbon::today());
+        $totalRentals = (int) ($rentalSummary['totalRentals'] ?? 0);
+        $activeRentals = (int) ($rentalSummary['activeRentals'] ?? 0);
+        $currentRentals = (int) ($rentalSummary['currentRentals'] ?? 0);
+        $overdueCount = (int) ($rentalSummary['overdueRentals'] ?? 0);
+        $returnedRentals = (int) ($rentalSummary['returnedRentals'] ?? 0);
+        $endingSoonCount = (int) ($rentalSummary['endingSoonCount'] ?? 0);
 
         $totalRentalValue = (clone $summaryQuery)->sum('rental_amount');
         $totalDepositValue = (clone $summaryQuery)->sum('deposit_amount');
@@ -4232,6 +4255,7 @@ class RentalController extends Controller
             'overdue',
             'totalRentals',
             'activeRentals',
+            'currentRentals',
             'returnedRentals',
             'endingSoonCount',
             'overdueCount',
@@ -4294,7 +4318,9 @@ class RentalController extends Controller
                 ->get()
             : collect();
 
-        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses'));
+        $organization = Organization::find($this->orgId());
+
+        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses', 'organization'));
     }
 
     public function store(Request $request)
@@ -4322,6 +4348,9 @@ class RentalController extends Controller
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
             'rental_amount' => 'nullable|numeric|min:0',
+            'gst_rate' => 'nullable|numeric|min:0|max:100',
+            'gst_mode' => 'nullable|in:exclusive,inclusive',
+            'tax_type' => ['nullable', Rule::in(Product::GST_TAX_TYPES)],
             'deposit_amount' => 'nullable|numeric|min:0',
             'transport_amount' => 'nullable|numeric|min:0',
             'other_amount' => 'nullable|numeric|min:0',
@@ -4502,6 +4531,13 @@ class RentalController extends Controller
             'unit_rental_amount' => $quantity > 0
                 ? round(((float) ($attributes['rental_amount'] ?? 0)) / $quantity, 2)
                 : (float) ($attributes['rental_amount'] ?? 0),
+            'gst_rate' => 0.0,
+            'gst_mode' => 'exclusive',
+            'tax_type' => Product::GST_TAX_TYPE_CGST_SGST,
+            'taxable_amount' => (float) ($attributes['rental_amount'] ?? 0),
+            'cgst_amount' => 0.0,
+            'sgst_amount' => 0.0,
+            'igst_amount' => 0.0,
             'line_total' => (float) ($attributes['rental_amount'] ?? 0),
             'notes' => $notes !== '' ? $notes : 'Imported via Rental Import',
             'line_label' => 'imported rental line',
@@ -4993,7 +5029,9 @@ class RentalController extends Controller
                 ->get()
             : collect();
 
-        return view('rentals.edit', compact('rental', 'products', 'rentalProducts', 'customers', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses'));
+        $organization = Organization::find($this->orgId());
+
+        return view('rentals.edit', compact('rental', 'products', 'rentalProducts', 'customers', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses', 'organization'));
     }
 
     public function update(Request $request, Rental $rental)
@@ -5022,6 +5060,9 @@ class RentalController extends Controller
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
             'rental_amount' => 'nullable|numeric|min:0',
+            'gst_rate' => 'nullable|numeric|min:0|max:100',
+            'gst_mode' => 'nullable|in:exclusive,inclusive',
+            'tax_type' => ['nullable', Rule::in(Product::GST_TAX_TYPES)],
             'deposit_amount' => 'nullable|numeric|min:0',
             'transport_amount' => 'nullable|numeric|min:0',
             'other_amount' => 'nullable|numeric|min:0',

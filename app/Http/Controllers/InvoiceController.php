@@ -11,6 +11,7 @@ use App\Models\Rental;
 use App\Models\Sale;
 use App\Services\Finance\AmountReductionGuardService;
 use App\Services\Finance\PaymentSyncService;
+use App\Services\Metrics\InvoiceMetricsService;
 use App\Support\ActivityLogger;
 use App\Support\CustomerProfileSupport;
 use App\Support\InvoicePdfRenderer;
@@ -28,6 +29,11 @@ class InvoiceController extends Controller
 {
     private ?bool $hasCustomerWhatsappColumn = null;
     private const OPENING_PAYMENT_NOTE = 'Opening paid amount from invoice form.';
+
+    private function invoiceMetrics(): InvoiceMetricsService
+    {
+        return app(InvoiceMetricsService::class);
+    }
 
     private function orgId(): int
     {
@@ -300,6 +306,8 @@ class InvoiceController extends Controller
         if ($status !== '') {
             if ($status === 'overdue') {
                 $query->overdue();
+            } elseif ($status === 'open') {
+                $query->whereIn('payment_status', ['unpaid', 'partial', 'overdue']);
             } else {
                 $query->where(function ($statusQuery) use ($status) {
                     $statusQuery
@@ -479,12 +487,18 @@ class InvoiceController extends Controller
             ->withQueryString();
 
         $summaryQuery = $this->applyInvoiceFilters($this->invoiceBaseQuery(false), $request);
+        $invoiceSummary = $this->invoiceMetrics()->summary($summaryQuery);
         $invoiceStats = [
-            'totalInvoices' => (clone $summaryQuery)->count(),
-            'paidInvoices' => (clone $summaryQuery)->where('payment_status', 'paid')->count(),
-            'unpaidInvoices' => (clone $summaryQuery)->whereIn('payment_status', ['unpaid', 'overdue'])->count(),
-            'outstandingAmount' => (float) ((clone $summaryQuery)->sum('balance_amount') ?? 0),
-            'totalBilled' => (float) ((clone $summaryQuery)->sum('total_amount') ?? 0),
+            'totalInvoices' => (int) ($invoiceSummary['totalInvoices'] ?? 0),
+            'paidInvoices' => (int) ($invoiceSummary['paidInvoices'] ?? 0),
+            'openInvoices' => (int) ($invoiceSummary['openInvoices'] ?? 0),
+            'overdueInvoices' => (int) ($invoiceSummary['overdueInvoices'] ?? 0),
+            'outstandingAmount' => (float) ($invoiceSummary['outstandingAmount'] ?? 0),
+            'totalBilled' => (float) ($invoiceSummary['totalBilled'] ?? 0),
+            'salesOutstandingCount' => (int) ($invoiceSummary['salesOutstandingCount'] ?? 0),
+            'salesOutstandingAmount' => (float) ($invoiceSummary['salesOutstandingAmount'] ?? 0),
+            'rentalOutstandingCount' => (int) ($invoiceSummary['rentalOutstandingCount'] ?? 0),
+            'rentalOutstandingAmount' => (float) ($invoiceSummary['rentalOutstandingAmount'] ?? 0),
         ];
 
         $this->syncInvoiceCollectionStatuses($invoices->getCollection());

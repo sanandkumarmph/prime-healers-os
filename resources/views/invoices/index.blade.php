@@ -10,7 +10,8 @@
     $canViewFinance = $currentUser?->canViewFinance() ?? false;
     $totalInvoices = (int) ($invoiceStats['totalInvoices'] ?? $invoices->total());
     $paidInvoices = (int) ($invoiceStats['paidInvoices'] ?? 0);
-    $unpaidInvoices = (int) ($invoiceStats['unpaidInvoices'] ?? 0);
+    $openInvoices = (int) ($invoiceStats['openInvoices'] ?? 0);
+    $overdueInvoices = (int) ($invoiceStats['overdueInvoices'] ?? 0);
     $outstandingAmount = (float) ($invoiceStats['outstandingAmount'] ?? 0);
     $totalBilled = (float) ($invoiceStats['totalBilled'] ?? 0);
     $invoiceUrl = function (array $overrides = []) use ($search, $status, $customerId, $city, $fromDate, $toDate) {
@@ -627,12 +628,12 @@
             <span>Paid</span>
             <strong>{{ $paidInvoices }}</strong>
         </a>
-        <a href="{{ $invoiceUrl(['status' => 'unpaid']) }}" class="invoice-summary-tile">
-            <span>Unpaid / Overdue</span>
-            <strong>{{ $unpaidInvoices }}</strong>
+        <a href="{{ $invoiceUrl(['status' => 'open']) }}" class="invoice-summary-tile">
+            <span>Open / Overdue</span>
+            <strong>{{ $openInvoices }}</strong>
         </a>
-        <a href="{{ $invoiceUrl(['status' => 'unpaid']) }}" class="invoice-summary-tile">
-            <span>Outstanding</span>
+        <a href="{{ $invoiceUrl(['status' => 'open']) }}" class="invoice-summary-tile">
+            <span>Outstanding Invoices (All)</span>
             <strong>@if($canViewFinance)&#8377;{{ number_format($outstandingAmount, 0) }}@else Restricted @endif</strong>
         </a>
     </div>
@@ -650,6 +651,7 @@
                     <select id="status" class="invoice-select" name="status">
                         <option value="">All statuses</option>
                         <option value="draft" @selected(($status ?? '') === 'draft')>Draft</option>
+                        <option value="open" @selected(($status ?? '') === 'open')>Open / Partial / Overdue</option>
                         <option value="unpaid" @selected(($status ?? '') === 'unpaid')>Unpaid</option>
                         <option value="partial" @selected(($status ?? '') === 'partial')>Partial</option>
                         <option value="paid" @selected(($status ?? '') === 'paid')>Paid</option>
