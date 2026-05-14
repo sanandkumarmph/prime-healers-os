@@ -306,9 +306,16 @@
         .footer-right {
             text-align: right;
         }
-    </style>
+</style>
 </head>
 <body>
+@include('invoices.partials.invoice-document', [
+    'invoice' => $invoice,
+    'amountInWords' => $amountInWords ?? null,
+    'pdfCurrencySymbol' => $pdfCurrencySymbol ?? null,
+    'pdfCurrencyFallback' => $pdfCurrencyFallback ?? null,
+])
+@if(false)
 @php
     $organization = $invoice->organization;
     $invoiceSourceTypes = $invoice->items->pluck('source_type')->filter()->unique();
@@ -539,6 +546,10 @@
                     );
                 }
 
+                if ($item->source_type === 'rental_sale') {
+                    $itemMeta->push('Products Sold With Rental');
+                }
+
                 if ($invoice->rentalRenewal && ($item->unit === 'renewal' || ($item->product_id && $item->days))) {
                     $itemMeta->push(
                         'Rental Period: '
@@ -740,5 +751,6 @@
         <td class="footer-right"></td>
     </tr>
 </table>
+@endif
 </body>
 </html>

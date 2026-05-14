@@ -1371,6 +1371,17 @@ textarea::placeholder {
     }
 }
 
+.gst-percent-input {
+    appearance: textfield;
+    -moz-appearance: textfield;
+}
+
+.gst-percent-input::-webkit-outer-spin-button,
+.gst-percent-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
 @media (max-width: 767px) {
     .rn-list-page {
         gap: 10px;

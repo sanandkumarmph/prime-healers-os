@@ -464,12 +464,19 @@ class DeliveryController extends Controller
 
         $legacyBoard = strtolower((string) $request->query('board', ''));
         $legacyBoardDefaults = [
-            'pending_delivery' => ['tab' => 'deliveries', 'task_type' => 'delivery', 'status' => 'pending'],
-            'out_delivery' => ['tab' => 'in_progress', 'task_type' => 'delivery', 'status' => 'in_progress'],
-            'completed_delivery' => ['tab' => 'completed', 'task_type' => 'delivery', 'status' => 'completed'],
-            'pending_pickup' => ['tab' => 'pickups', 'task_type' => 'pickup', 'status' => 'pending'],
-            'out_pickup' => ['tab' => 'in_progress', 'task_type' => 'pickup', 'status' => 'in_progress'],
-            'completed_pickup' => ['tab' => 'completed', 'task_type' => 'pickup', 'status' => 'completed'],
+            'pending_delivery' => ['tab' => 'deliveries', 'task_type' => 'delivery', 'workflow' => 'pending_delivery'],
+            'scheduled_delivery' => ['tab' => 'deliveries', 'task_type' => 'delivery', 'workflow' => 'scheduled_delivery'],
+            'out_delivery' => ['tab' => 'in_progress', 'task_type' => 'delivery', 'workflow' => 'out_delivery'],
+            'overdue_delivery' => ['tab' => 'overdue', 'task_type' => 'delivery', 'workflow' => 'overdue_delivery'],
+            'completed_delivery' => ['tab' => 'completed', 'task_type' => 'delivery', 'workflow' => 'completed_delivery'],
+            'pending_pickup' => ['tab' => 'pickups', 'task_type' => 'pickup', 'workflow' => 'pending_pickup'],
+            'scheduled_pickup' => ['tab' => 'pickups', 'task_type' => 'pickup', 'workflow' => 'scheduled_pickup'],
+            'out_pickup' => ['tab' => 'in_progress', 'task_type' => 'pickup', 'workflow' => 'out_pickup'],
+            'overdue_pickup' => ['tab' => 'overdue', 'task_type' => 'pickup', 'workflow' => 'overdue_pickup'],
+            'completed_pickup' => ['tab' => 'completed', 'task_type' => 'pickup', 'workflow' => 'completed_pickup'],
+            'delivery_workload' => ['tab' => 'deliveries', 'task_type' => 'delivery', 'workflow' => 'delivery_workload'],
+            'pickup_workload' => ['tab' => 'pickups', 'task_type' => 'pickup', 'workflow' => 'pickup_workload'],
+            'live_tasks' => ['tab' => 'all', 'workflow' => 'live'],
         ];
 
         $legacyDefault = $legacyBoardDefaults[$legacyBoard] ?? [];
@@ -481,6 +488,7 @@ class DeliveryController extends Controller
         $staffFilter = trim((string) $request->query('staff', ''));
         $areaFilter = trim((string) $request->query('area', ''));
         $statusFilter = strtolower((string) $request->query('status', $legacyDefault['status'] ?? ''));
+        $workflowFilter = strtolower((string) $request->query('workflow', $legacyDefault['workflow'] ?? ''));
 
         $baseLoad = [
             'rental.product',
@@ -701,6 +709,14 @@ class DeliveryController extends Controller
             ->map(fn ($id) => (int) $id)
             ->values();
 
+        if ($this->logisticsMetrics()->isSupportedWorkflow($workflowFilter)) {
+            $dedupedTaskIds = $this->logisticsMetrics()
+                ->applyWorkflowFilter($hydrateDeliveries($dedupedTaskIds), $workflowFilter, now()->startOfDay())
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->values();
+        }
+
         $perPage = 20;
         $currentPage = Paginator::resolveCurrentPage('page');
         $pageDeliveryIds = $dedupedTaskIds->forPage($currentPage, $perPage)->values();
@@ -726,10 +742,14 @@ class DeliveryController extends Controller
         $overdueTasksCount = (int) ($logisticsSummary['overdueTasksCount'] ?? 0);
         $completedTodayCount = (int) ($logisticsSummary['completedTodayCount'] ?? 0);
         $pendingDeliveryCount = (int) ($logisticsSummary['pendingDeliveryCount'] ?? 0);
+        $scheduledDeliveryCount = (int) ($logisticsSummary['scheduledDeliveryCount'] ?? 0);
         $outForDeliveryCount = (int) ($logisticsSummary['outForDeliveryCount'] ?? 0);
+        $overdueDeliveryCount = (int) ($logisticsSummary['overdueDeliveryCount'] ?? 0);
         $deliveredTodayCount = (int) ($logisticsSummary['deliveredTodayCount'] ?? 0);
         $pendingPickupCount = (int) ($logisticsSummary['pendingPickupCount'] ?? 0);
+        $scheduledPickupCount = (int) ($logisticsSummary['scheduledPickupCount'] ?? 0);
         $outForPickupCount = (int) ($logisticsSummary['outForPickupCount'] ?? 0);
+        $overduePickupCount = (int) ($logisticsSummary['overduePickupCount'] ?? 0);
         $completedPickupCount = (int) ($logisticsSummary['completedPickupCount'] ?? 0);
         $todayTaskCount = (int) ($logisticsSummary['todayTaskCount'] ?? 0);
         $todayDeliveryCount = (int) ($logisticsSummary['todayDeliveryCount'] ?? 0);
@@ -782,6 +802,7 @@ class DeliveryController extends Controller
             'staffFilter',
             'areaFilter',
             'statusFilter',
+            'workflowFilter',
             'tasks',
             'taskResultsCount',
             'totalTasksCount',
@@ -790,10 +811,14 @@ class DeliveryController extends Controller
             'overdueTasksCount',
             'completedTodayCount',
             'pendingDeliveryCount',
+            'scheduledDeliveryCount',
             'outForDeliveryCount',
+            'overdueDeliveryCount',
             'deliveredTodayCount',
             'pendingPickupCount',
+            'scheduledPickupCount',
             'outForPickupCount',
+            'overduePickupCount',
             'completedPickupCount',
             'todayTaskCount',
             'todayDeliveryCount',

@@ -266,7 +266,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/invoices/export/csv', [InvoiceController::class, 'exportCsv'])
         ->middleware('permission:invoices.export')
         ->name('invoices.export.csv');
-    Route::get('/invoices/bulk/print', [InvoiceController::class, 'bulkPrint'])
+    Route::post('/invoices/bulk/export-csv', [InvoiceController::class, 'bulkExportCsv'])
+        ->middleware('permission:invoices.export')
+        ->name('invoices.bulk.export.csv');
+    Route::match(['get', 'post'], '/invoices/bulk/print', [InvoiceController::class, 'bulkPrint'])
         ->middleware('permission:invoices.print')
         ->name('invoices.bulk.print');
     Route::post('/invoices/bulk/action', [InvoiceController::class, 'bulkAction'])

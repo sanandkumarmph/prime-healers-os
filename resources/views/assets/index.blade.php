@@ -552,7 +552,7 @@
 
         <div class="asset-chip-row" aria-label="Asset register views">
             <a href="{{ route('assets.index') }}" class="asset-chip{{ $allUnitsActive ? ' is-active' : '' }}">All Units</a>
-            <a href="{{ route('assets.index', ['asset_stage' => 'new_stock']) }}" class="asset-chip{{ $saleUnitsActive ? ' is-active' : '' }}">Sale Units</a>
+            <a href="{{ route('assets.index', ['asset_stage' => 'new_stock']) }}" class="asset-chip{{ $saleUnitsActive ? ' is-active' : '' }}">Serialized Sale Units</a>
             <a href="{{ route('assets.index', ['asset_stage' => 'rental_stock']) }}" class="asset-chip{{ $rentalAssetsActive ? ' is-active' : '' }}">Rental Assets</a>
             <a href="{{ route('assets.pending-verification') }}" class="asset-chip{{ $awaitingVerificationActive ? ' is-active' : '' }}">Awaiting Verification</a>
             <a href="{{ route('assets.index', ['asset_status' => 'maintenance']) }}" class="asset-chip{{ $underRepairActive ? ' is-active' : '' }}">Under Repair</a>
@@ -566,7 +566,7 @@
                 <div class="asset-summary-value">{{ $summary['total_assets'] }}</div>
             </a>
             <a href="{{ route('assets.index', ['asset_stage' => 'new_stock']) }}" class="asset-register-summary-card is-warning">
-                <div class="asset-summary-label">Sale Units</div>
+                <div class="asset-summary-label">Serialized Sale Units</div>
                 <div class="asset-summary-value">{{ $summary['sale_stock'] }}</div>
             </a>
             <a href="{{ route('assets.index', ['asset_stage' => 'rental_stock']) }}" class="asset-register-summary-card is-info">

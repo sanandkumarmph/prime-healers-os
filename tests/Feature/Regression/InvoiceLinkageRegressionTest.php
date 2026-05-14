@@ -241,6 +241,172 @@ class InvoiceLinkageRegressionTest extends TestCase
         $this->assertSame(5250.0, (float) $invoice->balance_amount);
     }
 
+    public function test_rental_invoice_view_shows_products_sold_with_rental_lines(): void
+    {
+        [$organization, $customer, $product] = $this->bootRentalContext();
+
+        $saleAddon = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Adult Diapers Pant Type XL - Svach',
+            'product_type' => Product::TYPE_SELLABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'sale_price' => 750,
+            'rental_price' => 0,
+            'price_per_day' => 0,
+            'available_quantity' => 25,
+            'total_quantity' => 25,
+        ]);
+
+        $this->post(route('rentals.store'), [
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'start_date' => '2026-05-01',
+            'end_date' => '2026-05-10',
+            'rental_amount' => 1000,
+            'deposit_amount' => 0,
+            'transport_amount' => 0,
+            'other_amount' => 0,
+            'sale_items' => [
+                [
+                    'product_id' => $saleAddon->id,
+                    'quantity' => 1,
+                    'unit_price' => 750,
+                ],
+            ],
+        ])->assertRedirect('/rentals');
+
+        $invoice = Invoice::query()->where('organization_id', $organization->id)->firstOrFail();
+
+        $this->get(route('invoices.show', $invoice))
+            ->assertOk()
+            ->assertSee('Adult Diapers Pant Type XL - Svach')
+            ->assertSee('Products Sold With Rental')
+            ->assertSee('Unit: sale');
+    }
+
+    public function test_removing_rental_sale_items_removes_stale_invoice_lines_on_resync(): void
+    {
+        [$organization, $customer, $product] = $this->bootRentalContext();
+
+        $saleAddon = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'BiPAP Disposable Filter',
+            'product_type' => Product::TYPE_SELLABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'sale_price' => 180,
+            'rental_price' => 0,
+            'price_per_day' => 0,
+            'available_quantity' => 25,
+            'total_quantity' => 25,
+        ]);
+
+        $this->post(route('rentals.store'), [
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'start_date' => '2026-05-01',
+            'end_date' => '2026-05-10',
+            'rental_amount' => 1000,
+            'deposit_amount' => 0,
+            'transport_amount' => 0,
+            'other_amount' => 0,
+            'sale_items' => [
+                [
+                    'product_id' => $saleAddon->id,
+                    'quantity' => 1,
+                    'unit_price' => 180,
+                ],
+            ],
+        ])->assertRedirect('/rentals');
+
+        $rental = Rental::query()->where('organization_id', $organization->id)->firstOrFail();
+        $invoice = Invoice::query()->where('organization_id', $organization->id)->firstOrFail();
+
+        $this->assertCount(1, $invoice->items()->where('source_type', 'rental_sale')->get());
+
+        $this->put(route('rentals.update', $rental), [
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'start_date' => '2026-05-01',
+            'end_date' => '2026-05-12',
+            'rental_amount' => 1200,
+            'deposit_amount' => 100,
+            'transport_amount' => 50,
+            'other_amount' => 0,
+            'sale_items' => [],
+        ])->assertRedirect(route('rentals.show', $rental));
+
+        $invoice->refresh()->load('items');
+
+        $this->assertCount(0, $invoice->items->where('source_type', 'rental_sale'));
+        $this->assertSame(1200.0, (float) $invoice->subtotal);
+        $this->assertSame(1350.0, (float) $invoice->total_amount);
+    }
+
+    public function test_rental_invoice_pdf_renders_products_sold_with_rental_lines(): void
+    {
+        [$organization, $customer, $product] = $this->bootRentalContext();
+
+        $saleAddon = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Adult Diapers Pant Type L - Svach',
+            'product_type' => Product::TYPE_SELLABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'sale_price' => 700,
+            'rental_price' => 0,
+            'price_per_day' => 0,
+            'available_quantity' => 25,
+            'total_quantity' => 25,
+        ]);
+
+        $this->post(route('rentals.store'), [
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'start_date' => '2026-05-01',
+            'end_date' => '2026-05-10',
+            'rental_amount' => 1000,
+            'deposit_amount' => 0,
+            'transport_amount' => 0,
+            'other_amount' => 0,
+            'sale_items' => [
+                [
+                    'product_id' => $saleAddon->id,
+                    'quantity' => 1,
+                    'unit_price' => 700,
+                ],
+            ],
+        ])->assertRedirect('/rentals');
+
+        config([
+            'pdf.engine' => 'dompdf',
+            'pdf.currency_symbol' => '',
+            'pdf.currency_fallback' => 'Rs.',
+        ]);
+
+        $invoice = Invoice::query()->where('organization_id', $organization->id)->firstOrFail();
+
+        $response = $this->get(route('invoices.print', $invoice));
+
+        $response->assertOk();
+        $response->assertHeader('content-type', 'application/pdf');
+
+        $content = str_replace("\0", '', $response->getContent());
+
+        $this->assertStringContainsString('Adult Diapers Pant Type L - Svach', $content);
+        $this->assertStringContainsString('Products Sold With Rental', $content);
+    }
+
     public function test_updating_rental_resyncs_invoice_sale_lines_with_product_gst(): void
     {
         [$organization, $customer, $product] = $this->bootRentalContext();

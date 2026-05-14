@@ -14,7 +14,7 @@
     $overdueInvoices = (int) ($invoiceStats['overdueInvoices'] ?? 0);
     $outstandingAmount = (float) ($invoiceStats['outstandingAmount'] ?? 0);
     $totalBilled = (float) ($invoiceStats['totalBilled'] ?? 0);
-    $invoiceUrl = function (array $overrides = []) use ($search, $status, $customerId, $city, $fromDate, $toDate) {
+    $invoiceUrl = function (array $overrides = []) use ($search, $status, $customerId, $city, $fromDate, $toDate, $perPage) {
         return route('invoices.index', array_filter(array_merge([
             'search' => $search ?: null,
             'status' => $status ?: null,
@@ -22,6 +22,7 @@
             'city' => $city ?: null,
             'from_date' => $fromDate ?: null,
             'to_date' => $toDate ?: null,
+            'per_page' => $perPage ?: null,
         ], $overrides), fn ($value) => $value !== null && $value !== ''));
     };
 @endphp
@@ -685,6 +686,14 @@
                     <label for="to_date">To</label>
                     <input id="to_date" class="invoice-input" type="date" name="to_date" value="{{ $toDate ?? '' }}">
                 </div>
+                <div class="invoice-field">
+                    <label for="per_page">Rows per page</label>
+                    <select id="per_page" class="invoice-select" name="per_page">
+                        @foreach(($perPageOptions ?? [20, 50, 100, 250, 500]) as $option)
+                            <option value="{{ $option }}" @selected((int) ($perPage ?? 20) === (int) $option)>{{ $option }}</option>
+                        @endforeach
+                    </select>
+                </div>
             </div>
             <div class="invoice-filter-actions" style="margin-top:8px;">
                 <button type="submit" class="invoice-btn primary">Apply Filters</button>
@@ -702,7 +711,8 @@
     @endif
 
     <div class="invoice-list-shell rn-table-shell">
-        <form id="invoiceBulkForm" method="GET" action="{{ route('invoices.bulk.print') }}" target="_blank">
+        <form id="invoiceBulkForm" method="POST" action="{{ route('invoices.bulk.print') }}" target="_blank">
+            @csrf
             <div class="invoice-list-top">
                 <div>
                     <strong>{{ $totalInvoices }} invoice{{ $totalInvoices === 1 ? '' : 's' }}</strong>
@@ -710,7 +720,7 @@
                 </div>
                 <div class="invoice-bulk-actions">
                     <button type="submit" class="invoice-btn" data-bulk-action="{{ route('invoices.bulk.print') }}">Bulk PDF / Print</button>
-                    <button type="submit" class="invoice-btn soft" data-bulk-action="{{ route('invoices.export.csv') }}">Export Selected CSV</button>
+                    <button type="submit" class="invoice-btn soft" data-bulk-action="{{ route('invoices.bulk.export.csv') }}">Export Selected CSV</button>
                     @if($canDeleteInvoices)
                         <button type="button" class="invoice-btn danger" id="bulkDeleteInvoices">Bulk Delete</button>
                     @endif
@@ -877,7 +887,7 @@
                     }
 
                     bulkForm.action = button.dataset.bulkAction;
-                    bulkForm.method = 'GET';
+                    bulkForm.method = 'POST';
                     bulkForm.target = button.dataset.bulkAction.includes('/export/csv') ? '_self' : '_blank';
                 });
             });

@@ -16,6 +16,7 @@
     $staffFilter = $staffFilter ?? '';
     $areaFilter = $areaFilter ?? '';
     $statusFilter = $statusFilter ?? '';
+    $workflowFilter = $workflowFilter ?? '';
 
     $boardHref = function (array $overrides = [], array $forget = []) {
         $query = request()->query();
@@ -46,34 +47,50 @@
 
     $statCards = [
         [
-            'label' => 'Total Tasks',
+            'label' => 'Total Live Tasks',
             'value' => $totalTasksCount ?? 0,
             'copy' => 'Live delivery and pickup workload',
-            'href' => $boardHref(['tab' => 'all']),
+            'href' => $boardHref(['tab' => 'all', 'workflow' => 'live'], ['board', 'status']),
             'tone' => 'info',
             'icon' => 'tasks',
         ],
         [
-            'label' => 'Deliveries',
+            'label' => 'Delivery Workload',
             'value' => $deliveryTasksCount ?? 0,
-            'copy' => 'Delivery-side assignments',
-            'href' => $boardHref(['tab' => 'deliveries', 'task_type' => 'delivery']),
+            'copy' => 'Pending, scheduled, in transit, and overdue',
+            'href' => $boardHref(['tab' => 'deliveries', 'task_type' => 'delivery', 'workflow' => 'delivery_workload'], ['board', 'status']),
             'tone' => 'delivery',
             'icon' => 'delivery',
         ],
         [
-            'label' => 'Pickups',
+            'label' => 'Pickup Workload',
             'value' => $pickupTasksCount ?? 0,
-            'copy' => 'Pickup and return work',
-            'href' => $boardHref(['tab' => 'pickups', 'task_type' => 'pickup']),
+            'copy' => 'Pending, scheduled, in field, and overdue',
+            'href' => $boardHref(['tab' => 'pickups', 'task_type' => 'pickup', 'workflow' => 'pickup_workload'], ['board', 'status']),
             'tone' => 'pickup',
             'icon' => 'pickup',
         ],
         [
-            'label' => 'Overdue',
+            'label' => 'Delivery Scheduled',
+            'value' => $scheduledDeliveryCount ?? 0,
+            'copy' => 'Future delivery assignments',
+            'href' => $boardHref(['tab' => 'deliveries', 'task_type' => 'delivery', 'workflow' => 'scheduled_delivery'], ['board', 'status']),
+            'tone' => 'delivery',
+            'icon' => 'delivery',
+        ],
+        [
+            'label' => 'Pickup Scheduled',
+            'value' => $scheduledPickupCount ?? 0,
+            'copy' => 'Future pickup assignments',
+            'href' => $boardHref(['tab' => 'pickups', 'task_type' => 'pickup', 'workflow' => 'scheduled_pickup'], ['board', 'status']),
+            'tone' => 'pickup',
+            'icon' => 'pickup',
+        ],
+        [
+            'label' => 'Overdue Tasks',
             'value' => $overdueTasksCount ?? 0,
             'copy' => 'Included in total tasks',
-            'href' => $boardHref(['tab' => 'overdue', 'status' => null]),
+            'href' => $boardHref(['tab' => 'overdue', 'workflow' => 'overdue', 'status' => null], ['board']),
             'tone' => 'danger',
             'icon' => 'overdue',
         ],
@@ -81,7 +98,7 @@
             'label' => 'Completed Today',
             'value' => $completedTodayCount ?? 0,
             'copy' => 'Tasks closed today',
-            'href' => $boardHref(['tab' => 'completed', 'status' => 'completed']),
+            'href' => $boardHref(['tab' => 'completed', 'status' => 'completed', 'workflow' => null], ['board']),
             'tone' => 'success',
             'icon' => 'completed',
         ],
@@ -192,7 +209,7 @@
     .ops-board-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     .ops-board-actions .rn-btn,
     .ops-board-actions .rn-btn-primary { min-height:40px; padding:0 14px; border-radius:12px; }
-    .ops-stats { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:12px; }
+    .ops-stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; }
     .ops-stat-card {
         display:grid; gap:10px; padding:14px 15px; text-decoration:none; color:inherit;
         border:1px solid var(--ph-color-border); border-radius:18px; background:#fff;

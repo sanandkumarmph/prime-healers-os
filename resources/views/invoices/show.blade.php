@@ -775,6 +775,12 @@
                                             @endif
                                             Rental: {{ optional($displayRentalPeriod['start_date'] ?? null)?->format('d M Y') ?: '-' }} to {{ optional($displayRentalPeriod['end_date'] ?? null)?->format('d M Y') ?: '-' }}
                                         @endif
+                                        @if($item->source_type === 'rental_sale')
+                                            @if($item->unit || $item->days || ($item->source_type === 'rental' && $displayRentalPeriod && !$invoice->rentalRenewal))
+                                                |
+                                            @endif
+                                            Products Sold With Rental
+                                        @endif
                                         @if($invoice->rentalRenewal && ($item->unit === 'renewal' || ($item->product_id && $item->days)))
                                             @if($item->unit || $item->days)
                                                 |

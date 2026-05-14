@@ -180,6 +180,17 @@ class FinanceAndLogisticsMetricConsistencyRegressionTest extends TestCase
         ]);
 
         $pendingDeliveryRental = $this->makeRental($organization->id, $customer->id, $rentalProduct->id);
+        RentalItem::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $pendingDeliveryRental->id,
+            'product_id' => $rentalProduct->id,
+            'quantity' => 1,
+            'ordered_quantity' => 1,
+            'delivered_quantity' => 0,
+            'returned_quantity' => 0,
+            'unit_rental_amount' => 400,
+            'line_total' => 400,
+        ]);
         Delivery::create([
             'organization_id' => $organization->id,
             'rental_id' => $pendingDeliveryRental->id,
@@ -216,7 +227,23 @@ class FinanceAndLogisticsMetricConsistencyRegressionTest extends TestCase
             'completed_at' => now()->subHour(),
         ]);
 
+        $scheduledDeliverySale = $this->makeSale($organization->id, $customer->id, $saleProduct->id, 360);
+        Delivery::create([
+            'organization_id' => $organization->id,
+            'sale_id' => $scheduledDeliverySale->id,
+            'type' => 'delivery',
+            'scheduled_at' => now()->addDay(),
+            'status' => 'pending',
+        ]);
+
         $pendingPickupRental = $this->makeRentalWithPickupProgress($organization->id, $customer->id, $rentalProduct->id, [
+            'scheduled_at' => now()->addHour(),
+            'status' => 'pending',
+            'delivered_quantity' => 1,
+            'returned_quantity' => 0,
+        ]);
+
+        $scheduledPickupRental = $this->makeRentalWithPickupProgress($organization->id, $customer->id, $rentalProduct->id, [
             'scheduled_at' => now()->addDay(),
             'status' => 'pending',
             'delivered_quantity' => 1,
@@ -255,22 +282,86 @@ class FinanceAndLogisticsMetricConsistencyRegressionTest extends TestCase
         );
 
         $this->assertSame(1, (int) $taskboard->viewData('pendingDeliveryCount'));
+        $this->assertSame(1, (int) $taskboard->viewData('scheduledDeliveryCount'));
         $this->assertSame(1, (int) $taskboard->viewData('outForDeliveryCount'));
+        $this->assertSame(1, (int) $taskboard->viewData('overdueDeliveryCount'));
         $this->assertSame(1, (int) $taskboard->viewData('deliveredTodayCount'));
         $this->assertSame(1, (int) $taskboard->viewData('pendingPickupCount'));
+        $this->assertSame(1, (int) $taskboard->viewData('scheduledPickupCount'));
         $this->assertSame(1, (int) $taskboard->viewData('outForPickupCount'));
+        $this->assertSame(0, (int) $taskboard->viewData('overduePickupCount'));
         $this->assertSame(1, (int) $taskboard->viewData('completedPickupCount'));
+        $this->assertSame(
+            (int) $taskboard->viewData('deliveryTasksCount'),
+            (int) $taskboard->viewData('pendingDeliveryCount')
+                + (int) $taskboard->viewData('scheduledDeliveryCount')
+                + (int) $taskboard->viewData('outForDeliveryCount')
+                + (int) $taskboard->viewData('overdueDeliveryCount')
+        );
+        $this->assertSame(
+            (int) $taskboard->viewData('pickupTasksCount'),
+            (int) $taskboard->viewData('pendingPickupCount')
+                + (int) $taskboard->viewData('scheduledPickupCount')
+                + (int) $taskboard->viewData('outForPickupCount')
+                + (int) $taskboard->viewData('overduePickupCount')
+        );
 
         $this->assertSame((int) $dashboard->viewData('pendingDeliveryCount'), (int) $taskboard->viewData('pendingDeliveryCount'));
+        $this->assertSame((int) $dashboard->viewData('scheduledDeliveryCount'), (int) $taskboard->viewData('scheduledDeliveryCount'));
         $this->assertSame((int) $dashboard->viewData('outForDeliveryCount'), (int) $taskboard->viewData('outForDeliveryCount'));
+        $this->assertSame((int) $dashboard->viewData('overdueDeliveryCount'), (int) $taskboard->viewData('overdueDeliveryCount'));
         $this->assertSame((int) $dashboard->viewData('deliveredTodayCount'), (int) $taskboard->viewData('deliveredTodayCount'));
         $this->assertSame((int) $dashboard->viewData('pendingPickupCount'), (int) $taskboard->viewData('pendingPickupCount'));
+        $this->assertSame((int) $dashboard->viewData('scheduledPickupCount'), (int) $taskboard->viewData('scheduledPickupCount'));
         $this->assertSame((int) $dashboard->viewData('outForPickupCount'), (int) $taskboard->viewData('outForPickupCount'));
+        $this->assertSame((int) $dashboard->viewData('overduePickupCount'), (int) $taskboard->viewData('overduePickupCount'));
         $this->assertSame((int) $dashboard->viewData('completedPickupCount'), (int) $taskboard->viewData('completedPickupCount'));
 
         $pendingPickupWidget = collect($taskboard->viewData('pendingCollections'));
         $this->assertCount(1, $pendingPickupWidget);
         $this->assertSame((int) $pendingPickupRental->id, (int) optional($pendingPickupWidget->first())->rental_id);
+    }
+
+    public function test_sale_stock_available_uses_product_master_quantity_while_asset_register_keeps_serialized_units_separate(): void
+    {
+        $organization = TestData::organization();
+        $this->actingAs(TestData::user($organization, [
+            'email' => 'inventory-metrics@example.com',
+        ]));
+
+        Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Quantity Based Sale Stock',
+            'product_type' => Product::TYPE_SELLABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'price_per_day' => 0,
+            'sale_price' => 125,
+            'rental_price' => 0,
+            'available_quantity' => 154,
+            'total_quantity' => 154,
+        ]);
+
+        $dashboard = $this->get(route('dashboard'));
+        $dashboard->assertOk();
+        $this->assertSame(154, (int) $dashboard->viewData('availableSaleUnits'));
+
+        $productMaster = $this->get(route('products.index'));
+        $productMaster->assertOk();
+        $this->assertSame(154, (int) data_get($productMaster->viewData('catalogTotals'), 'sale_stock'));
+
+        $assetRegister = $this->get(route('assets.index'));
+        $assetRegister->assertOk();
+        $this->assertSame(0, (int) data_get($assetRegister->viewData('summary'), 'sale_stock'));
+        $assetRegister->assertSee('Serialized Sale Units');
+
+        $inventoryDashboard = $this->get(route('inventory.dashboard'));
+        $inventoryDashboard->assertOk()
+            ->assertViewHas('dashboard', function (array $summary) {
+                return $summary['sale_stock'] === 154
+                    && $summary['serialized_sale_units'] === 0;
+            })
+            ->assertSee('Sale Stock Available')
+            ->assertSee('Serialized Sale Units');
     }
 
     private function makeRental(int $organizationId, int $customerId, int $productId, array $overrides = []): Rental

@@ -1087,7 +1087,7 @@
 
             <div class="rental-field rental-col-3{{ $hasFieldError('gst_rate') ? ' is-error' : '' }}">
                 <label for="gst_rate">GST %</label>
-                <input type="number" step="0.01" min="0" max="100" name="gst_rate" id="gst_rate" value="{{ old('gst_rate', $primaryRentalItem?->gst_rate ?? 0) }}">
+                <input type="number" step="0.01" min="0" max="100" name="gst_rate" id="gst_rate" value="{{ old('gst_rate', $primaryRentalItem?->gst_rate ?? 0) }}" class="gst-percent-input no-auto-select" data-no-auto-select>
                 @if($hasFieldError('gst_rate'))
                     <span class="field-error">{{ $fieldError('gst_rate') }}</span>
                 @endif
@@ -2590,7 +2590,7 @@
                         </div>
                         <div class="sale-item-detail-field">
                             <label>GST %</label>
-                            <input type="number" min="0" max="100" step="0.01" name="rental_items[${index}][gst_rate]" value="${item.gst_rate || '0.00'}" data-rental-gst-rate="${index}">
+                            <input type="number" min="0" max="100" step="0.01" name="rental_items[${index}][gst_rate]" value="${item.gst_rate || '0.00'}" data-rental-gst-rate="${index}" class="gst-percent-input no-auto-select" data-no-auto-select>
                         </div>
                         <div class="sale-item-detail-field">
                             <label>GST Mode</label>
@@ -2836,7 +2836,7 @@
                         </div>
                         <div class="sale-item-detail-field">
                             <label>GST %</label>
-                            <input type="number" min="0" max="100" step="0.01" name="sale_items[${index}][gst_rate]" value="${item.gst_rate || '0.00'}" data-sale-gst-rate="${index}">
+                            <input type="number" min="0" max="100" step="0.01" name="sale_items[${index}][gst_rate]" value="${item.gst_rate || '0.00'}" data-sale-gst-rate="${index}" class="gst-percent-input no-auto-select" data-no-auto-select>
                         </div>
                         <div class="sale-item-detail-field">
                             <label>GST Mode</label>

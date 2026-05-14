@@ -36,7 +36,9 @@ class SalesRentalSearchableSelectRegressionTest extends TestCase
             ->assertSee('Product Items')
             ->assertSee('data-searchable-select', false)
             ->assertSee('data-search-placeholder="Search customer by name, phone, email, or city"', false)
-            ->assertSee('data-search-placeholder="Search product by name, brand, model, SKU, or code"', false);
+            ->assertSee('data-search-placeholder="Search product by name, brand, model, SKU, or code"', false)
+            ->assertSee('class="gst-percent-input no-auto-select"', false)
+            ->assertSee('data-no-auto-select', false);
     }
 
     public function test_rentals_create_page_has_searchable_customer_and_product_selects(): void
@@ -49,6 +51,8 @@ class SalesRentalSearchableSelectRegressionTest extends TestCase
             ->assertSee('data-searchable-select', false)
             ->assertSee('data-search-placeholder="Search customer by name or phone"', false)
             ->assertSee('data-search-placeholder="Search product by name, brand, model, SKU, or code"', false)
+            ->assertSee('class="gst-percent-input no-auto-select"', false)
+            ->assertSee('data-no-auto-select', false)
             ->assertSee('name="rental_items[${index}][product_id]"', false)
             ->assertSee('data-rental-product-index="${index}"', false)
             ->assertSee('enhanceSearchableSelect(productSelectEl);', false)

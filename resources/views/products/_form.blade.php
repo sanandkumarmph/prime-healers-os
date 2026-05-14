@@ -439,7 +439,7 @@
                             <div id="gstSplitRates" class="product-form-two-col {{ $gstTaxTypeValue === \App\Models\Product::GST_TAX_TYPE_CGST_SGST ? '' : 'is-hidden' }}">
                                 <div>
                                     <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">CGST Rate %</label>
-                                    <input type="number" min="0" max="100" step="0.01" name="cgst_rate" id="cgst_rate" value="{{ $cgstRateValue }}"
+                                    <input type="number" min="0" max="100" step="0.01" name="cgst_rate" id="cgst_rate" value="{{ $cgstRateValue }}" class="gst-percent-input no-auto-select" data-no-auto-select
                                            style="{{ $fieldStyle('cgst_rate', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
                                     @if($fieldError('cgst_rate'))
                                         <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('cgst_rate') }}</div>
@@ -448,7 +448,7 @@
 
                                 <div>
                                     <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">SGST Rate %</label>
-                                    <input type="number" min="0" max="100" step="0.01" name="sgst_rate" id="sgst_rate" value="{{ $sgstRateValue }}"
+                                    <input type="number" min="0" max="100" step="0.01" name="sgst_rate" id="sgst_rate" value="{{ $sgstRateValue }}" class="gst-percent-input no-auto-select" data-no-auto-select
                                            style="{{ $fieldStyle('sgst_rate', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
                                     @if($fieldError('sgst_rate'))
                                         <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('sgst_rate') }}</div>
@@ -458,7 +458,7 @@
 
                             <div id="gstIgstRateWrap" class="{{ $gstTaxTypeValue === \App\Models\Product::GST_TAX_TYPE_IGST ? '' : 'is-hidden' }}">
                                 <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">IGST Rate %</label>
-                                <input type="number" min="0" max="100" step="0.01" name="igst_rate" id="igst_rate" value="{{ $igstRateValue }}"
+                                <input type="number" min="0" max="100" step="0.01" name="igst_rate" id="igst_rate" value="{{ $igstRateValue }}" class="gst-percent-input no-auto-select" data-no-auto-select
                                        style="{{ $fieldStyle('igst_rate', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
                                 @if($fieldError('igst_rate'))
                                     <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('igst_rate') }}</div>

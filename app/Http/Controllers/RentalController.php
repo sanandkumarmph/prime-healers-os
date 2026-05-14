@@ -28,6 +28,7 @@ use App\Services\Imports\RentalImportExecutor;
 use App\Services\Metrics\CollectionMetricsService;
 use App\Services\Metrics\FinanceMetricsService;
 use App\Services\Metrics\InvoiceMetricsService;
+use App\Services\Metrics\InventoryMetricsService;
 use App\Services\Metrics\LogisticsMetricsService;
 use App\Services\Metrics\RentalMetricsService;
 use App\Services\Metrics\SalesMetricsService;
@@ -96,6 +97,11 @@ class RentalController extends Controller
     private function logisticsMetrics(): LogisticsMetricsService
     {
         return app(LogisticsMetricsService::class);
+    }
+
+    private function inventoryMetrics(): InventoryMetricsService
+    {
+        return app(InventoryMetricsService::class);
     }
 
     private function hasRentalAssetsTable(): bool
@@ -3758,15 +3764,9 @@ class RentalController extends Controller
         $returnedRentals = (int) ($rentalSummary['returnedRentals'] ?? 0);
         $deliveryPendingCount = $pendingDeliveryCount;
 
-        $availableRentalAssets = Asset::where('organization_id', $this->orgId())
-            ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
-            ->where('asset_status', Asset::STATUS_AVAILABLE)
-            ->count();
-
-        $availableSaleUnits = Asset::where('organization_id', $this->orgId())
-            ->where('asset_stage', Asset::STAGE_NEW_STOCK)
-            ->where('asset_status', Asset::STATUS_AVAILABLE_FOR_SALE)
-            ->count();
+        $inventorySummary = $this->inventoryMetrics()->summary($this->orgId());
+        $availableRentalAssets = (int) ($inventorySummary['rentalAvailable'] ?? 0);
+        $availableSaleUnits = (int) ($inventorySummary['saleStockAvailable'] ?? 0);
 
         $salesQuery = $this->filteredSalesQuery($baseFilterRequest, true);
         $invoiceQuery = $this->filteredInvoiceQuery($baseFilterRequest, true);
@@ -3868,8 +3868,12 @@ class RentalController extends Controller
 
         $pendingDeliveryCount = (int) ($logisticsSummary['pendingDeliveryCount'] ?? 0);
         $pendingPickupCount = (int) ($logisticsSummary['pendingPickupCount'] ?? 0);
+        $scheduledDeliveryCount = (int) ($logisticsSummary['scheduledDeliveryCount'] ?? 0);
+        $scheduledPickupCount = (int) ($logisticsSummary['scheduledPickupCount'] ?? 0);
         $outForDeliveryCount = (int) ($logisticsSummary['outForDeliveryCount'] ?? 0);
         $outForPickupCount = (int) ($logisticsSummary['outForPickupCount'] ?? 0);
+        $overdueDeliveryCount = (int) ($logisticsSummary['overdueDeliveryCount'] ?? 0);
+        $overduePickupCount = (int) ($logisticsSummary['overduePickupCount'] ?? 0);
         $deliveredTodayCount = (int) ($logisticsSummary['deliveredTodayCount'] ?? 0);
         $completedPickupCount = (int) ($logisticsSummary['completedPickupCount'] ?? 0);
         $pickedUpTodayCount = (int) ($logisticsSummary['pickedUpTodayCount'] ?? 0);
@@ -3893,10 +3897,7 @@ class RentalController extends Controller
             $returnsDueToday->each(fn ($rental) => $rental->setRelation('activeRentalAssets', collect()));
         }
 
-        $maintenanceAlertCount = Asset::query()
-            ->where('organization_id', $this->orgId())
-            ->where('asset_status', 'maintenance')
-            ->count();
+        $maintenanceAlertCount = (int) ($inventorySummary['maintenanceAlerts'] ?? 0);
 
         $citySummary = $dashboardRentalCollection
             ->groupBy(fn ($rental) => optional($rental->customer)->city ?: 'Unspecified')
@@ -3983,8 +3984,12 @@ class RentalController extends Controller
             'deliveredRentals',
             'pendingDeliveryCount',
             'pendingPickupCount',
+            'scheduledDeliveryCount',
+            'scheduledPickupCount',
             'outForDeliveryCount',
             'outForPickupCount',
+            'overdueDeliveryCount',
+            'overduePickupCount',
             'endingSoonCount',
             'overdueCount',
             'returnsDueTodayCount',

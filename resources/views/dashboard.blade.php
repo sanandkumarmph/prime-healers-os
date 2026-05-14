@@ -106,8 +106,12 @@
     $activeRentalsCount = (int) ($activeRentals ?? 0);
     $pendingDeliveryCountValue = (int) ($pendingDeliveryCount ?? 0);
     $pendingPickupCountValue = (int) ($pendingPickupCount ?? 0);
+    $scheduledDeliveryCountValue = (int) ($scheduledDeliveryCount ?? 0);
+    $scheduledPickupCountValue = (int) ($scheduledPickupCount ?? 0);
     $outForDeliveryCountValue = (int) ($outForDeliveryCount ?? 0);
     $outForPickupCountValue = (int) ($outForPickupCount ?? 0);
+    $overdueDeliveryCountValue = (int) ($overdueDeliveryCount ?? 0);
+    $overduePickupCountValue = (int) ($overduePickupCount ?? 0);
     $overdueReturnsCount = (int) ($overdueCount ?? 0);
     $returnsDueTodayCountValue = (int) ($returnsDueTodayCount ?? 0);
     $returnedRentalsCount = (int) ($returnedRentals ?? 0);
@@ -165,7 +169,7 @@
     $lifecycleOverduePercent = $safePercent((int) ($lifecycleOverdueCount ?? 0), $lifecycleTotal);
     $lifecycleReturnedPercent = $safePercent((int) ($lifecycleReturnedCount ?? 0), $lifecycleTotal);
 
-    $opsFlowMax = max(1, $pendingDeliveryCountValue, $outForDeliveryCountValue, $pendingPickupCountValue, $outForPickupCountValue, $deliveriesTodayCount, $completedPickupCountValue);
+    $opsFlowMax = max(1, $pendingDeliveryCountValue, $scheduledDeliveryCountValue, $outForDeliveryCountValue, $overdueDeliveryCountValue, $pendingPickupCountValue, $scheduledPickupCountValue, $outForPickupCountValue, $overduePickupCountValue, $deliveriesTodayCount, $completedPickupCountValue);
 
     $citySummaryRows = collect($citySummary ?? collect())->values();
     $vendorSummaryRows = collect($vendorSummary ?? collect())->values();
@@ -194,10 +198,19 @@
         [
             'label' => 'Pending Delivery',
             'value' => $pendingDeliveryCountValue,
-            'subtitle' => $outForDeliveryCountValue . ' already in transit',
+            'subtitle' => $scheduledDeliveryCountValue . ' scheduled next',
             'note' => 'Open delivery tasks awaiting completion',
             'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pending_delivery']) : null,
             'tone' => 'amber',
+            'icon' => 'delivery',
+        ],
+        [
+            'label' => 'Delivery Scheduled',
+            'value' => $scheduledDeliveryCountValue,
+            'subtitle' => $outForDeliveryCountValue . ' already in transit',
+            'note' => 'Future delivery assignments',
+            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'scheduled_delivery']) : null,
+            'tone' => 'blue',
             'icon' => 'delivery',
         ],
         [
@@ -222,10 +235,19 @@
         [
             'label' => 'Pending Pickup',
             'value' => $pendingPickupCountValue,
-            'subtitle' => $outForPickupCountValue . ' currently on field run',
-            'note' => $completedPickupCountValue . ' completed in window',
+            'subtitle' => $scheduledPickupCountValue . ' scheduled next',
+            'note' => $outForPickupCountValue . ' currently on field run',
             'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pending_pickup']) : null,
             'tone' => 'amber',
+            'icon' => 'pickup',
+        ],
+        [
+            'label' => 'Pickup Scheduled',
+            'value' => $scheduledPickupCountValue,
+            'subtitle' => $completedPickupCountValue . ' completed in window',
+            'note' => 'Future pickup assignments',
+            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'scheduled_pickup']) : null,
+            'tone' => 'blue',
             'icon' => 'pickup',
         ],
     ])->filter(fn ($card) => $card['visible'] ?? true)->values();
@@ -256,10 +278,14 @@
 
     $deliveryMiniTiles = collect([
         ['label' => 'Pending Delivery', 'value' => $pendingDeliveryCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pending_delivery']) : null, 'tone' => 'amber', 'icon' => 'delivery'],
+        ['label' => 'Delivery Scheduled', 'value' => $scheduledDeliveryCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'scheduled_delivery']) : null, 'tone' => 'blue', 'icon' => 'delivery'],
         ['label' => 'Out for Delivery', 'value' => $outForDeliveryCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'out_delivery']) : null, 'tone' => 'blue', 'icon' => 'delivery'],
+        ['label' => 'Overdue Delivery', 'value' => $overdueDeliveryCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'overdue_delivery']) : null, 'tone' => 'red', 'icon' => 'overdue'],
         ['label' => 'Delivered Today', 'value' => $deliveriesTodayCount, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_delivery']) : null, 'tone' => 'green', 'icon' => 'delivery'],
         ['label' => 'Pending Pickup', 'value' => $pendingPickupCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pending_pickup']) : null, 'tone' => 'amber', 'icon' => 'pickup'],
+        ['label' => 'Pickup Scheduled', 'value' => $scheduledPickupCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'scheduled_pickup']) : null, 'tone' => 'blue', 'icon' => 'pickup'],
         ['label' => 'Out for Pickup', 'value' => $outForPickupCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'out_pickup']) : null, 'tone' => 'blue', 'icon' => 'pickup'],
+        ['label' => 'Overdue Pickup', 'value' => $overduePickupCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'overdue_pickup']) : null, 'tone' => 'red', 'icon' => 'overdue'],
         ['label' => 'Completed Pickups', 'value' => $completedPickupCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_pickup']) : null, 'tone' => 'green', 'icon' => 'pickup'],
     ]);
 
@@ -353,14 +379,14 @@
             'visible' => !empty($inventoryUrl),
         ],
         [
-            'label' => 'Sale Available',
+            'label' => 'Sale Stock Available',
             'value' => number_format($availableSaleUnitsCount),
-            'note' => 'Tracked sale units ready to sell',
-            'subtitle' => 'Live asset-based stock',
+            'note' => 'Quantity-based sellable stock',
+            'subtitle' => 'Product Master / warehouse stock',
             'icon' => 'sales',
-            'href' => $availableSaleUnitsUrl ?: $inventoryUrl,
+            'href' => $productsIndexUrl ?: ($availableSaleUnitsUrl ?: $inventoryUrl),
             'tone' => null,
-            'visible' => !empty($inventoryUrl),
+            'visible' => !empty($productsIndexUrl) || !empty($inventoryUrl),
         ],
     ])->filter(fn ($card) => $card['visible'] ?? true)->values();
 
@@ -1817,13 +1843,15 @@
                     </div>
                     <div class="dashboard-inline-item">
                         <div>
-                            <strong>Sale Available</strong>
-                            <small>Tracked sale units ready to sell</small>
+                            <strong>Sale Stock Available</strong>
+                            <small>Quantity-based sellable stock</small>
                         </div>
                         <div style="text-align:right;">
                             <strong>{{ $availableSaleUnitsCount }}</strong>
-                            @if($availableSaleUnitsUrl)
-                                <small><a href="{{ $availableSaleUnitsUrl }}" style="color:var(--ph-color-primary);text-decoration:none;">Open sale units</a></small>
+                            @if($productsIndexUrl)
+                                <small><a href="{{ $productsIndexUrl }}" style="color:var(--ph-color-primary);text-decoration:none;">Open Product Master</a></small>
+                            @elseif($availableSaleUnitsUrl)
+                                <small><a href="{{ $availableSaleUnitsUrl }}" style="color:var(--ph-color-primary);text-decoration:none;">Open serialized sale units</a></small>
                             @elseif($inventoryUrl)
                                 <small><a href="{{ $inventoryUrl }}" style="color:var(--ph-color-primary);text-decoration:none;">Inventory dashboard</a></small>
                             @endif

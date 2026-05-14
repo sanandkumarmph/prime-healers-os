@@ -29,6 +29,8 @@ class InvoiceController extends Controller
 {
     private ?bool $hasCustomerWhatsappColumn = null;
     private const OPENING_PAYMENT_NOTE = 'Opening paid amount from invoice form.';
+    private const INVOICE_PER_PAGE_OPTIONS = [20, 50, 100, 250, 500];
+    private const BULK_SELECTION_LIMIT = 500;
 
     private function invoiceMetrics(): InvoiceMetricsService
     {
@@ -168,6 +170,28 @@ class InvoiceController extends Controller
         }
 
         return $this->applyInvoiceScope($query);
+    }
+
+    private function resolvePerPage(Request $request): int
+    {
+        $requested = (int) $request->integer('per_page', self::INVOICE_PER_PAGE_OPTIONS[0]);
+
+        if ($requested <= 0) {
+            return self::INVOICE_PER_PAGE_OPTIONS[0];
+        }
+
+        return min($requested, self::BULK_SELECTION_LIMIT);
+    }
+
+    private function selectedInvoiceIds(Request $request): \Illuminate\Support\Collection
+    {
+        return collect((array) $request->input('invoice_ids'))
+            ->filter(fn ($id) => is_numeric($id))
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->take(self::BULK_SELECTION_LIMIT)
+            ->values();
     }
 
     private function paymentsRentalIdIsNullable(): bool
@@ -479,11 +503,13 @@ class InvoiceController extends Controller
         $city = trim((string) $request->get('city', ''));
         $fromDate = trim((string) $request->get('from_date', ''));
         $toDate = trim((string) $request->get('to_date', ''));
+        $perPage = $this->resolvePerPage($request);
+        $perPageOptions = self::INVOICE_PER_PAGE_OPTIONS;
 
         $invoices = $this->applyInvoiceFilters($this->invoiceBaseQuery(true), $request)
             ->latest('invoice_date')
             ->latest('id')
-            ->paginate(20)
+            ->paginate($perPage)
             ->withQueryString();
 
         $summaryQuery = $this->applyInvoiceFilters($this->invoiceBaseQuery(false), $request);
@@ -513,7 +539,9 @@ class InvoiceController extends Controller
             'customerId',
             'city',
             'fromDate',
-            'toDate'
+            'toDate',
+            'perPage',
+            'perPageOptions'
         ));
     }
 
@@ -523,11 +551,7 @@ class InvoiceController extends Controller
 
         $invoices = $this->applyInvoiceFilters($this->invoiceBaseQuery(), $request)
             ->when($request->filled('invoice_ids'), function ($query) use ($request) {
-                $ids = collect((array) $request->input('invoice_ids'))
-                    ->filter(fn ($id) => is_numeric($id))
-                    ->map(fn ($id) => (int) $id)
-                    ->unique()
-                    ->values();
+                $ids = $this->selectedInvoiceIds($request);
 
                 if ($ids->isNotEmpty()) {
                     $query->whereIn('id', $ids);
@@ -542,15 +566,36 @@ class InvoiceController extends Controller
         return $this->streamInvoicesCsv($invoices, 'invoices-' . now()->format('Ymd-His') . '.csv');
     }
 
+    public function bulkExportCsv(Request $request)
+    {
+        $this->authorize('export', Invoice::class);
+
+        $ids = $this->selectedInvoiceIds($request);
+
+        if ($ids->isEmpty()) {
+            return redirect()->route('invoices.index')->with('error', 'Select at least one invoice to export.');
+        }
+
+        $invoices = $this->applyInvoiceFilters($this->invoiceBaseQuery(), $request)
+            ->whereIn('id', $ids)
+            ->latest('invoice_date')
+            ->latest('id')
+            ->get();
+
+        if ($invoices->isEmpty()) {
+            return redirect()->route('invoices.index')->with('error', 'No permitted invoices were found for export.');
+        }
+
+        $this->syncInvoiceCollectionStatuses($invoices);
+
+        return $this->streamInvoicesCsv($invoices, 'selected-invoices-' . now()->format('Ymd-His') . '.csv');
+    }
+
     public function bulkPrint(Request $request)
     {
         $this->authorize('printAny', Invoice::class);
 
-        $ids = collect((array) $request->input('invoice_ids'))
-            ->filter(fn ($id) => is_numeric($id))
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->values();
+        $ids = $this->selectedInvoiceIds($request);
 
         if ($ids->isEmpty()) {
             return redirect()->route('invoices.index')->with('error', 'Select at least one invoice to download or print.');
@@ -572,10 +617,20 @@ class InvoiceController extends Controller
         $invoices->each(function (Invoice $invoice) {
             $invoice->items->each->syncLegacyRenewalDescription();
             $this->syncPaidSaleInvoice($invoice);
+            $this->syncOpeningPaymentEntry($invoice);
             $invoice->syncFinancialStatus();
         });
 
-        return view('invoices.bulk-print', compact('invoices'));
+        $amountInWordsByInvoiceId = $invoices
+            ->mapWithKeys(fn (Invoice $invoice) => [$invoice->id => $this->amountToWords((float) $invoice->total_amount)]);
+        $renderer = app(InvoicePdfRenderer::class);
+
+        return view('invoices.bulk-print', [
+            'invoices' => $invoices,
+            'amountInWordsByInvoiceId' => $amountInWordsByInvoiceId,
+            'pdfCurrencySymbol' => $renderer->currencySymbol(),
+            'pdfCurrencyFallback' => $renderer->currencyFallback(),
+        ]);
     }
 
     public function create()
@@ -933,16 +988,12 @@ class InvoiceController extends Controller
     public function bulkAction(Request $request)
     {
         $validated = $request->validate([
-            'invoice_ids' => 'required|array|min:1',
+            'invoice_ids' => 'required|array|min:1|max:' . self::BULK_SELECTION_LIMIT,
             'invoice_ids.*' => 'integer',
             'bulk_action' => 'required|string|in:mark_paid,void',
         ]);
 
-        $invoiceIds = collect($validated['invoice_ids'])
-            ->map(fn ($id) => (int) $id)
-            ->filter()
-            ->unique()
-            ->values();
+        $invoiceIds = $this->selectedInvoiceIds($request);
 
         $invoices = $this->applyInvoiceScope(
             Invoice::query()
@@ -1052,15 +1103,11 @@ class InvoiceController extends Controller
     public function bulkDelete(Request $request)
     {
         $validated = $request->validate([
-            'invoice_ids' => 'required|array|min:1',
+            'invoice_ids' => 'required|array|min:1|max:' . self::BULK_SELECTION_LIMIT,
             'invoice_ids.*' => 'integer',
         ]);
 
-        $invoiceIds = collect($validated['invoice_ids'])
-            ->map(fn ($id) => (int) $id)
-            ->filter()
-            ->unique()
-            ->values();
+        $invoiceIds = $this->selectedInvoiceIds($request);
 
         $invoices = $this->applyInvoiceScope(
             Invoice::query()

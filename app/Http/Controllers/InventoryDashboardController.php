@@ -7,6 +7,7 @@ use App\Models\AssetMovement;
 use App\Models\Product;
 use App\Models\SaleInventory;
 use App\Models\Warehouse;
+use App\Services\Metrics\InventoryMetricsService;
 use Illuminate\Http\Request;
 
 class InventoryDashboardController extends Controller
@@ -16,9 +17,15 @@ class InventoryDashboardController extends Controller
         return (int) auth()->user()->organization_id;
     }
 
+    private function inventoryMetrics(): InventoryMetricsService
+    {
+        return app(InventoryMetricsService::class);
+    }
+
     public function index(Request $request)
     {
         $organizationId = $this->orgId();
+        $inventorySummary = $this->inventoryMetrics()->summary($organizationId);
         $activeNewStockStatuses = ['available_for_sale', 'reserved_for_sale'];
         $stockView = (string) $request->get('stock_view', 'all');
         $rentalAssetsQuery = Asset::where('organization_id', $organizationId)
@@ -31,11 +38,12 @@ class InventoryDashboardController extends Controller
             'total_products' => Product::where('organization_id', $organizationId)->count(),
             'sellable_products' => Product::where('organization_id', $organizationId)->where('product_type', Product::TYPE_SELLABLE)->count(),
             'rentable_products' => Product::where('organization_id', $organizationId)->where('product_type', Product::TYPE_RENTABLE)->count(),
-            'sale_stock' => (int) SaleInventory::where('organization_id', $organizationId)->sum('quantity_in_stock'),
-            'total_assets' => (clone $rentalAssetsQuery)->count(),
-            'available_assets' => (clone $rentalAssetsQuery)->where('asset_status', 'available')->count(),
+            'sale_stock' => (int) ($inventorySummary['saleStockAvailable'] ?? 0),
+            'serialized_sale_units' => (int) ($inventorySummary['serializedSaleUnitsAvailable'] ?? 0),
+            'total_assets' => (int) ($inventorySummary['rentalAssets'] ?? 0),
+            'available_assets' => (int) ($inventorySummary['rentalAvailable'] ?? 0),
             'rented_assets' => (clone $rentalAssetsQuery)->where('asset_status', 'rented')->count(),
-            'maintenance_assets' => (clone $rentalAssetsQuery)->where('asset_status', 'maintenance')->count(),
+            'maintenance_assets' => (int) ($inventorySummary['maintenanceAlerts'] ?? 0),
             'warehouse_count' => Warehouse::where('organization_id', $organizationId)->count(),
         ];
 

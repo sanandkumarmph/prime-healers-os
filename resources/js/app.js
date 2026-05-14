@@ -23,6 +23,14 @@ const shouldAutoSelectNumberInput = (element) => {
         return false;
     }
 
+    if (element.hasAttribute('data-no-auto-select')) {
+        return false;
+    }
+
+    if (element.classList.contains('no-auto-select')) {
+        return false;
+    }
+
     return true;
 };
 

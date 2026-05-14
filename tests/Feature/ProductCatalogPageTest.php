@@ -33,6 +33,17 @@ class ProductCatalogPageTest extends TestCase
             ->assertSee('Product Master');
     }
 
+    public function test_product_form_gst_inputs_opt_out_of_global_numeric_auto_select(): void
+    {
+        $this->get(route('products.create'))
+            ->assertOk()
+            ->assertSee('id="cgst_rate"', false)
+            ->assertSee('id="sgst_rate"', false)
+            ->assertSee('id="igst_rate"', false)
+            ->assertSee('class="gst-percent-input no-auto-select"', false)
+            ->assertSee('data-no-auto-select', false);
+    }
+
     public function test_search_filter_works(): void
     {
         $this->makeProduct([
@@ -370,6 +381,7 @@ class ProductCatalogPageTest extends TestCase
         $response = $this->get(route('assets.index', ['search' => 'PAGE-ASSET', 'page' => 2]));
 
         $response->assertOk()
+            ->assertSee('Serialized Sale Units')
             ->assertSee('Showing 13-13 of 13 assets')
             ->assertSee('class="ph-pagination', false)
             ->assertSee('?search=PAGE-ASSET&amp;page=1', false);

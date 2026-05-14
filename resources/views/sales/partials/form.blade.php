@@ -761,7 +761,7 @@
                         </div>
                         <div class="sales-field sales-col-3">
                             <label for="sale_item_tax_${index}">GST %</label>
-                            <input type="number" min="0" step="0.01" name="sale_items[${index}][tax_percentage]" id="sale_item_tax_${index}" value="${escapeHtml(item.tax_percentage)}">
+                            <input type="number" min="0" step="0.01" name="sale_items[${index}][tax_percentage]" id="sale_item_tax_${index}" value="${escapeHtml(item.tax_percentage)}" class="gst-percent-input no-auto-select" data-no-auto-select>
                         </div>
                         <div class="sales-field sales-col-3">
                             <label for="sale_item_tax_mode_${index}">GST Mode</label>
