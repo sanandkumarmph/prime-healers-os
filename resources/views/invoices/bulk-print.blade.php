@@ -156,6 +156,7 @@
                     'amountInWords' => $amountInWordsByInvoiceId[$invoice->id] ?? null,
                     'pdfCurrencySymbol' => $pdfCurrencySymbol ?? null,
                     'pdfCurrencyFallback' => $pdfCurrencyFallback ?? null,
+                    'documentImageMode' => 'browser',
                 ])
             </section>
         @endforeach

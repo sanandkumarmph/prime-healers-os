@@ -1,6 +1,6 @@
 @page {
     size: A4 portrait;
-    margin: 12mm;
+    margin: 14mm;
 }
 
 * {
@@ -9,6 +9,8 @@
 
 html,
 body {
+    width: 100%;
+    max-width: 100%;
     margin: 0;
     padding: 0;
     background: #ffffff;
@@ -25,8 +27,10 @@ body {
 
 .invoice-page {
     width: 100%;
+    max-width: 100%;
     margin: 0;
     padding: 0;
+    overflow: hidden;
     page-break-inside: auto;
 }
 
@@ -40,10 +44,12 @@ body {
 .totals-table,
 .footer-table {
     width: 100%;
+    max-width: 100%;
     border-collapse: collapse;
 }
 
 .header-table {
+    table-layout: fixed;
     margin-bottom: 10px;
     border-bottom: 1px solid #d7e1ec;
 }
@@ -54,12 +60,12 @@ body {
 }
 
 .header-logo-cell {
-    width: 36mm;
-    padding-right: 10px;
+    width: 34mm;
+    padding-right: 8px;
 }
 
 .header-logo-box {
-    width: 32mm;
+    width: 31mm;
     height: 18mm;
     padding: 0.8mm;
     border: 1px solid #d7e1ec;
@@ -94,7 +100,7 @@ body {
 }
 
 .header-company-cell {
-    padding-right: 12px;
+    padding-right: 10px;
 }
 
 .header-company-name {
@@ -114,7 +120,7 @@ body {
 }
 
 .header-title-cell {
-    width: 52mm;
+    width: 46mm;
     text-align: right;
     padding-top: 2px;
     padding-right: 2px;
@@ -123,7 +129,7 @@ body {
 .header-invoice-title {
     margin: 0 0 8px;
     color: #12263F;
-    font-size: 22px;
+    font-size: 20px;
     font-weight: 700;
     line-height: 1;
     text-transform: uppercase;
@@ -165,13 +171,14 @@ body {
 }
 
 .meta-table {
+    table-layout: fixed;
     margin-bottom: 8px;
     border: 1px solid #d7e1ec;
 }
 
 .meta-table td {
     width: 33.33%;
-    padding: 7px 10px;
+    padding: 6px 8px;
     background: #F8FBFE;
     border-right: 1px solid #d7e1ec;
     border-bottom: 1px solid #d7e1ec;
@@ -205,13 +212,14 @@ body {
 }
 
 .party-table {
+    table-layout: fixed;
     margin-bottom: 8px;
     border: 1px solid #d7e1ec;
 }
 
 .party-table td {
     width: 50%;
-    padding: 9px 11px;
+    padding: 8px 10px;
     vertical-align: top;
 }
 
@@ -239,7 +247,7 @@ body {
 
 .subject-row {
     margin-bottom: 8px;
-    padding: 7px 10px;
+    padding: 6px 8px;
     border: 1px solid #d7e1ec;
     background: #F8FBFE;
     color: #24384f;
@@ -251,6 +259,7 @@ body {
 }
 
 .items-table {
+    table-layout: fixed;
     margin-bottom: 8px;
 }
 
@@ -261,7 +270,7 @@ body {
 .items-table th,
 .items-table td {
     border: 1px solid #d7e1ec;
-    padding: 7px 6px;
+    padding: 6px 5px;
     vertical-align: top;
 }
 
@@ -313,13 +322,13 @@ body {
 }
 
 .summary-notes-cell {
-    width: 58%;
-    padding-right: 10px;
+    width: 56%;
+    padding-right: 8px;
 }
 
 .summary-totals-cell {
-    width: 42%;
-    padding-left: 10px;
+    width: 44%;
+    padding-left: 8px;
 }
 
 .summary-notes-wrap,
@@ -329,7 +338,7 @@ body {
 
 .summary-totals-wrap {
     display: block;
-    width: 92mm;
+    width: 84mm;
     max-width: 100%;
     margin-left: auto;
     text-align: left;
@@ -339,7 +348,7 @@ body {
 .payment-card,
 .signature-box {
     border: 1px solid #d7e1ec;
-    padding: 9px 11px;
+    padding: 8px 10px;
 }
 
 .notes-box p,
@@ -371,7 +380,7 @@ body {
 
 .payment-details-table td:first-child {
     border-right: 1px solid #d7e1ec;
-    padding-right: 10px;
+    padding-right: 8px;
 }
 
 .payment-bank-line {
@@ -382,7 +391,7 @@ body {
 }
 
 .payment-qr-col {
-    width: 32mm;
+    width: 30mm;
     text-align: center;
 }
 
@@ -399,8 +408,8 @@ body {
 
 .qr-image {
     display: block;
-    width: 29mm;
-    height: 29mm;
+    width: 27mm;
+    height: 27mm;
     margin: 0 auto;
 }
 
@@ -412,7 +421,7 @@ body {
 .payments-table th,
 .payments-table td {
     border: 1px solid #d7e1ec;
-    padding: 7px 8px;
+    padding: 6px 7px;
     vertical-align: top;
 }
 
@@ -451,7 +460,7 @@ body {
 
 .totals-table td {
     border: 1px solid #d7e1ec;
-    padding: 7px 8px;
+    padding: 6px 7px;
     color: #24384f;
     font-size: 10px;
 }
@@ -500,7 +509,7 @@ body {
 }
 
 .footer-table {
-    margin-top: 10px;
+    margin-top: 8px;
 }
 
 .footer-table td {
@@ -511,4 +520,44 @@ body {
 
 .footer-right {
     text-align: right;
+}
+
+body.pdf-document {
+    font-family: DejaVu Sans, Arial, sans-serif;
+    font-size: 10.4px;
+    line-height: 1.4;
+}
+
+body.pdf-document .header-company-name,
+body.pdf-document .header-invoice-title,
+body.pdf-document .section-title,
+body.pdf-document .items-table th,
+body.pdf-document .status-badge,
+body.pdf-document .grand-total td,
+body.pdf-document .balance-due td {
+    font-family: DejaVu Sans, Arial, sans-serif;
+}
+
+body.pdf-document .header-company-name {
+    font-size: 14px;
+}
+
+body.pdf-document .header-invoice-title {
+    font-size: 19px;
+}
+
+body.pdf-document .meta-table td,
+body.pdf-document .party-table td,
+body.pdf-document .notes-box,
+body.pdf-document .payment-card,
+body.pdf-document .signature-box {
+    padding: 7px 9px;
+}
+
+body.pdf-document .items-table th,
+body.pdf-document .items-table td,
+body.pdf-document .payments-table th,
+body.pdf-document .payments-table td,
+body.pdf-document .totals-table td {
+    padding: 5px 6px;
 }

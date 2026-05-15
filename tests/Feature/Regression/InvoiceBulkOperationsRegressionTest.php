@@ -196,6 +196,9 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringContainsString('.invoice-logo {', $styles);
         $this->assertStringContainsString('max-width: 120px !important;', $styles);
         $this->assertStringContainsString('max-height: 60px !important;', $styles);
+        $this->assertStringContainsString('margin: 14mm;', $styles);
+        $this->assertStringContainsString('body.pdf-document {', $styles);
+        $this->assertStringContainsString('font-size: 10.4px;', $styles);
         $this->assertStringContainsString("images/prime-healers-logo.png", $sharedPartial);
         $this->assertStringNotContainsString('$organization?->logo', $sharedPartial);
         $this->assertStringNotContainsString('rentnexis-logo', $sharedPartial);
@@ -207,6 +210,7 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringContainsString('page-break-after: always;', $bulkTemplate);
         $this->assertStringNotContainsString('invoice-page-break', $bulkTemplate);
         $this->assertStringNotContainsString('link rel="stylesheet"', $dompdfTemplate);
+        $this->assertStringContainsString('<body class="pdf-document">', $dompdfTemplate);
     }
 
     private function invoiceContext(): array

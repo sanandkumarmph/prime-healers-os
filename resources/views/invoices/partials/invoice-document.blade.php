@@ -88,7 +88,9 @@
         ->values();
     $displayRentalPeriod = $invoice->inferredRentalPeriod();
 
-    $toDataUri = function (?string $relativePath, string $disk = 'storage'): ?string {
+    $documentImageMode = $documentImageMode ?? 'browser';
+
+    $resolveImagePath = function (?string $relativePath, string $disk = 'storage'): ?string {
         if (!$relativePath) {
             return null;
         }
@@ -101,21 +103,36 @@
             return null;
         }
 
-        $mime = function_exists('mime_content_type') ? mime_content_type($absolutePath) : 'image/png';
-        $contents = @file_get_contents($absolutePath);
+        return $absolutePath;
+    };
 
-        if ($contents === false) {
+    $resolveImageSource = function (?string $relativePath, string $disk = 'storage', ?int $maxBytes = null) use ($documentImageMode, $resolveImagePath): ?string {
+        $absolutePath = $resolveImagePath($relativePath, $disk);
+
+        if (!$absolutePath) {
             return null;
         }
 
-        return 'data:' . ($mime ?: 'image/png') . ';base64,' . base64_encode($contents);
+        if ($maxBytes !== null) {
+            $size = @filesize($absolutePath);
+
+            if ($size !== false && $size > $maxBytes) {
+                return null;
+            }
+        }
+
+        if ($documentImageMode === 'dompdf') {
+            return $absolutePath;
+        }
+
+        return $disk === 'public'
+            ? asset(ltrim($relativePath, '/'))
+            : asset('storage/' . ltrim($relativePath, '/'));
     };
 
-    $tenantLogo = extension_loaded('gd')
-        ? $toDataUri('images/prime-healers-logo.png', 'public')
-        : null;
-    $tenantQr = $toDataUri($organization?->payment_qr_code);
-    $tenantSignature = $toDataUri($organization?->digital_signature);
+    $tenantLogo = $resolveImageSource('images/prime-healers-logo.png', 'public', 256 * 1024);
+    $tenantQr = $resolveImageSource($organization?->payment_qr_code, 'storage', 512 * 1024);
+    $tenantSignature = $resolveImageSource($organization?->digital_signature, 'storage', 384 * 1024);
     $organizationInitials = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $organization?->name ?? 'OR'), 0, 2));
     $currency = trim((string) ($pdfCurrencySymbol ?? ($pdfCurrencyFallback ?? '₹')));
     $currencyHtml = $currency === '₹' ? '&#8377;' : e($currency);

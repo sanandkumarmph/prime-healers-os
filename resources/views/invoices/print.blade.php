@@ -19,6 +19,7 @@
     'amountInWords' => $amountInWords ?? null,
     'pdfCurrencySymbol' => $pdfCurrencySymbol ?? null,
     'pdfCurrencyFallback' => $pdfCurrencyFallback ?? null,
+    'documentImageMode' => 'browser',
 ])
 </body>
 </html>
