@@ -538,7 +538,7 @@ body.pdf-document {
 .pdf-page-shell {
     width: 100%;
     max-width: 100%;
-    padding: 8mm;
+    padding: 6mm;
     box-sizing: border-box;
     background: #ffffff;
     overflow: hidden;

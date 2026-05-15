@@ -203,7 +203,7 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringContainsString('body.pdf-document {', $styles);
         $this->assertStringContainsString('font-size: 9.5px;', $styles);
         $this->assertStringContainsString('.pdf-page-shell {', $styles);
-        $this->assertStringContainsString('padding: 8mm;', $styles);
+        $this->assertStringContainsString('padding: 6mm;', $styles);
         $this->assertStringContainsString('.invoice-document {', $styles);
         $this->assertStringContainsString('box-sizing: border-box;', $styles);
         $this->assertStringContainsString('overflow: hidden;', $styles);
@@ -214,10 +214,19 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringNotContainsString('margin-left: -', $styles);
         $this->assertStringContainsString("images/prime-healers-logo.png", $sharedPartial);
         $this->assertStringContainsString("invoice-page invoice-document", $sharedPartial);
-        $this->assertStringContainsString("\$showDiscount && \$showTaxColumns", $sharedPartial);
-        $this->assertStringContainsString("\$columnWidths = match (true)", $sharedPartial);
-        $this->assertStringContainsString("\$columnWidths['description']", $sharedPartial);
-        $this->assertStringContainsString("\$columnWidths['tax_amount']", $sharedPartial);
+        $this->assertStringContainsString("\$compactPdfTable = \$compactPdfTable ?? false;", $sharedPartial);
+        $this->assertStringContainsString("'serial' => 5", $sharedPartial);
+        $this->assertStringContainsString("'description' => 45", $sharedPartial);
+        $this->assertStringContainsString("'qty' => 8", $sharedPartial);
+        $this->assertStringContainsString("'rate' => 14", $sharedPartial);
+        $this->assertStringContainsString("'tax' => 13", $sharedPartial);
+        $this->assertStringContainsString("'amount' => 15", $sharedPartial);
+        $this->assertStringContainsString("HSN/SAC: ", $sharedPartial);
+        $this->assertStringContainsString("Discount: ", $sharedPartial);
+        $this->assertStringContainsString("Tax Amt:", $sharedPartial);
+        $this->assertStringContainsString("@if(\$compactPdfTable || \$showTaxColumns)", $sharedPartial);
+        $this->assertStringNotContainsString('>HSN/SAC</th>', $sharedPartial);
+        $this->assertStringNotContainsString('>Tax Amt</th>', $sharedPartial);
         $this->assertStringNotContainsString('$organization?->logo', $sharedPartial);
         $this->assertStringNotContainsString('rentnexis-logo', $sharedPartial);
         $this->assertStringNotContainsString('logo-rentnexis', $sharedPartial);
@@ -245,13 +254,16 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringNotContainsString('bulk-invoice-page', $printTemplate);
         $this->assertStringContainsString('<body class="pdf-document">', $printTemplate);
         $this->assertStringContainsString('<div class="pdf-page-shell">', $printTemplate);
+        $this->assertStringContainsString("'compactPdfTable' => true", $printTemplate);
         $this->assertStringContainsString("@if(config('pdf.debug_runtime'))", $printTemplate);
         $this->assertStringContainsString("config('pdf.debug_runtime_marker')", $printTemplate);
         $this->assertStringNotContainsString('page-break-after', $dompdfTemplate);
         $this->assertStringNotContainsString('link rel="stylesheet"', $dompdfTemplate);
         $this->assertStringContainsString('<body class="pdf-document">', $dompdfTemplate);
         $this->assertStringContainsString('<div class="pdf-page-shell">', $dompdfTemplate);
+        $this->assertStringContainsString("'compactPdfTable' => true", $dompdfTemplate);
         $this->assertStringContainsString('<div class="pdf-page-shell">', $bulkTemplate);
+        $this->assertStringContainsString("'compactPdfTable' => true", $bulkTemplate);
     }
 
     private function invoiceContext(): array

@@ -136,46 +136,56 @@
     $organizationInitials = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $organization?->name ?? 'OR'), 0, 2));
     $currency = trim((string) ($pdfCurrencySymbol ?? ($pdfCurrencyFallback ?? '₹')));
     $currencyHtml = $currency === '₹' ? '&#8377;' : e($currency);
-    $columnWidths = match (true) {
-        $showDiscount && $showTaxColumns => [
-            'serial' => 4,
-            'description' => 26,
-            'hsn' => 10,
-            'qty' => 7,
-            'rate' => 10,
-            'discount' => 8,
-            'tax' => 11,
-            'tax_amount' => 12,
-            'amount' => 12,
-        ],
-        $showDiscount => [
-            'serial' => 4,
-            'description' => 40,
-            'hsn' => 12,
+    $compactPdfTable = $compactPdfTable ?? false;
+    $columnWidths = $compactPdfTable
+        ? [
+            'serial' => 5,
+            'description' => 45,
             'qty' => 8,
-            'rate' => 12,
-            'discount' => 10,
-            'amount' => 14,
-        ],
-        $showTaxColumns => [
-            'serial' => 4,
-            'description' => 31,
-            'hsn' => 10,
-            'qty' => 7,
-            'rate' => 11,
-            'tax' => 12,
-            'tax_amount' => 12,
-            'amount' => 13,
-        ],
-        default => [
-            'serial' => 4,
-            'description' => 48,
-            'hsn' => 12,
-            'qty' => 8,
-            'rate' => 12,
-            'amount' => 16,
-        ],
-    };
+            'rate' => 14,
+            'tax' => 13,
+            'amount' => 15,
+        ]
+        : match (true) {
+            $showDiscount && $showTaxColumns => [
+                'serial' => 4,
+                'description' => 26,
+                'hsn' => 10,
+                'qty' => 7,
+                'rate' => 10,
+                'discount' => 8,
+                'tax' => 11,
+                'tax_amount' => 12,
+                'amount' => 12,
+            ],
+            $showDiscount => [
+                'serial' => 4,
+                'description' => 40,
+                'hsn' => 12,
+                'qty' => 8,
+                'rate' => 12,
+                'discount' => 10,
+                'amount' => 14,
+            ],
+            $showTaxColumns => [
+                'serial' => 4,
+                'description' => 31,
+                'hsn' => 10,
+                'qty' => 7,
+                'rate' => 11,
+                'tax' => 12,
+                'tax_amount' => 12,
+                'amount' => 13,
+            ],
+            default => [
+                'serial' => 4,
+                'description' => 48,
+                'hsn' => 12,
+                'qty' => 8,
+                'rate' => 12,
+                'amount' => 16,
+            ],
+        };
 @endphp
 
 <div class="{{ $documentRootClass ?? 'invoice-page invoice-document' }}">
@@ -273,15 +283,10 @@
             <tr>
                 <th style="width:{{ $columnWidths['serial'] }}%;">#</th>
                 <th style="width:{{ $columnWidths['description'] }}%;">Item &amp; Description</th>
-                <th style="width:{{ $columnWidths['hsn'] }}%;">HSN/SAC</th>
                 <th style="width:{{ $columnWidths['qty'] }}%;" class="num">Qty</th>
                 <th style="width:{{ $columnWidths['rate'] }}%;" class="num">Rate</th>
-                @if($showDiscount)
-                    <th style="width:{{ $columnWidths['discount'] }}%;" class="num">Discount</th>
-                @endif
-                @if($showTaxColumns)
+                @if($compactPdfTable || $showTaxColumns)
                     <th style="width:{{ $columnWidths['tax'] }}%;" class="num">Tax</th>
-                    <th style="width:{{ $columnWidths['tax_amount'] }}%;" class="num">Tax Amt</th>
                 @endif
                 <th style="width:{{ $columnWidths['amount'] }}%;" class="num">Amount</th>
             </tr>
@@ -318,6 +323,14 @@
                             . (optional($invoice->rentalRenewal->renewed_end_date)->format('d M Y') ?: '-')
                         );
                     }
+
+                    if ($compactPdfTable && $item->hsn_sac_code) {
+                        $itemMeta->push('HSN/SAC: ' . $item->hsn_sac_code);
+                    }
+
+                    if ($compactPdfTable && (float) $item->discount_amount > 0) {
+                        $itemMeta->push('Discount: ' . $currency . ' ' . number_format((float) $item->discount_amount, 2));
+                    }
                 @endphp
                 <tr>
                     <td>{{ $loop->iteration }}</td>
@@ -327,13 +340,9 @@
                             <span class="item-subtext">{{ $itemMeta->filter()->implode(' | ') }}</span>
                         @endif
                     </td>
-                    <td>{{ $item->hsn_sac_code ?: '-' }}</td>
                     <td class="num">{{ number_format((float) $item->quantity, 2) }}</td>
                     <td class="num">{!! $currencyHtml !!} {{ number_format((float) $item->rate, 2) }}</td>
-                    @if($showDiscount)
-                        <td class="num">{!! $currencyHtml !!} {{ number_format((float) $item->discount_amount, 2) }}</td>
-                    @endif
-                    @if($showTaxColumns)
+                    @if($compactPdfTable || $showTaxColumns)
                         <td class="num">
                             @if($itemHasGstSplit && !$itemHasIgst)
                                 CGST {{ number_format((float) ($item->cgst_rate ?? 0), 2) }}%<br>
@@ -343,15 +352,8 @@
                             @else
                                 0.00%
                             @endif
-                        </td>
-                        <td class="num">
-                            @if($itemHasGstSplit && !$itemHasIgst)
-                                CGST {!! $currencyHtml !!} {{ number_format((float) ($item->cgst_amount ?? 0), 2) }}<br>
-                                SGST {!! $currencyHtml !!} {{ number_format((float) ($item->sgst_amount ?? 0), 2) }}
-                            @elseif($itemHasIgst)
-                                IGST {!! $currencyHtml !!} {{ number_format((float) ($item->igst_amount ?? 0), 2) }}
-                            @else
-                                {!! $currencyHtml !!} {{ number_format($itemTaxAmount, 2) }}
+                            @if($compactPdfTable && $itemTaxAmount > 0)
+                                <br><span class="item-subtext">Tax Amt: {!! $currencyHtml !!} {{ number_format($itemTaxAmount, 2) }}</span>
                             @endif
                         </td>
                     @endif

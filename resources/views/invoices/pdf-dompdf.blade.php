@@ -29,6 +29,7 @@
         'pdfCurrencySymbol' => $pdfCurrencySymbol ?? null,
         'pdfCurrencyFallback' => $pdfCurrencyFallback ?? null,
         'documentImageMode' => 'dompdf',
+        'compactPdfTable' => true,
     ])
 </div>
 </body>
