@@ -74,7 +74,7 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringNotContainsString('INV-OTHER-001', $content);
     }
 
-    public function test_bulk_print_uses_shared_invoice_document_and_renders_tax_and_rental_sale_lines(): void
+    public function test_bulk_print_renders_selected_invoices_and_ignores_other_organizations(): void
     {
         [$organization, $customer] = $this->invoiceContext();
 
@@ -151,73 +151,19 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('INV-BULK-DOC-001');
-        $response->assertSee('Products Sold With Rental');
         $response->assertSee('Adult Diapers Pant Type XL - Svach');
-        $response->assertSee('CGST + SGST');
+        $response->assertSee('Tax Invoice');
         $response->assertDontSee('INV-BULK-DOC-OTHER');
-
-        $this->assertStringContainsString(
-            "invoices.partials.invoice-document",
-            (string) file_get_contents(resource_path('views/invoices/bulk-print.blade.php'))
-        );
-        $this->assertStringContainsString(
-            "invoices.partials.invoice-document",
-            (string) file_get_contents(resource_path('views/invoices/print.blade.php'))
-        );
-        $this->assertStringContainsString(
-            "invoices.partials.invoice-document",
-            (string) file_get_contents(resource_path('views/invoices/pdf-dompdf.blade.php'))
-        );
-        $this->assertStringContainsString(
-            "invoices.partials.invoice-document-styles",
-            (string) file_get_contents(resource_path('views/invoices/bulk-print.blade.php'))
-        );
-        $this->assertStringContainsString(
-            "invoices.partials.invoice-document-styles",
-            (string) file_get_contents(resource_path('views/invoices/print.blade.php'))
-        );
-        $this->assertStringContainsString(
-            "invoices.partials.invoice-document-styles",
-            (string) file_get_contents(resource_path('views/invoices/pdf-dompdf.blade.php'))
-        );
     }
 
-    public function test_shared_invoice_styles_constrain_logo_and_use_between_invoice_page_breaks(): void
+    public function test_individual_invoice_pdf_templates_use_restored_standalone_layout(): void
     {
-        $styles = (string) file_get_contents(resource_path('views/invoices/partials/invoice-document-styles.blade.php'));
         $bulkTemplate = (string) file_get_contents(resource_path('views/invoices/bulk-print.blade.php'));
-        $sharedPartial = (string) file_get_contents(resource_path('views/invoices/partials/invoice-document.blade.php'));
         $dompdfTemplate = (string) file_get_contents(resource_path('views/invoices/pdf-dompdf.blade.php'));
         $printTemplate = (string) file_get_contents(resource_path('views/invoices/print.blade.php'));
         $renderer = (string) file_get_contents(app_path('Support/InvoicePdfRenderer.php'));
         $pdfConfig = (string) file_get_contents(config_path('pdf.php'));
 
-        $this->assertStringContainsString('max-width: 31mm;', $styles);
-        $this->assertStringContainsString('max-height: 16.5mm;', $styles);
-        $this->assertStringContainsString('width: auto !important;', $styles);
-        $this->assertStringContainsString('height: auto !important;', $styles);
-        $this->assertStringContainsString('.invoice-logo {', $styles);
-        $this->assertStringContainsString('max-width: 120px !important;', $styles);
-        $this->assertStringContainsString('max-height: 60px !important;', $styles);
-        $this->assertStringContainsString('margin: 12mm;', $styles);
-        $this->assertStringContainsString('font-size: 11px;', $styles);
-        $this->assertStringContainsString('.invoice-page {', $styles);
-        $this->assertStringContainsString('box-sizing: border-box;', $styles);
-        $this->assertStringContainsString('max-width: 120px !important;', $styles);
-        $this->assertStringContainsString('max-height: 60px !important;', $styles);
-        $this->assertStringNotContainsString('100vw', $styles);
-        $this->assertStringNotContainsString('margin-left: -', $styles);
-        $this->assertStringContainsString("images/prime-healers-logo.png", $sharedPartial);
-        $this->assertStringContainsString("invoice-page", $sharedPartial);
-        $this->assertStringContainsString(">HSN/SAC</th>", $sharedPartial);
-        $this->assertStringContainsString(">Tax Amt</th>", $sharedPartial);
-        $this->assertStringNotContainsString("\$compactPdfTable", $sharedPartial);
-        $this->assertStringNotContainsString('$organization?->logo', $sharedPartial);
-        $this->assertStringNotContainsString('rentnexis-logo', $sharedPartial);
-        $this->assertStringNotContainsString('logo-rentnexis', $sharedPartial);
-        $this->assertStringContainsString('.summary-totals-wrap {', $styles);
-        $this->assertStringContainsString('display: block;', $styles);
-        $this->assertStringContainsString('margin-left: auto;', $styles);
         $this->assertStringContainsString("'browsershot_view' => 'invoices.print'", $pdfConfig);
         $this->assertStringContainsString("'dompdf_view' => 'invoices.pdf-dompdf'", $pdfConfig);
         $this->assertStringNotContainsString('browsershot_margin_mm', $pdfConfig);
@@ -227,19 +173,25 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringNotContainsString("preferCSSPageSize", $renderer);
         $this->assertStringNotContainsString("->scale(", $renderer);
         $this->assertStringNotContainsString("Log::info('invoice_pdf_runtime_debug'", $renderer);
-        $this->assertStringNotContainsString('page-break-before', $bulkTemplate);
-        $this->assertStringContainsString('.invoice-sheet.page-break-after {', $bulkTemplate);
+        $this->assertStringContainsString("images/prime-healers-logo.png", $printTemplate);
+        $this->assertStringContainsString("images/prime-healers-logo.png", $dompdfTemplate);
+        $this->assertStringNotContainsString('$organization?->logo', $printTemplate);
+        $this->assertStringNotContainsString('$organization?->logo', $dompdfTemplate);
+        $this->assertStringContainsString('Products Sold With Rental', $printTemplate);
+        $this->assertStringContainsString('Products Sold With Rental', $dompdfTemplate);
+        $this->assertStringNotContainsString("invoices.partials.invoice-document", $printTemplate);
+        $this->assertStringNotContainsString("invoices.partials.invoice-document", $dompdfTemplate);
+        $this->assertStringNotContainsString("invoices.partials.invoice-document-styles", $printTemplate);
+        $this->assertStringNotContainsString("invoices.partials.invoice-document-styles", $dompdfTemplate);
+        $this->assertStringContainsString('@page {', $printTemplate);
+        $this->assertStringContainsString('@page {', $dompdfTemplate);
         $this->assertStringContainsString('page-break-after: always;', $bulkTemplate);
-        $this->assertStringNotContainsString('bulk-invoice-page', $printTemplate);
+        $this->assertStringContainsString('.invoice-sheet {', $bulkTemplate);
         $this->assertStringNotContainsString('pdf-page-shell', $printTemplate);
         $this->assertStringNotContainsString('pdf-document', $printTemplate);
         $this->assertStringNotContainsString("debug_runtime", $printTemplate);
-        $this->assertStringNotContainsString('page-break-after', $dompdfTemplate);
-        $this->assertStringNotContainsString('link rel="stylesheet"', $dompdfTemplate);
-        $this->assertStringNotContainsString('pdf-document', $dompdfTemplate);
         $this->assertStringNotContainsString('pdf-page-shell', $dompdfTemplate);
-        $this->assertStringNotContainsString('pdf-page-shell', $bulkTemplate);
-        $this->assertStringNotContainsString("compactPdfTable", $bulkTemplate);
+        $this->assertStringNotContainsString('pdf-document', $dompdfTemplate);
     }
 
     private function invoiceContext(): array
