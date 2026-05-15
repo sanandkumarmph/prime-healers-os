@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Invoice;
 use Barryvdh\DomPDF\Facade\Pdf as DomPdf;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Spatie\Browsershot\Browsershot;
 use Throwable;
@@ -17,11 +18,15 @@ class InvoicePdfRenderer
 
     public function render(Invoice $invoice, array $viewData): string
     {
-        return match ($this->engine()) {
+        $pdf = match ($this->engine()) {
             'dompdf' => $this->renderWithDompdf($viewData),
             'auto' => $this->renderWithAutoFallback($viewData),
             default => $this->renderWithBrowsershot($viewData),
         };
+
+        $this->logPdfSizeWarning($invoice, $pdf);
+
+        return $pdf;
     }
 
     public function engine(): string
@@ -119,5 +124,29 @@ class InvoicePdfRenderer
                 $exception
             );
         }
+    }
+
+    private function logPdfSizeWarning(Invoice $invoice, string $pdfBytes): void
+    {
+        $thresholdKb = (int) config('pdf.size_warning_threshold_kb', 500);
+
+        if ($thresholdKb <= 0) {
+            return;
+        }
+
+        $sizeBytes = strlen($pdfBytes);
+
+        if ($sizeBytes <= ($thresholdKb * 1024)) {
+            return;
+        }
+
+        Log::warning('invoice_pdf_size_warning', [
+            'invoice_id' => $invoice->id,
+            'invoice_number' => $invoice->invoice_number,
+            'engine' => $this->engine(),
+            'size_bytes' => $sizeBytes,
+            'size_kb' => round($sizeBytes / 1024, 2),
+            'threshold_kb' => $thresholdKb,
+        ]);
     }
 }

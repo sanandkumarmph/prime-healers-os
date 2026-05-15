@@ -6,8 +6,6 @@
     <link rel="icon" type="image/png" href="{{ asset('images/prime-healers-favicon.png') }}">
     <link rel="shortcut icon" href="{{ asset('favicon.ico') }}">
     <link rel="apple-touch-icon" href="{{ asset('images/prime-healers-favicon.png') }}">
-    <link rel="preconnect" href="https://fonts.bunny.net">
-    <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700,800&family=manrope:600,700,800&display=swap" rel="stylesheet" />
     <meta name="application-name" content="Prime Healers OS">
     <style>
         @page {
@@ -579,32 +577,10 @@
         ->values();
     $displayRentalPeriod = $invoice->inferredRentalPeriod();
 
-    $toDataUri = function (?string $relativePath, string $disk = 'storage'): ?string {
-        if (!$relativePath) {
-            return null;
-        }
-
-        $absolutePath = $disk === 'public'
-            ? public_path(ltrim($relativePath, '/'))
-            : public_path('storage/' . ltrim($relativePath, '/'));
-
-        if (!is_file($absolutePath) || !is_readable($absolutePath)) {
-            return null;
-        }
-
-        $mime = function_exists('mime_content_type') ? mime_content_type($absolutePath) : 'image/png';
-        $contents = @file_get_contents($absolutePath);
-
-        if ($contents === false) {
-            return null;
-        }
-
-        return 'data:' . ($mime ?: 'image/png') . ';base64,' . base64_encode($contents);
-    };
-
-    $tenantLogo = $toDataUri('images/prime-healers-logo.png', 'public');
-    $tenantQr = $toDataUri($organization?->payment_qr_code);
-    $tenantSignature = $toDataUri($organization?->digital_signature);
+    $pdfAssets = app(\App\Support\InvoicePdfAssetResolver::class);
+    $tenantLogo = $pdfAssets->logoDataUri();
+    $tenantQr = $pdfAssets->qrDataUri($organization?->payment_qr_code);
+    $tenantSignature = $pdfAssets->signatureDataUri($organization?->digital_signature);
     $organizationInitials = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $organization?->name ?? 'OR'), 0, 2));
 @endphp
 

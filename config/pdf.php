@@ -10,6 +10,17 @@ return [
     'user_data_dir' => env('PDF_USER_DATA_DIR', storage_path('app/pdf-runtime/profile')),
     'currency_symbol' => env('PDF_CURRENCY_SYMBOL', "\u{20B9}"),
     'currency_fallback' => env('PDF_CURRENCY_FALLBACK', 'Rs.'),
+    'optimize_images' => env('PDF_OPTIMIZE_IMAGES', true),
+    'show_qr' => env('PDF_SHOW_QR', true),
+    'show_qr_in_bulk' => env('PDF_SHOW_QR_IN_BULK', false),
+    'max_image_kb' => (int) env('PDF_MAX_IMAGE_KB', 100),
+    'size_warning_threshold_kb' => (int) env('PDF_SIZE_WARNING_THRESHOLD_KB', 500),
+    'optimized_assets' => [
+        'logo' => [
+            'images/invoice-logo.png',
+            'images/prime-healers-logo.png',
+        ],
+    ],
     'browsershot_view' => 'invoices.print',
     'dompdf_view' => 'invoices.pdf-dompdf',
     'environment' => [

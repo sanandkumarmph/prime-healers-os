@@ -387,34 +387,12 @@
     $currency = trim((string) ($pdfCurrencySymbol ?: ($pdfCurrencyFallback ?: '₹')));
     $currencyHtml = $currency === '₹' ? '&#8377;' : e($currency);
 
-    $toDataUri = function (?string $relativePath, string $disk = 'storage'): ?string {
-        if (!$relativePath) {
-            return null;
-        }
-
-        $absolutePath = $disk === 'public'
-            ? public_path(ltrim($relativePath, '/'))
-            : public_path('storage/' . ltrim($relativePath, '/'));
-
-        if (!is_file($absolutePath) || !is_readable($absolutePath)) {
-            return null;
-        }
-
-        $mime = function_exists('mime_content_type') ? mime_content_type($absolutePath) : 'image/png';
-        $contents = @file_get_contents($absolutePath);
-
-        if ($contents === false) {
-            return null;
-        }
-
-        return 'data:' . ($mime ?: 'image/png') . ';base64,' . base64_encode($contents);
-    };
-
+    $pdfAssets = app(\App\Support\InvoicePdfAssetResolver::class);
     $tenantLogo = extension_loaded('gd')
-        ? $toDataUri('images/prime-healers-logo.png', 'public')
+        ? $pdfAssets->logoDataUri()
         : null;
-    $tenantQr = $toDataUri($organization?->payment_qr_code);
-    $tenantSignature = $toDataUri($organization?->digital_signature);
+    $tenantQr = $pdfAssets->qrDataUri($organization?->payment_qr_code);
+    $tenantSignature = $pdfAssets->signatureDataUri($organization?->digital_signature);
     $organizationInitials = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $organization?->name ?? 'OR'), 0, 2));
 @endphp
 

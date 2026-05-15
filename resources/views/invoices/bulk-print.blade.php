@@ -489,7 +489,7 @@
                 $invoiceHeading = $invoice->linkedRentalId() ? 'Rental Invoice' : 'Tax Invoice';
                 $amountInWords = $amountInWordsByInvoiceId[$invoice->id] ?? null;
                 $shippingLabel = $invoice->deposit_amount > 0 ? 'Transportation / Shipping' : 'Shipping';
-                $logoUrl = asset('images/prime-healers-logo.png');
+                $logoUrl = app(\App\Support\InvoicePdfAssetResolver::class)->logoBrowserUrl();
                 $lineItems = $invoice->items->values();
             @endphp
 

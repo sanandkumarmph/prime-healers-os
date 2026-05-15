@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\Role;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Tests\Support\TestData;
 use Tests\TestCase;
 
@@ -107,6 +108,32 @@ class ControlledPdfEngineRegressionTest extends TestCase
             ->get(route('invoices.print', $invoice->id))
             ->assertRedirect($readerOnlyUser->defaultRedirectPath())
             ->assertSessionHas('error', 'You are not authorized to access this section.');
+    }
+
+    public function test_pdf_size_warning_is_logged_when_threshold_is_exceeded(): void
+    {
+        [$organization, $user, $invoice] = $this->invoiceContext();
+
+        $this->actingAs($user);
+        Log::spy();
+
+        config([
+            'pdf.engine' => 'dompdf',
+            'pdf.size_warning_threshold_kb' => 1,
+        ]);
+
+        $this->get(route('invoices.print', $invoice->id))
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf');
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(function ($message, array $context) use ($invoice) {
+                return $message === 'invoice_pdf_size_warning'
+                    && ($context['invoice_id'] ?? null) === $invoice->id
+                    && ($context['invoice_number'] ?? null) === $invoice->invoice_number
+                    && ($context['engine'] ?? null) === 'dompdf';
+            })
+            ->once();
     }
 
     private function invoiceContext(): array
