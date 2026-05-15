@@ -17,6 +17,9 @@
     $cgstRateValue = old('cgst_rate', $product->cgst_rate ?? 0);
     $sgstRateValue = old('sgst_rate', $product->sgst_rate ?? 0);
     $igstRateValue = old('igst_rate', $product->igst_rate ?? 0);
+    $gstStandardRates = [0, 5, 12, 18, 28];
+    $splitTotalGstRateValue = round((float) $cgstRateValue + (float) $sgstRateValue, 2);
+    $igstTotalGstRateValue = round((float) $igstRateValue, 2);
     $managedSaleUnitsCount = $isEdit ? (int) $product->saleUnits()->count() : 0;
     $managedRentalAssetsCount = $isEdit
         ? (int) $product->assets()->where('asset_stage', \App\Models\Asset::STAGE_RENTAL_STOCK)->count()
@@ -33,6 +36,22 @@
         ? ' border-color:#dc2626; box-shadow:0 0 0 3px rgba(220, 38, 38, 0.12); background:#fff7f7;'
         : '');
     $fieldError = fn (string $field) => $errors->first($field);
+    $gstDropdownOptions = function (float|int|string|null $selectedValue) use ($gstStandardRates): array {
+        $normalizedSelected = number_format((float) ($selectedValue ?? 0), 2, '.', '');
+        $options = collect($gstStandardRates)
+            ->map(fn ($rate) => number_format((float) $rate, 2, '.', ''))
+            ->all();
+
+        if (!in_array($normalizedSelected, $options, true)) {
+            $options[] = $normalizedSelected;
+        }
+
+        return collect($options)
+            ->unique()
+            ->sort(fn ($left, $right) => (float) $left <=> (float) $right)
+            ->values()
+            ->all();
+    };
 @endphp
 
 <style>
@@ -438,28 +457,46 @@
 
                             <div id="gstSplitRates" class="product-form-two-col {{ $gstTaxTypeValue === \App\Models\Product::GST_TAX_TYPE_CGST_SGST ? '' : 'is-hidden' }}">
                                 <div>
-                                    <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">CGST Rate %</label>
-                                    <input type="number" min="0" max="100" step="0.01" name="cgst_rate" id="cgst_rate" value="{{ $cgstRateValue }}" class="gst-percent-input no-auto-select" data-no-auto-select
-                                           style="{{ $fieldStyle('cgst_rate', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
+                                    <label for="gst_split_total_rate" style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">GST %</label>
+                                    <input type="hidden" name="cgst_rate" id="cgst_rate" value="{{ number_format((float) $cgstRateValue, 2, '.', '') }}">
+                                    <input type="hidden" name="sgst_rate" id="sgst_rate" value="{{ number_format((float) $sgstRateValue, 2, '.', '') }}">
+                                    <select id="gst_split_total_rate"
+                                            style="{{ $fieldStyle('cgst_rate', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
+                                        @foreach($gstDropdownOptions($splitTotalGstRateValue) as $rateOption)
+                                            <option value="{{ $rateOption }}" @selected(number_format((float) $splitTotalGstRateValue, 2, '.', '') === $rateOption)>
+                                                {{ rtrim(rtrim($rateOption, '0'), '.') }}%
+                                            </option>
+                                        @endforeach
+                                    </select>
                                     @if($fieldError('cgst_rate'))
                                         <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('cgst_rate') }}</div>
                                     @endif
-                                </div>
-
-                                <div>
-                                    <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">SGST Rate %</label>
-                                    <input type="number" min="0" max="100" step="0.01" name="sgst_rate" id="sgst_rate" value="{{ $sgstRateValue }}" class="gst-percent-input no-auto-select" data-no-auto-select
-                                           style="{{ $fieldStyle('sgst_rate', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
                                     @if($fieldError('sgst_rate'))
                                         <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('sgst_rate') }}</div>
                                     @endif
+                                    <div style="margin-top:6px; color:#64748b; font-size:12px;">Split evenly into CGST and SGST for same-state billing.</div>
+                                </div>
+
+                                <div style="display:grid; align-content:start; gap:8px;">
+                                    <div style="padding:12px 14px; border-radius:14px; background:#f8fafc; border:1px solid #e2e8f0; color:#475569; font-size:13px; line-height:1.5;">
+                                        <strong style="color:#0f172a;">CGST + SGST split</strong><br>
+                                        <span id="gstSplitPreview">CGST {{ number_format((float) $cgstRateValue, 2) }}% + SGST {{ number_format((float) $sgstRateValue, 2) }}%</span>
+                                    </div>
+                                    <div style="color:#64748b; font-size:12px;">Legacy non-standard GST values stay available as selected dropdown options.</div>
                                 </div>
                             </div>
 
                             <div id="gstIgstRateWrap" class="{{ $gstTaxTypeValue === \App\Models\Product::GST_TAX_TYPE_IGST ? '' : 'is-hidden' }}">
-                                <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">IGST Rate %</label>
-                                <input type="number" min="0" max="100" step="0.01" name="igst_rate" id="igst_rate" value="{{ $igstRateValue }}" class="gst-percent-input no-auto-select" data-no-auto-select
+                                <label for="gst_igst_total_rate" style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">GST %</label>
+                                <input type="hidden" name="igst_rate" id="igst_rate" value="{{ number_format((float) $igstRateValue, 2, '.', '') }}">
+                                <select id="gst_igst_total_rate"
                                        style="{{ $fieldStyle('igst_rate', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
+                                    @foreach($gstDropdownOptions($igstTotalGstRateValue) as $rateOption)
+                                        <option value="{{ $rateOption }}" @selected(number_format((float) $igstTotalGstRateValue, 2, '.', '') === $rateOption)>
+                                            {{ rtrim(rtrim($rateOption, '0'), '.') }}%
+                                        </option>
+                                    @endforeach
+                                </select>
                                 @if($fieldError('igst_rate'))
                                     <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('igst_rate') }}</div>
                                 @endif
@@ -522,6 +559,12 @@ document.addEventListener('DOMContentLoaded', function () {
     const gstTaxType = document.getElementById('gst_tax_type');
     const gstSplitRates = document.getElementById('gstSplitRates');
     const gstIgstRateWrap = document.getElementById('gstIgstRateWrap');
+    const cgstRate = document.getElementById('cgst_rate');
+    const sgstRate = document.getElementById('sgst_rate');
+    const igstRate = document.getElementById('igst_rate');
+    const gstSplitTotalRate = document.getElementById('gst_split_total_rate');
+    const gstIgstTotalRate = document.getElementById('gst_igst_total_rate');
+    const gstSplitPreview = document.getElementById('gstSplitPreview');
 
     if (!productType) {
         return;
@@ -559,10 +602,80 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     };
 
+    const syncProductGstRates = function () {
+        const type = gstTaxType ? (gstTaxType.value || '') : '';
+        const splitTotal = parseFloat((gstSplitTotalRate && gstSplitTotalRate.value) || '0') || 0;
+        const igstTotal = parseFloat((gstIgstTotalRate && gstIgstTotalRate.value) || '0') || 0;
+
+        if (type === '{{ \App\Models\Product::GST_TAX_TYPE_CGST_SGST }}') {
+            const halfRate = (splitTotal / 2).toFixed(2);
+
+            if (cgstRate) {
+                cgstRate.value = halfRate;
+            }
+
+            if (sgstRate) {
+                sgstRate.value = halfRate;
+            }
+
+            if (igstRate) {
+                igstRate.value = '0.00';
+            }
+
+            if (gstSplitPreview) {
+                gstSplitPreview.textContent = `CGST ${halfRate}% + SGST ${halfRate}%`;
+            }
+
+            return;
+        }
+
+        if (type === '{{ \App\Models\Product::GST_TAX_TYPE_IGST }}') {
+            if (cgstRate) {
+                cgstRate.value = '0.00';
+            }
+
+            if (sgstRate) {
+                sgstRate.value = '0.00';
+            }
+
+            if (igstRate) {
+                igstRate.value = igstTotal.toFixed(2);
+            }
+
+            if (gstSplitPreview) {
+                gstSplitPreview.textContent = 'CGST 0.00% + SGST 0.00%';
+            }
+
+            return;
+        }
+
+        if (cgstRate) {
+            cgstRate.value = '0.00';
+        }
+
+        if (sgstRate) {
+            sgstRate.value = '0.00';
+        }
+
+        if (igstRate) {
+            igstRate.value = '0.00';
+        }
+
+        if (gstSplitPreview) {
+            gstSplitPreview.textContent = 'CGST 0.00% + SGST 0.00%';
+        }
+    };
+
     productType.addEventListener('change', syncMode);
-    gstTaxType?.addEventListener('change', syncGstMode);
+    gstTaxType?.addEventListener('change', function () {
+        syncGstMode();
+        syncProductGstRates();
+    });
+    gstSplitTotalRate?.addEventListener('change', syncProductGstRates);
+    gstIgstTotalRate?.addEventListener('change', syncProductGstRates);
     syncMode();
     syncGstMode();
+    syncProductGstRates();
 });
 </script>
 @endpush

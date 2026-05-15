@@ -513,7 +513,7 @@
                     </div>
                     <div class="detail-item">
                         <span>Shipping Cost</span>
-                        <div>{{ $currency($sale->shipping_charges ?? 0) }}</div>
+                        <div>{{ $currency($sale->resolvedShippingCharges()) }}</div>
                     </div>
                     <div class="detail-item">
                         <span>GST %</span>
@@ -624,7 +624,6 @@
                         </div>
                         <div style="display:flex; gap:14px; flex-wrap:wrap; color:#475569; font-size:12px; margin-top:8px;">
                             <span>Discount {{ $currency($saleItem->discount_amount ?? 0) }}</span>
-                            <span>Shipping {{ $currency($saleItem->shipping_charges ?? 0) }}</span>
                             <span>GST {{ number_format((float) ($saleItem->tax_percentage ?? 0), 2) }}% {{ ucfirst($saleItem->tax_calculation_mode ?? 'exclusive') }}</span>
                         </div>
                         @if($saleItem->notes)

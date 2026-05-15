@@ -709,8 +709,8 @@
                                                 @if((float) ($sale->discount_amount ?? 0) > 0)
                                                     • Disc {{ $currency($sale->discount_amount ?? 0) }}
                                                 @endif
-                                                @if((float) ($sale->shipping_charges ?? 0) > 0)
-                                                    • Ship {{ $currency($sale->shipping_charges ?? 0) }}
+                                                @if((float) $sale->resolvedShippingCharges() > 0)
+                                                    • Ship {{ $currency($sale->resolvedShippingCharges()) }}
                                                 @endif
                                             </span>
                                         </div>

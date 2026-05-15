@@ -39,8 +39,7 @@ class InventoryMetricsService
                 ->count(),
             'rentalAvailable' => (int) Asset::query()
                 ->where('organization_id', $organizationId)
-                ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
-                ->where('asset_status', Asset::STATUS_AVAILABLE)
+                ->rentalReady()
                 ->count(),
             'maintenanceAlerts' => (int) Asset::query()
                 ->where('organization_id', $organizationId)

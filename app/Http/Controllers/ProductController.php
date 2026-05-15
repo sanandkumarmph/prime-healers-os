@@ -20,28 +20,32 @@ class ProductController extends Controller
 {
     private function productCatalogQuery()
     {
+        $organizationId = $this->orgId();
+
         return Product::query()
             ->withCount([
-                'assets as assets_count' => fn ($query) => $query->where('asset_stage', Asset::STAGE_RENTAL_STOCK),
-                'assets as available_assets_count' => fn ($query) => $query->where('asset_stage', Asset::STAGE_RENTAL_STOCK)->where('asset_status', 'available'),
-                'assets as rented_assets_count' => fn ($query) => $query->where('asset_stage', Asset::STAGE_RENTAL_STOCK)->where('asset_status', 'rented'),
-                'assets as maintenance_assets_count' => fn ($query) => $query->where('asset_stage', Asset::STAGE_RENTAL_STOCK)->where('asset_status', 'maintenance'),
-                'saleUnits as sale_stock_quantity' => fn ($query) => $query->where('asset_status', 'available_for_sale'),
-                'saleUnits as sold_units_count' => fn ($query) => $query->where('asset_status', 'sold'),
-                'saleUnits as converted_sale_units_count' => fn ($query) => $query->where('asset_status', 'converted_to_rental'),
+                'assets as assets_count' => fn ($query) => $query->where('organization_id', $organizationId)->where('asset_stage', Asset::STAGE_RENTAL_STOCK),
+                'assets as available_assets_count' => fn ($query) => $query->where('organization_id', $organizationId)->rentalReady(),
+                'assets as rented_assets_count' => fn ($query) => $query->where('organization_id', $organizationId)->where('asset_stage', Asset::STAGE_RENTAL_STOCK)->where('asset_status', 'rented'),
+                'assets as maintenance_assets_count' => fn ($query) => $query->where('organization_id', $organizationId)->where('asset_stage', Asset::STAGE_RENTAL_STOCK)->where('asset_status', 'maintenance'),
+                'saleUnits as sale_stock_quantity' => fn ($query) => $query->where('organization_id', $organizationId)->where('asset_status', 'available_for_sale'),
+                'saleUnits as sold_units_count' => fn ($query) => $query->where('organization_id', $organizationId)->where('asset_status', 'sold'),
+                'saleUnits as converted_sale_units_count' => fn ($query) => $query->where('organization_id', $organizationId)->where('asset_status', 'converted_to_rental'),
             ])
             ->with([
                 'assets' => fn ($query) => $query
                     ->select(['id', 'product_id', 'warehouse_id', 'asset_status', 'asset_stage'])
+                    ->where('organization_id', $organizationId)
                     ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
                     ->with('warehouse:id,name'),
                 'saleUnits' => fn ($query) => $query
                     ->select(['id', 'product_id', 'warehouse_id', 'asset_status', 'asset_stage'])
+                    ->where('organization_id', $organizationId)
                     ->where('asset_stage', Asset::STAGE_NEW_STOCK)
                     ->whereIn('asset_status', ['available_for_sale', 'sold', 'converted_to_rental'])
                     ->with('warehouse:id,name'),
             ])
-            ->where('organization_id', $this->orgId());
+            ->where('organization_id', $organizationId);
     }
 
     private function applyProductCatalogFilters($query, string $search, string $category, string $typeFilter, string $stockStatus, string $brand)
@@ -72,21 +76,25 @@ class ProductController extends Controller
                 };
             })
             ->when($stockStatus !== '', function ($query) use ($stockStatus) {
+                $organizationId = $this->orgId();
+
                 match ($stockStatus) {
-                    'available_to_rent' => $query->whereHas('assets', fn ($assetQuery) => $assetQuery
-                        ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
-                        ->where('asset_status', Asset::STATUS_AVAILABLE)),
+                    'available_to_rent' => $query->whereHas('assets', fn ($assetQuery) => $assetQuery->where('organization_id', $organizationId)->rentalReady()),
                     'rented_out' => $query->whereHas('assets', fn ($assetQuery) => $assetQuery
+                        ->where('organization_id', $organizationId)
                         ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
                         ->where('asset_status', Asset::STATUS_RENTED)),
                     'maintenance' => $query->whereHas('assets', fn ($assetQuery) => $assetQuery
+                        ->where('organization_id', $organizationId)
                         ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
                         ->where('asset_status', Asset::STATUS_MAINTENANCE)),
                     'out_of_stock' => $query
                         ->whereDoesntHave('assets', fn ($assetQuery) => $assetQuery
+                            ->where('organization_id', $organizationId)
                             ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
                             ->where('asset_status', Asset::STATUS_AVAILABLE))
                         ->whereDoesntHave('saleUnits', fn ($assetQuery) => $assetQuery
+                            ->where('organization_id', $organizationId)
                             ->where('asset_status', Asset::STATUS_AVAILABLE_FOR_SALE))
                         ->where(function ($innerQuery) {
                             $innerQuery->where('stock_mode', '!=', Product::STOCK_MODE_UNTRACKED)
@@ -574,7 +582,7 @@ class ProductController extends Controller
 
         $assetStats = [
             'total_assets' => (clone $rentalAssetQuery)->count(),
-            'available_assets' => (clone $rentalAssetQuery)->where('asset_status', 'available')->count(),
+            'available_assets' => (clone $rentalAssetQuery)->rentalReady()->count(),
             'rented_assets' => (clone $rentalAssetQuery)->where('asset_status', 'rented')->count(),
             'maintenance_assets' => (clone $rentalAssetQuery)->where('asset_status', 'maintenance')->count(),
             'reserved_assets' => (clone $rentalAssetQuery)->where('asset_status', 'reserved')->count(),

@@ -15,19 +15,12 @@
 
         <div class="mobile-more-grid">
             @foreach(($mobileMoreItems ?? []) as $item)
-                @continue(empty($item['visible']))
+                @continue(empty($item['visible']) || empty($item['href']))
 
-                @if(!empty($item['href']))
-                    <a href="{{ $item['href'] }}" class="mobile-more-link {{ !empty($item['active']) ? 'is-active' : '' }}">
-                        <span class="mobile-more-icon">{!! $navIcon($item['icon'] ?? 'settings') !!}</span>
-                        <span>{{ $item['label'] }}</span>
-                    </a>
-                @else
-                    <span class="mobile-more-link is-disabled">
-                        <span class="mobile-more-icon">{!! $navIcon($item['icon'] ?? 'settings') !!}</span>
-                        <span>{{ $item['label'] }}</span>
-                    </span>
-                @endif
+                <a href="{{ $item['href'] }}" class="mobile-more-link {{ !empty($item['active']) ? 'is-active' : '' }}">
+                    <span class="mobile-more-icon">{!! $navIcon($item['icon'] ?? 'settings') !!}</span>
+                    <span>{{ $item['label'] }}</span>
+                </a>
             @endforeach
         </div>
 

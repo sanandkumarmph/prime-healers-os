@@ -644,7 +644,7 @@
                 <div class="mobile-filter-sheet-header">
                     <div>
                         <h3>Customer Filters</h3>
-                        <p>Keep city, state, and status controls easy to reach on mobile.</p>
+                        <p>Keep city, state, status, and date range controls easy to reach on mobile.</p>
                     </div>
                     <button type="button" class="mobile-filter-sheet-close" data-mobile-sheet-close="customers-mobile-filters" aria-label="Close filters">×</button>
                 </div>
@@ -682,8 +682,12 @@
                                 </div>
                             @endif
                             <div class="mobile-sheet-field">
-                                <label for="mobile_created_date">Created Date</label>
-                                <input id="mobile_created_date" type="date" name="created_date" value="{{ $createdDate }}">
+                                <label for="mobile_from_date">From Date</label>
+                                <input id="mobile_from_date" type="date" name="from_date" value="{{ $fromDate }}">
+                            </div>
+                            <div class="mobile-sheet-field">
+                                <label for="mobile_to_date">To Date</label>
+                                <input id="mobile_to_date" type="date" name="to_date" value="{{ $toDate }}">
                             </div>
                         </div>
                         <div class="mobile-sheet-actions">
@@ -733,8 +737,12 @@
                             </div>
                         @endif
                         <div class="ops-field">
-                            <label for="created_date">Created Date</label>
-                            <input id="created_date" type="date" name="created_date" value="{{ $createdDate }}">
+                            <label for="from_date">From Date</label>
+                            <input id="from_date" type="date" name="from_date" value="{{ $fromDate }}">
+                        </div>
+                        <div class="ops-field">
+                            <label for="to_date">To Date</label>
+                            <input id="to_date" type="date" name="to_date" value="{{ $toDate }}">
                         </div>
                         <div class="ops-field">
                             <label for="sort_by">Sort By</label>

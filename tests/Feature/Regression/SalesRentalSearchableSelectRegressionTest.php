@@ -37,8 +37,14 @@ class SalesRentalSearchableSelectRegressionTest extends TestCase
             ->assertSee('data-searchable-select', false)
             ->assertSee('data-search-placeholder="Search customer by name, phone, email, or city"', false)
             ->assertSee('data-search-placeholder="Search product by name, brand, model, SKU, or code"', false)
-            ->assertSee('class="gst-percent-input no-auto-select"', false)
-            ->assertSee('data-no-auto-select', false);
+            ->assertSee('name="sale_items[${index}][tax_percentage]"', false)
+            ->assertSee('name="sale_items[${index}][tax_type]"', false)
+            ->assertSee('Tax Type')
+            ->assertSee('CGST + SGST')
+            ->assertSee('IGST')
+            ->assertSee('gstOptionsHtml(item.tax_percentage)', false)
+            ->assertDontSee('class="gst-percent-input no-auto-select"', false)
+            ->assertDontSee('data-no-auto-select', false);
     }
 
     public function test_rentals_create_page_has_searchable_customer_and_product_selects(): void
@@ -48,17 +54,19 @@ class SalesRentalSearchableSelectRegressionTest extends TestCase
         $response->assertOk()
             ->assertSee('id="customer_id"', false)
             ->assertSee('id="product_id"', false)
+            ->assertSee('name="gst_rate" id="gst_rate"', false)
             ->assertSee('data-searchable-select', false)
             ->assertSee('data-search-placeholder="Search customer by name or phone"', false)
             ->assertSee('data-search-placeholder="Search product by name, brand, model, SKU, or code"', false)
-            ->assertSee('class="gst-percent-input no-auto-select"', false)
-            ->assertSee('data-no-auto-select', false)
+            ->assertSee('gstOptionsHtml(item.gst_rate', false)
             ->assertSee('name="rental_items[${index}][product_id]"', false)
             ->assertSee('data-rental-product-index="${index}"', false)
             ->assertSee('enhanceSearchableSelect(productSelectEl);', false)
             ->assertSee('name="sale_items[${index}][product_id]"', false)
             ->assertSee('data-sale-product-index="${index}"', false)
-            ->assertSee('data-search-placeholder="Search new product by name, brand, model, SKU, or code"', false);
+            ->assertSee('data-search-placeholder="Search new product by name, brand, model, SKU, or code"', false)
+            ->assertDontSee('class="gst-percent-input no-auto-select"', false)
+            ->assertDontSee('data-no-auto-select', false);
     }
 
     public function test_rentals_create_page_excludes_sale_only_products_but_keeps_rental_eligible_products(): void

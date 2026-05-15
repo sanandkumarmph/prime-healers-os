@@ -168,6 +168,39 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
             "invoices.partials.invoice-document",
             (string) file_get_contents(resource_path('views/invoices/pdf-dompdf.blade.php'))
         );
+        $this->assertStringContainsString(
+            "invoices.partials.invoice-document-styles",
+            (string) file_get_contents(resource_path('views/invoices/bulk-print.blade.php'))
+        );
+        $this->assertStringContainsString(
+            "invoices.partials.invoice-document-styles",
+            (string) file_get_contents(resource_path('views/invoices/print.blade.php'))
+        );
+        $this->assertStringContainsString(
+            "invoices.partials.invoice-document-styles",
+            (string) file_get_contents(resource_path('views/invoices/pdf-dompdf.blade.php'))
+        );
+    }
+
+    public function test_shared_invoice_styles_constrain_logo_and_use_between_invoice_page_breaks(): void
+    {
+        $styles = (string) file_get_contents(resource_path('views/invoices/partials/invoice-document-styles.blade.php'));
+        $bulkTemplate = (string) file_get_contents(resource_path('views/invoices/bulk-print.blade.php'));
+        $sharedPartial = (string) file_get_contents(resource_path('views/invoices/partials/invoice-document.blade.php'));
+        $dompdfTemplate = (string) file_get_contents(resource_path('views/invoices/pdf-dompdf.blade.php'));
+
+        $this->assertStringContainsString('max-width: 31mm;', $styles);
+        $this->assertStringContainsString('max-height: 16.5mm;', $styles);
+        $this->assertStringContainsString('width: auto !important;', $styles);
+        $this->assertStringContainsString('height: auto !important;', $styles);
+        $this->assertStringContainsString('max-width:120px; max-height:60px;', $sharedPartial);
+        $this->assertStringContainsString('.summary-totals-wrap {', $styles);
+        $this->assertStringContainsString('display: block;', $styles);
+        $this->assertStringContainsString('margin-left: auto;', $styles);
+        $this->assertStringNotContainsString('page-break-before', $bulkTemplate);
+        $this->assertStringContainsString('page-break-after: always;', $bulkTemplate);
+        $this->assertStringNotContainsString('invoice-page-break', $bulkTemplate);
+        $this->assertStringNotContainsString('link rel="stylesheet"', $dompdfTemplate);
     }
 
     private function invoiceContext(): array

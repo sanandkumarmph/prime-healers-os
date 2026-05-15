@@ -5,8 +5,19 @@
     $selectedRentalId = (int) old('rental_id', $sale->rental_id ?? null);
     $selectedCustomer = $customers->firstWhere('id', $selectedCustomerId);
     $selectedRental = ($rentals ?? collect())->firstWhere('id', $selectedRentalId);
+    $organizationState = optional(auth()->user()->organization)->state;
 
     $initialSaleItems = old('sale_items');
+    $initialShippingCharges = old('shipping_charges');
+
+    if ($initialShippingCharges === null) {
+        $initialShippingCharges = $isEdit
+            ? number_format((float) $sale->resolvedShippingCharges(), 2, '.', '')
+            : number_format((float) old('shipping_charges', 0), 2, '.', '');
+    } else {
+        $initialShippingCharges = number_format((float) $initialShippingCharges, 2, '.', '');
+    }
+
     if (!is_array($initialSaleItems) || $initialSaleItems === []) {
         if ($isEdit) {
             $initialSaleItems = $sale->displaySaleItems()->map(function ($item) {
@@ -16,9 +27,9 @@
                     'quantity' => (int) ($item->quantity ?? 1),
                     'unit_price' => number_format((float) ($item->unit_price ?? 0), 2, '.', ''),
                     'discount_amount' => number_format((float) ($item->discount_amount ?? 0), 2, '.', ''),
-                    'shipping_charges' => number_format((float) ($item->shipping_charges ?? 0), 2, '.', ''),
                     'tax_percentage' => number_format((float) ($item->tax_percentage ?? 0), 2, '.', ''),
                     'tax_calculation_mode' => $item->tax_calculation_mode ?? 'exclusive',
+                    'tax_type' => $item->tax_type ?? null,
                     'notes' => $item->notes,
                 ];
             })->values()->all();
@@ -29,9 +40,9 @@
                 'quantity' => old('quantity', 1),
                 'unit_price' => old('unit_price', 0),
                 'discount_amount' => old('discount_amount', 0),
-                'shipping_charges' => old('shipping_charges', 0),
                 'tax_percentage' => old('tax_percentage', 0),
                 'tax_calculation_mode' => old('tax_calculation_mode', 'exclusive'),
+                'tax_type' => old('tax_type'),
                 'notes' => null,
             ]];
         } else {
@@ -41,9 +52,9 @@
                 'quantity' => 1,
                 'unit_price' => 0,
                 'discount_amount' => 0,
-                'shipping_charges' => 0,
                 'tax_percentage' => 0,
                 'tax_calculation_mode' => 'exclusive',
+                'tax_type' => null,
                 'notes' => null,
             ]];
         }
@@ -90,6 +101,7 @@
         'phone' => $customer->phone,
         'email' => $customer->email,
         'city' => $customer->city,
+        'state' => $customer->state,
     ])->values();
 @endphp
 
@@ -355,6 +367,7 @@
                                     data-phone="{{ $customer->phone }}"
                                     data-email="{{ $customer->email }}"
                                     data-city="{{ $customer->city }}"
+                                    data-state="{{ $customer->state }}"
                                     data-search="{{ trim(implode(' ', array_filter([$customer->name, $customer->phone, $customer->email, $customer->city]))) }}"
                                     {{ $selectedCustomerId === $customer->id ? 'selected' : '' }}>
                                     {{ $customer->name }}{{ $customer->phone ? ' - ' . $customer->phone : '' }}
@@ -379,7 +392,7 @@
 
     <div class="sales-card">
         <h2>Product Items</h2>
-        <p>Add one or many product lines. Each line calculates its own total and rolls into the final sale amount automatically.</p>
+        <p>Add one or many product lines. Each line calculates its own total, then one common shipping charge is added at the sale level.</p>
 
         <div class="sales-items-toolbar">
             <strong id="salesItemsToolbarSummary">{{ count($initialSaleItems) }} product line(s)</strong>
@@ -393,10 +406,16 @@
                 <div style="color:#64748b; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;">Sale Net Amount</div>
                 <strong id="saleOrderTotal">₹0.00</strong>
             </div>
+            <div class="sales-field {{ $errors->has('shipping_charges') ? 'is-error' : '' }}" style="min-width:220px; margin:0;">
+                <label for="shipping_charges">Shipping Cost</label>
+                <input type="number" step="0.01" min="0" name="shipping_charges" id="shipping_charges" value="{{ $initialShippingCharges }}">
+                <small>Applied once to the whole sale, not repeated per product line.</small>
+                @error('shipping_charges')<div class="sales-field-error">{{ $message }}</div>@enderror
+            </div>
             <div class="sales-field" style="min-width:220px; margin:0;">
                 <label for="sale_amount">Calculated Total</label>
                 <input type="number" step="0.01" min="0" name="sale_amount" id="sale_amount" value="{{ old('sale_amount', $sale->sale_amount ?? 0) }}" readonly>
-                <small>Saved as the order total from all product lines.</small>
+                <small>Saved as product totals plus sale-level shipping.</small>
             </div>
         </div>
     </div>
@@ -419,6 +438,7 @@
         const assets = @json($assetData);
         const customers = @json($customerData);
         const rentals = @json($rentalData);
+        const organizationState = @json($organizationState);
 
         const customerSelect = document.getElementById('customer_id');
         const rentalSelect = document.getElementById('rental_id');
@@ -430,10 +450,12 @@
         const saleCustomerMetric = document.getElementById('saleCustomerMetric');
         const saleItemsCountMetric = document.getElementById('saleItemsCountMetric');
         const salesItemsToolbarSummary = document.getElementById('salesItemsToolbarSummary');
+        const saleShippingInput = document.getElementById('shipping_charges');
         const saleCustomerName = document.getElementById('saleCustomerName');
         const saleCustomerPhone = document.getElementById('saleCustomerPhone');
         const saleCustomerEmail = document.getElementById('saleCustomerEmail');
         const saleCustomerCity = document.getElementById('saleCustomerCity');
+        const standardGstRates = ['0.00', '5.00', '12.00', '18.00', '28.00'];
 
         const productMap = new Map(products.map(function (product) { return [parseInt(product.id, 10), product]; }));
         const assetMap = new Map(assets.map(function (asset) { return [parseInt(asset.id, 10), asset]; }));
@@ -448,23 +470,27 @@
                 quantity: 1,
                 unit_price: '0.00',
                 discount_amount: '0.00',
-                shipping_charges: '0.00',
                 tax_percentage: '0.00',
                 tax_calculation_mode: 'exclusive',
+                tax_type: recommendedTaxType(),
+                tax_type_auto: true,
                 notes: ''
             };
         }
 
         function normalizeItem(item) {
+            const hasTaxType = ['cgst_sgst', 'igst'].includes(item.tax_type);
+
             return {
                 product_id: item.product_id ? parseInt(item.product_id, 10) : null,
                 asset_id: item.asset_id ? parseInt(item.asset_id, 10) : null,
                 quantity: Math.max(parseInt(item.quantity || 1, 10), 1),
                 unit_price: normalizeMoney(item.unit_price),
                 discount_amount: normalizeMoney(item.discount_amount),
-                shipping_charges: normalizeMoney(item.shipping_charges),
                 tax_percentage: normalizeMoney(item.tax_percentage),
                 tax_calculation_mode: item.tax_calculation_mode === 'inclusive' ? 'inclusive' : 'exclusive',
+                tax_type: hasTaxType ? item.tax_type : recommendedTaxType(),
+                tax_type_auto: !hasTaxType,
                 notes: item.notes || ''
             };
         }
@@ -472,6 +498,53 @@
         function normalizeMoney(value) {
             const parsed = parseFloat(value || 0);
             return Number.isNaN(parsed) ? '0.00' : parsed.toFixed(2);
+        }
+
+        function formatGstLabel(value) {
+            const normalized = normalizeMoney(value);
+            return `${normalized.replace(/\.00$/, '').replace(/(\.\d*[1-9])0+$/, '$1')}%`;
+        }
+
+        function normalizeStateName(value) {
+            return String(value || '').trim().toLowerCase();
+        }
+
+        function selectedCustomerData() {
+            const customerId = customerSelect.value ? parseInt(customerSelect.value, 10) : null;
+            return customerId ? customerMap.get(customerId) : null;
+        }
+
+        function recommendedTaxType(customerStateValue) {
+            const customerState = normalizeStateName(customerStateValue || selectedCustomerData()?.state);
+            const orgState = normalizeStateName(organizationState);
+
+            if (customerState && orgState && customerState !== orgState) {
+                return 'igst';
+            }
+
+            return 'cgst_sgst';
+        }
+
+        function gstOptionsHtml(currentValue) {
+            const normalized = normalizeMoney(currentValue);
+            const options = standardGstRates.includes(normalized)
+                ? [...standardGstRates]
+                : [...standardGstRates, normalized].sort(function (left, right) {
+                    return parseFloat(left) - parseFloat(right);
+                });
+
+            return options.map(function (option) {
+                return `<option value="${escapeHtml(option)}"${option === normalized ? ' selected' : ''}>${escapeHtml(formatGstLabel(option))}</option>`;
+            }).join('');
+        }
+
+        function taxTypeOptionsHtml(currentValue) {
+            const normalized = currentValue === 'igst' ? 'igst' : 'cgst_sgst';
+
+            return `
+                <option value="cgst_sgst"${normalized === 'cgst_sgst' ? ' selected' : ''}>CGST + SGST</option>
+                <option value="igst"${normalized === 'igst' ? ' selected' : ''}>IGST</option>
+            `;
         }
 
         function formatCurrency(value) {
@@ -636,13 +709,12 @@
             const quantity = Math.max(parseFloat(item.quantity || 0), 1);
             const unitPrice = Math.max(parseFloat(item.unit_price || 0), 0);
             const discount = Math.max(parseFloat(item.discount_amount || 0), 0);
-            const shipping = Math.max(parseFloat(item.shipping_charges || 0), 0);
             const taxPercentage = Math.max(parseFloat(item.tax_percentage || 0), 0);
             const mode = item.tax_calculation_mode === 'inclusive' ? 'inclusive' : 'exclusive';
 
             const subtotal = quantity * unitPrice;
             const taxableBase = Math.max(subtotal - discount, 0);
-            let total = taxableBase + shipping;
+            let total = taxableBase;
 
             if (mode === 'exclusive' && taxPercentage > 0) {
                 total += taxableBase * (taxPercentage / 100);
@@ -652,9 +724,11 @@
         }
 
         function updateSaleSummary() {
-            const total = saleItems.reduce(function (carry, item) {
+            const productTotal = saleItems.reduce(function (carry, item) {
                 return carry + lineCommercials(item);
             }, 0);
+            const shipping = Math.max(parseFloat((saleShippingInput && saleShippingInput.value) || 0), 0);
+            const total = productTotal + shipping;
 
             saleAmountInput.value = total.toFixed(2);
             saleOrderTotal.textContent = formatCurrency(total);
@@ -664,14 +738,29 @@
         }
 
         function updateCustomerPanel() {
-            const customerId = customerSelect.value ? parseInt(customerSelect.value, 10) : null;
-            const customer = customerId ? customerMap.get(customerId) : null;
+            const customer = selectedCustomerData();
 
             saleCustomerMetric.textContent = customer ? customer.name : 'Select customer';
             saleCustomerName.textContent = customer ? customer.name : 'Select customer';
             saleCustomerPhone.textContent = customer && customer.phone ? customer.phone : 'Phone will appear here';
             saleCustomerEmail.textContent = customer && customer.email ? customer.email : 'Email will appear here';
             saleCustomerCity.textContent = customer && customer.city ? customer.city : 'City will appear here';
+
+            const recommended = recommendedTaxType(customer?.state);
+            let needsRender = false;
+
+            saleItems.forEach(function (item) {
+                if (item.tax_type_auto) {
+                    if (item.tax_type !== recommended) {
+                        item.tax_type = recommended;
+                        needsRender = true;
+                    }
+                }
+            });
+
+            if (needsRender) {
+                renderSaleItems();
+            }
         }
 
         function syncCustomerFromRental() {
@@ -756,18 +845,22 @@
                             <input type="number" min="0" step="0.01" name="sale_items[${index}][discount_amount]" id="sale_item_discount_${index}" value="${escapeHtml(item.discount_amount)}">
                         </div>
                         <div class="sales-field sales-col-3">
-                            <label for="sale_item_shipping_${index}">Shipping</label>
-                            <input type="number" min="0" step="0.01" name="sale_items[${index}][shipping_charges]" id="sale_item_shipping_${index}" value="${escapeHtml(item.shipping_charges)}">
-                        </div>
-                        <div class="sales-field sales-col-3">
                             <label for="sale_item_tax_${index}">GST %</label>
-                            <input type="number" min="0" step="0.01" name="sale_items[${index}][tax_percentage]" id="sale_item_tax_${index}" value="${escapeHtml(item.tax_percentage)}" class="gst-percent-input no-auto-select" data-no-auto-select>
+                            <select name="sale_items[${index}][tax_percentage]" id="sale_item_tax_${index}">
+                                ${gstOptionsHtml(item.tax_percentage)}
+                            </select>
                         </div>
                         <div class="sales-field sales-col-3">
                             <label for="sale_item_tax_mode_${index}">GST Mode</label>
                             <select name="sale_items[${index}][tax_calculation_mode]" id="sale_item_tax_mode_${index}">
                                 <option value="exclusive"${item.tax_calculation_mode === 'exclusive' ? ' selected' : ''}>Exclusive</option>
                                 <option value="inclusive"${item.tax_calculation_mode === 'inclusive' ? ' selected' : ''}>Inclusive</option>
+                            </select>
+                        </div>
+                        <div class="sales-field sales-col-3">
+                            <label for="sale_item_tax_type_${index}">Tax Type</label>
+                            <select name="sale_items[${index}][tax_type]" id="sale_item_tax_type_${index}">
+                                ${taxTypeOptionsHtml(item.tax_type)}
                             </select>
                         </div>
                         <div class="sales-field sales-col-6">
@@ -780,7 +873,7 @@
                                     <span>Line Total</span>
                                     <strong id="sale_item_total_${index}">${formatCurrency(total)}</strong>
                                 </div>
-                                <div style="font-size:12px; opacity:.8;">Discount, GST mode, GST %, and shipping are included here.</div>
+                                <div style="font-size:12px; opacity:.8;">Discount, GST mode, and GST % are included here. Shipping is added once at sale level.</div>
                             </div>
                         </div>
                     </div>
@@ -793,9 +886,9 @@
                 const quantityInput = row.querySelector('#sale_item_quantity_' + index);
                 const unitPriceInput = row.querySelector('#sale_item_unit_price_' + index);
                 const discountInput = row.querySelector('#sale_item_discount_' + index);
-                const shippingInput = row.querySelector('#sale_item_shipping_' + index);
                 const taxInput = row.querySelector('#sale_item_tax_' + index);
                 const taxModeSelect = row.querySelector('#sale_item_tax_mode_' + index);
+                const taxTypeSelect = row.querySelector('#sale_item_tax_type_' + index);
                 const notesInput = row.querySelector('#sale_item_notes_' + index);
                 const totalLabel = row.querySelector('#sale_item_total_' + index);
                 const removeButton = row.querySelector('[data-remove-index="' + index + '"]');
@@ -816,6 +909,9 @@
                         saleItems[index].unit_price = normalizeMoney(selectedProduct.sale_price);
                         saleItems[index].tax_percentage = normalizeMoney(selectedProduct.tax_percentage);
                         saleItems[index].tax_calculation_mode = selectedProduct.tax_mode === 'inclusive' ? 'inclusive' : 'exclusive';
+                        if (saleItems[index].tax_type_auto) {
+                            saleItems[index].tax_type = recommendedTaxType();
+                        }
                     }
 
                     renderSaleItems();
@@ -844,12 +940,7 @@
                     refreshLineTotal();
                 });
 
-                shippingInput.addEventListener('input', function () {
-                    saleItems[index].shipping_charges = normalizeMoney(this.value);
-                    refreshLineTotal();
-                });
-
-                taxInput.addEventListener('input', function () {
+                taxInput.addEventListener('change', function () {
                     saleItems[index].tax_percentage = normalizeMoney(this.value);
                     refreshLineTotal();
                 });
@@ -857,6 +948,11 @@
                 taxModeSelect.addEventListener('change', function () {
                     saleItems[index].tax_calculation_mode = this.value === 'inclusive' ? 'inclusive' : 'exclusive';
                     refreshLineTotal();
+                });
+
+                taxTypeSelect.addEventListener('change', function () {
+                    saleItems[index].tax_type = this.value === 'igst' ? 'igst' : 'cgst_sgst';
+                    saleItems[index].tax_type_auto = false;
                 });
 
                 notesInput.addEventListener('input', function () {
@@ -884,6 +980,9 @@
 
         customerSelect.addEventListener('change', updateCustomerPanel);
         rentalSelect.addEventListener('change', syncCustomerFromRental);
+        if (saleShippingInput) {
+            saleShippingInput.addEventListener('input', updateSaleSummary);
+        }
 
         enhanceSearchableSelect(customerSelect);
         enhanceSearchableSelect(rentalSelect);

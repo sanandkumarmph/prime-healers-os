@@ -33,15 +33,35 @@ class ProductCatalogPageTest extends TestCase
             ->assertSee('Product Master');
     }
 
-    public function test_product_form_gst_inputs_opt_out_of_global_numeric_auto_select(): void
+    public function test_product_form_uses_gst_dropdowns_instead_of_numeric_inputs(): void
     {
         $this->get(route('products.create'))
             ->assertOk()
-            ->assertSee('id="cgst_rate"', false)
-            ->assertSee('id="sgst_rate"', false)
-            ->assertSee('id="igst_rate"', false)
-            ->assertSee('class="gst-percent-input no-auto-select"', false)
-            ->assertSee('data-no-auto-select', false);
+            ->assertSee('id="gst_split_total_rate"', false)
+            ->assertSee('id="gst_igst_total_rate"', false)
+            ->assertSee('value="5.00"', false)
+            ->assertSee('value="12.00"', false)
+            ->assertSee('value="18.00"', false)
+            ->assertDontSee('type="number" min="0" max="100" step="0.01" name="cgst_rate"', false)
+            ->assertDontSee('type="number" min="0" max="100" step="0.01" name="sgst_rate"', false)
+            ->assertDontSee('type="number" min="0" max="100" step="0.01" name="igst_rate"', false);
+    }
+
+    public function test_product_form_preserves_non_standard_saved_gst_values_in_dropdowns(): void
+    {
+        $product = $this->makeProduct([
+            'name' => 'Legacy GST Product',
+            'gst_tax_type' => Product::GST_TAX_TYPE_CGST_SGST,
+            'gst_calculation_mode' => 'exclusive',
+            'cgst_rate' => 3.5,
+            'sgst_rate' => 3.5,
+            'igst_rate' => 0,
+        ]);
+
+        $this->get(route('products.edit', $product))
+            ->assertOk()
+            ->assertSee('value="7.00" selected', false)
+            ->assertSee('id="gst_split_total_rate"', false);
     }
 
     public function test_search_filter_works(): void

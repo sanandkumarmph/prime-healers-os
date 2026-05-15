@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Carbon\Carbon;
 use App\Models\Customer;
 use App\Models\Payment;
 use App\Support\CustomerProfileSupport;
@@ -48,15 +49,52 @@ class CustomerController extends Controller
         return $query;
     }
 
-    private function applyCustomerFilters($query, Request $request)
+    private function validatedDateFilters(Request $request): array
+    {
+        $validated = $request->validate([
+            'created_date' => ['nullable', 'date'],
+            'from_date' => ['nullable', 'date'],
+            'to_date' => ['nullable', 'date'],
+        ]);
+
+        $createdDate = trim((string) ($validated['created_date'] ?? ''));
+        $fromDate = trim((string) ($validated['from_date'] ?? ''));
+        $toDate = trim((string) ($validated['to_date'] ?? ''));
+
+        if ($createdDate !== '') {
+            $fromDate = $fromDate !== '' ? $fromDate : $createdDate;
+            $toDate = $toDate !== '' ? $toDate : $createdDate;
+        }
+
+        $normalizedFromDate = $fromDate !== '' ? Carbon::parse($fromDate)->toDateString() : '';
+        $normalizedToDate = $toDate !== '' ? Carbon::parse($toDate)->toDateString() : '';
+
+        if (
+            $normalizedFromDate !== ''
+            && $normalizedToDate !== ''
+            && Carbon::parse($normalizedFromDate)->greaterThan(Carbon::parse($normalizedToDate))
+        ) {
+            throw ValidationException::withMessages([
+                'to_date' => ['To Date must be on or after From Date.'],
+            ]);
+        }
+
+        return [
+            'createdDate' => $createdDate !== '' ? Carbon::parse($createdDate)->toDateString() : '',
+            'fromDate' => $normalizedFromDate,
+            'toDate' => $normalizedToDate,
+        ];
+    }
+
+    private function applyCustomerFilters($query, Request $request, ?array $dateFilters = null)
     {
         $search = trim((string) $request->get('search', ''));
         $city = trim((string) $request->get('city', ''));
         $state = trim((string) $request->get('state', ''));
         $status = trim((string) $request->get('status', ''));
-        $createdDate = trim((string) $request->get('created_date', ''));
-        $fromDate = trim((string) $request->get('from_date', ''));
-        $toDate = trim((string) $request->get('to_date', ''));
+        $dateFilters ??= $this->validatedDateFilters($request);
+        $fromDate = $dateFilters['fromDate'] ?? '';
+        $toDate = $dateFilters['toDate'] ?? '';
 
         if ($search !== '') {
             $query->where(function ($customerQuery) use ($search) {
@@ -95,20 +133,15 @@ class CustomerController extends Controller
             $query->where('status', $status);
         }
 
-        if ($createdDate !== '') {
-            $fromDate = $fromDate !== '' ? $fromDate : $createdDate;
-            $toDate = $toDate !== '' ? $toDate : $createdDate;
-        }
-
         if ($fromDate !== '' && $toDate !== '') {
             $query->whereBetween('created_at', [
-                $fromDate . ' 00:00:00',
-                $toDate . ' 23:59:59',
+                Carbon::parse($fromDate)->startOfDay(),
+                Carbon::parse($toDate)->endOfDay(),
             ]);
         } elseif ($fromDate !== '') {
-            $query->where('created_at', '>=', $fromDate . ' 00:00:00');
+            $query->where('created_at', '>=', Carbon::parse($fromDate)->startOfDay());
         } elseif ($toDate !== '') {
-            $query->where('created_at', '<=', $toDate . ' 23:59:59');
+            $query->where('created_at', '<=', Carbon::parse($toDate)->endOfDay());
         }
 
         return $query;
@@ -307,23 +340,24 @@ class CustomerController extends Controller
     {
         $this->authorize('viewAny', Customer::class);
 
+        $dateFilters = $this->validatedDateFilters($request);
         $search = trim((string) $request->get('search', ''));
         $city = trim((string) $request->get('city', ''));
         $state = trim((string) $request->get('state', ''));
         $status = trim((string) $request->get('status', ''));
-        $createdDate = trim((string) $request->get('created_date', ''));
-        $fromDate = trim((string) $request->get('from_date', ''));
-        $toDate = trim((string) $request->get('to_date', ''));
+        $createdDate = $dateFilters['createdDate'];
+        $fromDate = $dateFilters['fromDate'];
+        $toDate = $dateFilters['toDate'];
         $sortBy = trim((string) $request->get('sort_by', 'latest'));
 
         $customers = $this->applyCustomerSorting(
-            $this->applyCustomerFilters($this->customerBaseQuery(), $request),
+            $this->applyCustomerFilters($this->customerBaseQuery(), $request, $dateFilters),
             $sortBy
         )
             ->paginate(12)
             ->withQueryString();
 
-        $summaryBaseQuery = $this->applyCustomerFilters($this->customerBaseQuery(), $request);
+        $summaryBaseQuery = $this->applyCustomerFilters($this->customerBaseQuery(), $request, $dateFilters);
         $summaryCustomers = (clone $summaryBaseQuery)
             ->get([
                 'customers.id',
@@ -361,10 +395,11 @@ class CustomerController extends Controller
     {
         $this->authorize('export', Customer::class);
 
+        $dateFilters = $this->validatedDateFilters($request);
         $sortBy = trim((string) $request->get('sort_by', 'latest'));
 
         $customers = $this->applyCustomerSorting(
-            $this->applyCustomerFilters($this->customerBaseQuery(), $request),
+            $this->applyCustomerFilters($this->customerBaseQuery(), $request, $dateFilters),
             $sortBy
         )
             ->get();

@@ -52,6 +52,23 @@
             ])->filter()->implode(' | ')),
         ];
     })->values()->all();
+    $gstStandardRates = [0, 5, 12, 18, 28];
+    $gstDropdownOptions = function (float|int|string|null $selectedValue) use ($gstStandardRates): array {
+        $normalizedSelected = number_format((float) ($selectedValue ?? 0), 2, '.', '');
+        $options = collect($gstStandardRates)
+            ->map(fn ($rate) => number_format((float) $rate, 2, '.', ''))
+            ->all();
+
+        if (!in_array($normalizedSelected, $options, true)) {
+            $options[] = $normalizedSelected;
+        }
+
+        return collect($options)
+            ->unique()
+            ->sort(fn ($left, $right) => (float) $left <=> (float) $right)
+            ->values()
+            ->all();
+    };
     $additionalRentalExpanded = count($additionalRentalRows) > 0;
     $newProductsExpanded = count($saleItemRows) > 0;
     $selectedDeliveryAssignment = old('delivery_staff_id');
@@ -954,7 +971,7 @@
                             data-state="{{ $customer->state }}"
                             data-search="{{ trim(implode(' ', array_filter([$customer->name, $customer->phone, $customer->email, $customer->city]))) }}"
                             {{ (int) old('customer_id', $isEdit ? $rental->customer_id : null) === $customer->id ? 'selected' : '' }}>
-                            {{ $customer->name }}{{ $customer->phone ? ' â€¢ ' . $customer->phone : '' }}
+                            {{ $customer->name }}{{ $customer->phone ? ' • ' . $customer->phone : '' }}
                         </option>
                     @endforeach
                         </select>
@@ -1087,7 +1104,14 @@
 
             <div class="rental-field rental-col-3{{ $hasFieldError('gst_rate') ? ' is-error' : '' }}">
                 <label for="gst_rate">GST %</label>
-                <input type="number" step="0.01" min="0" max="100" name="gst_rate" id="gst_rate" value="{{ old('gst_rate', $primaryRentalItem?->gst_rate ?? 0) }}" class="gst-percent-input no-auto-select" data-no-auto-select>
+                @php($primaryGstRateValue = old('gst_rate', $primaryRentalItem?->gst_rate ?? 0))
+                <select name="gst_rate" id="gst_rate">
+                    @foreach($gstDropdownOptions($primaryGstRateValue) as $rateOption)
+                        <option value="{{ $rateOption }}" @selected(number_format((float) $primaryGstRateValue, 2, '.', '') === $rateOption)>
+                            {{ rtrim(rtrim($rateOption, '0'), '.') }}%
+                        </option>
+                    @endforeach
+                </select>
                 @if($hasFieldError('gst_rate'))
                     <span class="field-error">{{ $fieldError('gst_rate') }}</span>
                 @endif
@@ -1453,6 +1477,7 @@
         let currentAssets = [];
         let rentalItems = @json($additionalRentalRows);
         let saleItems = @json($saleItemRows);
+        const standardGstRates = ['0.00', '5.00', '12.00', '18.00', '28.00'];
         let rentalAmountTouched = Boolean(@json($isEdit || (old('rental_amount') !== null && old('rental_amount') !== '')));
         const assetVisibleStep = 3;
         let visibleAssetCount = assetVisibleStep;
@@ -1474,6 +1499,29 @@
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;');
+        }
+
+        function normalizeMoney(value) {
+            const parsed = parseFloat(value || 0);
+            return Number.isNaN(parsed) ? '0.00' : parsed.toFixed(2);
+        }
+
+        function formatGstLabel(value) {
+            const normalized = normalizeMoney(value);
+            return `${normalized.replace(/\.00$/, '').replace(/(\.\d*[1-9])0+$/, '$1')}%`;
+        }
+
+        function gstOptionsHtml(currentValue) {
+            const normalized = normalizeMoney(currentValue);
+            const options = standardGstRates.includes(normalized)
+                ? [...standardGstRates]
+                : [...standardGstRates, normalized].sort(function (left, right) {
+                    return parseFloat(left) - parseFloat(right);
+                });
+
+            return options.map(function (option) {
+                return `<option value="${escapeHtml(option)}"${option === normalized ? ' selected' : ''}>${escapeHtml(formatGstLabel(option))}</option>`;
+            }).join('');
         }
 
         rentalItems = (Array.isArray(rentalItems) ? rentalItems : []).map(function (item) {
@@ -2590,7 +2638,9 @@
                         </div>
                         <div class="sale-item-detail-field">
                             <label>GST %</label>
-                            <input type="number" min="0" max="100" step="0.01" name="rental_items[${index}][gst_rate]" value="${item.gst_rate || '0.00'}" data-rental-gst-rate="${index}" class="gst-percent-input no-auto-select" data-no-auto-select>
+                            <select name="rental_items[${index}][gst_rate]" data-rental-gst-rate="${index}">
+                                ${gstOptionsHtml(item.gst_rate || '0.00')}
+                            </select>
                         </div>
                         <div class="sale-item-detail-field">
                             <label>GST Mode</label>
@@ -2659,8 +2709,8 @@
                     renderRentalItems();
                 });
 
-                gstRateInputEl.addEventListener('input', function () {
-                    rentalItems[index].gst_rate = this.value || '0';
+                gstRateInputEl.addEventListener('change', function () {
+                    rentalItems[index].gst_rate = normalizeMoney(this.value);
                     renderRentalItems();
                 });
 
@@ -2836,7 +2886,9 @@
                         </div>
                         <div class="sale-item-detail-field">
                             <label>GST %</label>
-                            <input type="number" min="0" max="100" step="0.01" name="sale_items[${index}][gst_rate]" value="${item.gst_rate || '0.00'}" data-sale-gst-rate="${index}" class="gst-percent-input no-auto-select" data-no-auto-select>
+                            <select name="sale_items[${index}][gst_rate]" data-sale-gst-rate="${index}">
+                                ${gstOptionsHtml(item.gst_rate || '0.00')}
+                            </select>
                         </div>
                         <div class="sale-item-detail-field">
                             <label>GST Mode</label>
@@ -2962,8 +3014,8 @@
                     renderSaleItems();
                 });
 
-                gstRateInputEl.addEventListener('input', function () {
-                    saleItems[index].gst_rate = this.value || '0';
+                gstRateInputEl.addEventListener('change', function () {
+                    saleItems[index].gst_rate = normalizeMoney(this.value);
                     renderSaleItems();
                 });
 

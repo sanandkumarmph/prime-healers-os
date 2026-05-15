@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 
 class Asset extends Model
 {
@@ -164,5 +165,23 @@ class Asset extends Model
         return $this->belongsToMany(Sale::class, 'sale_assets')
             ->withPivot(['organization_id'])
             ->withTimestamps();
+    }
+
+    public function scopeRentalReady(Builder $query): Builder
+    {
+        $query
+            ->where('asset_stage', self::STAGE_RENTAL_STOCK)
+            ->where('asset_status', self::STATUS_AVAILABLE)
+            ->where(function (Builder $conditionQuery) {
+                $conditionQuery
+                    ->whereNull('condition_status')
+                    ->orWhereNotIn('condition_status', ['repair', 'damaged', 'inactive']);
+            });
+
+        if (RentalAsset::hasTable()) {
+            $query->whereDoesntHave('activeRentalAssignments');
+        }
+
+        return $query;
     }
 }

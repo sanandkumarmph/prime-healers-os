@@ -158,7 +158,9 @@ class Product extends Model
             return $this->saleUnits->isNotEmpty();
         }
 
-        return $this->saleUnits()->exists();
+        return $this->saleUnits()
+            ->where('organization_id', $this->organization_id)
+            ->exists();
     }
 
     public function canRent(): bool
@@ -179,7 +181,9 @@ class Product extends Model
             return $this->rentalUnits->isNotEmpty();
         }
 
-        return $this->rentalUnits()->exists();
+        return $this->rentalUnits()
+            ->where('organization_id', $this->organization_id)
+            ->exists();
     }
 
     public function isRentalEligibleForSelection(): bool
@@ -272,8 +276,8 @@ class Product extends Model
         $resolvedStockMode = in_array($this->stock_mode, self::STOCK_MODES, true)
             ? $this->stock_mode
             : self::resolveStockModeFromInventoryCounts(
-                (int) $this->saleUnits()->count(),
-                (int) $this->rentalUnits()->count(),
+                (int) $this->saleUnits()->where('organization_id', $this->organization_id)->count(),
+                (int) $this->rentalUnits()->where('organization_id', $this->organization_id)->count(),
                 $this->stock_mode
             );
 
@@ -305,8 +309,11 @@ class Product extends Model
 
     public function saleStockSummary(): array
     {
-        $total = (int) $this->saleUnits()->count();
+        $total = (int) $this->saleUnits()
+            ->where('organization_id', $this->organization_id)
+            ->count();
         $available = (int) $this->saleUnits()
+            ->where('organization_id', $this->organization_id)
             ->where('asset_status', Asset::STATUS_AVAILABLE_FOR_SALE)
             ->count();
 
@@ -318,9 +325,12 @@ class Product extends Model
 
     public function rentalStockSummary(): array
     {
-        $total = (int) $this->rentalUnits()->count();
+        $total = (int) $this->rentalUnits()
+            ->where('organization_id', $this->organization_id)
+            ->count();
         $available = (int) $this->rentalUnits()
-            ->where('asset_status', Asset::STATUS_AVAILABLE)
+            ->where('organization_id', $this->organization_id)
+            ->rentalReady()
             ->count();
 
         return [
@@ -346,6 +356,7 @@ class Product extends Model
         $prefix = rtrim($this->nextUnitCodePrefix(), '-') . '-';
 
         $maxSequence = (int) $this->saleUnits()
+            ->where('organization_id', $this->organization_id)
             ->where('serial_number', 'like', $prefix . '%')
             ->selectRaw("MAX(CAST(SUBSTRING_INDEX(serial_number, '-', -1) AS UNSIGNED)) as seq")
             ->value('seq');

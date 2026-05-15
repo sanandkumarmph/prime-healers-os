@@ -132,12 +132,12 @@
         return $section;
     })->filter(fn ($section) => !empty($section['items']))->values();
 
-    $mobilePrimaryItems = [
+    $mobilePrimaryItems = collect([
         ['label' => 'Dashboard', 'icon' => 'dashboard', 'href' => ($currentUser?->hasPermission('dashboard.main') ?? false) ? $safeRoute('dashboard') : null, 'active' => request()->routeIs('dashboard')],
         ['label' => 'Customers', 'icon' => 'customers', 'href' => (!$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('customers', 'read') ?? false)) ? $safeRoute('customers.index') : null, 'active' => request()->routeIs('customers.*')],
         ['label' => 'Rentals', 'icon' => 'rentals', 'href' => (!$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('rentals', 'read') ?? false)) ? $safeRoute('rentals.index') : null, 'active' => request()->routeIs('rentals.*')],
         ['label' => 'Sales', 'icon' => 'sales', 'href' => ($currentUser?->canAccessModule('sales', 'read') ?? false) ? $safeRoute('sales.index') : null, 'active' => request()->routeIs('sales.*')],
-    ];
+    ])->filter(fn ($item) => !empty($item['href']))->values();
 
     $quickAddItems = collect([
         ['label' => 'New Customer', 'icon' => 'customers', 'href' => ($currentUser?->canAccessModule('customers', 'create') ?? false) ? $safeRoute('customers.create') : null],
@@ -150,6 +150,7 @@
     $mobileMoreItems = $visibleSidebarSections
         ->flatMap(fn ($section) => $section['items'])
         ->merge(collect($organizationItems)->filter(fn ($item) => !empty($item['visible']) && !empty($item['href'])))
+        ->filter(fn ($item) => !empty($item['href']))
         ->reject(fn ($item) => in_array($item['label'], ['Dashboard', 'Rentals', 'Sales', 'Customers'], true))
         ->values()
         ->all();

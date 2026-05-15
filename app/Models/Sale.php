@@ -148,6 +148,7 @@ class Sale extends Model
             'shipping_charges' => (float) ($this->shipping_charges ?? 0),
             'tax_percentage' => (float) ($this->tax_percentage ?? 0),
             'tax_calculation_mode' => $this->tax_calculation_mode ?? 'exclusive',
+            'tax_type' => Product::GST_TAX_TYPE_CGST_SGST,
             'taxable_amount' => max((float) (($this->quantity ?? 1) * ($this->unit_price ?? 0)) - (float) ($this->discount_amount ?? 0), 0),
             'total_tax_amount' => 0,
             'line_total' => (float) ($this->sale_amount ?? 0),
@@ -161,5 +162,24 @@ class Sale extends Model
         $fallbackItem->setRelation('warehouse', $this->warehouse);
 
         return collect([$fallbackItem]);
+    }
+
+    public function resolvedShippingCharges(): float
+    {
+        $headerShipping = round((float) ($this->shipping_charges ?? 0), 2);
+
+        if ($headerShipping > 0) {
+            return $headerShipping;
+        }
+
+        if (self::hasSaleItemsTable()) {
+            if ($this->relationLoaded('saleItems')) {
+                return round((float) $this->saleItems->sum(fn ($item) => (float) ($item->shipping_charges ?? 0)), 2);
+            }
+
+            return round((float) $this->saleItems()->sum('shipping_charges'), 2);
+        }
+
+        return 0.0;
     }
 }

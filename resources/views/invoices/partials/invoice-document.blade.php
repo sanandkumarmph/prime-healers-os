@@ -64,8 +64,15 @@
     ])));
 
     $showTaxColumns = (float) $invoice->total_tax_amount > 0;
-    $showGstSplit = $showTaxColumns && $invoice->tax_type === 'cgst_sgst';
-    $showIgst = $showTaxColumns && $invoice->tax_type === 'igst';
+    $hasInvoiceCgstSgst = ((float) $invoice->cgst_amount > 0 || (float) $invoice->sgst_amount > 0);
+    $hasInvoiceIgst = (float) $invoice->igst_amount > 0;
+    $showGstSplit = $showTaxColumns && $hasInvoiceCgstSgst;
+    $showIgst = $showTaxColumns && $hasInvoiceIgst;
+    $taxScopeLabel = $showTaxColumns
+        ? ($showGstSplit && $showIgst
+            ? 'Mixed GST'
+            : ($showGstSplit ? 'CGST + SGST' : ($showIgst ? 'IGST' : 'No Tax')))
+        : 'No Tax';
     $showDiscount = (float) $invoice->discount_amount > 0;
     $showShipping = (float) $invoice->shipping_charges > 0;
     $showDeposit = (float) $invoice->deposit_amount > 0;
@@ -116,7 +123,7 @@
             <td class="header-logo-cell">
                 <div class="header-logo-box">
                     @if($tenantLogo)
-                        <img src="{{ $tenantLogo }}" alt="Company Logo">
+                        <img src="{{ $tenantLogo }}" alt="Company Logo" style="max-width:120px; max-height:60px; width:auto; height:auto; display:block; margin:0 auto;">
                     @else
                         <div class="header-logo-fallback">{{ $organizationInitials ?: 'CO' }}</div>
                     @endif
@@ -160,7 +167,7 @@
         <tr>
             <td><span class="meta-label">Terms</span><span class="meta-value">{{ $paymentTermsLabel }}</span></td>
             <td><span class="meta-label">Place of Supply</span><span class="meta-value">{{ $invoice->place_of_supply_state ?: 'N/A' }}</span></td>
-            <td><span class="meta-label">GST Type</span><span class="meta-value">{{ $showGstSplit ? 'CGST + SGST' : ($showIgst ? 'IGST' : 'No Tax') }}</span></td>
+            <td><span class="meta-label">GST Type</span><span class="meta-value">{{ $taxScopeLabel }}</span></td>
         </tr>
     </table>
 
@@ -222,6 +229,8 @@
             @foreach($invoice->items as $item)
                 @php
                     $itemTaxAmount = (float) ($item->cgst_amount ?? 0) + (float) ($item->sgst_amount ?? 0) + (float) ($item->igst_amount ?? 0);
+                    $itemHasGstSplit = ((float) ($item->cgst_amount ?? 0) > 0 || (float) ($item->sgst_amount ?? 0) > 0 || ($item->tax_type ?? null) === 'cgst_sgst');
+                    $itemHasIgst = ((float) ($item->igst_amount ?? 0) > 0 || ($item->tax_type ?? null) === 'igst');
                     $itemMeta = collect([
                         $item->unit ? 'Unit: ' . $item->unit : null,
                         $item->days ? 'Days: ' . number_format((float) $item->days, 2) : null,
@@ -265,17 +274,21 @@
                     @endif
                     @if($showTaxColumns)
                         <td class="num">
-                            @if($showGstSplit)
+                            @if($itemHasGstSplit && !$itemHasIgst)
                                 CGST {{ number_format((float) ($item->cgst_rate ?? 0), 2) }}%<br>
                                 SGST {{ number_format((float) ($item->sgst_rate ?? 0), 2) }}%
+                            @elseif($itemHasIgst)
+                                IGST {{ number_format((float) ($item->igst_rate ?? $item->tax_percentage ?? 0), 2) }}%
                             @else
-                                {{ number_format((float) ($item->igst_rate ?? $item->tax_percentage ?? 0), 2) }}%
+                                0.00%
                             @endif
                         </td>
                         <td class="num">
-                            @if($showGstSplit)
+                            @if($itemHasGstSplit && !$itemHasIgst)
                                 CGST {!! $currencyHtml !!} {{ number_format((float) ($item->cgst_amount ?? 0), 2) }}<br>
                                 SGST {!! $currencyHtml !!} {{ number_format((float) ($item->sgst_amount ?? 0), 2) }}
+                            @elseif($itemHasIgst)
+                                IGST {!! $currencyHtml !!} {{ number_format((float) ($item->igst_amount ?? 0), 2) }}
                             @else
                                 {!! $currencyHtml !!} {{ number_format($itemTaxAmount, 2) }}
                             @endif
@@ -290,81 +303,85 @@
     <table class="summary-table">
         <tr>
             <td class="summary-notes-cell">
-                <div class="notes-box">
-                    <div class="section-title">Amount in Words</div>
-                    <div>{{ $amountInWords ?? 'Amount not available' }}</div>
+                <div class="summary-notes-wrap">
+                    <div class="notes-box">
+                        <div class="section-title">Amount in Words</div>
+                        <div>{{ $amountInWords ?? 'Amount not available' }}</div>
 
-                    @if($invoice->notes)
-                        <div class="section-title" style="margin-top:10px;">Notes</div>
-                        <div>{{ $invoice->notes }}</div>
-                    @endif
+                        @if($invoice->notes)
+                            <div class="section-title" style="margin-top:10px;">Notes</div>
+                            <div>{{ $invoice->notes }}</div>
+                        @endif
 
-                    @if($termsList->isNotEmpty())
-                        <div class="section-title" style="margin-top:10px;">Terms</div>
-                        @foreach($termsList as $term)
-                            <div>- {{ $term }}</div>
-                        @endforeach
-                    @elseif($billingTerms)
-                        <div class="section-title" style="margin-top:10px;">Terms</div>
-                        <div>{{ $billingTerms }}</div>
-                    @endif
+                        @if($termsList->isNotEmpty())
+                            <div class="section-title" style="margin-top:10px;">Terms</div>
+                            @foreach($termsList as $term)
+                                <div>- {{ $term }}</div>
+                            @endforeach
+                        @elseif($billingTerms)
+                            <div class="section-title" style="margin-top:10px;">Terms</div>
+                            <div>{{ $billingTerms }}</div>
+                        @endif
+                    </div>
                 </div>
             </td>
             <td class="summary-totals-cell">
-                <table class="totals-table">
-                    <tr>
-                        <td>Subtotal</td>
-                        <td class="num">{!! $currencyHtml !!} {{ number_format((float) $invoice->subtotal, 2) }}</td>
-                    </tr>
-                    @if($showDiscount)
+                <div class="summary-totals-wrap">
+                    <table class="totals-table">
                         <tr>
-                            <td>Discount</td>
-                            <td class="num">{!! $currencyHtml !!} {{ number_format((float) $invoice->discount_amount, 2) }}</td>
+                            <td>Subtotal</td>
+                            <td class="num">{!! $currencyHtml !!} {{ number_format((float) $invoice->subtotal, 2) }}</td>
                         </tr>
-                    @endif
-                    <tr>
-                        <td>Tax Total</td>
-                        <td class="num">{!! $currencyHtml !!} {{ number_format((float) $invoice->total_tax_amount, 2) }}</td>
-                    </tr>
-                    @if($showShipping)
+                        @if($showDiscount)
+                            <tr>
+                                <td>Discount</td>
+                                <td class="num">{!! $currencyHtml !!} {{ number_format((float) $invoice->discount_amount, 2) }}</td>
+                            </tr>
+                        @endif
                         <tr>
-                            <td>Transport / Shipping</td>
-                            <td class="num">{!! $currencyHtml !!} {{ number_format((float) $invoice->shipping_charges, 2) }}</td>
+                            <td>Tax Total</td>
+                            <td class="num">{!! $currencyHtml !!} {{ number_format((float) $invoice->total_tax_amount, 2) }}</td>
                         </tr>
-                    @endif
-                    @if($showDeposit)
+                        @if($showShipping)
+                            <tr>
+                                <td>Transport / Shipping</td>
+                                <td class="num">{!! $currencyHtml !!} {{ number_format((float) $invoice->shipping_charges, 2) }}</td>
+                            </tr>
+                        @endif
+                        @if($showDeposit)
+                            <tr>
+                                <td>Refundable Deposit</td>
+                                <td class="num">{!! $currencyHtml !!} {{ number_format((float) $invoice->deposit_amount, 2) }}</td>
+                            </tr>
+                        @endif
+                        @if($showOtherCharges)
+                            <tr>
+                                <td>Other Charges</td>
+                                <td class="num">{!! $currencyHtml !!} {{ number_format($otherCharges, 2) }}</td>
+                            </tr>
+                        @endif
+                        <tr class="grand-total">
+                            <td>Grand Total</td>
+                            <td class="num">{!! $currencyHtml !!} {{ number_format((float) $invoice->total_amount, 2) }}</td>
+                        </tr>
                         <tr>
-                            <td>Refundable Deposit</td>
-                            <td class="num">{!! $currencyHtml !!} {{ number_format((float) $invoice->deposit_amount, 2) }}</td>
+                            <td>Payment Received</td>
+                            <td class="num">{!! $currencyHtml !!} {{ number_format((float) $invoice->paid_amount, 2) }}</td>
                         </tr>
-                    @endif
-                    @if($showOtherCharges)
-                        <tr>
-                            <td>Other Charges</td>
-                            <td class="num">{!! $currencyHtml !!} {{ number_format($otherCharges, 2) }}</td>
+                        <tr class="balance-due">
+                            <td>Balance Due</td>
+                            <td class="num">{!! $currencyHtml !!} {{ number_format((float) $invoice->balance_amount, 2) }}</td>
                         </tr>
-                    @endif
-                    <tr class="grand-total">
-                        <td>Grand Total</td>
-                        <td class="num">{!! $currencyHtml !!} {{ number_format((float) $invoice->total_amount, 2) }}</td>
-                    </tr>
-                    <tr>
-                        <td>Payment Received</td>
-                        <td class="num">{!! $currencyHtml !!} {{ number_format((float) $invoice->paid_amount, 2) }}</td>
-                    </tr>
-                    <tr class="balance-due">
-                        <td>Balance Due</td>
-                        <td class="num">{!! $currencyHtml !!} {{ number_format((float) $invoice->balance_amount, 2) }}</td>
-                    </tr>
-                </table>
+                    </table>
 
-                <div class="signature-box">
-                    @if($tenantSignature)
-                        <img src="{{ $tenantSignature }}" alt="Authorized Signature">
-                    @else
-                        <div class="signature-line"></div>
-                    @endif
-                    <div>Authorized Signature</div>
+                    <div class="signature-box">
+                        @if($tenantSignature)
+                            <img src="{{ $tenantSignature }}" alt="Authorized Signature" style="max-width:160px; max-height:68px; width:auto; height:auto; display:block; margin-left:auto; margin-bottom:5px;">
+                        @else
+                            <div class="signature-line"></div>
+                        @endif
+                        <div>Authorized Signature</div>
+                    </div>
                 </div>
             </td>
         </tr>
@@ -401,7 +418,7 @@
                 <td class="payment-qr-col">
                     <div class="payment-qr-box">
                         @if($tenantQr)
-                            <img src="{{ $tenantQr }}" alt="Payment QR Code" class="qr-image">
+                            <img src="{{ $tenantQr }}" alt="Payment QR Code" class="qr-image" style="width:110px; height:110px; max-width:110px; max-height:110px; display:block; margin:0 auto;">
                             <div class="payment-qr-caption">Scan to pay</div>
                         @else
                             <div class="payment-qr-caption">No payment QR configured</div>

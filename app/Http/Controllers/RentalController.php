@@ -1114,8 +1114,7 @@ class RentalController extends Controller
         $rentalAssetAvailable = Asset::query()
             ->selectRaw('product_id, COUNT(*) as available_count')
             ->where('organization_id', $organizationId)
-            ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
-            ->where('asset_status', 'available')
+            ->rentalReady()
             ->whereIn('product_id', $productIds)
             ->groupBy('product_id')
             ->pluck('available_count', 'product_id');
@@ -1131,8 +1130,7 @@ class RentalController extends Controller
         $rentalAssetAvailableByWarehouse = Asset::query()
             ->selectRaw('product_id, warehouse_id, COUNT(*) as available_count')
             ->where('organization_id', $organizationId)
-            ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
-            ->where('asset_status', 'available')
+            ->rentalReady()
             ->whereIn('product_id', $productIds)
             ->groupBy('product_id', 'warehouse_id')
             ->get()
@@ -1198,8 +1196,7 @@ class RentalController extends Controller
                 $quantity = (int) Asset::query()
                     ->where('organization_id', $this->orgId())
                     ->where('product_id', $product->id)
-                    ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
-                    ->where('asset_status', 'available')
+                    ->rentalReady()
                     ->when($warehouseId, fn ($query) => $query->where('warehouse_id', $warehouseId))
                     ->count();
             }
@@ -4103,30 +4100,27 @@ class RentalController extends Controller
 
         if ($this->hasRentalAssetsTable()) {
             $currentRentalId = $validated['rental_id'] ?? null;
-            $alreadyAssignedAssetIds = RentalAsset::query()
-                ->whereNull('returned_at')
-                ->when(
-                    $currentRentalId,
-                    fn ($query) => $query->where('rental_id', $currentRentalId),
-                    fn ($query) => $query->whereRaw('1 = 0')
-                )
-                ->pluck('asset_id');
-
             $assetsQuery
-                ->where(function ($query) use ($alreadyAssignedAssetIds) {
-                    $query->where('asset_status', 'available');
+                ->where(function ($query) use ($currentRentalId) {
+                    $query->rentalReady();
 
-                    if ($alreadyAssignedAssetIds->isNotEmpty()) {
-                        $query->orWhereIn('id', $alreadyAssignedAssetIds);
+                    if ($currentRentalId) {
+                        $query->orWhereHas('activeRentalAssignments', function ($assignmentQuery) use ($currentRentalId) {
+                            $assignmentQuery->where('rental_id', $currentRentalId);
+                        });
                     }
                 })
-                ->whereDoesntHave('activeRentalAssignments', function ($query) use ($currentRentalId) {
+                ->where(function ($query) use ($currentRentalId) {
+                    $query->whereDoesntHave('activeRentalAssignments');
+
                     if ($currentRentalId) {
-                        $query->where('rental_id', '!=', $currentRentalId);
+                        $query->orWhereHas('activeRentalAssignments', function ($assignmentQuery) use ($currentRentalId) {
+                            $assignmentQuery->where('rental_id', $currentRentalId);
+                        });
                     }
                 });
         } else {
-            $assetsQuery->where('asset_status', 'available');
+            $assetsQuery->rentalReady();
         }
 
         $assets = $assetsQuery
