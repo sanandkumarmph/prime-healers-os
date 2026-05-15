@@ -74,6 +74,19 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringNotContainsString('INV-OTHER-001', $content);
     }
 
+    public function test_bulk_csv_export_rejects_more_than_five_hundred_selected_rows(): void
+    {
+        [$organization, $customer] = $this->invoiceContext();
+        $invoice = $this->createInvoice($organization->id, $customer->id, 'INV-BULK-LIMIT-001');
+
+        $response = $this->from(route('invoices.index'))->post(route('invoices.bulk.export.csv'), [
+            'invoice_ids' => array_fill(0, 501, $invoice->id),
+        ]);
+
+        $response->assertRedirect(route('invoices.index'));
+        $response->assertSessionHas('error', 'You can export up to 500 invoices at a time.');
+    }
+
     public function test_bulk_print_renders_selected_invoices_and_ignores_other_organizations(): void
     {
         [$organization, $customer] = $this->invoiceContext();
@@ -152,11 +165,42 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $response->assertOk();
         $response->assertSee('INV-BULK-DOC-001');
         $response->assertSee('Adult Diapers Pant Type XL - Svach');
-        $response->assertSee('Tax Invoice');
+        $response->assertSee('Bulk print layout uses a separate compact template');
+        $response->assertSee('bulk-invoice-page', false);
         $response->assertDontSee('INV-BULK-DOC-OTHER');
     }
 
-    public function test_individual_invoice_pdf_templates_use_restored_standalone_layout(): void
+    public function test_bulk_print_rejects_more_than_five_hundred_selected_rows(): void
+    {
+        [$organization, $customer] = $this->invoiceContext();
+        $invoice = $this->createInvoice($organization->id, $customer->id, 'INV-BULK-PRINT-LIMIT-001');
+
+        $response = $this->from(route('invoices.index'))->post(route('invoices.bulk.print'), [
+            'invoice_ids' => array_fill(0, 501, $invoice->id),
+        ]);
+
+        $response->assertRedirect(route('invoices.index'));
+        $response->assertSessionHas('error', 'You can print up to 500 invoices at a time.');
+    }
+
+    public function test_bulk_print_supports_multiple_selected_invoices_with_bulk_page_wrappers(): void
+    {
+        [$organization, $customer] = $this->invoiceContext();
+
+        $first = $this->createInvoice($organization->id, $customer->id, 'INV-BULK-MULTI-001');
+        $second = $this->createInvoice($organization->id, $customer->id, 'INV-BULK-MULTI-002');
+
+        $response = $this->post(route('invoices.bulk.print'), [
+            'invoice_ids' => [$first->id, $second->id],
+        ]);
+
+        $response->assertOk();
+        $response->assertSee('INV-BULK-MULTI-001');
+        $response->assertSee('INV-BULK-MULTI-002');
+        $this->assertSame(2, substr_count($response->getContent(), 'class="bulk-invoice-page"'));
+    }
+
+    public function test_individual_invoice_pdf_templates_remain_untouched_and_bulk_uses_separate_wrapper(): void
     {
         $bulkTemplate = (string) file_get_contents(resource_path('views/invoices/bulk-print.blade.php'));
         $dompdfTemplate = (string) file_get_contents(resource_path('views/invoices/pdf-dompdf.blade.php'));
@@ -185,8 +229,14 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringNotContainsString("invoices.partials.invoice-document-styles", $dompdfTemplate);
         $this->assertStringContainsString('@page {', $printTemplate);
         $this->assertStringContainsString('@page {', $dompdfTemplate);
+        $this->assertStringContainsString('.bulk-invoice-page:not(:last-child)', $bulkTemplate);
         $this->assertStringContainsString('page-break-after: always;', $bulkTemplate);
-        $this->assertStringContainsString('.invoice-sheet {', $bulkTemplate);
+        $this->assertStringContainsString('.bulk-items {', $bulkTemplate);
+        $this->assertStringContainsString('table-layout: fixed;', $bulkTemplate);
+        $this->assertStringContainsString('Item &amp; Description', $bulkTemplate);
+        $this->assertStringContainsString("asset('images/prime-healers-logo.png')", $bulkTemplate);
+        $this->assertStringNotContainsString('invoices.partials.invoice-document', $bulkTemplate);
+        $this->assertStringNotContainsString('invoices.print', $bulkTemplate);
         $this->assertStringNotContainsString('pdf-page-shell', $printTemplate);
         $this->assertStringNotContainsString('pdf-document', $printTemplate);
         $this->assertStringNotContainsString("debug_runtime", $printTemplate);

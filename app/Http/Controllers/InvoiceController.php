@@ -194,6 +194,13 @@ class InvoiceController extends Controller
             ->values();
     }
 
+    private function hasOversizedBulkSelection(Request $request): bool
+    {
+        return collect((array) $request->input('invoice_ids'))
+            ->filter(fn ($id) => $id !== null && $id !== '')
+            ->count() > self::BULK_SELECTION_LIMIT;
+    }
+
     private function paymentsRentalIdIsNullable(): bool
     {
         static $isNullable = null;
@@ -570,6 +577,12 @@ class InvoiceController extends Controller
     {
         $this->authorize('export', Invoice::class);
 
+        if ($this->hasOversizedBulkSelection($request)) {
+            return redirect()
+                ->route('invoices.index')
+                ->with('error', 'You can export up to 500 invoices at a time.');
+        }
+
         $ids = $this->selectedInvoiceIds($request);
 
         if ($ids->isEmpty()) {
@@ -594,6 +607,12 @@ class InvoiceController extends Controller
     public function bulkPrint(Request $request)
     {
         $this->authorize('printAny', Invoice::class);
+
+        if ($this->hasOversizedBulkSelection($request)) {
+            return redirect()
+                ->route('invoices.index')
+                ->with('error', 'You can print up to 500 invoices at a time.');
+        }
 
         $ids = $this->selectedInvoiceIds($request);
 
