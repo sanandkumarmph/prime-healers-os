@@ -12,7 +12,7 @@ return [
     'currency_fallback' => env('PDF_CURRENCY_FALLBACK', 'Rs.'),
     'browsershot_view' => 'invoices.print',
     'dompdf_view' => 'invoices.pdf-dompdf',
-    'browsershot_margin_mm' => (float) env('PDF_BROWSERSHOT_MARGIN_MM', 14),
+    'browsershot_margin_mm' => (float) env('PDF_BROWSERSHOT_MARGIN_MM', 10),
     'browsershot_scale' => (float) env('PDF_BROWSERSHOT_SCALE', 0.9),
     'debug_runtime' => (bool) env('PDF_DEBUG_RUNTIME', false),
     'debug_runtime_marker' => env('PDF_DEBUG_RUNTIME_MARKER', 'PDF_RUNTIME_MARKER_2026_05_15_MARGIN_FIX'),

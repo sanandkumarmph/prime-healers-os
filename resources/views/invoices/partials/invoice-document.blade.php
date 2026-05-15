@@ -136,6 +136,46 @@
     $organizationInitials = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $organization?->name ?? 'OR'), 0, 2));
     $currency = trim((string) ($pdfCurrencySymbol ?? ($pdfCurrencyFallback ?? '₹')));
     $currencyHtml = $currency === '₹' ? '&#8377;' : e($currency);
+    $columnWidths = match (true) {
+        $showDiscount && $showTaxColumns => [
+            'serial' => 4,
+            'description' => 26,
+            'hsn' => 10,
+            'qty' => 7,
+            'rate' => 10,
+            'discount' => 8,
+            'tax' => 11,
+            'tax_amount' => 12,
+            'amount' => 12,
+        ],
+        $showDiscount => [
+            'serial' => 4,
+            'description' => 40,
+            'hsn' => 12,
+            'qty' => 8,
+            'rate' => 12,
+            'discount' => 10,
+            'amount' => 14,
+        ],
+        $showTaxColumns => [
+            'serial' => 4,
+            'description' => 31,
+            'hsn' => 10,
+            'qty' => 7,
+            'rate' => 11,
+            'tax' => 12,
+            'tax_amount' => 12,
+            'amount' => 13,
+        ],
+        default => [
+            'serial' => 4,
+            'description' => 48,
+            'hsn' => 12,
+            'qty' => 8,
+            'rate' => 12,
+            'amount' => 16,
+        ],
+    };
 @endphp
 
 <div class="{{ $documentRootClass ?? 'invoice-page invoice-document' }}">
@@ -231,19 +271,19 @@
     <table class="items-table">
         <thead>
             <tr>
-                <th style="width:4%;">#</th>
-                <th style="width:35%;">Item &amp; Description</th>
-                <th style="width:10%;">HSN/SAC</th>
-                <th style="width:7%;" class="num">Qty</th>
-                <th style="width:11%;" class="num">Rate</th>
+                <th style="width:{{ $columnWidths['serial'] }}%;">#</th>
+                <th style="width:{{ $columnWidths['description'] }}%;">Item &amp; Description</th>
+                <th style="width:{{ $columnWidths['hsn'] }}%;">HSN/SAC</th>
+                <th style="width:{{ $columnWidths['qty'] }}%;" class="num">Qty</th>
+                <th style="width:{{ $columnWidths['rate'] }}%;" class="num">Rate</th>
                 @if($showDiscount)
-                    <th style="width:9%;" class="num">Discount</th>
+                    <th style="width:{{ $columnWidths['discount'] }}%;" class="num">Discount</th>
                 @endif
                 @if($showTaxColumns)
-                    <th style="width:10%;" class="num">Tax</th>
-                    <th style="width:10%;" class="num">Tax Amt</th>
+                    <th style="width:{{ $columnWidths['tax'] }}%;" class="num">Tax</th>
+                    <th style="width:{{ $columnWidths['tax_amount'] }}%;" class="num">Tax Amt</th>
                 @endif
-                <th style="width:11%;" class="num">Amount</th>
+                <th style="width:{{ $columnWidths['amount'] }}%;" class="num">Amount</th>
             </tr>
         </thead>
         <tbody>

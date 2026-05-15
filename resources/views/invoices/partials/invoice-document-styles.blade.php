@@ -1,6 +1,6 @@
 @page {
     size: A4 portrait;
-    margin: 14mm;
+    margin: 10mm;
 }
 
 * {
@@ -274,6 +274,8 @@ body {
     border: 1px solid #d7e1ec;
     padding: 5px 4px;
     vertical-align: top;
+    word-break: break-word;
+    overflow-wrap: anywhere;
 }
 
 .items-table th {
@@ -536,9 +538,10 @@ body.pdf-document {
 .pdf-page-shell {
     width: 100%;
     max-width: 100%;
-    padding: 10mm;
+    padding: 8mm;
     box-sizing: border-box;
     background: #ffffff;
+    overflow: hidden;
 }
 
 body.pdf-document .header-company-name,
