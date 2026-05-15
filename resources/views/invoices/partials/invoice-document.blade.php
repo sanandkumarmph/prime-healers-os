@@ -88,12 +88,14 @@
         ->values();
     $displayRentalPeriod = $invoice->inferredRentalPeriod();
 
-    $toDataUri = function (?string $relativePath): ?string {
+    $toDataUri = function (?string $relativePath, string $disk = 'storage'): ?string {
         if (!$relativePath) {
             return null;
         }
 
-        $absolutePath = public_path('storage/' . ltrim($relativePath, '/'));
+        $absolutePath = $disk === 'public'
+            ? public_path(ltrim($relativePath, '/'))
+            : public_path('storage/' . ltrim($relativePath, '/'));
 
         if (!is_file($absolutePath) || !is_readable($absolutePath)) {
             return null;
@@ -109,7 +111,9 @@
         return 'data:' . ($mime ?: 'image/png') . ';base64,' . base64_encode($contents);
     };
 
-    $tenantLogo = $toDataUri($organization?->logo);
+    $tenantLogo = extension_loaded('gd')
+        ? $toDataUri('images/prime-healers-logo.png', 'public')
+        : null;
     $tenantQr = $toDataUri($organization?->payment_qr_code);
     $tenantSignature = $toDataUri($organization?->digital_signature);
     $organizationInitials = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $organization?->name ?? 'OR'), 0, 2));
@@ -123,7 +127,7 @@
             <td class="header-logo-cell">
                 <div class="header-logo-box">
                     @if($tenantLogo)
-                        <img src="{{ $tenantLogo }}" alt="Company Logo" style="max-width:120px; max-height:60px; width:auto; height:auto; display:block; margin:0 auto;">
+                        <img src="{{ $tenantLogo }}" alt="Prime Healers Logo" class="invoice-logo">
                     @else
                         <div class="header-logo-fallback">{{ $organizationInitials ?: 'CO' }}</div>
                     @endif

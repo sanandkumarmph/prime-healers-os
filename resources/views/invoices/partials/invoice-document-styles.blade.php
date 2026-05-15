@@ -70,13 +70,19 @@ body {
     line-height: 0;
 }
 
-.header-logo-box img {
+.header-logo-box img,
+.invoice-logo {
     display: block;
     width: auto !important;
     height: auto !important;
     max-width: 31mm;
     max-height: 16.5mm;
     margin: 0 auto;
+}
+
+.invoice-logo {
+    max-width: 120px !important;
+    max-height: 60px !important;
 }
 
 .header-logo-fallback {
