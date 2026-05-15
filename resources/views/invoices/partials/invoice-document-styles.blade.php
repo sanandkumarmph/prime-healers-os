@@ -525,9 +525,20 @@ body {
 }
 
 body.pdf-document {
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
     font-family: DejaVu Sans, Arial, sans-serif;
     font-size: 9.5px;
     line-height: 1.35;
+}
+
+.pdf-page-shell {
+    width: 100%;
+    max-width: 100%;
+    padding: 10mm;
+    box-sizing: border-box;
+    background: #ffffff;
 }
 
 body.pdf-document .header-company-name,

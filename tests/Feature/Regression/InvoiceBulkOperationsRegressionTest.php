@@ -190,6 +190,7 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $dompdfTemplate = (string) file_get_contents(resource_path('views/invoices/pdf-dompdf.blade.php'));
         $printTemplate = (string) file_get_contents(resource_path('views/invoices/print.blade.php'));
         $renderer = (string) file_get_contents(app_path('Support/InvoicePdfRenderer.php'));
+        $pdfConfig = (string) file_get_contents(config_path('pdf.php'));
 
         $this->assertStringContainsString('max-width: 26mm;', $styles);
         $this->assertStringContainsString('max-height: 13mm;', $styles);
@@ -201,6 +202,8 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringContainsString('margin: 14mm;', $styles);
         $this->assertStringContainsString('body.pdf-document {', $styles);
         $this->assertStringContainsString('font-size: 9.5px;', $styles);
+        $this->assertStringContainsString('.pdf-page-shell {', $styles);
+        $this->assertStringContainsString('padding: 10mm;', $styles);
         $this->assertStringContainsString('.invoice-document {', $styles);
         $this->assertStringContainsString('box-sizing: border-box;', $styles);
         $this->assertStringContainsString('max-width: 95px !important;', $styles);
@@ -215,22 +218,34 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringContainsString('.summary-totals-wrap {', $styles);
         $this->assertStringContainsString('display: block;', $styles);
         $this->assertStringContainsString('margin-left: auto;', $styles);
-        $this->assertStringContainsString("'browsershot_view' => 'invoices.print'", (string) file_get_contents(config_path('pdf.php')));
-        $this->assertStringContainsString("'dompdf_view' => 'invoices.pdf-dompdf'", (string) file_get_contents(config_path('pdf.php')));
-        $this->assertStringContainsString("'browsershot_margin_mm' => (float) env('PDF_BROWSERSHOT_MARGIN_MM', 14),", (string) file_get_contents(config_path('pdf.php')));
-        $this->assertStringContainsString("'browsershot_scale' => (float) env('PDF_BROWSERSHOT_SCALE', 0.9),", (string) file_get_contents(config_path('pdf.php')));
+        $this->assertStringContainsString("'browsershot_view' => 'invoices.print'", $pdfConfig);
+        $this->assertStringContainsString("'dompdf_view' => 'invoices.pdf-dompdf'", $pdfConfig);
+        $this->assertStringContainsString("'browsershot_margin_mm' => (float) env('PDF_BROWSERSHOT_MARGIN_MM', 14),", $pdfConfig);
+        $this->assertStringContainsString("'browsershot_scale' => (float) env('PDF_BROWSERSHOT_SCALE', 0.9),", $pdfConfig);
+        $this->assertStringContainsString("'debug_runtime' => (bool) env('PDF_DEBUG_RUNTIME', false),", $pdfConfig);
+        $this->assertStringContainsString("'debug_runtime_marker' => env('PDF_DEBUG_RUNTIME_MARKER', 'PDF_RUNTIME_MARKER_2026_05_15_MARGIN_FIX')", $pdfConfig);
         $this->assertStringContainsString("->margins(\$marginMm, \$marginMm, \$marginMm, \$marginMm, 'mm')", $renderer);
         $this->assertStringContainsString("->setOption('preferCSSPageSize', true)", $renderer);
         $this->assertStringContainsString("->setOption('landscape', false)", $renderer);
         $this->assertStringContainsString('->scale($scale)', $renderer);
+        $this->assertStringContainsString("Log::info('invoice_pdf_runtime_debug'", $renderer);
+        $this->assertStringContainsString("contains_pdf_document_body_class", $renderer);
+        $this->assertStringContainsString("contains_page_margin", $renderer);
+        $this->assertStringContainsString("contains_invoice_document", $renderer);
+        $this->assertStringContainsString("contains_runtime_marker", $renderer);
         $this->assertStringNotContainsString('page-break-before', $bulkTemplate);
         $this->assertStringContainsString('.bulk-invoice-page:not(:last-child) {', $bulkTemplate);
         $this->assertStringContainsString('page-break-after: always;', $bulkTemplate);
         $this->assertStringNotContainsString('bulk-invoice-page', $printTemplate);
         $this->assertStringContainsString('<body class="pdf-document">', $printTemplate);
+        $this->assertStringContainsString('<div class="pdf-page-shell">', $printTemplate);
+        $this->assertStringContainsString("@if(config('pdf.debug_runtime'))", $printTemplate);
+        $this->assertStringContainsString("config('pdf.debug_runtime_marker')", $printTemplate);
         $this->assertStringNotContainsString('page-break-after', $dompdfTemplate);
         $this->assertStringNotContainsString('link rel="stylesheet"', $dompdfTemplate);
         $this->assertStringContainsString('<body class="pdf-document">', $dompdfTemplate);
+        $this->assertStringContainsString('<div class="pdf-page-shell">', $dompdfTemplate);
+        $this->assertStringContainsString('<div class="pdf-page-shell">', $bulkTemplate);
     }
 
     private function invoiceContext(): array

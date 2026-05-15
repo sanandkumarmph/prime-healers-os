@@ -151,13 +151,15 @@
     <main class="bulk-shell">
         @foreach($invoices as $invoice)
             <section class="invoice-sheet bulk-invoice-page">
-                @include('invoices.partials.invoice-document', [
-                    'invoice' => $invoice,
-                    'amountInWords' => $amountInWordsByInvoiceId[$invoice->id] ?? null,
-                    'pdfCurrencySymbol' => $pdfCurrencySymbol ?? null,
-                    'pdfCurrencyFallback' => $pdfCurrencyFallback ?? null,
-                    'documentImageMode' => 'browser',
-                ])
+                <div class="pdf-page-shell">
+                    @include('invoices.partials.invoice-document', [
+                        'invoice' => $invoice,
+                        'amountInWords' => $amountInWordsByInvoiceId[$invoice->id] ?? null,
+                        'pdfCurrencySymbol' => $pdfCurrencySymbol ?? null,
+                        'pdfCurrencyFallback' => $pdfCurrencyFallback ?? null,
+                        'documentImageMode' => 'browser',
+                    ])
+                </div>
             </section>
         @endforeach
     </main>

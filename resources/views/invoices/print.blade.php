@@ -14,12 +14,17 @@
     </style>
 </head>
 <body class="pdf-document">
-@include('invoices.partials.invoice-document', [
-    'invoice' => $invoice,
-    'amountInWords' => $amountInWords ?? null,
-    'pdfCurrencySymbol' => $pdfCurrencySymbol ?? null,
-    'pdfCurrencyFallback' => $pdfCurrencyFallback ?? null,
-    'documentImageMode' => 'browser',
-])
+@if(config('pdf.debug_runtime'))
+<div style="font-size:6px; color:#d7dbe1; line-height:1; margin:0 0 1mm 0;">{{ config('pdf.debug_runtime_marker') }}</div>
+@endif
+<div class="pdf-page-shell">
+    @include('invoices.partials.invoice-document', [
+        'invoice' => $invoice,
+        'amountInWords' => $amountInWords ?? null,
+        'pdfCurrencySymbol' => $pdfCurrencySymbol ?? null,
+        'pdfCurrencyFallback' => $pdfCurrencyFallback ?? null,
+        'documentImageMode' => 'browser',
+    ])
+</div>
 </body>
 </html>
