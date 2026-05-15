@@ -1,6 +1,6 @@
 @page {
     size: A4 portrait;
-    margin: 12mm;
+    margin: 14mm;
 }
 
 * {
@@ -25,12 +25,14 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
-.invoice-page {
+.invoice-page,
+.invoice-document {
     width: 100%;
     max-width: 100%;
     margin: 0;
     padding: 0;
     overflow: hidden;
+    box-sizing: border-box;
     page-break-inside: auto;
 }
 
@@ -551,7 +553,7 @@ body.pdf-document .party-table td,
 body.pdf-document .notes-box,
 body.pdf-document .payment-card,
 body.pdf-document .signature-box {
-    padding: 6px 7px;
+    padding: 5px 6px;
 }
 
 body.pdf-document .items-table th,
@@ -559,5 +561,5 @@ body.pdf-document .items-table td,
 body.pdf-document .payments-table th,
 body.pdf-document .payments-table td,
 body.pdf-document .totals-table td {
-    padding: 4px 5px;
+    padding: 4px 4px;
 }

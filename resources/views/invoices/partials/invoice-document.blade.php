@@ -138,7 +138,7 @@
     $currencyHtml = $currency === '₹' ? '&#8377;' : e($currency);
 @endphp
 
-<div class="{{ $documentRootClass ?? 'invoice-page' }}">
+<div class="{{ $documentRootClass ?? 'invoice-page invoice-document' }}">
     <table class="header-table">
         <tr>
             <td class="header-logo-cell">

@@ -197,12 +197,15 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringContainsString('.invoice-logo {', $styles);
         $this->assertStringContainsString('max-width: 95px !important;', $styles);
         $this->assertStringContainsString('max-height: 45px !important;', $styles);
-        $this->assertStringContainsString('margin: 12mm;', $styles);
+        $this->assertStringContainsString('margin: 14mm;', $styles);
         $this->assertStringContainsString('body.pdf-document {', $styles);
         $this->assertStringContainsString('font-size: 9.5px;', $styles);
+        $this->assertStringContainsString('.invoice-document {', $styles);
+        $this->assertStringContainsString('box-sizing: border-box;', $styles);
         $this->assertStringContainsString('max-width: 95px !important;', $styles);
         $this->assertStringContainsString('max-height: 45px !important;', $styles);
         $this->assertStringContainsString("images/prime-healers-logo.png", $sharedPartial);
+        $this->assertStringContainsString("invoice-page invoice-document", $sharedPartial);
         $this->assertStringNotContainsString('$organization?->logo', $sharedPartial);
         $this->assertStringNotContainsString('rentnexis-logo', $sharedPartial);
         $this->assertStringNotContainsString('logo-rentnexis', $sharedPartial);
