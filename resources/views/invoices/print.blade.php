@@ -13,7 +13,7 @@
         @include('invoices.partials.invoice-document-styles')
     </style>
 </head>
-<body>
+<body class="pdf-document">
 @include('invoices.partials.invoice-document', [
     'invoice' => $invoice,
     'amountInWords' => $amountInWords ?? null,

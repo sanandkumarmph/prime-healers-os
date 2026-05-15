@@ -188,6 +188,7 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $bulkTemplate = (string) file_get_contents(resource_path('views/invoices/bulk-print.blade.php'));
         $sharedPartial = (string) file_get_contents(resource_path('views/invoices/partials/invoice-document.blade.php'));
         $dompdfTemplate = (string) file_get_contents(resource_path('views/invoices/pdf-dompdf.blade.php'));
+        $printTemplate = (string) file_get_contents(resource_path('views/invoices/print.blade.php'));
 
         $this->assertStringContainsString('max-width: 26mm;', $styles);
         $this->assertStringContainsString('max-height: 13mm;', $styles);
@@ -208,9 +209,13 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringContainsString('.summary-totals-wrap {', $styles);
         $this->assertStringContainsString('display: block;', $styles);
         $this->assertStringContainsString('margin-left: auto;', $styles);
+        $this->assertStringContainsString("'browsershot_view' => 'invoices.print'", (string) file_get_contents(config_path('pdf.php')));
+        $this->assertStringContainsString("'dompdf_view' => 'invoices.pdf-dompdf'", (string) file_get_contents(config_path('pdf.php')));
         $this->assertStringNotContainsString('page-break-before', $bulkTemplate);
         $this->assertStringContainsString('.bulk-invoice-page:not(:last-child) {', $bulkTemplate);
         $this->assertStringContainsString('page-break-after: always;', $bulkTemplate);
+        $this->assertStringNotContainsString('bulk-invoice-page', $printTemplate);
+        $this->assertStringContainsString('<body class="pdf-document">', $printTemplate);
         $this->assertStringNotContainsString('page-break-after', $dompdfTemplate);
         $this->assertStringNotContainsString('link rel="stylesheet"', $dompdfTemplate);
         $this->assertStringContainsString('<body class="pdf-document">', $dompdfTemplate);
