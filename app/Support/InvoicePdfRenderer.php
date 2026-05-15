@@ -72,11 +72,17 @@ class InvoicePdfRenderer
     {
         try {
             $html = view((string) config('pdf.browsershot_view', 'invoices.print'), $viewData)->render();
+            $marginMm = max((float) config('pdf.browsershot_margin_mm', 14), 0);
+            $scale = (float) config('pdf.browsershot_scale', 0.9);
+            $scale = $scale > 0 ? min(max($scale, 0.5), 1) : 0.9;
 
             $browsershot = $this->browsershotConfigurator->configure(
                 Browsershot::html($html)
                     ->format('A4')
-                    ->margins(12, 12, 12, 12, 'mm')
+                    ->margins($marginMm, $marginMm, $marginMm, $marginMm, 'mm')
+                    ->setOption('landscape', false)
+                    ->setOption('preferCSSPageSize', true)
+                    ->scale($scale)
                     ->emulateMedia('print')
                     ->showBackground()
                     ->hideBrowserHeaderAndFooter()

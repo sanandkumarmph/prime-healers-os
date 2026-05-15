@@ -189,6 +189,7 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $sharedPartial = (string) file_get_contents(resource_path('views/invoices/partials/invoice-document.blade.php'));
         $dompdfTemplate = (string) file_get_contents(resource_path('views/invoices/pdf-dompdf.blade.php'));
         $printTemplate = (string) file_get_contents(resource_path('views/invoices/print.blade.php'));
+        $renderer = (string) file_get_contents(app_path('Support/InvoicePdfRenderer.php'));
 
         $this->assertStringContainsString('max-width: 26mm;', $styles);
         $this->assertStringContainsString('max-height: 13mm;', $styles);
@@ -204,6 +205,8 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringContainsString('box-sizing: border-box;', $styles);
         $this->assertStringContainsString('max-width: 95px !important;', $styles);
         $this->assertStringContainsString('max-height: 45px !important;', $styles);
+        $this->assertStringNotContainsString('100vw', $styles);
+        $this->assertStringNotContainsString('margin-left: -', $styles);
         $this->assertStringContainsString("images/prime-healers-logo.png", $sharedPartial);
         $this->assertStringContainsString("invoice-page invoice-document", $sharedPartial);
         $this->assertStringNotContainsString('$organization?->logo', $sharedPartial);
@@ -214,6 +217,12 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringContainsString('margin-left: auto;', $styles);
         $this->assertStringContainsString("'browsershot_view' => 'invoices.print'", (string) file_get_contents(config_path('pdf.php')));
         $this->assertStringContainsString("'dompdf_view' => 'invoices.pdf-dompdf'", (string) file_get_contents(config_path('pdf.php')));
+        $this->assertStringContainsString("'browsershot_margin_mm' => (float) env('PDF_BROWSERSHOT_MARGIN_MM', 14),", (string) file_get_contents(config_path('pdf.php')));
+        $this->assertStringContainsString("'browsershot_scale' => (float) env('PDF_BROWSERSHOT_SCALE', 0.9),", (string) file_get_contents(config_path('pdf.php')));
+        $this->assertStringContainsString("->margins(\$marginMm, \$marginMm, \$marginMm, \$marginMm, 'mm')", $renderer);
+        $this->assertStringContainsString("->setOption('preferCSSPageSize', true)", $renderer);
+        $this->assertStringContainsString("->setOption('landscape', false)", $renderer);
+        $this->assertStringContainsString('->scale($scale)', $renderer);
         $this->assertStringNotContainsString('page-break-before', $bulkTemplate);
         $this->assertStringContainsString('.bulk-invoice-page:not(:last-child) {', $bulkTemplate);
         $this->assertStringContainsString('page-break-after: always;', $bulkTemplate);

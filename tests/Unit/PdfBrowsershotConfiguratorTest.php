@@ -25,4 +25,10 @@ class PdfBrowsershotConfiguratorTest extends TestCase
         $this->assertTrue(File::isDirectory($tempPath));
         $this->assertTrue(File::isDirectory($userDataDir));
     }
+
+    public function test_invoice_pdf_config_exposes_explicit_browsershot_margin_and_scale_defaults(): void
+    {
+        $this->assertSame(14.0, (float) config('pdf.browsershot_margin_mm'));
+        $this->assertSame(0.9, (float) config('pdf.browsershot_scale'));
+    }
 }
