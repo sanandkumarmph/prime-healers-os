@@ -1,6 +1,6 @@
 @page {
     size: A4 portrait;
-    margin: 10mm;
+    margin: 12mm;
 }
 
 * {
@@ -9,8 +9,6 @@
 
 html,
 body {
-    width: 100%;
-    max-width: 100%;
     margin: 0;
     padding: 0;
     background: #ffffff;
@@ -19,20 +17,16 @@ body {
 body {
     color: #24384f;
     font-family: 'Inter', 'Segoe UI', Roboto, Arial, sans-serif;
-    font-size: 10px;
-    line-height: 1.4;
+    font-size: 11px;
+    line-height: 1.45;
     font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
 }
 
-.invoice-page,
-.invoice-document {
+.invoice-page {
     width: 100%;
-    max-width: 100%;
     margin: 0;
     padding: 0;
-    overflow: hidden;
-    box-sizing: border-box;
     page-break-inside: auto;
 }
 
@@ -46,30 +40,28 @@ body {
 .totals-table,
 .footer-table {
     width: 100%;
-    max-width: 100%;
     border-collapse: collapse;
 }
 
 .header-table {
-    table-layout: fixed;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     border-bottom: 1px solid #d7e1ec;
 }
 
 .header-table td {
     vertical-align: top;
-    padding-bottom: 6px;
+    padding-bottom: 10px;
 }
 
 .header-logo-cell {
-    width: 30mm;
-    padding-right: 6px;
+    width: 36mm;
+    padding-right: 10px;
 }
 
 .header-logo-box {
-    width: 27mm;
-    height: 14mm;
-    padding: 0.4mm;
+    width: 32mm;
+    height: 18mm;
+    padding: 0.8mm;
     border: 1px solid #d7e1ec;
     background: #ffffff;
     overflow: hidden;
@@ -83,32 +75,32 @@ body {
     display: block;
     width: auto !important;
     height: auto !important;
-    max-width: 26mm;
-    max-height: 13mm;
+    max-width: 31mm;
+    max-height: 16.5mm;
     margin: 0 auto;
 }
 
 .invoice-logo {
-    max-width: 95px !important;
-    max-height: 45px !important;
+    max-width: 120px !important;
+    max-height: 60px !important;
 }
 
 .header-logo-fallback {
-    padding: 4px 4px 0;
+    padding: 8px 6px 0;
     color: #24384f;
-    font-size: 8.8px;
+    font-size: 10px;
     font-weight: 700;
     line-height: 1.25;
 }
 
 .header-company-cell {
-    padding-right: 8px;
+    padding-right: 12px;
 }
 
 .header-company-name {
-    margin: 0 0 3px;
+    margin: 0 0 5px;
     color: #12263F;
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 700;
     line-height: 1.2;
     font-family: 'Manrope', 'Inter', 'Segoe UI', sans-serif;
@@ -117,21 +109,21 @@ body {
 .header-company-line {
     margin: 0;
     color: #24384f;
-    font-size: 8.8px;
-    line-height: 1.35;
+    font-size: 9.8px;
+    line-height: 1.45;
 }
 
 .header-title-cell {
-    width: 42mm;
+    width: 52mm;
     text-align: right;
-    padding-top: 0;
-    padding-right: 0;
+    padding-top: 2px;
+    padding-right: 2px;
 }
 
 .header-invoice-title {
-    margin: 0 0 5px;
+    margin: 0 0 8px;
     color: #12263F;
-    font-size: 17px;
+    font-size: 22px;
     font-weight: 700;
     line-height: 1;
     text-transform: uppercase;
@@ -140,10 +132,10 @@ body {
 
 .status-badge {
     display: inline-block;
-    padding: 3px 10px;
+    padding: 4px 12px;
     border-radius: 999px;
     border: 1px solid transparent;
-    font-size: 8.8px;
+    font-size: 10px;
     font-weight: 800;
     text-transform: uppercase;
 }
@@ -173,14 +165,13 @@ body {
 }
 
 .meta-table {
-    table-layout: fixed;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
     border: 1px solid #d7e1ec;
 }
 
 .meta-table td {
     width: 33.33%;
-    padding: 5px 6px;
+    padding: 7px 10px;
     background: #F8FBFE;
     border-right: 1px solid #d7e1ec;
     border-bottom: 1px solid #d7e1ec;
@@ -197,9 +188,9 @@ body {
 
 .meta-label {
     display: block;
-    margin-bottom: 2px;
+    margin-bottom: 3px;
     color: #5B6E84;
-    font-size: 7.8px;
+    font-size: 8.5px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.4px;
@@ -208,20 +199,19 @@ body {
 .meta-value {
     display: block;
     color: #12263F;
-    font-size: 9.5px;
+    font-size: 10.5px;
     font-weight: 700;
     word-break: break-word;
 }
 
 .party-table {
-    table-layout: fixed;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
     border: 1px solid #d7e1ec;
 }
 
 .party-table td {
     width: 50%;
-    padding: 6px 8px;
+    padding: 9px 11px;
     vertical-align: top;
 }
 
@@ -230,9 +220,9 @@ body {
 }
 
 .section-title {
-    margin: 0 0 4px;
+    margin: 0 0 5px;
     color: #5B6E84;
-    font-size: 9px;
+    font-size: 10px;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.3px;
@@ -240,20 +230,20 @@ body {
 }
 
 .party-line {
-    margin: 0 0 2px;
+    margin: 0 0 3px;
     color: #24384f;
-    font-size: 9px;
-    line-height: 1.35;
+    font-size: 10px;
+    line-height: 1.45;
     word-break: break-word;
 }
 
 .subject-row {
-    margin-bottom: 6px;
-    padding: 5px 6px;
+    margin-bottom: 8px;
+    padding: 7px 10px;
     border: 1px solid #d7e1ec;
     background: #F8FBFE;
     color: #24384f;
-    font-size: 9px;
+    font-size: 10px;
 }
 
 .subject-row strong {
@@ -261,8 +251,7 @@ body {
 }
 
 .items-table {
-    table-layout: fixed;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
 }
 
 .items-table thead {
@@ -272,16 +261,14 @@ body {
 .items-table th,
 .items-table td {
     border: 1px solid #d7e1ec;
-    padding: 5px 4px;
+    padding: 7px 6px;
     vertical-align: top;
-    word-break: break-word;
-    overflow-wrap: anywhere;
 }
 
 .items-table th {
     background: #F0F6FB;
     color: #12263F;
-    font-size: 8.2px;
+    font-size: 9px;
     font-weight: 800;
     text-align: left;
     font-family: 'Manrope', 'Inter', 'Segoe UI', sans-serif;
@@ -289,7 +276,7 @@ body {
 
 .items-table td {
     color: #24384f;
-    font-size: 8.8px;
+    font-size: 9.7px;
 }
 
 .num {
@@ -308,7 +295,7 @@ body {
     display: block;
     margin-top: 2px;
     color: #5B6E84;
-    font-size: 8px;
+    font-size: 8.7px;
     line-height: 1.35;
 }
 
@@ -326,13 +313,13 @@ body {
 }
 
 .summary-notes-cell {
-    width: 56%;
-    padding-right: 6px;
+    width: 58%;
+    padding-right: 10px;
 }
 
 .summary-totals-cell {
-    width: 44%;
-    padding-left: 6px;
+    width: 42%;
+    padding-left: 10px;
 }
 
 .summary-notes-wrap,
@@ -342,7 +329,7 @@ body {
 
 .summary-totals-wrap {
     display: block;
-    width: 78mm;
+    width: 92mm;
     max-width: 100%;
     margin-left: auto;
     text-align: left;
@@ -352,16 +339,16 @@ body {
 .payment-card,
 .signature-box {
     border: 1px solid #d7e1ec;
-    padding: 6px 8px;
+    padding: 9px 11px;
 }
 
 .notes-box p,
 .notes-box ul,
 .notes-box div {
-    margin: 0 0 5px;
+    margin: 0 0 7px;
     color: #24384f;
-    font-size: 8.8px;
-    line-height: 1.35;
+    font-size: 9.6px;
+    line-height: 1.45;
 }
 
 .notes-box ul {
@@ -373,7 +360,7 @@ body {
 }
 
 .payment-card {
-    margin-top: 6px;
+    margin-top: 8px;
 }
 
 .payment-details-table td {
@@ -384,18 +371,18 @@ body {
 
 .payment-details-table td:first-child {
     border-right: 1px solid #d7e1ec;
-    padding-right: 6px;
+    padding-right: 10px;
 }
 
 .payment-bank-line {
     margin: 0 0 4px;
     color: #24384f;
-    font-size: 8.8px;
-    line-height: 1.35;
+    font-size: 9.6px;
+    line-height: 1.45;
 }
 
 .payment-qr-col {
-    width: 27mm;
+    width: 32mm;
     text-align: center;
 }
 
@@ -404,35 +391,35 @@ body {
 }
 
 .payment-qr-caption {
-    margin-top: 4px;
+    margin-top: 6px;
     color: #5B6E84;
-    font-size: 7.8px;
+    font-size: 8.8px;
     line-height: 1.3;
 }
 
 .qr-image {
     display: block;
-    width: 24mm;
-    height: 24mm;
+    width: 29mm;
+    height: 29mm;
     margin: 0 auto;
 }
 
 .payments-table {
-    margin-top: 6px;
+    margin-top: 8px;
     page-break-inside: auto;
 }
 
 .payments-table th,
 .payments-table td {
     border: 1px solid #d7e1ec;
-    padding: 5px 6px;
+    padding: 7px 8px;
     vertical-align: top;
 }
 
 .payments-table th {
     background: #F0F6FB;
     color: #12263F;
-    font-size: 8.2px;
+    font-size: 9px;
     font-weight: 800;
     text-align: left;
     font-family: 'Manrope', 'Inter', 'Segoe UI', sans-serif;
@@ -440,7 +427,7 @@ body {
 
 .payments-table td {
     color: #24384f;
-    font-size: 8.8px;
+    font-size: 9.6px;
     white-space: normal;
     word-break: normal;
     overflow-wrap: break-word;
@@ -464,9 +451,9 @@ body {
 
 .totals-table td {
     border: 1px solid #d7e1ec;
-    padding: 5px 6px;
+    padding: 7px 8px;
     color: #24384f;
-    font-size: 9px;
+    font-size: 10px;
 }
 
 .totals-table td:last-child {
@@ -477,7 +464,7 @@ body {
 .grand-total td {
     background: #EEF3F8;
     color: #12263F;
-    font-size: 10.2px;
+    font-size: 11.5px;
     font-weight: 800;
     font-family: 'Manrope', 'Inter', 'Segoe UI', sans-serif;
 }
@@ -485,95 +472,43 @@ body {
 .balance-due td {
     background: #EAF8F0;
     color: #12263F;
-    font-size: 10.2px;
+    font-size: 11.5px;
     font-weight: 800;
     font-family: 'Manrope', 'Inter', 'Segoe UI', sans-serif;
 }
 
 .signature-box {
     min-height: 0;
-    margin-top: 6px;
+    margin-top: 8px;
     text-align: right;
 }
 
 .signature-box img {
-    max-width: 36mm;
-    max-height: 14mm;
+    max-width: 42mm;
+    max-height: 18mm;
     display: block;
     margin-left: auto;
-    margin-bottom: 4px;
+    margin-bottom: 5px;
 }
 
 .signature-line {
-    width: 36mm;
-    height: 14mm;
+    width: 42mm;
+    height: 18mm;
     border-bottom: 1px solid #c2d0de;
     margin-left: auto;
-    margin-bottom: 4px;
+    margin-bottom: 5px;
 }
 
 .footer-table {
-    margin-top: 6px;
+    margin-top: 10px;
 }
 
 .footer-table td {
     color: #5B6E84;
-    font-size: 7.8px;
+    font-size: 8.8px;
     vertical-align: top;
 }
 
 .footer-right {
     text-align: right;
-}
-
-body.pdf-document {
-    margin: 0;
-    padding: 0;
-    background: #ffffff;
-    font-family: DejaVu Sans, Arial, sans-serif;
-    font-size: 9.5px;
-    line-height: 1.35;
-}
-
-.pdf-page-shell {
-    width: 100%;
-    max-width: 100%;
-    padding: 6mm;
-    box-sizing: border-box;
-    background: #ffffff;
-    overflow: hidden;
-}
-
-body.pdf-document .header-company-name,
-body.pdf-document .header-invoice-title,
-body.pdf-document .section-title,
-body.pdf-document .items-table th,
-body.pdf-document .status-badge,
-body.pdf-document .grand-total td,
-body.pdf-document .balance-due td {
-    font-family: DejaVu Sans, Arial, sans-serif;
-}
-
-body.pdf-document .header-company-name {
-    font-size: 12.5px;
-}
-
-body.pdf-document .header-invoice-title {
-    font-size: 16.5px;
-}
-
-body.pdf-document .meta-table td,
-body.pdf-document .party-table td,
-body.pdf-document .notes-box,
-body.pdf-document .payment-card,
-body.pdf-document .signature-box {
-    padding: 5px 6px;
-}
-
-body.pdf-document .items-table th,
-body.pdf-document .items-table td,
-body.pdf-document .payments-table th,
-body.pdf-document .payments-table td,
-body.pdf-document .totals-table td {
-    padding: 4px 4px;
 }

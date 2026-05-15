@@ -93,7 +93,7 @@
             box-shadow: 0 20px 48px rgba(15, 23, 42, 0.08);
         }
 
-        .bulk-invoice-page:not(:last-child) {
+        .invoice-sheet.page-break-after {
             page-break-after: always;
         }
 
@@ -150,17 +150,13 @@
 
     <main class="bulk-shell">
         @foreach($invoices as $invoice)
-            <section class="invoice-sheet bulk-invoice-page">
-                <div class="pdf-page-shell">
-                    @include('invoices.partials.invoice-document', [
-                        'invoice' => $invoice,
-                        'amountInWords' => $amountInWordsByInvoiceId[$invoice->id] ?? null,
-                        'pdfCurrencySymbol' => $pdfCurrencySymbol ?? null,
-                        'pdfCurrencyFallback' => $pdfCurrencyFallback ?? null,
-                        'documentImageMode' => 'browser',
-                        'compactPdfTable' => true,
-                    ])
-                </div>
+            <section class="invoice-sheet{{ !$loop->last ? ' page-break-after' : '' }}">
+                @include('invoices.partials.invoice-document', [
+                    'invoice' => $invoice,
+                    'amountInWords' => $amountInWordsByInvoiceId[$invoice->id] ?? null,
+                    'pdfCurrencySymbol' => $pdfCurrencySymbol ?? null,
+                    'pdfCurrencyFallback' => $pdfCurrencyFallback ?? null,
+                ])
             </section>
         @endforeach
     </main>

@@ -21,16 +21,12 @@
         }
     </style>
 </head>
-<body class="pdf-document">
-<div class="pdf-page-shell">
-    @include('invoices.partials.invoice-document', [
-        'invoice' => $invoice,
-        'amountInWords' => $amountInWords ?? null,
-        'pdfCurrencySymbol' => $pdfCurrencySymbol ?? null,
-        'pdfCurrencyFallback' => $pdfCurrencyFallback ?? null,
-        'documentImageMode' => 'dompdf',
-        'compactPdfTable' => true,
-    ])
-</div>
+<body>
+@include('invoices.partials.invoice-document', [
+    'invoice' => $invoice,
+    'amountInWords' => $amountInWords ?? null,
+    'pdfCurrencySymbol' => $pdfCurrencySymbol ?? null,
+    'pdfCurrencyFallback' => $pdfCurrencyFallback ?? null,
+])
 </body>
 </html>

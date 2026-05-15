@@ -88,9 +88,7 @@
         ->values();
     $displayRentalPeriod = $invoice->inferredRentalPeriod();
 
-    $documentImageMode = $documentImageMode ?? 'browser';
-
-    $resolveImagePath = function (?string $relativePath, string $disk = 'storage'): ?string {
+    $toDataUri = function (?string $relativePath, string $disk = 'storage'): ?string {
         if (!$relativePath) {
             return null;
         }
@@ -103,92 +101,27 @@
             return null;
         }
 
-        return $absolutePath;
-    };
+        $mime = function_exists('mime_content_type') ? mime_content_type($absolutePath) : 'image/png';
+        $contents = @file_get_contents($absolutePath);
 
-    $resolveImageSource = function (?string $relativePath, string $disk = 'storage', ?int $maxBytes = null) use ($documentImageMode, $resolveImagePath): ?string {
-        $absolutePath = $resolveImagePath($relativePath, $disk);
-
-        if (!$absolutePath) {
+        if ($contents === false) {
             return null;
         }
 
-        if ($maxBytes !== null) {
-            $size = @filesize($absolutePath);
-
-            if ($size !== false && $size > $maxBytes) {
-                return null;
-            }
-        }
-
-        if ($documentImageMode === 'dompdf') {
-            return $absolutePath;
-        }
-
-        return $disk === 'public'
-            ? asset(ltrim($relativePath, '/'))
-            : asset('storage/' . ltrim($relativePath, '/'));
+        return 'data:' . ($mime ?: 'image/png') . ';base64,' . base64_encode($contents);
     };
 
-    $tenantLogo = $resolveImageSource('images/prime-healers-logo.png', 'public', 256 * 1024);
-    $tenantQr = $resolveImageSource($organization?->payment_qr_code, 'storage', 512 * 1024);
-    $tenantSignature = $resolveImageSource($organization?->digital_signature, 'storage', 384 * 1024);
+    $tenantLogo = extension_loaded('gd')
+        ? $toDataUri('images/prime-healers-logo.png', 'public')
+        : null;
+    $tenantQr = $toDataUri($organization?->payment_qr_code);
+    $tenantSignature = $toDataUri($organization?->digital_signature);
     $organizationInitials = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $organization?->name ?? 'OR'), 0, 2));
     $currency = trim((string) ($pdfCurrencySymbol ?? ($pdfCurrencyFallback ?? '₹')));
     $currencyHtml = $currency === '₹' ? '&#8377;' : e($currency);
-    $compactPdfTable = $compactPdfTable ?? false;
-    $columnWidths = $compactPdfTable
-        ? [
-            'serial' => 5,
-            'description' => 45,
-            'qty' => 8,
-            'rate' => 14,
-            'tax' => 13,
-            'amount' => 15,
-        ]
-        : match (true) {
-            $showDiscount && $showTaxColumns => [
-                'serial' => 4,
-                'description' => 26,
-                'hsn' => 10,
-                'qty' => 7,
-                'rate' => 10,
-                'discount' => 8,
-                'tax' => 11,
-                'tax_amount' => 12,
-                'amount' => 12,
-            ],
-            $showDiscount => [
-                'serial' => 4,
-                'description' => 40,
-                'hsn' => 12,
-                'qty' => 8,
-                'rate' => 12,
-                'discount' => 10,
-                'amount' => 14,
-            ],
-            $showTaxColumns => [
-                'serial' => 4,
-                'description' => 31,
-                'hsn' => 10,
-                'qty' => 7,
-                'rate' => 11,
-                'tax' => 12,
-                'tax_amount' => 12,
-                'amount' => 13,
-            ],
-            default => [
-                'serial' => 4,
-                'description' => 48,
-                'hsn' => 12,
-                'qty' => 8,
-                'rate' => 12,
-                'amount' => 16,
-            ],
-        };
 @endphp
 
-<div class="{{ $documentRootClass ?? 'invoice-page invoice-document' }}">
+<div class="{{ $documentRootClass ?? 'invoice-page' }}">
     <table class="header-table">
         <tr>
             <td class="header-logo-cell">
@@ -281,14 +214,19 @@
     <table class="items-table">
         <thead>
             <tr>
-                <th style="width:{{ $columnWidths['serial'] }}%;">#</th>
-                <th style="width:{{ $columnWidths['description'] }}%;">Item &amp; Description</th>
-                <th style="width:{{ $columnWidths['qty'] }}%;" class="num">Qty</th>
-                <th style="width:{{ $columnWidths['rate'] }}%;" class="num">Rate</th>
-                @if($compactPdfTable || $showTaxColumns)
-                    <th style="width:{{ $columnWidths['tax'] }}%;" class="num">Tax</th>
+                <th style="width:4%;">#</th>
+                <th style="width:35%;">Item &amp; Description</th>
+                <th style="width:10%;">HSN/SAC</th>
+                <th style="width:7%;" class="num">Qty</th>
+                <th style="width:11%;" class="num">Rate</th>
+                @if($showDiscount)
+                    <th style="width:9%;" class="num">Discount</th>
                 @endif
-                <th style="width:{{ $columnWidths['amount'] }}%;" class="num">Amount</th>
+                @if($showTaxColumns)
+                    <th style="width:10%;" class="num">Tax</th>
+                    <th style="width:10%;" class="num">Tax Amt</th>
+                @endif
+                <th style="width:11%;" class="num">Amount</th>
             </tr>
         </thead>
         <tbody>
@@ -323,14 +261,6 @@
                             . (optional($invoice->rentalRenewal->renewed_end_date)->format('d M Y') ?: '-')
                         );
                     }
-
-                    if ($compactPdfTable && $item->hsn_sac_code) {
-                        $itemMeta->push('HSN/SAC: ' . $item->hsn_sac_code);
-                    }
-
-                    if ($compactPdfTable && (float) $item->discount_amount > 0) {
-                        $itemMeta->push('Discount: ' . $currency . ' ' . number_format((float) $item->discount_amount, 2));
-                    }
                 @endphp
                 <tr>
                     <td>{{ $loop->iteration }}</td>
@@ -340,9 +270,13 @@
                             <span class="item-subtext">{{ $itemMeta->filter()->implode(' | ') }}</span>
                         @endif
                     </td>
+                    <td>{{ $item->hsn_sac_code ?: '-' }}</td>
                     <td class="num">{{ number_format((float) $item->quantity, 2) }}</td>
                     <td class="num">{!! $currencyHtml !!} {{ number_format((float) $item->rate, 2) }}</td>
-                    @if($compactPdfTable || $showTaxColumns)
+                    @if($showDiscount)
+                        <td class="num">{!! $currencyHtml !!} {{ number_format((float) $item->discount_amount, 2) }}</td>
+                    @endif
+                    @if($showTaxColumns)
                         <td class="num">
                             @if($itemHasGstSplit && !$itemHasIgst)
                                 CGST {{ number_format((float) ($item->cgst_rate ?? 0), 2) }}%<br>
@@ -352,8 +286,15 @@
                             @else
                                 0.00%
                             @endif
-                            @if($compactPdfTable && $itemTaxAmount > 0)
-                                <br><span class="item-subtext">Tax Amt: {!! $currencyHtml !!} {{ number_format($itemTaxAmount, 2) }}</span>
+                        </td>
+                        <td class="num">
+                            @if($itemHasGstSplit && !$itemHasIgst)
+                                CGST {!! $currencyHtml !!} {{ number_format((float) ($item->cgst_amount ?? 0), 2) }}<br>
+                                SGST {!! $currencyHtml !!} {{ number_format((float) ($item->sgst_amount ?? 0), 2) }}
+                            @elseif($itemHasIgst)
+                                IGST {!! $currencyHtml !!} {{ number_format((float) ($item->igst_amount ?? 0), 2) }}
+                            @else
+                                {!! $currencyHtml !!} {{ number_format($itemTaxAmount, 2) }}
                             @endif
                         </td>
                     @endif
