@@ -189,16 +189,18 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $sharedPartial = (string) file_get_contents(resource_path('views/invoices/partials/invoice-document.blade.php'));
         $dompdfTemplate = (string) file_get_contents(resource_path('views/invoices/pdf-dompdf.blade.php'));
 
-        $this->assertStringContainsString('max-width: 31mm;', $styles);
-        $this->assertStringContainsString('max-height: 16.5mm;', $styles);
+        $this->assertStringContainsString('max-width: 26mm;', $styles);
+        $this->assertStringContainsString('max-height: 13mm;', $styles);
         $this->assertStringContainsString('width: auto !important;', $styles);
         $this->assertStringContainsString('height: auto !important;', $styles);
         $this->assertStringContainsString('.invoice-logo {', $styles);
-        $this->assertStringContainsString('max-width: 120px !important;', $styles);
-        $this->assertStringContainsString('max-height: 60px !important;', $styles);
-        $this->assertStringContainsString('margin: 14mm;', $styles);
+        $this->assertStringContainsString('max-width: 95px !important;', $styles);
+        $this->assertStringContainsString('max-height: 45px !important;', $styles);
+        $this->assertStringContainsString('margin: 12mm;', $styles);
         $this->assertStringContainsString('body.pdf-document {', $styles);
-        $this->assertStringContainsString('font-size: 10.4px;', $styles);
+        $this->assertStringContainsString('font-size: 9.5px;', $styles);
+        $this->assertStringContainsString('max-width: 95px !important;', $styles);
+        $this->assertStringContainsString('max-height: 45px !important;', $styles);
         $this->assertStringContainsString("images/prime-healers-logo.png", $sharedPartial);
         $this->assertStringNotContainsString('$organization?->logo', $sharedPartial);
         $this->assertStringNotContainsString('rentnexis-logo', $sharedPartial);
@@ -207,8 +209,9 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringContainsString('display: block;', $styles);
         $this->assertStringContainsString('margin-left: auto;', $styles);
         $this->assertStringNotContainsString('page-break-before', $bulkTemplate);
+        $this->assertStringContainsString('.bulk-invoice-page:not(:last-child) {', $bulkTemplate);
         $this->assertStringContainsString('page-break-after: always;', $bulkTemplate);
-        $this->assertStringNotContainsString('invoice-page-break', $bulkTemplate);
+        $this->assertStringNotContainsString('page-break-after', $dompdfTemplate);
         $this->assertStringNotContainsString('link rel="stylesheet"', $dompdfTemplate);
         $this->assertStringContainsString('<body class="pdf-document">', $dompdfTemplate);
     }

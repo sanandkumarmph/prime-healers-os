@@ -93,7 +93,7 @@
             box-shadow: 0 20px 48px rgba(15, 23, 42, 0.08);
         }
 
-        .invoice-sheet.page-break-after {
+        .bulk-invoice-page:not(:last-child) {
             page-break-after: always;
         }
 
@@ -150,7 +150,7 @@
 
     <main class="bulk-shell">
         @foreach($invoices as $invoice)
-            <section class="invoice-sheet{{ !$loop->last ? ' page-break-after' : '' }}">
+            <section class="invoice-sheet bulk-invoice-page">
                 @include('invoices.partials.invoice-document', [
                     'invoice' => $invoice,
                     'amountInWords' => $amountInWordsByInvoiceId[$invoice->id] ?? null,
