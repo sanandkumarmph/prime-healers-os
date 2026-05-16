@@ -99,6 +99,178 @@
         'completed' => 'Completed',
         default => ucfirst(str_replace('_', ' ', $status ?: 'pending')),
     };
+
+    $mobilePrimaryActions = collect();
+    $mobileMoreActions = collect();
+
+    if ($rental->canRenew() && auth()->user()->canAccessModule('rentals', 'update')) {
+        $mobilePrimaryActions->push([
+            'type' => 'button',
+            'label' => 'Renew',
+            'attributes' => ['data-open-renewal-modal' => true],
+        ]);
+    }
+
+    if (!empty($rentalInvoice)) {
+        $mobilePrimaryActions->push([
+            'type' => 'link',
+            'label' => 'Invoice',
+            'href' => route('invoices.show', $rentalInvoice),
+        ]);
+    } elseif (auth()->user()->canAccessModule('rentals', 'update')) {
+        $mobilePrimaryActions->push([
+            'type' => 'form',
+            'label' => 'Invoice',
+            'action' => route('rentals.invoice', $rental),
+            'method' => 'POST',
+        ]);
+    }
+
+    if ($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true)) {
+        $mobilePrimaryActions->push([
+            'type' => 'link',
+            'label' => 'Payment',
+            'href' => '#rental-billing-actions',
+        ]);
+    }
+
+    if ($canUpdateRentals) {
+        $mobilePrimaryActions->push([
+            'type' => 'link',
+            'label' => 'Edit',
+            'href' => route('rentals.edit', $rental),
+        ]);
+    }
+
+    $mobilePrimaryActions = $mobilePrimaryActions->take(2)->values();
+    $usedMobileLabels = $mobilePrimaryActions->pluck('label')->all();
+    $pushMoreAction = function (array $action) use (&$mobileMoreActions, $usedMobileLabels): void {
+        if (in_array($action['label'], $usedMobileLabels, true)) {
+            return;
+        }
+
+        $mobileMoreActions->push($action);
+    };
+
+    $pushMoreAction([
+        'type' => 'link',
+        'label' => 'Back to Rentals',
+        'href' => route('rentals.index'),
+    ]);
+
+    if ($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true)) {
+        $pushMoreAction([
+            'type' => 'form',
+            'label' => 'Mark as Paid',
+            'action' => route('rentals.markPaid', $rental),
+            'method' => 'POST',
+        ]);
+        $pushMoreAction([
+            'type' => 'link',
+            'label' => 'Partial Payment',
+            'href' => '#rental-billing-actions',
+        ]);
+    }
+
+    if ($rental->phone) {
+        $pushMoreAction([
+            'type' => 'link',
+            'label' => 'Call Customer',
+            'href' => 'tel:' . preg_replace('/\D+/', '', $rental->phone),
+        ]);
+    }
+
+    if ($canUpdateRentals) {
+        $pushMoreAction([
+            'type' => 'link',
+            'label' => 'Edit Rental',
+            'href' => route('rentals.edit', $rental),
+        ]);
+    }
+
+    if ($deliveryRecord && $hasOpenDeliveryTask && auth()->user()?->canAccessModule('deliveries', 'update')) {
+        $pushMoreAction([
+            'type' => 'link',
+            'label' => 'Edit Delivery Assignment',
+            'href' => route('deliveries.edit', $deliveryRecord),
+        ]);
+    } elseif ($canCreateDeliveries && !$hasOpenDeliveryTask && $hasPendingDeliveryItems) {
+        $pushMoreAction([
+            'type' => 'link',
+            'label' => 'Assign Delivery',
+            'href' => route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'delivery']),
+        ]);
+    }
+
+    if ($pickupRecord && $hasOpenPickupTask && auth()->user()?->canAccessModule('deliveries', 'update')) {
+        $pushMoreAction([
+            'type' => 'link',
+            'label' => 'Edit Pickup Assignment',
+            'href' => route('deliveries.edit', $pickupRecord),
+        ]);
+    } elseif ($canAssignPickup && !$hasOpenPickupTask) {
+        $pushMoreAction([
+            'type' => 'link',
+            'label' => 'Assign Pickup',
+            'href' => route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'pickup']),
+        ]);
+    } elseif ($pickupRecord && $hasOpenPickupTask) {
+        $pushMoreAction([
+            'type' => 'link',
+            'label' => 'View Pickup Task',
+            'href' => route('deliveries.show', $pickupRecord),
+        ]);
+    }
+
+    if ($renewalUrl) {
+        $pushMoreAction([
+            'type' => 'link',
+            'label' => 'WhatsApp Renewal',
+            'href' => $renewalUrl,
+            'target' => '_blank',
+            'rel' => 'noopener',
+        ]);
+    }
+
+    if ($rental->canRenew() && auth()->user()->canAccessModule('rentals', 'update')) {
+        $pushMoreAction([
+            'type' => 'button',
+            'label' => 'Renew Options',
+            'attributes' => ['data-open-renewal-modal' => true],
+        ]);
+    }
+
+    if ($rental->canBeReturned()) {
+        $pushMoreAction([
+            'type' => 'form',
+            'label' => 'Complete Pickup',
+            'action' => route('rentals.return', $rental),
+            'method' => 'PUT',
+            'confirm' => 'Mark this rental as returned?',
+        ]);
+    }
+
+    if (auth()->user()->canAccessModule('rentals', 'update') && !in_array($rental->status, ['returned', 'cancelled'], true)) {
+        $pushMoreAction([
+            'type' => 'form',
+            'label' => 'Cancel Rental',
+            'action' => route('rentals.cancel', $rental),
+            'method' => 'PUT',
+            'confirm' => 'Cancel this rental? This keeps the record for audit history.',
+            'danger' => true,
+        ]);
+    }
+
+    if ($canDeleteRentals) {
+        $pushMoreAction([
+            'type' => 'form',
+            'label' => 'Delete Rental',
+            'action' => route('rentals.destroy', $rental),
+            'method' => 'DELETE',
+            'confirm' => 'Delete this rental order permanently? This will be blocked if invoices, payments, deliveries, renewals, or linked sales exist.',
+            'danger' => true,
+        ]);
+    }
 @endphp
 
 <style>
@@ -688,7 +860,7 @@
             grid-template-columns:1fr;
         }
         .detail-page {
-            padding-bottom:110px;
+            padding-bottom:16px;
         }
         .rental-status-grid,
         .payment-history-card,
@@ -820,19 +992,6 @@
                     @csrf
                     @method('DELETE')
                     <button type="submit" class="detail-btn-danger" onclick="return confirm('Delete this rental order permanently? This will be blocked if invoices, payments, deliveries, renewals, or linked sales exist.');">Delete Rental</button>
-                </form>
-            @endif
-        </div>
-        <div class="mobile-inline-actions">
-            @if($rental->canRenew() && auth()->user()->canAccessModule('rentals', 'update'))
-                <button type="button" class="detail-btn" data-open-renewal-modal>Renew</button>
-            @endif
-            @if(!empty($rentalInvoice))
-                <a href="{{ route('invoices.show', $rentalInvoice) }}" class="detail-btn-secondary">Invoice</a>
-            @elseif(auth()->user()->canAccessModule('rentals', 'update'))
-                <form action="{{ route('rentals.invoice', $rental) }}" method="POST" style="margin:0;">
-                    @csrf
-                    <button type="submit" class="detail-btn-secondary" style="width:100%;">Invoice</button>
                 </form>
             @endif
         </div>
@@ -1863,8 +2022,13 @@
     </div>
 </div>
 
-<div class="rental-cta-shell" aria-label="Rental bottom actions">
-    <div class="rental-cta-bar">
+@include('partials.mobile-action-bar', [
+    'label' => 'Rental mobile actions',
+    'moreLabel' => 'Rental secondary actions',
+    'actions' => $mobilePrimaryActions->all(),
+    'moreActions' => $mobileMoreActions->all(),
+])
+    {{--
         <div class="rental-cta-meta">
             <span class="rental-cta-eyebrow">Rental Actions</span>
             <div class="rental-cta-title">Rental #{{ $rental->id }} · {{ $rental->customer_name ?: $rental->customer?->name ?: 'Customer' }}</div>
@@ -1960,6 +2124,7 @@
         </div>
     </div>
 </div>
+    --}}
 @endsection
 
 @push('scripts')

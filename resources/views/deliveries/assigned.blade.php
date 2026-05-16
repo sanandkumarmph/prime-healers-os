@@ -148,6 +148,7 @@
             @endphp
             <div class="board-card">
                 @php($contactPhone = $isSaleTask ? ($delivery->sale?->customer?->phone) : ($delivery->rental?->phone))
+                @php($hasProofHistory = (int) ($delivery->proofs_count ?? 0) > 0)
                 <h2>{{ $isSaleTask ? ($delivery->sale?->customer?->name ?? 'N/A') : ($delivery->rental?->customer_name ?? 'N/A') }}</h2>
                 <div class="ops-muted">{{ $isSaleTask ? ($delivery->sale?->product?->name ?? 'Sale product') : ($delivery->rental?->product?->name ?? 'N/A') }}</div>
                 <div class="ops-muted" style="margin-top:6px;">Warehouse: {{ $isSaleTask ? ($delivery->sale?->asset?->warehouse?->name ?? 'Sale dispatch') : ($delivery->rental?->dispatchWarehouse?->name ?? 'Any warehouse') }}</div>
@@ -198,11 +199,15 @@
                             <a href="tel:{{ preg_replace('/\D+/', '', $contactPhone) }}" class="board-btn-secondary board-utility-btn">Call</a>
                         @endif
                         @if($delivery->status === 'pending')
-                            <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="board-btn-secondary">Mark In Progress</a>
+                            <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="board-btn-secondary">Start Delivery</a>
                         @endif
                         <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="board-btn">
-                            {{ !$isSaleTask && $delivery->rental?->pendingDeliveryQuantityTotal() > 0 ? 'Complete Partial' : 'Mark Completed' }}
+                            Complete Delivery
                         </a>
+                    </div>
+                @elseif($hasProofHistory)
+                    <div class="board-actions">
+                        <a href="{{ route('deliveries.show', $delivery) }}#delivery-proof-history" class="board-btn">View Proof</a>
                     </div>
                 @endif
             </div>

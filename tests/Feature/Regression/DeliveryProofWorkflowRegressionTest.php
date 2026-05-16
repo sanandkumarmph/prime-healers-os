@@ -97,6 +97,61 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
         }
     }
 
+    public function test_delivery_detail_shows_explicit_start_and_complete_ctas_instead_of_checklist_copy(): void
+    {
+        $organization = TestData::organization();
+        $deliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+
+        $this->actingAs($deliveryUser);
+
+        $pendingDelivery = $this->makeDeliveryTask($organization->id, $deliveryUser->id, 'delivery', 'pending');
+        $inProgressPickup = $this->makeDeliveryTask($organization->id, $deliveryUser->id, 'pickup', 'in_progress');
+
+        $this->get(route('deliveries.show', $pendingDelivery))
+            ->assertOk()
+            ->assertSeeText('Start Delivery')
+            ->assertDontSeeText('Start Checklist');
+
+        $this->get(route('deliveries.show', $inProgressPickup))
+            ->assertOk()
+            ->assertSeeText('Complete Pickup')
+            ->assertDontSeeText('Completion Checklist');
+    }
+
+    public function test_completed_delivery_detail_shows_view_proof_when_history_exists(): void
+    {
+        $organization = TestData::organization();
+        $deliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+
+        $this->actingAs($deliveryUser);
+
+        $delivery = $this->makeDeliveryTask($organization->id, $deliveryUser->id, 'delivery', 'completed');
+        Storage::disk('local')->put('delivery-proofs/completed-proof.jpg', 'proof-bytes');
+
+        DeliveryProof::create([
+            'organization_id' => $organization->id,
+            'delivery_id' => $delivery->id,
+            'workflow_stage' => DeliveryProof::STAGE_DELIVERY,
+            'capture_moment' => DeliveryProof::MOMENT_COMPLETE,
+            'proof_type' => DeliveryProof::TYPE_DELIVERED_DEVICE,
+            'file_path' => 'delivery-proofs/completed-proof.jpg',
+            'original_name' => 'completed-proof.jpg',
+            'mime_type' => 'image/jpeg',
+            'size_bytes' => strlen('proof-bytes'),
+            'created_by_user_id' => $deliveryUser->id,
+        ]);
+
+        $this->get(route('deliveries.show', $delivery))
+            ->assertOk()
+            ->assertSeeText('View Proof')
+            ->assertDontSeeText('Start Checklist')
+            ->assertDontSeeText('Completion Checklist');
+    }
+
     public function test_delivery_completion_requires_photos_signature_and_location_or_reason(): void
     {
         $organization = TestData::organization();
@@ -120,6 +175,9 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
             'signature_data',
             'location_missing_reason',
         ]);
+
+        $this->followRedirects($response)
+            ->assertSeeText('Please complete the required proof fields marked below before continuing this delivery task.');
     }
 
     public function test_pickup_damage_report_requires_notes_and_photo_and_rejects_premises_photo(): void
@@ -244,6 +302,46 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
                 'signature_data' => $this->signatureDataUrl(),
                 'location_missing_reason' => 'GPS unavailable',
             ])->assertForbidden();
+    }
+
+    public function test_taskboard_menu_and_primary_actions_show_only_valid_delivery_team_workflow_options(): void
+    {
+        $organization = TestData::organization();
+        $deliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+        $otherDeliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+
+        $this->actingAs($deliveryUser);
+
+        $ownPendingDelivery = $this->makeDeliveryTask($organization->id, $deliveryUser->id, 'delivery', 'pending');
+        $otherPendingDelivery = $this->makeDeliveryTask($organization->id, $otherDeliveryUser->id, 'delivery', 'pending');
+        $completedPickup = $this->makeDeliveryTask($organization->id, $deliveryUser->id, 'pickup', 'completed');
+
+        Storage::disk('local')->put('delivery-proofs/menu-proof.jpg', 'proof-bytes');
+        DeliveryProof::create([
+            'organization_id' => $organization->id,
+            'delivery_id' => $completedPickup->id,
+            'workflow_stage' => DeliveryProof::STAGE_PICKUP,
+            'capture_moment' => DeliveryProof::MOMENT_COMPLETE,
+            'proof_type' => DeliveryProof::TYPE_PICKED_UP_DEVICE,
+            'file_path' => 'delivery-proofs/menu-proof.jpg',
+            'original_name' => 'menu-proof.jpg',
+            'mime_type' => 'image/jpeg',
+            'size_bytes' => strlen('proof-bytes'),
+            'created_by_user_id' => $deliveryUser->id,
+        ]);
+
+        $response = $this->get(route('deliveries.index'));
+        $editHref = route('deliveries.edit', $ownPendingDelivery, false);
+        $deleteHref = route('deliveries.destroy', $ownPendingDelivery, false);
+
+        $response->assertOk();
+        $response->assertSeeText('View Proof');
+        $response->assertDontSee($editHref, false);
+        $response->assertDontSee($deleteHref, false);
     }
 
     private function makeDeliveryTask(int $organizationId, int $assignedUserId, string $type = 'delivery', string $status = 'pending'): Delivery

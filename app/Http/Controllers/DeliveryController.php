@@ -954,9 +954,15 @@ class DeliveryController extends Controller
                 return collect();
             }
 
-            $deliveries = Delivery::with($baseLoad)
+            $deliveriesQuery = Delivery::with($baseLoad)
                 ->where('organization_id', $this->orgId())
-                ->whereIn('id', $deliveryIds->all())
+                ->whereIn('id', $deliveryIds->all());
+
+            if ($this->hasDeliveryProofsTable()) {
+                $deliveriesQuery->withCount('proofs');
+            }
+
+            $deliveries = $deliveriesQuery
                 ->get()
                 ->keyBy('id');
 
@@ -1951,6 +1957,10 @@ class DeliveryController extends Controller
             ->where('organization_id', $this->orgId())
             ->where('type', 'delivery');
 
+        if ($this->hasDeliveryProofsTable()) {
+            $query->withCount('proofs');
+        }
+
         if ($user && $user->hasScope('assigned', 'deliveries')) {
             $query->where('assigned_user_id', $user->id);
         }
@@ -1984,6 +1994,10 @@ class DeliveryController extends Controller
         $query = $this->applyDeliveryScope(Delivery::with($load))
             ->where('organization_id', $this->orgId())
             ->where('type', 'pickup');
+
+        if ($this->hasDeliveryProofsTable()) {
+            $query->withCount('proofs');
+        }
 
         if ($user && $user->hasScope('assigned', 'deliveries')) {
             $query->where('assigned_user_id', $user->id);

@@ -8,6 +8,7 @@
     $canCreateDeliveries = $currentUser?->canAccessModule('deliveries', 'create') ?? false;
     $canUpdateDeliveries = $currentUser?->canAccessModule('deliveries', 'update') ?? false;
     $canDeleteDeliveries = $currentUser?->canAccessModule('deliveries', 'delete') ?? false;
+    $assignedScopedDeliveryUser = $currentUser?->hasScope('assigned', 'deliveries') ?? false;
 
     $tab = $tab ?? 'all';
     $search = $search ?? '';
@@ -744,6 +745,10 @@
                                     $canViewTask = auth()->user()?->can('view', $delivery) ?? false;
                                     $canUpdateTask = auth()->user()?->can('update', $delivery) ?? false;
                                     $canDeleteTask = auth()->user()?->can('delete', $delivery) ?? false;
+                                    $startActionLabel = $delivery->type === 'pickup' ? 'Start Pickup' : 'Start Delivery';
+                                    $completeActionLabel = $delivery->type === 'pickup' ? 'Complete Pickup' : 'Complete Delivery';
+                                    $showProofHistory = $canViewTask && (int) ($delivery->proofs_count ?? 0) > 0;
+                                    $proofHistoryHref = $showProofHistory ? route('deliveries.show', $delivery) . '#delivery-proof-history' : null;
                                 @endphp
                                 <tr class="{{ $isOverdue ? 'is-overdue' : '' }}">
                                     <td class="ops-col-serial ops-serial-cell" data-label="No.">{{ $serialNumber }}</td>
@@ -857,24 +862,42 @@
                                                 </a>
                                             @endif
                                             @if($canUpdateTask && $delivery->status === 'pending' && !$taskEffectivelyCompleted)
-                                                <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="ops-action-btn-primary" title="Open start checklist" aria-label="Open start checklist">
+                                                <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="ops-action-btn-primary" title="{{ $startActionLabel }}" aria-label="{{ $startActionLabel }}">
                                                     {!! $navIcon('start') !!}
-                                                    <span>Start</span>
+                                                    <span>{{ $startActionLabel }}</span>
                                                 </a>
                                             @endif
                                             @if($canUpdateTask && $delivery->status === 'in_progress' && !$taskEffectivelyCompleted)
-                                                <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="ops-action-btn-primary" title="{{ $completePartial ? 'Open partial completion checklist' : 'Open completion checklist' }}" aria-label="{{ $completePartial ? 'Open partial completion checklist' : 'Open completion checklist' }}">
+                                                <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="ops-action-btn-primary" title="{{ $completePartial ? $completeActionLabel . ' (partial allowed)' : $completeActionLabel }}" aria-label="{{ $completeActionLabel }}">
                                                     {!! $navIcon('completed') !!}
-                                                    <span>{{ $completePartial ? 'Complete Partial' : 'Complete' }}</span>
+                                                    <span>{{ $completeActionLabel }}</span>
                                                 </a>
                                             @endif
                                             <details class="ops-action-menu">
                                                 <summary aria-label="More actions for task {{ $delivery->id }}">{!! $navIcon('menu') !!}</summary>
                                                 <div class="ops-action-panel">
-                                                    @if($canUpdateTask && \Illuminate\Support\Facades\Route::has('deliveries.edit'))
+                                                    @if($canViewTask && \Illuminate\Support\Facades\Route::has('deliveries.show'))
+                                                        <a href="{{ route('deliveries.show', $delivery) }}">View</a>
+                                                    @endif
+                                                    @if($canUpdateTask && $delivery->status === 'pending' && !$taskEffectivelyCompleted)
+                                                        <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section">{{ $startActionLabel }}</a>
+                                                    @endif
+                                                    @if($canUpdateTask && $delivery->status === 'in_progress' && !$taskEffectivelyCompleted)
+                                                        <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section">{{ $completeActionLabel }}</a>
+                                                    @endif
+                                                    @if($callHref)
+                                                        <a href="{{ $callHref }}">Call Customer</a>
+                                                    @endif
+                                                    @if($whatsAppUrl)
+                                                        <a href="{{ $whatsAppUrl }}" target="_blank" rel="noopener">WhatsApp Customer</a>
+                                                    @endif
+                                                    @if($proofHistoryHref)
+                                                        <a href="{{ $proofHistoryHref }}">View Proof</a>
+                                                    @endif
+                                                    @if(!$assignedScopedDeliveryUser && $canUpdateTask && \Illuminate\Support\Facades\Route::has('deliveries.edit'))
                                                         <a href="{{ route('deliveries.edit', $delivery) }}">Edit</a>
                                                     @endif
-                                                    @if($canDeleteTask && \Illuminate\Support\Facades\Route::has('deliveries.destroy'))
+                                                    @if(!$assignedScopedDeliveryUser && $canDeleteTask && \Illuminate\Support\Facades\Route::has('deliveries.destroy'))
                                                         <form action="{{ route('deliveries.destroy', $delivery) }}" method="POST">
                                                             @csrf
                                                             @method('DELETE')
@@ -955,6 +978,10 @@
                             $canViewTask = auth()->user()?->can('view', $delivery) ?? false;
                             $canUpdateTask = auth()->user()?->can('update', $delivery) ?? false;
                             $canDeleteTask = auth()->user()?->can('delete', $delivery) ?? false;
+                            $startActionLabel = $delivery->type === 'pickup' ? 'Start Pickup' : 'Start Delivery';
+                            $completeActionLabel = $delivery->type === 'pickup' ? 'Complete Pickup' : 'Complete Delivery';
+                            $showProofHistory = $canViewTask && (int) ($delivery->proofs_count ?? 0) > 0;
+                            $proofHistoryHref = $showProofHistory ? route('deliveries.show', $delivery) . '#delivery-proof-history' : null;
                         @endphp
                         <div class="ops-mobile-card {{ $isOverdue ? 'is-overdue' : '' }}">
                             <div class="ops-mobile-top">
@@ -990,10 +1017,25 @@
                                         @if($canViewTask && \Illuminate\Support\Facades\Route::has('deliveries.show'))
                                             <a href="{{ route('deliveries.show', $delivery) }}">View</a>
                                         @endif
-                                        @if($canUpdateTask && \Illuminate\Support\Facades\Route::has('deliveries.edit'))
+                                        @if($canUpdateTask && $delivery->status === 'pending' && !$taskEffectivelyCompleted)
+                                            <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section">{{ $startActionLabel }}</a>
+                                        @endif
+                                        @if($canUpdateTask && $delivery->status === 'in_progress' && !$taskEffectivelyCompleted)
+                                            <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section">{{ $completeActionLabel }}</a>
+                                        @endif
+                                        @if($callHref)
+                                            <a href="{{ $callHref }}">Call Customer</a>
+                                        @endif
+                                        @if($whatsAppUrl)
+                                            <a href="{{ $whatsAppUrl }}" target="_blank" rel="noopener">WhatsApp Customer</a>
+                                        @endif
+                                        @if($proofHistoryHref)
+                                            <a href="{{ $proofHistoryHref }}">View Proof</a>
+                                        @endif
+                                        @if(!$assignedScopedDeliveryUser && $canUpdateTask && \Illuminate\Support\Facades\Route::has('deliveries.edit'))
                                             <a href="{{ route('deliveries.edit', $delivery) }}">Edit</a>
                                         @endif
-                                        @if($canDeleteTask && \Illuminate\Support\Facades\Route::has('deliveries.destroy'))
+                                        @if(!$assignedScopedDeliveryUser && $canDeleteTask && \Illuminate\Support\Facades\Route::has('deliveries.destroy'))
                                             <form action="{{ route('deliveries.destroy', $delivery) }}" method="POST">
                                                 @csrf
                                                 @method('DELETE')
@@ -1060,15 +1102,15 @@
                                     </a>
                                 @endif
                                 @if($canUpdateTask && $delivery->status === 'pending' && !$taskEffectivelyCompleted)
-                                    <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="ops-action-btn-primary mobile-task-primary-form" title="Open start checklist" aria-label="Open start checklist">
+                                    <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="ops-action-btn-primary mobile-task-primary-form" title="{{ $startActionLabel }}" aria-label="{{ $startActionLabel }}">
                                         {!! $navIcon('start') !!}
-                                        <span>Start</span>
+                                        <span>{{ $startActionLabel }}</span>
                                     </a>
                                 @endif
                                 @if($canUpdateTask && $delivery->status === 'in_progress' && !$taskEffectivelyCompleted)
-                                    <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="ops-action-btn-primary mobile-task-primary-form" title="{{ $completePartial ? 'Open partial completion checklist' : 'Open completion checklist' }}" aria-label="{{ $completePartial ? 'Open partial completion checklist' : 'Open completion checklist' }}">
+                                    <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="ops-action-btn-primary mobile-task-primary-form" title="{{ $completePartial ? $completeActionLabel . ' (partial allowed)' : $completeActionLabel }}" aria-label="{{ $completeActionLabel }}">
                                         {!! $navIcon('completed') !!}
-                                        <span>{{ $completePartial ? 'Complete Partial' : 'Complete' }}</span>
+                                        <span>{{ $completeActionLabel }}</span>
                                     </a>
                                 @endif
                             </div>

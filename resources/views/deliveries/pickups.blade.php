@@ -204,6 +204,7 @@
             @endphp
             <div class="board-card" data-pickup-card data-pickup-status="{{ $delivery->status }}" data-pickup-search="{{ strtolower(collect([$isSaleTask ? ($delivery->sale?->customer?->name ?? '') : ($delivery->rental?->customer_name ?? ''), $isSaleTask ? ($delivery->sale?->customer?->phone ?? '') : ($delivery->rental?->phone ?? ''), $isSaleTask ? ($delivery->sale?->product?->name ?? '') : ($delivery->rental?->product?->name ?? ''), $delivery->assignedStaff->name ?? $delivery->third_party_name ?? $delivery->assignedUser->name ?? ''])->filter()->join(' ')) }}">
                 @php($contactPhone = $isSaleTask ? ($delivery->sale?->customer?->phone) : ($delivery->rental?->phone))
+                @php($hasProofHistory = (int) ($delivery->proofs_count ?? 0) > 0)
                 <div class="pickup-row">
                     <div class="pickup-card-head">
                         <h2>{{ $isSaleTask ? ($delivery->sale?->customer?->name ?? 'N/A') : ($delivery->rental?->customer_name ?? 'N/A') }}</h2>
@@ -239,10 +240,15 @@
                             @endif
                             @if($delivery->status !== 'completed')
                                 <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="board-btn">
-                                    {{ !$isSaleTask && $delivery->rental?->pendingPickupQuantityTotal() > 0 ? 'Complete Partial' : 'Complete Pickup' }}
+                                    Complete Pickup
                                 </a>
                             @endif
                         </div>
+                        @if($delivery->status === 'completed' && $hasProofHistory)
+                            <div class="board-actions">
+                                <a href="{{ route('deliveries.show', $delivery) }}#delivery-proof-history" class="board-btn">View Proof</a>
+                            </div>
+                        @endif
                     </div>
                 </div>
 

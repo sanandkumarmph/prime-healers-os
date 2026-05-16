@@ -33,6 +33,121 @@
         ->filter(fn ($rental) => $rental->deliveryRecord || $rental->pickupRecord)
         ->take(6);
 
+    $mobilePrimaryActions = collect();
+    $mobileMoreActions = collect();
+
+    if ($canCreateRentals) {
+        $mobilePrimaryActions->push([
+            'type' => 'link',
+            'label' => 'Rental',
+            'href' => route('rentals.create', ['customer_id' => $customer->id]),
+        ]);
+    }
+
+    if ($canCreateSales) {
+        $mobilePrimaryActions->push([
+            'type' => 'link',
+            'label' => 'Sale',
+            'href' => route('sales.create', ['customer_id' => $customer->id]),
+        ]);
+    }
+
+    if ($canCreateInvoices) {
+        $mobilePrimaryActions->push([
+            'type' => 'link',
+            'label' => 'Invoice',
+            'href' => route('invoices.create', ['customer_id' => $customer->id]),
+        ]);
+    }
+
+    if ($customer->phone) {
+        $mobilePrimaryActions->push([
+            'type' => 'link',
+            'label' => 'Call',
+            'href' => 'tel:' . preg_replace('/\D+/', '', $customer->phone),
+        ]);
+    }
+
+    if ($canUpdateCustomers) {
+        $mobilePrimaryActions->push([
+            'type' => 'link',
+            'label' => 'Edit',
+            'href' => route('customers.edit', $customer),
+        ]);
+    }
+
+    $mobilePrimaryActions = $mobilePrimaryActions->take(2)->values();
+    $usedMobileLabels = $mobilePrimaryActions->pluck('label')->all();
+
+    $pushMoreAction = function (array $action) use (&$mobileMoreActions, $usedMobileLabels): void {
+        if (in_array($action['label'], $usedMobileLabels, true)) {
+            return;
+        }
+
+        $mobileMoreActions->push($action);
+    };
+
+    $pushMoreAction([
+        'type' => 'link',
+        'label' => 'Back to Customers',
+        'href' => route('customers.index'),
+    ]);
+
+    if ($customer->phone) {
+        $pushMoreAction([
+            'type' => 'link',
+            'label' => 'Call Customer',
+            'href' => 'tel:' . preg_replace('/\D+/', '', $customer->phone),
+        ]);
+    }
+
+    if ($generalWhatsAppUrl) {
+        $pushMoreAction([
+            'type' => 'link',
+            'label' => 'WhatsApp Customer',
+            'href' => $generalWhatsAppUrl,
+            'target' => '_blank',
+            'rel' => 'noopener',
+        ]);
+    }
+
+    if ($canUpdateCustomers) {
+        $pushMoreAction([
+            'type' => 'link',
+            'label' => 'Edit Customer',
+            'href' => route('customers.edit', $customer),
+        ]);
+    }
+
+    if ($canCreateInvoices) {
+        $pushMoreAction([
+            'type' => 'link',
+            'label' => 'Create Invoice',
+            'href' => route('invoices.create', ['customer_id' => $customer->id]),
+        ]);
+    }
+
+    if ($mapUrl) {
+        $pushMoreAction([
+            'type' => 'link',
+            'label' => 'Open Map',
+            'href' => $mapUrl,
+            'target' => '_blank',
+            'rel' => 'noopener',
+        ]);
+    }
+
+    if ($canDeleteCustomers) {
+        $pushMoreAction([
+            'type' => 'form',
+            'label' => 'Delete Customer',
+            'action' => route('customers.destroy', $customer),
+            'method' => 'DELETE',
+            'confirm' => 'Delete this customer? This will be blocked if dependencies exist.',
+            'danger' => true,
+        ]);
+    }
+
     $statusBadge = function (?string $status) {
         return match ($status) {
             'active', 'paid', 'completed', 'delivered' => 'background:#dcfce7;color:#166534;',
@@ -186,16 +301,8 @@
         .metric-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
         .info-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
         .profile-actions {
-            display:grid;
-            grid-template-columns:repeat(2, minmax(0, 1fr));
-            align-items:stretch;
-            width:100%;
+            display:none;
         }
-        .profile-actions form { margin:0; }
-        .profile-actions .ops-btn,
-        .profile-actions .ops-btn-light,
-        .profile-actions .ops-btn-secondary,
-        .profile-actions .ops-btn-danger { width:100%; min-height:44px; }
     }
     @media (max-width: 520px) {
         .metric-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
@@ -594,18 +701,10 @@
     </div>
 </div>
 
-<div class="mobile-sticky-actions" aria-label="Customer primary actions">
-    @if($customer->phone)
-        <a href="tel:{{ preg_replace('/\D+/', '', $customer->phone) }}" class="is-primary">Call</a>
-    @endif
-    @if($canUpdateCustomers)
-        <a href="{{ route('customers.edit', $customer) }}">Edit</a>
-    @endif
-    @if($canCreateRentals)
-        <a href="{{ route('rentals.create', ['customer_id' => $customer->id]) }}">Rental</a>
-    @endif
-    @if($canCreateSales)
-        <a href="{{ route('sales.create', ['customer_id' => $customer->id]) }}">Sale</a>
-    @endif
-</div>
+@include('partials.mobile-action-bar', [
+    'label' => 'Customer mobile actions',
+    'moreLabel' => 'Customer secondary actions',
+    'actions' => $mobilePrimaryActions->all(),
+    'moreActions' => $mobileMoreActions->all(),
+])
 @endsection

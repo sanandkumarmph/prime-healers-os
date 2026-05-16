@@ -97,6 +97,94 @@
     $locationProofs = $deliveryProofs->where('proof_type', \App\Models\DeliveryProof::TYPE_LOCATION)->values();
     $fileProofs = $deliveryProofs->reject(fn ($proof) => $proof->proof_type === \App\Models\DeliveryProof::TYPE_LOCATION)->values();
     $hasPendingWorkflowCapture = $canUpdateTask && in_array($delivery->status, ['pending', 'in_progress'], true);
+    $hasProofHistory = $deliveryProofs->isNotEmpty();
+    $primaryWorkflowCtaLabel = $delivery->status === 'pending'
+        ? ($delivery->type === 'pickup' ? 'Start Pickup' : 'Start Delivery')
+        : ($delivery->type === 'pickup' ? 'Complete Pickup' : 'Complete Delivery');
+    $workflowErrorFields = [
+        'delivery_device_photos',
+        'delivery_device_photos.*',
+        'premises_photo',
+        'pickup_device_photos',
+        'pickup_device_photos.*',
+        'damage_photos',
+        'damage_photos.*',
+        'damage_notes',
+        'missing_accessories_notes',
+        'signature_data',
+        'location_missing_reason',
+        'location_latitude',
+        'location_longitude',
+    ];
+    $hasWorkflowErrors = collect($workflowErrorFields)->contains(fn ($field) => $errors->has($field));
+
+    $mobilePrimaryActions = collect();
+    $mobileMoreActions = collect();
+
+    if ($canUpdateTask && in_array($delivery->status, ['pending', 'in_progress'], true)) {
+        $mobilePrimaryActions->push([
+            'type' => 'link',
+            'label' => $primaryWorkflowCtaLabel,
+            'href' => '#' . $workflowProofSectionId,
+        ]);
+    } elseif ($hasProofHistory) {
+        $mobilePrimaryActions->push([
+            'type' => 'link',
+            'label' => 'View Proof',
+            'href' => '#delivery-proof-history',
+        ]);
+    }
+
+    if ($linkedPhone) {
+        $mobilePrimaryActions->push([
+            'type' => 'link',
+            'label' => 'Call',
+            'href' => 'tel:' . preg_replace('/\D+/', '', $linkedPhone),
+        ]);
+    }
+
+    $mobilePrimaryActions = $mobilePrimaryActions->take(2)->values();
+    $usedMobileLabels = $mobilePrimaryActions->pluck('label')->all();
+    $pushMoreAction = function (array $action) use (&$mobileMoreActions, $usedMobileLabels): void {
+        if (in_array($action['label'], $usedMobileLabels, true)) {
+            return;
+        }
+
+        $mobileMoreActions->push($action);
+    };
+
+    $pushMoreAction([
+        'type' => 'link',
+        'label' => 'Back to Task Board',
+        'href' => route('deliveries.index'),
+    ]);
+
+    if ($hasProofHistory) {
+        $pushMoreAction([
+            'type' => 'link',
+            'label' => 'View Proof History',
+            'href' => '#delivery-proof-history',
+        ]);
+    }
+
+    if ($canUpdateTask) {
+        $pushMoreAction([
+            'type' => 'link',
+            'label' => 'Edit Assignment',
+            'href' => route('deliveries.edit', $delivery),
+        ]);
+    }
+
+    if ($canUpdateTask && !in_array($delivery->status, ['completed', 'cancelled'], true)) {
+        $pushMoreAction([
+            'type' => 'form',
+            'label' => 'Cancel Task',
+            'action' => route('deliveries.cancel', $delivery),
+            'method' => 'PUT',
+            'confirm' => 'Cancel this ' . $delivery->type . ' task?',
+            'danger' => true,
+        ]);
+    }
 @endphp
 
 <style>
@@ -342,9 +430,11 @@
         <div class="detail-actions">
             <a href="{{ route('deliveries.index') }}" class="detail-btn-secondary">Back</a>
             @if($canUpdateTask && $delivery->status === 'pending')
-                <a href="#{{ $workflowProofSectionId }}" class="detail-btn">Start Checklist</a>
+                <a href="#{{ $workflowProofSectionId }}" class="detail-btn">{{ $primaryWorkflowCtaLabel }}</a>
             @elseif($canUpdateTask && $delivery->status === 'in_progress')
-                <a href="#{{ $workflowProofSectionId }}" class="detail-btn">Completion Checklist</a>
+                <a href="#{{ $workflowProofSectionId }}" class="detail-btn">{{ $primaryWorkflowCtaLabel }}</a>
+            @elseif($hasProofHistory)
+                <a href="#delivery-proof-history" class="detail-btn">View Proof</a>
             @endif
             @if($canUpdateTask)
                 <a href="{{ route('deliveries.edit', $delivery) }}" class="detail-btn-secondary">Edit</a>
@@ -355,16 +445,6 @@
                     @method('PUT')
                     <button type="submit" class="detail-btn-secondary" onclick="return confirm('Cancel this {{ $delivery->type }} task?');">Cancel</button>
                 </form>
-            @endif
-        </div>
-        <div class="mobile-inline-actions">
-            @if($linkedPhone)
-                <a href="tel:{{ preg_replace('/\D+/', '', $linkedPhone) }}" class="detail-btn-secondary">Call</a>
-            @endif
-            @if($canUpdateTask && $delivery->status === 'pending')
-                <a href="#{{ $workflowProofSectionId }}" class="detail-btn" style="width:100%;">Start Checklist</a>
-            @elseif($canUpdateTask && $delivery->status === 'in_progress')
-                <a href="#{{ $workflowProofSectionId }}" class="detail-btn" style="width:100%;">Completion Checklist</a>
             @endif
         </div>
     </div>
@@ -509,6 +589,11 @@
                 <span class="workflow-proof-badge">Max dimension {{ $proofConfig['max_dimension'] }} px</span>
             </div>
         </div>
+        @if($hasWorkflowErrors)
+            <div class="workflow-proof-status is-warning" data-workflow-error-summary tabindex="-1">
+                Please complete the required proof fields marked below before continuing this {{ $delivery->type }} task.
+            </div>
+        @endif
 
         @if($canUpdateTask && $delivery->status === 'pending')
             <form action="{{ route('deliveries.in_progress', $delivery) }}" method="POST" class="workflow-proof-card" data-workflow-form="start">
@@ -856,32 +941,12 @@
     </div>
 </div>
 
-<div class="mobile-sticky-actions" aria-label="Delivery primary actions">
-    @if($linkedPhone)
-        <a href="tel:{{ preg_replace('/\D+/', '', $linkedPhone) }}">Call</a>
-    @endif
-    @if($canUpdateTask && $delivery->status === 'pending')
-        <a href="#{{ $workflowProofSectionId }}" class="is-primary">Start Checklist</a>
-    @elseif($canUpdateTask && $delivery->status === 'in_progress')
-        <a href="#{{ $workflowProofSectionId }}" class="is-primary">Completion Checklist</a>
-    @endif
-    <details class="mobile-actions-menu">
-        <summary type="button">More</summary>
-        <div class="mobile-actions-panel">
-            <a href="{{ route('deliveries.index') }}">Back to Tasks Board</a>
-            @if($canUpdateTask)
-                <a href="{{ route('deliveries.edit', $delivery) }}">Edit Assignment</a>
-            @endif
-            @if($canUpdateTask && !in_array($delivery->status, ['completed', 'cancelled'], true))
-                <form action="{{ route('deliveries.cancel', $delivery) }}" method="POST" style="margin:0;">
-                    @csrf
-                    @method('PUT')
-                    <button type="submit" class="is-danger" onclick="return confirm('Cancel this {{ $delivery->type }} task?');">Cancel Task</button>
-                </form>
-            @endif
-        </div>
-    </details>
-</div>
+@include('partials.mobile-action-bar', [
+    'label' => 'Delivery mobile actions',
+    'moreLabel' => 'Delivery secondary actions',
+    'actions' => $mobilePrimaryActions->all(),
+    'moreActions' => $mobileMoreActions->all(),
+])
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', () => {
@@ -890,6 +955,16 @@ document.addEventListener('DOMContentLoaded', () => {
         maxBytes: {{ (int) ($proofConfig['max_kb'] ?? 100) * 1024 }},
         maxDimension: {{ (int) ($proofConfig['max_dimension'] ?? 1024) }},
     };
+    const workflowSection = document.getElementById(@json($workflowProofSectionId));
+    const workflowErrorSummary = document.querySelector('[data-workflow-error-summary]');
+
+    if (workflowSection && (window.location.hash === '#{{ $workflowProofSectionId }}' || {{ $hasWorkflowErrors ? 'true' : 'false' }})) {
+        workflowSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+        if (workflowErrorSummary instanceof HTMLElement) {
+            window.setTimeout(() => workflowErrorSummary.focus(), 160);
+        }
+    }
 
     const canvasToBlob = (canvas, type, quality) => new Promise((resolve) => {
         canvas.toBlob((blob) => resolve(blob), type, quality);
