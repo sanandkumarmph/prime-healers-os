@@ -59,4 +59,9 @@ class Delivery extends Model
     {
         return $this->belongsTo(Staff::class, 'assigned_staff_id');
     }
+
+    public function proofs()
+    {
+        return $this->hasMany(DeliveryProof::class);
+    }
 }

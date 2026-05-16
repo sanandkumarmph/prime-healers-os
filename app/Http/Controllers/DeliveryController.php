@@ -4,12 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\Asset;
 use App\Models\Delivery;
+use App\Models\DeliveryProof;
 use App\Models\Product;
 use App\Models\Rental;
 use App\Models\RentalAsset;
 use App\Models\RentalItem;
 use App\Models\Role;
 use App\Models\Sale;
+use App\Services\Deliveries\DeliveryProofService;
 use App\Services\Deliveries\DeliveryWorkflowService;
 use App\Services\Metrics\LogisticsMetricsService;
 use App\Models\Staff;
@@ -22,6 +24,7 @@ use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -36,6 +39,7 @@ class DeliveryController extends Controller
     private ?bool $hasThirdPartyPhoneColumn = null;
     private ?bool $hasSaleColumn = null;
     private ?bool $hasRentalSaleItemsTable = null;
+    private ?bool $hasDeliveryProofsTable = null;
 
     private function hasRentalAssetsTable(): bool
     {
@@ -50,6 +54,11 @@ class DeliveryController extends Controller
     private function hasRentalSaleItemsTable(): bool
     {
         return $this->hasRentalSaleItemsTable ??= \App\Models\Rental::hasSaleItemsTable();
+    }
+
+    private function hasDeliveryProofsTable(): bool
+    {
+        return $this->hasDeliveryProofsTable ??= Schema::hasTable('delivery_proofs');
     }
 
     private function hasAssignedStaffColumn(): bool
@@ -95,6 +104,11 @@ class DeliveryController extends Controller
     private function deliveryWorkflowService(): DeliveryWorkflowService
     {
         return app(DeliveryWorkflowService::class);
+    }
+
+    private function deliveryProofService(): DeliveryProofService
+    {
+        return app(DeliveryProofService::class);
     }
 
     private function logisticsMetrics(): LogisticsMetricsService
@@ -253,6 +267,269 @@ class DeliveryController extends Controller
     private function orgId(): int
     {
         return (int) auth()->user()->organization_id;
+    }
+
+    private function deliveryProofAcknowledgement(string $workflowStage): string
+    {
+        return DeliveryProof::acknowledgementFor($workflowStage);
+    }
+
+    private function deliveryProofConfig(): array
+    {
+        return [
+            'max_kb' => $this->deliveryProofService()->maxKilobytes(),
+            'target_kb' => $this->deliveryProofService()->targetKilobytes(),
+            'max_dimension' => (int) config('proof.image_max_dimension', 1024),
+        ];
+    }
+
+    private function redirectToWorkflowChecklist(Delivery $delivery, string $message)
+    {
+        return redirect()
+            ->route('deliveries.show', $delivery)
+            ->with('error', $message);
+    }
+
+    private function ensureProofWorkflowRequest(Request $request, Delivery $delivery, string $action)
+    {
+        if ($request->boolean('workflow_capture_form')) {
+            return null;
+        }
+
+        $verb = $action === 'start' ? 'capture start location' : 'capture required proof and location';
+
+        return $this->redirectToWorkflowChecklist(
+            $delivery,
+            'Open the delivery task detail page to ' . $verb . ' before continuing.'
+        );
+    }
+
+    private function startWorkflowValidationRules(): array
+    {
+        return [
+            'workflow_capture_form' => ['required', 'accepted'],
+            'location_latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'location_longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'location_accuracy' => ['nullable', 'numeric', 'min:0'],
+            'location_captured_at' => ['nullable', 'date'],
+            'location_missing_reason' => ['nullable', 'string', 'max:500'],
+        ];
+    }
+
+    private function completionWorkflowValidationRules(Delivery $delivery): array
+    {
+        $maxKb = $this->deliveryProofService()->maxKilobytes();
+        $commonImageRule = ['file', 'image', 'mimes:jpg,jpeg,png,webp', 'max:' . $maxKb];
+
+        $rules = [
+            'workflow_capture_form' => ['required', 'accepted'],
+            'location_latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'location_longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'location_accuracy' => ['nullable', 'numeric', 'min:0'],
+            'location_captured_at' => ['nullable', 'date'],
+            'location_missing_reason' => ['nullable', 'string', 'max:500'],
+            'signature_data' => ['required', 'string'],
+            'proof_notes' => ['nullable', 'string', 'max:1000'],
+        ];
+
+        if ($delivery->type === 'delivery') {
+            $rules['delivery_device_photos'] = ['required', 'array', 'min:1'];
+            $rules['delivery_device_photos.*'] = $commonImageRule;
+            $rules['premises_photo'] = array_merge(['required'], $commonImageRule);
+            $rules['pickup_device_photos'] = ['prohibited'];
+            $rules['damage_reported'] = ['prohibited'];
+            $rules['damage_notes'] = ['prohibited'];
+            $rules['missing_accessories_notes'] = ['prohibited'];
+            $rules['damage_photos'] = ['prohibited'];
+            $rules['damage_photos.*'] = ['prohibited'];
+        } else {
+            $rules['pickup_device_photos'] = ['required', 'array', 'min:1'];
+            $rules['pickup_device_photos.*'] = $commonImageRule;
+            $rules['damage_reported'] = ['nullable', 'boolean'];
+            $rules['damage_notes'] = ['nullable', 'string', 'max:1000'];
+            $rules['missing_accessories_notes'] = ['nullable', 'string', 'max:1000'];
+            $rules['damage_photos'] = ['nullable', 'array'];
+            $rules['damage_photos.*'] = $commonImageRule;
+            $rules['delivery_device_photos'] = ['prohibited'];
+            $rules['delivery_device_photos.*'] = ['prohibited'];
+            $rules['premises_photo'] = ['prohibited'];
+        }
+
+        return $rules;
+    }
+
+    private function validateStartWorkflowRequest(Request $request): array
+    {
+        $validator = Validator::make($request->all(), $this->startWorkflowValidationRules());
+        $validator->after(function ($validator) {
+            $this->appendLocationCaptureErrors($validator, $validator->getData());
+        });
+
+        return $validator->validate();
+    }
+
+    private function validateCompletionWorkflowRequest(Request $request, Delivery $delivery): array
+    {
+        $validator = Validator::make($request->all(), $this->completionWorkflowValidationRules($delivery));
+        $validator->after(function ($validator) use ($delivery) {
+            $data = $validator->getData();
+            $this->appendLocationCaptureErrors($validator, $data);
+
+            if ($delivery->type === 'pickup') {
+                $this->appendPickupDamageProofErrors($validator, $data);
+            }
+        });
+
+        return $validator->validate();
+    }
+
+    private function appendLocationCaptureErrors($validator, array $validated): void
+    {
+        $latitude = $validated['location_latitude'] ?? null;
+        $longitude = $validated['location_longitude'] ?? null;
+        $missingReason = trim((string) ($validated['location_missing_reason'] ?? ''));
+
+        $hasCoordinates = $latitude !== null && $longitude !== null && $latitude !== '' && $longitude !== '';
+
+        if ($hasCoordinates && $missingReason !== '') {
+            return;
+        }
+
+        if ($hasCoordinates) {
+            return;
+        }
+
+        if ($missingReason !== '') {
+            return;
+        }
+
+        $validator->errors()->add('location_missing_reason', 'Capture the current location or enter a reason why location could not be captured.');
+    }
+
+    private function appendPickupDamageProofErrors($validator, array $validated): void
+    {
+        $damageReported = filter_var($validated['damage_reported'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        if (! $damageReported) {
+            return;
+        }
+
+        $damageNotes = trim((string) ($validated['damage_notes'] ?? ''));
+        $damagePhotos = collect($validated['damage_photos'] ?? [])->filter()->values();
+
+        $messages = [];
+
+        if ($damageNotes === '') {
+            $messages['damage_notes'] = 'Damage notes are required when damage is reported at pickup.';
+        }
+
+        if ($damagePhotos->isEmpty()) {
+            $messages['damage_photos'] = 'At least one damage photo is required when damage is reported at pickup.';
+        }
+
+        foreach ($messages as $key => $message) {
+            $validator->errors()->add($key, $message);
+        }
+    }
+
+    private function storeDeliveryWorkflowLocation(Delivery $delivery, User $user, string $captureMoment, array $validated): void
+    {
+        $this->deliveryProofService()->storeLocationCapture(
+            $delivery,
+            $user,
+            $delivery->type,
+            $captureMoment,
+            isset($validated['location_latitude']) ? (float) $validated['location_latitude'] : null,
+            isset($validated['location_longitude']) ? (float) $validated['location_longitude'] : null,
+            isset($validated['location_accuracy']) ? (float) $validated['location_accuracy'] : null,
+            $validated['location_captured_at'] ?? null,
+            trim((string) ($validated['location_missing_reason'] ?? '')) ?: null
+        );
+    }
+
+    private function storeWorkflowCompletionProofs(Delivery $delivery, User $user, array $validated): void
+    {
+        $acknowledgementText = $this->deliveryProofAcknowledgement($delivery->type);
+        $proofNotes = trim((string) ($validated['proof_notes'] ?? '')) ?: null;
+
+        $this->storeDeliveryWorkflowLocation($delivery, $user, DeliveryProof::MOMENT_COMPLETE, $validated);
+
+        if ($delivery->type === 'delivery') {
+            $this->deliveryProofService()->storeUploadedFiles(
+                $delivery,
+                $user,
+                DeliveryProof::STAGE_DELIVERY,
+                DeliveryProof::MOMENT_COMPLETE,
+                DeliveryProof::TYPE_DELIVERED_DEVICE,
+                $validated['delivery_device_photos'] ?? [],
+                $proofNotes
+            );
+
+            $premisesPhoto = $validated['premises_photo'] ?? null;
+
+            if ($premisesPhoto) {
+                $this->deliveryProofService()->storeUploadedFiles(
+                    $delivery,
+                    $user,
+                    DeliveryProof::STAGE_DELIVERY,
+                    DeliveryProof::MOMENT_COMPLETE,
+                    DeliveryProof::TYPE_PREMISES,
+                    [$premisesPhoto],
+                    $proofNotes
+                );
+            }
+
+            $signatureMeta = [
+                'proof_notes' => $proofNotes,
+            ];
+        } else {
+            $damageReported = filter_var($validated['damage_reported'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $damageNotes = trim((string) ($validated['damage_notes'] ?? '')) ?: null;
+            $missingAccessoriesNotes = trim((string) ($validated['missing_accessories_notes'] ?? '')) ?: null;
+
+            $this->deliveryProofService()->storeUploadedFiles(
+                $delivery,
+                $user,
+                DeliveryProof::STAGE_PICKUP,
+                DeliveryProof::MOMENT_COMPLETE,
+                DeliveryProof::TYPE_PICKED_UP_DEVICE,
+                $validated['pickup_device_photos'] ?? [],
+                $proofNotes
+            );
+
+            if ($damageReported) {
+                $this->deliveryProofService()->storeUploadedFiles(
+                    $delivery,
+                    $user,
+                    DeliveryProof::STAGE_PICKUP,
+                    DeliveryProof::MOMENT_COMPLETE,
+                    DeliveryProof::TYPE_DAMAGE,
+                    $validated['damage_photos'] ?? [],
+                    $damageNotes,
+                    [
+                        'missing_accessories_notes' => $missingAccessoriesNotes,
+                    ]
+                );
+            }
+
+            $signatureMeta = [
+                'proof_notes' => $proofNotes,
+                'damage_reported' => $damageReported,
+                'damage_notes' => $damageNotes,
+                'missing_accessories_notes' => $missingAccessoriesNotes,
+            ];
+        }
+
+        $this->deliveryProofService()->storeSignature(
+            $delivery,
+            $user,
+            $delivery->type,
+            DeliveryProof::MOMENT_COMPLETE,
+            (string) $validated['signature_data'],
+            $acknowledgementText,
+            $proofNotes,
+            $signatureMeta
+        );
     }
 
     private function applyDeliveryScope($query)
@@ -1168,8 +1445,23 @@ class DeliveryController extends Controller
         }
 
         $activityLogs = ActivityLogger::recentFor($delivery);
+        $deliveryProofs = $this->hasDeliveryProofsTable()
+            ? $delivery->proofs()->with('creator')->latest('captured_at')->latest('id')->get()
+            : collect();
+        $proofConfig = $this->deliveryProofConfig();
 
-        return view('deliveries.show', compact('delivery', 'activityLogs'));
+        return view('deliveries.show', compact('delivery', 'activityLogs', 'deliveryProofs', 'proofConfig'));
+    }
+
+    public function viewProof(Delivery $delivery, DeliveryProof $proof)
+    {
+        $delivery = $this->scopedDelivery($delivery, false);
+        $this->authorize('view', $delivery);
+
+        abort_if($proof->organization_id !== $this->orgId(), 403);
+        abort_if((int) $proof->delivery_id !== (int) $delivery->id, 404);
+
+        return $this->deliveryProofService()->streamInline($proof);
     }
 
     public function edit(Delivery $delivery)
@@ -1499,10 +1791,14 @@ class DeliveryController extends Controller
         return redirect()->back()->with('success', 'Partial pickup recorded successfully.');
     }
 
-    public function markInProgress(Delivery $delivery)
+    public function markInProgress(Request $request, Delivery $delivery)
     {
         $delivery = $this->scopedDelivery($delivery);
         $this->authorize('update', $delivery);
+
+        if ($redirect = $this->ensureProofWorkflowRequest($request, $delivery, 'start')) {
+            return $redirect;
+        }
 
         if ($delivery->status === 'completed') {
             return redirect()->back()->with('error', ucfirst($delivery->type) . ' is already completed.');
@@ -1512,24 +1808,33 @@ class DeliveryController extends Controller
             return redirect()->back()->with('error', 'Only pending ' . $delivery->type . ' tasks can be started.');
         }
 
+        $validated = $this->validateStartWorkflowRequest($request);
+
         $this->deliveryWorkflowService()->markInProgress(
             $delivery,
             fn (Delivery $activeDelivery) => $this->syncAssignedAssetStatuses($activeDelivery)
         );
 
+        $this->storeDeliveryWorkflowLocation($delivery, auth()->user(), DeliveryProof::MOMENT_START, $validated);
+
         ActivityLogger::log('delivery.started', $delivery, [
             'type' => $delivery->type,
             'status' => $delivery->status,
+            'location_captured' => filled($validated['location_latitude'] ?? null) && filled($validated['location_longitude'] ?? null),
         ], ucfirst($delivery->type) . ' marked as in progress.');
 
         return redirect()->back()->with('success', ucfirst($delivery->type) . ' marked as in progress.');
     }
 
-    public function markCompleted(Delivery $delivery)
+    public function markCompleted(Request $request, Delivery $delivery)
     {
         $delivery = $this->scopedDelivery($delivery);
         $this->authorize('update', $delivery);
-        $confirmPartial = request()->boolean('confirm_partial');
+        $confirmPartial = $request->boolean('confirm_partial');
+
+        if ($redirect = $this->ensureProofWorkflowRequest($request, $delivery, 'complete')) {
+            return $redirect;
+        }
 
         if ($delivery->status === 'completed') {
             return redirect()->back()->with('error', ucfirst($delivery->type) . ' is already completed.');
@@ -1555,6 +1860,8 @@ class DeliveryController extends Controller
             }
         }
 
+        $validated = $this->validateCompletionWorkflowRequest($request, $delivery);
+
         $pickupRental = null;
         if ($delivery->type === 'pickup' && $delivery->rental_id) {
             $pickupRental = Rental::query()
@@ -1569,10 +1876,13 @@ class DeliveryController extends Controller
             fn (Delivery $completedDelivery) => $this->syncAssignedAssetStatuses($completedDelivery)
         );
 
+        $this->storeWorkflowCompletionProofs($delivery, auth()->user(), $validated);
+
         ActivityLogger::log('delivery.completed', $delivery, [
             'type' => $delivery->type,
             'status' => $delivery->status,
             'completed_at' => optional($delivery->completed_at)->toDateTimeString(),
+            'proof_stage' => $delivery->type,
         ], ucfirst($delivery->type) . ' marked as completed.');
 
         return redirect()->back()->with('success', ucfirst($delivery->type) . ' marked as completed.');

@@ -17,12 +17,28 @@ use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\Support\TestData;
 use Tests\TestCase;
 
 class DeliveryBillingPermissionsRegressionTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Storage::fake('local');
+
+        config([
+            'proof.storage_disk' => 'local',
+            'proof.image_max_kb' => 100,
+            'proof.image_target_kb' => 50,
+            'proof.image_max_dimension' => 1024,
+        ]);
+    }
 
     public function test_partial_pickup_moves_tracked_rental_assets_to_awaiting_verification(): void
     {
@@ -206,7 +222,10 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
             'notes' => 'Reserve task',
         ]);
 
-        $response = $this->from(route('deliveries.show', $delivery))->put(route('deliveries.in_progress', $delivery));
+        $response = $this->from(route('deliveries.show', $delivery))->put(
+            route('deliveries.in_progress', $delivery),
+            $this->startCapturePayload()
+        );
 
         $response->assertRedirect(route('deliveries.show', $delivery));
         $this->assertSame('in_progress', $delivery->fresh()->status);
@@ -297,6 +316,7 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
         ]);
 
         $response = $this->from(route('deliveries.show', $pickup))->put(route('deliveries.complete', $pickup), [
+            ...$this->completionCapturePayload('pickup'),
             'confirm_partial' => 1,
         ]);
 
@@ -395,7 +415,10 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
             'notes' => 'Delivery completion task',
         ]);
 
-        $response = $this->from(route('deliveries.show', $delivery))->put(route('deliveries.complete', $delivery));
+        $response = $this->from(route('deliveries.show', $delivery))->put(
+            route('deliveries.complete', $delivery),
+            $this->completionCapturePayload('delivery')
+        );
 
         $response->assertRedirect(route('deliveries.show', $delivery));
         $this->assertSame('completed', $delivery->fresh()->status);
@@ -811,7 +834,10 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
             'notes' => 'Sale delivery completion task',
         ]);
 
-        $response = $this->from(route('deliveries.show', $delivery))->put(route('deliveries.complete', $delivery));
+        $response = $this->from(route('deliveries.show', $delivery))->put(
+            route('deliveries.complete', $delivery),
+            $this->completionCapturePayload('delivery')
+        );
 
         $response->assertRedirect(route('deliveries.show', $delivery));
         $this->assertSame('completed', $delivery->fresh()->status);
@@ -858,7 +884,7 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
 
         $this->actingAs($assignedUser)
             ->from(route('deliveries.show', $ownDelivery))
-            ->put(route('deliveries.in_progress', $ownDelivery))
+            ->put(route('deliveries.in_progress', $ownDelivery), $this->startCapturePayload())
             ->assertRedirect(route('deliveries.show', $ownDelivery));
 
         $this->assertSame('in_progress', $ownDelivery->fresh()->status);
@@ -1360,5 +1386,62 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
 
             $this->assertNotSame(500, $response->getStatusCode(), 'Route failed on mobile smoke check: ' . $url);
         }
+    }
+
+    private function startCapturePayload(): array
+    {
+        return [
+            'workflow_capture_form' => '1',
+            'location_latitude' => '12.971599',
+            'location_longitude' => '77.594566',
+            'location_accuracy' => '15.4',
+            'location_captured_at' => now()->toIso8601String(),
+        ];
+    }
+
+    private function completionCapturePayload(string $type = 'delivery'): array
+    {
+        $base = [
+            'workflow_capture_form' => '1',
+            'signature_data' => $this->signatureDataUrl(),
+            'location_missing_reason' => 'Indoor coverage blocked GPS at this step.',
+            'proof_notes' => 'Captured during regression test.',
+        ];
+
+        if ($type === 'pickup') {
+            return array_merge($base, [
+                'pickup_device_photos' => [
+                    $this->fakeImageUpload('pickup-device.jpg', 40),
+                ],
+            ]);
+        }
+
+        return array_merge($base, [
+            'delivery_device_photos' => [
+                $this->fakeImageUpload('delivery-device.jpg', 40),
+            ],
+            'premises_photo' => $this->fakeImageUpload('premises.jpg', 40),
+        ]);
+    }
+
+    private function signatureDataUrl(): string
+    {
+        return 'data:image/png;base64,' . base64_encode(base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAoAAAAECAIAAADJUWIXAAAAGElEQVQImWNgoBpgYGBg+A8jGEmBgYGBAQAAegQF4g1r0cQAAAAASUVORK5CYII=',
+            true
+        ));
+    }
+
+    private function fakeImageUpload(string $name, int $sizeKb): UploadedFile
+    {
+        $tinyPng = base64_decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO0pJ2sAAAAASUVORK5CYII=',
+            true
+        );
+
+        $targetBytes = max($sizeKb * 1024, strlen($tinyPng));
+        $padding = max($targetBytes - strlen($tinyPng), 0);
+
+        return UploadedFile::fake()->createWithContent($name, $tinyPng . str_repeat(' ', $padding));
     }
 }

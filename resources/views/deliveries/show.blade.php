@@ -89,6 +89,14 @@
     };
     $canUpdateTask = auth()->user()?->can('update', $delivery) ?? false;
     $canDeleteTask = auth()->user()?->can('delete', $delivery) ?? false;
+    $deliveryProofs = collect($deliveryProofs ?? []);
+    $proofConfig = $proofConfig ?? ['max_kb' => 100, 'target_kb' => 50, 'max_dimension' => 1024];
+    $workflowProofSectionId = 'workflow-proof-section';
+    $workflowStage = $delivery->type === 'pickup' ? \App\Models\DeliveryProof::STAGE_PICKUP : \App\Models\DeliveryProof::STAGE_DELIVERY;
+    $acknowledgementText = \App\Models\DeliveryProof::acknowledgementFor($workflowStage);
+    $locationProofs = $deliveryProofs->where('proof_type', \App\Models\DeliveryProof::TYPE_LOCATION)->values();
+    $fileProofs = $deliveryProofs->reject(fn ($proof) => $proof->proof_type === \App\Models\DeliveryProof::TYPE_LOCATION)->values();
+    $hasPendingWorkflowCapture = $canUpdateTask && in_array($delivery->status, ['pending', 'in_progress'], true);
 @endphp
 
 <style>
@@ -176,11 +184,128 @@
     .item-progress-form { display:flex; gap:8px; flex-wrap:wrap; align-items:end; }
     .item-progress-form input { border:1px solid #cbd5e1; border-radius:10px; padding:8px 10px; font-size:13px; }
     .item-progress-form input[type="number"] { width:88px; }
+    .workflow-proof-card { display:grid; gap:14px; }
+    .workflow-proof-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:14px; }
+    .workflow-proof-field { grid-column:span 6; display:grid; gap:6px; }
+    .workflow-proof-field.span-12 { grid-column:span 12; }
+    .workflow-proof-field label { font-size:12px; font-weight:700; color:#334155; }
+    .workflow-proof-field input[type="text"],
+    .workflow-proof-field input[type="file"],
+    .workflow-proof-field textarea {
+        width:100%;
+        border:1px solid #cbd5e1;
+        border-radius:12px;
+        padding:10px 12px;
+        font-size:13px;
+        color:#0f172a;
+        background:#fff;
+    }
+    .workflow-proof-field textarea { min-height:86px; resize:vertical; }
+    .workflow-proof-help { color:#64748b; font-size:12px; line-height:1.45; }
+    .workflow-proof-badges { display:flex; gap:8px; flex-wrap:wrap; }
+    .workflow-proof-badge {
+        display:inline-flex;
+        align-items:center;
+        gap:6px;
+        padding:6px 10px;
+        border-radius:999px;
+        background:#eff6ff;
+        color:#1d4ed8;
+        font-size:11px;
+        font-weight:800;
+    }
+    .workflow-proof-actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .workflow-proof-trigger {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        gap:6px;
+        min-height:42px;
+        padding:10px 14px;
+        border-radius:12px;
+        border:1px solid #cbd5e1;
+        background:#f8fafc;
+        color:#0f172a;
+        font-size:13px;
+        font-weight:800;
+        text-decoration:none;
+    }
+    .workflow-proof-trigger.is-primary {
+        background:#2563eb;
+        border-color:#2563eb;
+        color:#fff;
+    }
+    .workflow-proof-status {
+        min-height:38px;
+        padding:10px 12px;
+        border-radius:12px;
+        border:1px dashed #cbd5e1;
+        background:#f8fafc;
+        color:#475569;
+        font-size:12px;
+        line-height:1.45;
+    }
+    .workflow-proof-status.is-success {
+        border-style:solid;
+        border-color:#86efac;
+        background:#f0fdf4;
+        color:#166534;
+    }
+    .workflow-proof-status.is-warning {
+        border-style:solid;
+        border-color:#fdba74;
+        background:#fff7ed;
+        color:#9a3412;
+    }
+    .workflow-proof-signature-wrap {
+        border:1px solid #dbe3ef;
+        border-radius:16px;
+        padding:12px;
+        background:#fcfdff;
+        display:grid;
+        gap:10px;
+    }
+    .workflow-proof-signature-pad {
+        width:100%;
+        height:180px;
+        border:1px solid #cbd5e1;
+        border-radius:14px;
+        background:#fff;
+        touch-action:none;
+        cursor:crosshair;
+    }
+    .workflow-proof-history {
+        display:grid;
+        gap:12px;
+    }
+    .workflow-proof-history-item {
+        display:grid;
+        grid-template-columns:minmax(0, 120px) minmax(0, 1fr);
+        gap:12px;
+        padding:12px;
+        border:1px solid #e2e8f0;
+        border-radius:14px;
+        background:#fff;
+    }
+    .workflow-proof-history-thumb {
+        width:100%;
+        max-width:120px;
+        border-radius:12px;
+        border:1px solid #dbe3ef;
+        object-fit:cover;
+        background:#f8fafc;
+    }
+    .workflow-proof-history-meta { display:grid; gap:6px; }
+    .workflow-proof-history-meta strong { color:#0f172a; }
+    .workflow-proof-history-meta small { color:#64748b; font-size:12px; }
+    .workflow-proof-divider { height:1px; background:#e2e8f0; margin:4px 0; }
     @media (max-width: 900px) {
         .span-4, .span-6 { grid-column:span 12; }
         .item-progress-table, .item-progress-table tbody, .item-progress-table tr, .item-progress-table td { display:block; width:100%; }
         .item-progress-table thead { display:none; }
         .item-progress-table tr { border:1px solid #e2e8f0; border-radius:12px; margin-bottom:10px; overflow:hidden; }
+        .workflow-proof-field { grid-column:span 12; }
+        .workflow-proof-history-item { grid-template-columns:1fr; }
     }
     @media (max-width: 767px) {
         .delivery-detail { padding:8px 0 16px; }
@@ -216,6 +341,11 @@
         </div>
         <div class="detail-actions">
             <a href="{{ route('deliveries.index') }}" class="detail-btn-secondary">Back</a>
+            @if($canUpdateTask && $delivery->status === 'pending')
+                <a href="#{{ $workflowProofSectionId }}" class="detail-btn">Start Checklist</a>
+            @elseif($canUpdateTask && $delivery->status === 'in_progress')
+                <a href="#{{ $workflowProofSectionId }}" class="detail-btn">Completion Checklist</a>
+            @endif
             @if($canUpdateTask)
                 <a href="{{ route('deliveries.edit', $delivery) }}" class="detail-btn-secondary">Edit</a>
             @endif
@@ -232,22 +362,9 @@
                 <a href="tel:{{ preg_replace('/\D+/', '', $linkedPhone) }}" class="detail-btn-secondary">Call</a>
             @endif
             @if($canUpdateTask && $delivery->status === 'pending')
-                <form action="{{ route('deliveries.in_progress', $delivery) }}" method="POST" style="margin:0;">
-                    @csrf
-                    @method('PUT')
-                    <button type="submit" class="detail-btn" style="width:100%;">Start</button>
-                </form>
+                <a href="#{{ $workflowProofSectionId }}" class="detail-btn" style="width:100%;">Start Checklist</a>
             @elseif($canUpdateTask && $delivery->status === 'in_progress')
-                <form action="{{ route('deliveries.complete', $delivery) }}" method="POST" style="margin:0;">
-                    @csrf
-                    @method('PUT')
-                    @if((!$isSaleTask && $delivery->type === 'delivery' && $delivery->rental?->pendingDeliveryQuantityTotal() > 0) || (!$isSaleTask && $delivery->type === 'pickup' && $delivery->rental?->pendingPickupQuantityTotal() > 0))
-                        <input type="hidden" name="confirm_partial" value="1">
-                        <button type="submit" class="detail-btn" style="width:100%;">Complete Partial</button>
-                    @else
-                        <button type="submit" class="detail-btn" style="width:100%;">Complete</button>
-                    @endif
-                </form>
+                <a href="#{{ $workflowProofSectionId }}" class="detail-btn" style="width:100%;">Completion Checklist</a>
             @endif
         </div>
     </div>
@@ -380,6 +497,266 @@
     </div>
     @endif
 
+    <div class="detail-card workflow-proof-card" id="{{ $workflowProofSectionId }}">
+        <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
+            <div>
+                <h2 style="margin:0;">{{ $delivery->type === 'pickup' ? 'Pickup' : 'Delivery' }} Proof Capture</h2>
+                <div style="margin-top:6px; color:#64748b; font-size:13px;">Capture location, customer acknowledgement, and small compressed proof images without exposing files publicly.</div>
+            </div>
+            <div class="workflow-proof-badges">
+                <span class="workflow-proof-badge">Target image size {{ $proofConfig['target_kb'] }} KB</span>
+                <span class="workflow-proof-badge">Max image size {{ $proofConfig['max_kb'] }} KB</span>
+                <span class="workflow-proof-badge">Max dimension {{ $proofConfig['max_dimension'] }} px</span>
+            </div>
+        </div>
+
+        @if($canUpdateTask && $delivery->status === 'pending')
+            <form action="{{ route('deliveries.in_progress', $delivery) }}" method="POST" class="workflow-proof-card" data-workflow-form="start">
+                @csrf
+                @method('PUT')
+                <input type="hidden" name="workflow_capture_form" value="1">
+                <div class="workflow-proof-grid">
+                    <div class="workflow-proof-field span-12">
+                        <label>Start location capture</label>
+                        <div class="workflow-proof-help">Use browser GPS at {{ $delivery->type }} start. If location permission is denied, add the reason and continue.</div>
+                        <div class="workflow-proof-actions">
+                            <button type="button" class="workflow-proof-trigger is-primary" data-capture-location>Capture Current Location</button>
+                            <a href="#delivery-proof-history" class="workflow-proof-trigger">Jump to Proof History</a>
+                        </div>
+                        <div class="workflow-proof-status" data-location-status>Location not captured yet.</div>
+                    </div>
+                    <div class="workflow-proof-field">
+                        <label for="location_missing_reason_start">Location unavailable reason</label>
+                        <textarea id="location_missing_reason_start" name="location_missing_reason" placeholder="Explain why location could not be captured.">{{ old('location_missing_reason') }}</textarea>
+                        @error('location_missing_reason')
+                            <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                        @enderror
+                    </div>
+                    <div class="workflow-proof-field">
+                        <label>Captured coordinates</label>
+                        <div class="workflow-proof-help">Latitude, longitude, and accuracy are filled automatically when GPS succeeds.</div>
+                        <div class="workflow-proof-status">
+                            <div>Lat: <span data-location-lat-preview>{{ old('location_latitude', '-') }}</span></div>
+                            <div>Lng: <span data-location-lng-preview>{{ old('location_longitude', '-') }}</span></div>
+                            <div>Accuracy: <span data-location-accuracy-preview>{{ old('location_accuracy', '-') }}</span></div>
+                        </div>
+                    </div>
+                </div>
+                <input type="hidden" name="location_latitude" value="{{ old('location_latitude') }}" data-location-latitude>
+                <input type="hidden" name="location_longitude" value="{{ old('location_longitude') }}" data-location-longitude>
+                <input type="hidden" name="location_accuracy" value="{{ old('location_accuracy') }}" data-location-accuracy>
+                <input type="hidden" name="location_captured_at" value="{{ old('location_captured_at') }}" data-location-captured-at>
+                <div class="workflow-proof-actions">
+                    <button type="submit" class="detail-btn">{{ $delivery->type === 'pickup' ? 'Start Pickup' : 'Start Delivery' }}</button>
+                    <div class="workflow-proof-help">Start is blocked until GPS is captured or a missing-location reason is provided.</div>
+                </div>
+            </form>
+        @elseif($canUpdateTask && $delivery->status === 'in_progress')
+            <form action="{{ route('deliveries.complete', $delivery) }}" method="POST" enctype="multipart/form-data" class="workflow-proof-card" data-workflow-form="complete">
+                @csrf
+                @method('PUT')
+                <input type="hidden" name="workflow_capture_form" value="1">
+                @if((!$isSaleTask && $delivery->type === 'delivery' && $delivery->rental?->pendingDeliveryQuantityTotal() > 0) || (!$isSaleTask && $delivery->type === 'pickup' && $delivery->rental?->pendingPickupQuantityTotal() > 0))
+                    <input type="hidden" name="confirm_partial" value="1">
+                @endif
+                <div class="workflow-proof-grid">
+                    @if($delivery->type === 'delivery')
+                        <div class="workflow-proof-field">
+                            <label for="delivery_device_photos">Delivered device photo(s)</label>
+                            <input id="delivery_device_photos" type="file" name="delivery_device_photos[]" accept="image/*" capture="environment" multiple data-compress-images>
+                            <div class="workflow-proof-help">At least one compressed device or product photo is required at delivery.</div>
+                            @error('delivery_device_photos')
+                                <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                            @enderror
+                            @error('delivery_device_photos.*')
+                                <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                            @enderror
+                        </div>
+                        <div class="workflow-proof-field">
+                            <label for="premises_photo">Premises / location photo</label>
+                            <input id="premises_photo" type="file" name="premises_photo" accept="image/*" capture="environment" data-compress-images>
+                            <div class="workflow-proof-help">Premises photo is required only during delivery completion.</div>
+                            @error('premises_photo')
+                                <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                            @enderror
+                        </div>
+                    @else
+                        <div class="workflow-proof-field">
+                            <label for="pickup_device_photos">Picked-up device photo(s)</label>
+                            <input id="pickup_device_photos" type="file" name="pickup_device_photos[]" accept="image/*" capture="environment" multiple data-compress-images>
+                            <div class="workflow-proof-help">At least one compressed pickup photo is required.</div>
+                            @error('pickup_device_photos')
+                                <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                            @enderror
+                            @error('pickup_device_photos.*')
+                                <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                            @enderror
+                        </div>
+                        <div class="workflow-proof-field">
+                            <label for="damage_photos">Damage photo(s)</label>
+                            <input id="damage_photos" type="file" name="damage_photos[]" accept="image/*" capture="environment" multiple data-compress-images>
+                            <div class="workflow-proof-help">Required if damage is reported at pickup.</div>
+                            @error('damage_photos')
+                                <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                            @enderror
+                            @error('damage_photos.*')
+                                <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                            @enderror
+                        </div>
+                        <div class="workflow-proof-field span-12">
+                            <label style="display:flex; align-items:center; gap:8px;">
+                                <input type="checkbox" name="damage_reported" value="1" {{ old('damage_reported') ? 'checked' : '' }}>
+                                Damage or missing accessories reported at pickup
+                            </label>
+                            @error('damage_reported')
+                                <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                            @enderror
+                        </div>
+                        <div class="workflow-proof-field">
+                            <label for="damage_notes">Damage notes</label>
+                            <textarea id="damage_notes" name="damage_notes" placeholder="Describe visible damage or concerns.">{{ old('damage_notes') }}</textarea>
+                            @error('damage_notes')
+                                <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                            @enderror
+                        </div>
+                        <div class="workflow-proof-field">
+                            <label for="missing_accessories_notes">Missing accessories notes</label>
+                            <textarea id="missing_accessories_notes" name="missing_accessories_notes" placeholder="List missing adapters, masks, humidifiers, etc.">{{ old('missing_accessories_notes') }}</textarea>
+                            @error('missing_accessories_notes')
+                                <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                            @enderror
+                        </div>
+                    @endif
+
+                    <div class="workflow-proof-field span-12">
+                        <label>{{ ucfirst($delivery->type) }} completion location</label>
+                        <div class="workflow-proof-help">Capture GPS on completion. If blocked, give a reason so the workflow is marked as location-missing.</div>
+                        <div class="workflow-proof-actions">
+                            <button type="button" class="workflow-proof-trigger is-primary" data-capture-location>Capture Current Location</button>
+                        </div>
+                        <div class="workflow-proof-status" data-location-status>Location not captured yet.</div>
+                    </div>
+                    <div class="workflow-proof-field">
+                        <label for="location_missing_reason_complete">Location unavailable reason</label>
+                        <textarea id="location_missing_reason_complete" name="location_missing_reason" placeholder="Explain why GPS could not be captured.">{{ old('location_missing_reason') }}</textarea>
+                        @error('location_missing_reason')
+                            <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                        @enderror
+                    </div>
+                    <div class="workflow-proof-field">
+                        <label>Captured coordinates</label>
+                        <div class="workflow-proof-status">
+                            <div>Lat: <span data-location-lat-preview>{{ old('location_latitude', '-') }}</span></div>
+                            <div>Lng: <span data-location-lng-preview>{{ old('location_longitude', '-') }}</span></div>
+                            <div>Accuracy: <span data-location-accuracy-preview>{{ old('location_accuracy', '-') }}</span></div>
+                        </div>
+                    </div>
+
+                    <div class="workflow-proof-field span-12">
+                        <label>Acknowledgement required before signature</label>
+                        <div class="workflow-proof-signature-wrap">
+                            <div class="workflow-proof-help">{{ $acknowledgementText }}</div>
+                            <canvas class="workflow-proof-signature-pad" data-signature-pad data-target-input="signature_data"></canvas>
+                            <input type="hidden" name="signature_data" value="{{ old('signature_data') }}">
+                            <div class="workflow-proof-actions">
+                                <button type="button" class="workflow-proof-trigger" data-signature-clear>Clear Signature</button>
+                                <div class="workflow-proof-help">Sign with a finger or stylus on mobile. Signature is stored privately.</div>
+                            </div>
+                            @error('signature_data')
+                                <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                            @enderror
+                        </div>
+                    </div>
+
+                    <div class="workflow-proof-field span-12">
+                        <label for="proof_notes">Workflow notes</label>
+                        <textarea id="proof_notes" name="proof_notes" placeholder="Add delivery or pickup notes for the operations team.">{{ old('proof_notes') }}</textarea>
+                        @error('proof_notes')
+                            <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                        @enderror
+                    </div>
+                </div>
+                <input type="hidden" name="location_latitude" value="{{ old('location_latitude') }}" data-location-latitude>
+                <input type="hidden" name="location_longitude" value="{{ old('location_longitude') }}" data-location-longitude>
+                <input type="hidden" name="location_accuracy" value="{{ old('location_accuracy') }}" data-location-accuracy>
+                <input type="hidden" name="location_captured_at" value="{{ old('location_captured_at') }}" data-location-captured-at>
+                <div class="workflow-proof-actions">
+                    <button type="submit" class="detail-btn">{{ $delivery->type === 'pickup' ? 'Complete Pickup' : 'Complete Delivery' }}</button>
+                    <div class="workflow-proof-help">Completion requires proof photos, customer signature, and location capture or a missing-location reason.</div>
+                </div>
+            </form>
+        @elseif(!$canUpdateTask && in_array($delivery->status, ['pending', 'in_progress'], true))
+            <div class="workflow-proof-status">You can review proof history for this task, but only the assigned workflow owner can capture start or completion proof.</div>
+        @endif
+
+        <div class="workflow-proof-divider"></div>
+
+        <div id="delivery-proof-history" class="workflow-proof-history">
+            <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
+                <div>
+                    <h3 style="margin:0; font-size:18px; color:#0f172a;">Proof History</h3>
+                    <div class="workflow-proof-help">Private proof files, location captures, signatures, and damage notes captured for this task.</div>
+                </div>
+                <div class="workflow-proof-badges">
+                    <span class="workflow-proof-badge">{{ $deliveryProofs->count() }} item{{ $deliveryProofs->count() === 1 ? '' : 's' }}</span>
+                </div>
+            </div>
+
+            @forelse($deliveryProofs as $proof)
+                @php
+                    $proofLabel = \App\Models\DeliveryProof::labelForType($proof->proof_type);
+                    $proofWhen = $proof->captured_at ?: $proof->created_at;
+                    $proofMeta = collect($proof->meta ?? [])->filter(fn ($value) => filled($value));
+                    $proofUrl = $proof->file_path ? route('deliveries.proofs.view', [$delivery, $proof]) : null;
+                    $hasCoordinates = filled($proof->latitude) && filled($proof->longitude);
+                @endphp
+                <article class="workflow-proof-history-item">
+                    <div>
+                        @if($proofUrl)
+                            <img src="{{ $proofUrl }}" alt="{{ $proofLabel }}" class="workflow-proof-history-thumb">
+                        @else
+                            <div class="workflow-proof-status {{ $hasCoordinates ? 'is-success' : 'is-warning' }}" style="min-height:120px; display:flex; align-items:center; justify-content:center;">
+                                {{ $hasCoordinates ? 'GPS' : 'No file' }}
+                            </div>
+                        @endif
+                    </div>
+                    <div class="workflow-proof-history-meta">
+                        <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                            <strong>{{ $proofLabel }}</strong>
+                            <small>{{ optional($proofWhen)->format('d M Y h:i A') }}</small>
+                        </div>
+                        <small>{{ ucfirst($proof->workflow_stage) }} {{ $proof->capture_moment ? ucfirst($proof->capture_moment) : 'Record' }} · Uploaded by {{ $proof->creator->name ?? 'System' }}</small>
+                        @if($proof->acknowledgement_text)
+                            <div class="workflow-proof-help"><strong>Acknowledgement:</strong> {{ $proof->acknowledgement_text }}</div>
+                        @endif
+                        @if($hasCoordinates)
+                            <div class="workflow-proof-help"><strong>Coordinates:</strong> {{ number_format((float) $proof->latitude, 6) }}, {{ number_format((float) $proof->longitude, 6) }} @if(filled($proof->accuracy)) · Accuracy {{ number_format((float) $proof->accuracy, 1) }} m @endif</div>
+                        @elseif($proof->proof_type === \App\Models\DeliveryProof::TYPE_LOCATION)
+                            <div class="workflow-proof-help"><strong>Location missing reason:</strong> {{ $proof->notes ?: 'No reason provided' }}</div>
+                        @endif
+                        @if($proof->notes && $proof->proof_type !== \App\Models\DeliveryProof::TYPE_LOCATION)
+                            <div class="workflow-proof-help"><strong>Notes:</strong> {{ $proof->notes }}</div>
+                        @endif
+                        @if($proofMeta->isNotEmpty())
+                            <div class="workflow-proof-help">
+                                @foreach($proofMeta as $metaKey => $metaValue)
+                                    <div><strong>{{ str($metaKey)->replace('_', ' ')->title() }}:</strong> {{ is_bool($metaValue) ? ($metaValue ? 'Yes' : 'No') : $metaValue }}</div>
+                                @endforeach
+                            </div>
+                        @endif
+                        @if($proofUrl)
+                            <div class="workflow-proof-actions">
+                                <a href="{{ $proofUrl }}" target="_blank" class="workflow-proof-trigger">View Full Size</a>
+                            </div>
+                        @endif
+                    </div>
+                </article>
+            @empty
+                <div class="workflow-proof-status">No proof has been captured for this task yet.</div>
+            @endforelse
+        </div>
+    </div>
+
     @include('partials.activity-timeline', [
         'logs' => $activityLogs ?? collect(),
         'title' => 'Operations History',
@@ -484,22 +861,9 @@
         <a href="tel:{{ preg_replace('/\D+/', '', $linkedPhone) }}">Call</a>
     @endif
     @if($canUpdateTask && $delivery->status === 'pending')
-        <form action="{{ route('deliveries.in_progress', $delivery) }}" method="POST">
-            @csrf
-            @method('PUT')
-            <button type="submit" class="is-primary">Start</button>
-        </form>
+        <a href="#{{ $workflowProofSectionId }}" class="is-primary">Start Checklist</a>
     @elseif($canUpdateTask && $delivery->status === 'in_progress')
-        <form action="{{ route('deliveries.complete', $delivery) }}" method="POST">
-            @csrf
-            @method('PUT')
-            @if((!$isSaleTask && $delivery->type === 'delivery' && $delivery->rental?->pendingDeliveryQuantityTotal() > 0) || (!$isSaleTask && $delivery->type === 'pickup' && $delivery->rental?->pendingPickupQuantityTotal() > 0))
-                <input type="hidden" name="confirm_partial" value="1">
-                <button type="submit" class="is-primary">Complete Partial</button>
-            @else
-                <button type="submit" class="is-primary">Complete</button>
-            @endif
-        </form>
+        <a href="#{{ $workflowProofSectionId }}" class="is-primary">Completion Checklist</a>
     @endif
     <details class="mobile-actions-menu">
         <summary type="button">More</summary>
@@ -518,4 +882,285 @@
         </div>
     </details>
 </div>
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const proofConfig = {
+        targetBytes: {{ (int) ($proofConfig['target_kb'] ?? 50) * 1024 }},
+        maxBytes: {{ (int) ($proofConfig['max_kb'] ?? 100) * 1024 }},
+        maxDimension: {{ (int) ($proofConfig['max_dimension'] ?? 1024) }},
+    };
+
+    const canvasToBlob = (canvas, type, quality) => new Promise((resolve) => {
+        canvas.toBlob((blob) => resolve(blob), type, quality);
+    });
+
+    const loadImageFromFile = (file) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        const image = new Image();
+
+        reader.onerror = () => reject(new Error('Unable to read the selected image.'));
+        image.onerror = () => reject(new Error('Unable to process the selected image.'));
+        image.onload = () => resolve(image);
+        reader.onload = () => {
+            image.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+    });
+
+    const compressImageFile = async (file) => {
+        if (!(file instanceof File) || !file.type.startsWith('image/')) {
+            return file;
+        }
+
+        const image = await loadImageFromFile(file);
+        const scale = Math.min(1, proofConfig.maxDimension / Math.max(image.width, image.height));
+        const width = Math.max(Math.round(image.width * scale), 1);
+        const height = Math.max(Math.round(image.height * scale), 1);
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d', { alpha: false });
+
+        canvas.width = width;
+        canvas.height = height;
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, width, height);
+        context.drawImage(image, 0, 0, width, height);
+
+        let blob = null;
+
+        for (const quality of [0.82, 0.72, 0.62, 0.52, 0.42]) {
+            blob = await canvasToBlob(canvas, 'image/jpeg', quality);
+
+            if (blob && blob.size <= proofConfig.targetBytes) {
+                break;
+            }
+        }
+
+        if (!blob) {
+            throw new Error('Unable to compress the selected image.');
+        }
+
+        if (blob.size > proofConfig.maxBytes) {
+            throw new Error('Compressed image is still above the allowed size. Please capture a closer or simpler image.');
+        }
+
+        const baseName = (file.name || 'proof-image').replace(/\.[^/.]+$/, '');
+
+        return new File([blob], `${baseName}.jpg`, {
+            type: 'image/jpeg',
+            lastModified: Date.now(),
+        });
+    };
+
+    document.querySelectorAll('[data-compress-images]').forEach((input) => {
+        input.addEventListener('change', async () => {
+            if (!(input instanceof HTMLInputElement) || !input.files || input.files.length === 0) {
+                return;
+            }
+
+            const files = Array.from(input.files);
+            const dataTransfer = new DataTransfer();
+
+            try {
+                for (const file of files) {
+                    const compressed = await compressImageFile(file);
+                    dataTransfer.items.add(compressed);
+                }
+
+                input.files = dataTransfer.files;
+                input.setCustomValidity('');
+            } catch (error) {
+                input.value = '';
+                input.setCustomValidity(error.message || 'Unable to compress the selected image.');
+                input.reportValidity();
+            }
+        });
+    });
+
+    const updateLocationPreview = (form) => {
+        const status = form.querySelector('[data-location-status]');
+        const latitudeInput = form.querySelector('[data-location-latitude]');
+        const longitudeInput = form.querySelector('[data-location-longitude]');
+        const accuracyInput = form.querySelector('[data-location-accuracy]');
+        const capturedAtInput = form.querySelector('[data-location-captured-at]');
+        const reasonField = form.querySelector('textarea[name="location_missing_reason"]');
+        const latPreview = form.querySelector('[data-location-lat-preview]');
+        const lngPreview = form.querySelector('[data-location-lng-preview]');
+        const accuracyPreview = form.querySelector('[data-location-accuracy-preview]');
+        const hasCoordinates = latitudeInput?.value && longitudeInput?.value;
+        const reason = reasonField?.value?.trim() || '';
+
+        if (latPreview) latPreview.textContent = latitudeInput?.value || '-';
+        if (lngPreview) lngPreview.textContent = longitudeInput?.value || '-';
+        if (accuracyPreview) accuracyPreview.textContent = accuracyInput?.value || '-';
+
+        if (!status) {
+            return;
+        }
+
+        status.classList.remove('is-success', 'is-warning');
+
+        if (hasCoordinates) {
+            status.classList.add('is-success');
+            status.textContent = `Location captured${capturedAtInput?.value ? ` at ${capturedAtInput.value}` : ''}.`;
+            return;
+        }
+
+        if (reason !== '') {
+            status.classList.add('is-warning');
+            status.textContent = `Location marked as unavailable: ${reason}`;
+            return;
+        }
+
+        status.textContent = 'Location not captured yet.';
+    };
+
+    document.querySelectorAll('[data-workflow-form]').forEach((form) => {
+        const captureButton = form.querySelector('[data-capture-location]');
+        const latitudeInput = form.querySelector('[data-location-latitude]');
+        const longitudeInput = form.querySelector('[data-location-longitude]');
+        const accuracyInput = form.querySelector('[data-location-accuracy]');
+        const capturedAtInput = form.querySelector('[data-location-captured-at]');
+        const reasonField = form.querySelector('textarea[name="location_missing_reason"]');
+
+        updateLocationPreview(form);
+
+        reasonField?.addEventListener('input', () => {
+            if (reasonField.value.trim() !== '') {
+                latitudeInput.value = '';
+                longitudeInput.value = '';
+                accuracyInput.value = '';
+                capturedAtInput.value = '';
+            }
+
+            updateLocationPreview(form);
+        });
+
+        captureButton?.addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                if (reasonField) {
+                    reasonField.focus();
+                }
+                const status = form.querySelector('[data-location-status]');
+                if (status) {
+                    status.classList.add('is-warning');
+                    status.textContent = 'Geolocation is not supported on this device. Add a missing-location reason to continue.';
+                }
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition((position) => {
+                latitudeInput.value = position.coords.latitude.toFixed(6);
+                longitudeInput.value = position.coords.longitude.toFixed(6);
+                accuracyInput.value = Math.round(position.coords.accuracy * 10) / 10;
+                capturedAtInput.value = new Date().toISOString();
+                if (reasonField) {
+                    reasonField.value = '';
+                }
+                updateLocationPreview(form);
+            }, (error) => {
+                const status = form.querySelector('[data-location-status]');
+                if (status) {
+                    status.classList.add('is-warning');
+                    status.textContent = `${error.message || 'Location permission was denied.'} Add a missing-location reason to continue.`;
+                }
+                if (reasonField) {
+                    reasonField.focus();
+                }
+            }, {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0,
+            });
+        });
+    });
+
+    document.querySelectorAll('[data-signature-pad]').forEach((canvas) => {
+        const form = canvas.closest('form');
+        const hiddenInputName = canvas.dataset.targetInput;
+        const hiddenInput = form?.querySelector(`input[name="${hiddenInputName}"]`);
+        const clearButton = form?.querySelector('[data-signature-clear]');
+        const context = canvas.getContext('2d');
+        let drawing = false;
+        let hasSignature = false;
+
+        const resizeCanvas = () => {
+            const ratio = window.devicePixelRatio || 1;
+            const bounds = canvas.getBoundingClientRect();
+            canvas.width = Math.max(Math.floor(bounds.width * ratio), 300);
+            canvas.height = Math.max(Math.floor(bounds.height * ratio), 160);
+            context.setTransform(1, 0, 0, 1, 0, 0);
+            context.scale(ratio, ratio);
+            context.lineWidth = 2;
+            context.lineCap = 'round';
+            context.lineJoin = 'round';
+            context.strokeStyle = '#0f172a';
+        };
+
+        const positionForEvent = (event) => {
+            const bounds = canvas.getBoundingClientRect();
+            const point = event.touches ? event.touches[0] : event;
+
+            return {
+                x: point.clientX - bounds.left,
+                y: point.clientY - bounds.top,
+            };
+        };
+
+        const startStroke = (event) => {
+            drawing = true;
+            const point = positionForEvent(event);
+            context.beginPath();
+            context.moveTo(point.x, point.y);
+            event.preventDefault();
+        };
+
+        const continueStroke = (event) => {
+            if (!drawing) {
+                return;
+            }
+
+            const point = positionForEvent(event);
+            context.lineTo(point.x, point.y);
+            context.stroke();
+            hasSignature = true;
+            event.preventDefault();
+        };
+
+        const stopStroke = () => {
+            drawing = false;
+        };
+
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+
+        canvas.addEventListener('mousedown', startStroke);
+        canvas.addEventListener('mousemove', continueStroke);
+        canvas.addEventListener('mouseup', stopStroke);
+        canvas.addEventListener('mouseleave', stopStroke);
+        canvas.addEventListener('touchstart', startStroke, { passive: false });
+        canvas.addEventListener('touchmove', continueStroke, { passive: false });
+        canvas.addEventListener('touchend', stopStroke);
+
+        clearButton?.addEventListener('click', () => {
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            hasSignature = false;
+            if (hiddenInput) {
+                hiddenInput.value = '';
+            }
+        });
+
+        form?.addEventListener('submit', () => {
+            if (!hiddenInput) {
+                return;
+            }
+
+            if (hasSignature) {
+                hiddenInput.value = canvas.toDataURL('image/png');
+            }
+        });
+    });
+});
+</script>
+@endpush
 @endsection

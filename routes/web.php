@@ -170,6 +170,9 @@ Route::middleware('auth')->group(function () {
     Route::put('/deliveries/{delivery}/cancel', [DeliveryController::class, 'cancel'])
         ->middleware('module:deliveries,update')
         ->name('deliveries.cancel');
+    Route::get('/deliveries/{delivery}/proofs/{proof}', [DeliveryController::class, 'viewProof'])
+        ->middleware('module:deliveries,read')
+        ->name('deliveries.proofs.view');
 
     Route::get('/staff/export/csv', [StaffController::class, 'exportCsv'])
         ->middleware('module:users,read')

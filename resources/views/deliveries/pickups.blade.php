@@ -235,23 +235,12 @@
                                 <a href="tel:{{ preg_replace('/\D+/', '', $contactPhone) }}" class="board-btn-secondary board-utility-btn">Call</a>
                             @endif
                             @if($delivery->status === 'pending')
-                                <form action="{{ route('deliveries.in_progress', $delivery) }}" method="POST">
-                                    @csrf
-                                    @method('PUT')
-                                    <button type="submit" class="board-btn-secondary">Start Pickup</button>
-                                </form>
+                                <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="board-btn-secondary">Start Pickup</a>
                             @endif
                             @if($delivery->status !== 'completed')
-                                <form action="{{ route('deliveries.complete', $delivery) }}" method="POST">
-                                    @csrf
-                                    @method('PUT')
-                                    @if(!$isSaleTask && $delivery->rental?->pendingPickupQuantityTotal() > 0)
-                                        <input type="hidden" name="confirm_partial" value="1">
-                                        <button type="submit" class="board-btn">Complete Partial</button>
-                                    @else
-                                        <button type="submit" class="board-btn">Complete Pickup</button>
-                                    @endif
-                                </form>
+                                <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="board-btn">
+                                    {{ !$isSaleTask && $delivery->rental?->pendingPickupQuantityTotal() > 0 ? 'Complete Partial' : 'Complete Pickup' }}
+                                </a>
                             @endif
                         </div>
                     </div>

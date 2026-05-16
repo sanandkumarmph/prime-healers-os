@@ -198,22 +198,11 @@
                             <a href="tel:{{ preg_replace('/\D+/', '', $contactPhone) }}" class="board-btn-secondary board-utility-btn">Call</a>
                         @endif
                         @if($delivery->status === 'pending')
-                            <form action="{{ route('deliveries.in_progress', $delivery) }}" method="POST">
-                                @csrf
-                                @method('PUT')
-                                <button type="submit" class="board-btn-secondary">Mark In Progress</button>
-                            </form>
+                            <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="board-btn-secondary">Mark In Progress</a>
                         @endif
-                        <form action="{{ route('deliveries.complete', $delivery) }}" method="POST">
-                            @csrf
-                            @method('PUT')
-                            @if(!$isSaleTask && $delivery->rental?->pendingDeliveryQuantityTotal() > 0)
-                                <input type="hidden" name="confirm_partial" value="1">
-                                <button type="submit" class="board-btn">Complete Partial</button>
-                            @else
-                                <button type="submit" class="board-btn">Mark Completed</button>
-                            @endif
-                        </form>
+                        <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="board-btn">
+                            {{ !$isSaleTask && $delivery->rental?->pendingDeliveryQuantityTotal() > 0 ? 'Complete Partial' : 'Mark Completed' }}
+                        </a>
                     </div>
                 @endif
             </div>

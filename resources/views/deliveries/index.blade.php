@@ -857,27 +857,16 @@
                                                 </a>
                                             @endif
                                             @if($canUpdateTask && $delivery->status === 'pending' && !$taskEffectivelyCompleted)
-                                                <form action="{{ route('deliveries.in_progress', $delivery) }}" method="POST">
-                                                    @csrf
-                                                    @method('PUT')
-                                                    <button type="submit" class="ops-action-btn-primary" title="Start task" aria-label="Start task">
-                                                        {!! $navIcon('start') !!}
-                                                        <span>Start</span>
-                                                    </button>
-                                                </form>
+                                                <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="ops-action-btn-primary" title="Open start checklist" aria-label="Open start checklist">
+                                                    {!! $navIcon('start') !!}
+                                                    <span>Start</span>
+                                                </a>
                                             @endif
                                             @if($canUpdateTask && $delivery->status === 'in_progress' && !$taskEffectivelyCompleted)
-                                                <form action="{{ route('deliveries.complete', $delivery) }}" method="POST">
-                                                    @csrf
-                                                    @method('PUT')
-                                                    @if($completePartial)
-                                                        <input type="hidden" name="confirm_partial" value="1">
-                                                    @endif
-                                                    <button type="submit" class="ops-action-btn-primary" title="{{ $completePartial ? 'Complete partial task' : 'Complete task' }}" aria-label="{{ $completePartial ? 'Complete partial task' : 'Complete task' }}">
-                                                        {!! $navIcon('completed') !!}
-                                                        <span>{{ $completePartial ? 'Complete Partial' : 'Complete' }}</span>
-                                                    </button>
-                                                </form>
+                                                <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="ops-action-btn-primary" title="{{ $completePartial ? 'Open partial completion checklist' : 'Open completion checklist' }}" aria-label="{{ $completePartial ? 'Open partial completion checklist' : 'Open completion checklist' }}">
+                                                    {!! $navIcon('completed') !!}
+                                                    <span>{{ $completePartial ? 'Complete Partial' : 'Complete' }}</span>
+                                                </a>
                                             @endif
                                             <details class="ops-action-menu">
                                                 <summary aria-label="More actions for task {{ $delivery->id }}">{!! $navIcon('menu') !!}</summary>
@@ -1071,27 +1060,16 @@
                                     </a>
                                 @endif
                                 @if($canUpdateTask && $delivery->status === 'pending' && !$taskEffectivelyCompleted)
-                                    <form action="{{ route('deliveries.in_progress', $delivery) }}" method="POST" class="mobile-task-primary-form">
-                                        @csrf
-                                        @method('PUT')
-                                        <button type="submit" class="ops-action-btn-primary" title="Start task" aria-label="Start task">
-                                            {!! $navIcon('start') !!}
-                                            <span>Start</span>
-                                        </button>
-                                    </form>
+                                    <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="ops-action-btn-primary mobile-task-primary-form" title="Open start checklist" aria-label="Open start checklist">
+                                        {!! $navIcon('start') !!}
+                                        <span>Start</span>
+                                    </a>
                                 @endif
                                 @if($canUpdateTask && $delivery->status === 'in_progress' && !$taskEffectivelyCompleted)
-                                    <form action="{{ route('deliveries.complete', $delivery) }}" method="POST" class="mobile-task-primary-form">
-                                        @csrf
-                                        @method('PUT')
-                                        @if($completePartial)
-                                            <input type="hidden" name="confirm_partial" value="1">
-                                        @endif
-                                        <button type="submit" class="ops-action-btn-primary" title="{{ $completePartial ? 'Complete partial task' : 'Complete task' }}" aria-label="{{ $completePartial ? 'Complete partial task' : 'Complete task' }}">
-                                            {!! $navIcon('completed') !!}
-                                            <span>{{ $completePartial ? 'Complete Partial' : 'Complete' }}</span>
-                                        </button>
-                                    </form>
+                                    <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="ops-action-btn-primary mobile-task-primary-form" title="{{ $completePartial ? 'Open partial completion checklist' : 'Open completion checklist' }}" aria-label="{{ $completePartial ? 'Open partial completion checklist' : 'Open completion checklist' }}">
+                                        {!! $navIcon('completed') !!}
+                                        <span>{{ $completePartial ? 'Complete Partial' : 'Complete' }}</span>
+                                    </a>
                                 @endif
                             </div>
                         </div>
