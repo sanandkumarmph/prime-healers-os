@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\Rental;
 use App\Models\RentalItem;
 use App\Models\Sale;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\TestData;
 use Tests\TestCase;
@@ -16,6 +17,20 @@ use Tests\TestCase;
 class FinanceAndLogisticsMetricConsistencyRegressionTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Carbon::setTestNow(now()->startOfDay()->addHours(12));
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
+    }
 
     public function test_dashboard_finance_summary_exposes_reconciliation_gap_instead_of_hiding_it(): void
     {

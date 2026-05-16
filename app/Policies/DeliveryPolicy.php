@@ -44,10 +44,33 @@ class DeliveryPolicy
             return false;
         }
 
-        if ($user->hasScope('assigned', 'deliveries') && array_key_exists('assigned_user_id', $delivery->getAttributes())) {
-            return (int) ($delivery->assigned_user_id ?? 0) === (int) $user->id;
+        if ($user->hasScope('assigned', 'deliveries')) {
+            return $this->allowsAssignedScopeWorkflowAction($user, $delivery);
         }
 
         return true;
+    }
+
+    private function allowsAssignedScopeWorkflowAction(User $user, Delivery $delivery): bool
+    {
+        $attributes = $delivery->getAttributes();
+        $assignedUserId = array_key_exists('assigned_user_id', $attributes)
+            ? (int) ($delivery->assigned_user_id ?? 0)
+            : 0;
+
+        if ($assignedUserId > 0) {
+            return $assignedUserId === (int) $user->id;
+        }
+
+        $assignmentType = strtolower((string) ($delivery->assignment_type ?? 'delivery_team'));
+        $assignedStaffId = array_key_exists('assigned_staff_id', $attributes)
+            ? (int) ($delivery->assigned_staff_id ?? 0)
+            : 0;
+
+        if ($assignmentType === 'vendor' && $assignedStaffId > 0) {
+            return false;
+        }
+
+        return in_array($assignmentType, ['', 'delivery_team', 'third_party'], true);
     }
 }

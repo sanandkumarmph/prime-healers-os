@@ -173,6 +173,31 @@ class AuthorizationPolicyRegressionTest extends TestCase
         $this->assertFalse(Gate::forUser($assignedUser)->allows('view', $otherOrgDelivery));
     }
 
+    public function test_delivery_policy_allows_delivery_team_to_operate_unowned_third_party_task(): void
+    {
+        $organization = TestData::organization();
+        $deliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+
+        $thirdPartyDelivery = new Delivery([
+            'organization_id' => $organization->id,
+            'assignment_type' => 'third_party',
+            'assigned_user_id' => null,
+            'third_party_name' => 'External Runner',
+        ]);
+
+        $vendorOwnedDelivery = new Delivery([
+            'organization_id' => $organization->id,
+            'assignment_type' => 'vendor',
+            'assigned_staff_id' => 42,
+        ]);
+
+        $this->assertTrue(Gate::forUser($deliveryUser)->allows('view', $thirdPartyDelivery));
+        $this->assertTrue(Gate::forUser($deliveryUser)->allows('update', $thirdPartyDelivery));
+        $this->assertFalse(Gate::forUser($deliveryUser)->allows('update', $vendorOwnedDelivery));
+    }
+
     public function test_organization_settings_policy_allows_settings_role_and_denies_unrelated_roles(): void
     {
         $organization = TestData::organization();

@@ -547,12 +547,6 @@ class DeliveryController extends Controller
     {
         abort_if($delivery->organization_id !== $this->orgId(), 403);
 
-        $user = auth()->user();
-
-        if ($enforceAssignedScope && $user && $user->hasScope('assigned', 'deliveries') && $this->hasAssignedUserColumn()) {
-            abort_if((int) $delivery->assigned_user_id !== (int) $user->id, 403);
-        }
-
         return $delivery;
     }
 

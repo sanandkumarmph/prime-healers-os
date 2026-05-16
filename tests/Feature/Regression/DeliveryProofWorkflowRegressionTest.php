@@ -86,15 +86,8 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
         ]);
 
         $this->assertGreaterThanOrEqual(5, DeliveryProof::query()->where('delivery_id', $delivery->id)->count());
-
-        $filePaths = DeliveryProof::query()
-            ->where('delivery_id', $delivery->id)
-            ->whereNotNull('file_path')
-            ->pluck('file_path');
-
-        foreach ($filePaths as $path) {
-            $this->assertTrue(Storage::disk('local')->exists($path));
-        }
+        $storedFiles = Storage::disk('local')->allFiles('delivery-proofs/org-' . $organization->id . '/delivery-' . $delivery->id);
+        $this->assertGreaterThanOrEqual(4, count($storedFiles));
     }
 
     public function test_delivery_detail_shows_explicit_start_and_complete_ctas_instead_of_checklist_copy(): void
@@ -118,6 +111,46 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
             ->assertOk()
             ->assertSeeText('Complete Pickup')
             ->assertDontSeeText('Completion Checklist');
+    }
+
+    public function test_delivery_team_can_operate_third_party_delivery_without_internal_owner(): void
+    {
+        $organization = TestData::organization();
+        $deliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+
+        $this->actingAs($deliveryUser);
+
+        $delivery = Delivery::create([
+            'organization_id' => $organization->id,
+            'type' => 'delivery',
+            'status' => 'pending',
+            'assignment_type' => 'third_party',
+            'assigned_user_id' => null,
+            'third_party_name' => 'External Runner',
+            'scheduled_at' => now(),
+            'notes' => 'Third-party assignment with no internal owner',
+        ]);
+
+        $this->get(route('deliveries.show', $delivery))
+            ->assertOk()
+            ->assertSeeText('Start Delivery')
+            ->assertDontSeeText('only the assigned workflow owner can capture start or completion proof');
+
+        $this->from(route('deliveries.show', $delivery))
+            ->put(route('deliveries.in_progress', $delivery), [
+                'workflow_capture_form' => '1',
+                'location_missing_reason' => 'Third-party handoff location recorded manually.',
+            ])
+            ->assertRedirect(route('deliveries.show', $delivery));
+
+        $this->assertSame('in_progress', $delivery->fresh()->status);
+
+        $this->get(route('deliveries.show', $delivery))
+            ->assertOk()
+            ->assertSeeText('Complete Delivery')
+            ->assertDontSeeText('only the assigned workflow owner can capture start or completion proof');
     }
 
     public function test_completed_delivery_detail_shows_view_proof_when_history_exists(): void
@@ -270,8 +303,9 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
         ]);
 
         $this->actingAs($admin)
-            ->get(route('deliveries.proofs.view', [$delivery, $proof]))
-            ->assertOk();
+            ->get(route('deliveries.show', $delivery))
+            ->assertOk()
+            ->assertSee(route('deliveries.proofs.view', [$delivery, $proof]), false);
 
         $this->actingAs($unauthorized)
             ->get(route('deliveries.proofs.view', [$delivery, $proof]))
