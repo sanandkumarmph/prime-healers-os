@@ -271,14 +271,20 @@ class FinanceAndLogisticsMetricConsistencyRegressionTest extends TestCase
         $taskboard = $this->get(route('deliveries.index'));
         $taskboard->assertOk();
 
-        $this->assertSame(7, (int) $taskboard->viewData('totalTasksCount'));
+        $this->assertSame((int) $taskboard->viewData('taskResultsCount'), (int) $taskboard->viewData('totalTasksCount'));
+        $this->assertSame(9, (int) $taskboard->viewData('totalTasksCount'));
         $this->assertSame(4, (int) $taskboard->viewData('deliveryTasksCount'));
         $this->assertSame(3, (int) $taskboard->viewData('pickupTasksCount'));
+        $this->assertSame(1, (int) $taskboard->viewData('completedDeliveryCount'));
+        $this->assertSame(1, (int) $taskboard->viewData('completedPickupCount'));
         $this->assertSame(1, (int) $taskboard->viewData('overdueTasksCount'));
         $this->assertSame(2, (int) $taskboard->viewData('completedTodayCount'));
         $this->assertSame(
             (int) $taskboard->viewData('totalTasksCount'),
-            (int) $taskboard->viewData('deliveryTasksCount') + (int) $taskboard->viewData('pickupTasksCount')
+            (int) $taskboard->viewData('deliveryTasksCount')
+                + (int) $taskboard->viewData('pickupTasksCount')
+                + (int) $taskboard->viewData('completedDeliveryCount')
+                + (int) $taskboard->viewData('completedPickupCount')
         );
 
         $this->assertSame(1, (int) $taskboard->viewData('pendingDeliveryCount'));
@@ -320,6 +326,94 @@ class FinanceAndLogisticsMetricConsistencyRegressionTest extends TestCase
         $pendingPickupWidget = collect($taskboard->viewData('pendingCollections'));
         $this->assertCount(1, $pendingPickupWidget);
         $this->assertSame((int) $pendingPickupRental->id, (int) optional($pendingPickupWidget->first())->rental_id);
+    }
+
+    public function test_taskboard_card_filters_match_visible_task_counts(): void
+    {
+        $organization = TestData::organization();
+        $this->actingAs(TestData::user($organization, [
+            'email' => 'taskboard-filters@example.com',
+        ]));
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Taskboard Filter Customer',
+            'phone' => '9000000301',
+            'city' => 'Bengaluru',
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Taskboard Filter Product',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'price_per_day' => 300,
+            'rental_price' => 300,
+            'sale_price' => 0,
+            'available_quantity' => 10,
+            'total_quantity' => 10,
+        ]);
+
+        $openDelivery = $this->makeRental($organization->id, $customer->id, $product->id);
+        RentalItem::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $openDelivery->id,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'ordered_quantity' => 1,
+            'delivered_quantity' => 0,
+            'returned_quantity' => 0,
+            'unit_rental_amount' => 300,
+            'line_total' => 300,
+        ]);
+        Delivery::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $openDelivery->id,
+            'type' => 'delivery',
+            'scheduled_at' => now()->addHour(),
+            'status' => 'pending',
+        ]);
+
+        $completedDeliverySale = $this->makeSale($organization->id, $customer->id, $product->id, 325);
+        Delivery::create([
+            'organization_id' => $organization->id,
+            'sale_id' => $completedDeliverySale->id,
+            'type' => 'delivery',
+            'scheduled_at' => now()->subHours(3),
+            'status' => 'completed',
+            'completed_at' => now()->subHour(),
+        ]);
+
+        $pendingResponse = $this->get(route('deliveries.index', [
+            'tab' => 'deliveries',
+            'task_type' => 'delivery',
+            'workflow' => 'delivery_workload',
+        ]));
+
+        $pendingResponse->assertOk();
+        $this->assertSame((int) $pendingResponse->viewData('taskResultsCount'), (int) $pendingResponse->viewData('totalTasksCount'));
+        $this->assertSame((int) $pendingResponse->viewData('deliveryTasksCount'), (int) $pendingResponse->viewData('totalTasksCount'));
+
+        $completedResponse = $this->get(route('deliveries.index', [
+            'tab' => 'completed',
+            'task_type' => 'delivery',
+            'status' => 'completed',
+            'workflow' => 'completed_delivery',
+        ]));
+
+        $completedResponse->assertOk();
+        $this->assertSame((int) $completedResponse->viewData('taskResultsCount'), (int) $completedResponse->viewData('totalTasksCount'));
+        $this->assertSame((int) $completedResponse->viewData('completedDeliveryCount'), (int) $completedResponse->viewData('totalTasksCount'));
+
+        $todayResponse = $this->get(route('deliveries.index', [
+            'tab' => 'completed',
+            'status' => 'completed',
+            'workflow' => 'completed_today',
+        ]));
+
+        $todayResponse->assertOk();
+        $this->assertSame((int) $todayResponse->viewData('taskResultsCount'), (int) $todayResponse->viewData('totalTasksCount'));
+        $this->assertSame((int) $todayResponse->viewData('completedTodayCount'), (int) $todayResponse->viewData('totalTasksCount'));
     }
 
     public function test_sale_stock_available_uses_product_master_quantity_while_asset_register_keeps_serialized_units_separate(): void

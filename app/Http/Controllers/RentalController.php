@@ -4304,6 +4304,26 @@ class RentalController extends Controller
         $this->ensureRentalAccess();
         $this->authorize('create', Rental::class);
 
+        $selectedCustomer = null;
+        $requestedCustomerId = request()->integer('customer_id');
+
+        if ($requestedCustomerId > 0) {
+            $selectedCustomer = Customer::query()
+                ->where('organization_id', $this->orgId())
+                ->select([
+                    'id',
+                    'name',
+                    'phone',
+                    'email',
+                    'address',
+                    'city',
+                    'state',
+                    'pincode',
+                    'place_of_supply',
+                ])
+                ->find($requestedCustomerId);
+        }
+
         $products = $this->productsForRentalForm();
         $rentalProducts = $this->rentalProductsForSelection($products);
         $customers = Customer::where('organization_id', $this->orgId())->orderBy('name')->get();
@@ -4319,7 +4339,7 @@ class RentalController extends Controller
 
         $organization = Organization::find($this->orgId());
 
-        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses', 'organization'));
+        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses', 'organization', 'selectedCustomer'));
     }
 
     public function store(Request $request)

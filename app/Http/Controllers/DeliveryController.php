@@ -477,6 +477,7 @@ class DeliveryController extends Controller
             'delivery_workload' => ['tab' => 'deliveries', 'task_type' => 'delivery', 'workflow' => 'delivery_workload'],
             'pickup_workload' => ['tab' => 'pickups', 'task_type' => 'pickup', 'workflow' => 'pickup_workload'],
             'live_tasks' => ['tab' => 'all', 'workflow' => 'live'],
+            'completed_today' => ['tab' => 'completed', 'status' => 'completed', 'workflow' => 'completed_today'],
         ];
 
         $legacyDefault = $legacyBoardDefaults[$legacyBoard] ?? [];
@@ -656,14 +657,6 @@ class DeliveryController extends Controller
                 ->values();
         };
 
-        $summaryTaskIds = $this->dedupeDeliveryCollection(
-            $orderedMinimalDeliveryQuery(clone $baseQuery)->get()
-        )
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->values();
-        $summaryDeliveries = $hydrateDeliveries($summaryTaskIds);
-
         $deliveriesQuery = clone $baseQuery;
 
         if (in_array($taskType, ['delivery', 'pickup'], true)) {
@@ -672,6 +665,8 @@ class DeliveryController extends Controller
 
         if (in_array($statusFilter, ['pending', 'in_progress', 'completed', 'cancelled'], true)) {
             $deliveriesQuery->where('status', $statusFilter);
+        } else {
+            $deliveriesQuery->where('status', '!=', 'cancelled');
         }
 
         $today = now()->toDateString();
@@ -735,6 +730,7 @@ class DeliveryController extends Controller
             ]
         );
 
+        $summaryDeliveries = $hydrateDeliveries($dedupedTaskIds);
         $logisticsSummary = $this->logisticsMetrics()->summary($summaryDeliveries, now()->startOfDay());
         $totalTasksCount = (int) ($logisticsSummary['totalTasksCount'] ?? 0);
         $deliveryTasksCount = (int) ($logisticsSummary['deliveryTasksCount'] ?? 0);
@@ -745,6 +741,7 @@ class DeliveryController extends Controller
         $scheduledDeliveryCount = (int) ($logisticsSummary['scheduledDeliveryCount'] ?? 0);
         $outForDeliveryCount = (int) ($logisticsSummary['outForDeliveryCount'] ?? 0);
         $overdueDeliveryCount = (int) ($logisticsSummary['overdueDeliveryCount'] ?? 0);
+        $completedDeliveryCount = (int) ($logisticsSummary['completedDeliveryCount'] ?? 0);
         $deliveredTodayCount = (int) ($logisticsSummary['deliveredTodayCount'] ?? 0);
         $pendingPickupCount = (int) ($logisticsSummary['pendingPickupCount'] ?? 0);
         $scheduledPickupCount = (int) ($logisticsSummary['scheduledPickupCount'] ?? 0);
@@ -814,6 +811,7 @@ class DeliveryController extends Controller
             'scheduledDeliveryCount',
             'outForDeliveryCount',
             'overdueDeliveryCount',
+            'completedDeliveryCount',
             'deliveredTodayCount',
             'pendingPickupCount',
             'scheduledPickupCount',

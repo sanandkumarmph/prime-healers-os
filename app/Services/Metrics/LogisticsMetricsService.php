@@ -14,6 +14,7 @@ class LogisticsMetricsService
         'out_delivery',
         'overdue_delivery',
         'completed_delivery',
+        'completed_today',
         'delivery_workload',
         'pending_pickup',
         'scheduled_pickup',
@@ -77,7 +78,7 @@ class LogisticsMetricsService
         $todayPickupTasks = $todayTasks->where('type', 'pickup')->values();
 
         return [
-            'totalTasksCount' => (int) ($deliveryWorkloadTasks->count() + $pickupWorkloadTasks->count()),
+            'totalTasksCount' => (int) $tasks->count(),
             'deliveryTasksCount' => (int) $deliveryWorkloadTasks->count(),
             'pickupTasksCount' => (int) $pickupWorkloadTasks->count(),
             'overdueTasksCount' => (int) $overdueTasks->count(),
@@ -86,6 +87,7 @@ class LogisticsMetricsService
             'scheduledDeliveryCount' => (int) $scheduledDeliveryTasks->count(),
             'outForDeliveryCount' => (int) $outForDeliveryTasks->count(),
             'overdueDeliveryCount' => (int) $overdueDeliveryTasks->count(),
+            'completedDeliveryCount' => (int) $completedDeliveryTasks->count(),
             'deliveredTodayCount' => (int) $deliveredTodayTasks->count(),
             'pendingPickupCount' => (int) $pendingPickupTasks->count(),
             'scheduledPickupCount' => (int) $scheduledPickupTasks->count(),
@@ -126,6 +128,8 @@ class LogisticsMetricsService
                 && $this->isOverdueTask($delivery, $todayKey))->values(),
             'completed_delivery' => $tasks->filter(fn (Delivery $delivery) => $delivery->type === 'delivery'
                 && $this->isEffectivelyCompleted($delivery))->values(),
+            'completed_today' => $tasks->filter(fn (Delivery $delivery) => $this->isEffectivelyCompleted($delivery)
+                && $this->completionDate($delivery) === $todayKey)->values(),
             'delivery_workload' => $this->applyWorkflowFilter($tasks, 'pending_delivery', $today)
                 ->concat($this->applyWorkflowFilter($tasks, 'scheduled_delivery', $today))
                 ->concat($this->applyWorkflowFilter($tasks, 'out_delivery', $today))

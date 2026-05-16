@@ -1,5 +1,7 @@
 ﻿@php
     $isEdit = isset($rental);
+    $selectedCustomer = $selectedCustomer ?? null;
+    $selectedCustomerId = old('customer_id', $isEdit ? $rental->customer_id : ($selectedCustomer?->id));
     $rentalProducts = $rentalProducts ?? $products;
     $selectedAssetIds = collect(old('asset_ids', $isEdit ? $rental->activeRentalAssets->pluck('asset_id')->all() : []))
         ->filter(fn ($value) => filled($value))
@@ -81,7 +83,7 @@
     $otherAssignableStaffMembers = collect($staffMembers ?? collect())->reject(function ($staff) {
         return in_array($staff->effective_role ?? null, ['vendor', 'third_party'], true);
     })->values();
-    $phoneParts = \App\Support\PhoneNumber::split(old('phone', $isEdit ? $rental->phone : ''));
+    $phoneParts = \App\Support\PhoneNumber::split(old('phone', $isEdit ? $rental->phone : ($selectedCustomer?->phone ?? '')));
     $countryCodeOptions = \App\Support\PhoneNumber::countryCodeOptions();
 
     if ($selectedDeliveryAssignment === null && $isEdit) {
@@ -970,7 +972,7 @@
                             data-phone-country="{{ \App\Support\PhoneNumber::countryCode($customer->phone) }}"
                             data-state="{{ $customer->state }}"
                             data-search="{{ trim(implode(' ', array_filter([$customer->name, $customer->phone, $customer->email, $customer->city]))) }}"
-                            {{ (int) old('customer_id', $isEdit ? $rental->customer_id : null) === $customer->id ? 'selected' : '' }}>
+                            {{ (int) $selectedCustomerId === $customer->id ? 'selected' : '' }}>
                             {{ $customer->name }}{{ $customer->phone ? ' • ' . $customer->phone : '' }}
                         </option>
                     @endforeach
@@ -985,7 +987,7 @@
 
             <div class="rental-field rental-col-4{{ $hasFieldError('customer_name') ? ' is-error' : '' }}">
                 <label for="customer_name">Name</label>
-                <input type="text" name="customer_name" id="customer_name" value="{{ old('customer_name', $isEdit ? $rental->customer_name : '') }}" required>
+                <input type="text" name="customer_name" id="customer_name" value="{{ old('customer_name', $isEdit ? $rental->customer_name : ($selectedCustomer?->name ?? '')) }}" required>
                 @if($hasFieldError('customer_name'))
                     <span class="field-error">{{ $fieldError('customer_name') }}</span>
                 @endif
