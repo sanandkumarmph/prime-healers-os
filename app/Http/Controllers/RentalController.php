@@ -2396,11 +2396,13 @@ class RentalController extends Controller
         $this->markImportedRentalDelivered($rental);
     }
 
-    private function baseRentalQuery(bool $includeRelations = true)
+    private function baseRentalQuery(bool $includeRelations = true, bool $applyScope = true)
     {
-        $query = $this->applyRentalScope(
-            Rental::query()->forOrganization($this->orgId())
-        );
+        $query = Rental::query()->forOrganization($this->orgId());
+
+        if ($applyScope) {
+            $query = $this->applyRentalScope($query);
+        }
 
         $query->select('rentals.*');
 
@@ -3177,17 +3179,17 @@ class RentalController extends Controller
             ->with('success', 'Latest renewal deleted successfully.');
     }
 
-    private function filteredRentalQuery(Request $request, bool $includeRelations = true)
+    private function filteredRentalQuery(Request $request, bool $includeRelations = true, bool $applyScope = true)
     {
-        return $this->applyLifecycleFilters($this->baseRentalQuery($includeRelations), $request);
+        return $this->applyLifecycleFilters($this->baseRentalQuery($includeRelations, $applyScope), $request);
     }
 
-    private function filteredRentalAggregateQuery(Request $request)
+    private function filteredRentalAggregateQuery(Request $request, bool $applyScope = true)
     {
         return $this->applyLifecycleFilters(
-            $this->applyRentalScope(
-                Rental::query()->forOrganization($this->orgId())
-            ),
+            $applyScope
+                ? $this->applyRentalScope(Rental::query()->forOrganization($this->orgId()))
+                : Rental::query()->forOrganization($this->orgId()),
             $request
         );
     }
@@ -3710,14 +3712,14 @@ class RentalController extends Controller
 
         $baseFilterRequest = Request::create('/dashboard', 'GET', $request->query());
 
-        $summaryQuery = $this->filteredRentalQuery($baseFilterRequest, false);
+        $summaryQuery = $this->filteredRentalQuery($baseFilterRequest, false, false);
         $recentRentals = $this->applyRentalSorting(
-            $this->filteredRentalQuery($baseFilterRequest, true),
+            $this->filteredRentalQuery($baseFilterRequest, true, false),
             $sortBy === 'priority' ? 'latest' : $sortBy
         )
             ->limit(10)
             ->get();
-        $dashboardSummaryQuery = $this->filteredRentalQuery($baseFilterRequest, false)
+        $dashboardSummaryQuery = $this->filteredRentalQuery($baseFilterRequest, false, false)
             ->with([
                 'customer:id,name,city',
                 'dispatchWarehouse:id,name',
@@ -3865,12 +3867,17 @@ class RentalController extends Controller
 
         $pendingDeliveryCount = (int) ($logisticsSummary['pendingDeliveryCount'] ?? 0);
         $pendingPickupCount = (int) ($logisticsSummary['pendingPickupCount'] ?? 0);
+        $totalTasksCount = (int) ($logisticsSummary['totalTasksCount'] ?? 0);
+        $deliveryTasksCount = (int) ($logisticsSummary['deliveryTasksCount'] ?? 0);
+        $pickupTasksCount = (int) ($logisticsSummary['pickupTasksCount'] ?? 0);
+        $completedTodayCount = (int) ($logisticsSummary['completedTodayCount'] ?? 0);
         $scheduledDeliveryCount = (int) ($logisticsSummary['scheduledDeliveryCount'] ?? 0);
         $scheduledPickupCount = (int) ($logisticsSummary['scheduledPickupCount'] ?? 0);
         $outForDeliveryCount = (int) ($logisticsSummary['outForDeliveryCount'] ?? 0);
         $outForPickupCount = (int) ($logisticsSummary['outForPickupCount'] ?? 0);
         $overdueDeliveryCount = (int) ($logisticsSummary['overdueDeliveryCount'] ?? 0);
         $overduePickupCount = (int) ($logisticsSummary['overduePickupCount'] ?? 0);
+        $completedDeliveryCount = (int) ($logisticsSummary['completedDeliveryCount'] ?? 0);
         $deliveredTodayCount = (int) ($logisticsSummary['deliveredTodayCount'] ?? 0);
         $completedPickupCount = (int) ($logisticsSummary['completedPickupCount'] ?? 0);
         $pickedUpTodayCount = (int) ($logisticsSummary['pickedUpTodayCount'] ?? 0);
@@ -3878,15 +3885,15 @@ class RentalController extends Controller
         $endingSoonRentals = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
             'filter' => 'ending_soon',
             'status' => null,
-        ])), true)->latest()->limit(5)->get();
+        ])), true, false)->latest()->limit(5)->get();
         $overdueRentals = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
             'filter' => 'overdue',
             'status' => null,
-        ])), true)->latest()->limit(5)->get();
+        ])), true, false)->latest()->limit(5)->get();
         $returnsDueToday = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
             'filter' => 'returns_due_today',
             'status' => null,
-        ])), true)->latest()->limit(5)->get();
+        ])), true, false)->latest()->limit(5)->get();
 
         if (!$this->hasRentalAssetsTable()) {
             $endingSoonRentals->each(fn ($rental) => $rental->setRelation('activeRentalAssets', collect()));
@@ -3979,6 +3986,10 @@ class RentalController extends Controller
             'lifecycleOverdueCount',
             'lifecycleReturnedCount',
             'deliveredRentals',
+            'totalTasksCount',
+            'deliveryTasksCount',
+            'pickupTasksCount',
+            'completedTodayCount',
             'pendingDeliveryCount',
             'pendingPickupCount',
             'scheduledDeliveryCount',
@@ -3987,6 +3998,7 @@ class RentalController extends Controller
             'outForPickupCount',
             'overdueDeliveryCount',
             'overduePickupCount',
+            'completedDeliveryCount',
             'endingSoonCount',
             'overdueCount',
             'returnsDueTodayCount',
@@ -4195,17 +4207,17 @@ class RentalController extends Controller
             'status' => null,
         ]));
 
-        $endingSoon = $this->filteredRentalQuery($endingSoonRequest, true)
+        $endingSoon = $this->filteredRentalQuery($endingSoonRequest, true, false)
             ->latest()
             ->limit(5)
             ->get();
 
-        $overdue = $this->filteredRentalQuery($overdueRequest, true)
+        $overdue = $this->filteredRentalQuery($overdueRequest, true, false)
             ->latest()
             ->limit(5)
             ->get();
 
-        $summaryQuery = $this->filteredRentalQuery($summaryScopeRequest, false);
+        $summaryQuery = $this->filteredRentalQuery($summaryScopeRequest, false, false);
         $rentalSummary = $this->rentalMetrics()->headlineSnapshot(clone $summaryQuery, Carbon::today());
         $totalRentals = (int) ($rentalSummary['totalRentals'] ?? 0);
         $activeRentals = (int) ($rentalSummary['activeRentals'] ?? 0);

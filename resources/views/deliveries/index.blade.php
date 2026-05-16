@@ -17,6 +17,7 @@
     $areaFilter = $areaFilter ?? '';
     $statusFilter = $statusFilter ?? '';
     $workflowFilter = $workflowFilter ?? '';
+    $ownershipFilter = $ownershipFilter ?? 'all';
 
     $boardHref = function (array $overrides = [], array $forget = []) {
         $query = request()->query();
@@ -43,6 +44,11 @@
         ['key' => 'completed', 'label' => 'Completed'],
         ['key' => 'today', 'label' => 'Today'],
         ['key' => 'overdue', 'label' => 'Overdue'],
+    ];
+
+    $ownershipTabs = [
+        ['key' => 'all', 'label' => 'All Tasks'],
+        ['key' => 'my', 'label' => 'My Assigned Tasks'],
     ];
 
     $statCards = [
@@ -523,6 +529,15 @@
                 </a>
             @endforeach
         </div>
+        @if($currentUser?->hasScope('assigned', 'deliveries'))
+            <div class="ops-tabs" aria-label="Ownership tabs">
+                @foreach($ownershipTabs as $ownershipTab)
+                    <a href="{{ $boardHref(['ownership' => $ownershipTab['key']], ['board']) }}" class="ops-tab {{ $ownershipFilter === $ownershipTab['key'] ? 'is-active' : '' }}">
+                        {{ $ownershipTab['label'] }}
+                    </a>
+                @endforeach
+            </div>
+        @endif
 
         <details class="ops-filters-card ops-filter-toggle">
             <summary>
@@ -531,6 +546,7 @@
             </summary>
             <div class="ops-filter-body">
                 <form method="GET" action="{{ route('deliveries.index') }}" class="ops-filter-grid">
+                    <input type="hidden" name="ownership" value="{{ $ownershipFilter }}">
                     <div class="ops-filter-field">
                         <label for="ops_search">Search</label>
                         <input id="ops_search" type="search" name="search" value="{{ $search }}" placeholder="Customer, mobile, product, sale order">

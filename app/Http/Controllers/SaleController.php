@@ -100,7 +100,7 @@ class SaleController extends Controller
         return redirect()->route('sales.show', $sale)->with('error', $message);
     }
 
-    private function baseSalesQuery(bool $includeRelations = true)
+    private function baseSalesQuery(bool $includeRelations = true, bool $applyScope = true)
     {
         $query = Sale::query()
             ->where('organization_id', $this->orgId());
@@ -116,7 +116,7 @@ class SaleController extends Controller
             $query->with($relations);
         }
 
-        return $this->applySalesScope($query);
+        return $applyScope ? $this->applySalesScope($query) : $query;
     }
 
     private function hasDeliverySaleColumn(): bool
@@ -1611,7 +1611,7 @@ class SaleController extends Controller
         };
 
         $salesQuery = $applyIndexFilters($this->baseSalesQuery(true));
-        $summaryQuery = $applyIndexFilters($this->baseSalesQuery(false));
+        $summaryQuery = $applyIndexFilters($this->baseSalesQuery(false, false));
 
         $sales = $this->applySorting(clone $salesQuery, $sortBy)
             ->paginate(20)

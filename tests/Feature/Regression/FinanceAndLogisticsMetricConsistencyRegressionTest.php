@@ -322,6 +322,16 @@ class FinanceAndLogisticsMetricConsistencyRegressionTest extends TestCase
         $this->assertSame((int) $dashboard->viewData('outForPickupCount'), (int) $taskboard->viewData('outForPickupCount'));
         $this->assertSame((int) $dashboard->viewData('overduePickupCount'), (int) $taskboard->viewData('overduePickupCount'));
         $this->assertSame((int) $dashboard->viewData('completedPickupCount'), (int) $taskboard->viewData('completedPickupCount'));
+        $this->assertSame((int) $dashboard->viewData('totalTasksCount'), (int) $taskboard->viewData('totalTasksCount'));
+        $this->assertSame((int) $dashboard->viewData('deliveryTasksCount'), (int) $taskboard->viewData('deliveryTasksCount'));
+        $this->assertSame((int) $dashboard->viewData('pickupTasksCount'), (int) $taskboard->viewData('pickupTasksCount'));
+        $this->assertSame((int) $dashboard->viewData('completedTodayCount'), (int) $taskboard->viewData('completedTodayCount'));
+        $this->assertSame((int) $dashboard->viewData('completedDeliveryCount'), (int) $taskboard->viewData('completedDeliveryCount'));
+
+        $dashboard->assertSee(route('deliveries.index', ['board' => 'delivery_workload']), false);
+        $dashboard->assertSee(route('deliveries.index', ['board' => 'pickup_workload']), false);
+        $dashboard->assertSee(route('deliveries.index', ['board' => 'completed_today']), false);
+        $dashboard->assertSee(route('deliveries.index'), false);
 
         $pendingPickupWidget = collect($taskboard->viewData('pendingCollections'));
         $this->assertCount(1, $pendingPickupWidget);

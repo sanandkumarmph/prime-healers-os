@@ -490,6 +490,11 @@ class DeliveryController extends Controller
         $areaFilter = trim((string) $request->query('area', ''));
         $statusFilter = strtolower((string) $request->query('status', $legacyDefault['status'] ?? ''));
         $workflowFilter = strtolower((string) $request->query('workflow', $legacyDefault['workflow'] ?? ''));
+        $ownershipFilter = strtolower((string) $request->query('ownership', 'all'));
+
+        if (!in_array($ownershipFilter, ['all', 'my'], true)) {
+            $ownershipFilter = 'all';
+        }
 
         $baseLoad = [
             'rental.product',
@@ -515,13 +520,16 @@ class DeliveryController extends Controller
             $baseLoad[] = 'rental.saleItems.asset.warehouse';
         }
 
-        $baseQuery = $this->applyDeliveryScope(
-            Delivery::query()->where('organization_id', $this->orgId())
-        );
+        $summaryBaseQuery = Delivery::query()->where('organization_id', $this->orgId());
+        $baseQuery = clone $summaryBaseQuery;
 
-        if ($search !== '') {
-            $baseQuery->where(function ($query) use ($search) {
-                $query->whereHas('rental', function ($rentalQuery) use ($search) {
+        if ($ownershipFilter === 'my') {
+            $baseQuery = $this->applyDeliveryScope($baseQuery);
+        }
+
+        $applySearchFilter = function ($query) use ($search) {
+            return $query->where(function ($taskQuery) use ($search) {
+                $taskQuery->whereHas('rental', function ($rentalQuery) use ($search) {
                     $rentalQuery->where(function ($rentalInnerQuery) use ($search) {
                         $rentalInnerQuery
                             ->where('customer_name', 'like', "%{$search}%")
@@ -565,55 +573,79 @@ class DeliveryController extends Controller
                     });
                 });
             });
+        };
+
+        $applyUnassignedFilter = function ($query) {
+            return $query->where(function ($innerQuery) {
+                if ($this->hasAssignedUserColumn()) {
+                    $innerQuery->whereNull('assigned_user_id');
+                }
+
+                if ($this->hasAssignedStaffColumn()) {
+                    $innerQuery->whereNull('assigned_staff_id');
+                }
+
+                if ($this->hasAssignmentTypeColumn()) {
+                    $innerQuery->where(function ($assignmentQuery) {
+                        $assignmentQuery->whereNull('assignment_type')
+                            ->orWhere('assignment_type', 'delivery_team');
+                    });
+                }
+            });
+        };
+
+        $applyWarehouseAreaFilter = function ($query, int $warehouseId) {
+            return $query->where(function ($innerQuery) use ($warehouseId) {
+                $innerQuery->whereHas('rental', function ($rentalQuery) use ($warehouseId) {
+                    $rentalQuery->where('dispatch_warehouse_id', $warehouseId);
+                })->orWhereHas('sale.asset', function ($assetQuery) use ($warehouseId) {
+                    $assetQuery->where('warehouse_id', $warehouseId);
+                });
+            });
+        };
+
+        $applyCityAreaFilter = function ($query, string $city) {
+            return $query->where(function ($innerQuery) use ($city) {
+                $innerQuery->whereHas('rental.customer', fn ($customerQuery) => $customerQuery->where('city', $city))
+                    ->orWhereHas('sale.customer', fn ($customerQuery) => $customerQuery->where('city', $city));
+            });
+        };
+
+        if ($search !== '') {
+            $applySearchFilter($baseQuery);
+            $applySearchFilter($summaryBaseQuery);
         }
 
         if ($selectedDate !== '') {
             $baseQuery->whereDate('scheduled_at', $selectedDate);
+            $summaryBaseQuery->whereDate('scheduled_at', $selectedDate);
         }
 
         if ($staffFilter !== '') {
             if (str_starts_with($staffFilter, 'user:') && $this->hasAssignedUserColumn()) {
                 $baseQuery->where('assigned_user_id', (int) substr($staffFilter, 5));
+                $summaryBaseQuery->where('assigned_user_id', (int) substr($staffFilter, 5));
             } elseif (str_starts_with($staffFilter, 'staff:') && $this->hasAssignedStaffColumn()) {
                 $baseQuery->where('assigned_staff_id', (int) substr($staffFilter, 6));
+                $summaryBaseQuery->where('assigned_staff_id', (int) substr($staffFilter, 6));
             } elseif ($staffFilter === 'third_party' && $this->hasAssignmentTypeColumn()) {
                 $baseQuery->where('assignment_type', 'third_party');
+                $summaryBaseQuery->where('assignment_type', 'third_party');
             } elseif ($staffFilter === 'unassigned') {
-                $baseQuery->where(function ($query) {
-                    if ($this->hasAssignedUserColumn()) {
-                        $query->whereNull('assigned_user_id');
-                    }
-
-                    if ($this->hasAssignedStaffColumn()) {
-                        $query->whereNull('assigned_staff_id');
-                    }
-
-                    if ($this->hasAssignmentTypeColumn()) {
-                        $query->where(function ($innerQuery) {
-                            $innerQuery->whereNull('assignment_type')
-                                ->orWhere('assignment_type', 'delivery_team');
-                        });
-                    }
-                });
+                $applyUnassignedFilter($baseQuery);
+                $applyUnassignedFilter($summaryBaseQuery);
             }
         }
 
         if ($areaFilter !== '') {
             if (str_starts_with($areaFilter, 'warehouse:')) {
                 $warehouseId = (int) substr($areaFilter, 10);
-                $baseQuery->where(function ($query) use ($warehouseId) {
-                    $query->whereHas('rental', function ($rentalQuery) use ($warehouseId) {
-                        $rentalQuery->where('dispatch_warehouse_id', $warehouseId);
-                    })->orWhereHas('sale.asset', function ($assetQuery) use ($warehouseId) {
-                        $assetQuery->where('warehouse_id', $warehouseId);
-                    });
-                });
+                $applyWarehouseAreaFilter($baseQuery, $warehouseId);
+                $applyWarehouseAreaFilter($summaryBaseQuery, $warehouseId);
             } elseif (str_starts_with($areaFilter, 'city:')) {
                 $city = substr($areaFilter, 5);
-                $baseQuery->where(function ($query) use ($city) {
-                    $query->whereHas('rental.customer', fn ($customerQuery) => $customerQuery->where('city', $city))
-                        ->orWhereHas('sale.customer', fn ($customerQuery) => $customerQuery->where('city', $city));
-                });
+                $applyCityAreaFilter($baseQuery, $city);
+                $applyCityAreaFilter($summaryBaseQuery, $city);
             }
         }
 
@@ -658,15 +690,19 @@ class DeliveryController extends Controller
         };
 
         $deliveriesQuery = clone $baseQuery;
+        $summaryQuery = clone $summaryBaseQuery;
 
         if (in_array($taskType, ['delivery', 'pickup'], true)) {
             $deliveriesQuery->where('type', $taskType);
+            $summaryQuery->where('type', $taskType);
         }
 
         if (in_array($statusFilter, ['pending', 'in_progress', 'completed', 'cancelled'], true)) {
             $deliveriesQuery->where('status', $statusFilter);
+            $summaryQuery->where('status', $statusFilter);
         } else {
             $deliveriesQuery->where('status', '!=', 'cancelled');
+            $summaryQuery->where('status', '!=', 'cancelled');
         }
 
         $today = now()->toDateString();
@@ -674,21 +710,29 @@ class DeliveryController extends Controller
         switch ($tab) {
             case 'deliveries':
                 $deliveriesQuery->where('type', 'delivery');
+                $summaryQuery->where('type', 'delivery');
                 break;
             case 'pickups':
                 $deliveriesQuery->where('type', 'pickup');
+                $summaryQuery->where('type', 'pickup');
                 break;
             case 'in_progress':
                 $deliveriesQuery->where('status', 'in_progress');
+                $summaryQuery->where('status', 'in_progress');
                 break;
             case 'completed':
                 $deliveriesQuery->where('status', 'completed');
+                $summaryQuery->where('status', 'completed');
                 break;
             case 'today':
                 $deliveriesQuery->whereDate('scheduled_at', $today);
+                $summaryQuery->whereDate('scheduled_at', $today);
                 break;
             case 'overdue':
                 $deliveriesQuery
+                    ->whereIn('status', ['pending', 'in_progress'])
+                    ->whereDate('scheduled_at', '<', $today);
+                $summaryQuery
                     ->whereIn('status', ['pending', 'in_progress'])
                     ->whereDate('scheduled_at', '<', $today);
                 break;
@@ -730,7 +774,22 @@ class DeliveryController extends Controller
             ]
         );
 
-        $summaryDeliveries = $hydrateDeliveries($dedupedTaskIds);
+        $summaryTaskIds = $this->dedupeDeliveryCollection(
+            $orderedMinimalDeliveryQuery(clone $summaryQuery)->get()
+        )
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
+
+        if ($this->logisticsMetrics()->isSupportedWorkflow($workflowFilter)) {
+            $summaryTaskIds = $this->logisticsMetrics()
+                ->applyWorkflowFilter($hydrateDeliveries($summaryTaskIds), $workflowFilter, now()->startOfDay())
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->values();
+        }
+
+        $summaryDeliveries = $hydrateDeliveries($summaryTaskIds);
         $logisticsSummary = $this->logisticsMetrics()->summary($summaryDeliveries, now()->startOfDay());
         $totalTasksCount = (int) ($logisticsSummary['totalTasksCount'] ?? 0);
         $deliveryTasksCount = (int) ($logisticsSummary['deliveryTasksCount'] ?? 0);
@@ -800,6 +859,7 @@ class DeliveryController extends Controller
             'areaFilter',
             'statusFilter',
             'workflowFilter',
+            'ownershipFilter',
             'tasks',
             'taskResultsCount',
             'totalTasksCount',

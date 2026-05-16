@@ -106,6 +106,10 @@
     $activeRentalsCount = (int) ($activeRentals ?? 0);
     $pendingDeliveryCountValue = (int) ($pendingDeliveryCount ?? 0);
     $pendingPickupCountValue = (int) ($pendingPickupCount ?? 0);
+    $totalTasksCountValue = (int) ($totalTasksCount ?? 0);
+    $deliveryTasksCountValue = (int) ($deliveryTasksCount ?? 0);
+    $pickupTasksCountValue = (int) ($pickupTasksCount ?? 0);
+    $completedTodayCountValue = (int) ($completedTodayCount ?? 0);
     $scheduledDeliveryCountValue = (int) ($scheduledDeliveryCount ?? 0);
     $scheduledPickupCountValue = (int) ($scheduledPickupCount ?? 0);
     $outForDeliveryCountValue = (int) ($outForDeliveryCount ?? 0);
@@ -116,6 +120,7 @@
     $returnsDueTodayCountValue = (int) ($returnsDueTodayCount ?? 0);
     $returnedRentalsCount = (int) ($returnedRentals ?? 0);
     $deliveredRentalsCount = (int) ($deliveredRentals ?? 0);
+    $completedDeliveryCountValue = (int) ($completedDeliveryCount ?? 0);
     $deliveriesTodayCount = (int) ($deliveredTodayCount ?? 0);
     $completedPickupCountValue = (int) ($completedPickupCount ?? 0);
     $pickedUpTodayCountValue = (int) ($pickedUpTodayCount ?? 0);
@@ -196,21 +201,12 @@
 
     $primaryPriorityCards = collect([
         [
-            'label' => 'Pending Delivery',
-            'value' => $pendingDeliveryCountValue,
-            'subtitle' => $scheduledDeliveryCountValue . ' scheduled next',
-            'note' => 'Open delivery tasks awaiting completion',
-            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pending_delivery']) : null,
+            'label' => 'Deliveries Pending',
+            'value' => $deliveryTasksCountValue,
+            'subtitle' => $overdueDeliveryCountValue . ' overdue task(s)',
+            'note' => 'Open delivery tasks visible in Task Board',
+            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'delivery_workload']) : null,
             'tone' => 'amber',
-            'icon' => 'delivery',
-        ],
-        [
-            'label' => 'Delivery Scheduled',
-            'value' => $scheduledDeliveryCountValue,
-            'subtitle' => $outForDeliveryCountValue . ' already in transit',
-            'note' => 'Future delivery assignments',
-            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'scheduled_delivery']) : null,
-            'tone' => 'blue',
             'icon' => 'delivery',
         ],
         [
@@ -233,22 +229,22 @@
             'visible' => $canViewFinance,
         ],
         [
-            'label' => 'Pending Pickup',
-            'value' => $pendingPickupCountValue,
-            'subtitle' => $scheduledPickupCountValue . ' scheduled next',
-            'note' => $outForPickupCountValue . ' currently on field run',
-            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pending_pickup']) : null,
+            'label' => 'Pickups Pending',
+            'value' => $pickupTasksCountValue,
+            'subtitle' => $overduePickupCountValue . ' overdue task(s)',
+            'note' => 'Open pickup tasks visible in Task Board',
+            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pickup_workload']) : null,
             'tone' => 'amber',
             'icon' => 'pickup',
         ],
         [
-            'label' => 'Pickup Scheduled',
-            'value' => $scheduledPickupCountValue,
-            'subtitle' => $completedPickupCountValue . ' completed in window',
-            'note' => 'Future pickup assignments',
-            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'scheduled_pickup']) : null,
-            'tone' => 'blue',
-            'icon' => 'pickup',
+            'label' => 'Completed Today',
+            'value' => $completedTodayCountValue,
+            'subtitle' => $completedDeliveryCountValue . ' deliveries + ' . $completedPickupCountValue . ' pickups completed',
+            'note' => 'Tasks closed today only',
+            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_today']) : null,
+            'tone' => 'green',
+            'icon' => 'completed',
         ],
     ])->filter(fn ($card) => $card['visible'] ?? true)->values();
 
@@ -277,16 +273,12 @@
     ]);
 
     $deliveryMiniTiles = collect([
-        ['label' => 'Pending Delivery', 'value' => $pendingDeliveryCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pending_delivery']) : null, 'tone' => 'amber', 'icon' => 'delivery'],
-        ['label' => 'Delivery Scheduled', 'value' => $scheduledDeliveryCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'scheduled_delivery']) : null, 'tone' => 'blue', 'icon' => 'delivery'],
-        ['label' => 'Out for Delivery', 'value' => $outForDeliveryCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'out_delivery']) : null, 'tone' => 'blue', 'icon' => 'delivery'],
-        ['label' => 'Overdue Delivery', 'value' => $overdueDeliveryCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'overdue_delivery']) : null, 'tone' => 'red', 'icon' => 'overdue'],
-        ['label' => 'Delivered Today', 'value' => $deliveriesTodayCount, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_delivery']) : null, 'tone' => 'green', 'icon' => 'delivery'],
-        ['label' => 'Pending Pickup', 'value' => $pendingPickupCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pending_pickup']) : null, 'tone' => 'amber', 'icon' => 'pickup'],
-        ['label' => 'Pickup Scheduled', 'value' => $scheduledPickupCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'scheduled_pickup']) : null, 'tone' => 'blue', 'icon' => 'pickup'],
-        ['label' => 'Out for Pickup', 'value' => $outForPickupCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'out_pickup']) : null, 'tone' => 'blue', 'icon' => 'pickup'],
-        ['label' => 'Overdue Pickup', 'value' => $overduePickupCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'overdue_pickup']) : null, 'tone' => 'red', 'icon' => 'overdue'],
-        ['label' => 'Completed Pickups', 'value' => $completedPickupCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_pickup']) : null, 'tone' => 'green', 'icon' => 'pickup'],
+        ['label' => 'Total Tasks', 'value' => $totalTasksCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index') : null, 'tone' => 'blue', 'icon' => 'tasks'],
+        ['label' => 'Deliveries Pending', 'value' => $deliveryTasksCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'delivery_workload']) : null, 'tone' => 'amber', 'icon' => 'delivery'],
+        ['label' => 'Pickups Pending', 'value' => $pickupTasksCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pickup_workload']) : null, 'tone' => 'amber', 'icon' => 'pickup'],
+        ['label' => 'Deliveries Completed', 'value' => $completedDeliveryCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_delivery']) : null, 'tone' => 'green', 'icon' => 'delivery'],
+        ['label' => 'Pickups Completed', 'value' => $completedPickupCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_pickup']) : null, 'tone' => 'green', 'icon' => 'pickup'],
+        ['label' => 'Completed Today', 'value' => $completedTodayCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_today']) : null, 'tone' => 'green', 'icon' => 'completed'],
     ]);
 
     $kpiCards = collect([
@@ -392,18 +384,18 @@
 
     $actionItems = collect([
         [
-            'label' => 'Pending Deliveries',
-            'count' => $pendingDeliveryCountValue,
-            'copy' => 'Dispatch tasks waiting to move',
-            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pending_delivery']) : null,
+            'label' => 'Deliveries Pending',
+            'count' => $deliveryTasksCountValue,
+            'copy' => $overdueDeliveryCountValue > 0 ? $overdueDeliveryCountValue . ' overdue task(s)' : 'Open delivery tasks',
+            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'delivery_workload']) : null,
             'icon' => 'delivery',
             'tone' => 'amber',
         ],
         [
-            'label' => 'Due Pickups / Returns',
-            'count' => $pendingPickupCountValue + $returnsDueTodayCountValue,
-            'copy' => 'Today reverse logistics queue',
-            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pending_pickup']) : null,
+            'label' => 'Pickups Pending',
+            'count' => $pickupTasksCountValue,
+            'copy' => $overduePickupCountValue > 0 ? $overduePickupCountValue . ' overdue task(s)' : 'Open pickup tasks',
+            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pickup_workload']) : null,
             'icon' => 'pickup',
             'tone' => 'blue',
         ],
@@ -411,7 +403,7 @@
             'label' => 'Overdue Payments',
             'count' => $overdueInvoiceCountValue,
             'copy' => 'Invoices needing finance follow-up',
-            'href' => $mergeDashboardQuery('invoices.index', ['status' => 'open']),
+            'href' => $mergeDashboardQuery('invoices.index', ['status' => 'overdue']),
             'icon' => 'payment',
             'tone' => 'red',
         ],

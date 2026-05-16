@@ -160,7 +160,7 @@ class InvoiceController extends Controller
         );
     }
 
-    private function invoiceBaseQuery(bool $includeRelations = true)
+    private function invoiceBaseQuery(bool $includeRelations = true, bool $applyScope = true)
     {
         $query = Invoice::query()
             ->forOrganization($this->orgId());
@@ -169,7 +169,7 @@ class InvoiceController extends Controller
             $query->with(['customer', 'items', 'payments']);
         }
 
-        return $this->applyInvoiceScope($query);
+        return $applyScope ? $this->applyInvoiceScope($query) : $query;
     }
 
     private function resolvePerPage(Request $request): int
@@ -519,7 +519,7 @@ class InvoiceController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
-        $summaryQuery = $this->applyInvoiceFilters($this->invoiceBaseQuery(false), $request);
+        $summaryQuery = $this->applyInvoiceFilters($this->invoiceBaseQuery(false, false), $request);
         $invoiceSummary = $this->invoiceMetrics()->summary($summaryQuery);
         $invoiceStats = [
             'totalInvoices' => (int) ($invoiceSummary['totalInvoices'] ?? 0),
