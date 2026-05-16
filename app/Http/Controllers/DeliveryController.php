@@ -266,13 +266,13 @@ class DeliveryController extends Controller
         return $query;
     }
 
-    private function scopedDelivery(Delivery $delivery): Delivery
+    private function scopedDelivery(Delivery $delivery, bool $enforceAssignedScope = true): Delivery
     {
         abort_if($delivery->organization_id !== $this->orgId(), 403);
 
         $user = auth()->user();
 
-        if ($user && $user->hasScope('assigned', 'deliveries') && $this->hasAssignedUserColumn()) {
+        if ($enforceAssignedScope && $user && $user->hasScope('assigned', 'deliveries') && $this->hasAssignedUserColumn()) {
             abort_if((int) $delivery->assigned_user_id !== (int) $user->id, 403);
         }
 
@@ -1111,7 +1111,7 @@ class DeliveryController extends Controller
 
     public function show(Delivery $delivery)
     {
-        $delivery = $this->scopedDelivery($delivery);
+        $delivery = $this->scopedDelivery($delivery, false);
         $this->authorize('view', $delivery);
 
         if ($delivery->type === 'pickup' && $delivery->status === 'completed' && $delivery->rental_id) {

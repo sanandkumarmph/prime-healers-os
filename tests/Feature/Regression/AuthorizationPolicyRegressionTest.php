@@ -142,7 +142,7 @@ class AuthorizationPolicyRegressionTest extends TestCase
         $this->assertFalse(Gate::forUser($otherUser)->allows('print', $invoice));
     }
 
-    public function test_delivery_policy_respects_assignment_and_cross_organization_boundaries(): void
+    public function test_delivery_policy_allows_same_org_view_but_keeps_updates_assignment_bound(): void
     {
         $organization = TestData::organization();
         $assignedUser = TestData::user($organization, [
@@ -168,7 +168,7 @@ class AuthorizationPolicyRegressionTest extends TestCase
         $this->assertTrue(Gate::forUser($assignedUser)->allows('viewAny', Delivery::class));
         $this->assertTrue(Gate::forUser($assignedUser)->allows('view', $ownDelivery));
         $this->assertTrue(Gate::forUser($assignedUser)->allows('update', $ownDelivery));
-        $this->assertFalse(Gate::forUser($assignedUser)->allows('view', $otherDelivery));
+        $this->assertTrue(Gate::forUser($assignedUser)->allows('view', $otherDelivery));
         $this->assertFalse(Gate::forUser($assignedUser)->allows('update', $otherDelivery));
         $this->assertFalse(Gate::forUser($assignedUser)->allows('view', $otherOrgDelivery));
     }

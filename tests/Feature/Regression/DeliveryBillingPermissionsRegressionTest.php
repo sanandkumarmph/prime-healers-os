@@ -818,7 +818,7 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
         $this->assertSame('sold', $asset->fresh()->asset_status);
     }
 
-    public function test_assigned_delivery_user_can_access_assigned_task_but_not_other_users_task(): void
+    public function test_delivery_user_can_view_same_org_task_but_only_update_assigned_task(): void
     {
         $organization = TestData::organization();
         $assignedUser = TestData::user($organization, [
@@ -854,6 +854,17 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
 
         $this->actingAs($assignedUser)
             ->get(route('deliveries.show', $otherDelivery))
+            ->assertOk();
+
+        $this->actingAs($assignedUser)
+            ->from(route('deliveries.show', $ownDelivery))
+            ->put(route('deliveries.in_progress', $ownDelivery))
+            ->assertRedirect(route('deliveries.show', $ownDelivery));
+
+        $this->assertSame('in_progress', $ownDelivery->fresh()->status);
+
+        $this->actingAs($assignedUser)
+            ->put(route('deliveries.in_progress', $otherDelivery))
             ->assertForbidden();
     }
 
@@ -876,6 +887,37 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
         $this->actingAs($user)
             ->get(route('deliveries.show', $foreignDelivery))
             ->assertForbidden();
+    }
+
+    public function test_taskboard_shows_view_but_hides_update_actions_for_unassigned_delivery_user(): void
+    {
+        $organization = TestData::organization();
+        $assignedUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+            'email' => 'taskboard-view-only@example.com',
+        ]);
+        $otherUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+            'email' => 'taskboard-owner@example.com',
+        ]);
+
+        $delivery = Delivery::create([
+            'organization_id' => $organization->id,
+            'type' => 'delivery',
+            'scheduled_at' => now(),
+            'status' => 'pending',
+            'assigned_user_id' => $otherUser->id,
+            'notes' => 'Visible but not editable',
+        ]);
+
+        $response = $this->actingAs($assignedUser)
+            ->get(route('deliveries.index'));
+
+        $response->assertOk()
+            ->assertSee(route('deliveries.show', $delivery), false)
+            ->assertDontSee(route('deliveries.edit', $delivery), false)
+            ->assertDontSee(route('deliveries.in_progress', $delivery), false)
+            ->assertDontSee(route('deliveries.complete', $delivery), false);
     }
 
     public function test_invoice_payment_status_and_balances_sync_from_payments(): void

@@ -741,6 +741,9 @@
                                             || ($delivery->type === 'pickup' && $delivery->rental && $delivery->rental->pendingPickupQuantityTotal() > 0)
                                         );
                                     $taskEffectivelyCompleted = !$isSaleTask && $progressStatus === 'completed';
+                                    $canViewTask = auth()->user()?->can('view', $delivery) ?? false;
+                                    $canUpdateTask = auth()->user()?->can('update', $delivery) ?? false;
+                                    $canDeleteTask = auth()->user()?->can('delete', $delivery) ?? false;
                                 @endphp
                                 <tr class="{{ $isOverdue ? 'is-overdue' : '' }}">
                                     <td class="ops-col-serial ops-serial-cell" data-label="No.">{{ $serialNumber }}</td>
@@ -847,13 +850,13 @@
                                                     <span>Map</span>
                                                 </a>
                                             @endif
-                                            @if(\Illuminate\Support\Facades\Route::has('deliveries.show'))
+                                            @if($canViewTask && \Illuminate\Support\Facades\Route::has('deliveries.show'))
                                                 <a href="{{ route('deliveries.show', $delivery) }}" class="ops-action-btn" title="View task" aria-label="View task">
                                                     {!! $navIcon('view') !!}
                                                     <span>View</span>
                                                 </a>
                                             @endif
-                                            @if($canUpdateDeliveries && $delivery->status === 'pending' && !$taskEffectivelyCompleted)
+                                            @if($canUpdateTask && $delivery->status === 'pending' && !$taskEffectivelyCompleted)
                                                 <form action="{{ route('deliveries.in_progress', $delivery) }}" method="POST">
                                                     @csrf
                                                     @method('PUT')
@@ -863,7 +866,7 @@
                                                     </button>
                                                 </form>
                                             @endif
-                                            @if($canUpdateDeliveries && $delivery->status === 'in_progress' && !$taskEffectivelyCompleted)
+                                            @if($canUpdateTask && $delivery->status === 'in_progress' && !$taskEffectivelyCompleted)
                                                 <form action="{{ route('deliveries.complete', $delivery) }}" method="POST">
                                                     @csrf
                                                     @method('PUT')
@@ -879,10 +882,10 @@
                                             <details class="ops-action-menu">
                                                 <summary aria-label="More actions for task {{ $delivery->id }}">{!! $navIcon('menu') !!}</summary>
                                                 <div class="ops-action-panel">
-                                                    @if($canUpdateDeliveries && \Illuminate\Support\Facades\Route::has('deliveries.edit'))
+                                                    @if($canUpdateTask && \Illuminate\Support\Facades\Route::has('deliveries.edit'))
                                                         <a href="{{ route('deliveries.edit', $delivery) }}">Edit</a>
                                                     @endif
-                                                    @if($canDeleteDeliveries && \Illuminate\Support\Facades\Route::has('deliveries.destroy'))
+                                                    @if($canDeleteTask && \Illuminate\Support\Facades\Route::has('deliveries.destroy'))
                                                         <form action="{{ route('deliveries.destroy', $delivery) }}" method="POST">
                                                             @csrf
                                                             @method('DELETE')
@@ -960,6 +963,9 @@
                                     || ($delivery->type === 'pickup' && $delivery->rental && $delivery->rental->pendingPickupQuantityTotal() > 0)
                                 );
                             $taskEffectivelyCompleted = !$isSaleTask && $progressStatus === 'completed';
+                            $canViewTask = auth()->user()?->can('view', $delivery) ?? false;
+                            $canUpdateTask = auth()->user()?->can('update', $delivery) ?? false;
+                            $canDeleteTask = auth()->user()?->can('delete', $delivery) ?? false;
                         @endphp
                         <div class="ops-mobile-card {{ $isOverdue ? 'is-overdue' : '' }}">
                             <div class="ops-mobile-top">
@@ -992,13 +998,13 @@
                                 <details class="ops-action-menu">
                                     <summary aria-label="More actions for task {{ $delivery->id }}">{!! $navIcon('menu') !!}</summary>
                                     <div class="ops-action-panel">
-                                        @if(\Illuminate\Support\Facades\Route::has('deliveries.show'))
+                                        @if($canViewTask && \Illuminate\Support\Facades\Route::has('deliveries.show'))
                                             <a href="{{ route('deliveries.show', $delivery) }}">View</a>
                                         @endif
-                                        @if($canUpdateDeliveries && \Illuminate\Support\Facades\Route::has('deliveries.edit'))
+                                        @if($canUpdateTask && \Illuminate\Support\Facades\Route::has('deliveries.edit'))
                                             <a href="{{ route('deliveries.edit', $delivery) }}">Edit</a>
                                         @endif
-                                        @if($canDeleteDeliveries && \Illuminate\Support\Facades\Route::has('deliveries.destroy'))
+                                        @if($canDeleteTask && \Illuminate\Support\Facades\Route::has('deliveries.destroy'))
                                             <form action="{{ route('deliveries.destroy', $delivery) }}" method="POST">
                                                 @csrf
                                                 @method('DELETE')
@@ -1058,13 +1064,13 @@
                                         <span>Map</span>
                                     </a>
                                 @endif
-                                @if(\Illuminate\Support\Facades\Route::has('deliveries.show'))
+                                @if($canViewTask && \Illuminate\Support\Facades\Route::has('deliveries.show'))
                                     <a href="{{ route('deliveries.show', $delivery) }}" class="ops-action-btn mobile-utility-btn" title="View task" aria-label="View task">
                                         {!! $navIcon('view') !!}
                                         <span>View</span>
                                     </a>
                                 @endif
-                                @if($canUpdateDeliveries && $delivery->status === 'pending' && !$taskEffectivelyCompleted)
+                                @if($canUpdateTask && $delivery->status === 'pending' && !$taskEffectivelyCompleted)
                                     <form action="{{ route('deliveries.in_progress', $delivery) }}" method="POST" class="mobile-task-primary-form">
                                         @csrf
                                         @method('PUT')
@@ -1074,7 +1080,7 @@
                                         </button>
                                     </form>
                                 @endif
-                                @if($canUpdateDeliveries && $delivery->status === 'in_progress' && !$taskEffectivelyCompleted)
+                                @if($canUpdateTask && $delivery->status === 'in_progress' && !$taskEffectivelyCompleted)
                                     <form action="{{ route('deliveries.complete', $delivery) }}" method="POST" class="mobile-task-primary-form">
                                         @csrf
                                         @method('PUT')

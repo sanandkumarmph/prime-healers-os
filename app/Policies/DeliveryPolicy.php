@@ -18,7 +18,7 @@ class DeliveryPolicy
     public function view(User $user, Delivery $delivery): bool
     {
         return $this->sameOrganization($user, $delivery)
-            && $this->allowsDeliveryAction($user, $delivery, 'read');
+            && $this->allowsModule($user, 'deliveries', 'read');
     }
 
     public function create(User $user): bool

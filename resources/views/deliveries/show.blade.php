@@ -87,6 +87,8 @@
         'picked_up' => 'Picked Up',
         default => ucfirst(str_replace('_', ' ', $displayStatus)),
     };
+    $canUpdateTask = auth()->user()?->can('update', $delivery) ?? false;
+    $canDeleteTask = auth()->user()?->can('delete', $delivery) ?? false;
 @endphp
 
 <style>
@@ -214,8 +216,10 @@
         </div>
         <div class="detail-actions">
             <a href="{{ route('deliveries.index') }}" class="detail-btn-secondary">Back</a>
-            <a href="{{ route('deliveries.edit', $delivery) }}" class="detail-btn-secondary">Edit</a>
-            @if(auth()->user()?->canAccessModule('deliveries', 'update') && !in_array($delivery->status, ['completed', 'cancelled'], true))
+            @if($canUpdateTask)
+                <a href="{{ route('deliveries.edit', $delivery) }}" class="detail-btn-secondary">Edit</a>
+            @endif
+            @if($canUpdateTask && !in_array($delivery->status, ['completed', 'cancelled'], true))
                 <form action="{{ route('deliveries.cancel', $delivery) }}" method="POST" style="margin:0;">
                     @csrf
                     @method('PUT')
@@ -227,13 +231,13 @@
             @if($linkedPhone)
                 <a href="tel:{{ preg_replace('/\D+/', '', $linkedPhone) }}" class="detail-btn-secondary">Call</a>
             @endif
-            @if($delivery->status === 'pending')
+            @if($canUpdateTask && $delivery->status === 'pending')
                 <form action="{{ route('deliveries.in_progress', $delivery) }}" method="POST" style="margin:0;">
                     @csrf
                     @method('PUT')
                     <button type="submit" class="detail-btn" style="width:100%;">Start</button>
                 </form>
-            @elseif($delivery->status === 'in_progress')
+            @elseif($canUpdateTask && $delivery->status === 'in_progress')
                 <form action="{{ route('deliveries.complete', $delivery) }}" method="POST" style="margin:0;">
                     @csrf
                     @method('PUT')
@@ -348,7 +352,7 @@
                                 </div>
                             </td>
                             <td>
-                                @if($delivery->type === 'delivery' && in_array($delivery->status, ['pending', 'in_progress'], true) && $pendingDeliveryQty > 0)
+                                @if($canUpdateTask && $delivery->type === 'delivery' && in_array($delivery->status, ['pending', 'in_progress'], true) && $pendingDeliveryQty > 0)
                                     <form method="POST" action="{{ route('deliveries.partial_delivery', $delivery) }}" class="item-progress-form">
                                         @csrf
                                         @method('PUT')
@@ -356,7 +360,7 @@
                                         <input type="number" name="quantity" min="1" max="{{ $pendingDeliveryQty }}" value="1" aria-label="Deliver quantity">
                                         <button type="submit" class="detail-btn">Deliver</button>
                                     </form>
-                                @elseif($delivery->type === 'pickup' && in_array($delivery->status, ['pending', 'in_progress'], true) && $pendingPickupQty > 0)
+                                @elseif($canUpdateTask && $delivery->type === 'pickup' && in_array($delivery->status, ['pending', 'in_progress'], true) && $pendingPickupQty > 0)
                                     <form method="POST" action="{{ route('deliveries.partial_pickup', $delivery) }}" class="item-progress-form">
                                         @csrf
                                         @method('PUT')
@@ -479,13 +483,13 @@
     @if($linkedPhone)
         <a href="tel:{{ preg_replace('/\D+/', '', $linkedPhone) }}">Call</a>
     @endif
-    @if($delivery->status === 'pending')
+    @if($canUpdateTask && $delivery->status === 'pending')
         <form action="{{ route('deliveries.in_progress', $delivery) }}" method="POST">
             @csrf
             @method('PUT')
             <button type="submit" class="is-primary">Start</button>
         </form>
-    @elseif($delivery->status === 'in_progress')
+    @elseif($canUpdateTask && $delivery->status === 'in_progress')
         <form action="{{ route('deliveries.complete', $delivery) }}" method="POST">
             @csrf
             @method('PUT')
@@ -501,8 +505,10 @@
         <summary type="button">More</summary>
         <div class="mobile-actions-panel">
             <a href="{{ route('deliveries.index') }}">Back to Tasks Board</a>
-            <a href="{{ route('deliveries.edit', $delivery) }}">Edit Assignment</a>
-            @if(auth()->user()?->canAccessModule('deliveries', 'update') && !in_array($delivery->status, ['completed', 'cancelled'], true))
+            @if($canUpdateTask)
+                <a href="{{ route('deliveries.edit', $delivery) }}">Edit Assignment</a>
+            @endif
+            @if($canUpdateTask && !in_array($delivery->status, ['completed', 'cancelled'], true))
                 <form action="{{ route('deliveries.cancel', $delivery) }}" method="POST" style="margin:0;">
                     @csrf
                     @method('PUT')
