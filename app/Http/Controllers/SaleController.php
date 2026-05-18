@@ -166,40 +166,13 @@ class SaleController extends Controller
 
     private function applySalesScope($query)
     {
-        $user = auth()->user();
-
-        if (!$user || !$user->hasScope('self_created', 'sales')) {
-            return $query;
-        }
-
-        if ($this->hasCreatedByUserColumn()) {
-            return $query->where('created_by_user_id', $user->id);
-        }
-
-        if ($this->hasCreatedByColumn()) {
-            return $query->where('created_by', $user->id);
-        }
-
+        // Sales modules default to organization-wide visibility for permitted users.
         return $query;
     }
 
     private function scopedSale(Sale $sale): Sale
     {
         abort_if($sale->organization_id !== $this->orgId(), 403);
-
-        $user = auth()->user();
-
-        if ($user && $user->hasScope('self_created', 'sales')) {
-            $owned = true;
-
-            if ($this->hasCreatedByUserColumn()) {
-                $owned = (int) $sale->created_by_user_id === (int) $user->id;
-            } elseif ($this->hasCreatedByColumn()) {
-                $owned = (int) $sale->created_by === (int) $user->id;
-            }
-
-            abort_if(!$owned, 403);
-        }
 
         return $sale;
     }

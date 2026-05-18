@@ -303,46 +303,13 @@ class RentalController extends Controller
 
     private function applyRentalScope($query)
     {
-        $user = auth()->user();
-
-        if (!$user) {
-            return $query;
-        }
-
-        if ($user->hasScope('self_created', 'rentals') && Schema::hasColumn('rentals', 'created_by_user_id')) {
-            $query->where('created_by_user_id', $user->id);
-        }
-
-        if ($user->hasScope('assigned', 'rentals') && $this->hasDeliveryAssignedUserColumn()) {
-            $query->whereHas('deliveries', function ($deliveryQuery) use ($user) {
-                $deliveryQuery->where('assigned_user_id', $user->id);
-            });
-        }
-
+        // Rental lists are organization-level by default; user-specific views must stay explicit in the UI.
         return $query;
     }
 
     private function scopedRental(Rental $rental): Rental
     {
         abort_if($rental->organization_id !== $this->orgId(), 403);
-
-        $user = auth()->user();
-
-        if (!$user) {
-            return $rental;
-        }
-
-        if ($user->hasScope('self_created', 'rentals') && Schema::hasColumn('rentals', 'created_by_user_id')) {
-            abort_if((int) $rental->created_by_user_id !== (int) $user->id, 403);
-        }
-
-        if ($user->hasScope('assigned', 'rentals') && $this->hasDeliveryAssignedUserColumn()) {
-            $isAssigned = $rental->deliveries()
-                ->where('assigned_user_id', $user->id)
-                ->exists();
-
-            abort_if(!$isAssigned, 403);
-        }
 
         return $rental;
     }

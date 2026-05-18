@@ -11,6 +11,7 @@ use App\Models\Role;
 use App\Models\Sale;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\Support\TestData;
 use Tests\TestCase;
 
@@ -216,6 +217,164 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
         );
     }
 
+    public function test_superadmin_and_sales_user_share_org_level_rental_sales_and_invoice_lists(): void
+    {
+        $organization = TestData::organization();
+        $superadmin = TestData::user($organization);
+        $salesRole = $this->salesRole($organization->id);
+        $salesUser = $this->salesUser($organization->id, $salesRole->id, 'sales.agent@example.com');
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Scoped Sales Customer',
+            'phone' => '9900000201',
+            'city' => 'Bengaluru',
+        ]);
+
+        $rentalProduct = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Scoped Rental Product',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'price_per_day' => 250,
+            'rental_price' => 250,
+            'sale_price' => 0,
+            'available_quantity' => 10,
+            'total_quantity' => 10,
+        ]);
+
+        $saleProduct = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Scoped Sale Product',
+            'product_type' => Product::TYPE_SELLABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'price_per_day' => 0,
+            'rental_price' => 0,
+            'sale_price' => 300,
+            'available_quantity' => 10,
+            'total_quantity' => 10,
+        ]);
+
+        $creatorColumns = [
+            'created_by_user_id' => Schema::hasColumn('rentals', 'created_by_user_id') ? $superadmin->id : null,
+            'created_by' => Schema::hasColumn('sales', 'created_by') ? $superadmin->id : null,
+            'sales_created_by_user_id' => Schema::hasColumn('sales', 'created_by_user_id') ? $superadmin->id : null,
+            'invoice_created_by' => Schema::hasColumn('invoices', 'created_by') ? $superadmin->id : null,
+        ];
+
+        $rentalOne = $this->makeRental($organization->id, $customer->id, $rentalProduct->id, array_filter([
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'start_date' => now()->subDays(2)->toDateString(),
+            'end_date' => now()->addDays(3)->toDateString(),
+            'rental_amount' => 500,
+            'created_by_user_id' => $creatorColumns['created_by_user_id'],
+        ], fn ($value) => $value !== null));
+
+        $rentalTwo = $this->makeRental($organization->id, $customer->id, $rentalProduct->id, array_filter([
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'start_date' => now()->subDay()->toDateString(),
+            'end_date' => now()->addDays(4)->toDateString(),
+            'rental_amount' => 650,
+            'created_by_user_id' => $creatorColumns['created_by_user_id'],
+        ], fn ($value) => $value !== null));
+
+        $saleOne = $this->makeSale($organization->id, $customer->id, $saleProduct->id, 300, array_filter([
+            'created_by' => $creatorColumns['created_by'],
+            'created_by_user_id' => $creatorColumns['sales_created_by_user_id'],
+        ], fn ($value) => $value !== null));
+        $saleTwo = $this->makeSale($organization->id, $customer->id, $saleProduct->id, 450, array_filter([
+            'created_by' => $creatorColumns['created_by'],
+            'created_by_user_id' => $creatorColumns['sales_created_by_user_id'],
+        ], fn ($value) => $value !== null));
+
+        $this->makeInvoice($organization->id, $customer->id, array_filter([
+            'invoice_number' => 'INV-SCOPE-001',
+            'rental_id' => $rentalOne->id,
+            'subtotal' => 500,
+            'taxable_amount' => 500,
+            'total_amount' => 500,
+            'balance_amount' => 500,
+            'created_by' => $creatorColumns['invoice_created_by'],
+        ], fn ($value) => $value !== null));
+
+        $this->makeInvoice($organization->id, $customer->id, array_filter([
+            'invoice_number' => 'INV-SCOPE-002',
+            'sale_id' => $saleOne->id,
+            'subtotal' => 300,
+            'taxable_amount' => 300,
+            'total_amount' => 300,
+            'paid_amount' => 100,
+            'balance_amount' => 200,
+            'payment_status' => 'partial',
+            'status' => 'partial',
+            'created_by' => $creatorColumns['invoice_created_by'],
+        ], fn ($value) => $value !== null));
+
+        $otherOrganization = TestData::organization(['name' => 'Other Scope Org']);
+        $otherCustomer = Customer::create([
+            'organization_id' => $otherOrganization->id,
+            'name' => 'Other Scope Customer',
+            'phone' => '9900000299',
+            'city' => 'Chennai',
+        ]);
+        $otherProduct = Product::create([
+            'organization_id' => $otherOrganization->id,
+            'name' => 'Other Scope Product',
+            'product_type' => Product::TYPE_SELLABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'price_per_day' => 0,
+            'rental_price' => 0,
+            'sale_price' => 100,
+            'available_quantity' => 5,
+            'total_quantity' => 5,
+        ]);
+        $this->makeRental($otherOrganization->id, $otherCustomer->id, $otherProduct->id, [
+            'customer_name' => $otherCustomer->name,
+            'phone' => $otherCustomer->phone,
+            'rental_amount' => 999,
+        ]);
+        $otherSale = $this->makeSale($otherOrganization->id, $otherCustomer->id, $otherProduct->id, 100);
+        $this->makeInvoice($otherOrganization->id, $otherCustomer->id, [
+            'invoice_number' => 'INV-SCOPE-OTHER',
+            'sale_id' => $otherSale->id,
+            'subtotal' => 100,
+            'taxable_amount' => 100,
+            'total_amount' => 100,
+            'balance_amount' => 100,
+        ]);
+
+        $superadminRentals = $this->actingAs($superadmin)->get(route('rentals.index'));
+        $salesUserRentals = $this->actingAs($salesUser)->get(route('rentals.index'));
+        $superadminSales = $this->actingAs($superadmin)->get(route('sales.index'));
+        $salesUserSales = $this->actingAs($salesUser)->get(route('sales.index'));
+        $superadminInvoices = $this->actingAs($superadmin)->get(route('invoices.index'));
+        $salesUserInvoices = $this->actingAs($salesUser)->get(route('invoices.index'));
+
+        $superadminRentals->assertOk();
+        $salesUserRentals->assertOk();
+        $superadminSales->assertOk();
+        $salesUserSales->assertOk();
+        $superadminInvoices->assertOk();
+        $salesUserInvoices->assertOk();
+
+        $this->assertSame(2, (int) $superadminRentals->viewData('rentals')->total());
+        $this->assertSame((int) $superadminRentals->viewData('rentals')->total(), (int) $salesUserRentals->viewData('rentals')->total());
+        $this->assertSame((int) $superadminRentals->viewData('totalRentals'), (int) $salesUserRentals->viewData('totalRentals'));
+
+        $this->assertSame(2, (int) $superadminSales->viewData('sales')->total());
+        $this->assertSame((int) $superadminSales->viewData('sales')->total(), (int) $salesUserSales->viewData('sales')->total());
+        $this->assertSame((int) $superadminSales->viewData('totalSales'), (int) $salesUserSales->viewData('totalSales'));
+
+        $this->assertSame(2, (int) $superadminInvoices->viewData('invoices')->total());
+        $this->assertSame((int) $superadminInvoices->viewData('invoices')->total(), (int) $salesUserInvoices->viewData('invoices')->total());
+        $this->assertSame(
+            (int) (($superadminInvoices->viewData('invoiceStats')['totalInvoices'] ?? 0)),
+            (int) (($salesUserInvoices->viewData('invoiceStats')['totalInvoices'] ?? 0))
+        );
+    }
+
     private function deliveryTeamRole(int $organizationId): Role
     {
         return Role::firstOrCreate([
@@ -248,6 +407,36 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
         ]);
     }
 
+    private function salesRole(int $organizationId): Role
+    {
+        return Role::firstOrCreate([
+            'organization_id' => $organizationId,
+            'slug' => User::ROLE_SALES,
+        ], [
+            'name' => 'Sales User',
+            'description' => 'Sales User',
+            'permissions' => Role::normalizePermissions([
+                'customers' => ['read'],
+                'products' => ['read'],
+                'rentals' => ['read'],
+                'sales' => ['read'],
+                'invoices' => ['read'],
+            ]),
+            'is_system' => false,
+            'is_active' => true,
+        ]);
+    }
+
+    private function salesUser(int $organizationId, int $roleId, string $email): User
+    {
+        return TestData::user(null, [
+            'organization_id' => $organizationId,
+            'role' => 'staff',
+            'role_id' => $roleId,
+            'email' => $email,
+        ]);
+    }
+
     private function makeRental(int $organizationId, int $customerId, int $productId, array $overrides = []): Rental
     {
         return Rental::create(array_merge([
@@ -267,9 +456,9 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
         ], $overrides));
     }
 
-    private function makeSale(int $organizationId, int $customerId, int $productId, float $amount): Sale
+    private function makeSale(int $organizationId, int $customerId, int $productId, float $amount, array $overrides = []): Sale
     {
-        return Sale::create([
+        return Sale::create(array_merge([
             'organization_id' => $organizationId,
             'customer_id' => $customerId,
             'product_id' => $productId,
@@ -282,7 +471,7 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
             'sale_date' => now()->toDateString(),
             'sale_amount' => $amount,
             'payment_status' => 'pending',
-        ]);
+        ], $overrides));
     }
 
     private function makeInvoice(int $organizationId, int $customerId, array $overrides = []): Invoice

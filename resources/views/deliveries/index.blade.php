@@ -19,6 +19,23 @@
     $statusFilter = $statusFilter ?? '';
     $workflowFilter = $workflowFilter ?? '';
     $ownershipFilter = $ownershipFilter ?? 'all';
+    $sortBy = $sortBy ?? 'action_priority';
+    $sortDirection = $sortDirection ?? 'asc';
+
+    $sortOptions = [
+        'action_priority' => 'Action Priority',
+        'schedule_date' => 'Schedule Date',
+        'status' => 'Status',
+        'type' => 'Type',
+        'staff' => 'Staff',
+        'customer' => 'Customer / Rental',
+        'recently_updated' => 'Recently Updated',
+    ];
+
+    $sortDirectionOptions = [
+        'asc' => 'Ascending',
+        'desc' => 'Descending',
+    ];
 
     $boardHref = function (array $overrides = [], array $forget = []) {
         $query = request()->query();
@@ -37,6 +54,10 @@
 
         return route('deliveries.index', $query);
     };
+
+    $sortFormQuery = collect(request()->query())
+        ->except(['sort_by', 'sort_dir', 'page'])
+        ->all();
 
     $tabs = [
         ['key' => 'all', 'label' => 'All Tasks'],
@@ -275,6 +296,19 @@
     .ops-task-head p { margin:4px 0 0; font-size:12px; line-height:1.5; color:var(--ph-color-text-soft); }
     .ops-task-count { font-size:12px; font-weight:800; color:var(--ph-color-text-soft); padding:8px 10px; border-radius:999px; background:var(--ph-color-surface-soft); border:1px solid var(--ph-color-border); }
     .ops-task-meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .ops-sort-form { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .ops-sort-label { font-size:12px; font-weight:800; color:var(--ph-color-text-soft); }
+    .ops-sort-select {
+        min-height:38px;
+        padding:0 12px;
+        border-radius:12px;
+        border:1px solid var(--ph-color-border-strong);
+        background:#fff;
+        color:var(--ph-color-text);
+        font-size:13px;
+        font-weight:700;
+        box-sizing:border-box;
+    }
     .ops-selected-count { display:none; font-size:12px; font-weight:800; color:var(--ph-color-primary); padding:8px 10px; border-radius:999px; background:var(--ph-color-info-soft); border:1px solid rgba(23,119,189,.18); }
     .ops-selected-count.is-visible { display:inline-flex; }
     .ops-table-wrap { width:100%; overflow-x:auto; }
@@ -480,6 +514,17 @@
             max-width:100%;
             justify-content:center;
         }
+        .ops-task-meta,
+        .ops-sort-form {
+            width:100%;
+        }
+        .ops-sort-form {
+            display:grid;
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+        }
+        .ops-sort-label {
+            grid-column:span 2;
+        }
         .ops-tab { min-height:34px; padding:0 11px; font-size:11px; }
         .ops-action-panel { position:static; min-width:0; box-shadow:none; margin-top:8px; }
     }
@@ -626,6 +671,8 @@
                     </div>
                     <div class="ops-filter-actions">
                         <input type="hidden" name="tab" value="{{ $tab }}">
+                        <input type="hidden" name="sort_by" value="{{ $sortBy }}">
+                        <input type="hidden" name="sort_dir" value="{{ $sortDirection }}">
                         <button type="submit" class="rn-btn-primary">Apply</button>
                         <a href="{{ route('deliveries.index') }}" class="rn-btn">Clear Filters</a>
                     </div>
@@ -642,6 +689,22 @@
                     <p>Direct actions stay visible here, so staff can call, map, start, complete, and open tasks without hopping through separate modules.</p>
                 </div>
                 <div class="ops-task-meta">
+                    <form method="GET" action="{{ route('deliveries.index') }}" class="ops-sort-form">
+                        @foreach($sortFormQuery as $queryKey => $queryValue)
+                            <input type="hidden" name="{{ $queryKey }}" value="{{ $queryValue }}">
+                        @endforeach
+                        <label for="ops_sort_by" class="ops-sort-label">Sort:</label>
+                        <select id="ops_sort_by" name="sort_by" class="ops-sort-select" onchange="this.form.submit()">
+                            @foreach($sortOptions as $sortKey => $sortLabel)
+                                <option value="{{ $sortKey }}" @selected($sortBy === $sortKey)>{{ $sortLabel }}</option>
+                            @endforeach
+                        </select>
+                        <select id="ops_sort_dir" name="sort_dir" class="ops-sort-select" onchange="this.form.submit()" aria-label="Sort direction">
+                            @foreach($sortDirectionOptions as $directionKey => $directionLabel)
+                                <option value="{{ $directionKey }}" @selected($sortDirection === $directionKey)>{{ $directionLabel }}</option>
+                            @endforeach
+                        </select>
+                    </form>
                     <span id="deliverySelectedCount" class="ops-selected-count" aria-live="polite">0 selected</span>
                     <div class="ops-task-count">{{ $taskResultsCount ?? $tasks->count() }} tasks</div>
                 </div>

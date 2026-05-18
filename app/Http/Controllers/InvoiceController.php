@@ -144,20 +144,13 @@ class InvoiceController extends Controller
 
     private function applyInvoiceScope($query)
     {
-        $user = Auth::user();
-
-        if ($user && $user->hasScope('self_created', 'invoices') && Schema::hasColumn('invoices', 'created_by')) {
-            $query->where('created_by', $user->id);
-        }
-
+        // Invoice lists stay organization-wide unless a future UI adds an explicit "My invoices" filter.
         return $query;
     }
 
     private function scopedInvoiceQuery()
     {
-        return $this->applyInvoiceScope(
-            Invoice::query()->where('organization_id', $this->orgId())
-        );
+        return Invoice::query()->where('organization_id', $this->orgId());
     }
 
     private function invoiceBaseQuery(bool $includeRelations = true, bool $applyScope = true)

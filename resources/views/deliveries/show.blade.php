@@ -5,6 +5,7 @@
     $isSaleTask = (bool) $delivery->sale_id;
     $linkedCustomer = $isSaleTask ? $delivery->sale?->customer : $delivery->rental?->customer;
     $linkedPhone = $linkedCustomer?->phone ?: ($delivery->rental?->phone ?? null);
+    $linkedWhatsapp = $linkedCustomer?->preferredWhatsAppNumber() ?: $linkedPhone;
     $rentalAssets = $delivery->rental?->activeRentalAssets ?? collect();
     $rentalSaleItems = $delivery->rental?->saleItems ?? collect();
     $pickupRecord = $delivery->rental?->pickupRecord;
@@ -93,7 +94,7 @@
     $proofConfig = $proofConfig ?? ['max_kb' => 100, 'target_kb' => 50, 'max_dimension' => 1024];
     $workflowProofSectionId = 'workflow-proof-section';
     $workflowStage = $delivery->type === 'pickup' ? \App\Models\DeliveryProof::STAGE_PICKUP : \App\Models\DeliveryProof::STAGE_DELIVERY;
-    $acknowledgementText = \App\Models\DeliveryProof::acknowledgementFor($workflowStage);
+    $acknowledgementText = \App\Models\DeliveryProof::acknowledgementFor($workflowStage, ! $isSaleTask);
     $locationProofs = $deliveryProofs->where('proof_type', \App\Models\DeliveryProof::TYPE_LOCATION)->values();
     $fileProofs = $deliveryProofs->reject(fn ($proof) => $proof->proof_type === \App\Models\DeliveryProof::TYPE_LOCATION)->values();
     $hasPendingWorkflowCapture = $canUpdateTask && in_array($delivery->status, ['pending', 'in_progress'], true);
@@ -118,57 +119,42 @@
     ];
     $hasWorkflowErrors = collect($workflowErrorFields)->contains(fn ($field) => $errors->has($field));
 
-    $mobilePrimaryActions = collect();
-    $mobileMoreActions = collect();
-
-    if ($canUpdateTask && in_array($delivery->status, ['pending', 'in_progress'], true)) {
-        $mobilePrimaryActions->push([
+    $mobileQuickActions = collect([
+        [
             'type' => 'link',
-            'label' => $primaryWorkflowCtaLabel,
-            'href' => '#' . $workflowProofSectionId,
-        ]);
-    } elseif ($hasProofHistory) {
-        $mobilePrimaryActions->push([
-            'type' => 'link',
-            'label' => 'View Proof',
-            'href' => '#delivery-proof-history',
-        ]);
-    }
+            'label' => 'Back',
+            'href' => route('deliveries.index'),
+        ],
+    ]);
 
     if ($linkedPhone) {
-        $mobilePrimaryActions->push([
+        $mobileQuickActions->push([
             'type' => 'link',
             'label' => 'Call',
             'href' => 'tel:' . preg_replace('/\D+/', '', $linkedPhone),
         ]);
     }
 
-    $mobilePrimaryActions = $mobilePrimaryActions->take(2)->values();
-    $usedMobileLabels = $mobilePrimaryActions->pluck('label')->all();
-    $pushMoreAction = function (array $action) use (&$mobileMoreActions, $usedMobileLabels): void {
-        if (in_array($action['label'], $usedMobileLabels, true)) {
-            return;
-        }
-
-        $mobileMoreActions->push($action);
-    };
-
-    $pushMoreAction([
-        'type' => 'link',
-        'label' => 'Back to Task Board',
-        'href' => route('deliveries.index'),
-    ]);
+    if ($linkedWhatsapp) {
+        $mobileQuickActions->push([
+            'type' => 'link',
+            'label' => 'WhatsApp',
+            'href' => 'https://wa.me/' . preg_replace('/\D+/', '', $linkedWhatsapp),
+            'target' => '_blank',
+            'rel' => 'noopener noreferrer',
+        ]);
+    }
 
     if ($hasProofHistory) {
-        $pushMoreAction([
+        $mobileQuickActions->push([
             'type' => 'link',
-            'label' => 'View Proof History',
+            'label' => 'Proof History',
             'href' => '#delivery-proof-history',
         ]);
     }
 
     if ($canUpdateTask) {
-        $pushMoreAction([
+        $mobileQuickActions->push([
             'type' => 'link',
             'label' => 'Edit Assignment',
             'href' => route('deliveries.edit', $delivery),
@@ -176,7 +162,7 @@
     }
 
     if ($canUpdateTask && !in_array($delivery->status, ['completed', 'cancelled'], true)) {
-        $pushMoreAction([
+        $mobileQuickActions->push([
             'type' => 'form',
             'label' => 'Cancel Task',
             'action' => route('deliveries.cancel', $delivery),
@@ -185,6 +171,8 @@
             'danger' => true,
         ]);
     }
+
+    $mobileQuickActions = $mobileQuickActions->values();
 @endphp
 
 <style>
@@ -248,6 +236,9 @@
         color:#991b1b;
         background:#fff1f2;
         border-color:#fecaca;
+    }
+    .delivery-page-spacer {
+        display:none;
     }
     .detail-btn, .detail-btn-secondary {
         display:inline-flex; align-items:center; justify-content:center; gap:6px;
@@ -405,18 +396,17 @@
             width:100%;
         }
         .mobile-inline-actions > * { min-width:0; }
-        .mobile-sticky-actions .mobile-actions-menu {
-            flex:1 0 auto;
-            width:auto;
-            min-width:0;
-        }
-        .mobile-sticky-actions .mobile-actions-menu summary {
+        .mobile-inline-actions .detail-btn-secondary,
+        .mobile-inline-actions .detail-btn,
+        .mobile-inline-actions .mobile-actions-menu summary {
             width:100%;
             min-height:44px;
+            box-sizing:border-box;
         }
-        .mobile-sticky-actions .mobile-actions-panel {
-            width:min(220px, calc(100vw - 44px));
-            margin-top:0;
+        .delivery-page-spacer {
+            display:block;
+            height:calc(96px + env(safe-area-inset-bottom, 0px));
+            pointer-events:none;
         }
     }
 </style>
@@ -447,6 +437,24 @@
                 </form>
             @endif
         </div>
+    </div>
+    <div class="mobile-inline-actions" aria-label="Delivery quick actions">
+        @foreach($mobileQuickActions as $action)
+            @php
+                $method = strtoupper((string) ($action['method'] ?? 'POST'));
+            @endphp
+            @if(($action['type'] ?? 'link') === 'form')
+                <form action="{{ $action['action'] }}" method="{{ in_array($method, ['GET', 'POST'], true) ? $method : 'POST' }}" @if(filled($action['confirm'] ?? null)) onsubmit="return confirm('{{ e($action['confirm']) }}');" @endif style="margin:0;">
+                    @csrf
+                    @if(!in_array($method, ['GET', 'POST'], true))
+                        @method($method)
+                    @endif
+                    <button type="submit" class="detail-btn-secondary{{ !empty($action['danger']) ? ' is-danger' : '' }}" style="{{ !empty($action['danger']) ? 'background:#fff1f2;border-color:#fecaca;color:#991b1b;' : '' }}">{{ $action['label'] }}</button>
+                </form>
+            @else
+                <a href="{{ $action['href'] }}" class="detail-btn-secondary" @if(!empty($action['target'])) target="{{ $action['target'] }}" @endif @if(!empty($action['rel'])) rel="{{ $action['rel'] }}" @endif>{{ $action['label'] }}</a>
+            @endif
+        @endforeach
     </div>
 
     <div class="detail-card">
@@ -606,6 +614,8 @@
                         <div class="workflow-proof-help">Use browser GPS at {{ $delivery->type }} start. If location permission is denied, add the reason and continue.</div>
                         <div class="workflow-proof-actions">
                             <button type="button" class="workflow-proof-trigger is-primary" data-capture-location>Capture Current Location</button>
+                            <button type="button" class="workflow-proof-trigger" data-recapture-location hidden>Re-capture Location</button>
+                            <button type="button" class="workflow-proof-trigger" data-clear-location hidden>Clear Location</button>
                             <a href="#delivery-proof-history" class="workflow-proof-trigger">Jump to Proof History</a>
                         </div>
                         <div class="workflow-proof-status" data-location-status>Location not captured yet.</div>
@@ -624,6 +634,7 @@
                             <div>Lat: <span data-location-lat-preview>{{ old('location_latitude', '-') }}</span></div>
                             <div>Lng: <span data-location-lng-preview>{{ old('location_longitude', '-') }}</span></div>
                             <div>Accuracy: <span data-location-accuracy-preview>{{ old('location_accuracy', '-') }}</span></div>
+                            <div>Captured: <span data-location-captured-preview>{{ old('location_captured_at', '-') }}</span></div>
                         </div>
                     </div>
                 </div>
@@ -718,6 +729,8 @@
                         <div class="workflow-proof-help">Capture GPS on completion. If blocked, give a reason so the workflow is marked as location-missing.</div>
                         <div class="workflow-proof-actions">
                             <button type="button" class="workflow-proof-trigger is-primary" data-capture-location>Capture Current Location</button>
+                            <button type="button" class="workflow-proof-trigger" data-recapture-location hidden>Re-capture Location</button>
+                            <button type="button" class="workflow-proof-trigger" data-clear-location hidden>Clear Location</button>
                         </div>
                         <div class="workflow-proof-status" data-location-status>Location not captured yet.</div>
                     </div>
@@ -734,6 +747,7 @@
                             <div>Lat: <span data-location-lat-preview>{{ old('location_latitude', '-') }}</span></div>
                             <div>Lng: <span data-location-lng-preview>{{ old('location_longitude', '-') }}</span></div>
                             <div>Accuracy: <span data-location-accuracy-preview>{{ old('location_accuracy', '-') }}</span></div>
+                            <div>Captured: <span data-location-captured-preview>{{ old('location_captured_at', '-') }}</span></div>
                         </div>
                     </div>
 
@@ -940,13 +954,7 @@
         @endif
     </div>
 </div>
-
-@include('partials.mobile-action-bar', [
-    'label' => 'Delivery mobile actions',
-    'moreLabel' => 'Delivery secondary actions',
-    'actions' => $mobilePrimaryActions->all(),
-    'moreActions' => $mobileMoreActions->all(),
-])
+<div class="delivery-page-spacer" aria-hidden="true"></div>
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', () => {
@@ -983,30 +991,65 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.readAsDataURL(file);
     });
 
+    const formatCapturedAt = (value) => {
+        if (!value) {
+            return '-';
+        }
+
+        const parsed = new Date(value);
+
+        if (Number.isNaN(parsed.getTime())) {
+            return value;
+        }
+
+        return new Intl.DateTimeFormat('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true,
+        }).format(parsed);
+    };
+
     const compressImageFile = async (file) => {
         if (!(file instanceof File) || !file.type.startsWith('image/')) {
             return file;
         }
 
         const image = await loadImageFromFile(file);
-        const scale = Math.min(1, proofConfig.maxDimension / Math.max(image.width, image.height));
-        const width = Math.max(Math.round(image.width * scale), 1);
-        const height = Math.max(Math.round(image.height * scale), 1);
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d', { alpha: false });
-
-        canvas.width = width;
-        canvas.height = height;
-        context.fillStyle = '#ffffff';
-        context.fillRect(0, 0, width, height);
-        context.drawImage(image, 0, 0, width, height);
-
+        const dimensions = [proofConfig.maxDimension, 800, 640, 480]
+            .filter((dimension, index, items) => dimension > 0 && items.indexOf(dimension) === index);
+        const qualities = [0.75, 0.6, 0.45, 0.35];
         let blob = null;
 
-        for (const quality of [0.82, 0.72, 0.62, 0.52, 0.42]) {
-            blob = await canvasToBlob(canvas, 'image/jpeg', quality);
+        for (const dimension of dimensions) {
+            const scale = Math.min(1, dimension / Math.max(image.width, image.height));
+            const width = Math.max(Math.round(image.width * scale), 1);
+            const height = Math.max(Math.round(image.height * scale), 1);
 
-            if (blob && blob.size <= proofConfig.targetBytes) {
+            canvas.width = width;
+            canvas.height = height;
+            context.fillStyle = '#ffffff';
+            context.fillRect(0, 0, width, height);
+            context.drawImage(image, 0, 0, width, height);
+
+            for (const quality of qualities) {
+                blob = await canvasToBlob(canvas, 'image/jpeg', quality);
+
+                if (!blob) {
+                    continue;
+                }
+
+                if (blob.size <= proofConfig.targetBytes) {
+                    break;
+                }
+            }
+
+            if (blob && blob.size <= proofConfig.maxBytes) {
                 break;
             }
         }
@@ -1016,7 +1059,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (blob.size > proofConfig.maxBytes) {
-            throw new Error('Compressed image is still above the allowed size. Please capture a closer or simpler image.');
+            throw new Error('Image is still too large. Try taking a closer photo with less background, or use retake/choose another photo.');
         }
 
         const baseName = (file.name || 'proof-image').replace(/\.[^/.]+$/, '');
@@ -1062,12 +1105,27 @@ document.addEventListener('DOMContentLoaded', () => {
         const latPreview = form.querySelector('[data-location-lat-preview]');
         const lngPreview = form.querySelector('[data-location-lng-preview]');
         const accuracyPreview = form.querySelector('[data-location-accuracy-preview]');
+        const capturedPreview = form.querySelector('[data-location-captured-preview]');
+        const captureButton = form.querySelector('[data-capture-location]');
+        const recaptureButton = form.querySelector('[data-recapture-location]');
+        const clearButton = form.querySelector('[data-clear-location]');
         const hasCoordinates = latitudeInput?.value && longitudeInput?.value;
         const reason = reasonField?.value?.trim() || '';
 
         if (latPreview) latPreview.textContent = latitudeInput?.value || '-';
         if (lngPreview) lngPreview.textContent = longitudeInput?.value || '-';
         if (accuracyPreview) accuracyPreview.textContent = accuracyInput?.value || '-';
+        if (capturedPreview) capturedPreview.textContent = formatCapturedAt(capturedAtInput?.value || '');
+
+        if (captureButton instanceof HTMLElement) {
+            captureButton.hidden = !!hasCoordinates;
+        }
+        if (recaptureButton instanceof HTMLElement) {
+            recaptureButton.hidden = !hasCoordinates;
+        }
+        if (clearButton instanceof HTMLElement) {
+            clearButton.hidden = !hasCoordinates;
+        }
 
         if (!status) {
             return;
@@ -1077,7 +1135,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (hasCoordinates) {
             status.classList.add('is-success');
-            status.textContent = `Location captured${capturedAtInput?.value ? ` at ${capturedAtInput.value}` : ''}.`;
+            status.textContent = `Location captured${capturedAtInput?.value ? ` at ${formatCapturedAt(capturedAtInput.value)}` : ''}.`;
             return;
         }
 
@@ -1092,26 +1150,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.querySelectorAll('[data-workflow-form]').forEach((form) => {
         const captureButton = form.querySelector('[data-capture-location]');
+        const recaptureButton = form.querySelector('[data-recapture-location]');
+        const clearButton = form.querySelector('[data-clear-location]');
         const latitudeInput = form.querySelector('[data-location-latitude]');
         const longitudeInput = form.querySelector('[data-location-longitude]');
         const accuracyInput = form.querySelector('[data-location-accuracy]');
         const capturedAtInput = form.querySelector('[data-location-captured-at]');
         const reasonField = form.querySelector('textarea[name="location_missing_reason"]');
+        const resetCoordinates = () => {
+            latitudeInput.value = '';
+            longitudeInput.value = '';
+            accuracyInput.value = '';
+            capturedAtInput.value = '';
+        };
 
-        updateLocationPreview(form);
-
-        reasonField?.addEventListener('input', () => {
-            if (reasonField.value.trim() !== '') {
-                latitudeInput.value = '';
-                longitudeInput.value = '';
-                accuracyInput.value = '';
-                capturedAtInput.value = '';
-            }
-
-            updateLocationPreview(form);
-        });
-
-        captureButton?.addEventListener('click', () => {
+        const handleLocationCapture = () => {
             if (!navigator.geolocation) {
                 if (reasonField) {
                     reasonField.focus();
@@ -1147,6 +1200,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 timeout: 10000,
                 maximumAge: 0,
             });
+        };
+
+        updateLocationPreview(form);
+
+        reasonField?.addEventListener('input', () => {
+            if (reasonField.value.trim() !== '') {
+                resetCoordinates();
+            }
+
+            updateLocationPreview(form);
+        });
+
+        captureButton?.addEventListener('click', handleLocationCapture);
+        recaptureButton?.addEventListener('click', handleLocationCapture);
+        clearButton?.addEventListener('click', () => {
+            resetCoordinates();
+            updateLocationPreview(form);
+            captureButton?.focus();
         });
     });
 

@@ -114,6 +114,7 @@
         @media (max-width: 767px) {
             .asset-detail-page {
                 gap: 12px;
+                padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
             }
             .asset-detail-card {
                 padding: 16px;
@@ -141,8 +142,25 @@
                 grid-template-columns: 1fr !important;
                 gap: 10px !important;
             }
+            .asset-copy-row {
+                align-items:flex-start;
+                flex-wrap:wrap;
+            }
             .asset-copy-value {
                 font-size: 13px !important;
+                white-space:normal;
+                overflow:visible;
+                text-overflow:clip;
+                overflow-wrap:anywhere;
+                word-break:break-word;
+            }
+            .asset-detail-card div,
+            .asset-detail-card span,
+            .asset-detail-card p,
+            .asset-detail-card strong,
+            .asset-detail-card a {
+                overflow-wrap:anywhere;
+                word-break:break-word;
             }
         }
     </style>

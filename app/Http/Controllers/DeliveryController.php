@@ -22,6 +22,7 @@ use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
@@ -269,9 +270,9 @@ class DeliveryController extends Controller
         return (int) auth()->user()->organization_id;
     }
 
-    private function deliveryProofAcknowledgement(string $workflowStage): string
+    private function deliveryProofAcknowledgement(Delivery $delivery): string
     {
-        return DeliveryProof::acknowledgementFor($workflowStage);
+        return DeliveryProof::acknowledgementFor($delivery->type, ! $delivery->sale_id);
     }
 
     private function deliveryProofConfig(): array
@@ -449,7 +450,7 @@ class DeliveryController extends Controller
 
     private function storeWorkflowCompletionProofs(Delivery $delivery, User $user, array $validated): void
     {
-        $acknowledgementText = $this->deliveryProofAcknowledgement($delivery->type);
+        $acknowledgementText = $this->deliveryProofAcknowledgement($delivery);
         $proofNotes = trim((string) ($validated['proof_notes'] ?? '')) ?: null;
 
         $this->storeDeliveryWorkflowLocation($delivery, $user, DeliveryProof::MOMENT_COMPLETE, $validated);
@@ -611,6 +612,247 @@ class DeliveryController extends Controller
             ->values();
     }
 
+    private function sortDeliveryBoardCollection(Collection $deliveries, string $sortBy, string $sortDirection, Carbon $today): Collection
+    {
+        $direction = $sortDirection === 'desc' ? 'desc' : 'asc';
+
+        return $deliveries
+            ->sort(function (Delivery $a, Delivery $b) use ($sortBy, $direction, $today) {
+                $comparison = match ($sortBy) {
+                    'schedule_date' => $this->compareNullableTimestamps(
+                        $a->scheduled_at?->timestamp,
+                        $b->scheduled_at?->timestamp,
+                        $direction
+                    ),
+                    'status' => $this->compareBoardStatuses($a, $b, $direction, $today),
+                    'type' => $this->compareBoardStrings($a->type, $b->type, $direction),
+                    'staff' => $this->compareBoardStrings(
+                        $this->boardAssignedName($a),
+                        $this->boardAssignedName($b),
+                        $direction
+                    ),
+                    'customer' => $this->compareBoardStrings(
+                        $this->boardCustomerReference($a),
+                        $this->boardCustomerReference($b),
+                        $direction
+                    ),
+                    'recently_updated' => $this->compareNullableTimestamps(
+                        $a->updated_at?->timestamp,
+                        $b->updated_at?->timestamp,
+                        $direction,
+                        false
+                    ),
+                    default => $this->compareByActionPriority($a, $b, $direction, $today),
+                };
+
+                if ($comparison !== 0) {
+                    return $comparison;
+                }
+
+                return $direction === 'desc'
+                    ? ($a->id <=> $b->id)
+                    : ($b->id <=> $a->id);
+            })
+            ->values();
+    }
+
+    private function compareByActionPriority(Delivery $a, Delivery $b, string $direction, Carbon $today): int
+    {
+        $aRank = $this->boardActionPriorityRank($a, $today);
+        $bRank = $this->boardActionPriorityRank($b, $today);
+
+        if ($aRank !== $bRank) {
+            return $direction === 'desc'
+                ? ($bRank <=> $aRank)
+                : ($aRank <=> $bRank);
+        }
+
+        if (in_array($aRank, [0, 1, 3, 4], true)) {
+            $scheduleCompare = $this->compareNullableTimestamps(
+                $a->scheduled_at?->timestamp,
+                $b->scheduled_at?->timestamp,
+                'asc'
+            );
+
+            if ($scheduleCompare !== 0) {
+                return $direction === 'desc' ? -$scheduleCompare : $scheduleCompare;
+            }
+        }
+
+        if ($aRank === 5) {
+            $completedCompare = $this->compareNullableTimestamps(
+                $a->completed_at?->timestamp ?? $a->updated_at?->timestamp,
+                $b->completed_at?->timestamp ?? $b->updated_at?->timestamp,
+                'desc',
+                false
+            );
+
+            if ($completedCompare !== 0) {
+                return $direction === 'desc' ? -$completedCompare : $completedCompare;
+            }
+        }
+
+        $updatedCompare = $this->compareNullableTimestamps(
+            $a->updated_at?->timestamp,
+            $b->updated_at?->timestamp,
+            'desc',
+            false
+        );
+
+        if ($updatedCompare !== 0) {
+            return $direction === 'desc' ? -$updatedCompare : $updatedCompare;
+        }
+
+        return 0;
+    }
+
+    private function compareBoardStatuses(Delivery $a, Delivery $b, string $direction, Carbon $today): int
+    {
+        $rankOrder = [
+            'pending' => 0,
+            'in_progress' => 1,
+            'completed' => 2,
+            'cancelled' => 3,
+        ];
+
+        $aStatus = $this->boardStatusKey($a, $today);
+        $bStatus = $this->boardStatusKey($b, $today);
+        $aRank = $rankOrder[$aStatus] ?? 9;
+        $bRank = $rankOrder[$bStatus] ?? 9;
+
+        if ($aRank !== $bRank) {
+            return $direction === 'desc'
+                ? ($bRank <=> $aRank)
+                : ($aRank <=> $bRank);
+        }
+
+        return $this->compareByActionPriority($a, $b, $direction, $today);
+    }
+
+    private function compareBoardStrings(?string $a, ?string $b, string $direction): int
+    {
+        $left = mb_strtolower(trim((string) $a));
+        $right = mb_strtolower(trim((string) $b));
+
+        if ($left === $right) {
+            return 0;
+        }
+
+        $comparison = $left <=> $right;
+
+        return $direction === 'desc' ? -$comparison : $comparison;
+    }
+
+    private function compareNullableTimestamps(?int $a, ?int $b, string $direction, bool $nullsLast = true): int
+    {
+        if ($a === $b) {
+            return 0;
+        }
+
+        if ($a === null || $b === null) {
+            if ($a === null && $b === null) {
+                return 0;
+            }
+
+            if ($nullsLast) {
+                return $a === null ? 1 : -1;
+            }
+
+            return $a === null ? -1 : 1;
+        }
+
+        $comparison = $a <=> $b;
+
+        return $direction === 'desc' ? -$comparison : $comparison;
+    }
+
+    private function boardActionPriorityRank(Delivery $delivery, Carbon $today): int
+    {
+        $todayKey = $today->toDateString();
+        $scheduledDate = $delivery->scheduled_at?->toDateString();
+
+        if ($delivery->status === 'cancelled') {
+            return 6;
+        }
+
+        if ($this->boardIsCompleted($delivery)) {
+            return 5;
+        }
+
+        if ($delivery->status === 'in_progress') {
+            return 3;
+        }
+
+        if ($delivery->status === 'pending' && $scheduledDate !== null && $scheduledDate < $todayKey) {
+            return 0;
+        }
+
+        if ($delivery->status === 'pending' && $scheduledDate === $todayKey) {
+            return 1;
+        }
+
+        if ($delivery->status === 'pending' && $scheduledDate === null) {
+            return 2;
+        }
+
+        if ($delivery->status === 'pending' && $scheduledDate !== null && $scheduledDate > $todayKey) {
+            return 4;
+        }
+
+        return 5;
+    }
+
+    private function boardStatusKey(Delivery $delivery, Carbon $today): string
+    {
+        if ($delivery->status === 'cancelled') {
+            return 'cancelled';
+        }
+
+        if ($this->boardIsCompleted($delivery)) {
+            return 'completed';
+        }
+
+        return $delivery->status;
+    }
+
+    private function boardIsCompleted(Delivery $delivery): bool
+    {
+        if ($delivery->status === 'completed') {
+            return true;
+        }
+
+        if ($delivery->sale_id || !$delivery->rental) {
+            return false;
+        }
+
+        if ($delivery->type === 'delivery') {
+            return $delivery->rental->pendingDeliveryQuantityTotal() <= 0
+                && $delivery->rental->deliveredQuantityTotal() > 0;
+        }
+
+        return $delivery->rental->pendingPickupQuantityTotal() <= 0
+            && $delivery->rental->returnedQuantityTotal() > 0;
+    }
+
+    private function boardAssignedName(Delivery $delivery): string
+    {
+        return (string) ($delivery->assignedUser?->name
+            ?? $delivery->assignedStaff?->name
+            ?? $delivery->third_party_name
+            ?? 'Unassigned');
+    }
+
+    private function boardCustomerReference(Delivery $delivery): string
+    {
+        return (string) (
+            $delivery->sale?->customer?->displayName()
+            ?? $delivery->rental?->customer?->displayName()
+            ?? $delivery->rental?->customer_name
+            ?? $delivery->sale?->customer?->name
+            ?? 'Customer'
+        );
+    }
+
     private function pickupTaskNeedsAction(Delivery $delivery): bool
     {
         if ($delivery->type !== 'pickup') {
@@ -762,9 +1004,19 @@ class DeliveryController extends Controller
         $statusFilter = strtolower((string) $request->query('status', $legacyDefault['status'] ?? ''));
         $workflowFilter = strtolower((string) $request->query('workflow', $legacyDefault['workflow'] ?? ''));
         $ownershipFilter = strtolower((string) $request->query('ownership', 'all'));
+        $sortBy = strtolower((string) $request->query('sort_by', 'action_priority'));
+        $sortDirection = strtolower((string) $request->query('sort_dir', 'asc'));
 
         if (!in_array($ownershipFilter, ['all', 'my'], true)) {
             $ownershipFilter = 'all';
+        }
+
+        if (!in_array($sortBy, ['action_priority', 'schedule_date', 'status', 'type', 'staff', 'customer', 'recently_updated'], true)) {
+            $sortBy = 'action_priority';
+        }
+
+        if (!in_array($sortDirection, ['asc', 'desc'], true)) {
+            $sortDirection = 'asc';
         }
 
         $baseLoad = [
@@ -1025,13 +1277,19 @@ class DeliveryController extends Controller
             ->map(fn ($id) => (int) $id)
             ->values();
 
+        $todayStart = now()->startOfDay();
+        $visibleTasks = $hydrateDeliveries($dedupedTaskIds);
+
         if ($this->logisticsMetrics()->isSupportedWorkflow($workflowFilter)) {
-            $dedupedTaskIds = $this->logisticsMetrics()
-                ->applyWorkflowFilter($hydrateDeliveries($dedupedTaskIds), $workflowFilter, now()->startOfDay())
-                ->pluck('id')
-                ->map(fn ($id) => (int) $id)
+            $visibleTasks = $this->logisticsMetrics()
+                ->applyWorkflowFilter($visibleTasks, $workflowFilter, $todayStart)
                 ->values();
         }
+
+        $dedupedTaskIds = $this->sortDeliveryBoardCollection($visibleTasks, $sortBy, $sortDirection, $todayStart)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
 
         $perPage = 20;
         $currentPage = Paginator::resolveCurrentPage('page');
@@ -1060,14 +1318,14 @@ class DeliveryController extends Controller
 
         if ($this->logisticsMetrics()->isSupportedWorkflow($workflowFilter)) {
             $summaryTaskIds = $this->logisticsMetrics()
-                ->applyWorkflowFilter($hydrateDeliveries($summaryTaskIds), $workflowFilter, now()->startOfDay())
+                ->applyWorkflowFilter($hydrateDeliveries($summaryTaskIds), $workflowFilter, $todayStart)
                 ->pluck('id')
                 ->map(fn ($id) => (int) $id)
                 ->values();
         }
 
         $summaryDeliveries = $hydrateDeliveries($summaryTaskIds);
-        $logisticsSummary = $this->logisticsMetrics()->summary($summaryDeliveries, now()->startOfDay());
+        $logisticsSummary = $this->logisticsMetrics()->summary($summaryDeliveries, $todayStart);
         $totalTasksCount = (int) ($logisticsSummary['totalTasksCount'] ?? 0);
         $deliveryTasksCount = (int) ($logisticsSummary['deliveryTasksCount'] ?? 0);
         $pickupTasksCount = (int) ($logisticsSummary['pickupTasksCount'] ?? 0);
@@ -1137,6 +1395,8 @@ class DeliveryController extends Controller
             'statusFilter',
             'workflowFilter',
             'ownershipFilter',
+            'sortBy',
+            'sortDirection',
             'tasks',
             'taskResultsCount',
             'totalTasksCount',

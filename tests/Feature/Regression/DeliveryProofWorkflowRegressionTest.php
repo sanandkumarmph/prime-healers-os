@@ -4,6 +4,9 @@ namespace Tests\Feature\Regression;
 
 use App\Models\Delivery;
 use App\Models\DeliveryProof;
+use App\Models\Customer;
+use App\Models\Product;
+use App\Models\Sale;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -111,6 +114,83 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
             ->assertOk()
             ->assertSeeText('Complete Pickup')
             ->assertDontSeeText('Completion Checklist');
+    }
+
+    public function test_delivery_detail_shows_location_clear_recapture_controls_and_mobile_compression_guidance(): void
+    {
+        $organization = TestData::organization();
+        $deliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+
+        $this->actingAs($deliveryUser);
+
+        $delivery = $this->makeDeliveryTask($organization->id, $deliveryUser->id, 'delivery', 'in_progress');
+
+        $this->get(route('deliveries.show', $delivery))
+            ->assertOk()
+            ->assertSee('data-capture-location', false)
+            ->assertSee('data-clear-location', false)
+            ->assertSee('data-recapture-location', false)
+            ->assertSeeText('Clear Location')
+            ->assertSeeText('Re-capture Location')
+            ->assertSee('Image is still too large. Try taking a closer photo with less background, or use retake/choose another photo.', false);
+    }
+
+    public function test_sale_delivery_signature_copy_does_not_mention_returning_the_product(): void
+    {
+        $organization = TestData::organization();
+        $deliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Sale Delivery Customer',
+            'phone' => '9000000611',
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Sale Delivery Product',
+            'product_type' => Product::TYPE_SELLABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'price_per_day' => 0,
+            'rental_price' => 0,
+            'sale_price' => 1200,
+            'available_quantity' => 5,
+            'total_quantity' => 5,
+        ]);
+
+        $sale = Sale::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $customer->id,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'unit_price' => 1200,
+            'discount_amount' => 0,
+            'shipping_charges' => 0,
+            'tax_percentage' => 0,
+            'tax_calculation_mode' => 'exclusive',
+            'sale_date' => now()->toDateString(),
+            'sale_amount' => 1200,
+            'payment_status' => 'pending',
+        ]);
+
+        $delivery = Delivery::create([
+            'organization_id' => $organization->id,
+            'sale_id' => $sale->id,
+            'type' => 'delivery',
+            'status' => 'in_progress',
+            'assigned_user_id' => $deliveryUser->id,
+            'scheduled_at' => now(),
+            'notes' => 'Sale item delivery signature wording test',
+        ]);
+
+        $this->actingAs($deliveryUser)
+            ->get(route('deliveries.show', $delivery))
+            ->assertOk()
+            ->assertSeeText('I confirm that the product(s) have been received in good condition and working order.')
+            ->assertDontSeeText('I agree to return the product(s) in the same condition, subject to normal use.');
     }
 
     public function test_delivery_team_can_operate_third_party_delivery_without_internal_owner(): void

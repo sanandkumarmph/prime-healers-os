@@ -4,10 +4,12 @@ namespace Tests\Feature\Regression;
 
 use App\Models\Customer;
 use App\Models\Delivery;
+use App\Models\Asset;
 use App\Models\Product;
 use App\Models\Rental;
 use App\Models\RentalItem;
 use App\Models\Sale;
+use App\Models\Warehouse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\TestData;
 use Tests\TestCase;
@@ -57,7 +59,7 @@ class MobileActionBarRegressionTest extends TestCase
         ]);
     }
 
-    public function test_customer_rental_sale_and_delivery_pages_use_compact_mobile_action_bar(): void
+    public function test_customer_rental_and_sale_pages_use_compact_mobile_action_bar_while_delivery_uses_inline_workflow_actions(): void
     {
         $customerPage = $this->get(route('customers.show', $this->customer));
         $customerPage->assertOk()
@@ -137,10 +139,50 @@ class MobileActionBarRegressionTest extends TestCase
 
         $deliveryPage = $this->get(route('deliveries.show', $delivery));
         $deliveryPage->assertOk()
-            ->assertSee('ph-mobile-action-bar', false)
+            ->assertDontSee('ph-mobile-action-bar', false)
+            ->assertSee('aria-label="Delivery quick actions"', false)
             ->assertSeeText('Start Delivery')
             ->assertSeeText('Call')
-            ->assertSeeText('More')
             ->assertDontSee('aria-label="Delivery primary actions"', false);
+    }
+
+    public function test_product_asset_and_verify_return_pages_include_mobile_safe_stacked_layout_hooks(): void
+    {
+        $warehouse = Warehouse::create([
+            'organization_id' => $this->organizationId,
+            'name' => 'Main Warehouse',
+            'code' => 'MAIN',
+            'is_active' => true,
+        ]);
+
+        $asset = Asset::create([
+            'organization_id' => $this->organizationId,
+            'product_id' => $this->product->id,
+            'warehouse_id' => $warehouse->id,
+            'asset_name' => 'Returned BiPAP Unit',
+            'serial_number' => 'SERIAL-001',
+            'barcode_value' => 'BARCODE-001',
+            'asset_stage' => Asset::STAGE_RENTAL_STOCK,
+            'asset_status' => Asset::STATUS_AWAITING_VERIFICATION,
+            'condition_status' => 'good',
+        ]);
+
+        $productPage = $this->get(route('products.show', $this->product));
+        $productPage->assertOk()
+            ->assertSee('.product-detail-master-grid', false)
+            ->assertSee('.product-stock-grid', false)
+            ->assertSee('padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));', false);
+
+        $assetPage = $this->get(route('assets.show', $asset));
+        $assetPage->assertOk()
+            ->assertSee('.asset-detail-info-grid', false)
+            ->assertSee('white-space:normal;', false)
+            ->assertSee('padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));', false);
+
+        $verifyReturnPage = $this->get(route('assets.verify-return', $asset));
+        $verifyReturnPage->assertOk()
+            ->assertSee('verify-return-summary-grid', false)
+            ->assertSee('verify-return-form-grid', false)
+            ->assertSee('verify-return-form-actions', false);
     }
 }

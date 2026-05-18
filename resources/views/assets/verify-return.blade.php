@@ -1,6 +1,41 @@
 @extends('layouts.app')
 
 @section('content')
+    <style>
+        @media (max-width: 767px) {
+            .rn-detail-page {
+                padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+            }
+            .verify-return-summary-grid,
+            .verify-return-form-grid {
+                grid-template-columns: 1fr !important;
+                gap: 10px !important;
+            }
+            .verify-return-summary-card,
+            .verify-return-form-actions {
+                min-width: 0;
+            }
+            .verify-return-form-actions {
+                justify-content: stretch !important;
+            }
+            .verify-return-form-actions > * {
+                width: 100%;
+            }
+            .verify-return-form-actions .rx-btn-soft,
+            .verify-return-form-actions .rx-btn-primary {
+                justify-content: center;
+            }
+            .rn-detail-page div,
+            .rn-detail-page span,
+            .rn-detail-page p,
+            .rn-detail-page strong,
+            .rn-detail-page a,
+            .rn-detail-page label {
+                overflow-wrap:anywhere;
+                word-break:break-word;
+            }
+        }
+    </style>
     <div class="rn-detail-page">
         <div class="rx-page-header" style="margin-bottom:20px;">
             <div>
@@ -31,20 +66,20 @@
                         <strong>Serial Pending:</strong> this unit was created with a temporary placeholder serial. Enter the real serial number now if it is available before returning the unit to service.
                     </div>
                 @endif
-                <div style="display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:14px;">
-                    <div style="padding:14px 16px; border-radius:16px; background:#f8fafc; border:1px solid #e2e8f0;">
+                <div class="verify-return-summary-grid" style="display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:14px;">
+                    <div class="verify-return-summary-card" style="padding:14px 16px; border-radius:16px; background:#f8fafc; border:1px solid #e2e8f0;">
                         <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Product</div>
                         <div style="margin-top:6px; font-size:15px; font-weight:700; color:#0f172a;">{{ optional($asset->product)->name ?: 'N/A' }}</div>
                     </div>
-                    <div style="padding:14px 16px; border-radius:16px; background:#f8fafc; border:1px solid #e2e8f0;">
+                    <div class="verify-return-summary-card" style="padding:14px 16px; border-radius:16px; background:#f8fafc; border:1px solid #e2e8f0;">
                         <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Warehouse</div>
                         <div style="margin-top:6px; font-size:15px; font-weight:700; color:#0f172a;">{{ optional($asset->warehouse)->name ?: 'N/A' }}</div>
                     </div>
-                    <div style="padding:14px 16px; border-radius:16px; background:#f8fafc; border:1px solid #e2e8f0;">
+                    <div class="verify-return-summary-card" style="padding:14px 16px; border-radius:16px; background:#f8fafc; border:1px solid #e2e8f0;">
                         <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Current Status</div>
                         <div style="margin-top:6px; font-size:15px; font-weight:700; color:#b45309; text-transform:capitalize;">{{ str_replace('_', ' ', $asset->asset_status) }}</div>
                     </div>
-                    <div style="padding:14px 16px; border-radius:16px; background:#f8fafc; border:1px solid #e2e8f0;">
+                    <div class="verify-return-summary-card" style="padding:14px 16px; border-radius:16px; background:#f8fafc; border:1px solid #e2e8f0;">
                         <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Current Condition</div>
                         <div style="margin-top:6px; font-size:15px; font-weight:700; color:#0f172a; text-transform:capitalize;">{{ $asset->condition_status ?: 'Not recorded' }}</div>
                     </div>
@@ -58,7 +93,7 @@
                     @csrf
                     @method('PUT')
 
-                    <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px;">
+                    <div class="verify-return-form-grid" style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px;">
                         <div>
                             <label for="serial_number" style="display:block; margin-bottom:8px; color:#334155; font-size:14px; font-weight:700;">Serial Number</label>
                             <input
@@ -117,7 +152,7 @@
                             style="width:100%; padding:13px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;">{{ old('remarks') }}</textarea>
                     </div>
 
-                    <div style="display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap;">
+                    <div class="verify-return-form-actions" style="display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap;">
                         <a href="{{ route('assets.pending-verification') }}" class="rx-btn-soft">Cancel</a>
                         <button type="submit" class="rx-btn-primary">Verify Asset</button>
                     </div>

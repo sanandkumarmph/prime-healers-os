@@ -49,11 +49,15 @@ class DeliveryProof extends Model
         'meta' => 'array',
     ];
 
-    public static function acknowledgementFor(string $stage): string
+    public static function acknowledgementFor(string $stage, bool $requiresReturnAcknowledgement = true): string
     {
-        return $stage === self::STAGE_PICKUP
-            ? 'I confirm that the product(s) have been picked up. Any visible damages or missing accessories noted at pickup have been reviewed and acknowledged.'
-            : 'I confirm that the product(s) have been received in good condition and working order. I agree to return the product(s) in the same condition, subject to normal use.';
+        if ($stage === self::STAGE_PICKUP) {
+            return 'I confirm that the product(s) have been picked up. Any visible damages or missing accessories noted at pickup have been reviewed and acknowledged.';
+        }
+
+        return $requiresReturnAcknowledgement
+            ? 'I confirm that the product(s) have been received in good condition and working order. I agree to return the product(s) in the same condition, subject to normal use.'
+            : 'I confirm that the product(s) have been received in good condition and working order.';
     }
 
     public static function labelForType(string $type): string
