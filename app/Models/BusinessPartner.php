@@ -14,6 +14,13 @@ class BusinessPartner extends Model
         'phone',
         'whatsapp',
         'email',
+        'gst_registered',
+        'gstin',
+        'legal_name',
+        'billing_state',
+        'billing_address',
+        'billing_city',
+        'billing_pincode',
         'address',
         'city',
         'state',
@@ -25,6 +32,7 @@ class BusinessPartner extends Model
     ];
 
     protected $casts = [
+        'gst_registered' => 'boolean',
         'latitude' => 'decimal:7',
         'longitude' => 'decimal:7',
     ];
@@ -52,6 +60,43 @@ class BusinessPartner extends Model
     public function displayName(): string
     {
         return $this->business_name ?: 'Business Partner';
+    }
+
+    public function billingDisplayName(): string
+    {
+        return $this->legal_name ?: $this->displayName();
+    }
+
+    public function billingAddressLine(): ?string
+    {
+        return $this->billing_address ?: $this->address;
+    }
+
+    public function billingCityValue(): ?string
+    {
+        return $this->billing_city ?: $this->city;
+    }
+
+    public function billingStateValue(): ?string
+    {
+        return $this->billing_state ?: $this->state;
+    }
+
+    public function billingPincodeValue(): ?string
+    {
+        return $this->billing_pincode ?: $this->pincode;
+    }
+
+    public function defaultTaxTypeForState(?string $organizationState): string
+    {
+        $billingState = strtolower(trim((string) $this->billingStateValue()));
+        $orgState = strtolower(trim((string) $organizationState));
+
+        if ($billingState !== '' && $orgState !== '' && $billingState !== $orgState) {
+            return Product::GST_TAX_TYPE_IGST;
+        }
+
+        return Product::GST_TAX_TYPE_CGST_SGST;
     }
 
     public function preferredReminderNumber(): ?string

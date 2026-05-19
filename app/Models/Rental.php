@@ -147,7 +147,7 @@ class Rental extends Model
     public function billingContactName(): string
     {
         return $this->usesBusinessPartnerFlow()
-            ? ($this->businessPartner?->displayName() ?: 'Business Partner')
+            ? ($this->businessPartner?->billingDisplayName() ?: 'Business Partner')
             : ($this->customer?->displayName() ?: ($this->customer_name ?: 'Customer'));
     }
 
@@ -189,28 +189,28 @@ class Rental extends Model
     public function billingContactAddress(): ?string
     {
         return $this->usesBusinessPartnerFlow()
-            ? ($this->businessPartner?->address ?: null)
+            ? ($this->businessPartner?->billingAddressLine() ?: null)
             : ($this->customer?->address ?: null);
     }
 
     public function billingContactCity(): ?string
     {
         return $this->usesBusinessPartnerFlow()
-            ? ($this->businessPartner?->city ?: null)
+            ? ($this->businessPartner?->billingCityValue() ?: null)
             : ($this->customer?->city ?: null);
     }
 
     public function billingContactState(): ?string
     {
         return $this->usesBusinessPartnerFlow()
-            ? ($this->businessPartner?->state ?: null)
+            ? ($this->businessPartner?->billingStateValue() ?: null)
             : ($this->customer?->state ?: null);
     }
 
     public function billingContactPincode(): ?string
     {
         return $this->usesBusinessPartnerFlow()
-            ? ($this->businessPartner?->pincode ?: null)
+            ? ($this->businessPartner?->billingPincodeValue() ?: null)
             : ($this->customer?->pincode ?: null);
     }
 
@@ -279,6 +279,10 @@ class Rental extends Model
 
     public function primaryTaxState(): ?string
     {
+        if ($this->usesBusinessPartnerFlow()) {
+            return $this->billingContactState() ?: $this->deliveryContactState();
+        }
+
         return $this->deliveryContactState() ?: $this->billingContactState();
     }
 

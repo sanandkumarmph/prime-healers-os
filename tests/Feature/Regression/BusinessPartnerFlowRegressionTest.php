@@ -83,6 +83,88 @@ class BusinessPartnerFlowRegressionTest extends TestCase
             ->assertJsonPath('partner_client.name', 'Lakshmi Home');
     }
 
+    public function test_business_partner_can_be_created_with_gst_details_and_sale_invoice_uses_them(): void
+    {
+        $partnerResponse = $this->postJson(route('business-partners.store'), [
+            'business_name' => 'Apollo Tie-up Billing',
+            'contact_person' => 'Desk',
+            'phone' => '+919900003333',
+            'email' => 'billing@example.test',
+            'address' => 'Ops Address 1',
+            'city' => 'Bengaluru',
+            'state' => 'Karnataka',
+            'gst_registered' => '1',
+            'gstin' => '29ABCDE1234F1Z5',
+            'legal_name' => 'Apollo Tie-up Private Limited',
+            'billing_state' => 'Tamil Nadu',
+            'billing_address' => 'No 11 GST Road',
+            'billing_city' => 'Chennai',
+            'billing_pincode' => '600001',
+        ]);
+
+        $partnerResponse->assertOk()
+            ->assertJsonPath('business_partner.gst_registered', true)
+            ->assertJsonPath('business_partner.gstin', '29ABCDE1234F1Z5')
+            ->assertJsonPath('business_partner.legal_name', 'Apollo Tie-up Private Limited');
+
+        $partner = BusinessPartner::query()->where('organization_id', $this->organizationId)->latest('id')->firstOrFail();
+
+        $client = PartnerClient::create([
+            'organization_id' => $this->organizationId,
+            'business_partner_id' => $partner->id,
+            'client_name' => 'Ram Home Care',
+            'phone' => '+919811119999',
+            'address' => '22 Lake Street',
+            'city' => 'Chennai',
+            'state' => 'Tamil Nadu',
+            'status' => 'active',
+        ]);
+
+        $product = $this->makeSaleProduct();
+
+        $this->post(route('sales.store'), [
+            'customer_type' => 'business_partner',
+            'business_partner_id' => $partner->id,
+            'partner_client_id' => $client->id,
+            'sale_date' => '2026-05-19',
+            'payment_status' => 'pending',
+            'shipping_charges' => 0,
+            'sale_items' => [[
+                'product_id' => $product->id,
+                'quantity' => 1,
+                'unit_price' => 5000,
+                'discount_amount' => 0,
+                'tax_percentage' => 18,
+                'tax_calculation_mode' => 'exclusive',
+                'tax_type' => Product::GST_TAX_TYPE_IGST,
+            ]],
+        ])->assertRedirect(route('sales.index'));
+
+        $invoice = Invoice::query()->where('organization_id', $this->organizationId)->latest('id')->firstOrFail();
+
+        $this->assertSame('Apollo Tie-up Private Limited', $invoice->bill_to_name);
+        $this->assertSame('29ABCDE1234F1Z5', $invoice->bill_to_gstin);
+        $this->assertSame('No 11 GST Road', $invoice->bill_to_address);
+        $this->assertSame('Chennai', $invoice->bill_to_city);
+        $this->assertSame('Tamil Nadu', $invoice->bill_to_state);
+        $this->assertSame('600001', $invoice->bill_to_pincode);
+    }
+
+    public function test_business_partner_gstin_validation_is_enforced(): void
+    {
+        $response = $this->postJson(route('business-partners.store'), [
+            'business_name' => 'Invalid GST Partner',
+            'gst_registered' => '1',
+            'gstin' => 'INVALID',
+            'legal_name' => 'Invalid GST Partner LLP',
+            'billing_state' => 'Karnataka',
+            'billing_address' => 'Billing street',
+        ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['gstin']);
+    }
+
     public function test_business_partner_rental_creation_uses_partner_for_reminders_and_client_for_delivery(): void
     {
         [$partner, $client] = $this->makeBusinessPartnerContext();
@@ -120,7 +202,7 @@ class BusinessPartnerFlowRegressionTest extends TestCase
         $this->assertSame($client->displayName(), $rental->deliveryContactName());
         $this->assertSame($partner->phone, $invoice->bill_to_phone);
         $this->assertSame($client->address, $invoice->ship_to_address);
-        $this->assertSame($client->state, $invoice->place_of_supply_state);
+        $this->assertSame($partner->billingStateValue() ?: $client->state, $invoice->place_of_supply_state);
 
         $reminderResponse = $this->get(route('rentals.reminders.open', [$rental, 'renewal']));
         $reminderResponse->assertRedirect();
@@ -164,7 +246,7 @@ class BusinessPartnerFlowRegressionTest extends TestCase
         $this->assertSame($client->displayName(), $sale->deliveryContactName());
         $this->assertSame($partner->phone, $invoice->bill_to_phone);
         $this->assertSame($client->address, $invoice->ship_to_address);
-        $this->assertSame($client->state, $invoice->place_of_supply_state);
+        $this->assertSame($partner->billingStateValue() ?: $client->state, $invoice->place_of_supply_state);
     }
 
     public function test_delivery_show_uses_actual_client_details_for_business_partner_orders(): void

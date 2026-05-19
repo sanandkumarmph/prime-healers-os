@@ -79,6 +79,31 @@
                     @endif
                 </div>
             </div>
+            <div class="bp-show-col-4">
+                <span class="bp-show-label">GST Registered</span>
+                <div class="bp-show-value">{{ $businessPartner->gst_registered ? 'Yes' : 'No' }}</div>
+            </div>
+            <div class="bp-show-col-4">
+                <span class="bp-show-label">GSTIN</span>
+                <div class="bp-show-value">{{ $businessPartner->gstin ?: 'Not set' }}</div>
+            </div>
+            <div class="bp-show-col-4">
+                <span class="bp-show-label">Legal Business Name</span>
+                <div class="bp-show-value">{{ $businessPartner->legal_name ?: 'Not set' }}</div>
+            </div>
+            <div class="bp-show-col-4">
+                <span class="bp-show-label">Billing State</span>
+                <div class="bp-show-value">{{ $businessPartner->billingStateValue() ?: 'Not set' }}</div>
+            </div>
+            <div class="bp-show-col-12">
+                <span class="bp-show-label">GST Billing Address</span>
+                <div class="bp-show-value">
+                    {{ collect([
+                        $businessPartner->billingAddressLine(),
+                        collect([$businessPartner->billingCityValue(), $businessPartner->billingStateValue(), $businessPartner->billingPincodeValue()])->filter()->implode(', ')
+                    ])->filter()->implode(' · ') ?: 'Not set' }}
+                </div>
+            </div>
         </div>
     </div>
 

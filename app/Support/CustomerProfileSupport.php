@@ -123,10 +123,13 @@ class CustomerProfileSupport
             'name' => 'nullable|string|max:255',
             'phone' => $phoneRules,
             'email' => $emailRules,
+            'gst_registered' => 'nullable|boolean',
             'gst_treatment' => 'nullable|string|max:255',
             'place_of_supply' => 'nullable|string|max:255',
-            'gst_number' => 'nullable|string|max:255',
+            'gst_number' => 'nullable|string|max:255|required_if:gst_registered,1',
+            'legal_name' => 'nullable|string|max:255|required_if:gst_registered,1',
             'address' => 'nullable|string',
+            'billing_address' => 'nullable|string|required_if:gst_registered,1',
             'city' => 'nullable|string|max:100',
             'state' => 'nullable|string|max:100',
             'pincode' => 'nullable|string|max:20',
@@ -253,6 +256,8 @@ class CustomerProfileSupport
             $validated['place_of_supply'] ?? null
         );
 
+        $gstRegistered = (bool) ($validated['gst_registered'] ?? false);
+
         return array_merge([
             'name' => $validated['name'],
             'customer_type' => static::normalizeCustomerType($validated['customer_type'] ?? null),
@@ -264,10 +269,15 @@ class CustomerProfileSupport
             'phone' => PhoneNumber::normalize($validated['phone'] ?? null),
             'whatsapp_number' => PhoneNumber::normalize($validated['whatsapp_number'] ?? null),
             'email' => $validated['email'] ?? null,
+            'gst_registered' => $gstRegistered,
             'gst_treatment' => $validated['gst_treatment'] ?? null,
             'place_of_supply' => $customerPlaceOfSupply,
-            'gst_number' => $validated['gst_number'] ?? null,
+            'gst_number' => $gstRegistered ? ($validated['gst_number'] ?? null) : null,
+            'legal_name' => $gstRegistered ? ($validated['legal_name'] ?? null) : null,
             'address' => $validated['address'] ?? null,
+            'billing_address' => $gstRegistered
+                ? ($validated['billing_address'] ?? null)
+                : null,
             'city' => $validated['city'] ?? null,
             'state' => $customerState,
             'pincode' => $validated['pincode'] ?? null,

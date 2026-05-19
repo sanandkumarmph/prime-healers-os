@@ -78,7 +78,12 @@ class BusinessPartnerController extends Controller
     {
         $this->authorize('create', BusinessPartner::class);
 
+        $request->merge([
+            'gst_registered' => $request->boolean('gst_registered'),
+        ]);
+
         $validated = $request->validate($this->validationRules());
+        $validated = $this->normalizeBillingPayload($validated);
         $validated['organization_id'] = $this->orgId();
         $validated['status'] = $validated['status'] ?? 'active';
 
@@ -144,7 +149,12 @@ class BusinessPartnerController extends Controller
         $businessPartner = $this->scopedPartner($businessPartner);
         $this->authorize('update', $businessPartner);
 
+        $request->merge([
+            'gst_registered' => $request->boolean('gst_registered'),
+        ]);
+
         $validated = $request->validate($this->validationRules($businessPartner));
+        $validated = $this->normalizeBillingPayload($validated);
         $businessPartner->update($validated);
 
         return redirect()
@@ -188,6 +198,19 @@ class BusinessPartnerController extends Controller
             'phone' => 'nullable|string|max:30',
             'whatsapp' => 'nullable|string|max:30',
             'email' => 'nullable|email|max:255',
+            'gst_registered' => 'nullable|boolean',
+            'gstin' => [
+                'nullable',
+                'string',
+                'max:20',
+                'required_if:gst_registered,1',
+                'regex:/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[A-Z0-9]{1}Z[A-Z0-9]{1}$/i',
+            ],
+            'legal_name' => 'nullable|string|max:255|required_if:gst_registered,1',
+            'billing_state' => 'nullable|string|max:120|required_if:gst_registered,1',
+            'billing_address' => 'nullable|string|required_if:gst_registered,1',
+            'billing_city' => 'nullable|string|max:120',
+            'billing_pincode' => 'nullable|string|max:20',
             'address' => 'nullable|string',
             'city' => 'nullable|string|max:120',
             'state' => 'nullable|string|max:120',
@@ -204,15 +227,39 @@ class BusinessPartnerController extends Controller
         return [
             'id' => $businessPartner->id,
             'name' => $businessPartner->displayName(),
+            'legal_name' => $businessPartner->legal_name,
             'contact_person' => $businessPartner->contact_person,
             'phone' => $businessPartner->phone,
             'whatsapp' => $businessPartner->whatsapp,
             'email' => $businessPartner->email,
+            'gst_registered' => (bool) $businessPartner->gst_registered,
+            'gstin' => $businessPartner->gstin,
+            'billing_state' => $businessPartner->billingStateValue(),
+            'billing_address' => $businessPartner->billingAddressLine(),
+            'billing_city' => $businessPartner->billingCityValue(),
+            'billing_pincode' => $businessPartner->billingPincodeValue(),
             'address' => $businessPartner->address,
             'city' => $businessPartner->city,
             'state' => $businessPartner->state,
             'location' => $businessPartner->openMapUrl(),
             'clients' => [],
         ];
+    }
+
+    private function normalizeBillingPayload(array $validated): array
+    {
+        $validated['gst_registered'] = (bool) ($validated['gst_registered'] ?? false);
+        $validated['gstin'] = isset($validated['gstin']) ? strtoupper(trim((string) $validated['gstin'])) : null;
+
+        if (! $validated['gst_registered']) {
+            $validated['gstin'] = null;
+            $validated['legal_name'] = null;
+            $validated['billing_state'] = null;
+            $validated['billing_address'] = null;
+            $validated['billing_city'] = null;
+            $validated['billing_pincode'] = null;
+        }
+
+        return $validated;
     }
 }

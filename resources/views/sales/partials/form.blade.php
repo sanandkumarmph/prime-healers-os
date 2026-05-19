@@ -118,9 +118,13 @@
             'phone' => $partner->phone,
             'whatsapp' => $partner->whatsapp,
             'email' => $partner->email,
+            'gst_registered' => (bool) $partner->gst_registered,
+            'gstin' => $partner->gstin,
+            'legal_name' => $partner->legal_name,
             'address' => $partner->address,
             'city' => $partner->city,
             'state' => $partner->state,
+            'billing_state' => $partner->billingStateValue(),
             'location' => $partner->openMapUrl(),
             'clients' => $partner->partnerClients->map(function ($client) {
                 return [
@@ -684,7 +688,7 @@
             const customerState = normalizeStateName(
                 customerStateValue
                 || (customerMode() === 'business_partner'
-                    ? (selectedPartnerClientData()?.state || selectedBusinessPartnerData()?.state)
+                    ? (selectedBusinessPartnerData()?.billing_state || selectedPartnerClientData()?.state || selectedBusinessPartnerData()?.state)
                     : selectedCustomerData()?.state)
             );
             const orgState = normalizeStateName(organizationState);

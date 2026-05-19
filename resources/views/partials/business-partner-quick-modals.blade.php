@@ -152,6 +152,84 @@
         font-size: 13px;
         line-height: 1.45;
     }
+    .quick-party-gst-shell {
+        display: grid;
+        gap: 10px;
+        padding: 12px;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        background: #f8fafc;
+    }
+    .quick-party-gst-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    .quick-party-gst-title {
+        font-size: 12px;
+        font-weight: 800;
+        color: #475569;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+    }
+    .quick-party-gst-note {
+        color: #64748b;
+        font-size: 12px;
+        line-height: 1.45;
+    }
+    .quick-party-toggle {
+        display: inline-grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid #dbe3ef;
+        border-radius: 999px;
+        background: #fff;
+        min-width: min(100%, 220px);
+    }
+    .quick-party-toggle-native {
+        position: absolute !important;
+        width: 1px !important;
+        height: 1px !important;
+        padding: 0 !important;
+        margin: -1px !important;
+        overflow: hidden !important;
+        clip: rect(0, 0, 0, 0) !important;
+        white-space: nowrap !important;
+        border: 0 !important;
+    }
+    .quick-party-toggle-btn {
+        border: none;
+        border-radius: 999px;
+        min-height: 38px;
+        padding: 8px 12px;
+        background: transparent;
+        color: #475569;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+    .quick-party-toggle-btn.is-active {
+        background: #0f172a;
+        color: #fff;
+    }
+    .quick-party-gst-fields[hidden] {
+        display: none !important;
+    }
+    .quick-party-check {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #334155;
+        font-size: 13px;
+        font-weight: 600;
+    }
+    .quick-party-check input {
+        width: 16px;
+        height: 16px;
+    }
     .quick-party-actions {
         flex: 0 0 auto;
         display: flex;
@@ -274,6 +352,73 @@
                         <textarea name="address" id="{{ $quickPartnerModalId }}Address" rows="2" placeholder="Billing or operating address"></textarea>
                         <div class="quick-party-error" data-error-for="address"></div>
                     </div>
+                    <div class="quick-party-col-12">
+                        <div class="quick-party-gst-shell">
+                            <div class="quick-party-gst-head">
+                                <div>
+                                    <div class="quick-party-gst-title">GST Details</div>
+                                    <div class="quick-party-gst-note">Optional unless this partner is GST registered and should appear on invoices with billing tax details.</div>
+                                </div>
+                                <div class="quick-party-field" data-field="gst_registered" style="gap:8px;">
+                                    <label for="{{ $quickPartnerModalId }}GstRegistered">GST Registered?</label>
+                                    <select name="gst_registered" id="{{ $quickPartnerModalId }}GstRegistered" class="quick-party-toggle-native">
+                                        <option value="0" selected>No</option>
+                                        <option value="1">Yes</option>
+                                    </select>
+                                    <div class="quick-party-toggle" role="tablist" aria-label="GST registered">
+                                        <button type="button" class="quick-party-toggle-btn is-active" data-gst-toggle-target="{{ $quickPartnerModalId }}" data-gst-option="0" aria-pressed="true">No</button>
+                                        <button type="button" class="quick-party-toggle-btn" data-gst-toggle-target="{{ $quickPartnerModalId }}" data-gst-option="1" aria-pressed="false">Yes</button>
+                                    </div>
+                                    <div class="quick-party-error" data-error-for="gst_registered"></div>
+                                </div>
+                            </div>
+
+                            <div class="quick-party-grid quick-party-gst-fields" data-gst-fields="{{ $quickPartnerModalId }}" hidden>
+                                <div class="quick-party-field quick-party-col-4" data-field="gstin">
+                                    <label for="{{ $quickPartnerModalId }}Gstin">GSTIN</label>
+                                    <input type="text" name="gstin" id="{{ $quickPartnerModalId }}Gstin" placeholder="29ABCDE1234F1Z5">
+                                    <div class="quick-party-error" data-error-for="gstin"></div>
+                                </div>
+                                <div class="quick-party-field quick-party-col-8" data-field="legal_name">
+                                    <label for="{{ $quickPartnerModalId }}LegalName">Legal Business Name</label>
+                                    <input type="text" name="legal_name" id="{{ $quickPartnerModalId }}LegalName" placeholder="Legal billing entity name">
+                                    <div class="quick-party-error" data-error-for="legal_name"></div>
+                                </div>
+                                <div class="quick-party-field quick-party-col-6" data-field="billing_state">
+                                    <label for="{{ $quickPartnerModalId }}BillingState">Billing State</label>
+                                    <select name="billing_state" id="{{ $quickPartnerModalId }}BillingState">
+                                        <option value="">Select state</option>
+                                        @foreach($quickStateOptions as $state)
+                                            <option value="{{ $state }}">{{ $state }}</option>
+                                        @endforeach
+                                    </select>
+                                    <div class="quick-party-error" data-error-for="billing_state"></div>
+                                </div>
+                                <div class="quick-party-field quick-party-col-6">
+                                    <label>&nbsp;</label>
+                                    <label class="quick-party-check">
+                                        <input type="checkbox" name="same_as_business_address" value="1" data-same-address-toggle="{{ $quickPartnerModalId }}">
+                                        <span>Same as business address</span>
+                                    </label>
+                                </div>
+                                <div class="quick-party-field quick-party-col-12" data-field="billing_address">
+                                    <label for="{{ $quickPartnerModalId }}BillingAddress">GST Address / Billing Address</label>
+                                    <textarea name="billing_address" id="{{ $quickPartnerModalId }}BillingAddress" rows="2" placeholder="Billing address for GST invoices"></textarea>
+                                    <div class="quick-party-error" data-error-for="billing_address"></div>
+                                </div>
+                                <div class="quick-party-field quick-party-col-6" data-field="billing_city">
+                                    <label for="{{ $quickPartnerModalId }}BillingCity">Billing City</label>
+                                    <input type="text" name="billing_city" id="{{ $quickPartnerModalId }}BillingCity" placeholder="Billing city">
+                                    <div class="quick-party-error" data-error-for="billing_city"></div>
+                                </div>
+                                <div class="quick-party-field quick-party-col-6" data-field="billing_pincode">
+                                    <label for="{{ $quickPartnerModalId }}BillingPincode">Billing Pincode</label>
+                                    <input type="text" name="billing_pincode" id="{{ $quickPartnerModalId }}BillingPincode" placeholder="Billing pincode">
+                                    <div class="quick-party-error" data-error-for="billing_pincode"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     <div class="quick-party-field quick-party-col-12" data-field="location">
                         <label for="{{ $quickPartnerModalId }}Location">Location</label>
                         <input type="text" name="location" id="{{ $quickPartnerModalId }}Location" placeholder="Map link or location reference">
@@ -389,6 +534,18 @@
         const selectedPartnerCopy = clientForm.querySelector('[data-role="selected-partner-copy"]');
         const partnerAlert = partnerForm.querySelector('[data-role="partner-alert"]');
         const clientAlert = clientForm.querySelector('[data-role="client-alert"]');
+        const partnerGstSelect = partnerForm.querySelector('select[name="gst_registered"]');
+        const partnerGstButtons = Array.from(partnerForm.querySelectorAll('[data-gst-toggle-target="{{ $quickPartnerModalId }}"]'));
+        const partnerGstFields = partnerForm.querySelector('[data-gst-fields="{{ $quickPartnerModalId }}"]');
+        const partnerSameAddress = partnerForm.querySelector('[data-same-address-toggle="{{ $quickPartnerModalId }}"]');
+        const partnerAddress = partnerForm.querySelector('textarea[name="address"]');
+        const partnerCity = partnerForm.querySelector('input[name="city"]');
+        const partnerState = partnerForm.querySelector('select[name="state"]');
+        const partnerPincode = partnerForm.querySelector('input[name="pincode"]');
+        const partnerBillingAddress = partnerForm.querySelector('textarea[name="billing_address"]');
+        const partnerBillingCity = partnerForm.querySelector('input[name="billing_city"]');
+        const partnerBillingState = partnerForm.querySelector('select[name="billing_state"]');
+        const partnerBillingPincode = partnerForm.querySelector('input[name="billing_pincode"]');
 
         function setAlert(element, message, isError) {
             if (!element) {
@@ -451,12 +608,56 @@
             partnerForm.reset();
             clearFieldErrors(partnerForm);
             setAlert(partnerAlert, '', false);
+            syncPartnerGstSection();
         }
 
         function resetClientForm() {
             clientForm.reset();
             clearFieldErrors(clientForm);
             setAlert(clientAlert, '', false);
+        }
+
+        function partnerGstEnabled() {
+            return partnerGstSelect?.value === '1';
+        }
+
+        function syncPartnerGstButtons() {
+            const activeValue = partnerGstSelect?.value || '0';
+
+            partnerGstButtons.forEach(function (button) {
+                const isActive = button.getAttribute('data-gst-option') === activeValue;
+                button.classList.toggle('is-active', isActive);
+                button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            });
+        }
+
+        function copyPartnerAddressToBilling() {
+            if (!partnerSameAddress?.checked) {
+                return;
+            }
+
+            if (partnerBillingAddress) partnerBillingAddress.value = partnerAddress?.value || '';
+            if (partnerBillingCity) partnerBillingCity.value = partnerCity?.value || '';
+            if (partnerBillingState) partnerBillingState.value = partnerState?.value || '';
+            if (partnerBillingPincode) partnerBillingPincode.value = partnerPincode?.value || '';
+        }
+
+        function syncPartnerGstSection() {
+            if (!partnerGstFields) {
+                return;
+            }
+
+            const enabled = partnerGstEnabled();
+            partnerGstFields.hidden = !enabled;
+            syncPartnerGstButtons();
+
+            if (!enabled && partnerSameAddress) {
+                partnerSameAddress.checked = false;
+            }
+
+            if (enabled) {
+                copyPartnerAddressToBilling();
+            }
         }
 
         function activePartnerOption() {
@@ -595,5 +796,25 @@
                     setAlert(clientAlert, payload?.message || 'Unable to save actual client.', true);
                 });
         });
+
+        partnerGstButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                const nextValue = button.getAttribute('data-gst-option') || '0';
+                if (!partnerGstSelect || partnerGstSelect.value === nextValue) {
+                    return;
+                }
+
+                partnerGstSelect.value = nextValue;
+                syncPartnerGstSection();
+            });
+        });
+
+        partnerSameAddress?.addEventListener('change', copyPartnerAddressToBilling);
+        [partnerAddress, partnerCity, partnerState, partnerPincode].forEach(function (input) {
+            input?.addEventListener('input', copyPartnerAddressToBilling);
+            input?.addEventListener('change', copyPartnerAddressToBilling);
+        });
+
+        syncPartnerGstSection();
     })();
 </script>

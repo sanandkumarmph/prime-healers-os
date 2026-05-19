@@ -23,65 +23,101 @@
     if ($customerData && filled($customerData->id_proof_file_path)) {
         $existingProofUrl = route('customers.id-proof.download', $customerData->id);
     }
+
     $hasFieldError = fn (string $field) => $errors->has($field);
     $fieldError = fn (string $field) => $errors->first($field);
+    $gstOpen = $errors->hasAny(['gst_registered', 'gst_number', 'legal_name', 'billing_address'])
+        || filled($fieldValue('gst_number'))
+        || filled($fieldValue('legal_name'))
+        || filled($fieldValue('billing_address'))
+        || (string) $fieldValue('gst_registered', $customerData?->gst_registered ? '1' : '0') === '1';
+    $idProofOpen = $errors->hasAny(['id_proof_type', 'id_proof_number', 'id_proof_file'])
+        || filled($fieldValue('id_proof_type'))
+        || filled($fieldValue('id_proof_number'))
+        || $existingProofUrl !== null;
+    $sameBillingAsAddress = old('same_as_customer_address', ($customerData?->billing_address ?? null) === ($customerData?->address ?? null) ? '1' : '0') === '1';
 @endphp
 
 <style>
-    .customer-form-shell { display:grid; gap:16px; }
+    .customer-form-shell { display:grid; gap:18px; }
     .customer-type-switch {
-        display:flex;
-        gap:8px;
+        display:inline-flex;
+        gap:6px;
+        padding:4px;
+        border:1px solid #dbe3ef;
+        border-radius:999px;
+        background:#f8fafc;
         flex-wrap:wrap;
-        margin-bottom:4px;
     }
     .customer-type-pill {
-        border:1px solid #cbd5e1;
+        border:none;
         border-radius:999px;
-        background:#fff;
+        background:transparent;
         color:#475569;
-        padding:8px 12px;
-        font-size:12px;
+        padding:9px 14px;
+        font-size:13px;
         font-weight:700;
-        letter-spacing:.03em;
         cursor:pointer;
         transition:all .15s ease;
     }
     .customer-type-pill.is-active {
         background:#0f172a;
-        border-color:#0f172a;
         color:#fff;
+        box-shadow:0 10px 24px rgba(15, 23, 42, 0.12);
     }
     .customer-type-help {
+        margin:8px 0 0;
         color:#64748b;
         font-size:12px;
-        margin:0;
+        line-height:1.5;
     }
-    .customer-form-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:14px; }
-    .customer-card {
-        border:1px solid #dbe3ef;
-        border-radius:14px;
-        background:#fcfdff;
-        padding:16px;
+    .customer-sections {
+        display:grid;
+        gap:14px;
     }
-    .customer-card h2 {
+    .customer-section {
+        border:1px solid #e2e8f0;
+        border-radius:18px;
+        background:#fff;
+        padding:18px;
+        display:grid;
+        gap:14px;
+    }
+    .customer-section-heading {
+        display:flex;
+        justify-content:space-between;
+        align-items:flex-start;
+        gap:10px;
+        flex-wrap:wrap;
+    }
+    .customer-section-heading h2 {
         margin:0;
         font-size:16px;
         color:#0f172a;
     }
-    .customer-card p {
+    .customer-section-heading p {
         margin:4px 0 0;
         color:#64748b;
         font-size:12px;
+        line-height:1.45;
     }
+    .customer-section-divider {
+        height:1px;
+        background:#eef2f7;
+    }
+    .customer-form-grid {
+        display:grid;
+        grid-template-columns:repeat(12, minmax(0, 1fr));
+        gap:14px;
+    }
+    .span-3 { grid-column:span 3; }
     .span-4 { grid-column:span 4; }
     .span-5 { grid-column:span 5; }
     .span-6 { grid-column:span 6; }
     .span-7 { grid-column:span 7; }
     .span-8 { grid-column:span 8; }
     .span-12 { grid-column:span 12; }
-    .field-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:12px; margin-top:14px; }
-    .field { display:grid; gap:6px; }
+    .field { display:grid; gap:6px; min-width:0; }
     .field label {
         font-size:11px;
         color:#64748b;
@@ -99,13 +135,13 @@
     .field textarea {
         width:100%;
         box-sizing:border-box;
-        padding:9px 12px;
-        border-radius:10px;
+        padding:10px 12px;
+        border-radius:12px;
         border:1px solid #cbd5e1;
         background:#fff;
         color:#0f172a;
         font-size:14px;
-        line-height:1.4;
+        line-height:1.45;
     }
     .field input:focus,
     .field select:focus,
@@ -114,12 +150,14 @@
         border-color:#2563eb;
         box-shadow:0 0 0 3px rgba(37, 99, 235, 0.12);
     }
+    .field textarea { min-height:92px; resize:vertical; }
     .field.is-error input,
     .field.is-error select,
     .field.is-error textarea,
-    .identity-panel.is-error {
+    .type-panel.is-error,
+    .customer-optional-content.is-error {
         border-color:#dc2626;
-        box-shadow:0 0 0 3px rgba(220, 38, 38, 0.12);
+        box-shadow:0 0 0 3px rgba(220, 38, 38, 0.1);
         background:#fff7f7;
     }
     .field-error {
@@ -127,12 +165,25 @@
         font-size:12px;
         line-height:1.4;
     }
-    .field textarea { min-height:92px; resize:vertical; }
+    .type-panel {
+        display:grid;
+        gap:12px;
+        padding:14px;
+        border:1px solid #e2e8f0;
+        border-radius:16px;
+        background:#f8fafc;
+    }
+    .type-panel[hidden] { display:none !important; }
+    .inline-grid {
+        display:grid;
+        grid-template-columns:repeat(3, minmax(0, 1fr));
+        gap:12px;
+    }
     .phone-group {
         display:flex;
         align-items:center;
         border:1px solid #cbd5e1;
-        border-radius:10px;
+        border-radius:12px;
         overflow:visible;
         background:#fff;
         min-width:0;
@@ -148,7 +199,7 @@
         align-self:stretch;
     }
     .phone-group .country-code-picker__trigger {
-        min-height:42px;
+        min-height:44px;
         padding:10px 10px 10px 12px;
         box-shadow:none !important;
     }
@@ -164,32 +215,78 @@
     }
     .field.is-error .phone-group {
         border-color:#dc2626;
-        box-shadow:0 0 0 3px rgba(220, 38, 38, 0.12);
+        box-shadow:0 0 0 3px rgba(220, 38, 38, 0.1);
         background:#fff7f7;
     }
-    .identity-panel {
-        display:grid;
-        gap:10px;
-        padding:12px;
-        border-radius:12px;
-        border:1px solid #dbe3ef;
-        background:#fff;
-    }
-    .identity-panel[hidden] { display:none !important; }
-    .identity-grid {
-        display:grid;
-        grid-template-columns:repeat(3, minmax(0, 1fr));
-        gap:12px;
-    }
-    .helper-box {
+    .customer-optional {
         border:1px solid #e2e8f0;
-        background:#f8fafc;
-        border-radius:12px;
-        padding:11px 12px;
-        color:#475569;
+        border-radius:16px;
+        background:#fbfdff;
+        overflow:hidden;
+    }
+    .customer-optional-toggle {
+        width:100%;
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+        border:none;
+        background:transparent;
+        padding:14px 16px;
+        cursor:pointer;
+        text-align:left;
+    }
+    .customer-optional-toggle strong {
+        font-size:13px;
+        color:#0f172a;
+    }
+    .customer-optional-toggle span {
+        color:#64748b;
         font-size:12px;
+    }
+    .customer-optional-toggle em {
+        font-style:normal;
+        color:#475569;
+        font-weight:700;
+        font-size:16px;
+    }
+    .customer-optional-content {
+        border-top:1px solid #eef2f7;
+        padding:16px;
+        display:grid;
+        gap:14px;
+    }
+    .customer-optional-content[hidden] { display:none !important; }
+    .customer-badge {
+        display:inline-flex;
+        align-items:center;
+        gap:6px;
+        padding:5px 10px;
+        border-radius:999px;
+        background:#eef2ff;
+        color:#4338ca;
+        font-size:11px;
+        font-weight:700;
+        letter-spacing:.03em;
+        text-transform:uppercase;
+    }
+    .customer-map-tools {
+        display:flex;
+        gap:8px;
+        flex-wrap:wrap;
+    }
+    .customer-map-preview {
+        border:1px dashed #cbd5e1;
+        border-radius:14px;
+        background:#f8fafc;
+        padding:12px 14px;
+        display:grid;
+        gap:4px;
+        color:#334155;
+        font-size:13px;
         line-height:1.5;
     }
+    .customer-map-preview[hidden] { display:none !important; }
     .proof-chip {
         display:inline-flex;
         align-items:center;
@@ -208,6 +305,7 @@
         justify-content:flex-end;
         gap:8px;
         flex-wrap:wrap;
+        padding-top:4px;
     }
     .ops-btn,
     .ops-btn-light {
@@ -215,8 +313,8 @@
         align-items:center;
         justify-content:center;
         gap:6px;
-        padding:8px 13px;
-        border-radius:10px;
+        padding:10px 14px;
+        border-radius:12px;
         font-size:13px;
         font-weight:600;
         text-decoration:none;
@@ -226,13 +324,15 @@
     .ops-btn { background:#0f172a; color:#fff; }
     .ops-btn-light { background:#fff; color:#334155; border-color:#cbd5e1; }
     @media (max-width: 1024px) {
-        .span-4, .span-5, .span-6, .span-7, .span-8 { grid-column:span 12; }
+        .span-3, .span-4, .span-5, .span-6, .span-7, .span-8 { grid-column:span 12; }
     }
     @media (max-width: 720px) {
-        .field-grid,
-        .identity-grid { grid-template-columns:1fr; }
-        .field-grid > div,
-        .identity-grid > div { grid-column:span 1 !important; }
+        .customer-section { padding:16px; }
+        .inline-grid { grid-template-columns:1fr; }
+        .customer-map-tools,
+        .form-actions { grid-template-columns:1fr; }
+        .customer-map-tools { display:grid; }
+        .form-actions > * { width:100%; }
     }
 </style>
 
@@ -249,22 +349,29 @@
             @endforeach
         </div>
         <p class="customer-type-help">
-            Individual customers use salutation, first name, and last name. Business customers use company and contact name.
+            Keep direct customers simple. Use Business only for institutional or company customers billed directly by your organization.
         </p>
     </div>
 
     <input type="hidden" name="customer_type" id="customer_type" value="{{ $customerTypeValue }}">
     <input type="hidden" name="name" id="display_name" value="{{ $fieldValue('name') }}">
+    <input type="hidden" name="gst_registered" id="gst_registered" value="{{ $fieldValue('gst_registered', $customerData?->gst_registered ? '1' : '0') }}">
 
-    <div class="customer-form-grid">
-        <div class="customer-card span-8">
-            <h2>Customer Identity</h2>
-            <p>Capture only the identity fields relevant to the selected customer type to keep records cleaner and easier to search.</p>
+    <div class="customer-sections">
+        <section class="customer-section">
+            <div class="customer-section-heading">
+                <div>
+                    <h2>Identity</h2>
+                    <p>Choose the customer type first, then capture only the essential identity fields.</p>
+                </div>
+                <span class="customer-badge">Customer Module Only</span>
+            </div>
+            <div class="customer-section-divider"></div>
 
-            <div class="field-grid">
-                <div class="field span-12">
-                    <div class="identity-panel" data-type-panel="Individual" {{ $customerTypeValue === 'Individual' ? '' : 'hidden' }}>
-                        <div class="identity-grid">
+            <div class="customer-form-grid">
+                <div class="span-12">
+                    <div class="type-panel {{ $hasFieldError('salutation') || $hasFieldError('first_name') || $hasFieldError('last_name') ? 'is-error' : '' }}" data-type-panel="Individual" {{ $customerTypeValue === 'Individual' ? '' : 'hidden' }}>
+                        <div class="inline-grid">
                             <div class="field {{ $hasFieldError('salutation') ? 'is-error' : '' }}">
                                 <label for="salutation">Salutation</label>
                                 <select id="salutation" name="salutation">
@@ -292,31 +399,41 @@
                                 @endif
                             </div>
                         </div>
-                        <small>Use this for patient, household, or personal rentals and sales.</small>
                     </div>
 
-                    <div class="identity-panel" data-type-panel="Business" {{ $customerTypeValue === 'Business' ? '' : 'hidden' }}>
-                        <div class="identity-grid" style="grid-template-columns:repeat(2, minmax(0, 1fr));">
+                    <div class="type-panel {{ $hasFieldError('company_name') || $hasFieldError('contact_name') ? 'is-error' : '' }}" data-type-panel="Business" {{ $customerTypeValue === 'Business' ? '' : 'hidden' }}>
+                        <div class="inline-grid" style="grid-template-columns:repeat(2, minmax(0, 1fr));">
                             <div class="field {{ $hasFieldError('company_name') ? 'is-error' : '' }}">
                                 <label for="company_name">Company Name</label>
-                                <input id="company_name" type="text" name="company_name" value="{{ $fieldValue('company_name') }}" placeholder="Company or business name">
+                                <input id="company_name" type="text" name="company_name" value="{{ $fieldValue('company_name') }}" placeholder="Company or institution name">
                                 @if($fieldError('company_name'))
                                     <div class="field-error">{{ $fieldError('company_name') }}</div>
                                 @endif
                             </div>
                             <div class="field {{ $hasFieldError('contact_name') ? 'is-error' : '' }}">
-                                <label for="contact_name">Contact Name</label>
+                                <label for="contact_name">Contact Person</label>
                                 <input id="contact_name" type="text" name="contact_name" value="{{ $fieldValue('contact_name') }}" placeholder="Primary contact person">
                                 @if($fieldError('contact_name'))
                                     <div class="field-error">{{ $fieldError('contact_name') }}</div>
                                 @endif
                             </div>
                         </div>
-                        <small>Use this for hospitals, institutions, partners, and B2B accounts.</small>
                     </div>
                 </div>
+            </div>
+        </section>
 
-                <div class="field {{ $hasFieldError('phone') ? 'is-error' : '' }}" style="grid-column:span 6;">
+        <section class="customer-section">
+            <div class="customer-section-heading">
+                <div>
+                    <h2>Contact</h2>
+                    <p>Keep the essential customer communication details clean and easy to scan.</p>
+                </div>
+            </div>
+            <div class="customer-section-divider"></div>
+
+            <div class="customer-form-grid">
+                <div class="field span-4 {{ $hasFieldError('phone') ? 'is-error' : '' }}">
                     <label for="phone">Phone</label>
                     <div class="phone-group">
                         @include('partials.country-code-picker', [
@@ -335,7 +452,7 @@
                 </div>
 
                 @if($whatsAppEnabled)
-                    <div class="field {{ $hasFieldError('whatsapp_number') ? 'is-error' : '' }}" style="grid-column:span 6;">
+                    <div class="field span-4 {{ $hasFieldError('whatsapp_number') ? 'is-error' : '' }}">
                         <label for="whatsapp_number">WhatsApp</label>
                         <div class="phone-group">
                             @include('partials.country-code-picker', [
@@ -354,15 +471,27 @@
                     </div>
                 @endif
 
-                <div class="field {{ $hasFieldError('email') ? 'is-error' : '' }}" style="grid-column:span 12;">
+                <div class="field span-4 {{ $hasFieldError('email') ? 'is-error' : '' }}">
                     <label for="email">Email</label>
                     <input id="email" type="email" name="email" value="{{ $fieldValue('email') }}" placeholder="Email address">
                     @if($fieldError('email'))
                         <div class="field-error">{{ $fieldError('email') }}</div>
                     @endif
                 </div>
+            </div>
+        </section>
 
-                <div class="field {{ $hasFieldError('address') ? 'is-error' : '' }}" style="grid-column:span 6;">
+        <section class="customer-section">
+            <div class="customer-section-heading">
+                <div>
+                    <h2>Address & Location</h2>
+                    <p>Use the delivery address plus map reference so dispatch and field teams can navigate quickly.</p>
+                </div>
+            </div>
+            <div class="customer-section-divider"></div>
+
+            <div class="customer-form-grid">
+                <div class="field span-6 {{ $hasFieldError('address') ? 'is-error' : '' }}">
                     <label for="address">Address</label>
                     <textarea id="address" name="address" placeholder="Street, building, landmark">{{ $fieldValue('address') }}</textarea>
                     @if($fieldError('address'))
@@ -370,75 +499,15 @@
                     @endif
                 </div>
 
-                <div class="field {{ $hasFieldError('notes') ? 'is-error' : '' }}" style="grid-column:span 6;">
+                <div class="field span-6 {{ $hasFieldError('notes') ? 'is-error' : '' }}">
                     <label for="notes">Notes</label>
-                    <textarea id="notes" name="notes" placeholder="Internal notes or handling remarks">{{ $fieldValue('notes') }}</textarea>
+                    <textarea id="notes" name="notes" placeholder="Delivery notes, timing, access, or internal remarks">{{ $fieldValue('notes') }}</textarea>
                     @if($fieldError('notes'))
                         <div class="field-error">{{ $fieldError('notes') }}</div>
                     @endif
                 </div>
-            </div>
-        </div>
 
-        <div class="customer-card span-4">
-            <h2>Billing & Compliance</h2>
-            <p>Keep tax details and optional ID proof visible without making the form heavy.</p>
-
-            <div class="field-grid">
-                <div class="field {{ $hasFieldError('gst_number') ? 'is-error' : '' }}" style="grid-column:span 12;">
-                    <label for="gst_number">GST Number</label>
-                    <input id="gst_number" type="text" name="gst_number" value="{{ $fieldValue('gst_number') }}" placeholder="GST number">
-                    @if($fieldError('gst_number'))
-                        <div class="field-error">{{ $fieldError('gst_number') }}</div>
-                    @endif
-                </div>
-
-                <div class="field {{ $hasFieldError('id_proof_type') ? 'is-error' : '' }}" style="grid-column:span 12;">
-                    <label for="id_proof_type">ID Proof Type</label>
-                    <select id="id_proof_type" name="id_proof_type">
-                        <option value="">Select proof type</option>
-                        @foreach($idProofTypeOptions as $value => $label)
-                            <option value="{{ $value }}" {{ $fieldValue('id_proof_type') === $value ? 'selected' : '' }}>{{ $label }}</option>
-                        @endforeach
-                    </select>
-                    @if($fieldError('id_proof_type'))
-                        <div class="field-error">{{ $fieldError('id_proof_type') }}</div>
-                    @endif
-                </div>
-
-                <div class="field {{ $hasFieldError('id_proof_number') ? 'is-error' : '' }}" style="grid-column:span 12;">
-                    <label for="id_proof_number">ID Proof Number</label>
-                    <input id="id_proof_number" type="text" name="id_proof_number" value="{{ $fieldValue('id_proof_number') }}" placeholder="Proof number">
-                    @if($fieldError('id_proof_number'))
-                        <div class="field-error">{{ $fieldError('id_proof_number') }}</div>
-                    @endif
-                </div>
-
-                <div class="field {{ $hasFieldError('id_proof_file') ? 'is-error' : '' }}" style="grid-column:span 12;">
-                    <label for="id_proof_file">ID Proof Upload</label>
-                    <input id="id_proof_file" type="file" name="id_proof_file">
-                    @if($fieldError('id_proof_file'))
-                        <div class="field-error">{{ $fieldError('id_proof_file') }}</div>
-                    @endif
-                    <small>Optional document for verification. Keep uploads lightweight and readable.</small>
-                    @if($existingProofUrl)
-                        <a href="{{ $existingProofUrl }}" target="_blank" class="proof-chip">
-                            View Existing Proof
-                            @if(filled($customerData?->id_proof_original_name))
-                                <span>{{ $customerData->id_proof_original_name }}</span>
-                            @endif
-                        </a>
-                    @endif
-                </div>
-            </div>
-        </div>
-
-        <div class="customer-card span-12">
-            <h2>Location & Delivery Reference</h2>
-            <p>Keep address, state, and map reference easy for delivery teams and vendors to reuse.</p>
-
-            <div class="field-grid">
-                <div class="field {{ $hasFieldError('city') ? 'is-error' : '' }}" style="grid-column:span 3;">
+                <div class="field span-3 {{ $hasFieldError('city') ? 'is-error' : '' }}">
                     <label for="city">City</label>
                     <input id="city" type="text" name="city" value="{{ $fieldValue('city') }}" placeholder="City">
                     @if($fieldError('city'))
@@ -446,7 +515,7 @@
                     @endif
                 </div>
 
-                <div class="field {{ $hasFieldError('state') ? 'is-error' : '' }}" style="grid-column:span 3;">
+                <div class="field span-3 {{ $hasFieldError('state') ? 'is-error' : '' }}">
                     <label for="state">State</label>
                     <select id="state" name="state">
                         <option value="">Select state</option>
@@ -459,7 +528,7 @@
                     @endif
                 </div>
 
-                <div class="field {{ $hasFieldError('pincode') ? 'is-error' : '' }}" style="grid-column:span 3;">
+                <div class="field span-3 {{ $hasFieldError('pincode') ? 'is-error' : '' }}">
                     <label for="pincode">Pincode</label>
                     <input id="pincode" type="text" name="pincode" value="{{ $fieldValue('pincode') }}" placeholder="Pincode">
                     @if($fieldError('pincode'))
@@ -467,37 +536,150 @@
                     @endif
                 </div>
 
-                <div class="field {{ $hasFieldError('place_of_supply') ? 'is-error' : '' }}" style="grid-column:span 3;">
+                <div class="field span-3 {{ $hasFieldError('place_of_supply') ? 'is-error' : '' }}">
                     <label for="place_of_supply">Place of Supply</label>
-                    <input id="place_of_supply" type="text" name="place_of_supply" value="{{ $fieldValue('place_of_supply') }}" placeholder="GST place of supply">
+                    <input id="place_of_supply" type="text" name="place_of_supply" value="{{ $fieldValue('place_of_supply') }}" placeholder="Defaults from state when left blank">
                     @if($fieldError('place_of_supply'))
                         <div class="field-error">{{ $fieldError('place_of_supply') }}</div>
                     @endif
                 </div>
 
-                <div class="field {{ $hasFieldError('map_location_text') ? 'is-error' : '' }}" style="grid-column:span 6;">
-                    <label for="map_location_text">Map Location Text</label>
-                    <input id="map_location_text" type="text" name="map_location_text" value="{{ $fieldValue('map_location_text') }}" placeholder="Landmark or map label">
+                <div class="field span-5 {{ $hasFieldError('map_location_text') ? 'is-error' : '' }}">
+                    <label for="map_location_text">Location / Area</label>
+                    <input id="map_location_text" type="text" name="map_location_text" value="{{ $fieldValue('map_location_text') }}" placeholder="Area, landmark, or map label">
                     @if($fieldError('map_location_text'))
                         <div class="field-error">{{ $fieldError('map_location_text') }}</div>
                     @endif
                 </div>
 
-                <div class="field {{ $hasFieldError('map_location_url') ? 'is-error' : '' }}" style="grid-column:span 6;">
-                    <label for="map_location_url">Map Location URL</label>
-                    <input id="map_location_url" type="url" name="map_location_url" value="{{ $fieldValue('map_location_url') }}" placeholder="https://maps.google.com/...">
+                <div class="field span-7 {{ $hasFieldError('map_location_url') ? 'is-error' : '' }}">
+                    <label for="map_location_url">Map Location</label>
+                    <input id="map_location_url" type="url" name="map_location_url" value="{{ $fieldValue('map_location_url') }}" placeholder="Google Maps Link / Location URL">
                     @if($fieldError('map_location_url'))
                         <div class="field-error">{{ $fieldError('map_location_url') }}</div>
                     @endif
                 </div>
 
-                <div class="field" style="grid-column:span 12;">
-                    <div class="helper-box">
-                        Save a map link when deliveries or pickups need quick navigation support. This stays lightweight and works well for staff, vendors, and third-party logistics.
+                <div class="field span-12">
+                    <div class="customer-map-tools">
+                        <button type="button" class="ops-btn-light" data-map-current>Use Current Location</button>
+                        <button type="button" class="ops-btn-light" data-map-open>Pick Location on Map</button>
+                    </div>
+                    <div class="customer-map-preview" data-map-preview {{ ($fieldValue('map_location_text') || $fieldValue('map_location_url')) ? '' : 'hidden' }}>
+                        <strong data-map-preview-label>{{ $fieldValue('map_location_text') ?: 'Map location saved' }}</strong>
+                        <span data-map-preview-url>{{ $fieldValue('map_location_url') }}</span>
                     </div>
                 </div>
             </div>
-        </div>
+        </section>
+
+        <section class="customer-optional">
+            <button type="button" class="customer-optional-toggle" data-optional-toggle="gst">
+                <span>
+                    <strong>GST Details</strong>
+                    <span>Optional. Expand only when this direct customer needs GST billing details.</span>
+                </span>
+                <em data-optional-icon="gst">{{ $gstOpen ? '−' : '+' }}</em>
+            </button>
+            <div class="customer-optional-content {{ $errors->hasAny(['gst_registered', 'gst_number', 'legal_name', 'billing_address']) ? 'is-error' : '' }}" data-optional-panel="gst" {{ $gstOpen ? '' : 'hidden' }}>
+                <div class="customer-form-grid">
+                    <div class="field span-4 {{ $hasFieldError('gst_registered') ? 'is-error' : '' }}">
+                        <label>GST Registered?</label>
+                        <div class="customer-type-switch" style="display:inline-flex;" data-gst-switch>
+                            <button type="button" class="customer-type-pill {{ (string) $fieldValue('gst_registered', $customerData?->gst_registered ? '1' : '0') === '1' ? '' : 'is-active' }}" data-gst-trigger="0">No</button>
+                            <button type="button" class="customer-type-pill {{ (string) $fieldValue('gst_registered', $customerData?->gst_registered ? '1' : '0') === '1' ? 'is-active' : '' }}" data-gst-trigger="1">Yes</button>
+                        </div>
+                        @if($fieldError('gst_registered'))
+                            <div class="field-error">{{ $fieldError('gst_registered') }}</div>
+                        @endif
+                    </div>
+
+                    <div class="field span-4 {{ $hasFieldError('gst_number') ? 'is-error' : '' }}" data-gst-field {{ (string) $fieldValue('gst_registered', $customerData?->gst_registered ? '1' : '0') === '1' ? '' : 'hidden' }}>
+                        <label for="gst_number">GSTIN</label>
+                        <input id="gst_number" type="text" name="gst_number" value="{{ $fieldValue('gst_number') }}" placeholder="29ABCDE1234F1Z5">
+                        @if($fieldError('gst_number'))
+                            <div class="field-error">{{ $fieldError('gst_number') }}</div>
+                        @endif
+                    </div>
+
+                    <div class="field span-4 {{ $hasFieldError('legal_name') ? 'is-error' : '' }}" data-gst-field {{ (string) $fieldValue('gst_registered', $customerData?->gst_registered ? '1' : '0') === '1' ? '' : 'hidden' }}>
+                        <label for="legal_name">Legal Name</label>
+                        <input id="legal_name" type="text" name="legal_name" value="{{ $fieldValue('legal_name') }}" placeholder="Legal billing name">
+                        @if($fieldError('legal_name'))
+                            <div class="field-error">{{ $fieldError('legal_name') }}</div>
+                        @endif
+                    </div>
+
+                    <div class="field span-12" data-gst-field {{ (string) $fieldValue('gst_registered', $customerData?->gst_registered ? '1' : '0') === '1' ? '' : 'hidden' }}>
+                        <label style="display:flex; align-items:center; gap:8px; text-transform:none; letter-spacing:0; font-size:13px; color:#334155;">
+                            <input type="checkbox" name="same_as_customer_address" value="1" {{ $sameBillingAsAddress ? 'checked' : '' }} data-same-billing style="width:auto;">
+                            Same as customer address
+                        </label>
+                    </div>
+
+                    <div class="field span-12 {{ $hasFieldError('billing_address') ? 'is-error' : '' }}" data-gst-field {{ (string) $fieldValue('gst_registered', $customerData?->gst_registered ? '1' : '0') === '1' ? '' : 'hidden' }}>
+                        <label for="billing_address">Billing Address</label>
+                        <textarea id="billing_address" name="billing_address" placeholder="Billing address for GST invoices">{{ $fieldValue('billing_address') }}</textarea>
+                        @if($fieldError('billing_address'))
+                            <div class="field-error">{{ $fieldError('billing_address') }}</div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="customer-optional">
+            <button type="button" class="customer-optional-toggle" data-optional-toggle="id-proof">
+                <span>
+                    <strong>ID Proof</strong>
+                    <span>Optional. Keep this tucked away unless KYC or compliance proof is needed.</span>
+                </span>
+                <em data-optional-icon="id-proof">{{ $idProofOpen ? '−' : '+' }}</em>
+            </button>
+            <div class="customer-optional-content {{ $errors->hasAny(['id_proof_type', 'id_proof_number', 'id_proof_file']) ? 'is-error' : '' }}" data-optional-panel="id-proof" {{ $idProofOpen ? '' : 'hidden' }}>
+                <div class="customer-form-grid">
+                    <div class="field span-4 {{ $hasFieldError('id_proof_type') ? 'is-error' : '' }}">
+                        <label for="id_proof_type">ID Proof Type</label>
+                        <select id="id_proof_type" name="id_proof_type">
+                            <option value="">Select proof type</option>
+                            @foreach($idProofTypeOptions as $value => $label)
+                                <option value="{{ $value }}" {{ $fieldValue('id_proof_type') === $value ? 'selected' : '' }}>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                        @if($fieldError('id_proof_type'))
+                            <div class="field-error">{{ $fieldError('id_proof_type') }}</div>
+                        @endif
+                    </div>
+
+                    <div class="field span-4 {{ $hasFieldError('id_proof_number') ? 'is-error' : '' }}">
+                        <label for="id_proof_number">ID Proof Number</label>
+                        <input id="id_proof_number" type="text" name="id_proof_number" value="{{ $fieldValue('id_proof_number') }}" placeholder="Proof number">
+                        @if($fieldError('id_proof_number'))
+                            <div class="field-error">{{ $fieldError('id_proof_number') }}</div>
+                        @endif
+                    </div>
+
+                    <div class="field span-4 {{ $hasFieldError('id_proof_file') ? 'is-error' : '' }}">
+                        <label for="id_proof_file">Upload ID Proof</label>
+                        <input id="id_proof_file" type="file" name="id_proof_file">
+                        @if($fieldError('id_proof_file'))
+                            <div class="field-error">{{ $fieldError('id_proof_file') }}</div>
+                        @endif
+                    </div>
+
+                    @if($existingProofUrl)
+                        <div class="field span-12">
+                            <a href="{{ $existingProofUrl }}" target="_blank" class="proof-chip">
+                                View Existing Proof
+                                @if(filled($customerData?->id_proof_original_name))
+                                    <span>{{ $customerData->id_proof_original_name }}</span>
+                                @endif
+                            </a>
+                        </div>
+                    @endif
+                </div>
+            </div>
+        </section>
     </div>
 
     <div class="form-actions">
@@ -517,6 +699,23 @@
         const lastName = document.getElementById('last_name');
         const companyName = document.getElementById('company_name');
         const contactName = document.getElementById('contact_name');
+        const optionalToggles = document.querySelectorAll('[data-optional-toggle]');
+        const gstRegisteredInput = document.getElementById('gst_registered');
+        const gstButtons = document.querySelectorAll('[data-gst-trigger]');
+        const gstFields = document.querySelectorAll('[data-gst-field]');
+        const sameBillingCheckbox = document.querySelector('[data-same-billing]');
+        const addressField = document.getElementById('address');
+        const cityField = document.getElementById('city');
+        const stateField = document.getElementById('state');
+        const pincodeField = document.getElementById('pincode');
+        const billingAddressField = document.getElementById('billing_address');
+        const mapTextField = document.getElementById('map_location_text');
+        const mapUrlField = document.getElementById('map_location_url');
+        const mapPreview = document.querySelector('[data-map-preview]');
+        const mapPreviewLabel = document.querySelector('[data-map-preview-label]');
+        const mapPreviewUrl = document.querySelector('[data-map-preview-url]');
+        const mapCurrentButton = document.querySelector('[data-map-current]');
+        const mapOpenButton = document.querySelector('[data-map-open]');
 
         function buildDisplayName(type) {
             if (type === 'Business') {
@@ -544,6 +743,62 @@
             displayNameInput.value = buildDisplayName(type);
         }
 
+        function syncOptionalPanel(key, forceOpen) {
+            const panel = document.querySelector('[data-optional-panel="' + key + '"]');
+            const icon = document.querySelector('[data-optional-icon="' + key + '"]');
+
+            if (!panel || !icon) {
+                return;
+            }
+
+            const nextHidden = forceOpen === undefined ? !panel.hidden : !forceOpen;
+            panel.hidden = nextHidden;
+            icon.textContent = nextHidden ? '+' : '−';
+        }
+
+        function syncGstFields() {
+            const enabled = gstRegisteredInput.value === '1';
+
+            gstButtons.forEach(function (button) {
+                const active = button.getAttribute('data-gst-trigger') === gstRegisteredInput.value;
+                button.classList.toggle('is-active', active);
+            });
+
+            gstFields.forEach(function (field) {
+                field.hidden = !enabled;
+            });
+
+            if (!enabled && sameBillingCheckbox) {
+                sameBillingCheckbox.checked = false;
+            }
+        }
+
+        function copyBillingAddress() {
+            if (!sameBillingCheckbox || !sameBillingCheckbox.checked || !billingAddressField) {
+                return;
+            }
+
+            const merged = [addressField?.value || '', cityField?.value || '', stateField?.value || '', pincodeField?.value || '']
+                .filter(Boolean)
+                .join(', ');
+
+            billingAddressField.value = merged;
+        }
+
+        function syncMapPreview() {
+            if (!mapPreview || !mapPreviewLabel || !mapPreviewUrl) {
+                return;
+            }
+
+            const label = (mapTextField?.value || '').trim();
+            const url = (mapUrlField?.value || '').trim();
+            const hasValue = label !== '' || url !== '';
+
+            mapPreview.hidden = !hasValue;
+            mapPreviewLabel.textContent = label !== '' ? label : 'Map location saved';
+            mapPreviewUrl.textContent = url;
+        }
+
         typeButtons.forEach(function (button) {
             button.addEventListener('click', function () {
                 syncType(button.getAttribute('data-type-trigger'));
@@ -564,12 +819,89 @@
             });
         });
 
-        syncType(customerTypeInput.value || 'Individual');
-    })();
-
-    document.querySelectorAll('[data-phone-local]').forEach(function (input) {
-        input.addEventListener('input', function () {
-            input.value = input.value.replace(/\D+/g, '').slice(0, 15);
+        optionalToggles.forEach(function (button) {
+            button.addEventListener('click', function () {
+                syncOptionalPanel(button.getAttribute('data-optional-toggle'));
+            });
         });
-    });
+
+        gstButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                gstRegisteredInput.value = button.getAttribute('data-gst-trigger') || '0';
+                if (gstRegisteredInput.value === '1') {
+                    syncOptionalPanel('gst', true);
+                }
+                syncGstFields();
+            });
+        });
+
+        sameBillingCheckbox?.addEventListener('change', copyBillingAddress);
+        [addressField, cityField, stateField, pincodeField].forEach(function (input) {
+            input?.addEventListener('input', copyBillingAddress);
+            input?.addEventListener('change', copyBillingAddress);
+        });
+
+        [mapTextField, mapUrlField].forEach(function (input) {
+            input?.addEventListener('input', syncMapPreview);
+            input?.addEventListener('change', syncMapPreview);
+        });
+
+        mapCurrentButton?.addEventListener('click', function () {
+            if (!navigator.geolocation) {
+                window.alert('Current location is not supported on this device.');
+                return;
+            }
+
+            mapCurrentButton.disabled = true;
+            mapCurrentButton.textContent = 'Capturing...';
+
+            navigator.geolocation.getCurrentPosition(function (position) {
+                const latitude = position.coords.latitude.toFixed(6);
+                const longitude = position.coords.longitude.toFixed(6);
+                const accuracy = Math.round(position.coords.accuracy || 0);
+
+                if (mapTextField && !mapTextField.value.trim()) {
+                    mapTextField.value = 'Current location';
+                }
+
+                if (mapUrlField) {
+                    mapUrlField.value = 'https://maps.google.com/?q=' + latitude + ',' + longitude;
+                }
+
+                if (mapTextField) {
+                    mapTextField.value = (mapTextField.value || 'Current location') + ' (' + latitude + ', ' + longitude + (accuracy ? ' • ±' + accuracy + 'm' : '') + ')';
+                }
+
+                syncMapPreview();
+                mapCurrentButton.disabled = false;
+                mapCurrentButton.textContent = 'Use Current Location';
+            }, function () {
+                window.alert('Unable to capture current location. You can still paste a Google Maps link manually.');
+                mapCurrentButton.disabled = false;
+                mapCurrentButton.textContent = 'Use Current Location';
+            }, {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            });
+        });
+
+        mapOpenButton?.addEventListener('click', function () {
+            const existingUrl = (mapUrlField?.value || '').trim();
+            window.open(existingUrl !== '' ? existingUrl : 'https://maps.google.com', '_blank', 'noopener');
+        });
+
+        document.querySelectorAll('[data-phone-local]').forEach(function (input) {
+            input.addEventListener('input', function () {
+                input.value = input.value.replace(/\D+/g, '').slice(0, 15);
+            });
+        });
+
+        syncType(customerTypeInput.value || 'Individual');
+        syncOptionalPanel('gst', {{ $gstOpen ? 'true' : 'false' }});
+        syncOptionalPanel('id-proof', {{ $idProofOpen ? 'true' : 'false' }});
+        syncGstFields();
+        syncMapPreview();
+        copyBillingAddress();
+    })();
 </script>

@@ -99,9 +99,13 @@
             'phone' => $partner->phone,
             'whatsapp' => $partner->whatsapp,
             'email' => $partner->email,
+            'gst_registered' => (bool) $partner->gst_registered,
+            'gstin' => $partner->gstin,
+            'legal_name' => $partner->legal_name,
             'address' => $partner->address,
             'city' => $partner->city,
             'state' => $partner->state,
+            'billing_state' => $partner->billingStateValue(),
             'location' => $partner->openMapUrl(),
             'clients' => $partner->partnerClients->map(function ($client) {
                 return [
@@ -2222,7 +2226,7 @@
         function recommendedTaxType() {
             const customerState = customerSelect?.selectedOptions?.[0]?.getAttribute('data-state') || '';
             const effectiveCustomerState = customerMode() === 'business_partner'
-                ? (selectedPartnerClientData()?.state || selectedBusinessPartnerData()?.state || '')
+                ? (selectedBusinessPartnerData()?.billing_state || selectedPartnerClientData()?.state || selectedBusinessPartnerData()?.state || '')
                 : customerState;
             const normalizedCustomerState = normalizeStateName(effectiveCustomerState);
             const normalizedOrganizationState = normalizeStateName(organizationState);

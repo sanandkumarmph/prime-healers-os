@@ -1,6 +1,8 @@
 @php
     $businessPartner = $businessPartner ?? null;
     $isEdit = (bool) $businessPartner;
+    $gstRegistered = old('gst_registered', $businessPartner?->gst_registered ? '1' : '0') === '1';
+    $sameAsBusinessAddress = old('same_as_business_address', ($businessPartner?->gst_registered && ($businessPartner?->billing_address === $businessPartner?->address) && ($businessPartner?->billing_city === $businessPartner?->city) && ($businessPartner?->billing_state === $businessPartner?->state) && ($businessPartner?->billing_pincode === $businessPartner?->pincode)) ? '1' : '0') === '1';
 @endphp
 
 <style>
@@ -24,6 +26,17 @@
     .partner-field.is-error textarea { border-color:#dc2626; box-shadow:0 0 0 3px rgba(220,38,38,.08); background:#fff7f7; }
     .partner-error { color:#b91c1c; font-size:12px; line-height:1.4; }
     .partner-actions { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+    .partner-gst-shell { display:grid; gap:12px; padding:14px; border:1px solid #e2e8f0; border-radius:14px; background:#f8fafc; }
+    .partner-gst-head { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+    .partner-gst-title { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#475569; }
+    .partner-gst-note { color:#64748b; font-size:12px; line-height:1.45; }
+    .partner-toggle { display:inline-grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:4px; padding:4px; border:1px solid #dbe3ef; border-radius:999px; background:#fff; min-width:min(100%, 220px); }
+    .partner-toggle-input { position:absolute !important; width:1px !important; height:1px !important; padding:0 !important; margin:-1px !important; overflow:hidden !important; clip:rect(0,0,0,0) !important; white-space:nowrap !important; border:0 !important; }
+    .partner-toggle-btn { border:none; border-radius:999px; min-height:38px; padding:8px 12px; background:transparent; color:#475569; font-size:13px; font-weight:700; cursor:pointer; }
+    .partner-toggle-btn.is-active { background:#0f172a; color:#fff; }
+    .partner-gst-fields[hidden] { display:none !important; }
+    .partner-check { display:flex; align-items:center; gap:8px; color:#334155; font-size:13px; font-weight:600; }
+    .partner-check input { width:16px; height:16px; }
     .partner-btn, .partner-btn-light {
         display:inline-flex; align-items:center; justify-content:center; gap:6px;
         min-height:42px; padding:10px 14px; border-radius:12px; border:1px solid transparent;
@@ -94,6 +107,68 @@
                 @error('address')<div class="partner-error">{{ $message }}</div>@enderror
             </div>
 
+            <div class="partner-col-12">
+                <div class="partner-gst-shell">
+                    <div class="partner-gst-head">
+                        <div>
+                            <div class="partner-gst-title">GST Details</div>
+                            <div class="partner-gst-note">Use GST billing details when this partner should appear on invoices as the billing contact.</div>
+                        </div>
+                        <div class="partner-field{{ $errors->has('gst_registered') ? ' is-error' : '' }}" style="gap:8px;">
+                            <label for="gst_registered">GST Registered?</label>
+                            <select name="gst_registered" id="gst_registered" class="partner-toggle-input">
+                                <option value="0" {{ $gstRegistered ? '' : 'selected' }}>No</option>
+                                <option value="1" {{ $gstRegistered ? 'selected' : '' }}>Yes</option>
+                            </select>
+                            <div class="partner-toggle" role="tablist" aria-label="GST registered">
+                                <button type="button" class="partner-toggle-btn{{ $gstRegistered ? '' : ' is-active' }}" data-gst-option="0" aria-pressed="{{ $gstRegistered ? 'false' : 'true' }}">No</button>
+                                <button type="button" class="partner-toggle-btn{{ $gstRegistered ? ' is-active' : '' }}" data-gst-option="1" aria-pressed="{{ $gstRegistered ? 'true' : 'false' }}">Yes</button>
+                            </div>
+                            @error('gst_registered')<div class="partner-error">{{ $message }}</div>@enderror
+                        </div>
+                    </div>
+
+                    <div class="partner-grid partner-gst-fields" id="partnerGstFields"{{ $gstRegistered ? '' : ' hidden' }}>
+                        <div class="partner-field partner-col-4{{ $errors->has('gstin') ? ' is-error' : '' }}">
+                            <label for="gstin">GSTIN</label>
+                            <input type="text" name="gstin" id="gstin" value="{{ old('gstin', $businessPartner->gstin ?? '') }}" placeholder="29ABCDE1234F1Z5">
+                            @error('gstin')<div class="partner-error">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="partner-field partner-col-4{{ $errors->has('legal_name') ? ' is-error' : '' }}">
+                            <label for="legal_name">Legal Business Name</label>
+                            <input type="text" name="legal_name" id="legal_name" value="{{ old('legal_name', $businessPartner->legal_name ?? '') }}" placeholder="Legal billing entity name">
+                            @error('legal_name')<div class="partner-error">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="partner-field partner-col-4{{ $errors->has('billing_state') ? ' is-error' : '' }}">
+                            <label for="billing_state">Billing State</label>
+                            <input type="text" name="billing_state" id="billing_state" value="{{ old('billing_state', $businessPartner->billing_state ?? '') }}" placeholder="Billing state">
+                            @error('billing_state')<div class="partner-error">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="partner-col-12">
+                            <label class="partner-check">
+                                <input type="checkbox" id="same_as_business_address" name="same_as_business_address" value="1" {{ $sameAsBusinessAddress ? 'checked' : '' }}>
+                                <span>Same as business address</span>
+                            </label>
+                        </div>
+                        <div class="partner-field partner-col-12{{ $errors->has('billing_address') ? ' is-error' : '' }}">
+                            <label for="billing_address">GST Address / Billing Address</label>
+                            <textarea name="billing_address" id="billing_address">{{ old('billing_address', $businessPartner->billing_address ?? '') }}</textarea>
+                            @error('billing_address')<div class="partner-error">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="partner-field partner-col-6{{ $errors->has('billing_city') ? ' is-error' : '' }}">
+                            <label for="billing_city">Billing City</label>
+                            <input type="text" name="billing_city" id="billing_city" value="{{ old('billing_city', $businessPartner->billing_city ?? '') }}">
+                            @error('billing_city')<div class="partner-error">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="partner-field partner-col-6{{ $errors->has('billing_pincode') ? ' is-error' : '' }}">
+                            <label for="billing_pincode">Billing Pincode</label>
+                            <input type="text" name="billing_pincode" id="billing_pincode" value="{{ old('billing_pincode', $businessPartner->billing_pincode ?? '') }}">
+                            @error('billing_pincode')<div class="partner-error">{{ $message }}</div>@enderror
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="partner-field partner-col-4{{ $errors->has('city') ? ' is-error' : '' }}">
                 <label for="city">City</label>
                 <input type="text" name="city" id="city" value="{{ old('city', $businessPartner->city ?? '') }}">
@@ -134,3 +209,82 @@
         <button type="submit" class="partner-btn">{{ $isEdit ? 'Update Business Partner' : 'Save Business Partner' }}</button>
     </div>
 </div>
+
+<script>
+    (function () {
+        const gstRegisteredSelect = document.getElementById('gst_registered');
+        const gstButtons = Array.from(document.querySelectorAll('[data-gst-option]'));
+        const gstFields = document.getElementById('partnerGstFields');
+        const sameAddressCheckbox = document.getElementById('same_as_business_address');
+        const businessAddress = document.getElementById('address');
+        const businessCity = document.getElementById('city');
+        const businessState = document.getElementById('state');
+        const businessPincode = document.getElementById('pincode');
+        const billingAddress = document.getElementById('billing_address');
+        const billingCity = document.getElementById('billing_city');
+        const billingState = document.getElementById('billing_state');
+        const billingPincode = document.getElementById('billing_pincode');
+
+        if (!gstRegisteredSelect || !gstFields) {
+            return;
+        }
+
+        function gstEnabled() {
+            return gstRegisteredSelect.value === '1';
+        }
+
+        function syncGstButtons() {
+            const activeValue = gstRegisteredSelect.value;
+            gstButtons.forEach(function (button) {
+                const isActive = button.getAttribute('data-gst-option') === activeValue;
+                button.classList.toggle('is-active', isActive);
+                button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            });
+        }
+
+        function copyBusinessAddressToBilling() {
+            if (!sameAddressCheckbox?.checked) {
+                return;
+            }
+
+            if (billingAddress) billingAddress.value = businessAddress?.value || '';
+            if (billingCity) billingCity.value = businessCity?.value || '';
+            if (billingState) billingState.value = businessState?.value || '';
+            if (billingPincode) billingPincode.value = businessPincode?.value || '';
+        }
+
+        function syncGstSection() {
+            const enabled = gstEnabled();
+            gstFields.hidden = !enabled;
+            syncGstButtons();
+
+            if (!enabled) {
+                if (sameAddressCheckbox) {
+                    sameAddressCheckbox.checked = false;
+                }
+                return;
+            }
+
+            copyBusinessAddressToBilling();
+        }
+
+        gstButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                const nextValue = button.getAttribute('data-gst-option') || '0';
+                if (gstRegisteredSelect.value === nextValue) {
+                    return;
+                }
+
+                gstRegisteredSelect.value = nextValue;
+                syncGstSection();
+            });
+        });
+
+        sameAddressCheckbox?.addEventListener('change', copyBusinessAddressToBilling);
+        [businessAddress, businessCity, businessState, businessPincode].forEach(function (input) {
+            input?.addEventListener('input', copyBusinessAddressToBilling);
+        });
+
+        syncGstSection();
+    })();
+</script>

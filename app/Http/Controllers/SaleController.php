@@ -833,6 +833,7 @@ class SaleController extends Controller
             'bill_to_name' => $sale->billingContactName(),
             'bill_to_phone' => $sale->billingContactPhone(),
             'bill_to_email' => $sale->billingContactEmail(),
+            'bill_to_gstin' => $sale->usesBusinessPartnerFlow() ? ($sale->businessPartner?->gstin ?: null) : ($sale->customer?->gst_number ?: null),
             'bill_to_address' => $sale->billingContactAddress(),
             'bill_to_city' => $sale->billingContactCity(),
             'bill_to_state' => $sale->billingContactState(),

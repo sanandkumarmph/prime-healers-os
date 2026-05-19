@@ -32,10 +32,13 @@ class Customer extends Model
         'phone',
         'whatsapp_number',
         'email',
+        'gst_registered',
         'gst_treatment',
         'place_of_supply',
         'gst_number',
+        'legal_name',
         'address',
+        'billing_address',
         'city',
         'state',
         'pincode',
@@ -48,6 +51,10 @@ class Customer extends Model
         'id_proof_original_name',
         'notes',
         'organization_id',
+    ];
+
+    protected $casts = [
+        'gst_registered' => 'boolean',
     ];
 
     public static function hasWhatsappNumberColumn(): bool
