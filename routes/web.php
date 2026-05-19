@@ -18,6 +18,7 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\RentalController;
+use App\Http\Controllers\RenewalCenterController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\StaffController;
@@ -95,6 +96,15 @@ Route::middleware('auth')->group(function () {
     Route::get('/rentals/export/csv', [RentalController::class, 'exportCsv'])
         ->middleware('module:rentals,read')
         ->name('rentals.export.csv');
+    Route::get('/renewal-center', [RenewalCenterController::class, 'index'])
+        ->middleware('module:rentals,read')
+        ->name('renewal-center.index');
+    Route::post('/renewal-center/{rental}/mark-reminder-sent', [RenewalCenterController::class, 'markReminderSent'])
+        ->middleware('module:rentals,update')
+        ->name('renewal-center.mark-reminder-sent');
+    Route::post('/renewal-center/{rental}/schedule-pickup', [RenewalCenterController::class, 'schedulePickup'])
+        ->middleware('module:rentals,update')
+        ->name('renewal-center.schedule-pickup');
     Route::post('/rentals/{rental}/quick-renew', [RentalController::class, 'quickRenew'])
         ->middleware('module:rentals,update')
         ->name('rentals.quick-renew');

@@ -45,6 +45,7 @@
     $salesIndexUrl = $mergeDashboardQuery('sales.index');
     $invoiceIndexUrl = $mergeDashboardQuery('invoices.index');
     $reportsIndexUrl = $mergeDashboardQuery('reports.index');
+    $renewalCenterUrl = $safeRoute('renewal-center.index');
     $inventoryUrl = $safeRoute('inventory.dashboard');
     $availableRentalAssetsUrl = $safeRoute('assets.index', ['asset_stage' => 'rental_stock', 'asset_status' => 'available']);
     $availableSaleUnitsUrl = $safeRoute('assets.index', ['asset_stage' => 'new_stock', 'asset_status' => 'available_for_sale']);
@@ -280,6 +281,13 @@
         ['label' => 'Pickups Completed', 'value' => $completedPickupCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_pickup']) : null, 'tone' => 'green', 'icon' => 'pickup'],
         ['label' => 'Completed Today', 'value' => $completedTodayCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_today']) : null, 'tone' => 'green', 'icon' => 'completed'],
     ]);
+
+    $renewalMiniTiles = collect([
+        ['label' => 'Renewals Due Today', 'value' => (int) ($renewalsDueTodayCount ?? 0), 'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'due_today']) : null, 'tone' => 'amber', 'icon' => 'rental'],
+        ['label' => 'Renewals Due This Week', 'value' => (int) ($renewalsDueThisWeekCount ?? 0), 'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'next_7_days']) : null, 'tone' => 'blue', 'icon' => 'trend'],
+        ['label' => 'Overdue Renewals', 'value' => (int) ($overdueRenewalsCount ?? 0), 'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'overdue']) : null, 'tone' => 'red', 'icon' => 'overdue'],
+        ['label' => 'Pickup Requested', 'value' => (int) ($pickupRequestedRenewalCount ?? 0), 'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'pickup_requested']) : null, 'tone' => 'green', 'icon' => 'pickup'],
+    ])->filter(fn ($tile) => $canUpdateRentals && !empty($tile['href']))->values();
 
     $kpiCards = collect([
         [
@@ -1408,6 +1416,32 @@
             </div>
         </div>
     </section>
+
+    @if($renewalMiniTiles->isNotEmpty())
+        <section class="rx-card">
+            <div class="rx-card-header">
+                <div>
+                    <h2 class="rx-card-title">Renewal Center</h2>
+                    <p class="rx-card-copy">Due, overdue, and pickup-follow-up renewals in one operational queue.</p>
+                </div>
+                <a href="{{ route('renewal-center.index') }}" class="rx-btn-secondary">Open Renewal Center</a>
+            </div>
+            <div class="rx-card-body">
+                <div class="dashboard-logistics-grid">
+                    @foreach($renewalMiniTiles as $tile)
+                        @php $tag = !empty($tile['href']) ? 'a' : 'div'; @endphp
+                        <{{ $tag }} @if(!empty($tile['href'])) href="{{ $tile['href'] }}" @endif class="dashboard-logistics-card {{ $toneCardClass($tile['tone'] ?? null) }}">
+                            <div class="dashboard-card-head">
+                                <span class="dashboard-logistics-label">{{ $tile['label'] }}</span>
+                                <span class="dashboard-card-icon">{!! $dashboardIcon($tile['icon']) !!}</span>
+                            </div>
+                            <div class="dashboard-card-value">{{ $tile['value'] }}</div>
+                        </{{ $tag }}>
+                    @endforeach
+                </div>
+            </div>
+        </section>
+    @endif
 
     @if($canViewFinance)
         <section class="rx-card">

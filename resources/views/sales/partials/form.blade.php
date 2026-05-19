@@ -2,7 +2,11 @@
     $sale = $sale ?? null;
     $isEdit = (bool) $sale;
     $businessPartners = $businessPartners ?? collect();
+    $businessPartnerFlowAvailable = $businessPartnerFlowAvailable ?? true;
     $selectedCustomerType = old('customer_type', $sale?->customerTypeValue() ?? 'direct_customer');
+    if (!$businessPartnerFlowAvailable && $selectedCustomerType === 'business_partner') {
+        $selectedCustomerType = 'direct_customer';
+    }
     $selectedCustomerId = (int) old('customer_id', $sale->customer_id ?? request('customer_id'));
     $selectedBusinessPartnerId = (int) old('business_partner_id', $sale->business_partner_id ?? 0);
     $selectedPartnerClientId = (int) old('partner_client_id', $sale->partner_client_id ?? 0);
@@ -11,6 +15,9 @@
     $selectedBusinessPartner = $businessPartners->firstWhere('id', $selectedBusinessPartnerId);
     $allPartnerClients = $businessPartners->pluck('partnerClients')->flatten(1);
     $selectedPartnerClient = $allPartnerClients->firstWhere('id', $selectedPartnerClientId);
+    $shouldShowSaleCustomerSummary = $selectedCustomerType === 'business_partner'
+        ? (bool) ($selectedBusinessPartner || $selectedPartnerClient)
+        : filled($selectedCustomerId);
     $selectedRental = ($rentals ?? collect())->firstWhere('id', $selectedRentalId);
     $organizationState = optional(auth()->user()->organization)->state;
 
@@ -107,8 +114,10 @@
         'name' => $customer->name,
         'phone' => $customer->phone,
         'email' => $customer->email,
+        'address' => $customer->address,
         'city' => $customer->city,
         'state' => $customer->state,
+        'location' => $customer->openMapUrl(),
     ])->values();
     $businessPartnerData = $businessPartners->map(function ($partner) {
         return [
@@ -409,16 +418,17 @@
                         <label for="customer_type">Customer Type</label>
                         <select name="customer_type" id="customer_type" class="party-flow-select-native">
                             <option value="direct_customer" {{ $selectedCustomerType === 'direct_customer' ? 'selected' : '' }}>Direct Customer</option>
-                            <option value="business_partner" {{ $selectedCustomerType === 'business_partner' ? 'selected' : '' }}>Business Partner / Tie-up</option>
+                            <option value="business_partner" {{ $selectedCustomerType === 'business_partner' ? 'selected' : '' }}{{ $businessPartnerFlowAvailable ? '' : ' disabled' }}>Business Partner / Tie-up</option>
                         </select>
                         <div class="party-flow-toggle" role="tablist" aria-label="Customer type">
                             <button type="button" class="party-flow-option{{ $selectedCustomerType === 'direct_customer' ? ' is-active' : '' }}" data-sales-customer-type-option="direct_customer" aria-pressed="{{ $selectedCustomerType === 'direct_customer' ? 'true' : 'false' }}">Direct Customer</button>
-                            <button type="button" class="party-flow-option{{ $selectedCustomerType === 'business_partner' ? ' is-active' : '' }}" data-sales-customer-type-option="business_partner" aria-pressed="{{ $selectedCustomerType === 'business_partner' ? 'true' : 'false' }}">Business Partner</button>
+                            <button type="button" class="party-flow-option{{ $selectedCustomerType === 'business_partner' ? ' is-active' : '' }}{{ $businessPartnerFlowAvailable ? '' : ' is-disabled' }}" data-sales-customer-type-option="business_partner" aria-pressed="{{ $selectedCustomerType === 'business_partner' ? 'true' : 'false' }}"{{ $businessPartnerFlowAvailable ? '' : ' aria-disabled="true" disabled' }}>Business Partner</button>
                         </div>
                         @error('customer_type')<div class="sales-field-error">{{ $message }}</div>@enderror
                     </div>
-                    <div class="party-flow-hint">
-                        Keep the order fast. Direct Customer stays simple, while Business Partner lets reminders and delivery go to different contacts.
+                    <div class="party-flow-hint">Keep the order fast: direct customer stays simple, while business partner only appears when billing and delivery go to different people.</div>
+                    <div class="party-flow-admin-note"{{ $businessPartnerFlowAvailable ? ' hidden' : '' }}>
+                        Business Partner setup pending. Run migrations to enable partner workflow.
                     </div>
                 </div>
 
@@ -434,8 +444,10 @@
                                         data-name="{{ $customer->name }}"
                                         data-phone="{{ $customer->phone }}"
                                         data-email="{{ $customer->email }}"
+                                        data-address="{{ $customer->address }}"
                                         data-city="{{ $customer->city }}"
                                         data-state="{{ $customer->state }}"
+                                        data-location="{{ $customer->openMapUrl() }}"
                                         data-search="{{ trim(implode(' ', array_filter([$customer->name, $customer->phone, $customer->email, $customer->city]))) }}"
                                         {{ $selectedCustomerId === $customer->id ? 'selected' : '' }}>
                                         {{ $customer->name }}{{ $customer->phone ? ' • ' . $customer->phone : '' }}
@@ -444,7 +456,7 @@
                             </select>
                             @error('customer_id')<div class="sales-field-error">{{ $message }}</div>@enderror
                         </div>
-                        <button type="button" class="party-flow-link" data-open-modal="saleQuickCustomerModal">+ Add Customer</button>
+                        <button type="button" class="party-flow-link" data-open-modal="saleQuickCustomerModal">+ Add</button>
                     </div>
 
                     <div class="party-flow-row" data-sales-customer-mode="business_partner">
@@ -497,23 +509,41 @@
                         </div>
                         <button type="button" class="party-flow-link{{ $selectedBusinessPartner ? '' : ' is-disabled' }}" id="saleAddActualClientLink" data-open-modal="salePartnerClientModal" aria-disabled="{{ $selectedBusinessPartner ? 'false' : 'true' }}">+ Add</button>
                     </div>
+                    <div class="party-flow-helper" id="salePartnerClientHelper" data-sales-customer-mode="business_partner"{{ $selectedPartnerClient ? ' hidden' : '' }}>
+                        <strong id="salePartnerClientHelperTitle">{{ $selectedBusinessPartner ? 'Select or add an actual delivery client.' : 'Select a business partner to continue.' }}</strong>
+                        <span id="salePartnerClientHelperText">{{ $selectedBusinessPartner ? ($selectedBusinessPartner->partnerClients->count() ? 'Choose the delivery or service client for this sale.' : 'No actual clients added for this business partner yet.') : 'The actual client will be used for delivery and service.' }}</span>
+                    </div>
                 </div>
 
-                <div class="party-flow-summary">
+                <div class="party-flow-summary" id="saleCustomerSummaryCard"{{ $shouldShowSaleCustomerSummary ? '' : ' hidden' }}>
                     <div class="party-flow-summary-head">
-                        <span class="party-flow-summary-title">Contact Usage</span>
+                        <span class="party-flow-summary-title" id="saleCustomerFlowSummaryTitle">{{ $selectedCustomerType === 'business_partner' ? 'Contact Routing' : 'Customer Summary' }}</span>
                         <span class="party-flow-badge" id="saleCustomerFlowChip">{{ $selectedCustomerType === 'business_partner' ? 'Business Partner' : 'Direct Customer' }}</span>
                     </div>
                     <div class="party-flow-lines">
                         <div class="party-flow-line">
-                            <label>Reminder / Payment Contact</label>
+                            <label id="saleReminderContactLabel">{{ $selectedCustomerType === 'business_partner' ? 'Reminder / Payment Contact' : 'Customer' }}</label>
                             <strong id="saleReminderContactSummary">{{ $selectedCustomerType === 'business_partner' ? (($selectedBusinessPartner?->displayName() ?: 'Select business partner') . (($selectedBusinessPartner?->phone) ? ' • ' . $selectedBusinessPartner->phone : '')) : (($selectedCustomer?->name ?: 'Select customer') . (($selectedCustomer?->phone) ? ' • ' . $selectedCustomer->phone : '')) }}</strong>
                         </div>
-                        <div class="party-flow-line">
-                            <label>Delivery / Service Contact</label>
+                        <div class="party-flow-line" id="saleDeliveryContactLine"{{ $selectedCustomerType === 'business_partner' ? '' : ' hidden' }}>
+                            <label id="saleDeliveryContactLabel">Delivery / Service Contact</label>
                             <strong id="saleDeliveryContactSummary">{{ $selectedCustomerType === 'business_partner' ? (($selectedPartnerClient?->displayName() ?: 'Select actual client') . (($selectedPartnerClient?->primaryPhone()) ? ' • ' . $selectedPartnerClient->primaryPhone() : '')) : (($selectedCustomer?->name ?: 'Select customer') . (($selectedCustomer?->phone) ? ' • ' . $selectedCustomer->phone : '')) }}</strong>
                         </div>
-                        <div class="party-flow-meta" id="saleDeliveryAddressSummary">{{ $selectedCustomerType === 'business_partner' ? collect([$selectedPartnerClient?->address, $selectedPartnerClient?->city, $selectedPartnerClient?->state])->filter()->join(', ') : '' }}</div>
+                        <div class="party-flow-line">
+                            <label id="saleDeliveryAddressLabel">{{ $selectedCustomerType === 'business_partner' ? 'Delivery Address' : 'Address' }}</label>
+                            <strong id="saleDeliveryAddressSummary">{{ $selectedCustomerType === 'business_partner' ? collect([$selectedPartnerClient?->address, $selectedPartnerClient?->city, $selectedPartnerClient?->state])->filter()->join(', ') : collect([$selectedCustomer?->address, $selectedCustomer?->city, $selectedCustomer?->state])->filter()->join(', ') }}</strong>
+                        </div>
+                        <div class="party-flow-meta" id="saleDeliveryNotesSummary">{{ $selectedCustomerType === 'business_partner' ? ($selectedPartnerClient?->delivery_notes ?: '') : '' }}</div>
+                    </div>
+                    <div class="party-flow-summary-actions" id="saleDeliverySummaryActions"{{ (($selectedCustomerType === 'business_partner' ? ($selectedPartnerClient?->openMapUrl()) : ($selectedCustomer?->openMapUrl())) ? '' : ' hidden') }}>
+                        <a
+                            href="{{ $selectedCustomerType === 'business_partner' ? ($selectedPartnerClient?->openMapUrl() ?: '#') : ($selectedCustomer?->openMapUrl() ?: '#') }}"
+                            target="_blank"
+                            rel="noopener"
+                            class="party-flow-summary-link"
+                            id="saleDeliveryOpenMapLink"{{ (($selectedCustomerType === 'business_partner' ? ($selectedPartnerClient?->openMapUrl()) : ($selectedCustomer?->openMapUrl())) ? '' : ' hidden') }}>
+                            Open Map
+                        </a>
                     </div>
                 </div>
             </div>
@@ -589,10 +619,22 @@
         const saleItemsCountMetric = document.getElementById('saleItemsCountMetric');
         const salesItemsToolbarSummary = document.getElementById('salesItemsToolbarSummary');
         const saleShippingInput = document.getElementById('shipping_charges');
+        const saleCustomerSummaryCard = document.getElementById('saleCustomerSummaryCard');
+        const saleCustomerFlowSummaryTitle = document.getElementById('saleCustomerFlowSummaryTitle');
         const saleCustomerFlowChip = document.getElementById('saleCustomerFlowChip');
+        const saleReminderContactLabel = document.getElementById('saleReminderContactLabel');
         const saleReminderContactSummary = document.getElementById('saleReminderContactSummary');
+        const saleDeliveryContactLine = document.getElementById('saleDeliveryContactLine');
+        const saleDeliveryContactLabel = document.getElementById('saleDeliveryContactLabel');
         const saleDeliveryContactSummary = document.getElementById('saleDeliveryContactSummary');
+        const saleDeliveryAddressLabel = document.getElementById('saleDeliveryAddressLabel');
         const saleDeliveryAddressSummary = document.getElementById('saleDeliveryAddressSummary');
+        const saleDeliveryNotesSummary = document.getElementById('saleDeliveryNotesSummary');
+        const saleDeliverySummaryActions = document.getElementById('saleDeliverySummaryActions');
+        const saleDeliveryOpenMapLink = document.getElementById('saleDeliveryOpenMapLink');
+        const salePartnerClientHelper = document.getElementById('salePartnerClientHelper');
+        const salePartnerClientHelperTitle = document.getElementById('salePartnerClientHelperTitle');
+        const salePartnerClientHelperText = document.getElementById('salePartnerClientHelperText');
         const standardGstRates = ['0.00', '5.00', '12.00', '18.00', '28.00'];
 
         const productMap = new Map(products.map(function (product) { return [parseInt(product.id, 10), product]; }));
@@ -920,6 +962,14 @@
             const customer = selectedCustomerData();
             const partner = selectedBusinessPartnerData();
             const client = selectedPartnerClientData();
+            const customerAddressText = customer
+                ? [customer.address, customer.city, customer.state].filter(Boolean).join(', ')
+                : '';
+            const customerLocation = customer?.location || '';
+            const clientAddressText = client
+                ? [client.address, client.city, client.state].filter(Boolean).join(', ')
+                : '';
+            const clientLocation = client?.location || '';
 
             if (mode === 'business_partner') {
                 saleCustomerMetric.textContent = partner ? partner.name : 'Select business partner';
@@ -933,6 +983,76 @@
                 saleDeliveryContactSummary.textContent = customer ? [customer.name, customer.phone].filter(Boolean).join(' • ') : 'Select customer';
                 saleDeliveryAddressSummary.textContent = '';
                 saleCustomerFlowChip.textContent = 'Direct Customer';
+            }
+
+            if (mode === 'business_partner') {
+                const hasPartnerSummary = Boolean(client);
+
+                if (saleCustomerSummaryCard) {
+                    saleCustomerSummaryCard.hidden = !hasPartnerSummary;
+                }
+                if (saleCustomerFlowSummaryTitle) {
+                    saleCustomerFlowSummaryTitle.textContent = 'Contact Routing';
+                }
+                if (saleReminderContactLabel) {
+                    saleReminderContactLabel.textContent = 'Reminder / Payment Contact';
+                }
+                if (saleDeliveryContactLine) {
+                    saleDeliveryContactLine.hidden = false;
+                }
+                if (saleDeliveryContactLabel) {
+                    saleDeliveryContactLabel.textContent = 'Delivery / Service Contact';
+                }
+                if (saleDeliveryAddressLabel) {
+                    saleDeliveryAddressLabel.textContent = 'Delivery Address';
+                }
+                saleDeliveryAddressSummary.textContent = clientAddressText;
+                if (saleDeliveryNotesSummary) {
+                    saleDeliveryNotesSummary.textContent = client?.delivery_notes ? 'Notes: ' + client.delivery_notes : '';
+                }
+                if (saleDeliverySummaryActions) {
+                    saleDeliverySummaryActions.hidden = !clientLocation;
+                }
+                if (saleDeliveryOpenMapLink) {
+                    saleDeliveryOpenMapLink.hidden = !clientLocation;
+                    saleDeliveryOpenMapLink.href = clientLocation || '#';
+                }
+                if (salePartnerClientHelper) {
+                    salePartnerClientHelper.hidden = Boolean(client);
+                }
+            } else {
+                const hasCustomerSummary = Boolean(customer && customerSelect?.value);
+
+                if (saleCustomerSummaryCard) {
+                    saleCustomerSummaryCard.hidden = !hasCustomerSummary;
+                }
+                if (saleCustomerFlowSummaryTitle) {
+                    saleCustomerFlowSummaryTitle.textContent = 'Customer Summary';
+                }
+                if (saleReminderContactLabel) {
+                    saleReminderContactLabel.textContent = 'Customer';
+                }
+                if (saleDeliveryContactLine) {
+                    saleDeliveryContactLine.hidden = true;
+                }
+                if (saleDeliveryAddressLabel) {
+                    saleDeliveryAddressLabel.textContent = 'Address';
+                }
+                saleDeliveryContactSummary.textContent = '';
+                saleDeliveryAddressSummary.textContent = customerAddressText;
+                if (saleDeliveryNotesSummary) {
+                    saleDeliveryNotesSummary.textContent = '';
+                }
+                if (saleDeliverySummaryActions) {
+                    saleDeliverySummaryActions.hidden = !customerLocation;
+                }
+                if (saleDeliveryOpenMapLink) {
+                    saleDeliveryOpenMapLink.hidden = !customerLocation;
+                    saleDeliveryOpenMapLink.href = customerLocation || '#';
+                }
+                if (salePartnerClientHelper) {
+                    salePartnerClientHelper.hidden = true;
+                }
             }
 
             const recommended = recommendedTaxType(mode === 'business_partner' ? (client?.state || partner?.state) : customer?.state);
@@ -958,6 +1078,7 @@
             }
 
             const activePartnerId = businessPartnerSelect?.value || '';
+            let visibleClientCount = 0;
 
             Array.from(partnerClientSelect.options).forEach(function (option, index) {
                 if (index === 0) {
@@ -967,6 +1088,9 @@
 
                 const optionPartnerId = option.getAttribute('data-business-partner-id') || '';
                 option.hidden = Boolean(activePartnerId) && optionPartnerId !== activePartnerId;
+                if (!option.hidden) {
+                    visibleClientCount += 1;
+                }
             });
 
             const selectedOption = partnerClientSelect.options[partnerClientSelect.selectedIndex];
@@ -975,6 +1099,30 @@
             }
 
             partnerClientSelect._searchableSelect?.refresh?.();
+
+            if (salePartnerClientHelper) {
+                if (!activePartnerId) {
+                    salePartnerClientHelper.hidden = false;
+                    if (salePartnerClientHelperTitle) {
+                        salePartnerClientHelperTitle.textContent = 'Select a business partner to continue.';
+                    }
+                    if (salePartnerClientHelperText) {
+                        salePartnerClientHelperText.textContent = 'The actual client will be used for delivery and service.';
+                    }
+                } else if (partnerClientSelect.value) {
+                    salePartnerClientHelper.hidden = true;
+                } else {
+                    salePartnerClientHelper.hidden = false;
+                    if (salePartnerClientHelperTitle) {
+                        salePartnerClientHelperTitle.textContent = 'Select or add an actual delivery client.';
+                    }
+                    if (salePartnerClientHelperText) {
+                        salePartnerClientHelperText.textContent = visibleClientCount > 0
+                            ? 'Choose the delivery or service client for this sale.'
+                            : 'No actual clients added for this business partner yet.';
+                    }
+                }
+            }
         }
 
         function updateCustomerModeVisibility() {
@@ -986,7 +1134,7 @@
             });
 
             if (salePartnerClientRow) {
-                salePartnerClientRow.hidden = mode !== 'business_partner' || !hasPartner;
+                salePartnerClientRow.hidden = mode !== 'business_partner';
             }
 
             customerSelect.required = mode === 'direct_customer';
@@ -1242,7 +1390,7 @@
 
         customerTypeButtons.forEach(function (button) {
             button.addEventListener('click', function () {
-                if (!customerTypeSelect) {
+                if (!customerTypeSelect || button.disabled || button.getAttribute('aria-disabled') === 'true') {
                     return;
                 }
 

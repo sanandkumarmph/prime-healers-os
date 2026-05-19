@@ -70,6 +70,8 @@ class RentalController extends Controller
     private ?bool $hasRentalItemsTable = null;
     private ?bool $hasRentalItemAssetIdsColumn = null;
     private ?bool $hasInvoiceRentalColumn = null;
+    private ?bool $hasBusinessPartnersTable = null;
+    private ?bool $hasPartnerClientsTable = null;
 
     private function rentalMetrics(): RentalMetricsService
     {
@@ -83,6 +85,10 @@ class RentalController extends Controller
 
     private function businessPartnersForForm()
     {
+        if (!$this->businessPartnerFlowAvailable()) {
+            return collect();
+        }
+
         return BusinessPartner::query()
             ->where('organization_id', $this->orgId())
             ->where('status', 'active')
@@ -93,6 +99,21 @@ class RentalController extends Controller
             }])
             ->orderBy('business_name')
             ->get();
+    }
+
+    private function hasBusinessPartnersTable(): bool
+    {
+        return $this->hasBusinessPartnersTable ??= Schema::hasTable('business_partners');
+    }
+
+    private function hasPartnerClientsTable(): bool
+    {
+        return $this->hasPartnerClientsTable ??= Schema::hasTable('partner_clients');
+    }
+
+    private function businessPartnerFlowAvailable(): bool
+    {
+        return $this->hasBusinessPartnersTable() && $this->hasPartnerClientsTable();
     }
 
     private function rentalCustomerTypeFromRequest(Request $request, ?Rental $rental = null): string
@@ -2817,13 +2838,27 @@ class RentalController extends Controller
         app(RenewalFinanceService::class)->syncRenewalInvoicePaymentState($this->orgId(), $rental, $renewal);
     }
 
+    private function shouldReturnToRenewalCenter(): bool
+    {
+        return request()->boolean('return_to_renewal_center') && \Illuminate\Support\Facades\Route::has('renewal-center.index');
+    }
+
+    private function renewalRedirectFor(Rental $rental)
+    {
+        if ($this->shouldReturnToRenewalCenter()) {
+            return redirect()->route('renewal-center.index');
+        }
+
+        return redirect()->route('rentals.show', $rental);
+    }
+
     private function renewRentalRecord(Rental $rental, array $data, string $renewalType = 'custom')
     {
         $rental = $this->scopedRental($rental);
         $rental->loadMissing(['customer', 'product']);
 
         if (!$rental->canRenew()) {
-            return redirect()->route('rentals.show', $rental)->with('error', 'Returned rentals cannot be renewed.');
+            return $this->renewalRedirectFor($rental)->with('error', 'Returned rentals cannot be renewed.');
         }
 
         $previousEndDate = $this->normalizeCarbonDate($rental->end_date);
@@ -2857,15 +2892,13 @@ class RentalController extends Controller
                     && round((float) ($latestRenewal->other_amount_added ?? 0), 2) === round($otherAmountAdded, 2);
 
                 if ($sameWindow && $sameCommercials) {
-                    return redirect()
-                        ->route('rentals.show', $rental)
+                    return $this->renewalRedirectFor($rental)
                         ->with('error', 'An identical renewal is already logged. Use Edit Renewal if you only need to correct the latest renewal.');
                 }
 
                 $latestRenewedEndDate = $this->normalizeCarbonDate($latestRenewal->renewed_end_date);
                 if ($latestRenewal->canBeEdited() && $latestRenewedEndDate && $newEndDate->lessThanOrEqualTo($latestRenewedEndDate)) {
-                    return redirect()
-                        ->route('rentals.show', $rental)
+                    return $this->renewalRedirectFor($rental)
                         ->with('error', 'A renewal is already logged up to '.$latestRenewedEndDate->format('d M Y').'. Edit the latest renewal instead of creating another overlapping renewal.');
                 }
             }
@@ -2989,8 +3022,7 @@ class RentalController extends Controller
             ? 'Rental renewed quickly without creating a duplicate record.'
             : 'Rental renewed successfully.';
 
-        return redirect()
-            ->route('rentals.show', $rental)
+        return $this->renewalRedirectFor($rental)
             ->with('success', $successMessage)
             ->with('renewal_whatsapp_url', $whatsAppUrl);
     }
@@ -3899,6 +3931,26 @@ class RentalController extends Controller
             $today
         );
         $renewalFinance = $this->renewalFinanceSnapshot($dashboardRentalCollection->pluck('id'));
+        $renewalCenterBaseQuery = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
+            'status' => null,
+            'filter' => null,
+        ])), false, false)
+            ->whereNotIn('status', ['returned', 'cancelled'])
+            ->lifecycleStarted();
+        $renewalsDueTodayCount = (clone $renewalCenterBaseQuery)
+            ->whereDate('end_date', $today)
+            ->count();
+        $renewalsDueThisWeekCount = (clone $renewalCenterBaseQuery)
+            ->whereBetween('end_date', [$today->copy(), $today->copy()->addDays(7)])
+            ->count();
+        $overdueRenewalsCount = (clone $renewalCenterBaseQuery)
+            ->whereDate('end_date', '<', $today)
+            ->count();
+        $pickupRequestedRenewalCount = (clone $renewalCenterBaseQuery)
+            ->whereHas('pickupRecord', function ($pickupQuery) {
+                $pickupQuery->whereIn('status', ['pending', 'in_progress']);
+            })
+            ->count();
         $pendingReceivableCount = (int) ($pendingReceivables['pendingReceivableCount'] ?? 0);
         $pendingReceivableAmount = (float) ($pendingReceivables['pendingReceivableAmount'] ?? 0);
         $pendingReceivableOverdueCount = (int) ($pendingReceivables['pendingReceivableOverdueCount'] ?? 0);
@@ -4381,6 +4433,7 @@ class RentalController extends Controller
         $this->authorize('create', Rental::class);
 
         $selectedCustomer = null;
+        $businessPartnerFlowAvailable = $this->businessPartnerFlowAvailable();
         $businessPartners = $this->businessPartnersForForm();
         $requestedCustomerId = request()->integer('customer_id');
 
@@ -4416,7 +4469,7 @@ class RentalController extends Controller
 
         $organization = Organization::find($this->orgId());
 
-        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'businessPartners', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses', 'organization', 'selectedCustomer'));
+        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses', 'organization', 'selectedCustomer'));
     }
 
     public function store(Request $request)
@@ -5133,6 +5186,7 @@ class RentalController extends Controller
 
         $rental->load(['deliveryRecord', 'pickupRecord']);
 
+        $businessPartnerFlowAvailable = $this->businessPartnerFlowAvailable();
         $products = $this->productsForRentalForm();
         $rentalProducts = $this->rentalProductsForSelection($products);
         $customers = Customer::where('organization_id', $this->orgId())->orderBy('name')->get();
@@ -5149,7 +5203,7 @@ class RentalController extends Controller
 
         $organization = Organization::find($this->orgId());
 
-        return view('rentals.edit', compact('rental', 'products', 'rentalProducts', 'customers', 'businessPartners', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses', 'organization'));
+        return view('rentals.edit', compact('rental', 'products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses', 'organization'));
     }
 
     public function update(Request $request, Rental $rental)

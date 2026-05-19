@@ -77,6 +77,7 @@
         [
             'label' => 'Operations',
             'items' => [
+                ['key' => 'renewal_center', 'label' => 'Renewal Center', 'icon' => 'rentals', 'href' => $safeRoute('renewal-center.index'), 'active' => request()->routeIs('renewal-center.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('rentals', 'read') ?? false)],
                 ['key' => 'tasks_board', 'label' => 'Tasks Board', 'icon' => 'deliveries', 'href' => $safeRoute('deliveries.index'), 'active' => request()->routeIs('deliveries.*') || request()->routeIs('pickups.*'), 'visible' => $currentUser?->canAccessModule('deliveries', 'read') ?? false],
             ],
         ],

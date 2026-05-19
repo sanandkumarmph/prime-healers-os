@@ -2,13 +2,20 @@
     $isEdit = isset($rental);
     $selectedCustomer = $selectedCustomer ?? null;
     $businessPartners = $businessPartners ?? collect();
+    $businessPartnerFlowAvailable = $businessPartnerFlowAvailable ?? true;
     $customerTypeValue = old('customer_type', $isEdit ? $rental->customerTypeValue() : 'direct_customer');
+    if (!$businessPartnerFlowAvailable && $customerTypeValue === 'business_partner') {
+        $customerTypeValue = 'direct_customer';
+    }
     $selectedCustomerId = old('customer_id', $isEdit ? $rental->customer_id : ($selectedCustomer?->id));
     $selectedBusinessPartnerId = (int) old('business_partner_id', $isEdit ? ($rental->business_partner_id ?? 0) : 0);
     $selectedPartnerClientId = (int) old('partner_client_id', $isEdit ? ($rental->partner_client_id ?? 0) : 0);
     $selectedBusinessPartner = $businessPartners->firstWhere('id', $selectedBusinessPartnerId);
     $allPartnerClients = $businessPartners->pluck('partnerClients')->flatten(1);
     $selectedPartnerClient = $allPartnerClients->firstWhere('id', $selectedPartnerClientId);
+    $shouldShowRentalCustomerSummary = $customerTypeValue === 'business_partner'
+        ? (bool) ($selectedBusinessPartner || $selectedPartnerClient)
+        : filled($selectedCustomerId);
     $rentalProducts = $rentalProducts ?? $products;
     $selectedAssetIds = collect(old('asset_ids', $isEdit ? $rental->activeRentalAssets->pluck('asset_id')->all() : []))
         ->filter(fn ($value) => filled($value))
@@ -1010,18 +1017,19 @@
                         <label for="customer_type">Customer Type</label>
                         <select name="customer_type" id="customer_type" class="party-flow-select-native">
                             <option value="direct_customer" {{ $customerTypeValue === 'direct_customer' ? 'selected' : '' }}>Direct Customer</option>
-                            <option value="business_partner" {{ $customerTypeValue === 'business_partner' ? 'selected' : '' }}>Business Partner / Tie-up</option>
+                            <option value="business_partner" {{ $customerTypeValue === 'business_partner' ? 'selected' : '' }}{{ $businessPartnerFlowAvailable ? '' : ' disabled' }}>Business Partner / Tie-up</option>
                         </select>
                         <div class="party-flow-toggle" role="tablist" aria-label="Customer type">
                             <button type="button" class="party-flow-option{{ $customerTypeValue === 'direct_customer' ? ' is-active' : '' }}" data-customer-type-option="direct_customer" aria-pressed="{{ $customerTypeValue === 'direct_customer' ? 'true' : 'false' }}">Direct Customer</button>
-                            <button type="button" class="party-flow-option{{ $customerTypeValue === 'business_partner' ? ' is-active' : '' }}" data-customer-type-option="business_partner" aria-pressed="{{ $customerTypeValue === 'business_partner' ? 'true' : 'false' }}">Business Partner</button>
+                            <button type="button" class="party-flow-option{{ $customerTypeValue === 'business_partner' ? ' is-active' : '' }}{{ $businessPartnerFlowAvailable ? '' : ' is-disabled' }}" data-customer-type-option="business_partner" aria-pressed="{{ $customerTypeValue === 'business_partner' ? 'true' : 'false' }}"{{ $businessPartnerFlowAvailable ? '' : ' aria-disabled="true" disabled' }}>Business Partner</button>
                         </div>
                         @if($hasFieldError('customer_type'))
                             <span class="field-error">{{ $fieldError('customer_type') }}</span>
                         @endif
                     </div>
-                    <div class="party-flow-hint">
-                        Direct Customer keeps billing and delivery together. Business Partner splits reminders from actual delivery contact.
+                    <div class="party-flow-hint">Keep it fast: direct customer stays simple, while business partner only appears when billing and delivery go to different people.</div>
+                    <div class="party-flow-admin-note"{{ $businessPartnerFlowAvailable ? ' hidden' : '' }}>
+                        Business Partner setup pending. Run migrations to enable partner workflow.
                     </div>
                 </div>
 
@@ -1037,7 +1045,10 @@
                                         data-name="{{ $customer->name }}"
                                         data-phone="{{ \App\Support\PhoneNumber::local($customer->phone) }}"
                                         data-phone-country="{{ \App\Support\PhoneNumber::countryCode($customer->phone) }}"
+                                        data-address="{{ $customer->address }}"
+                                        data-city="{{ $customer->city }}"
                                         data-state="{{ $customer->state }}"
+                                        data-location="{{ $customer->openMapUrl() }}"
                                         data-search="{{ trim(implode(' ', array_filter([$customer->name, $customer->phone, $customer->email, $customer->city]))) }}"
                                         {{ (int) $selectedCustomerId === $customer->id ? 'selected' : '' }}>
                                         {{ $customer->name }}{{ $customer->phone ? ' • ' . $customer->phone : '' }}
@@ -1048,7 +1059,7 @@
                                 <span class="field-error">{{ $fieldError('customer_id') }}</span>
                             @endif
                         </div>
-                        <button type="button" class="party-flow-link" data-open-modal="rentalQuickCustomerModal">+ Add Customer</button>
+                        <button type="button" class="party-flow-link" data-open-modal="rentalQuickCustomerModal">+ Add</button>
                     </div>
 
                     <div class="party-flow-row" data-customer-mode-block="business_partner">
@@ -1105,24 +1116,55 @@
                         </div>
                         <button type="button" class="party-flow-link{{ $selectedBusinessPartner ? '' : ' is-disabled' }}" id="addActualClientLink" data-open-modal="rentalPartnerClientModal" aria-disabled="{{ $selectedBusinessPartner ? 'false' : 'true' }}">+ Add</button>
                     </div>
+                    <div class="party-flow-helper" id="partnerClientHelper" data-customer-mode-block="business_partner"{{ $selectedPartnerClient ? ' hidden' : '' }}>
+                        <strong id="partnerClientHelperTitle">{{ $selectedBusinessPartner ? 'Select or add an actual delivery client.' : 'Select a business partner to continue.' }}</strong>
+                        <span id="partnerClientHelperText">{{ $selectedBusinessPartner ? ($selectedBusinessPartner->partnerClients->count() ? 'Choose the delivery or service client for this rental.' : 'No actual clients added for this business partner yet.') : 'The actual client will be used for delivery, pickup, and service.' }}</span>
+                    </div>
                 </div>
 
-                <div class="party-flow-summary" id="customerContactUsageCard">
+                <div class="party-flow-summary" id="customerContactUsageCard"{{ $shouldShowRentalCustomerSummary ? '' : ' hidden' }}>
                     <div class="party-flow-summary-head">
-                        <span class="party-flow-summary-title">Contact Usage</span>
+                        <span class="party-flow-summary-title" id="customerFlowSummaryTitle">{{ $customerTypeValue === 'business_partner' ? 'Contact Routing' : 'Customer Summary' }}</span>
                         <span class="party-flow-badge" id="customerFlowBadge">{{ $customerTypeValue === 'business_partner' ? 'Business Partner' : 'Direct Customer' }}</span>
                     </div>
                     <div class="party-flow-lines">
                         <div class="party-flow-line">
-                            <label>Reminder / Payment Contact</label>
-                            <strong id="reminderContactSummary">Select a customer</strong>
+                            <label id="reminderContactLabel">{{ $customerTypeValue === 'business_partner' ? 'Reminder / Payment Contact' : 'Customer' }}</label>
+                            <strong id="reminderContactSummary">
+                                @if($customerTypeValue === 'business_partner')
+                                    {{ $selectedBusinessPartner ? collect([$selectedBusinessPartner->displayName(), $selectedBusinessPartner->phone])->filter()->implode(' • ') : 'Select a business partner' }}
+                                @else
+                                    {{ $selectedCustomer ? collect([$selectedCustomer->name, \App\Support\PhoneNumber::local($selectedCustomer->phone) ?: $selectedCustomer->phone])->filter()->implode(' • ') : 'Select a customer' }}
+                                @endif
+                            </strong>
+                        </div>
+                        <div class="party-flow-line" id="deliveryContactLine"{{ $customerTypeValue === 'business_partner' ? '' : ' hidden' }}>
+                            <label id="deliveryContactLabel">Delivery / Pickup Contact</label>
+                            <strong id="deliveryContactSummary">
+                                {{ $selectedPartnerClient ? collect([$selectedPartnerClient->displayName(), \App\Support\PhoneNumber::local($selectedPartnerClient->primaryPhone()) ?: $selectedPartnerClient->primaryPhone()])->filter()->implode(' • ') : 'Select an actual client' }}
+                            </strong>
                         </div>
                         <div class="party-flow-line">
-                            <label>Delivery / Pickup Contact</label>
-                            <strong id="deliveryContactSummary">Select a customer</strong>
+                            <label id="deliveryAddressLabel">{{ $customerTypeValue === 'business_partner' ? 'Delivery Address' : 'Address' }}</label>
+                            <strong id="deliveryAddressSummary">
+                                @if($customerTypeValue === 'business_partner')
+                                    {{ collect([$selectedPartnerClient?->address, $selectedPartnerClient?->city, $selectedPartnerClient?->state])->filter()->implode(', ') }}
+                                @else
+                                    {{ collect([$selectedCustomer?->address, $selectedCustomer?->city, $selectedCustomer?->state])->filter()->implode(', ') }}
+                                @endif
+                            </strong>
                         </div>
-                        <div class="party-flow-meta" id="deliveryAddressSummary"></div>
-                        <div class="party-flow-meta" id="deliveryNotesSummary"></div>
+                        <div class="party-flow-meta" id="deliveryNotesSummary">{{ $customerTypeValue === 'business_partner' ? ($selectedPartnerClient?->delivery_notes ?: '') : '' }}</div>
+                    </div>
+                    <div class="party-flow-summary-actions" id="deliverySummaryActions"{{ (($customerTypeValue === 'business_partner' ? ($selectedPartnerClient?->openMapUrl()) : ($selectedCustomer?->openMapUrl())) ? '' : ' hidden') }}>
+                        <a
+                            href="{{ $customerTypeValue === 'business_partner' ? ($selectedPartnerClient?->openMapUrl() ?: '#') : ($selectedCustomer?->openMapUrl() ?: '#') }}"
+                            target="_blank"
+                            rel="noopener"
+                            class="party-flow-summary-link"
+                            id="deliveryOpenMapLink"{{ (($customerTypeValue === 'business_partner' ? ($selectedPartnerClient?->openMapUrl()) : ($selectedCustomer?->openMapUrl())) ? '' : ' hidden') }}>
+                            Open Map
+                        </a>
                     </div>
                 </div>
             </div>
@@ -1551,11 +1593,22 @@
         const customerModeBlocks = Array.from(document.querySelectorAll('[data-customer-mode-block]'));
         const partnerClientRow = document.getElementById('partnerClientRow');
         const customerFlowBadge = document.getElementById('customerFlowBadge');
+        const customerFlowSummaryTitle = document.getElementById('customerFlowSummaryTitle');
+        const customerContactUsageCard = document.getElementById('customerContactUsageCard');
+        const reminderContactLabel = document.getElementById('reminderContactLabel');
         const reminderContactSummary = document.getElementById('reminderContactSummary');
+        const deliveryContactLine = document.getElementById('deliveryContactLine');
+        const deliveryContactLabel = document.getElementById('deliveryContactLabel');
         const deliveryContactSummary = document.getElementById('deliveryContactSummary');
+        const deliveryAddressLabel = document.getElementById('deliveryAddressLabel');
         const deliveryAddressSummary = document.getElementById('deliveryAddressSummary');
         const deliveryNotesSummary = document.getElementById('deliveryNotesSummary');
+        const deliverySummaryActions = document.getElementById('deliverySummaryActions');
+        const deliveryOpenMapLink = document.getElementById('deliveryOpenMapLink');
         const addActualClientLink = document.getElementById('addActualClientLink');
+        const partnerClientHelper = document.getElementById('partnerClientHelper');
+        const partnerClientHelperTitle = document.getElementById('partnerClientHelperTitle');
+        const partnerClientHelperText = document.getElementById('partnerClientHelperText');
         const productSelect = document.getElementById('product_id');
         const warehouseSelect = document.getElementById('dispatch_warehouse_id');
         const deliveryAssignmentSelect = document.getElementById('delivery_staff_id');
@@ -1976,6 +2029,7 @@
             }
 
             const activePartnerId = businessPartnerSelect?.value || '';
+            let visibleClientCount = 0;
 
             Array.from(partnerClientSelect.options).forEach(function (option, index) {
                 if (index === 0) {
@@ -1985,6 +2039,9 @@
 
                 const optionPartnerId = option.getAttribute('data-business-partner-id') || '';
                 option.hidden = Boolean(activePartnerId) && optionPartnerId !== activePartnerId;
+                if (!option.hidden) {
+                    visibleClientCount += 1;
+                }
             });
 
             const selectedOption = partnerClientSelect.options[partnerClientSelect.selectedIndex];
@@ -1993,6 +2050,30 @@
             }
 
             partnerClientSelect._searchableSelect?.refresh?.();
+
+            if (partnerClientHelper) {
+                if (!activePartnerId) {
+                    partnerClientHelper.hidden = false;
+                    if (partnerClientHelperTitle) {
+                        partnerClientHelperTitle.textContent = 'Select a business partner to continue.';
+                    }
+                    if (partnerClientHelperText) {
+                        partnerClientHelperText.textContent = 'The actual client will be used for delivery, pickup, and service.';
+                    }
+                } else if (partnerClientSelect.value) {
+                    partnerClientHelper.hidden = true;
+                } else {
+                    partnerClientHelper.hidden = false;
+                    if (partnerClientHelperTitle) {
+                        partnerClientHelperTitle.textContent = 'Select or add an actual delivery client.';
+                    }
+                    if (partnerClientHelperText) {
+                        partnerClientHelperText.textContent = visibleClientCount > 0
+                            ? 'Choose the delivery or service client for this rental.'
+                            : 'No actual clients added for this business partner yet.';
+                    }
+                }
+            }
         }
 
         function syncPartnerClientFields() {
@@ -2028,22 +2109,58 @@
             const partner = selectedBusinessPartnerData();
             const client = selectedPartnerClientData();
             const customer = customerSelect?.selectedOptions?.[0];
+            const customerAddressText = customer
+                ? [customer.getAttribute('data-address'), customer.getAttribute('data-city'), customer.getAttribute('data-state')].filter(Boolean).join(', ')
+                : '';
+            const customerLocation = customer?.getAttribute('data-location') || '';
+            const clientAddressText = client
+                ? [client.address, client.city, client.state].filter(Boolean).join(', ')
+                : '';
+            const clientLocation = client?.location || '';
 
             if (customerFlowBadge) {
                 customerFlowBadge.textContent = mode === 'business_partner' ? 'Business Partner' : 'Direct Customer';
             }
+            if (customerFlowSummaryTitle) {
+                customerFlowSummaryTitle.textContent = mode === 'business_partner' ? 'Contact Routing' : 'Customer Summary';
+            }
 
             if (mode === 'business_partner') {
+                const hasPartnerSummary = Boolean(client);
+
+                if (customerContactUsageCard) {
+                    customerContactUsageCard.hidden = !hasPartnerSummary;
+                }
+                if (reminderContactLabel) {
+                    reminderContactLabel.textContent = 'Reminder / Payment Contact';
+                }
+                if (deliveryContactLine) {
+                    deliveryContactLine.hidden = false;
+                }
+                if (deliveryContactLabel) {
+                    deliveryContactLabel.textContent = 'Delivery / Pickup Contact';
+                }
+                if (deliveryAddressLabel) {
+                    deliveryAddressLabel.textContent = 'Delivery Address';
+                }
                 reminderContactSummary.textContent = partner
                     ? [partner.name, partner.phone].filter(Boolean).join(' • ')
                     : 'Select a business partner';
                 deliveryContactSummary.textContent = client
                     ? [client.name, client.phone].filter(Boolean).join(' • ')
                     : 'Select an actual client';
-                deliveryAddressSummary.textContent = client
-                    ? [client.address, client.city, client.state].filter(Boolean).join(', ')
-                    : '';
+                deliveryAddressSummary.textContent = clientAddressText;
                 deliveryNotesSummary.textContent = client?.delivery_notes ? 'Notes: ' + client.delivery_notes : '';
+                if (deliverySummaryActions) {
+                    deliverySummaryActions.hidden = !clientLocation;
+                }
+                if (deliveryOpenMapLink) {
+                    deliveryOpenMapLink.hidden = !clientLocation;
+                    deliveryOpenMapLink.href = clientLocation || '#';
+                }
+                if (partnerClientHelper) {
+                    partnerClientHelper.hidden = Boolean(client);
+                }
 
                 if (addActualClientLink) {
                     addActualClientLink.classList.toggle('is-disabled', !partner);
@@ -2055,10 +2172,34 @@
 
             const customerNameText = customer?.getAttribute('data-name') || 'Select a customer';
             const customerPhoneText = customer?.getAttribute('data-phone') || '';
+            const hasCustomerSummary = Boolean(customer && customerSelect?.value);
+
+            if (customerContactUsageCard) {
+                customerContactUsageCard.hidden = !hasCustomerSummary;
+            }
+            if (reminderContactLabel) {
+                reminderContactLabel.textContent = 'Customer';
+            }
+            if (deliveryContactLine) {
+                deliveryContactLine.hidden = true;
+            }
+            if (deliveryAddressLabel) {
+                deliveryAddressLabel.textContent = 'Address';
+            }
             reminderContactSummary.textContent = [customerNameText, customerPhoneText].filter(Boolean).join(' • ');
-            deliveryContactSummary.textContent = [customerNameText, customerPhoneText].filter(Boolean).join(' • ');
-            deliveryAddressSummary.textContent = '';
+            deliveryContactSummary.textContent = '';
+            deliveryAddressSummary.textContent = customerAddressText;
             deliveryNotesSummary.textContent = '';
+            if (deliverySummaryActions) {
+                deliverySummaryActions.hidden = !customerLocation;
+            }
+            if (deliveryOpenMapLink) {
+                deliveryOpenMapLink.hidden = !customerLocation;
+                deliveryOpenMapLink.href = customerLocation || '#';
+            }
+            if (partnerClientHelper) {
+                partnerClientHelper.hidden = true;
+            }
             if (addActualClientLink) {
                 addActualClientLink.href = '#';
                 addActualClientLink.classList.add('is-disabled');
@@ -2075,7 +2216,7 @@
             });
 
             if (partnerClientRow) {
-                partnerClientRow.hidden = mode !== 'business_partner' || !hasPartner;
+                partnerClientRow.hidden = mode !== 'business_partner';
             }
 
             if (customerSelect) {
@@ -3361,7 +3502,7 @@
 
         customerTypeButtons.forEach(function (button) {
             button.addEventListener('click', function () {
-                if (!customerTypeSelect) {
+                if (!customerTypeSelect || button.disabled || button.getAttribute('aria-disabled') === 'true') {
                     return;
                 }
 

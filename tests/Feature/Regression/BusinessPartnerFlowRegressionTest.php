@@ -11,6 +11,7 @@ use App\Models\Product;
 use App\Models\Rental;
 use App\Models\Sale;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\Support\TestData;
 use Tests\TestCase;
 
@@ -43,6 +44,11 @@ class BusinessPartnerFlowRegressionTest extends TestCase
             ->assertSee('name="business_partner_id"', false)
             ->assertSee('name="partner_client_id"', false)
             ->assertSee('data-open-modal="rentalBusinessPartnerModal"', false)
+            ->assertSee('Select a business partner to continue.')
+            ->assertSee('Select or add an actual delivery client.')
+            ->assertSee('Customer Summary')
+            ->assertSee('Open Map')
+            ->assertDontSee('Contact Usage')
             ->assertDontSee('Delivery Contact Name');
 
         $saleCreate->assertOk()
@@ -50,7 +56,31 @@ class BusinessPartnerFlowRegressionTest extends TestCase
             ->assertSee('data-sales-customer-type-option="direct_customer"', false)
             ->assertSee('name="business_partner_id"', false)
             ->assertSee('name="partner_client_id"', false)
-            ->assertSee('data-open-modal="saleBusinessPartnerModal"', false);
+            ->assertSee('data-open-modal="saleBusinessPartnerModal"', false)
+            ->assertSee('Select a business partner to continue.')
+            ->assertSee('Select or add an actual delivery client.')
+            ->assertSee('Customer Summary')
+            ->assertSee('Open Map')
+            ->assertDontSee('Contact Usage');
+    }
+
+    public function test_rental_and_sales_create_fallback_to_direct_customer_when_partner_tables_are_missing(): void
+    {
+        Schema::dropIfExists('partner_clients');
+        Schema::dropIfExists('business_partners');
+
+        $rentalCreate = $this->get(route('rentals.create'));
+        $saleCreate = $this->get(route('sales.create'));
+
+        $rentalCreate->assertOk()
+            ->assertSee('Business Partner', false)
+            ->assertSee('Business Partner setup pending.', false)
+            ->assertSee('aria-disabled="true"', false);
+
+        $saleCreate->assertOk()
+            ->assertSee('Business Partner', false)
+            ->assertSee('Business Partner setup pending.', false)
+            ->assertSee('aria-disabled="true"', false);
     }
 
     public function test_business_partner_and_actual_client_can_be_created_inline_over_json(): void

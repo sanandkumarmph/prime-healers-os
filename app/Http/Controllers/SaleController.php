@@ -38,6 +38,8 @@ class SaleController extends Controller
     private ?bool $hasInvoiceSaleColumn = null;
     private ?bool $hasSaleItemsTable = null;
     private ?string $organizationState = null;
+    private ?bool $hasBusinessPartnersTable = null;
+    private ?bool $hasPartnerClientsTable = null;
 
     private function salesMetrics(): SalesMetricsService
     {
@@ -51,6 +53,10 @@ class SaleController extends Controller
 
     private function businessPartnersForForm()
     {
+        if (!$this->businessPartnerFlowAvailable()) {
+            return collect();
+        }
+
         return BusinessPartner::query()
             ->where('organization_id', $this->orgId())
             ->where('status', 'active')
@@ -61,6 +67,21 @@ class SaleController extends Controller
             }])
             ->orderBy('business_name')
             ->get();
+    }
+
+    private function hasBusinessPartnersTable(): bool
+    {
+        return $this->hasBusinessPartnersTable ??= Schema::hasTable('business_partners');
+    }
+
+    private function hasPartnerClientsTable(): bool
+    {
+        return $this->hasPartnerClientsTable ??= Schema::hasTable('partner_clients');
+    }
+
+    private function businessPartnerFlowAvailable(): bool
+    {
+        return $this->hasBusinessPartnersTable() && $this->hasPartnerClientsTable();
     }
 
     private function saleCustomerTypeFromRequest(Request $request, ?Sale $sale = null): string
@@ -1785,6 +1806,7 @@ class SaleController extends Controller
         $this->authorize('create', Sale::class);
 
         $customers = Customer::where('organization_id', $this->orgId())->orderBy('name')->get();
+        $businessPartnerFlowAvailable = $this->businessPartnerFlowAvailable();
         $businessPartners = $this->businessPartnersForForm();
         $products = Product::where('organization_id', $this->orgId())
             ->orderBy('name')
@@ -1804,7 +1826,7 @@ class SaleController extends Controller
             ->latest('id')
             ->get();
 
-        return view('sales.create', compact('customers', 'businessPartners', 'products', 'assets', 'rentals'));
+        return view('sales.create', compact('customers', 'businessPartners', 'businessPartnerFlowAvailable', 'products', 'assets', 'rentals'));
     }
 
     public function store(Request $request)
@@ -2140,6 +2162,7 @@ class SaleController extends Controller
             : [(int) $sale->product_id];
 
         $customers = Customer::where('organization_id', $this->orgId())->orderBy('name')->get();
+        $businessPartnerFlowAvailable = $this->businessPartnerFlowAvailable();
         $businessPartners = $this->businessPartnersForForm();
         $products = Product::where('organization_id', $this->orgId())
             ->orderBy('name')
@@ -2175,7 +2198,7 @@ class SaleController extends Controller
             $sale->loadMissing(['saleItems.product', 'saleItems.asset.warehouse', 'saleItems.warehouse']);
         }
 
-        return view('sales.edit', compact('sale', 'customers', 'businessPartners', 'products', 'assets', 'rentals'));
+        return view('sales.edit', compact('sale', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'products', 'assets', 'rentals'));
     }
 
     public function update(Request $request, Sale $sale)
