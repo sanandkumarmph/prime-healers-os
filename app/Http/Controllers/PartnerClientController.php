@@ -48,6 +48,13 @@ class PartnerClientController extends Controller
 
         $partnerClient = PartnerClient::create($validated);
 
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => $partnerClient->displayName() . ' added successfully.',
+                'partner_client' => $this->quickClientPayload($partnerClient->fresh()),
+            ]);
+        }
+
         return redirect()
             ->route('business-partners.show', $businessPartner)
             ->with('success', $partnerClient->displayName() . ' added successfully.');
@@ -122,6 +129,22 @@ class PartnerClientController extends Controller
             'longitude' => 'nullable|numeric|between:-180,180',
             'delivery_notes' => 'nullable|string',
             'status' => 'nullable|in:active,inactive',
+        ];
+    }
+
+    private function quickClientPayload(PartnerClient $partnerClient): array
+    {
+        return [
+            'id' => $partnerClient->id,
+            'business_partner_id' => $partnerClient->business_partner_id,
+            'name' => $partnerClient->displayName(),
+            'phone' => $partnerClient->primaryPhone(),
+            'alternate_phone' => $partnerClient->alternate_phone,
+            'address' => $partnerClient->address,
+            'city' => $partnerClient->city,
+            'state' => $partnerClient->state,
+            'location' => $partnerClient->openMapUrl(),
+            'delivery_notes' => $partnerClient->delivery_notes,
         ];
     }
 }

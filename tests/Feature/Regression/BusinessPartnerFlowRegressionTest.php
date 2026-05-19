@@ -39,15 +39,48 @@ class BusinessPartnerFlowRegressionTest extends TestCase
 
         $rentalCreate->assertOk()
             ->assertSee('name="customer_type"', false)
-            ->assertSee('value="direct_customer" selected', false)
+            ->assertSee('data-customer-type-option="direct_customer"', false)
             ->assertSee('name="business_partner_id"', false)
-            ->assertSee('name="partner_client_id"', false);
+            ->assertSee('name="partner_client_id"', false)
+            ->assertSee('data-open-modal="rentalBusinessPartnerModal"', false)
+            ->assertDontSee('Delivery Contact Name');
 
         $saleCreate->assertOk()
             ->assertSee('name="customer_type"', false)
-            ->assertSee('value="direct_customer" selected', false)
+            ->assertSee('data-sales-customer-type-option="direct_customer"', false)
             ->assertSee('name="business_partner_id"', false)
-            ->assertSee('name="partner_client_id"', false);
+            ->assertSee('name="partner_client_id"', false)
+            ->assertSee('data-open-modal="saleBusinessPartnerModal"', false);
+    }
+
+    public function test_business_partner_and_actual_client_can_be_created_inline_over_json(): void
+    {
+        $partnerResponse = $this->postJson(route('business-partners.store'), [
+            'business_name' => 'Care Network',
+            'contact_person' => 'Nisha',
+            'phone' => '+919900001111',
+            'email' => 'care-network@example.test',
+            'city' => 'Bengaluru',
+            'state' => 'Karnataka',
+        ]);
+
+        $partnerResponse->assertOk()
+            ->assertJsonPath('business_partner.name', 'Care Network');
+
+        $partner = BusinessPartner::query()->where('organization_id', $this->organizationId)->firstOrFail();
+
+        $clientResponse = $this->postJson(route('business-partners.clients.store', $partner), [
+            'client_name' => 'Lakshmi Home',
+            'phone' => '+919900002222',
+            'city' => 'Chennai',
+            'state' => 'Tamil Nadu',
+            'address' => 'Door 12, Lake View',
+            'delivery_notes' => 'Use side gate',
+        ]);
+
+        $clientResponse->assertOk()
+            ->assertJsonPath('partner_client.business_partner_id', $partner->id)
+            ->assertJsonPath('partner_client.name', 'Lakshmi Home');
     }
 
     public function test_business_partner_rental_creation_uses_partner_for_reminders_and_client_for_delivery(): void

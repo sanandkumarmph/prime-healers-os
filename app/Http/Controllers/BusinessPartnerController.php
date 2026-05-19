@@ -84,6 +84,13 @@ class BusinessPartnerController extends Controller
 
         $businessPartner = BusinessPartner::create($validated);
 
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => 'Business partner added successfully.',
+                'business_partner' => $this->quickPartnerPayload($businessPartner->fresh('partnerClients')),
+            ]);
+        }
+
         return redirect()
             ->route('business-partners.show', $businessPartner)
             ->with('success', 'Business partner added successfully.');
@@ -189,6 +196,23 @@ class BusinessPartnerController extends Controller
             'latitude' => 'nullable|numeric|between:-90,90',
             'longitude' => 'nullable|numeric|between:-180,180',
             'status' => 'nullable|in:active,inactive',
+        ];
+    }
+
+    private function quickPartnerPayload(BusinessPartner $businessPartner): array
+    {
+        return [
+            'id' => $businessPartner->id,
+            'name' => $businessPartner->displayName(),
+            'contact_person' => $businessPartner->contact_person,
+            'phone' => $businessPartner->phone,
+            'whatsapp' => $businessPartner->whatsapp,
+            'email' => $businessPartner->email,
+            'address' => $businessPartner->address,
+            'city' => $businessPartner->city,
+            'state' => $businessPartner->state,
+            'location' => $businessPartner->openMapUrl(),
+            'clients' => [],
         ];
     }
 }

@@ -12,4 +12,13 @@
     'quickSelectTarget' => 'customer_id',
     'quickRoute' => route('sales.customers.quick-store'),
 ])
+@include('partials.business-partner-quick-modals', [
+    'quickPartnerModalId' => 'saleBusinessPartnerModal',
+    'quickPartnerFormId' => 'saleBusinessPartnerForm',
+    'quickPartnerSelectTarget' => 'business_partner_id',
+    'quickClientModalId' => 'salePartnerClientModal',
+    'quickClientFormId' => 'salePartnerClientForm',
+    'quickClientSelectTarget' => 'partner_client_id',
+    'quickClientPartnerSource' => 'business_partner_id',
+])
 @endsection

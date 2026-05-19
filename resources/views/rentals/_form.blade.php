@@ -91,7 +91,6 @@
         return in_array($staff->effective_role ?? null, ['vendor', 'third_party'], true);
     })->values();
     $phoneParts = \App\Support\PhoneNumber::split(old('phone', $isEdit ? $rental->phone : ($selectedCustomer?->phone ?? '')));
-    $countryCodeOptions = \App\Support\PhoneNumber::countryCodeOptions();
     $businessPartnerData = $businessPartners->map(function ($partner) {
         return [
             'id' => $partner->id,
@@ -158,6 +157,8 @@
     $hasRentalItemsError = collect($errors->keys())->contains(fn ($key) => str_starts_with($key, 'rental_items'));
     $hasSaleItemsError = collect($errors->keys())->contains(fn ($key) => str_starts_with($key, 'sale_items'));
 @endphp
+
+@include('partials.business-partner-flow-styles')
 
 <style>
     .rental-shell { display:grid; gap:18px; }
@@ -999,144 +1000,132 @@
     <div class="rental-card">
         <h2>Customer & Rental Details</h2>
         <div class="rental-grid">
-            <div class="rental-field rental-col-4{{ $hasFieldError('customer_type') ? ' is-error' : '' }}">
-                <label for="customer_type">Customer Type</label>
-                <select name="customer_type" id="customer_type">
-                    <option value="direct_customer" {{ $customerTypeValue === 'direct_customer' ? 'selected' : '' }}>Direct Customer</option>
-                    <option value="business_partner" {{ $customerTypeValue === 'business_partner' ? 'selected' : '' }}>Business Partner / Tie-up</option>
-                </select>
-                <span class="hint">Direct Customer keeps billing, reminders, and delivery on one contact. Business Partner splits billing/reminders from actual delivery contact.</span>
-                @if($hasFieldError('customer_type'))
-                    <span class="field-error">{{ $fieldError('customer_type') }}</span>
-                @endif
-            </div>
-
-            <div class="rental-col-8 rental-mode-shell">
-                <div class="rental-mode-summary" id="customerContactUsageCard">
-                    <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center;">
-                        <strong>Contact Usage</strong>
-                        <span class="rental-mode-chip" id="customerFlowBadge">{{ $customerTypeValue === 'business_partner' ? 'Business Partner Flow' : 'Direct Customer Flow' }}</span>
-                    </div>
-                    <div class="subtext">
-                        <div><strong>Reminder / Payment Contact:</strong> <span id="reminderContactSummary">Select a customer</span></div>
-                        <div style="margin-top:6px;"><strong>Delivery / Pickup Contact:</strong> <span id="deliveryContactSummary">Select a customer</span></div>
-                        <div id="deliveryAddressSummary" style="margin-top:6px;"></div>
-                        <div id="deliveryNotesSummary" style="margin-top:6px;"></div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="rental-col-4" data-customer-mode-block="direct_customer">
-                <div class="rental-inline-stack">
-                    <div class="rental-field{{ $hasFieldError('customer_id') ? ' is-error' : '' }}">
-                        <label for="customer_id">Customer</label>
-                        <select name="customer_id" id="customer_id" data-searchable-select data-search-placeholder="Search customer by name or phone">
-                    <option value="">Select customer</option>
-                    @foreach($customers as $customer)
-                        <option
-                            value="{{ $customer->id }}"
-                            data-name="{{ $customer->name }}"
-                            data-phone="{{ \App\Support\PhoneNumber::local($customer->phone) }}"
-                            data-phone-country="{{ \App\Support\PhoneNumber::countryCode($customer->phone) }}"
-                            data-state="{{ $customer->state }}"
-                            data-search="{{ trim(implode(' ', array_filter([$customer->name, $customer->phone, $customer->email, $customer->city]))) }}"
-                            {{ (int) $selectedCustomerId === $customer->id ? 'selected' : '' }}>
-                            {{ $customer->name }}{{ $customer->phone ? ' • ' . $customer->phone : '' }}
-                        </option>
-                    @endforeach
+            <div class="rental-col-12 party-flow-shell">
+                <div class="party-flow-toggle-wrap">
+                    <div class="rental-field{{ $hasFieldError('customer_type') ? ' is-error' : '' }}" style="gap:8px;">
+                        <label for="customer_type">Customer Type</label>
+                        <select name="customer_type" id="customer_type" class="party-flow-select-native">
+                            <option value="direct_customer" {{ $customerTypeValue === 'direct_customer' ? 'selected' : '' }}>Direct Customer</option>
+                            <option value="business_partner" {{ $customerTypeValue === 'business_partner' ? 'selected' : '' }}>Business Partner / Tie-up</option>
                         </select>
-                        @if($hasFieldError('customer_id'))
-                            <span class="field-error">{{ $fieldError('customer_id') }}</span>
+                        <div class="party-flow-toggle" role="tablist" aria-label="Customer type">
+                            <button type="button" class="party-flow-option{{ $customerTypeValue === 'direct_customer' ? ' is-active' : '' }}" data-customer-type-option="direct_customer" aria-pressed="{{ $customerTypeValue === 'direct_customer' ? 'true' : 'false' }}">Direct Customer</button>
+                            <button type="button" class="party-flow-option{{ $customerTypeValue === 'business_partner' ? ' is-active' : '' }}" data-customer-type-option="business_partner" aria-pressed="{{ $customerTypeValue === 'business_partner' ? 'true' : 'false' }}">Business Partner</button>
+                        </div>
+                        @if($hasFieldError('customer_type'))
+                            <span class="field-error">{{ $fieldError('customer_type') }}</span>
                         @endif
                     </div>
-                    <button type="button" class="ops-button-secondary is-compact" data-open-modal="rentalQuickCustomerModal">Add Customer</button>
-                </div>
-            </div>
-
-            <div class="rental-col-4" data-customer-mode-block="business_partner">
-                <div class="rental-inline-stack">
-                    <div class="rental-field{{ $hasFieldError('business_partner_id') ? ' is-error' : '' }}">
-                        <label for="business_partner_id">Business Partner</label>
-                        <select name="business_partner_id" id="business_partner_id" data-searchable-select data-search-placeholder="Search business partner by name, contact, phone, or city">
-                            <option value="">Select business partner</option>
-                            @foreach($businessPartners as $partner)
-                                <option
-                                    value="{{ $partner->id }}"
-                                    data-name="{{ $partner->displayName() }}"
-                                    data-phone="{{ $partner->phone }}"
-                                    data-email="{{ $partner->email }}"
-                                    data-state="{{ $partner->state }}"
-                                    data-search="{{ trim(implode(' ', array_filter([$partner->displayName(), $partner->contact_person, $partner->phone, $partner->email, $partner->city, $partner->state]))) }}"
-                                    {{ $selectedBusinessPartnerId === $partner->id ? 'selected' : '' }}>
-                                    {{ $partner->displayName() }}{{ $partner->phone ? ' • ' . $partner->phone : '' }}
-                                </option>
-                            @endforeach
-                        </select>
-                        @if($hasFieldError('business_partner_id'))
-                            <span class="field-error">{{ $fieldError('business_partner_id') }}</span>
-                        @endif
+                    <div class="party-flow-hint">
+                        Direct Customer keeps billing and delivery together. Business Partner splits reminders from actual delivery contact.
                     </div>
-                    <a href="{{ route('business-partners.create') }}" class="ops-button-secondary is-compact">Add Business Partner</a>
                 </div>
-            </div>
 
-            <div class="rental-col-4" data-customer-mode-block="business_partner">
-                <div class="rental-inline-stack">
-                    <div class="rental-field{{ $hasFieldError('partner_client_id') ? ' is-error' : '' }}">
-                        <label for="partner_client_id">Actual Client / Delivery Location</label>
-                        <select name="partner_client_id" id="partner_client_id" data-searchable-select data-search-placeholder="Search actual client by name, phone, address, or city">
-                            <option value="">Select actual client</option>
-                            @foreach($allPartnerClients as $client)
-                                <option
-                                    value="{{ $client->id }}"
-                                    data-business-partner-id="{{ $client->business_partner_id }}"
-                                    data-name="{{ $client->displayName() }}"
-                                    data-phone="{{ \App\Support\PhoneNumber::local($client->primaryPhone()) }}"
-                                    data-phone-country="{{ \App\Support\PhoneNumber::countryCode($client->primaryPhone()) }}"
-                                    data-state="{{ $client->state }}"
-                                    data-address="{{ $client->address }}"
-                                    data-city="{{ $client->city }}"
-                                    data-location="{{ $client->openMapUrl() }}"
-                                    data-notes="{{ $client->delivery_notes }}"
-                                    data-search="{{ trim(implode(' ', array_filter([$client->displayName(), $client->primaryPhone(), $client->address, $client->city, $client->state]))) }}"
-                                    {{ $selectedPartnerClientId === $client->id ? 'selected' : '' }}>
-                                    {{ $client->displayName() }}{{ $client->primaryPhone() ? ' • ' . $client->primaryPhone() : '' }}
-                                </option>
-                            @endforeach
-                        </select>
-                        @if($hasFieldError('partner_client_id'))
-                            <span class="field-error">{{ $fieldError('partner_client_id') }}</span>
-                        @endif
+                <div class="party-flow-rows">
+                    <div class="party-flow-row" data-customer-mode-block="direct_customer">
+                        <div class="rental-field{{ $hasFieldError('customer_id') ? ' is-error' : '' }}">
+                            <label for="customer_id">Customer</label>
+                            <select name="customer_id" id="customer_id" data-searchable-select data-search-placeholder="Search customer by name or phone">
+                                <option value="">Select customer</option>
+                                @foreach($customers as $customer)
+                                    <option
+                                        value="{{ $customer->id }}"
+                                        data-name="{{ $customer->name }}"
+                                        data-phone="{{ \App\Support\PhoneNumber::local($customer->phone) }}"
+                                        data-phone-country="{{ \App\Support\PhoneNumber::countryCode($customer->phone) }}"
+                                        data-state="{{ $customer->state }}"
+                                        data-search="{{ trim(implode(' ', array_filter([$customer->name, $customer->phone, $customer->email, $customer->city]))) }}"
+                                        {{ (int) $selectedCustomerId === $customer->id ? 'selected' : '' }}>
+                                        {{ $customer->name }}{{ $customer->phone ? ' • ' . $customer->phone : '' }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            @if($hasFieldError('customer_id'))
+                                <span class="field-error">{{ $fieldError('customer_id') }}</span>
+                            @endif
+                        </div>
+                        <button type="button" class="party-flow-link" data-open-modal="rentalQuickCustomerModal">+ Add Customer</button>
                     </div>
-                    <a href="{{ $selectedBusinessPartner ? route('business-partners.clients.create', $selectedBusinessPartner) : '#' }}" data-route-template="{{ url('/business-partners/__PARTNER__/clients/create') }}" class="ops-button-secondary is-compact{{ $selectedBusinessPartner ? '' : ' is-disabled' }}" id="addActualClientLink">Add Actual Client</a>
+
+                    <div class="party-flow-row" data-customer-mode-block="business_partner">
+                        <div class="rental-field{{ $hasFieldError('business_partner_id') ? ' is-error' : '' }}">
+                            <label for="business_partner_id">Business Partner</label>
+                            <select name="business_partner_id" id="business_partner_id" data-searchable-select data-search-placeholder="Search business partner by name, contact, phone, or city">
+                                <option value="">Select business partner</option>
+                                @foreach($businessPartners as $partner)
+                                    <option
+                                        value="{{ $partner->id }}"
+                                        data-name="{{ $partner->displayName() }}"
+                                        data-phone="{{ $partner->phone }}"
+                                        data-email="{{ $partner->email }}"
+                                        data-state="{{ $partner->state }}"
+                                        data-search="{{ trim(implode(' ', array_filter([$partner->displayName(), $partner->contact_person, $partner->phone, $partner->email, $partner->city, $partner->state]))) }}"
+                                        {{ $selectedBusinessPartnerId === $partner->id ? 'selected' : '' }}>
+                                        {{ $partner->displayName() }}{{ $partner->phone ? ' • ' . $partner->phone : '' }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            @if($hasFieldError('business_partner_id'))
+                                <span class="field-error">{{ $fieldError('business_partner_id') }}</span>
+                            @endif
+                        </div>
+                        <button type="button" class="party-flow-link" data-open-modal="rentalBusinessPartnerModal">+ Add</button>
+                    </div>
+
+                    <div class="party-flow-row" data-customer-mode-block="business_partner" id="partnerClientRow">
+                        <div class="rental-field{{ $hasFieldError('partner_client_id') ? ' is-error' : '' }}">
+                            <label for="partner_client_id">Actual Client / Delivery Location</label>
+                            <select name="partner_client_id" id="partner_client_id" data-searchable-select data-search-placeholder="Search actual client by name, phone, address, or city">
+                                <option value="">Select actual client</option>
+                                @foreach($allPartnerClients as $client)
+                                    <option
+                                        value="{{ $client->id }}"
+                                        data-business-partner-id="{{ $client->business_partner_id }}"
+                                        data-name="{{ $client->displayName() }}"
+                                        data-phone="{{ \App\Support\PhoneNumber::local($client->primaryPhone()) }}"
+                                        data-phone-country="{{ \App\Support\PhoneNumber::countryCode($client->primaryPhone()) }}"
+                                        data-state="{{ $client->state }}"
+                                        data-address="{{ $client->address }}"
+                                        data-city="{{ $client->city }}"
+                                        data-location="{{ $client->openMapUrl() }}"
+                                        data-notes="{{ $client->delivery_notes }}"
+                                        data-search="{{ trim(implode(' ', array_filter([$client->displayName(), $client->primaryPhone(), $client->address, $client->city, $client->state]))) }}"
+                                        {{ $selectedPartnerClientId === $client->id ? 'selected' : '' }}>
+                                        {{ $client->displayName() }}{{ $client->primaryPhone() ? ' • ' . $client->primaryPhone() : '' }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            @if($hasFieldError('partner_client_id'))
+                                <span class="field-error">{{ $fieldError('partner_client_id') }}</span>
+                            @endif
+                        </div>
+                        <button type="button" class="party-flow-link{{ $selectedBusinessPartner ? '' : ' is-disabled' }}" id="addActualClientLink" data-open-modal="rentalPartnerClientModal" aria-disabled="{{ $selectedBusinessPartner ? 'false' : 'true' }}">+ Add</button>
+                    </div>
+                </div>
+
+                <div class="party-flow-summary" id="customerContactUsageCard">
+                    <div class="party-flow-summary-head">
+                        <span class="party-flow-summary-title">Contact Usage</span>
+                        <span class="party-flow-badge" id="customerFlowBadge">{{ $customerTypeValue === 'business_partner' ? 'Business Partner' : 'Direct Customer' }}</span>
+                    </div>
+                    <div class="party-flow-lines">
+                        <div class="party-flow-line">
+                            <label>Reminder / Payment Contact</label>
+                            <strong id="reminderContactSummary">Select a customer</strong>
+                        </div>
+                        <div class="party-flow-line">
+                            <label>Delivery / Pickup Contact</label>
+                            <strong id="deliveryContactSummary">Select a customer</strong>
+                        </div>
+                        <div class="party-flow-meta" id="deliveryAddressSummary"></div>
+                        <div class="party-flow-meta" id="deliveryNotesSummary"></div>
+                    </div>
                 </div>
             </div>
 
-            <div class="rental-field rental-col-4{{ $hasFieldError('customer_name') ? ' is-error' : '' }}">
-                <label for="customer_name">Delivery Contact Name</label>
-                <input type="text" name="customer_name" id="customer_name" value="{{ old('customer_name', $isEdit ? $rental->customer_name : ($selectedCustomer?->name ?? '')) }}" required>
-                @if($hasFieldError('customer_name'))
-                    <span class="field-error">{{ $fieldError('customer_name') }}</span>
-                @endif
-            </div>
-
-            <div class="rental-field rental-col-4{{ $hasFieldError('phone') ? ' is-error' : '' }}">
-                <label for="phone">Phone</label>
-                <div style="display:flex; align-items:center; border:1px solid #cbd5e1; border-radius:12px; overflow:visible; background:#fff;">
-                    @include('partials.country-code-picker', [
-                        'name' => 'phone_country_code',
-                        'pickerId' => 'phone_country_code',
-                        'value' => old('phone_country_code', $phoneParts['code']),
-                        'options' => $countryCodeOptions,
-                        'dividerColor' => '#cbd5e1',
-                        'width' => '92px',
-                    ])
-                    <input type="text" name="phone" id="phone" value="{{ $phoneParts['local'] }}" required inputmode="numeric" maxlength="15" pattern="[0-9]{6,15}" data-phone-local style="border:none; box-shadow:none; background:transparent;">
-                </div>
-                @if($hasFieldError('phone'))
-                    <span class="field-error">{{ $fieldError('phone') }}</span>
-                @endif
-            </div>
+            <input type="hidden" name="customer_name" id="customer_name" value="{{ old('customer_name', $isEdit ? $rental->customer_name : ($selectedCustomer?->name ?? '')) }}">
+            <input type="hidden" name="phone_country_code" id="phone_country_code" value="{{ old('phone_country_code', $phoneParts['code']) }}">
+            <input type="hidden" name="phone" id="phone" value="{{ $phoneParts['local'] }}">
 
             <div class="rental-field rental-col-4{{ $hasFieldError('product_id', 'rental_items') ? ' is-error' : '' }}">
                 <label for="product_id">Product</label>
@@ -1551,10 +1540,12 @@
         const customerTypeSelect = document.getElementById('customer_type');
         const businessPartnerSelect = document.getElementById('business_partner_id');
         const partnerClientSelect = document.getElementById('partner_client_id');
+        const customerTypeButtons = Array.from(document.querySelectorAll('[data-customer-type-option]'));
         const customerName = document.getElementById('customer_name');
         const phoneInput = document.getElementById('phone');
         const phoneCountryCodeInput = document.getElementById('phone_country_code');
         const customerModeBlocks = Array.from(document.querySelectorAll('[data-customer-mode-block]'));
+        const partnerClientRow = document.getElementById('partnerClientRow');
         const customerFlowBadge = document.getElementById('customerFlowBadge');
         const reminderContactSummary = document.getElementById('reminderContactSummary');
         const deliveryContactSummary = document.getElementById('deliveryContactSummary');
@@ -1927,6 +1918,16 @@
             return customerTypeSelect?.value === 'business_partner' ? 'business_partner' : 'direct_customer';
         }
 
+        function syncCustomerTypeButtons() {
+            const activeMode = customerMode();
+
+            customerTypeButtons.forEach(function (button) {
+                const isActive = button.getAttribute('data-customer-type-option') === activeMode;
+                button.classList.toggle('is-active', isActive);
+                button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            });
+        }
+
         function selectedBusinessPartnerData() {
             const partnerId = businessPartnerSelect?.value ? parseInt(businessPartnerSelect.value, 10) : null;
             return partnerId ? businessPartnerMap.get(partnerId) : null;
@@ -1953,13 +1954,15 @@
             const selected = customerSelect.options[customerSelect.selectedIndex];
 
             if (!selected || !customerSelect.value) {
+                customerName.value = '';
+                phoneInput.value = '';
                 return;
             }
 
-            customerName.value = selected.getAttribute('data-name') || customerName.value;
-            phoneInput.value = selected.getAttribute('data-phone') || phoneInput.value;
+            customerName.value = selected.getAttribute('data-name') || '';
+            phoneInput.value = selected.getAttribute('data-phone') || '';
             if (phoneCountryCodeInput) {
-                phoneCountryCodeInput.value = selected.getAttribute('data-phone-country') || phoneCountryCodeInput.value;
+                phoneCountryCodeInput.value = selected.getAttribute('data-phone-country') || '';
             }
         }
 
@@ -1997,19 +2000,23 @@
             const client = selectedPartnerClientData();
 
             if (client) {
-                customerName.value = client.name || customerName.value;
-                phoneInput.value = String(client.phone || '').replace(/\D+/g, '').slice(0, 15) || phoneInput.value;
+                customerName.value = client.name || '';
+                phoneInput.value = String(client.phone || '').replace(/\D+/g, '').slice(0, 15) || '';
                 if (phoneCountryCodeInput) {
                     const clientOption = partnerClientSelect.options[partnerClientSelect.selectedIndex];
-                    phoneCountryCodeInput.value = clientOption?.getAttribute('data-phone-country') || phoneCountryCodeInput.value;
+                    phoneCountryCodeInput.value = clientOption?.getAttribute('data-phone-country') || '';
                 }
                 return;
             }
 
             if (partner) {
-                customerName.value = partner.name || customerName.value;
-                phoneInput.value = String(partner.phone || '').replace(/\D+/g, '').slice(0, 15) || phoneInput.value;
+                customerName.value = partner.name || '';
+                phoneInput.value = String(partner.phone || '').replace(/\D+/g, '').slice(0, 15) || '';
+                return;
             }
+
+            customerName.value = '';
+            phoneInput.value = '';
         }
 
         function updateContactUsageSummary() {
@@ -2019,15 +2026,15 @@
             const customer = customerSelect?.selectedOptions?.[0];
 
             if (customerFlowBadge) {
-                customerFlowBadge.textContent = mode === 'business_partner' ? 'Business Partner Flow' : 'Direct Customer Flow';
+                customerFlowBadge.textContent = mode === 'business_partner' ? 'Business Partner' : 'Direct Customer';
             }
 
             if (mode === 'business_partner') {
                 reminderContactSummary.textContent = partner
-                    ? [partner.name, partner.phone].filter(Boolean).join(' - ')
+                    ? [partner.name, partner.phone].filter(Boolean).join(' • ')
                     : 'Select a business partner';
                 deliveryContactSummary.textContent = client
-                    ? [client.name, client.phone].filter(Boolean).join(' - ')
+                    ? [client.name, client.phone].filter(Boolean).join(' • ')
                     : 'Select an actual client';
                 deliveryAddressSummary.textContent = client
                     ? [client.address, client.city, client.state].filter(Boolean).join(', ')
@@ -2035,8 +2042,6 @@
                 deliveryNotesSummary.textContent = client?.delivery_notes ? 'Notes: ' + client.delivery_notes : '';
 
                 if (addActualClientLink) {
-                    const routeTemplate = addActualClientLink.getAttribute('data-route-template') || '';
-                    addActualClientLink.href = partner ? routeTemplate.replace('__PARTNER__', String(partner.id)) : '#';
                     addActualClientLink.classList.toggle('is-disabled', !partner);
                     addActualClientLink.setAttribute('aria-disabled', partner ? 'false' : 'true');
                 }
@@ -2046,8 +2051,8 @@
 
             const customerNameText = customer?.getAttribute('data-name') || 'Select a customer';
             const customerPhoneText = customer?.getAttribute('data-phone') || '';
-            reminderContactSummary.textContent = [customerNameText, customerPhoneText].filter(Boolean).join(' - ');
-            deliveryContactSummary.textContent = [customerNameText, customerPhoneText].filter(Boolean).join(' - ');
+            reminderContactSummary.textContent = [customerNameText, customerPhoneText].filter(Boolean).join(' • ');
+            deliveryContactSummary.textContent = [customerNameText, customerPhoneText].filter(Boolean).join(' • ');
             deliveryAddressSummary.textContent = '';
             deliveryNotesSummary.textContent = '';
             if (addActualClientLink) {
@@ -2059,10 +2064,15 @@
 
         function updateCustomerModeVisibility() {
             const mode = customerMode();
+            const hasPartner = Boolean(businessPartnerSelect?.value);
 
             customerModeBlocks.forEach(function (block) {
                 block.hidden = block.getAttribute('data-customer-mode-block') !== mode;
             });
+
+            if (partnerClientRow) {
+                partnerClientRow.hidden = mode !== 'business_partner' || !hasPartner;
+            }
 
             if (customerSelect) {
                 customerSelect.required = mode === 'direct_customer';
@@ -2071,9 +2081,10 @@
                 businessPartnerSelect.required = mode === 'business_partner';
             }
             if (partnerClientSelect) {
-                partnerClientSelect.required = mode === 'business_partner';
+                partnerClientSelect.required = mode === 'business_partner' && hasPartner;
             }
 
+            syncCustomerTypeButtons();
             renderPartnerClientOptions();
             if (mode === 'direct_customer') {
                 syncCustomerFields();
@@ -2081,12 +2092,6 @@
                 syncPartnerClientFields();
             }
             updateContactUsageSummary();
-        }
-
-        if (phoneInput) {
-            phoneInput.addEventListener('input', function () {
-                phoneInput.value = phoneInput.value.replace(/\D+/g, '').slice(0, 15);
-            });
         }
 
         function syncThirdPartyDeliveryFields() {
@@ -3350,6 +3355,22 @@
             saleItemsGrandTotalSummary.textContent = total.toFixed(2);
         }
 
+        customerTypeButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                if (!customerTypeSelect) {
+                    return;
+                }
+
+                const nextMode = button.getAttribute('data-customer-type-option') || 'direct_customer';
+                if (customerTypeSelect.value === nextMode) {
+                    return;
+                }
+
+                customerTypeSelect.value = nextMode;
+                customerTypeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+        });
+
         customerTypeSelect?.addEventListener('change', function () {
             updateCustomerModeVisibility();
             if (primaryTaxTypeSelect) {
@@ -3393,6 +3414,61 @@
             if (primaryTaxTypeSelect) {
                 primaryTaxTypeSelect.value = recommendedTaxType();
             }
+        });
+        window.addEventListener('business-partner:created', function (event) {
+            const partner = event.detail;
+
+            if (!partner || !businessPartnerSelect) {
+                return;
+            }
+
+            const partnerRecord = Object.assign({ clients: [] }, partner);
+            businessPartners.push(partnerRecord);
+            businessPartnerMap.set(parseInt(partner.id, 10), partnerRecord);
+
+            const option = document.createElement('option');
+            option.value = partner.id;
+            option.textContent = partner.phone ? partner.name + ' • ' + partner.phone : partner.name;
+            option.setAttribute('data-name', partner.name || '');
+            option.setAttribute('data-phone', partner.phone || '');
+            option.setAttribute('data-email', partner.email || '');
+            option.setAttribute('data-state', partner.state || '');
+            option.setAttribute('data-search', [partner.name, partner.contact_person, partner.phone, partner.email, partner.city, partner.state].filter(Boolean).join(' '));
+            businessPartnerSelect.appendChild(option);
+            businessPartnerSelect.value = String(partner.id);
+            businessPartnerSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        window.addEventListener('partner-client:created', function (event) {
+            const client = event.detail;
+
+            if (!client || !partnerClientSelect) {
+                return;
+            }
+
+            const partnerId = parseInt(client.business_partner_id || '0', 10);
+            const partner = businessPartnerMap.get(partnerId);
+
+            if (partner) {
+                partner.clients = Array.isArray(partner.clients) ? partner.clients : [];
+                partner.clients.push(client);
+            }
+
+            const option = document.createElement('option');
+            option.value = client.id;
+            option.textContent = client.phone ? client.name + ' • ' + client.phone : client.name;
+            option.setAttribute('data-business-partner-id', String(client.business_partner_id || ''));
+            option.setAttribute('data-name', client.name || '');
+            option.setAttribute('data-phone', String(client.phone || '').replace(/\D+/g, '').slice(0, 15));
+            option.setAttribute('data-phone-country', String(client.phone || '').trim().startsWith('+') ? '+91' : '');
+            option.setAttribute('data-state', client.state || '');
+            option.setAttribute('data-address', client.address || '');
+            option.setAttribute('data-city', client.city || '');
+            option.setAttribute('data-location', client.location || '');
+            option.setAttribute('data-notes', client.delivery_notes || '');
+            option.setAttribute('data-search', [client.name, client.phone, client.address, client.city, client.state].filter(Boolean).join(' '));
+            partnerClientSelect.appendChild(option);
+            partnerClientSelect.value = String(client.id);
+            partnerClientSelect.dispatchEvent(new Event('change', { bubbles: true }));
         });
         productSelect.addEventListener('change', handlePrimaryProductChange);
         productSelect.addEventListener('input', handlePrimaryProductChange);
