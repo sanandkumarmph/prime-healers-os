@@ -38,6 +38,7 @@ use App\Models\Staff;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Support\ActivityLogger;
+use App\Support\ActivityTimelineService;
 use App\Support\PhoneNumber;
 use App\Support\WhatsAppHelper;
 use Carbon\Carbon;
@@ -3951,6 +3952,26 @@ class RentalController extends Controller
                 $pickupQuery->whereIn('status', ['pending', 'in_progress']);
             })
             ->count();
+        $pickupCenterBaseQuery = Delivery::query()
+            ->where('organization_id', $this->orgId())
+            ->where('type', 'pickup');
+        $pickupsScheduledTodayCount = (clone $pickupCenterBaseQuery)
+            ->whereIn('status', ['pending', 'in_progress'])
+            ->when(Schema::hasColumn('deliveries', 'pickup_status'), fn ($query) => $query->whereNotIn('pickup_status', ['failed_attempt', 'cancelled', 'picked_up']))
+            ->whereDate('scheduled_at', $today)
+            ->count();
+        $pickupCenterOverdueCount = (clone $pickupCenterBaseQuery)
+            ->whereIn('status', ['pending', 'in_progress'])
+            ->when(Schema::hasColumn('deliveries', 'pickup_status'), fn ($query) => $query->whereNotIn('pickup_status', ['failed_attempt', 'cancelled', 'picked_up']))
+            ->whereDate('scheduled_at', '<', $today)
+            ->count();
+        $failedPickupsCount = Schema::hasColumn('deliveries', 'pickup_status')
+            ? (clone $pickupCenterBaseQuery)->where('pickup_status', 'failed_attempt')->count()
+            : 0;
+        $awaitingReturnVerificationCount = Asset::query()
+            ->where('organization_id', $this->orgId())
+            ->where('asset_status', Asset::STATUS_AWAITING_VERIFICATION)
+            ->count();
         $pendingReceivableCount = (int) ($pendingReceivables['pendingReceivableCount'] ?? 0);
         $pendingReceivableAmount = (float) ($pendingReceivables['pendingReceivableAmount'] ?? 0);
         $pendingReceivableOverdueCount = (int) ($pendingReceivables['pendingReceivableOverdueCount'] ?? 0);
@@ -4167,6 +4188,14 @@ class RentalController extends Controller
             'totalDepositValue',
             'totalTransportValue',
             'totalOtherValue',
+            'renewalsDueTodayCount',
+            'renewalsDueThisWeekCount',
+            'overdueRenewalsCount',
+            'pickupRequestedRenewalCount',
+            'pickupsScheduledTodayCount',
+            'pickupCenterOverdueCount',
+            'failedPickupsCount',
+            'awaitingReturnVerificationCount',
             'financeSummary',
             'recentRentals',
             'endingSoonRentals',
@@ -4915,7 +4944,7 @@ class RentalController extends Controller
         );
     }
 
-    public function show(Rental $rental)
+    public function show(Request $request, Rental $rental)
     {
         $rental = $this->scopedRental($rental);
         $this->authorize('view', $rental);
@@ -4980,11 +5009,36 @@ class RentalController extends Controller
         }
 
         $rentalInvoice = $this->rentalInvoice($rental);
-        $activityLogs = ActivityLogger::recentFor($rental);
+        $timelineFilter = ActivityTimelineService::normalizeFilter((string) $request->query('timeline_filter', 'all'));
+        $activityLogs = app(ActivityTimelineService::class)->forSubject($rental, $timelineFilter, 25, 'timeline_page');
 
         $needsAssetAssignment = $this->trackedRentalNeedsAssetAssignment($rental);
 
-        return view('rentals.show', compact('rental', 'rentalInvoice', 'activityLogs', 'needsAssetAssignment'));
+        return view('rentals.show', compact('rental', 'rentalInvoice', 'activityLogs', 'needsAssetAssignment', 'timelineFilter'));
+    }
+
+    public function addNote(Request $request, Rental $rental)
+    {
+        $rental = Rental::query()
+            ->where('organization_id', $this->orgId())
+            ->with(['customer', 'businessPartner', 'partnerClient'])
+            ->findOrFail($rental->id);
+        $this->authorize('update', $rental);
+
+        $validated = $request->validate([
+            'note' => ['required', 'string', 'max:2000'],
+            'note_type' => ['nullable', 'in:general,follow-up,payment,delivery,complaint,escalation'],
+        ]);
+
+        ActivityLogger::log('rental.note_added', $rental, [
+            'note_type' => $validated['note_type'] ?? 'general',
+            'note' => $validated['note'],
+        ], $validated['note']);
+
+        return redirect()->to(route('rentals.show', [
+            'rental' => $rental,
+            'timeline_filter' => 'notes',
+        ]) . '#rental-activity-timeline')->with('success', 'Rental note added.');
     }
 
     private function shouldCreateImportedRentalInvoice(array $attributes): bool
@@ -5402,6 +5456,11 @@ class RentalController extends Controller
                 $this->syncRentalInvoiceFromRental($rental->fresh(), $linkedInvoice->fresh());
             }
         });
+
+        ActivityLogger::log('rental.updated', $rental->fresh()->loadMissing(['customer', 'businessPartner', 'partnerClient']), [
+            'status' => $rental->status,
+            'rental_amount' => $rental->rental_amount,
+        ], 'Rental details updated.');
 
         return redirect()->route('rentals.show', $rental)->with('success', 'Rental updated successfully.');
     }

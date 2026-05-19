@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\BusinessPartner;
 use App\Models\PartnerClient;
+use App\Support\ActivityLogger;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -47,6 +48,10 @@ class PartnerClientController extends Controller
         $validated['status'] = $validated['status'] ?? 'active';
 
         $partnerClient = PartnerClient::create($validated);
+        ActivityLogger::log('business_partner.actual_client_added', $partnerClient->fresh(), [
+            'business_partner_name' => $businessPartner->displayName(),
+            'partner_client_name' => $partnerClient->displayName(),
+        ], $partnerClient->displayName() . ' added as an actual client.');
 
         if ($request->expectsJson()) {
             return response()->json([
@@ -79,6 +84,10 @@ class PartnerClientController extends Controller
 
         $validated = $request->validate($this->validationRules($businessPartner, $partnerClient));
         $partnerClient->update($validated);
+        ActivityLogger::log('partner_client.updated', $partnerClient->fresh(), [
+            'business_partner_name' => $businessPartner->displayName(),
+            'partner_client_name' => $partnerClient->displayName(),
+        ], $partnerClient->displayName() . ' updated.');
 
         return redirect()
             ->route('business-partners.show', $businessPartner)

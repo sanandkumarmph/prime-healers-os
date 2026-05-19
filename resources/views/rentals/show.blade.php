@@ -1025,9 +1025,14 @@
 
     <div id="rental-activity-timeline">
         @include('partials.activity-timeline', [
-            'logs' => $activityLogs ?? collect(),
+            'timeline' => $activityLogs ?? collect(),
             'title' => 'Operations History',
             'subtitle' => 'Renewals, reminders, invoices, delivery updates, and return activity for this rental.',
+            'timelineFilter' => $timelineFilter ?? 'all',
+            'timelineRoute' => 'rentals.show',
+            'noteAction' => route('rentals.notes.store', $rental),
+            'noteLabel' => 'Add Note',
+            'anchorId' => 'rental-activity-timeline',
         ])
     </div>
 

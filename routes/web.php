@@ -14,6 +14,7 @@ use App\Http\Controllers\KnowledgeController;
 use App\Http\Controllers\OrganizationSettingsController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PartnerClientController;
+use App\Http\Controllers\PickupCenterController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
@@ -80,6 +81,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/customers/quick-store', [CustomerController::class, 'quickStore'])
         ->middleware('module:customers,create')
         ->name('customers.quick-store');
+    Route::post('/customers/{id}/notes', [CustomerController::class, 'addNote'])
+        ->middleware('module:customers,update')
+        ->name('customers.notes.store');
     Route::post('/rentals/customers/quick-store', [CustomerController::class, 'quickStore'])
         ->middleware('module:customers,create')
         ->name('rentals.customers.quick-store');
@@ -105,6 +109,21 @@ Route::middleware('auth')->group(function () {
     Route::post('/renewal-center/{rental}/schedule-pickup', [RenewalCenterController::class, 'schedulePickup'])
         ->middleware('module:rentals,update')
         ->name('renewal-center.schedule-pickup');
+    Route::get('/pickup-center', [PickupCenterController::class, 'index'])
+        ->middleware('module:deliveries,read')
+        ->name('pickup-center.index');
+    Route::post('/pickup-center/{delivery}/assign', [PickupCenterController::class, 'assign'])
+        ->middleware('module:deliveries,update')
+        ->name('pickup-center.assign');
+    Route::post('/pickup-center/{delivery}/failed-attempt', [PickupCenterController::class, 'failedAttempt'])
+        ->middleware('module:deliveries,update')
+        ->name('pickup-center.failed-attempt');
+    Route::post('/pickup-center/{delivery}/reschedule', [PickupCenterController::class, 'reschedule'])
+        ->middleware('module:deliveries,update')
+        ->name('pickup-center.reschedule');
+    Route::post('/pickup-center/{delivery}/notes', [PickupCenterController::class, 'addNote'])
+        ->middleware('module:deliveries,update')
+        ->name('pickup-center.notes');
     Route::post('/rentals/{rental}/quick-renew', [RentalController::class, 'quickRenew'])
         ->middleware('module:rentals,update')
         ->name('rentals.quick-renew');
@@ -320,6 +339,9 @@ Route::middleware('auth')->group(function () {
     $businessPartners->middlewareFor(['create', 'store'], 'module:customers,create');
     $businessPartners->middlewareFor(['edit', 'update'], 'module:customers,update');
     $businessPartners->middlewareFor('destroy', 'module:customers,delete');
+    Route::post('/business-partners/{business_partner}/notes', [BusinessPartnerController::class, 'addNote'])
+        ->middleware('module:customers,update')
+        ->name('business-partners.notes.store');
     Route::get('/business-partners/{business_partner}/clients/create', [PartnerClientController::class, 'create'])
         ->middleware('module:customers,create')
         ->name('business-partners.clients.create');
@@ -350,6 +372,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/rentals/{rental}/record-payment', [RentalController::class, 'recordPayment'])
         ->middleware('module:payments,create')
         ->name('rentals.recordPayment');
+    Route::post('/rentals/{rental}/notes', [RentalController::class, 'addNote'])
+        ->middleware('module:rentals,update')
+        ->name('rentals.notes.store');
 
     $deliveries = Route::resource('deliveries', DeliveryController::class)
         ->middleware('module:deliveries,read');
@@ -381,6 +406,9 @@ Route::middleware('auth')->group(function () {
     Route::put('/sales/{sale}/void', [SaleController::class, 'voidSale'])
         ->middleware('module:sales,update')
         ->name('sales.void');
+    Route::post('/sales/{sale}/notes', [SaleController::class, 'addNote'])
+        ->middleware('module:sales,update')
+        ->name('sales.notes.store');
 
     $users = Route::resource('/organization/users', UserController::class)
         ->parameters(['users' => 'user'])

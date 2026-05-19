@@ -565,9 +565,14 @@
     </div>
 
     @include('partials.activity-timeline', [
-        'logs' => $activityLogs ?? collect(),
+        'timeline' => $activityLogs ?? collect(),
         'title' => 'Operations History',
         'subtitle' => 'Invoice, payment status, delivery, and order updates linked to this sale.',
+        'timelineFilter' => $timelineFilter ?? 'all',
+        'timelineRoute' => 'sales.show',
+        'noteAction' => route('sales.notes.store', $sale),
+        'noteLabel' => 'Add Note',
+        'anchorId' => 'sale-activity-timeline',
     ])
 
     <div class="ops-card">

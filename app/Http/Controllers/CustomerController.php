@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use Carbon\Carbon;
 use App\Models\Customer;
 use App\Models\Payment;
+use App\Support\ActivityLogger;
+use App\Support\ActivityTimelineService;
 use App\Support\CustomerProfileSupport;
 use App\Support\PhoneNumber;
 use Illuminate\Http\Request;
@@ -435,12 +437,15 @@ class CustomerController extends Controller
         $validated = $this->validateCustomer($request);
         $customer = Customer::create($this->customerPayload($validated));
         $this->syncCustomerUploads($request, $customer);
+        ActivityLogger::log('customer.created', $customer->fresh(), [
+            'customer_type' => $customer->normalizedCustomerType(),
+        ], 'Customer created.');
 
         return redirect()->route('customers.index')
             ->with('success', 'Customer added successfully.');
     }
 
-    public function show($id)
+    public function show(Request $request, $id)
     {
         $customer = Customer::query()
             ->where('organization_id', $this->orgId())
@@ -487,7 +492,10 @@ class CustomerController extends Controller
 
         $this->authorize('view', $customer);
 
-        return view('customers.show', compact('customer'));
+        $timelineFilter = ActivityTimelineService::normalizeFilter((string) $request->query('timeline_filter', 'all'));
+        $activityTimeline = app(ActivityTimelineService::class)->forSubject($customer, $timelineFilter, 25, 'timeline_page');
+
+        return view('customers.show', compact('customer', 'activityTimeline', 'timelineFilter'));
     }
 
     public function downloadIdProof($id)
@@ -531,6 +539,9 @@ class CustomerController extends Controller
 
         $customer->update($this->customerPayload($validated, false));
         $this->syncCustomerUploads($request, $customer);
+        ActivityLogger::log('customer.updated', $customer->fresh(), [
+            'customer_type' => $customer->normalizedCustomerType(),
+        ], 'Customer updated.');
 
         return redirect()->route('customers.index')
             ->with('success', 'Customer updated successfully.');
@@ -605,11 +616,36 @@ class CustomerController extends Controller
         $customer = Customer::create($this->customerPayload($validated));
         $this->syncCustomerUploads($request, $customer);
         $customer->refresh();
+        ActivityLogger::log('customer.created', $customer, [
+            'customer_type' => $customer->normalizedCustomerType(),
+            'source' => 'quick_create',
+        ], 'Customer created.');
 
         return response()->json([
             'message' => 'Customer created successfully.',
             'customer' => $this->quickCustomerResponsePayload($customer),
         ]);
+    }
+
+    public function addNote(Request $request, $id)
+    {
+        $customer = Customer::where('organization_id', $this->orgId())->findOrFail($id);
+        $this->authorize('update', $customer);
+
+        $validated = $request->validate([
+            'note' => ['required', 'string', 'max:2000'],
+            'note_type' => ['nullable', 'in:general,follow-up,payment,delivery,complaint,escalation'],
+        ]);
+
+        ActivityLogger::log('customer.note_added', $customer, [
+            'note_type' => $validated['note_type'] ?? 'general',
+            'note' => $validated['note'],
+        ], $validated['note']);
+
+        return redirect()->to(route('customers.show', [
+            'customer' => $customer->id,
+            'timeline_filter' => 'notes',
+        ]) . '#customer-timeline')->with('success', 'Customer note added.');
     }
 
     private function existingQuickCustomer(Request $request): ?Customer

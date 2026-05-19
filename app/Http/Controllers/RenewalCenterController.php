@@ -518,6 +518,8 @@ class RenewalCenterController extends Controller
             'type' => 'pickup',
             'scheduled_at' => $scheduledAt,
             'status' => 'pending',
+            'pickup_status' => 'requested',
+            'pickup_time_slot' => $validated['pickup_time_slot'] ?? null,
             'notes' => $notes,
             'assignment_type' => $assignmentType,
             'assigned_user_id' => $assignedUserId,

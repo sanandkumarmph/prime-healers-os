@@ -23,6 +23,7 @@ use App\Services\Imports\ImportMatchSignatureService;
 use App\Services\Imports\SaleImportExecutor;
 use App\Services\Metrics\SalesMetricsService;
 use App\Support\ActivityLogger;
+use App\Support\ActivityTimelineService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -1775,7 +1776,7 @@ class SaleController extends Controller
         ));
     }
 
-    public function show(Sale $sale)
+    public function show(Request $request, Sale $sale)
     {
         $sale = $this->scopedSale($sale);
         $this->authorize('view', $sale);
@@ -1796,9 +1797,34 @@ class SaleController extends Controller
         $saleInvoice = $this->saleInvoice($sale);
         $saleInvoice?->load(['payments.customer', 'payments.rental.product']);
         $sale->setAttribute('linked_invoice_id', $saleInvoice?->id);
-        $activityLogs = ActivityLogger::recentFor($sale);
+        $timelineFilter = ActivityTimelineService::normalizeFilter((string) $request->query('timeline_filter', 'all'));
+        $activityLogs = app(ActivityTimelineService::class)->forSubject($sale, $timelineFilter, 25, 'timeline_page');
 
-        return view('sales.show', compact('sale', 'saleInvoice', 'activityLogs'));
+        return view('sales.show', compact('sale', 'saleInvoice', 'activityLogs', 'timelineFilter'));
+    }
+
+    public function addNote(Request $request, Sale $sale)
+    {
+        $sale = Sale::query()
+            ->where('organization_id', $this->orgId())
+            ->with(['customer', 'businessPartner', 'partnerClient'])
+            ->findOrFail($sale->id);
+        $this->authorize('update', $sale);
+
+        $validated = $request->validate([
+            'note' => ['required', 'string', 'max:2000'],
+            'note_type' => ['nullable', 'in:general,follow-up,payment,delivery,complaint,escalation'],
+        ]);
+
+        ActivityLogger::log('sale.note_added', $sale, [
+            'note_type' => $validated['note_type'] ?? 'general',
+            'note' => $validated['note'],
+        ], $validated['note']);
+
+        return redirect()->to(route('sales.show', [
+            'sale' => $sale,
+            'timeline_filter' => 'notes',
+        ]) . '#sale-activity-timeline')->with('success', 'Sale note added.');
     }
 
     public function create()

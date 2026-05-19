@@ -185,5 +185,16 @@
         </div>
         <div style="margin-top:14px;">{{ $clients->links() }}</div>
     </div>
+
+    @include('partials.activity-timeline', [
+        'timeline' => $activityTimeline ?? collect(),
+        'title' => 'Timeline',
+        'subtitle' => 'Partner setup, actual clients, rentals, sales, reminders, and follow-up history.',
+        'timelineFilter' => $timelineFilter ?? 'all',
+        'timelineRoute' => 'business-partners.show',
+        'noteAction' => route('business-partners.notes.store', $businessPartner),
+        'noteLabel' => 'Add Note',
+        'anchorId' => 'business-partner-timeline',
+    ])
 </div>
 @endsection

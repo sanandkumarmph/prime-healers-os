@@ -698,6 +698,19 @@
                 </div>
             </div>
         </div>
+
+        <div class="span-12">
+            @include('partials.activity-timeline', [
+                'timeline' => $activityTimeline ?? collect(),
+                'title' => 'Timeline',
+                'subtitle' => 'Rentals, sales, invoices, payments, deliveries, reminders, and notes linked to this customer.',
+                'timelineFilter' => $timelineFilter ?? 'all',
+                'timelineRoute' => 'customers.show',
+                'noteAction' => route('customers.notes.store', $customer->id),
+                'noteLabel' => 'Add Note',
+                'anchorId' => 'customer-timeline',
+            ])
+        </div>
     </div>
 </div>
 

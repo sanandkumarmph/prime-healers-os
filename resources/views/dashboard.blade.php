@@ -46,6 +46,7 @@
     $invoiceIndexUrl = $mergeDashboardQuery('invoices.index');
     $reportsIndexUrl = $mergeDashboardQuery('reports.index');
     $renewalCenterUrl = $safeRoute('renewal-center.index');
+    $pickupCenterUrl = $safeRoute('pickup-center.index');
     $inventoryUrl = $safeRoute('inventory.dashboard');
     $availableRentalAssetsUrl = $safeRoute('assets.index', ['asset_stage' => 'rental_stock', 'asset_status' => 'available']);
     $availableSaleUnitsUrl = $safeRoute('assets.index', ['asset_stage' => 'new_stock', 'asset_status' => 'available_for_sale']);
@@ -288,6 +289,12 @@
         ['label' => 'Overdue Renewals', 'value' => (int) ($overdueRenewalsCount ?? 0), 'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'overdue']) : null, 'tone' => 'red', 'icon' => 'overdue'],
         ['label' => 'Pickup Requested', 'value' => (int) ($pickupRequestedRenewalCount ?? 0), 'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'pickup_requested']) : null, 'tone' => 'green', 'icon' => 'pickup'],
     ])->filter(fn ($tile) => $canUpdateRentals && !empty($tile['href']))->values();
+    $pickupCenterMiniTiles = collect([
+        ['label' => 'Pickups Scheduled Today', 'value' => (int) ($pickupsScheduledTodayCount ?? 0), 'href' => $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'scheduled_today']) : null, 'tone' => 'amber', 'icon' => 'pickup'],
+        ['label' => 'Overdue Pickups', 'value' => (int) ($pickupCenterOverdueCount ?? 0), 'href' => $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'overdue']) : null, 'tone' => 'red', 'icon' => 'overdue'],
+        ['label' => 'Failed Pickups', 'value' => (int) ($failedPickupsCount ?? 0), 'href' => $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'failed_attempt']) : null, 'tone' => 'amber', 'icon' => 'pickup'],
+        ['label' => 'Awaiting Return Verification', 'value' => (int) ($awaitingReturnVerificationCount ?? 0), 'href' => $safeRoute('assets.pending-verification'), 'tone' => 'blue', 'icon' => 'assets'],
+    ])->filter(fn ($tile) => !empty($tile['href']) && ($canReadDeliveries || ($currentUser?->canAccessModule('assets', 'read') ?? false)))->values();
 
     $kpiCards = collect([
         [
@@ -1429,6 +1436,32 @@
             <div class="rx-card-body">
                 <div class="dashboard-logistics-grid">
                     @foreach($renewalMiniTiles as $tile)
+                        @php $tag = !empty($tile['href']) ? 'a' : 'div'; @endphp
+                        <{{ $tag }} @if(!empty($tile['href'])) href="{{ $tile['href'] }}" @endif class="dashboard-logistics-card {{ $toneCardClass($tile['tone'] ?? null) }}">
+                            <div class="dashboard-card-head">
+                                <span class="dashboard-logistics-label">{{ $tile['label'] }}</span>
+                                <span class="dashboard-card-icon">{!! $dashboardIcon($tile['icon']) !!}</span>
+                            </div>
+                            <div class="dashboard-card-value">{{ $tile['value'] }}</div>
+                        </{{ $tag }}>
+                    @endforeach
+                </div>
+            </div>
+        </section>
+    @endif
+
+    @if($pickupCenterMiniTiles->isNotEmpty())
+        <section class="rx-card">
+            <div class="rx-card-header">
+                <div>
+                    <h2 class="rx-card-title">Pickup Center</h2>
+                    <p class="rx-card-copy">Operational pickup queue for today, overdue collections, failed attempts, and return-verification handoff.</p>
+                </div>
+                <a href="{{ route('pickup-center.index') }}" class="rx-btn-secondary">Open Pickup Center</a>
+            </div>
+            <div class="rx-card-body">
+                <div class="dashboard-logistics-grid">
+                    @foreach($pickupCenterMiniTiles as $tile)
                         @php $tag = !empty($tile['href']) ? 'a' : 'div'; @endphp
                         <{{ $tag }} @if(!empty($tile['href'])) href="{{ $tile['href'] }}" @endif class="dashboard-logistics-card {{ $toneCardClass($tile['tone'] ?? null) }}">
                             <div class="dashboard-card-head">

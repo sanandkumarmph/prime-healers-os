@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\BusinessPartner;
 use App\Models\PartnerClient;
+use App\Support\ActivityLogger;
+use App\Support\ActivityTimelineService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -88,6 +90,7 @@ class BusinessPartnerController extends Controller
         $validated['status'] = $validated['status'] ?? 'active';
 
         $businessPartner = BusinessPartner::create($validated);
+        ActivityLogger::log('business_partner.created', $businessPartner->fresh(), [], 'Business partner created.');
 
         if ($request->expectsJson()) {
             return response()->json([
@@ -127,12 +130,16 @@ class BusinessPartnerController extends Controller
         }
 
         $clients = $clientsQuery->paginate(15, ['*'], 'clients_page')->withQueryString();
+        $timelineFilter = ActivityTimelineService::normalizeFilter((string) $request->query('timeline_filter', 'all'));
+        $activityTimeline = app(ActivityTimelineService::class)->forSubject($businessPartner, $timelineFilter, 25, 'timeline_page');
 
         return view('business-partners.show', compact(
             'businessPartner',
             'clients',
             'clientSearch',
             'clientStatus',
+            'activityTimeline',
+            'timelineFilter',
         ));
     }
 
@@ -156,6 +163,7 @@ class BusinessPartnerController extends Controller
         $validated = $request->validate($this->validationRules($businessPartner));
         $validated = $this->normalizeBillingPayload($validated);
         $businessPartner->update($validated);
+        ActivityLogger::log('business_partner.updated', $businessPartner->fresh(), [], 'Business partner updated.');
 
         return redirect()
             ->route('business-partners.show', $businessPartner)
@@ -181,6 +189,27 @@ class BusinessPartnerController extends Controller
         return redirect()
             ->route('business-partners.index')
             ->with('success', 'Business partner deleted successfully.');
+    }
+
+    public function addNote(Request $request, BusinessPartner $businessPartner)
+    {
+        $businessPartner = $this->scopedPartner($businessPartner);
+        $this->authorize('update', $businessPartner);
+
+        $validated = $request->validate([
+            'note' => ['required', 'string', 'max:2000'],
+            'note_type' => ['nullable', 'in:general,follow-up,payment,delivery,complaint,escalation'],
+        ]);
+
+        ActivityLogger::log('business_partner.note_added', $businessPartner, [
+            'note_type' => $validated['note_type'] ?? 'general',
+            'note' => $validated['note'],
+        ], $validated['note']);
+
+        return redirect()->to(route('business-partners.show', [
+            'business_partner' => $businessPartner,
+            'timeline_filter' => 'notes',
+        ]) . '#business-partner-timeline')->with('success', 'Business partner note added.');
     }
 
     private function validationRules(?BusinessPartner $businessPartner = null): array
