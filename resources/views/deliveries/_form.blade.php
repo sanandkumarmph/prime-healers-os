@@ -3,6 +3,8 @@
     $selectedAssignmentType = old('assignment_type', $isEdit ? ($delivery->assignment_type ?? 'delivery_team') : 'delivery_team');
     $selectedTypeValue = old('type', $isEdit ? $delivery->type : ($selectedType ?? 'delivery'));
     $selectedStatusValue = old('status', $isEdit ? $delivery->status : 'pending');
+    $selectedCancellationReason = old('cancellation_reason', $isEdit ? $delivery->cancellation_reason : '');
+    $selectedCancellationNotes = old('cancellation_notes', $isEdit ? $delivery->cancellation_notes : '');
     $selectedRentalValue = old('rental_id', $isEdit ? $delivery->rental_id : ($selectedRentalId ?? null));
     $selectedSaleValue = old('sale_id', $isEdit ? ($delivery->sale_id ?? null) : ($selectedSaleId ?? null));
     $selectedSaleAssetValue = old('sale_asset_id', $isEdit ? ($delivery->sale?->asset_id ?? null) : null);
@@ -20,6 +22,7 @@
     })->values()->all();
     $hasFieldError = fn (string $field) => $errors->has($field);
     $fieldError = fn (string $field) => $errors->first($field);
+    $cancellationReasonOptions = $cancellationReasonOptions ?? [];
     $statusDisplayLabel = function (string $type, ?string $status): string {
         return match ($status) {
             'completed' => $type === 'pickup' ? 'Picked Up' : 'Delivered',
@@ -245,9 +248,7 @@
                     <option value="pending" {{ $selectedStatusValue === 'pending' ? 'selected' : '' }}>Pending</option>
                     <option value="in_progress" {{ $selectedStatusValue === 'in_progress' ? 'selected' : '' }}>In Progress</option>
                     <option value="completed" {{ $selectedStatusValue === 'completed' ? 'selected' : '' }} data-delivery-label="Delivered" data-pickup-label="Picked Up">{{ $statusDisplayLabel($selectedTypeValue, 'completed') }}</option>
-                    @if($selectedStatusValue === 'cancelled')
-                        <option value="cancelled" selected>Cancelled</option>
-                    @endif
+                    <option value="cancelled" {{ $selectedStatusValue === 'cancelled' ? 'selected' : '' }}>Cancelled</option>
                 </select>
                 @if($fieldError('status'))
                     <div class="ops-field-error">{{ $fieldError('status') }}</div>
@@ -318,6 +319,30 @@
                     @else
                         {{ optional(optional($rentals->firstWhere('id', (int) $selectedRentalValue))->dispatchWarehouse)->name ?? 'Any warehouse' }}
                     @endif
+                </div>
+            </div>
+
+            <div id="cancellation_fields_block" class="span-12" style="{{ $selectedStatusValue === 'cancelled' ? '' : 'display:none;' }}">
+                <div class="ops-grid">
+                    <div class="ops-field span-4 {{ $hasFieldError('cancellation_reason') ? 'is-error' : '' }}">
+                        <label for="cancellation_reason">Cancellation Reason</label>
+                        <select name="cancellation_reason" id="cancellation_reason">
+                            <option value="">Select reason</option>
+                            @foreach($cancellationReasonOptions as $reasonValue => $reasonLabel)
+                                <option value="{{ $reasonValue }}" {{ $selectedCancellationReason === $reasonValue ? 'selected' : '' }}>{{ $reasonLabel }}</option>
+                            @endforeach
+                        </select>
+                        @if($fieldError('cancellation_reason'))
+                            <div class="ops-field-error">{{ $fieldError('cancellation_reason') }}</div>
+                        @endif
+                    </div>
+                    <div class="ops-field span-8 {{ $hasFieldError('cancellation_notes') ? 'is-error' : '' }}">
+                        <label for="cancellation_notes">Cancellation Notes</label>
+                        <textarea name="cancellation_notes" id="cancellation_notes" placeholder="Add additional context, especially when using Other.">{{ $selectedCancellationNotes }}</textarea>
+                        @if($fieldError('cancellation_notes'))
+                            <div class="ops-field-error">{{ $fieldError('cancellation_notes') }}</div>
+                        @endif
+                    </div>
                 </div>
             </div>
         </div>
@@ -399,6 +424,9 @@
         const summaryStatus = document.getElementById('summaryStatus');
         const saleAssetBlock = document.getElementById('sale_asset_block');
         const saleAssetSelect = document.getElementById('sale_asset_id');
+        const cancellationFieldsBlock = document.getElementById('cancellation_fields_block');
+        const cancellationReasonSelect = document.getElementById('cancellation_reason');
+        const cancellationNotesField = document.getElementById('cancellation_notes');
         const saleAssetOptions = @json($saleAssetOptions);
         const selectedSaleAssetId = @json($selectedSaleAssetValue ? (int) $selectedSaleAssetValue : null);
         const initialSaleId = @json($selectedSaleValue ? (int) $selectedSaleValue : null);
@@ -425,6 +453,24 @@
             summaryType.textContent = typeSelect.options[typeSelect.selectedIndex].textContent.trim();
             summaryAssignment.textContent = assignmentTypeSelect.options[assignmentTypeSelect.selectedIndex].textContent.trim();
             summaryStatus.textContent = statusSelect.options[statusSelect.selectedIndex].textContent.trim();
+        }
+
+        function updateCancellationFields() {
+            const isCancelled = statusSelect.value === 'cancelled';
+
+            if (cancellationFieldsBlock) {
+                cancellationFieldsBlock.style.display = isCancelled ? 'block' : 'none';
+            }
+
+            if (!isCancelled) {
+                if (cancellationReasonSelect) {
+                    cancellationReasonSelect.value = '';
+                }
+
+                if (cancellationNotesField) {
+                    cancellationNotesField.value = '';
+                }
+            }
         }
 
         function updateAssignmentFields() {
@@ -511,10 +557,13 @@
         }
         typeSelect.addEventListener('change', updateSummary);
         statusSelect.addEventListener('change', updateSummary);
+        statusSelect.addEventListener('change', updateCancellationFields);
         assignmentTypeSelect.addEventListener('change', updateAssignmentFields);
 
         updateWarehouse();
         updateAssignmentFields();
         updateSaleAssetOptions();
+        updateSummary();
+        updateCancellationFields();
     })();
 </script>

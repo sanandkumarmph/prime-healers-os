@@ -30,7 +30,9 @@ class ProductCatalogPageTest extends TestCase
         $this->get(route('products.index'))
             ->assertOk()
             ->assertSee('Healthcare Equipment Catalog')
-            ->assertSee('Product Master');
+            ->assertSee('Product Master')
+            ->assertSee('Search product name, brand, model, SKU, or product code')
+            ->assertDontSee('Filters Active');
     }
 
     public function test_product_form_uses_gst_dropdowns_instead_of_numeric_inputs(): void
@@ -83,7 +85,34 @@ class ProductCatalogPageTest extends TestCase
         $this->get(route('products.index', ['search' => 'respicare']))
             ->assertOk()
             ->assertSee('Oxygen Concentrator')
-            ->assertDontSee('BiPAP Machine');
+            ->assertDontSee('BiPAP Machine')
+            ->assertSee('Filters Active');
+    }
+
+    public function test_search_works_with_type_filter(): void
+    {
+        $this->makeProduct([
+            'name' => 'RespiRent Unit',
+            'brand' => 'Respicare',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_RENTAL,
+        ]);
+
+        $this->makeProduct([
+            'name' => 'RespiSale Unit',
+            'brand' => 'Respicare',
+            'product_type' => Product::TYPE_SELLABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+        ]);
+
+        $this->get(route('products.index', [
+            'search' => 'respi',
+            'type' => 'rentable',
+        ]))
+            ->assertOk()
+            ->assertSee('RespiRent Unit')
+            ->assertDontSee('RespiSale Unit')
+            ->assertSee('Filters Active');
     }
 
     public function test_category_and_type_filter_work(): void
@@ -114,6 +143,19 @@ class ProductCatalogPageTest extends TestCase
             ->assertSee('Dual Inventory Unit')
             ->assertDontSee('Single Mode Unit')
             ->assertDontSee('Wheelchair');
+    }
+
+    public function test_summary_card_quick_filters_still_work(): void
+    {
+        $this->makeProduct([
+            'name' => 'Available Rental Device',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_RENTAL,
+        ]);
+
+        $this->get(route('products.index', ['type' => 'sale_only']))
+            ->assertOk()
+            ->assertSee('Filters Active');
     }
 
     public function test_sorting_works(): void
@@ -209,7 +251,7 @@ class ProductCatalogPageTest extends TestCase
         );
     }
 
-    public function test_catalog_summary_cards_use_full_filtered_result_set_not_current_page(): void
+    public function test_catalog_summary_cards_remain_global_when_table_is_filtered(): void
     {
         foreach (range(1, 13) as $index) {
             $this->makeProduct([
@@ -251,10 +293,13 @@ class ProductCatalogPageTest extends TestCase
             ]);
         }
 
-        $response = $this->get(route('products.index', ['page' => 2]));
+        $response = $this->get(route('products.index', ['type' => 'rentable', 'page' => 1]));
 
         $response->assertOk()
-            ->assertSee('Showing 13-13 of 13 results');
+            ->assertSee('Showing:')
+            ->assertSee('Rentable')
+            ->assertSee('Paged Product 13')
+            ->assertDontSee('Paged Product 01');
 
         $content = $response->getContent();
 
@@ -296,9 +341,61 @@ class ProductCatalogPageTest extends TestCase
             ->assertSee('?category=Respiratory&amp;page=1', false);
 
         $this->assertMatchesRegularExpression(
-            '/Product Master<\/div>\s*<div class="product-kpi-value">13<\/div>/',
+            '/Product Master<\/div>\s*<div class="product-kpi-value">15<\/div>/',
             $response->getContent()
         );
+    }
+
+    public function test_clear_filters_link_resets_search_and_filters(): void
+    {
+        $response = $this->get(route('products.index', [
+            'search' => 'Resp',
+            'category' => 'Respiratory',
+            'type' => 'rentable',
+            'stock_status' => 'available_to_rent',
+            'sort' => 'name',
+            'direction' => 'asc',
+        ]));
+
+        $response->assertOk()
+            ->assertSee('Filters Active')
+            ->assertSee('href="' . route('products.index') . '"', false);
+    }
+
+    public function test_search_visible_by_default_and_works_with_quick_filter(): void
+    {
+        $this->makeProduct([
+            'name' => 'Rentable Search Target',
+            'brand' => 'Prime Search',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_RENTAL,
+        ]);
+
+        $this->makeProduct([
+            'name' => 'Sellable Search Target',
+            'brand' => 'Prime Search',
+            'product_type' => Product::TYPE_SELLABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+        ]);
+
+        $this->get(route('products.index', [
+            'type' => 'rentable',
+            'search' => 'Prime Search',
+        ]))
+            ->assertOk()
+            ->assertSee('Search product name, brand, model, SKU, or product code')
+            ->assertSee('Rentable Search Target')
+            ->assertDontSee('Sellable Search Target')
+            ->assertSee('Showing:')
+            ->assertSee('Rentable');
+    }
+
+    public function test_mobile_search_layout_hooks_are_present(): void
+    {
+        $this->get(route('products.index'))
+            ->assertOk()
+            ->assertSee('class="product-primary-search-form"', false)
+            ->assertSee('grid-template-columns:1fr;', false);
     }
 
     public function test_product_master_export_csv_downloads_filtered_rows(): void

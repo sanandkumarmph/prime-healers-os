@@ -88,22 +88,25 @@ class WhatsAppHelper
     public static function rentalRenewalReminder(Rental $rental): string
     {
         $endDate = static::formatDateValue($rental->end_date);
+        $contactName = $rental->reminderContactName();
 
-        return trim("Hello {$rental->customer_name}, your rental for {$rental->product->name} is ending on {$endDate}. Please let us know if you would like to renew it.");
+        return trim("Hello {$contactName}, your rental for {$rental->product->name} is ending on {$endDate}. Please let us know if you would like to renew it.");
     }
 
     public static function rentalDeliveryConfirmation(Rental $rental): string
     {
         $startDate = static::formatDateValue($rental->start_date);
+        $contactName = $rental->reminderContactName();
 
-        return trim("Hello {$rental->customer_name}, your rental order for {$rental->product->name} is scheduled for delivery on {$startDate}. Please keep the delivery location and contact ready.");
+        return trim("Hello {$contactName}, your rental order for {$rental->product->name} is scheduled for delivery on {$startDate}. Please keep the delivery location and contact ready.");
     }
 
     public static function rentalPickupReminder(Rental $rental): string
     {
         $endDate = static::formatDateValue($rental->end_date);
+        $contactName = $rental->reminderContactName();
 
-        return trim("Hello {$rental->customer_name}, this is a reminder that pickup for {$rental->product->name} is due on {$endDate}. Please let us know a suitable pickup time.");
+        return trim("Hello {$contactName}, this is a reminder that pickup for {$rental->product->name} is due on {$endDate}. Please let us know a suitable pickup time.");
     }
 
     public static function rentalRenewedConfirmation(
@@ -115,8 +118,9 @@ class WhatsAppHelper
         $oldDate = static::formatDateValue($previousEndDate);
         $newDate = static::formatDateValue($renewedEndDate);
         $amountText = $addedAmount > 0 ? ' Additional renewal amount: ' . CurrencyFormatter::format($addedAmount) . '.' : '';
+        $contactName = $rental->reminderContactName();
 
-        return trim("Hello {$rental->customer_name}, your rental for {$rental->product->name} has been renewed from {$oldDate} to {$newDate}.{$amountText} Thank you.");
+        return trim("Hello {$contactName}, your rental for {$rental->product->name} has been renewed from {$oldDate} to {$newDate}.{$amountText} Thank you.");
     }
 
     public static function invoiceMessage(Invoice $invoice): string
@@ -133,7 +137,7 @@ class WhatsAppHelper
 
     public static function saleFollowUp(Sale $sale): string
     {
-        $customerName = $sale->customer->name ?? 'Customer';
+        $customerName = $sale->reminderContactName();
         $productName = $sale->product->name ?? 'your requested item';
         $saleDate = static::formatDateValue($sale->sale_date);
 

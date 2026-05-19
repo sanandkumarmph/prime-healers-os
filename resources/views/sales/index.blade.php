@@ -90,6 +90,15 @@
         ['value' => 'priority', 'label' => 'Priority'],
     ];
     $currentMobileSortLabel = collect($mobileSortOptions)->firstWhere('value', $sortBy)['label'] ?? 'Newest First';
+    $hasActiveFilters = filled($search) || filled($customerId) || filled($paymentStatus) || filled($fromDate) || filled($toDate) || $sortBy !== 'priority';
+    $activeFilterChips = collect([
+        filled($search) ? 'Search: ' . $search : null,
+        filled($customerId) ? 'Customer selected' : null,
+        filled($paymentStatus) ? 'Payment: ' . ucfirst($paymentStatus) : null,
+        filled($fromDate) ? 'From: ' . $fromDate : null,
+        filled($toDate) ? 'To: ' . $toDate : null,
+        $sortBy !== 'priority' ? 'Sort: ' . $currentMobileSortLabel : null,
+    ])->filter()->values();
 @endphp
 
 <style>
@@ -135,6 +144,20 @@
     .filter-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; }
     .filter-field { display:grid; gap:5px; }
     .filter-field label { font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+    .desktop-search-shell {
+        display:grid; gap:10px; padding:12px; border:1px solid #dbe3ef; border-radius:16px;
+        background:linear-gradient(180deg, #f8fbff 0%, #ffffff 100%); box-shadow:var(--ph-shadow-soft);
+    }
+    .desktop-search-form {
+        display:grid; grid-template-columns:minmax(0, 1fr) auto auto; gap:8px; align-items:end;
+    }
+    .desktop-search-field { display:grid; gap:6px; min-width:0; }
+    .desktop-search-field label { font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
+    .desktop-filter-chip-row { display:flex; gap:8px; flex-wrap:wrap; }
+    .desktop-filter-chip {
+        display:inline-flex; align-items:center; min-height:30px; padding:6px 10px;
+        border-radius:999px; border:1px solid #dbe3ef; background:#fff; color:#334155; font-size:12px; font-weight:700;
+    }
     .desktop-filter-toggle summary {
         list-style:none; cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:10px;
         padding:10px 12px; border-bottom:1px solid #e2e8f0;
@@ -232,6 +255,7 @@
         .sales-page { padding:4px 0 16px; gap:8px; }
         .sales-header { display:none; }
         .desktop-priority-panel { display:none !important; }
+        .desktop-search-shell { display:none; }
         .summary-grid, .filter-grid { grid-template-columns:1fr; }
         .filter-actions, .sales-actions { flex-direction:column; align-items:stretch; }
         .mobile-list-command {
@@ -510,10 +534,33 @@
         </div>
     </div>
 
-    <details class="ops-card desktop-priority-panel desktop-filter-toggle">
+    <div class="desktop-search-shell">
+        <form method="GET" action="{{ route('sales.index') }}" class="desktop-search-form">
+            @foreach(request()->except(['search', 'page']) as $key => $value)
+                @if(is_scalar($value) && $value !== '')
+                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                @endif
+            @endforeach
+            <div class="desktop-search-field">
+                <label for="desktop-sales-search">Search sales</label>
+                <input id="desktop-sales-search" class="ops-input" type="search" name="search" value="{{ $search }}" placeholder="Search customer, phone, WhatsApp, product, notes">
+            </div>
+            <button type="submit" class="ops-btn">Search</button>
+            <a href="{{ route('sales.index') }}" class="ops-btn-light" data-filter-clear="sales-index">Clear Filters</a>
+        </form>
+        @if($hasActiveFilters)
+            <div class="desktop-filter-chip-row">
+                @foreach($activeFilterChips as $chip)
+                    <span class="desktop-filter-chip">{{ $chip }}</span>
+                @endforeach
+            </div>
+        @endif
+    </div>
+
+    <details class="ops-card desktop-priority-panel desktop-filter-toggle" data-filter-panel data-filter-panel-key="sales-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" @if($hasActiveFilters) open @endif>
         <summary>
-            <h2>Filters & Sorting</h2>
-            <span>{{ $search || $customerId || $paymentStatus || $fromDate || $toDate ? 'Active' : 'Expand' }}</span>
+            <h2>Search & Filters</h2>
+            <span>{{ $hasActiveFilters ? 'Filters Active · ' . $activeFilterChips->count() : 'Expand advanced filters' }}</span>
         </summary>
         <div class="ops-card-body">
             <form method="GET" action="{{ route('sales.index') }}" style="display:grid; gap:12px;">
@@ -570,7 +617,7 @@
 
                 <div class="filter-actions">
                     <button type="submit" class="ops-btn">Apply Filters</button>
-                    <a href="{{ route('sales.index') }}" class="ops-btn-light">Reset</a>
+                    <a href="{{ route('sales.index') }}" class="ops-btn-light" data-filter-clear="sales-index">Reset</a>
                 </div>
             </form>
         </div>

@@ -3,18 +3,22 @@
 namespace App\Providers;
 
 use App\Models\Asset;
+use App\Models\BusinessPartner;
 use App\Models\Customer;
 use App\Models\Delivery;
 use App\Models\Invoice;
 use App\Models\Organization;
+use App\Models\PartnerClient;
 use App\Models\Payment;
 use App\Models\Rental;
 use App\Models\Sale;
+use App\Policies\BusinessPartnerPolicy;
 use App\Policies\DeliveryPolicy;
 use App\Policies\ImportPolicy;
 use App\Policies\CustomerPolicy;
 use App\Policies\InvoicePolicy;
 use App\Policies\OrganizationSettingsPolicy;
+use App\Policies\PartnerClientPolicy;
 use App\Policies\PaymentPolicy;
 use App\Policies\ReportPolicy;
 use App\Policies\RentalPolicy;
@@ -75,6 +79,8 @@ class AppServiceProvider extends ServiceProvider
         });
 
         Gate::policy(Customer::class, CustomerPolicy::class);
+        Gate::policy(BusinessPartner::class, BusinessPartnerPolicy::class);
+        Gate::policy(PartnerClient::class, PartnerClientPolicy::class);
         Gate::policy(Delivery::class, DeliveryPolicy::class);
         Gate::policy(Rental::class, RentalPolicy::class);
         Gate::policy(Sale::class, SalePolicy::class);

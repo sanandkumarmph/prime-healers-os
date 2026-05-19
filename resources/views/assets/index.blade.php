@@ -23,6 +23,14 @@
     $assetSearchFilter = request('search');
     $assetWarehouseFilter = request('warehouse_id');
     $assetConditionFilter = request('condition_status');
+    $hasActiveFilters = request()->hasAny(['search', 'asset_stage', 'warehouse_id', 'asset_status', 'condition_status']);
+    $activeFilterChips = collect([
+        filled($assetSearchFilter) ? 'Search: ' . $assetSearchFilter : null,
+        filled($assetStageFilter) ? 'Unit Type: ' . ($assetStageFilter === 'new_stock' ? 'Sale Unit' : 'Rental Asset') : null,
+        filled($assetWarehouseFilter) ? 'Warehouse selected' : null,
+        filled($assetStatusFilter) ? 'Status: ' . ucwords(str_replace('_', ' ', $assetStatusFilter)) : null,
+        filled($assetConditionFilter) ? 'Condition: ' . ucfirst($assetConditionFilter) : null,
+    ])->filter()->values();
     $allUnitsActive = blank($assetStageFilter) && blank($assetStatusFilter) && blank($assetSearchFilter) && blank($assetWarehouseFilter) && blank($assetConditionFilter);
     $saleUnitsActive = $assetStageFilter === 'new_stock' && blank($assetStatusFilter) && blank($assetSearchFilter) && blank($assetWarehouseFilter) && blank($assetConditionFilter);
     $rentalAssetsActive = $assetStageFilter === 'rental_stock' && blank($assetStatusFilter) && blank($assetSearchFilter) && blank($assetWarehouseFilter) && blank($assetConditionFilter);
@@ -187,6 +195,24 @@
             color: var(--ph-color-text-soft);
             font-size: 12px;
             font-weight: 700;
+        }
+        .asset-search-shell {
+            display:grid;
+            gap:10px;
+            padding:12px 20px 0;
+            border-top:1px solid var(--ph-color-border);
+            background:linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+        }
+        .asset-search-form {
+            display:grid;
+            grid-template-columns:minmax(0, 1fr) auto auto;
+            gap:8px;
+            align-items:end;
+        }
+        .asset-chip-inline-row { display:flex; gap:8px; flex-wrap:wrap; }
+        .asset-filter-chip {
+            display:inline-flex; align-items:center; min-height:30px; padding:6px 10px;
+            border-radius:999px; border:1px solid var(--ph-color-border); background:#fff; color:var(--ph-color-text); font-size:12px; font-weight:700;
         }
         .asset-filter-form {
             padding: 0 20px 20px;
@@ -499,6 +525,9 @@
                 margin-top: 8px;
                 box-shadow: none;
             }
+            .asset-search-form {
+                grid-template-columns: 1fr;
+            }
             .asset-mobile-actions {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
@@ -606,8 +635,31 @@
             </div>
         </div>
 
-        <details class="asset-card">
-            <summary class="asset-filter-summary">Filters &amp; Sorting <span>{{ request()->hasAny(['search', 'asset_stage', 'warehouse_id', 'asset_status', 'condition_status']) ? 'Active' : 'Expand' }}</span></summary>
+        <div class="asset-search-shell">
+            <form method="GET" action="{{ route('assets.index') }}" class="asset-search-form">
+                @foreach(request()->except(['search', 'page']) as $key => $value)
+                    @if(is_scalar($value) && $value !== '')
+                        <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                    @endif
+                @endforeach
+                <div class="asset-field">
+                    <label>Search assets</label>
+                    <input type="search" name="search" value="{{ request('search') }}" placeholder="Search serial number, barcode, or product">
+                </div>
+                <button type="submit" class="ph-btn">Search</button>
+                <a href="{{ route('assets.index') }}" class="ph-btn-secondary" data-filter-clear="assets-index">Clear Filters</a>
+            </form>
+            @if($hasActiveFilters)
+                <div class="asset-chip-inline-row">
+                    @foreach($activeFilterChips as $chip)
+                        <span class="asset-filter-chip">{{ $chip }}</span>
+                    @endforeach
+                </div>
+            @endif
+        </div>
+
+        <details class="asset-card" data-filter-panel data-filter-panel-key="assets-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" @if($hasActiveFilters) open @endif>
+            <summary class="asset-filter-summary">Search &amp; Filters <span>{{ $hasActiveFilters ? 'Filters Active · ' . $activeFilterChips->count() : 'Expand advanced filters' }}</span></summary>
             <form method="GET" action="{{ route('assets.index') }}" class="asset-filter-form">
                 <div class="asset-field">
                     <label>Search</label>
@@ -650,7 +702,7 @@
                 </div>
                 <div class="asset-filter-actions">
                     <button type="submit" class="ph-btn">Filter</button>
-                    <a href="{{ route('assets.index') }}" class="ph-btn-secondary">Reset</a>
+                    <a href="{{ route('assets.index') }}" class="ph-btn-secondary" data-filter-clear="assets-index">Reset</a>
                 </div>
             </form>
         </details>

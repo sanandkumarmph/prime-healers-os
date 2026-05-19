@@ -36,6 +36,19 @@
         'asc' => 'Ascending',
         'desc' => 'Descending',
     ];
+    $hasActiveFilters = filled($search) || filled($selectedDate) || filled($taskType) || filled($staffFilter) || filled($areaFilter) || filled($statusFilter) || filled($workflowFilter) || $ownershipFilter !== 'all' || $sortBy !== 'action_priority' || $sortDirection !== 'asc';
+    $activeFilterChips = collect([
+        filled($search) ? 'Search: ' . $search : null,
+        filled($selectedDate) ? 'Date: ' . $selectedDate : null,
+        filled($taskType) ? 'Type: ' . ucfirst($taskType) : null,
+        filled($staffFilter) ? 'Staff filter active' : null,
+        filled($areaFilter) ? 'Area filter active' : null,
+        filled($statusFilter) ? 'Status: ' . ucfirst(str_replace('_', ' ', $statusFilter)) : null,
+        filled($workflowFilter) ? 'Workflow: ' . ucfirst(str_replace('_', ' ', $workflowFilter)) : null,
+        $ownershipFilter !== 'all' ? 'View: My Assigned Tasks' : null,
+        $sortBy !== 'action_priority' ? 'Sort: ' . ($sortOptions[$sortBy] ?? 'Custom') : null,
+        $sortDirection !== 'asc' ? 'Direction: Descending' : null,
+    ])->filter()->values();
 
     $boardHref = function (array $overrides = [], array $forget = []) {
         $query = request()->query();
@@ -257,6 +270,19 @@
     }
     .ops-filters-shell { padding:12px 14px; display:grid; gap:12px; }
     .ops-filters-card { display:grid; gap:12px; }
+    .ops-search-shell {
+        display:grid; gap:10px; padding:12px 14px; border:1px solid var(--ph-color-border); border-radius:16px;
+        background:linear-gradient(180deg, #f8fbff 0%, #ffffff 100%); box-shadow:var(--ph-shadow-soft);
+    }
+    .ops-search-form {
+        display:grid; grid-template-columns:minmax(0, 1fr) auto auto; gap:8px; align-items:end;
+    }
+    .ops-search-field { display:grid; gap:6px; min-width:0; }
+    .ops-filter-chip-row { display:flex; gap:8px; flex-wrap:wrap; }
+    .ops-filter-chip {
+        display:inline-flex; align-items:center; min-height:30px; padding:6px 10px;
+        border-radius:999px; border:1px solid var(--ph-color-border); background:#fff; color:var(--ph-color-text); font-size:12px; font-weight:700;
+    }
     .ops-filter-toggle summary {
         list-style:none; cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:10px;
         padding:12px 14px; border-radius:14px; border:1px solid var(--ph-color-border); background:var(--ph-color-surface-soft);
@@ -467,6 +493,7 @@
     }
 
     @media (max-width: 767px) {
+        .ops-search-shell { display:none; }
         .ops-board { gap:12px; }
         .ops-board-title h1 { font-size:22px; }
         .ops-board-title p { font-size:12px; }
@@ -585,10 +612,41 @@
             </div>
         @endif
 
-        <details class="ops-filters-card ops-filter-toggle">
+        <div class="ops-search-shell">
+            <form method="GET" action="{{ route('deliveries.index') }}" class="ops-search-form">
+                <input type="hidden" name="ownership" value="{{ $ownershipFilter }}">
+                <input type="hidden" name="tab" value="{{ $tab }}">
+                @foreach($sortFormQuery as $queryKey => $queryValue)
+                    @if(!in_array($queryKey, ['search', 'ownership', 'tab'], true))
+                        <input type="hidden" name="{{ $queryKey }}" value="{{ $queryValue }}">
+                    @endif
+                @endforeach
+                <div class="ops-search-field">
+                    <label for="desktop_delivery_search" class="sr-only">Search tasks</label>
+                    <input
+                        id="desktop_delivery_search"
+                        type="search"
+                        name="search"
+                        value="{{ $search }}"
+                        placeholder="Search customer, mobile, product, sale order"
+                    >
+                </div>
+                <button type="submit" class="rn-btn-primary">Search</button>
+                <a href="{{ route('deliveries.index') }}" class="rn-btn" data-filter-clear="deliveries-index">Clear Filters</a>
+            </form>
+            @if(!empty($activeFilterChips))
+                <div class="ops-filter-chip-row" aria-label="Active task filters">
+                    @foreach($activeFilterChips as $chip)
+                        <span class="ops-filter-chip">{{ $chip }}</span>
+                    @endforeach
+                </div>
+            @endif
+        </div>
+
+        <details class="ops-filters-card ops-filter-toggle" data-filter-panel data-filter-panel-key="deliveries-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" @if($hasActiveFilters) open @endif>
             <summary>
-                <h2>Filters &amp; Sorting</h2>
-                <span>{{ $search || $selectedDate || $taskType || $staffFilter || $areaFilter || $statusFilter ? 'Active' : 'Expand' }}</span>
+                <h2>Search &amp; Filters</h2>
+                <span>{{ $hasActiveFilters ? 'Filters Active · ' . count($activeFilterChips) : 'Expand advanced filters' }}</span>
             </summary>
             <div class="ops-filter-body">
                 <form method="GET" action="{{ route('deliveries.index') }}" class="ops-filter-grid">
@@ -674,7 +732,7 @@
                         <input type="hidden" name="sort_by" value="{{ $sortBy }}">
                         <input type="hidden" name="sort_dir" value="{{ $sortDirection }}">
                         <button type="submit" class="rn-btn-primary">Apply</button>
-                        <a href="{{ route('deliveries.index') }}" class="rn-btn">Clear Filters</a>
+                        <a href="{{ route('deliveries.index') }}" class="rn-btn" data-filter-clear="deliveries-index">Clear Filters</a>
                     </div>
                 </form>
             </div>
@@ -740,11 +798,12 @@
                                 @php
                                     $serialNumber = $taskStartIndex + $loop->index;
                                     $isSaleTask = (bool) $delivery->sale_id;
-                                    $customer = $isSaleTask ? $delivery->sale?->customer : $delivery->rental?->customer;
-                                    $customerName = $customer?->displayName() ?: ($delivery->rental?->customer_name ?? 'Customer');
-                                    $customerPhone = $customer?->phone ?: ($delivery->rental?->phone ?? null);
+                                    $customerRecord = $isSaleTask ? $delivery->sale?->customer : $delivery->rental?->customer;
+                                    $customerName = $delivery->linkedCustomerName();
+                                    $customerPhone = $delivery->linkedCustomerPhone();
+                                    $customerCity = $delivery->linkedCustomerCity();
                                     $callHref = $customerPhone ? 'tel:' . preg_replace('/\s+/', '', $customerPhone) : null;
-                                    $whatsAppNumber = $customer ? WhatsAppHelper::resolveCustomerNumber($customer) : null;
+                                    $whatsAppNumber = \App\Support\WhatsAppHelper::normalizeNumber($customerPhone);
                                     $whatsAppUrl = $whatsAppNumber
                                         ? (
                                             $isSaleTask && $delivery->sale
@@ -761,7 +820,7 @@
                                                 )
                                         )
                                         : null;
-                                    $mapUrl = $customer?->openMapUrl();
+                                    $mapUrl = $delivery->linkedCustomerMapUrl();
                                     $items = $formatTaskItems($delivery);
                                     $progressStatus = $isSaleTask
                                         ? $delivery->status
@@ -852,16 +911,16 @@
                                     </td>
                                     <td class="ops-col-customer">
                                         <div class="ops-stack">
-                                            @if(\Illuminate\Support\Facades\Route::has('customers.show') && $customer)
-                                                <a href="{{ route('customers.show', $customer) }}" class="ops-record-link">{{ $customerName }}</a>
+                                            @if(\Illuminate\Support\Facades\Route::has('customers.show') && $customerRecord)
+                                                <a href="{{ route('customers.show', $customerRecord) }}" class="ops-record-link">{{ $customerName }}</a>
                                             @else
                                                 <strong>{{ $customerName }}</strong>
                                             @endif
                                             @if($customerPhone)
                                                 <span class="ops-muted">{{ $customerPhone }}</span>
                                             @endif
-                                            @if($customer?->city)
-                                                <span class="ops-muted">{{ $customer->city }}</span>
+                                            @if($customerCity)
+                                                <span class="ops-muted">{{ $customerCity }}</span>
                                             @endif
                                         </div>
                                     </td>
@@ -895,6 +954,9 @@
                                             @endif
                                             @if($progressCopy)
                                                 <span class="ops-progress-copy">{{ $progressCopy }}</span>
+                                            @endif
+                                            @if($delivery->status === 'cancelled' && $delivery->cancellation_reason)
+                                                <span class="ops-progress-copy">Reason: {{ \App\Models\Delivery::cancellationReasonLabel($delivery->cancellation_reason) }}</span>
                                             @endif
                                         </div>
                                     </td>
@@ -957,6 +1019,9 @@
                                                     @if($proofHistoryHref)
                                                         <a href="{{ $proofHistoryHref }}">View Proof</a>
                                                     @endif
+                                                    @if($canUpdateTask && !in_array($delivery->status, ['completed', 'cancelled'], true))
+                                                        <a href="{{ route('deliveries.show', $delivery) }}#delivery-cancellation-section">Cancel Task</a>
+                                                    @endif
                                                     @if(!$assignedScopedDeliveryUser && $canUpdateTask && \Illuminate\Support\Facades\Route::has('deliveries.edit'))
                                                         <a href="{{ route('deliveries.edit', $delivery) }}">Edit</a>
                                                     @endif
@@ -982,11 +1047,12 @@
                         @php
                             $serialNumber = $taskStartIndex + $loop->index;
                             $isSaleTask = (bool) $delivery->sale_id;
-                            $customer = $isSaleTask ? $delivery->sale?->customer : $delivery->rental?->customer;
-                            $customerName = $customer?->displayName() ?: ($delivery->rental?->customer_name ?? 'Customer');
-                            $customerPhone = $customer?->phone ?: ($delivery->rental?->phone ?? null);
+                            $customerRecord = $isSaleTask ? $delivery->sale?->customer : $delivery->rental?->customer;
+                            $customerName = $delivery->linkedCustomerName();
+                            $customerPhone = $delivery->linkedCustomerPhone();
+                            $customerCity = $delivery->linkedCustomerCity();
                             $callHref = $customerPhone ? 'tel:' . preg_replace('/\s+/', '', $customerPhone) : null;
-                            $whatsAppNumber = $customer ? WhatsAppHelper::resolveCustomerNumber($customer) : null;
+                            $whatsAppNumber = \App\Support\WhatsAppHelper::normalizeNumber($customerPhone);
                             $whatsAppUrl = $whatsAppNumber
                                 ? (
                                     $isSaleTask && $delivery->sale
@@ -1003,7 +1069,7 @@
                                         )
                                 )
                                 : null;
-                            $mapUrl = $customer?->openMapUrl();
+                            $mapUrl = $delivery->linkedCustomerMapUrl();
                             $items = $formatTaskItems($delivery);
                             $progressStatus = $isSaleTask
                                 ? $delivery->status
@@ -1095,6 +1161,9 @@
                                         @if($proofHistoryHref)
                                             <a href="{{ $proofHistoryHref }}">View Proof</a>
                                         @endif
+                                        @if($canUpdateTask && !in_array($delivery->status, ['completed', 'cancelled'], true))
+                                            <a href="{{ route('deliveries.show', $delivery) }}#delivery-cancellation-section">Cancel Task</a>
+                                        @endif
                                         @if(!$assignedScopedDeliveryUser && $canUpdateTask && \Illuminate\Support\Facades\Route::has('deliveries.edit'))
                                             <a href="{{ route('deliveries.edit', $delivery) }}">Edit</a>
                                         @endif
@@ -1135,6 +1204,9 @@
                                     @endif
                                     @if($progressCopy)
                                         <span class="ops-progress-copy">{{ $progressCopy }}</span>
+                                    @endif
+                                    @if($delivery->status === 'cancelled' && $delivery->cancellation_reason)
+                                        <span class="ops-progress-copy">Reason: {{ \App\Models\Delivery::cancellationReasonLabel($delivery->cancellation_reason) }}</span>
                                     @endif
                                 </div>
                             @endif

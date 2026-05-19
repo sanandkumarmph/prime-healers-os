@@ -69,6 +69,7 @@
             'items' => [
                 ['key' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'dashboard', 'href' => $safeRoute('dashboard'), 'active' => request()->routeIs('dashboard'), 'visible' => $currentUser?->hasPermission('dashboard.main') ?? false],
                 ['key' => 'customers', 'label' => 'Customers', 'icon' => 'customers', 'href' => $safeRoute('customers.index'), 'active' => request()->routeIs('customers.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('customers', 'read') ?? false)],
+                ['key' => 'business_partners', 'label' => 'Business Partners', 'icon' => 'customers', 'href' => $safeRoute('business-partners.index'), 'active' => request()->routeIs('business-partners.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('customers', 'read') ?? false)],
                 ['key' => 'rentals', 'label' => 'Rentals', 'icon' => 'rentals', 'href' => $safeRoute('rentals.index'), 'active' => request()->routeIs('rentals.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('rentals', 'read') ?? false)],
                 ['key' => 'sales', 'label' => 'Sales', 'icon' => 'sales', 'href' => $safeRoute('sales.index'), 'active' => request()->routeIs('sales.*'), 'visible' => $currentUser?->canAccessModule('sales', 'read') ?? false],
             ],
@@ -2643,6 +2644,53 @@
             const mobileFilterSheets = Array.from(document.querySelectorAll('[data-mobile-filter-sheet]'));
             const sortRoots = Array.from(document.querySelectorAll('[data-mobile-sort-root]'));
             const bodyLock = window.rentnexisModalLock;
+            const filterPanels = Array.from(document.querySelectorAll('details[data-filter-panel][data-filter-panel-key]'));
+
+            filterPanels.forEach(function (panel) {
+                const panelKey = panel.getAttribute('data-filter-panel-key');
+                const isActive = panel.getAttribute('data-filter-active') === 'true';
+                const hasErrors = panel.getAttribute('data-filter-errors') === 'true';
+                const storageKey = panelKey ? `rentnexis:filter-panel:${panelKey}` : null;
+                const clearLinks = document.querySelectorAll(`[data-filter-clear="${panelKey}"]`);
+
+                if (!storageKey) {
+                    return;
+                }
+
+                let savedState = null;
+
+                try {
+                    savedState = localStorage.getItem(storageKey);
+                } catch (error) {
+                    savedState = null;
+                }
+
+                if (hasErrors || isActive) {
+                    panel.open = true;
+                } else if (savedState === 'open') {
+                    panel.open = true;
+                } else if (savedState === 'closed') {
+                    panel.open = false;
+                }
+
+                panel.addEventListener('toggle', function () {
+                    try {
+                        localStorage.setItem(storageKey, panel.open ? 'open' : 'closed');
+                    } catch (error) {
+                        // Storage can be unavailable; filter panels should still toggle normally.
+                    }
+                });
+
+                clearLinks.forEach(function (link) {
+                    link.addEventListener('click', function () {
+                        try {
+                            localStorage.removeItem(storageKey);
+                        } catch (error) {
+                            // Nothing to clear.
+                        }
+                    });
+                });
+            });
 
             const closeAllSortMenus = function () {
                 sortRoots.forEach(function (root) {

@@ -172,11 +172,11 @@
         ]);
     }
 
-    if ($rental->phone) {
+    if ($rental->reminderContactPhone()) {
         $pushMoreAction([
             'type' => 'link',
             'label' => 'Call Customer',
-            'href' => 'tel:' . preg_replace('/\D+/', '', $rental->phone),
+            'href' => 'tel:' . preg_replace('/\D+/', '', $rental->reminderContactPhone()),
         ]);
     }
 
@@ -1604,12 +1604,24 @@
             <h2 style="margin-top:0; margin-bottom:14px; font-size:18px;">Customer Summary</h2>
             <div class="detail-grid">
                 <div class="span-6">
-                    <span class="label">Customer</span>
-                    <div class="value">{{ $rental->customer_name }}</div>
+                    <span class="label">Reminder / Billing Contact</span>
+                    <div class="value">{{ $rental->billingContactName() }}</div>
                 </div>
                 <div class="span-6">
-                    <span class="label">Phone</span>
-                    <div class="value">{{ $rental->phone ?: '-' }}</div>
+                    <span class="label">Reminder Phone</span>
+                    <div class="value">{{ $rental->reminderContactPhone() ?: '-' }}</div>
+                </div>
+                <div class="span-6">
+                    <span class="label">Delivery / Pickup Contact</span>
+                    <div class="value">{{ $rental->deliveryContactName() }}</div>
+                </div>
+                <div class="span-6">
+                    <span class="label">Delivery Phone</span>
+                    <div class="value">{{ $rental->deliveryContactPhone() ?: '-' }}</div>
+                </div>
+                <div class="span-12">
+                    <span class="label">Delivery Address</span>
+                    <div class="value">{{ collect([$rental->deliveryContactAddress(), $rental->deliveryContactCity(), $rental->deliveryContactState(), $rental->deliveryContactPincode()])->filter()->join(', ') ?: 'No delivery address captured.' }}</div>
                 </div>
                 <div class="span-6">
                     <span class="label">Dates</span>
@@ -2031,7 +2043,7 @@
     {{--
         <div class="rental-cta-meta">
             <span class="rental-cta-eyebrow">Rental Actions</span>
-            <div class="rental-cta-title">Rental #{{ $rental->id }} · {{ $rental->customer_name ?: $rental->customer?->name ?: 'Customer' }}</div>
+            <div class="rental-cta-title">Rental #{{ $rental->id }} · {{ $rental->billingContactName() }}</div>
             <div class="rental-cta-subtitle">
                 @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
                     {{ $rentalInvoiceDue > 0 ? 'Invoice due ' . $currency($rentalInvoiceDue) . '. Use Receive Payment or Mark Paid.' : 'Payment action is available for this rental.' }}
@@ -2067,8 +2079,8 @@
                 <summary type="button">More</summary>
                 <div class="rental-cta-panel">
                     <a href="#rental-activity-timeline">View Timeline</a>
-                    @if($rental->phone)
-                        <a href="tel:{{ preg_replace('/\D+/', '', $rental->phone) }}">Call Customer</a>
+                    @if($rental->reminderContactPhone())
+                        <a href="tel:{{ preg_replace('/\D+/', '', $rental->reminderContactPhone()) }}">Call Customer</a>
                     @endif
                     @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
                         <form action="{{ route('rentals.markPaid', $rental) }}" method="POST" style="margin:0;">

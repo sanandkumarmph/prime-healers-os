@@ -3,11 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Asset;
+use App\Models\BusinessPartner;
 use App\Models\Sale;
 use App\Models\Customer;
 use App\Models\Delivery;
 use App\Models\Invoice;
 use App\Models\Organization;
+use App\Models\PartnerClient;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Rental;
@@ -45,6 +47,94 @@ class SaleController extends Controller
     private function orgId()
     {
         return auth()->user()->organization_id;
+    }
+
+    private function businessPartnersForForm()
+    {
+        return BusinessPartner::query()
+            ->where('organization_id', $this->orgId())
+            ->where('status', 'active')
+            ->with(['partnerClients' => function ($query) {
+                $query->where('organization_id', $this->orgId())
+                    ->where('status', 'active')
+                    ->orderBy('client_name');
+            }])
+            ->orderBy('business_name')
+            ->get();
+    }
+
+    private function saleCustomerTypeFromRequest(Request $request, ?Sale $sale = null): string
+    {
+        $value = (string) $request->input('customer_type', $sale?->customerTypeValue() ?? 'direct_customer');
+
+        return $value === 'business_partner' ? 'business_partner' : 'direct_customer';
+    }
+
+    private function hydrateSaleBusinessPartnerInputs(Request $request): void
+    {
+        if ($this->saleCustomerTypeFromRequest($request) !== 'business_partner') {
+            return;
+        }
+
+        $businessPartnerId = (int) $request->input('business_partner_id', 0);
+        $partnerClientId = (int) $request->input('partner_client_id', 0);
+
+        if ($businessPartnerId <= 0 || $partnerClientId <= 0) {
+            return;
+        }
+
+        $businessPartner = BusinessPartner::query()
+            ->where('organization_id', $this->orgId())
+            ->find($businessPartnerId);
+        $partnerClient = PartnerClient::query()
+            ->where('organization_id', $this->orgId())
+            ->where('business_partner_id', $businessPartnerId)
+            ->find($partnerClientId);
+
+        if (!$businessPartner || !$partnerClient) {
+            return;
+        }
+
+        if (!$request->filled('notes') && filled($partnerClient->delivery_notes)) {
+            $request->merge(['notes' => $partnerClient->delivery_notes]);
+        }
+    }
+
+    private function validatedSalePartyContext(Request $request): array
+    {
+        $customerType = $this->saleCustomerTypeFromRequest($request);
+
+        if ($customerType === 'business_partner') {
+            $businessPartner = BusinessPartner::query()
+                ->where('organization_id', $this->orgId())
+                ->findOrFail((int) $request->input('business_partner_id'));
+            $partnerClient = PartnerClient::query()
+                ->where('organization_id', $this->orgId())
+                ->where('business_partner_id', $businessPartner->id)
+                ->findOrFail((int) $request->input('partner_client_id'));
+
+            return [
+                'customer_type' => 'business_partner',
+                'customer' => null,
+                'business_partner' => $businessPartner,
+                'partner_client' => $partnerClient,
+                'customer_id' => null,
+                'tax_state' => $partnerClient->state ?: $businessPartner->state,
+            ];
+        }
+
+        $customer = Customer::query()
+            ->where('organization_id', $this->orgId())
+            ->findOrFail((int) $request->input('customer_id'));
+
+        return [
+            'customer_type' => 'direct_customer',
+            'customer' => $customer,
+            'business_partner' => null,
+            'partner_client' => null,
+            'customer_id' => $customer->id,
+            'tax_state' => $customer->state,
+        ];
     }
 
     private function saleImportExecutor(): SaleImportExecutor
@@ -386,7 +476,7 @@ class SaleController extends Controller
         return $sale ? $sale->resolvedShippingCharges() : 0.0;
     }
 
-    private function normalizedSaleItems(Request $request, ?Sale $sale = null, ?Customer $customer = null): array
+    private function normalizedSaleItems(Request $request, ?Sale $sale = null, ?Customer $customer = null, ?string $taxState = null): array
     {
         $requestedItems = collect($request->input('sale_items', []))
             ->map(fn ($row) => is_array($row) ? $row : [])
@@ -439,7 +529,7 @@ class SaleController extends Controller
             ->get()
             ->keyBy('id');
 
-        $customerState = $this->normalizeStateName($customer?->state);
+        $customerState = $this->normalizeStateName($taxState ?? $customer?->state);
         $organizationState = $this->currentOrganizationState();
 
         return $rows->map(function (array $row, int $index) use ($products, $customerState, $organizationState) {
@@ -544,12 +634,15 @@ class SaleController extends Controller
         ];
     }
 
-    private function saleSummaryPayload(Request $request, Customer $customer, array $saleItems, array $commercials): array
+    private function saleSummaryPayload(Request $request, array $partyContext, array $saleItems, array $commercials): array
     {
         $primaryLine = $saleItems[0];
 
         $payload = [
-            'customer_id' => $customer->id,
+            'customer_id' => $partyContext['customer_id'],
+            'customer_type' => $partyContext['customer_type'],
+            'business_partner_id' => $partyContext['business_partner']?->id,
+            'partner_client_id' => $partyContext['partner_client']?->id,
             'product_id' => $primaryLine['product_id'],
             'asset_id' => $primaryLine['asset_id'],
             'rental_id' => $request->filled('rental_id') ? $request->integer('rental_id') : null,
@@ -608,7 +701,7 @@ class SaleController extends Controller
 
     private function saleInvoiceLines(Sale $sale): array
     {
-        $customerState = $this->normalizeStateName($sale->customer?->state);
+        $customerState = $this->normalizeStateName($sale->primaryTaxState());
         $organizationState = $this->currentOrganizationState();
 
         return $sale->displaySaleItems()
@@ -716,7 +809,7 @@ class SaleController extends Controller
     private function saleTaxType(Sale $sale, Organization $organization): string
     {
         return $this->recommendedTaxTypeForStates(
-            $this->normalizeStateName($sale->customer?->state),
+            $this->normalizeStateName($sale->primaryTaxState()),
             $this->normalizeStateName($organization->state)
         );
     }
@@ -737,20 +830,20 @@ class SaleController extends Controller
             'invoice_date' => $sale->sale_date ?: now()->toDateString(),
             'due_date' => $sale->sale_date ?: now()->toDateString(),
             'customer_id' => $sale->customer_id,
-            'bill_to_name' => $sale->customer?->name,
-            'bill_to_phone' => $sale->customer?->phone,
-            'bill_to_email' => $sale->customer?->email,
-            'bill_to_address' => $sale->customer?->address,
-            'bill_to_city' => $sale->customer?->city,
-            'bill_to_state' => $sale->customer?->state,
-            'bill_to_pincode' => $sale->customer?->pincode,
-            'ship_to_name' => $sale->customer?->name,
-            'ship_to_phone' => $sale->customer?->phone,
-            'ship_to_address' => $sale->customer?->address,
-            'ship_to_city' => $sale->customer?->city,
-            'ship_to_state' => $sale->customer?->state,
-            'ship_to_pincode' => $sale->customer?->pincode,
-            'place_of_supply_state' => $sale->customer?->state,
+            'bill_to_name' => $sale->billingContactName(),
+            'bill_to_phone' => $sale->billingContactPhone(),
+            'bill_to_email' => $sale->billingContactEmail(),
+            'bill_to_address' => $sale->billingContactAddress(),
+            'bill_to_city' => $sale->billingContactCity(),
+            'bill_to_state' => $sale->billingContactState(),
+            'bill_to_pincode' => $sale->billingContactPincode(),
+            'ship_to_name' => $sale->deliveryContactName(),
+            'ship_to_phone' => $sale->deliveryContactPhone(),
+            'ship_to_address' => $sale->deliveryContactAddress(),
+            'ship_to_city' => $sale->deliveryContactCity(),
+            'ship_to_state' => $sale->deliveryContactState(),
+            'ship_to_pincode' => $sale->deliveryContactPincode(),
+            'place_of_supply_state' => $sale->primaryTaxState(),
             'tax_type' => $taxType,
             'tax_calculation_mode' => $sale->tax_calculation_mode ?: 'exclusive',
             'subtotal' => $commercials['subtotal'],
@@ -885,9 +978,21 @@ class SaleController extends Controller
     private function saleValidationRules(?Sale $sale = null): array
     {
         return [
+            'customer_type' => ['required', Rule::in(['direct_customer', 'business_partner'])],
             'customer_id' => [
-                'required',
+                'required_if:customer_type,direct_customer',
+                'nullable',
                 Rule::exists('customers', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+            ],
+            'business_partner_id' => [
+                'required_if:customer_type,business_partner',
+                'nullable',
+                Rule::exists('business_partners', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+            ],
+            'partner_client_id' => [
+                'required_if:customer_type,business_partner',
+                'nullable',
+                Rule::exists('partner_clients', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
             ],
             'product_id' => [
                 'nullable',
@@ -1421,7 +1526,7 @@ class SaleController extends Controller
         $this->adjustSaleStock($sale, true);
     }
 
-    private function validateLinkedSaleReferences(Request $request, Customer $customer, array $saleItems, ?Sale $currentSale = null): void
+    private function validateLinkedSaleReferences(Request $request, array $partyContext, array $saleItems, ?Sale $currentSale = null): void
     {
         foreach ($saleItems as $index => $line) {
             if (empty($line['asset_id'])) {
@@ -1467,9 +1572,14 @@ class SaleController extends Controller
                 ->where('organization_id', $this->orgId())
                 ->findOrFail($request->integer('rental_id'));
 
-            if ((int) $rental->customer_id !== (int) $customer->id) {
+            $sameParty = $rental->customerTypeValue() === $partyContext['customer_type']
+                && (int) ($rental->customer_id ?? 0) === (int) ($partyContext['customer_id'] ?? 0)
+                && (int) ($rental->business_partner_id ?? 0) === (int) ($partyContext['business_partner']?->id ?? 0)
+                && (int) ($rental->partner_client_id ?? 0) === (int) ($partyContext['partner_client']?->id ?? 0);
+
+            if (!$sameParty) {
                 throw ValidationException::withMessages([
-                    'rental_id' => 'Linked rental must belong to the selected customer.',
+                    'rental_id' => 'Linked rental must belong to the selected customer or actual client context.',
                 ]);
             }
         }
@@ -1485,13 +1595,16 @@ class SaleController extends Controller
             ->where('organization_id', $this->orgId())
             ->find($request->integer('rental_id'));
 
-        if (! $rental || ! $rental->customer_id) {
+        if (! $rental) {
             return;
         }
 
-        $request->merge([
+        $request->merge(array_filter([
+            'customer_type' => $rental->customerTypeValue(),
             'customer_id' => $rental->customer_id,
-        ]);
+            'business_partner_id' => $rental->business_partner_id,
+            'partner_client_id' => $rental->partner_client_id,
+        ], fn ($value) => $value !== null));
     }
 
     private function attachLinkedInvoiceIds($sales)
@@ -1644,7 +1757,7 @@ class SaleController extends Controller
     {
         $sale = $this->scopedSale($sale);
         $this->authorize('view', $sale);
-        $relations = ['customer', 'product', 'asset.warehouse', 'rental.customer', 'rental.product'];
+        $relations = ['customer', 'businessPartner', 'partnerClient', 'product', 'asset.warehouse', 'rental.customer', 'rental.businessPartner', 'rental.partnerClient', 'rental.product'];
 
         if ($this->hasSaleItemsTable()) {
             $relations[] = 'saleItems.product';
@@ -1671,6 +1784,7 @@ class SaleController extends Controller
         $this->authorize('create', Sale::class);
 
         $customers = Customer::where('organization_id', $this->orgId())->orderBy('name')->get();
+        $businessPartners = $this->businessPartnersForForm();
         $products = Product::where('organization_id', $this->orgId())
             ->orderBy('name')
             ->get()
@@ -1689,23 +1803,27 @@ class SaleController extends Controller
             ->latest('id')
             ->get();
 
-        return view('sales.create', compact('customers', 'products', 'assets', 'rentals'));
+        return view('sales.create', compact('customers', 'businessPartners', 'products', 'assets', 'rentals'));
     }
 
     public function store(Request $request)
     {
         $this->authorize('create', Sale::class);
 
+        if (!$request->filled('customer_type')) {
+            $request->merge(['customer_type' => 'direct_customer']);
+        }
         $this->synchronizeLinkedRentalContext($request);
+        $this->hydrateSaleBusinessPartnerInputs($request);
         $request->validate($this->saleValidationRules());
-        $customer = Customer::where('organization_id', $this->orgId())->findOrFail($request->customer_id);
-        $saleItems = $this->normalizedSaleItems($request, null, $customer);
-        $this->validateLinkedSaleReferences($request, $customer, $saleItems);
+        $partyContext = $this->validatedSalePartyContext($request);
+        $saleItems = $this->normalizedSaleItems($request, null, $partyContext['customer'], $partyContext['tax_state']);
+        $this->validateLinkedSaleReferences($request, $partyContext, $saleItems);
         $commercials = $this->aggregateSaleCommercials(
             $saleItems,
             $this->resolvedSaleShippingChargesFromRequest($request)
         );
-        $salePayload = $this->saleSummaryPayload($request, $customer, $saleItems, $commercials);
+        $salePayload = $this->saleSummaryPayload($request, $partyContext, $saleItems, $commercials);
 
         if ($this->hasCreatedByColumn()) {
             $salePayload['created_by'] = auth()->id();
@@ -2021,6 +2139,7 @@ class SaleController extends Controller
             : [(int) $sale->product_id];
 
         $customers = Customer::where('organization_id', $this->orgId())->orderBy('name')->get();
+        $businessPartners = $this->businessPartnersForForm();
         $products = Product::where('organization_id', $this->orgId())
             ->orderBy('name')
             ->get()
@@ -2055,7 +2174,7 @@ class SaleController extends Controller
             $sale->loadMissing(['saleItems.product', 'saleItems.asset.warehouse', 'saleItems.warehouse']);
         }
 
-        return view('sales.edit', compact('sale', 'customers', 'products', 'assets', 'rentals'));
+        return view('sales.edit', compact('sale', 'customers', 'businessPartners', 'products', 'assets', 'rentals'));
     }
 
     public function update(Request $request, Sale $sale)
@@ -2067,11 +2186,15 @@ class SaleController extends Controller
             return $this->managedRentalSaleRedirect($sale);
         }
 
-        $this->synchronizeLinkedRentalContext($request);
+        if (!$request->filled('customer_type')) {
+            $request->merge(['customer_type' => 'direct_customer']);
+        }
+        $this->synchronizeLinkedRentalContext($request, $sale);
+        $this->hydrateSaleBusinessPartnerInputs($request);
         $request->validate($this->saleValidationRules($sale));
-        $customer = Customer::where('organization_id', $this->orgId())->findOrFail($request->customer_id);
-        $saleItems = $this->normalizedSaleItems($request, $sale, $customer);
-        $this->validateLinkedSaleReferences($request, $customer, $saleItems, $sale);
+        $partyContext = $this->validatedSalePartyContext($request);
+        $saleItems = $this->normalizedSaleItems($request, $sale, $partyContext['customer'], $partyContext['tax_state']);
+        $this->validateLinkedSaleReferences($request, $partyContext, $saleItems, $sale);
         $commercials = $this->aggregateSaleCommercials(
             $saleItems,
             $this->resolvedSaleShippingChargesFromRequest($request, $sale)
@@ -2086,7 +2209,7 @@ class SaleController extends Controller
             );
         }
 
-        DB::transaction(function () use ($sale, $customer, $request, $commercials, $saleItems) {
+        DB::transaction(function () use ($sale, $partyContext, $request, $commercials, $saleItems) {
             $originalSale = Sale::query()
                 ->with(['product', 'asset', 'saleItems.product', 'saleItems.asset'])
                 ->where('organization_id', $this->orgId())
@@ -2096,7 +2219,7 @@ class SaleController extends Controller
                 $this->restoreSaleStock($originalSale);
             }
 
-            $sale->update($this->saleSummaryPayload($request, $customer, $saleItems, $commercials));
+            $sale->update($this->saleSummaryPayload($request, $partyContext, $saleItems, $commercials));
             $this->syncSaleItems($sale, $saleItems);
 
             if ($sale->payment_status !== 'void') {

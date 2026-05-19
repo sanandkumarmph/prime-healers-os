@@ -202,12 +202,12 @@
                     }
                 }
             @endphp
-            <div class="board-card" data-pickup-card data-pickup-status="{{ $delivery->status }}" data-pickup-search="{{ strtolower(collect([$isSaleTask ? ($delivery->sale?->customer?->name ?? '') : ($delivery->rental?->customer_name ?? ''), $isSaleTask ? ($delivery->sale?->customer?->phone ?? '') : ($delivery->rental?->phone ?? ''), $isSaleTask ? ($delivery->sale?->product?->name ?? '') : ($delivery->rental?->product?->name ?? ''), $delivery->assignedStaff->name ?? $delivery->third_party_name ?? $delivery->assignedUser->name ?? ''])->filter()->join(' ')) }}">
-                @php($contactPhone = $isSaleTask ? ($delivery->sale?->customer?->phone) : ($delivery->rental?->phone))
+            <div class="board-card" data-pickup-card data-pickup-status="{{ $delivery->status }}" data-pickup-search="{{ strtolower(collect([$delivery->linkedCustomerName(), $delivery->linkedCustomerPhone(), $isSaleTask ? ($delivery->sale?->product?->name ?? '') : ($delivery->rental?->product?->name ?? ''), $delivery->assignedStaff->name ?? $delivery->third_party_name ?? $delivery->assignedUser->name ?? ''])->filter()->join(' ')) }}">
+                @php($contactPhone = $delivery->linkedCustomerPhone())
                 @php($hasProofHistory = (int) ($delivery->proofs_count ?? 0) > 0)
                 <div class="pickup-row">
                     <div class="pickup-card-head">
-                        <h2>{{ $isSaleTask ? ($delivery->sale?->customer?->name ?? 'N/A') : ($delivery->rental?->customer_name ?? 'N/A') }}</h2>
+                        <h2>{{ $delivery->linkedCustomerName() ?: 'N/A' }}</h2>
                         <div class="pickup-meta">
                             <div class="pickup-meta-strong">{{ $isSaleTask ? ($delivery->sale?->product?->name ?? 'Sale product') : ($delivery->rental?->product?->name ?? 'N/A') }}</div>
                             <div class="ops-muted">{{ $isSaleTask ? 'Sale #' . $delivery->sale_id : 'Rental #' . ($delivery->rental_id ?? '-') }}</div>

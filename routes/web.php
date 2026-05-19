@@ -3,6 +3,7 @@
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\CityController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\BusinessPartnerController;
 use App\Http\Controllers\DeliveryController;
 use App\Http\Controllers\GlobalSearchController;
 use App\Http\Controllers\InventoryDashboardController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\ImportTemplateController;
 use App\Http\Controllers\KnowledgeController;
 use App\Http\Controllers\OrganizationSettingsController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\PartnerClientController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
@@ -302,6 +304,27 @@ Route::middleware('auth')->group(function () {
     $customers->middlewareFor(['create', 'store'], 'module:customers,create');
     $customers->middlewareFor(['edit', 'update'], 'module:customers,update');
     $customers->middlewareFor('destroy', 'module:customers,delete');
+
+    $businessPartners = Route::resource('business-partners', BusinessPartnerController::class)
+        ->middleware('module:customers,read');
+    $businessPartners->middlewareFor(['create', 'store'], 'module:customers,create');
+    $businessPartners->middlewareFor(['edit', 'update'], 'module:customers,update');
+    $businessPartners->middlewareFor('destroy', 'module:customers,delete');
+    Route::get('/business-partners/{business_partner}/clients/create', [PartnerClientController::class, 'create'])
+        ->middleware('module:customers,create')
+        ->name('business-partners.clients.create');
+    Route::post('/business-partners/{business_partner}/clients', [PartnerClientController::class, 'store'])
+        ->middleware('module:customers,create')
+        ->name('business-partners.clients.store');
+    Route::get('/business-partners/{business_partner}/clients/{partner_client}/edit', [PartnerClientController::class, 'edit'])
+        ->middleware('module:customers,update')
+        ->name('business-partners.clients.edit');
+    Route::put('/business-partners/{business_partner}/clients/{partner_client}', [PartnerClientController::class, 'update'])
+        ->middleware('module:customers,update')
+        ->name('business-partners.clients.update');
+    Route::delete('/business-partners/{business_partner}/clients/{partner_client}', [PartnerClientController::class, 'destroy'])
+        ->middleware('module:customers,delete')
+        ->name('business-partners.clients.destroy');
 
     $rentals = Route::resource('rentals', RentalController::class)
         ->middleware('module:rentals,read');

@@ -946,6 +946,150 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
             ->assertDontSee(route('deliveries.complete', $delivery), false);
     }
 
+    public function test_delivery_team_can_cancel_allowed_pending_delivery_with_reason(): void
+    {
+        $organization = TestData::organization();
+        $deliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+            'email' => 'cancel-delivery@example.com',
+        ]);
+
+        $delivery = Delivery::create([
+            'organization_id' => $organization->id,
+            'type' => 'delivery',
+            'scheduled_at' => now(),
+            'status' => 'pending',
+            'assigned_user_id' => $deliveryUser->id,
+            'notes' => 'Cancelable task',
+        ]);
+
+        $response = $this->actingAs($deliveryUser)
+            ->from(route('deliveries.show', $delivery))
+            ->put(route('deliveries.cancel', $delivery), [
+                'cancellation_reason' => 'customer_unavailable',
+                'cancellation_notes' => 'Customer asked to retry tomorrow.',
+            ]);
+
+        $response->assertRedirect(route('deliveries.show', $delivery));
+
+        $delivery->refresh();
+        $this->assertSame('cancelled', $delivery->status);
+        $this->assertSame('customer_unavailable', $delivery->cancellation_reason);
+        $this->assertSame('Customer asked to retry tomorrow.', $delivery->cancellation_notes);
+
+        $this->actingAs($deliveryUser)
+            ->get(route('deliveries.show', $delivery))
+            ->assertOk()
+            ->assertSeeText('Cancellation Reason')
+            ->assertSeeText('Customer unavailable')
+            ->assertSeeText('Customer asked to retry tomorrow.');
+    }
+
+    public function test_cancellation_without_reason_fails_validation(): void
+    {
+        $organization = TestData::organization();
+        $deliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+
+        $delivery = Delivery::create([
+            'organization_id' => $organization->id,
+            'type' => 'pickup',
+            'scheduled_at' => now(),
+            'status' => 'pending',
+            'assigned_user_id' => $deliveryUser->id,
+            'notes' => 'Needs cancellation reason',
+        ]);
+
+        $this->actingAs($deliveryUser)
+            ->from(route('deliveries.show', $delivery))
+            ->put(route('deliveries.cancel', $delivery), [
+                'cancellation_reason' => '',
+            ])
+            ->assertRedirect(route('deliveries.show', $delivery))
+            ->assertSessionHasErrors('cancellation_reason');
+
+        $this->assertSame('pending', $delivery->fresh()->status);
+    }
+
+    public function test_cancelled_task_is_excluded_from_pending_counts_and_not_counted_as_completed(): void
+    {
+        $organization = TestData::organization();
+        $admin = TestData::user($organization);
+        $deliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+
+        $pendingDelivery = Delivery::create([
+            'organization_id' => $organization->id,
+            'type' => 'delivery',
+            'scheduled_at' => now()->addHour(),
+            'status' => 'pending',
+            'assigned_user_id' => $deliveryUser->id,
+        ]);
+
+        Delivery::create([
+            'organization_id' => $organization->id,
+            'type' => 'delivery',
+            'scheduled_at' => now()->subHour(),
+            'status' => 'completed',
+            'assigned_user_id' => $deliveryUser->id,
+            'completed_at' => now()->subMinutes(30),
+        ]);
+
+        $this->actingAs($deliveryUser)
+            ->put(route('deliveries.cancel', $pendingDelivery), [
+                'cancellation_reason' => 'payment_issue',
+            ])
+            ->assertRedirect(route('deliveries.show', $pendingDelivery));
+
+        $board = $this->actingAs($admin)->get(route('deliveries.index'));
+        $board->assertOk();
+        $this->assertSame(0, (int) $board->viewData('pendingDeliveryCount'));
+        $this->assertSame(1, (int) $board->viewData('completedDeliveryCount'));
+    }
+
+    public function test_cross_org_or_completed_tasks_cannot_be_cancelled_by_delivery_team(): void
+    {
+        $organization = TestData::organization();
+        $otherOrganization = TestData::organization();
+        $deliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+
+        $completedDelivery = Delivery::create([
+            'organization_id' => $organization->id,
+            'type' => 'delivery',
+            'scheduled_at' => now(),
+            'status' => 'completed',
+            'assigned_user_id' => $deliveryUser->id,
+            'completed_at' => now(),
+        ]);
+
+        $foreignDelivery = Delivery::create([
+            'organization_id' => $otherOrganization->id,
+            'type' => 'delivery',
+            'scheduled_at' => now(),
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($deliveryUser)
+            ->from(route('deliveries.show', $completedDelivery))
+            ->put(route('deliveries.cancel', $completedDelivery), [
+                'cancellation_reason' => 'wrong_address',
+            ])
+            ->assertRedirect(route('deliveries.show', $completedDelivery))
+            ->assertSessionHas('error');
+
+        $this->assertSame('completed', $completedDelivery->fresh()->status);
+
+        $this->actingAs($deliveryUser)
+            ->put(route('deliveries.cancel', $foreignDelivery), [
+                'cancellation_reason' => 'wrong_address',
+            ])
+            ->assertForbidden();
+    }
+
     public function test_invoice_payment_status_and_balances_sync_from_payments(): void
     {
         $organization = TestData::organization();

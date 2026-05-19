@@ -3,9 +3,13 @@
 @section('content')
 @php
     $isSaleTask = (bool) $delivery->sale_id;
-    $linkedCustomer = $isSaleTask ? $delivery->sale?->customer : $delivery->rental?->customer;
-    $linkedPhone = $linkedCustomer?->phone ?: ($delivery->rental?->phone ?? null);
-    $linkedWhatsapp = $linkedCustomer?->preferredWhatsAppNumber() ?: $linkedPhone;
+    $linkedCustomerName = $delivery->linkedCustomerName();
+    $linkedPhone = $delivery->linkedCustomerPhone();
+    $linkedWhatsapp = $linkedPhone;
+    $linkedAddress = $delivery->linkedCustomerAddress();
+    $linkedCity = $delivery->linkedCustomerCity();
+    $linkedMapUrl = $delivery->linkedCustomerMapUrl();
+    $linkedContactNotes = $delivery->linkedCustomerNotes();
     $rentalAssets = $delivery->rental?->activeRentalAssets ?? collect();
     $rentalSaleItems = $delivery->rental?->saleItems ?? collect();
     $pickupRecord = $delivery->rental?->pickupRecord;
@@ -91,13 +95,16 @@
     $canUpdateTask = auth()->user()?->can('update', $delivery) ?? false;
     $canDeleteTask = auth()->user()?->can('delete', $delivery) ?? false;
     $deliveryProofs = collect($deliveryProofs ?? []);
+    $cancellationReasonOptions = $cancellationReasonOptions ?? [];
     $proofConfig = $proofConfig ?? ['max_kb' => 100, 'target_kb' => 50, 'max_dimension' => 1024];
     $workflowProofSectionId = 'workflow-proof-section';
+    $cancellationSectionId = 'delivery-cancellation-section';
     $workflowStage = $delivery->type === 'pickup' ? \App\Models\DeliveryProof::STAGE_PICKUP : \App\Models\DeliveryProof::STAGE_DELIVERY;
     $acknowledgementText = \App\Models\DeliveryProof::acknowledgementFor($workflowStage, ! $isSaleTask);
     $locationProofs = $deliveryProofs->where('proof_type', \App\Models\DeliveryProof::TYPE_LOCATION)->values();
     $fileProofs = $deliveryProofs->reject(fn ($proof) => $proof->proof_type === \App\Models\DeliveryProof::TYPE_LOCATION)->values();
     $hasPendingWorkflowCapture = $canUpdateTask && in_array($delivery->status, ['pending', 'in_progress'], true);
+    $canCancelTask = $canUpdateTask && !in_array($delivery->status, ['completed', 'cancelled'], true);
     $hasProofHistory = $deliveryProofs->isNotEmpty();
     $primaryWorkflowCtaLabel = $delivery->status === 'pending'
         ? ($delivery->type === 'pickup' ? 'Start Pickup' : 'Start Delivery')
@@ -118,6 +125,9 @@
         'location_longitude',
     ];
     $hasWorkflowErrors = collect($workflowErrorFields)->contains(fn ($field) => $errors->has($field));
+    $hasCancellationErrors = $errors->has('cancellation_reason') || $errors->has('cancellation_notes');
+    $selectedCancellationReason = old('cancellation_reason', $delivery->cancellation_reason);
+    $selectedCancellationNotes = old('cancellation_notes', $delivery->cancellation_notes);
 
     $mobileQuickActions = collect([
         [
@@ -161,14 +171,11 @@
         ]);
     }
 
-    if ($canUpdateTask && !in_array($delivery->status, ['completed', 'cancelled'], true)) {
+    if ($canCancelTask) {
         $mobileQuickActions->push([
-            'type' => 'form',
+            'type' => 'link',
             'label' => 'Cancel Task',
-            'action' => route('deliveries.cancel', $delivery),
-            'method' => 'PUT',
-            'confirm' => 'Cancel this ' . $delivery->type . ' task?',
-            'danger' => true,
+            'href' => '#' . $cancellationSectionId,
         ]);
     }
 
@@ -429,12 +436,8 @@
             @if($canUpdateTask)
                 <a href="{{ route('deliveries.edit', $delivery) }}" class="detail-btn-secondary">Edit</a>
             @endif
-            @if($canUpdateTask && !in_array($delivery->status, ['completed', 'cancelled'], true))
-                <form action="{{ route('deliveries.cancel', $delivery) }}" method="POST" style="margin:0;">
-                    @csrf
-                    @method('PUT')
-                    <button type="submit" class="detail-btn-secondary" onclick="return confirm('Cancel this {{ $delivery->type }} task?');">Cancel</button>
-                </form>
+            @if($canCancelTask)
+                <a href="#{{ $cancellationSectionId }}" class="detail-btn-secondary">Cancel</a>
             @endif
         </div>
     </div>
@@ -788,6 +791,55 @@
             <div class="workflow-proof-status">You can review proof history for this task, but only the assigned workflow owner can capture start or completion proof.</div>
         @endif
 
+        @if($canCancelTask)
+            <div class="workflow-proof-divider"></div>
+
+            <form id="{{ $cancellationSectionId }}" action="{{ route('deliveries.cancel', $delivery) }}" method="POST" class="workflow-proof-card">
+                @csrf
+                @method('PUT')
+                <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
+                    <div>
+                        <h3 style="margin:0; font-size:18px; color:#0f172a;">Cancel {{ ucfirst($delivery->type) }}</h3>
+                        <div class="workflow-proof-help">Cancellation requires a reason and removes this task from pending or in-progress workload counts.</div>
+                    </div>
+                    <span class="workflow-proof-badge" style="background:#fff7ed; color:#9a3412;">Reason required</span>
+                </div>
+
+                @if($hasCancellationErrors)
+                    <div class="workflow-proof-status is-warning">
+                        Select a cancellation reason before cancelling this {{ $delivery->type }} task.
+                    </div>
+                @endif
+
+                <div class="workflow-proof-grid">
+                    <div class="workflow-proof-field">
+                        <label for="cancellation_reason">Cancellation reason</label>
+                        <select id="cancellation_reason" name="cancellation_reason" style="width:100%; border:1px solid #cbd5e1; border-radius:12px; padding:10px 12px; font-size:13px; color:#0f172a; background:#fff;">
+                            <option value="">Select reason</option>
+                            @foreach($cancellationReasonOptions as $reasonValue => $reasonLabel)
+                                <option value="{{ $reasonValue }}" {{ $selectedCancellationReason === $reasonValue ? 'selected' : '' }}>{{ $reasonLabel }}</option>
+                            @endforeach
+                        </select>
+                        @error('cancellation_reason')
+                            <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                        @enderror
+                    </div>
+                    <div class="workflow-proof-field">
+                        <label for="cancellation_notes">Additional remarks</label>
+                        <textarea id="cancellation_notes" name="cancellation_notes" placeholder="Add any extra context, especially for Other or reschedule scenarios.">{{ $selectedCancellationNotes }}</textarea>
+                        @error('cancellation_notes')
+                            <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                        @enderror
+                    </div>
+                </div>
+
+                <div class="workflow-proof-actions">
+                    <button type="submit" class="detail-btn-secondary" style="background:#fff1f2;border-color:#fecaca;color:#991b1b;">Cancel {{ ucfirst($delivery->type) }}</button>
+                    <div class="workflow-proof-help">Cancelled tasks stay in history, but no longer count as pending or completed work.</div>
+                </div>
+            </form>
+        @endif
+
         <div class="workflow-proof-divider"></div>
 
         <div id="delivery-proof-history" class="workflow-proof-history">
@@ -872,7 +924,11 @@
                 </div>
                 <div class="span-6">
                     <span class="label">Customer</span>
-                    <div class="value">{{ $isSaleTask ? ($delivery->sale?->customer?->name ?? 'N/A') : ($delivery->rental?->customer_name ?? 'N/A') }}</div>
+                    <div class="value">{{ $linkedCustomerName ?: 'N/A' }}</div>
+                </div>
+                <div class="span-6">
+                    <span class="label">Contact Phone</span>
+                    <div class="value">{{ $linkedPhone ?: 'N/A' }}</div>
                 </div>
                 <div class="span-6">
                     <span class="label">Product</span>
@@ -882,6 +938,21 @@
                     <span class="label">Warehouse</span>
                     <div class="value">{{ $isSaleTask ? ($delivery->sale?->asset?->warehouse?->name ?? 'Sale dispatch') : ($delivery->rental?->dispatchWarehouse?->name ?? 'Any warehouse') }}</div>
                 </div>
+                <div class="span-12">
+                    <span class="label">Delivery Address</span>
+                    <div class="value">
+                        {{ collect([$linkedAddress, $linkedCity])->filter()->join(', ') ?: 'No delivery address captured.' }}
+                        @if($linkedMapUrl)
+                            <div style="margin-top:8px;"><a href="{{ $linkedMapUrl }}" target="_blank" rel="noopener" class="detail-btn-secondary">Open Map</a></div>
+                        @endif
+                    </div>
+                </div>
+                @if($linkedContactNotes)
+                    <div class="span-12">
+                        <span class="label">Delivery Notes</span>
+                        <div class="value">{{ $linkedContactNotes }}</div>
+                    </div>
+                @endif
             </div>
         </div>
 
@@ -910,6 +981,18 @@
                     <span class="label">Notes</span>
                     <div class="value">{{ $delivery->notes ?: 'No notes added.' }}</div>
                 </div>
+                @if($delivery->status === 'cancelled' && $delivery->cancellation_reason)
+                    <div class="span-6">
+                        <span class="label">Cancellation Reason</span>
+                        <div class="value">{{ \App\Models\Delivery::cancellationReasonLabel($delivery->cancellation_reason) }}</div>
+                    </div>
+                @endif
+                @if($delivery->status === 'cancelled')
+                    <div class="span-6">
+                        <span class="label">Cancellation Notes</span>
+                        <div class="value">{{ $delivery->cancellation_notes ?: 'No additional cancellation notes.' }}</div>
+                    </div>
+                @endif
             </div>
         </div>
 
@@ -964,6 +1047,7 @@ document.addEventListener('DOMContentLoaded', () => {
         maxDimension: {{ (int) ($proofConfig['max_dimension'] ?? 1024) }},
     };
     const workflowSection = document.getElementById(@json($workflowProofSectionId));
+    const cancellationSection = document.getElementById(@json($cancellationSectionId));
     const workflowErrorSummary = document.querySelector('[data-workflow-error-summary]');
 
     if (workflowSection && (window.location.hash === '#{{ $workflowProofSectionId }}' || {{ $hasWorkflowErrors ? 'true' : 'false' }})) {
@@ -972,6 +1056,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (workflowErrorSummary instanceof HTMLElement) {
             window.setTimeout(() => workflowErrorSummary.focus(), 160);
         }
+    }
+
+    if (cancellationSection && (window.location.hash === '#{{ $cancellationSectionId }}' || {{ $hasCancellationErrors ? 'true' : 'false' }})) {
+        cancellationSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     const canvasToBlob = (canvas, type, quality) => new Promise((resolve) => {

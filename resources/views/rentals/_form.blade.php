@@ -1,7 +1,14 @@
 ﻿@php
     $isEdit = isset($rental);
     $selectedCustomer = $selectedCustomer ?? null;
+    $businessPartners = $businessPartners ?? collect();
+    $customerTypeValue = old('customer_type', $isEdit ? $rental->customerTypeValue() : 'direct_customer');
     $selectedCustomerId = old('customer_id', $isEdit ? $rental->customer_id : ($selectedCustomer?->id));
+    $selectedBusinessPartnerId = (int) old('business_partner_id', $isEdit ? ($rental->business_partner_id ?? 0) : 0);
+    $selectedPartnerClientId = (int) old('partner_client_id', $isEdit ? ($rental->partner_client_id ?? 0) : 0);
+    $selectedBusinessPartner = $businessPartners->firstWhere('id', $selectedBusinessPartnerId);
+    $allPartnerClients = $businessPartners->pluck('partnerClients')->flatten(1);
+    $selectedPartnerClient = $allPartnerClients->firstWhere('id', $selectedPartnerClientId);
     $rentalProducts = $rentalProducts ?? $products;
     $selectedAssetIds = collect(old('asset_ids', $isEdit ? $rental->activeRentalAssets->pluck('asset_id')->all() : []))
         ->filter(fn ($value) => filled($value))
@@ -85,6 +92,34 @@
     })->values();
     $phoneParts = \App\Support\PhoneNumber::split(old('phone', $isEdit ? $rental->phone : ($selectedCustomer?->phone ?? '')));
     $countryCodeOptions = \App\Support\PhoneNumber::countryCodeOptions();
+    $businessPartnerData = $businessPartners->map(function ($partner) {
+        return [
+            'id' => $partner->id,
+            'name' => $partner->displayName(),
+            'contact_person' => $partner->contact_person,
+            'phone' => $partner->phone,
+            'whatsapp' => $partner->whatsapp,
+            'email' => $partner->email,
+            'address' => $partner->address,
+            'city' => $partner->city,
+            'state' => $partner->state,
+            'location' => $partner->openMapUrl(),
+            'clients' => $partner->partnerClients->map(function ($client) {
+                return [
+                    'id' => $client->id,
+                    'business_partner_id' => $client->business_partner_id,
+                    'name' => $client->displayName(),
+                    'phone' => $client->primaryPhone(),
+                    'alternate_phone' => $client->alternate_phone,
+                    'address' => $client->address,
+                    'city' => $client->city,
+                    'state' => $client->state,
+                    'location' => $client->openMapUrl(),
+                    'delivery_notes' => $client->delivery_notes,
+                ];
+            })->values()->all(),
+        ];
+    })->values();
 
     if ($selectedDeliveryAssignment === null && $isEdit) {
         $selectedDeliveryAssignment = ($rental->deliveryRecord?->assignment_type ?? null) === 'third_party'
@@ -144,6 +179,12 @@
     .rental-field { display:flex; flex-direction:column; gap:4px; }
     .rental-field label { font-size:11px; font-weight:700; color:#334155; letter-spacing:0.03em; text-transform:uppercase; }
     .rental-field .hint { font-size:10px; color:#94a3b8; line-height:1.35; }
+    .rental-mode-shell { display:grid; gap:12px; }
+    .rental-mode-summary { display:grid; gap:10px; padding:12px; border:1px solid #dbe3ef; border-radius:12px; background:#f8fbff; }
+    .rental-mode-summary strong { color:#0f172a; font-size:14px; }
+    .rental-mode-summary .subtext { color:#475569; font-size:12px; line-height:1.5; }
+    .rental-mode-chip { display:inline-flex; align-items:center; padding:4px 8px; border-radius:999px; background:#dbeafe; color:#1d4ed8; font-size:11px; font-weight:700; }
+    [data-customer-mode-block][hidden] { display:none !important; }
     .rental-field input,
     .rental-field select,
     .rental-field textarea {
@@ -958,11 +999,38 @@
     <div class="rental-card">
         <h2>Customer & Rental Details</h2>
         <div class="rental-grid">
-            <div class="rental-col-4">
+            <div class="rental-field rental-col-4{{ $hasFieldError('customer_type') ? ' is-error' : '' }}">
+                <label for="customer_type">Customer Type</label>
+                <select name="customer_type" id="customer_type">
+                    <option value="direct_customer" {{ $customerTypeValue === 'direct_customer' ? 'selected' : '' }}>Direct Customer</option>
+                    <option value="business_partner" {{ $customerTypeValue === 'business_partner' ? 'selected' : '' }}>Business Partner / Tie-up</option>
+                </select>
+                <span class="hint">Direct Customer keeps billing, reminders, and delivery on one contact. Business Partner splits billing/reminders from actual delivery contact.</span>
+                @if($hasFieldError('customer_type'))
+                    <span class="field-error">{{ $fieldError('customer_type') }}</span>
+                @endif
+            </div>
+
+            <div class="rental-col-8 rental-mode-shell">
+                <div class="rental-mode-summary" id="customerContactUsageCard">
+                    <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center;">
+                        <strong>Contact Usage</strong>
+                        <span class="rental-mode-chip" id="customerFlowBadge">{{ $customerTypeValue === 'business_partner' ? 'Business Partner Flow' : 'Direct Customer Flow' }}</span>
+                    </div>
+                    <div class="subtext">
+                        <div><strong>Reminder / Payment Contact:</strong> <span id="reminderContactSummary">Select a customer</span></div>
+                        <div style="margin-top:6px;"><strong>Delivery / Pickup Contact:</strong> <span id="deliveryContactSummary">Select a customer</span></div>
+                        <div id="deliveryAddressSummary" style="margin-top:6px;"></div>
+                        <div id="deliveryNotesSummary" style="margin-top:6px;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="rental-col-4" data-customer-mode-block="direct_customer">
                 <div class="rental-inline-stack">
                     <div class="rental-field{{ $hasFieldError('customer_id') ? ' is-error' : '' }}">
                         <label for="customer_id">Customer</label>
-                        <select name="customer_id" id="customer_id" required data-searchable-select data-search-placeholder="Search customer by name or phone">
+                        <select name="customer_id" id="customer_id" data-searchable-select data-search-placeholder="Search customer by name or phone">
                     <option value="">Select customer</option>
                     @foreach($customers as $customer)
                         <option
@@ -985,8 +1053,67 @@
                 </div>
             </div>
 
+            <div class="rental-col-4" data-customer-mode-block="business_partner">
+                <div class="rental-inline-stack">
+                    <div class="rental-field{{ $hasFieldError('business_partner_id') ? ' is-error' : '' }}">
+                        <label for="business_partner_id">Business Partner</label>
+                        <select name="business_partner_id" id="business_partner_id" data-searchable-select data-search-placeholder="Search business partner by name, contact, phone, or city">
+                            <option value="">Select business partner</option>
+                            @foreach($businessPartners as $partner)
+                                <option
+                                    value="{{ $partner->id }}"
+                                    data-name="{{ $partner->displayName() }}"
+                                    data-phone="{{ $partner->phone }}"
+                                    data-email="{{ $partner->email }}"
+                                    data-state="{{ $partner->state }}"
+                                    data-search="{{ trim(implode(' ', array_filter([$partner->displayName(), $partner->contact_person, $partner->phone, $partner->email, $partner->city, $partner->state]))) }}"
+                                    {{ $selectedBusinessPartnerId === $partner->id ? 'selected' : '' }}>
+                                    {{ $partner->displayName() }}{{ $partner->phone ? ' • ' . $partner->phone : '' }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @if($hasFieldError('business_partner_id'))
+                            <span class="field-error">{{ $fieldError('business_partner_id') }}</span>
+                        @endif
+                    </div>
+                    <a href="{{ route('business-partners.create') }}" class="ops-button-secondary is-compact">Add Business Partner</a>
+                </div>
+            </div>
+
+            <div class="rental-col-4" data-customer-mode-block="business_partner">
+                <div class="rental-inline-stack">
+                    <div class="rental-field{{ $hasFieldError('partner_client_id') ? ' is-error' : '' }}">
+                        <label for="partner_client_id">Actual Client / Delivery Location</label>
+                        <select name="partner_client_id" id="partner_client_id" data-searchable-select data-search-placeholder="Search actual client by name, phone, address, or city">
+                            <option value="">Select actual client</option>
+                            @foreach($allPartnerClients as $client)
+                                <option
+                                    value="{{ $client->id }}"
+                                    data-business-partner-id="{{ $client->business_partner_id }}"
+                                    data-name="{{ $client->displayName() }}"
+                                    data-phone="{{ \App\Support\PhoneNumber::local($client->primaryPhone()) }}"
+                                    data-phone-country="{{ \App\Support\PhoneNumber::countryCode($client->primaryPhone()) }}"
+                                    data-state="{{ $client->state }}"
+                                    data-address="{{ $client->address }}"
+                                    data-city="{{ $client->city }}"
+                                    data-location="{{ $client->openMapUrl() }}"
+                                    data-notes="{{ $client->delivery_notes }}"
+                                    data-search="{{ trim(implode(' ', array_filter([$client->displayName(), $client->primaryPhone(), $client->address, $client->city, $client->state]))) }}"
+                                    {{ $selectedPartnerClientId === $client->id ? 'selected' : '' }}>
+                                    {{ $client->displayName() }}{{ $client->primaryPhone() ? ' • ' . $client->primaryPhone() : '' }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @if($hasFieldError('partner_client_id'))
+                            <span class="field-error">{{ $fieldError('partner_client_id') }}</span>
+                        @endif
+                    </div>
+                    <a href="{{ $selectedBusinessPartner ? route('business-partners.clients.create', $selectedBusinessPartner) : '#' }}" data-route-template="{{ url('/business-partners/__PARTNER__/clients/create') }}" class="ops-button-secondary is-compact{{ $selectedBusinessPartner ? '' : ' is-disabled' }}" id="addActualClientLink">Add Actual Client</a>
+                </div>
+            </div>
+
             <div class="rental-field rental-col-4{{ $hasFieldError('customer_name') ? ' is-error' : '' }}">
-                <label for="customer_name">Name</label>
+                <label for="customer_name">Delivery Contact Name</label>
                 <input type="text" name="customer_name" id="customer_name" value="{{ old('customer_name', $isEdit ? $rental->customer_name : ($selectedCustomer?->name ?? '')) }}" required>
                 @if($hasFieldError('customer_name'))
                     <span class="field-error">{{ $fieldError('customer_name') }}</span>
@@ -1421,9 +1548,19 @@
 <script>
     (function () {
         const customerSelect = document.getElementById('customer_id');
+        const customerTypeSelect = document.getElementById('customer_type');
+        const businessPartnerSelect = document.getElementById('business_partner_id');
+        const partnerClientSelect = document.getElementById('partner_client_id');
         const customerName = document.getElementById('customer_name');
         const phoneInput = document.getElementById('phone');
         const phoneCountryCodeInput = document.getElementById('phone_country_code');
+        const customerModeBlocks = Array.from(document.querySelectorAll('[data-customer-mode-block]'));
+        const customerFlowBadge = document.getElementById('customerFlowBadge');
+        const reminderContactSummary = document.getElementById('reminderContactSummary');
+        const deliveryContactSummary = document.getElementById('deliveryContactSummary');
+        const deliveryAddressSummary = document.getElementById('deliveryAddressSummary');
+        const deliveryNotesSummary = document.getElementById('deliveryNotesSummary');
+        const addActualClientLink = document.getElementById('addActualClientLink');
         const productSelect = document.getElementById('product_id');
         const warehouseSelect = document.getElementById('dispatch_warehouse_id');
         const deliveryAssignmentSelect = document.getElementById('delivery_staff_id');
@@ -1479,6 +1616,7 @@
         let currentAssets = [];
         let rentalItems = @json($additionalRentalRows);
         let saleItems = @json($saleItemRows);
+        const businessPartners = @json($businessPartnerData);
         const standardGstRates = ['0.00', '5.00', '12.00', '18.00', '28.00'];
         let rentalAmountTouched = Boolean(@json($isEdit || (old('rental_amount') !== null && old('rental_amount') !== '')));
         const assetVisibleStep = 3;
@@ -1632,6 +1770,9 @@
                 optionsWrap.innerHTML = '';
 
                 visibleOptions = Array.from(select.options).filter(function (option) {
+                    if (option.hidden) {
+                        return false;
+                    }
                     const searchText = (option.getAttribute('data-search') || option.textContent || '').toLowerCase();
                     return !query || searchText.includes(query);
                 });
@@ -1762,7 +1903,13 @@
         }
 
         enhanceSearchableSelect(customerSelect);
+        enhanceSearchableSelect(businessPartnerSelect);
+        enhanceSearchableSelect(partnerClientSelect);
         enhanceSearchableSelect(productSelect);
+
+        const businessPartnerMap = new Map(businessPartners.map(function (partner) {
+            return [parseInt(partner.id, 10), partner];
+        }));
 
         function normalizeIdArray(values) {
             const source = Array.isArray(values) ? values : (values ? [values] : []);
@@ -1776,7 +1923,33 @@
                 })));
         }
 
+        function customerMode() {
+            return customerTypeSelect?.value === 'business_partner' ? 'business_partner' : 'direct_customer';
+        }
+
+        function selectedBusinessPartnerData() {
+            const partnerId = businessPartnerSelect?.value ? parseInt(businessPartnerSelect.value, 10) : null;
+            return partnerId ? businessPartnerMap.get(partnerId) : null;
+        }
+
+        function selectedPartnerClientData() {
+            const partner = selectedBusinessPartnerData();
+            const clientId = partnerClientSelect?.value ? parseInt(partnerClientSelect.value, 10) : null;
+
+            if (!partner || !clientId) {
+                return null;
+            }
+
+            return (partner.clients || []).find(function (client) {
+                return parseInt(client.id, 10) === clientId;
+            }) || null;
+        }
+
         function syncCustomerFields() {
+            if (customerMode() !== 'direct_customer') {
+                return;
+            }
+
             const selected = customerSelect.options[customerSelect.selectedIndex];
 
             if (!selected || !customerSelect.value) {
@@ -1788,6 +1961,126 @@
             if (phoneCountryCodeInput) {
                 phoneCountryCodeInput.value = selected.getAttribute('data-phone-country') || phoneCountryCodeInput.value;
             }
+        }
+
+        function renderPartnerClientOptions() {
+            if (!partnerClientSelect) {
+                return;
+            }
+
+            const activePartnerId = businessPartnerSelect?.value || '';
+
+            Array.from(partnerClientSelect.options).forEach(function (option, index) {
+                if (index === 0) {
+                    option.hidden = false;
+                    return;
+                }
+
+                const optionPartnerId = option.getAttribute('data-business-partner-id') || '';
+                option.hidden = Boolean(activePartnerId) && optionPartnerId !== activePartnerId;
+            });
+
+            const selectedOption = partnerClientSelect.options[partnerClientSelect.selectedIndex];
+            if (selectedOption && selectedOption.hidden) {
+                partnerClientSelect.value = '';
+            }
+
+            partnerClientSelect._searchableSelect?.refresh?.();
+        }
+
+        function syncPartnerClientFields() {
+            if (customerMode() !== 'business_partner') {
+                return;
+            }
+
+            const partner = selectedBusinessPartnerData();
+            const client = selectedPartnerClientData();
+
+            if (client) {
+                customerName.value = client.name || customerName.value;
+                phoneInput.value = String(client.phone || '').replace(/\D+/g, '').slice(0, 15) || phoneInput.value;
+                if (phoneCountryCodeInput) {
+                    const clientOption = partnerClientSelect.options[partnerClientSelect.selectedIndex];
+                    phoneCountryCodeInput.value = clientOption?.getAttribute('data-phone-country') || phoneCountryCodeInput.value;
+                }
+                return;
+            }
+
+            if (partner) {
+                customerName.value = partner.name || customerName.value;
+                phoneInput.value = String(partner.phone || '').replace(/\D+/g, '').slice(0, 15) || phoneInput.value;
+            }
+        }
+
+        function updateContactUsageSummary() {
+            const mode = customerMode();
+            const partner = selectedBusinessPartnerData();
+            const client = selectedPartnerClientData();
+            const customer = customerSelect?.selectedOptions?.[0];
+
+            if (customerFlowBadge) {
+                customerFlowBadge.textContent = mode === 'business_partner' ? 'Business Partner Flow' : 'Direct Customer Flow';
+            }
+
+            if (mode === 'business_partner') {
+                reminderContactSummary.textContent = partner
+                    ? [partner.name, partner.phone].filter(Boolean).join(' - ')
+                    : 'Select a business partner';
+                deliveryContactSummary.textContent = client
+                    ? [client.name, client.phone].filter(Boolean).join(' - ')
+                    : 'Select an actual client';
+                deliveryAddressSummary.textContent = client
+                    ? [client.address, client.city, client.state].filter(Boolean).join(', ')
+                    : '';
+                deliveryNotesSummary.textContent = client?.delivery_notes ? 'Notes: ' + client.delivery_notes : '';
+
+                if (addActualClientLink) {
+                    const routeTemplate = addActualClientLink.getAttribute('data-route-template') || '';
+                    addActualClientLink.href = partner ? routeTemplate.replace('__PARTNER__', String(partner.id)) : '#';
+                    addActualClientLink.classList.toggle('is-disabled', !partner);
+                    addActualClientLink.setAttribute('aria-disabled', partner ? 'false' : 'true');
+                }
+
+                return;
+            }
+
+            const customerNameText = customer?.getAttribute('data-name') || 'Select a customer';
+            const customerPhoneText = customer?.getAttribute('data-phone') || '';
+            reminderContactSummary.textContent = [customerNameText, customerPhoneText].filter(Boolean).join(' - ');
+            deliveryContactSummary.textContent = [customerNameText, customerPhoneText].filter(Boolean).join(' - ');
+            deliveryAddressSummary.textContent = '';
+            deliveryNotesSummary.textContent = '';
+            if (addActualClientLink) {
+                addActualClientLink.href = '#';
+                addActualClientLink.classList.add('is-disabled');
+                addActualClientLink.setAttribute('aria-disabled', 'true');
+            }
+        }
+
+        function updateCustomerModeVisibility() {
+            const mode = customerMode();
+
+            customerModeBlocks.forEach(function (block) {
+                block.hidden = block.getAttribute('data-customer-mode-block') !== mode;
+            });
+
+            if (customerSelect) {
+                customerSelect.required = mode === 'direct_customer';
+            }
+            if (businessPartnerSelect) {
+                businessPartnerSelect.required = mode === 'business_partner';
+            }
+            if (partnerClientSelect) {
+                partnerClientSelect.required = mode === 'business_partner';
+            }
+
+            renderPartnerClientOptions();
+            if (mode === 'direct_customer') {
+                syncCustomerFields();
+            } else {
+                syncPartnerClientFields();
+            }
+            updateContactUsageSummary();
         }
 
         if (phoneInput) {
@@ -1923,7 +2216,10 @@
 
         function recommendedTaxType() {
             const customerState = customerSelect?.selectedOptions?.[0]?.getAttribute('data-state') || '';
-            const normalizedCustomerState = normalizeStateName(customerState);
+            const effectiveCustomerState = customerMode() === 'business_partner'
+                ? (selectedPartnerClientData()?.state || selectedBusinessPartnerData()?.state || '')
+                : customerState;
+            const normalizedCustomerState = normalizeStateName(effectiveCustomerState);
             const normalizedOrganizationState = normalizeStateName(organizationState);
 
             if (normalizedCustomerState && normalizedOrganizationState && normalizedCustomerState !== normalizedOrganizationState) {
@@ -3054,8 +3350,8 @@
             saleItemsGrandTotalSummary.textContent = total.toFixed(2);
         }
 
-        customerSelect.addEventListener('change', function () {
-            syncCustomerFields();
+        customerTypeSelect?.addEventListener('change', function () {
+            updateCustomerModeVisibility();
             if (primaryTaxTypeSelect) {
                 primaryTaxTypeSelect.value = recommendedTaxType();
             }
@@ -3067,6 +3363,36 @@
             });
             renderRentalItems();
             renderSaleItems();
+        });
+        customerSelect.addEventListener('change', function () {
+            syncCustomerFields();
+            updateContactUsageSummary();
+            if (primaryTaxTypeSelect) {
+                primaryTaxTypeSelect.value = recommendedTaxType();
+            }
+            rentalItems = rentalItems.map(function (item) {
+                return Object.assign({}, item, { tax_type: recommendedTaxType() });
+            });
+            saleItems = saleItems.map(function (item) {
+                return Object.assign({}, item, { tax_type: recommendedTaxType() });
+            });
+            renderRentalItems();
+            renderSaleItems();
+        });
+        businessPartnerSelect?.addEventListener('change', function () {
+            renderPartnerClientOptions();
+            syncPartnerClientFields();
+            updateContactUsageSummary();
+            if (primaryTaxTypeSelect) {
+                primaryTaxTypeSelect.value = recommendedTaxType();
+            }
+        });
+        partnerClientSelect?.addEventListener('change', function () {
+            syncPartnerClientFields();
+            updateContactUsageSummary();
+            if (primaryTaxTypeSelect) {
+                primaryTaxTypeSelect.value = recommendedTaxType();
+            }
         });
         productSelect.addEventListener('change', handlePrimaryProductChange);
         productSelect.addEventListener('input', handlePrimaryProductChange);
@@ -3163,7 +3489,9 @@
             renderSaleItems();
         });
 
+        updateCustomerModeVisibility();
         syncCustomerFields();
+        syncPartnerClientFields();
         syncPrimaryTaxDefaults(false);
         updateWarehouseMetric();
         updateAvailabilityHint();

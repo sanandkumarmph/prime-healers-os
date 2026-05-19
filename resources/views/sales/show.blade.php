@@ -112,11 +112,11 @@
         ]);
     }
 
-    if ($sale->customer?->phone) {
+    if ($sale->reminderContactPhone()) {
         $pushMoreAction([
             'type' => 'link',
             'label' => 'Call Customer',
-            'href' => 'tel:' . preg_replace('/\D+/', '', $sale->customer->phone),
+            'href' => 'tel:' . preg_replace('/\D+/', '', $sale->reminderContactPhone()),
         ]);
     }
 
@@ -539,12 +539,12 @@
             <strong>{{ $sale->sale_date ? \Carbon\Carbon::parse($sale->sale_date)->format('d M Y') : '-' }}</strong>
         </div>
         <div class="summary-tile">
-            <span>Customer</span>
-            <strong>{{ $sale->customer->name ?? 'N/A' }}</strong>
+            <span>Reminder / Billing Contact</span>
+            <strong>{{ $sale->billingContactName() ?: 'N/A' }}</strong>
         </div>
         <div class="summary-tile">
-            <span>Phone</span>
-            <strong>{{ $sale->customer->phone ?? 'N/A' }}</strong>
+            <span>Delivery Contact</span>
+            <strong>{{ $sale->deliveryContactName() ?: 'N/A' }}</strong>
         </div>
         <div class="summary-tile">
             <span>Items / Qty</span>
@@ -624,8 +624,12 @@
                     <strong>{{ $sale->product->name ?? 'N/A' }}</strong>
                 </div>
                 <div class="detail-item">
-                    <span>Customer Phone</span>
-                    <div>{{ $sale->customer->phone ?? 'N/A' }}</div>
+                    <span>Delivery Phone</span>
+                    <div>{{ $sale->deliveryContactPhone() ?? 'N/A' }}</div>
+                </div>
+                <div class="detail-item">
+                    <span>Billing Phone</span>
+                    <div>{{ $sale->billingContactPhone() ?? 'N/A' }}</div>
                 </div>
                 @if($canViewFinance)
                     <div class="detail-item">

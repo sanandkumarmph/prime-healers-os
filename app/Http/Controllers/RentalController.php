@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Asset;
+use App\Models\BusinessPartner;
 use App\Models\Customer;
 use App\Models\Delivery;
 use App\Models\Invoice;
 use App\Models\Organization;
+use App\Models\PartnerClient;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Rental;
@@ -77,6 +79,101 @@ class RentalController extends Controller
     private function salesMetrics(): SalesMetricsService
     {
         return app(SalesMetricsService::class);
+    }
+
+    private function businessPartnersForForm()
+    {
+        return BusinessPartner::query()
+            ->where('organization_id', $this->orgId())
+            ->where('status', 'active')
+            ->with(['partnerClients' => function ($query) {
+                $query->where('organization_id', $this->orgId())
+                    ->where('status', 'active')
+                    ->orderBy('client_name');
+            }])
+            ->orderBy('business_name')
+            ->get();
+    }
+
+    private function rentalCustomerTypeFromRequest(Request $request, ?Rental $rental = null): string
+    {
+        $value = (string) $request->input('customer_type', $rental?->customerTypeValue() ?? 'direct_customer');
+
+        return $value === 'business_partner' ? 'business_partner' : 'direct_customer';
+    }
+
+    private function hydrateRentalBusinessPartnerInputs(Request $request): void
+    {
+        if ($this->rentalCustomerTypeFromRequest($request) !== 'business_partner') {
+            return;
+        }
+
+        $businessPartnerId = (int) $request->input('business_partner_id', 0);
+        $partnerClientId = (int) $request->input('partner_client_id', 0);
+
+        if ($businessPartnerId <= 0 || $partnerClientId <= 0) {
+            return;
+        }
+
+        $businessPartner = BusinessPartner::query()
+            ->where('organization_id', $this->orgId())
+            ->find($businessPartnerId);
+        $partnerClient = PartnerClient::query()
+            ->where('organization_id', $this->orgId())
+            ->where('business_partner_id', $businessPartnerId)
+            ->find($partnerClientId);
+
+        if (!$businessPartner || !$partnerClient) {
+            return;
+        }
+
+        $phone = $partnerClient->primaryPhone() ?: $businessPartner->phone;
+        $phoneParts = PhoneNumber::split($phone);
+
+        $request->merge([
+            'customer_name' => $partnerClient->displayName(),
+            'phone' => $phoneParts['local'] ?: preg_replace('/\D+/', '', (string) $phone),
+            'phone_country_code' => $phoneParts['code'] ?: $request->input('phone_country_code', '+91'),
+        ]);
+    }
+
+    private function rentalValidatedCustomerContext(Request $request): array
+    {
+        $customerType = $this->rentalCustomerTypeFromRequest($request);
+
+        if ($customerType === 'business_partner') {
+            $businessPartner = BusinessPartner::query()
+                ->where('organization_id', $this->orgId())
+                ->findOrFail((int) $request->input('business_partner_id'));
+            $partnerClient = PartnerClient::query()
+                ->where('organization_id', $this->orgId())
+                ->where('business_partner_id', $businessPartner->id)
+                ->findOrFail((int) $request->input('partner_client_id'));
+
+            return [
+                'customer_type' => 'business_partner',
+                'customer' => null,
+                'business_partner' => $businessPartner,
+                'partner_client' => $partnerClient,
+                'customer_id' => null,
+                'customer_name' => $partnerClient->displayName(),
+                'phone' => PhoneNumber::normalize($partnerClient->primaryPhone() ?: $businessPartner->phone),
+            ];
+        }
+
+        $customer = Customer::query()
+            ->where('organization_id', $this->orgId())
+            ->findOrFail((int) $request->input('customer_id'));
+
+        return [
+            'customer_type' => 'direct_customer',
+            'customer' => $customer,
+            'business_partner' => null,
+            'partner_client' => null,
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => PhoneNumber::normalize($customer->phone),
+        ];
     }
 
     private function invoiceMetrics(): InvoiceMetricsService
@@ -2604,10 +2701,10 @@ class RentalController extends Controller
     public function openReminder(Request $request, Rental $rental, string $type = 'renewal')
     {
         $rental = $this->scopedRental($rental);
-        $rental->loadMissing(['product', 'customer']);
+        $rental->loadMissing(['product', 'customer', 'businessPartner', 'partnerClient']);
 
         $normalizedType = strtolower(trim($type));
-        $normalizedNumber = WhatsAppHelper::resolveCustomerNumber($rental->customer);
+        $normalizedNumber = WhatsAppHelper::normalizeNumber($rental->reminderContactPhone());
 
         abort_if(!$normalizedNumber, 404, 'Customer WhatsApp number not available.');
 
@@ -4284,6 +4381,7 @@ class RentalController extends Controller
         $this->authorize('create', Rental::class);
 
         $selectedCustomer = null;
+        $businessPartners = $this->businessPartnersForForm();
         $requestedCustomerId = request()->integer('customer_id');
 
         if ($requestedCustomerId > 0) {
@@ -4318,21 +4416,37 @@ class RentalController extends Controller
 
         $organization = Organization::find($this->orgId());
 
-        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses', 'organization', 'selectedCustomer'));
+        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'businessPartners', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses', 'organization', 'selectedCustomer'));
     }
 
     public function store(Request $request)
     {
         $this->ensureRentalAccess();
         $this->authorize('create', Rental::class);
+        if (!$request->filled('customer_type')) {
+            $request->merge(['customer_type' => 'direct_customer']);
+        }
+        $this->hydrateRentalBusinessPartnerInputs($request);
 
         $validationRules = [
+            'customer_type' => ['required', Rule::in(['direct_customer', 'business_partner'])],
             'customer_id' => [
-                'required',
+                'required_if:customer_type,direct_customer',
+                'nullable',
                 Rule::exists('customers', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
             ],
-            'customer_name' => 'required|string|max:255',
-            'phone' => PhoneNumber::validationRules(true),
+            'business_partner_id' => [
+                'required_if:customer_type,business_partner',
+                'nullable',
+                Rule::exists('business_partners', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+            ],
+            'partner_client_id' => [
+                'required_if:customer_type,business_partner',
+                'nullable',
+                Rule::exists('partner_clients', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+            ],
+            'customer_name' => 'required_if:customer_type,direct_customer|nullable|string|max:255',
+            'phone' => array_merge(['required_if:customer_type,direct_customer', 'nullable'], PhoneNumber::validationRules(false)),
             'product_id' => [
                 'required',
                 Rule::exists('products', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
@@ -4381,7 +4495,7 @@ class RentalController extends Controller
                 'product_id' => [$product->name . ' is sale only and cannot be rented.'],
             ]);
         }
-        $customer = Customer::where('organization_id', $this->orgId())->findOrFail($request->customer_id);
+        $customerContext = $this->rentalValidatedCustomerContext($request);
         $saleItems = $this->normalizedSaleItems($request);
         $rentalItems = $this->combinedRentalItems($request);
         $selectedAssets = $this->resolveCombinedRentalAssets(
@@ -4396,13 +4510,16 @@ class RentalController extends Controller
         );
         $this->validateTrackedRentalAssetAssignments($rentalItems);
 
-        [$rental, $invoice] = DB::transaction(function () use ($request, $product, $customer, $selectedAssets, $saleItems, $rentalItems, $deliveryAssignment) {
+        [$rental, $invoice] = DB::transaction(function () use ($request, $product, $customerContext, $selectedAssets, $saleItems, $rentalItems, $deliveryAssignment) {
             $rental = Rental::create([
                 'organization_id' => $this->orgId(),
-                'customer_id' => $customer->id,
+                'customer_id' => $customerContext['customer_id'],
+                'customer_type' => $customerContext['customer_type'],
+                'business_partner_id' => $customerContext['business_partner']?->id,
+                'partner_client_id' => $customerContext['partner_client']?->id,
                 'created_by_user_id' => auth()->id(),
-                'customer_name' => $customer->name,
-                'phone' => PhoneNumber::normalize($customer->phone),
+                'customer_name' => $customerContext['customer_name'],
+                'phone' => $customerContext['phone'],
                 'product_id' => $request->product_id,
                 'delivery_staff_id' => $deliveryAssignment['staff_id'],
                 'pickup_staff_id' => null,
@@ -4753,6 +4870,8 @@ class RentalController extends Controller
         $load = [
             'product',
             'customer',
+            'businessPartner',
+            'partnerClient',
             'deliveryRecord.assignedStaff',
             'deliveryRecord.assignedUser',
             'pickupRecord.assignedStaff',
@@ -5017,6 +5136,7 @@ class RentalController extends Controller
         $products = $this->productsForRentalForm();
         $rentalProducts = $this->rentalProductsForSelection($products);
         $customers = Customer::where('organization_id', $this->orgId())->orderBy('name')->get();
+        $businessPartners = $this->businessPartnersForForm();
         $saleAssets = $this->availableSaleAssets($rental);
         $staffMembers = $this->assignableStaffMembers();
         $assignableUsers = $this->assignableUsers();
@@ -5029,7 +5149,7 @@ class RentalController extends Controller
 
         $organization = Organization::find($this->orgId());
 
-        return view('rentals.edit', compact('rental', 'products', 'rentalProducts', 'customers', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses', 'organization'));
+        return view('rentals.edit', compact('rental', 'products', 'rentalProducts', 'customers', 'businessPartners', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses', 'organization'));
     }
 
     public function update(Request $request, Rental $rental)
@@ -5037,14 +5157,30 @@ class RentalController extends Controller
         $this->ensureRentalAccess();
         $rental = $this->scopedRental($rental);
         $this->authorize('update', $rental);
+        if (!$request->filled('customer_type')) {
+            $request->merge(['customer_type' => 'direct_customer']);
+        }
+        $this->hydrateRentalBusinessPartnerInputs($request);
 
         $validationRules = [
+            'customer_type' => ['required', Rule::in(['direct_customer', 'business_partner'])],
             'customer_id' => [
-                'required',
+                'required_if:customer_type,direct_customer',
+                'nullable',
                 Rule::exists('customers', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
             ],
-            'customer_name' => 'required|string|max:255',
-            'phone' => PhoneNumber::validationRules(true),
+            'business_partner_id' => [
+                'required_if:customer_type,business_partner',
+                'nullable',
+                Rule::exists('business_partners', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+            ],
+            'partner_client_id' => [
+                'required_if:customer_type,business_partner',
+                'nullable',
+                Rule::exists('partner_clients', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+            ],
+            'customer_name' => 'required_if:customer_type,direct_customer|nullable|string|max:255',
+            'phone' => array_merge(['required_if:customer_type,direct_customer', 'nullable'], PhoneNumber::validationRules(false)),
             'product_id' => [
                 'required',
                 Rule::exists('products', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
@@ -5098,7 +5234,7 @@ class RentalController extends Controller
                 'product_id' => [$newProduct->name . ' is sale only and cannot be rented.'],
             ]);
         }
-        $customer = Customer::where('organization_id', $this->orgId())->findOrFail($request->customer_id);
+        $customerContext = $this->rentalValidatedCustomerContext($request);
         $saleItems = $this->normalizedSaleItems($request);
         $rentalItems = $this->combinedRentalItems($request);
         $selectedAssets = $this->resolveCombinedRentalAssets(
@@ -5122,14 +5258,17 @@ class RentalController extends Controller
             );
         }
 
-        DB::transaction(function () use ($request, $rental, $customer, $selectedAssets, $saleItems, $rentalItems, $deliveryAssignment) {
+        DB::transaction(function () use ($request, $rental, $customerContext, $selectedAssets, $saleItems, $rentalItems, $deliveryAssignment) {
             $this->restoreRentalItemStock($rental);
             $this->consumeRentalItemStock($rentalItems);
 
             $rental->update([
-                'customer_id' => $customer->id,
-                'customer_name' => $customer->name,
-                'phone' => PhoneNumber::normalize($customer->phone),
+                'customer_id' => $customerContext['customer_id'],
+                'customer_type' => $customerContext['customer_type'],
+                'business_partner_id' => $customerContext['business_partner']?->id,
+                'partner_client_id' => $customerContext['partner_client']?->id,
+                'customer_name' => $customerContext['customer_name'],
+                'phone' => $customerContext['phone'],
                 'product_id' => $request->product_id,
                 'delivery_staff_id' => $deliveryAssignment['staff_id'],
                 'pickup_staff_id' => $request->pickup_staff_id,

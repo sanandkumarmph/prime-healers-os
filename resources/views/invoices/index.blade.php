@@ -25,6 +25,15 @@
             'per_page' => $perPage ?: null,
         ], $overrides), fn ($value) => $value !== null && $value !== ''));
     };
+    $hasActiveFilters = filled($search) || filled($status) || filled($customerId) || filled($city) || filled($fromDate) || filled($toDate);
+    $activeFilterChips = collect([
+        filled($search) ? 'Search: ' . $search : null,
+        filled($status) ? 'Status: ' . ucfirst(str_replace('_', ' ', $status)) : null,
+        filled($customerId) ? 'Customer selected' : null,
+        filled($city) ? 'City: ' . $city : null,
+        filled($fromDate) ? 'From: ' . $fromDate : null,
+        filled($toDate) ? 'To: ' . $toDate : null,
+    ])->filter()->values();
 @endphp
 
 <div class="invoice-ledger rn-list-page">
@@ -174,6 +183,26 @@
             border: 1px solid var(--ph-color-border);
             border-radius: 16px;
             background: #ffffff;
+        }
+        .invoice-search-shell {
+            display:grid;
+            gap:10px;
+            padding:12px;
+            border:1px solid var(--ph-color-border);
+            border-radius:16px;
+            background:linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+            box-shadow:var(--ph-shadow-soft);
+        }
+        .invoice-search-form {
+            display:grid;
+            grid-template-columns:minmax(0, 1fr) auto auto;
+            gap:8px;
+            align-items:end;
+        }
+        .invoice-chip-row { display:flex; gap:8px; flex-wrap:wrap; }
+        .invoice-chip {
+            display:inline-flex; align-items:center; min-height:30px; padding:6px 10px;
+            border-radius:999px; border:1px solid var(--ph-color-border); background:#fff; color:var(--ph-color-text); font-size:12px; font-weight:700;
         }
 
         .invoice-filter-toggle { padding: 0; }
@@ -546,6 +575,9 @@
                 padding: 8px;
                 border-radius: 14px;
             }
+            .invoice-search-form {
+                grid-template-columns: 1fr;
+            }
 
             .invoice-filter-grid {
                 grid-template-columns: 1fr;
@@ -639,8 +671,32 @@
         </a>
     </div>
 
-    <details class="invoice-filter-card invoice-filter-toggle">
-        <summary>Filter / Sort <span>{{ ($search ?? '') || ($status ?? '') || ($customerId ?? '') || ($city ?? '') || ($fromDate ?? '') || ($toDate ?? '') ? 'Active' : 'Expand' }}</span></summary>
+    <div class="invoice-search-shell">
+        <form method="GET" action="{{ route('invoices.index') }}" class="invoice-search-form">
+            <input type="hidden" name="status" value="{{ $status ?? '' }}">
+            <input type="hidden" name="customer_id" value="{{ $customerId ?? '' }}">
+            <input type="hidden" name="city" value="{{ $city ?? '' }}">
+            <input type="hidden" name="from_date" value="{{ $fromDate ?? '' }}">
+            <input type="hidden" name="to_date" value="{{ $toDate ?? '' }}">
+            <input type="hidden" name="per_page" value="{{ $perPage ?? 20 }}">
+            <div class="invoice-field">
+                <label for="invoice-search-primary">Search invoices</label>
+                <input id="invoice-search-primary" class="invoice-input" type="search" name="search" value="{{ $search ?? '' }}" placeholder="Search invoice, customer, phone, GSTIN, or reference">
+            </div>
+            <button type="submit" class="invoice-btn primary">Search</button>
+            <a href="{{ route('invoices.index') }}" class="invoice-btn" data-filter-clear="invoices-index">Clear Filters</a>
+        </form>
+        @if($hasActiveFilters)
+            <div class="invoice-chip-row">
+                @foreach($activeFilterChips as $chip)
+                    <span class="invoice-chip">{{ $chip }}</span>
+                @endforeach
+            </div>
+        @endif
+    </div>
+
+    <details class="invoice-filter-card invoice-filter-toggle" data-filter-panel data-filter-panel-key="invoices-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" @if($hasActiveFilters) open @endif>
+        <summary>Search &amp; Filters <span>{{ $hasActiveFilters ? 'Filters Active · ' . $activeFilterChips->count() : 'Expand advanced filters' }}</span></summary>
         <form method="GET" action="{{ route('invoices.index') }}">
             <div class="invoice-filter-grid">
                 <div class="invoice-field">
@@ -697,7 +753,7 @@
             </div>
             <div class="invoice-filter-actions" style="margin-top:8px;">
                 <button type="submit" class="invoice-btn primary">Apply Filters</button>
-                <a href="{{ route('invoices.index') }}" class="invoice-btn">Reset</a>
+                <a href="{{ route('invoices.index') }}" class="invoice-btn" data-filter-clear="invoices-index">Reset</a>
             </div>
         </form>
     </details>

@@ -1,9 +1,16 @@
 @php
     $sale = $sale ?? null;
     $isEdit = (bool) $sale;
+    $businessPartners = $businessPartners ?? collect();
+    $selectedCustomerType = old('customer_type', $sale?->customerTypeValue() ?? 'direct_customer');
     $selectedCustomerId = (int) old('customer_id', $sale->customer_id ?? request('customer_id'));
+    $selectedBusinessPartnerId = (int) old('business_partner_id', $sale->business_partner_id ?? 0);
+    $selectedPartnerClientId = (int) old('partner_client_id', $sale->partner_client_id ?? 0);
     $selectedRentalId = (int) old('rental_id', $sale->rental_id ?? null);
     $selectedCustomer = $customers->firstWhere('id', $selectedCustomerId);
+    $selectedBusinessPartner = $businessPartners->firstWhere('id', $selectedBusinessPartnerId);
+    $allPartnerClients = $businessPartners->pluck('partnerClients')->flatten(1);
+    $selectedPartnerClient = $allPartnerClients->firstWhere('id', $selectedPartnerClientId);
     $selectedRental = ($rentals ?? collect())->firstWhere('id', $selectedRentalId);
     $organizationState = optional(auth()->user()->organization)->state;
 
@@ -103,6 +110,34 @@
         'city' => $customer->city,
         'state' => $customer->state,
     ])->values();
+    $businessPartnerData = $businessPartners->map(function ($partner) {
+        return [
+            'id' => $partner->id,
+            'name' => $partner->displayName(),
+            'contact_person' => $partner->contact_person,
+            'phone' => $partner->phone,
+            'whatsapp' => $partner->whatsapp,
+            'email' => $partner->email,
+            'address' => $partner->address,
+            'city' => $partner->city,
+            'state' => $partner->state,
+            'location' => $partner->openMapUrl(),
+            'clients' => $partner->partnerClients->map(function ($client) {
+                return [
+                    'id' => $client->id,
+                    'business_partner_id' => $client->business_partner_id,
+                    'name' => $client->displayName(),
+                    'phone' => $client->primaryPhone(),
+                    'alternate_phone' => $client->alternate_phone,
+                    'address' => $client->address,
+                    'city' => $client->city,
+                    'state' => $client->state,
+                    'location' => $client->openMapUrl(),
+                    'delivery_notes' => $client->delivery_notes,
+                ];
+            })->values()->all(),
+        ];
+    })->values();
 @endphp
 
 <style>
@@ -174,6 +209,11 @@
     }
     .sales-customer-card strong { color:#0f172a; font-size:15px; }
     .sales-customer-card div { color:#475569; font-size:13px; }
+    .sales-customer-chip {
+        display:inline-flex; align-items:center; padding:4px 8px; border-radius:999px;
+        background:#dbeafe; color:#1d4ed8; font-size:11px; font-weight:800; letter-spacing:.04em; text-transform:uppercase;
+    }
+    [data-sales-customer-mode][hidden] { display:none !important; }
     .sales-items-toolbar {
         display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px;
     }
@@ -290,8 +330,8 @@
                 <strong>{{ $isEdit ? 'Update Existing' : 'Create Fresh' }}</strong>
             </div>
             <div class="sales-metric">
-                <span>Customer</span>
-                <strong id="saleCustomerMetric">{{ $selectedCustomer?->name ?: 'Select customer' }}</strong>
+                <span>Billing / Reminder Contact</span>
+                <strong id="saleCustomerMetric">{{ $selectedCustomerType === 'business_partner' ? ($selectedBusinessPartner?->displayName() ?: 'Select business partner') : ($selectedCustomer?->name ?: 'Select customer') }}</strong>
             </div>
             <div class="sales-metric">
                 <span>Products</span>
@@ -334,8 +374,11 @@
                             value="{{ $rental->id }}"
                             data-search="{{ trim('Rental ' . $rental->id . ' ' . ($rental->customer?->name ?? $rental->customer_name ?? '') . ' ' . ($rental->product?->name ?? '')) }}"
                             data-customer-id="{{ $rental->customer_id }}"
+                            data-customer-type="{{ $rental->customerTypeValue() }}"
+                            data-business-partner-id="{{ $rental->business_partner_id }}"
+                            data-partner-client-id="{{ $rental->partner_client_id }}"
                             {{ (int) $selectedRentalId === $rental->id ? 'selected' : '' }}>
-                            Rental #{{ $rental->id }} - {{ $rental->customer?->name ?? $rental->customer_name ?? 'Customer' }} - {{ $rental->product?->name ?? 'Product' }}
+                            Rental #{{ $rental->id }} - {{ $rental->billingContactName() }} - {{ $rental->product?->name ?? 'Product' }}
                         </option>
                     @endforeach
                 </select>
@@ -352,13 +395,21 @@
 
     <div class="sales-card">
         <h2>Customer</h2>
-        <p>Keep the customer selection separate so invoice and follow-up context stays clear.</p>
+        <p>Keep billing/reminder contact separate from the actual delivery client when a tie-up partner is involved.</p>
         <div class="sales-grid">
-            <div class="sales-col-8">
+            <div class="sales-field sales-col-4 {{ $errors->has('customer_type') ? 'is-error' : '' }}">
+                <label for="customer_type">Customer Type</label>
+                <select name="customer_type" id="customer_type">
+                    <option value="direct_customer" {{ $selectedCustomerType === 'direct_customer' ? 'selected' : '' }}>Direct Customer</option>
+                    <option value="business_partner" {{ $selectedCustomerType === 'business_partner' ? 'selected' : '' }}>Business Partner / Tie-up</option>
+                </select>
+                @error('customer_type')<div class="sales-field-error">{{ $message }}</div>@enderror
+            </div>
+            <div class="sales-col-8" data-sales-customer-mode="direct_customer">
                 <div class="sales-inline">
                     <div class="sales-field {{ $errors->has('customer_id') ? 'is-error' : '' }}">
                         <label for="customer_id">Customer</label>
-                        <select name="customer_id" id="customer_id" required data-searchable-select data-search-placeholder="Search customer by name, phone, email, or city">
+                        <select name="customer_id" id="customer_id" data-searchable-select data-search-placeholder="Search customer by name, phone, email, or city">
                             <option value="">Select customer</option>
                             @foreach($customers as $customer)
                                 <option
@@ -379,12 +430,73 @@
                     <button type="button" class="sales-quick-btn" data-open-modal="saleQuickCustomerModal">Add Customer</button>
                 </div>
             </div>
+            <div class="sales-col-4" data-sales-customer-mode="business_partner">
+                <div class="sales-inline">
+                    <div class="sales-field {{ $errors->has('business_partner_id') ? 'is-error' : '' }}">
+                        <label for="business_partner_id">Business Partner</label>
+                        <select name="business_partner_id" id="business_partner_id" data-searchable-select data-search-placeholder="Search business partner by name, contact, phone, or city">
+                            <option value="">Select business partner</option>
+                            @foreach($businessPartners as $partner)
+                                <option
+                                    value="{{ $partner->id }}"
+                                    data-name="{{ $partner->displayName() }}"
+                                    data-phone="{{ $partner->phone }}"
+                                    data-email="{{ $partner->email }}"
+                                    data-state="{{ $partner->state }}"
+                                    data-search="{{ trim(implode(' ', array_filter([$partner->displayName(), $partner->contact_person, $partner->phone, $partner->email, $partner->city, $partner->state]))) }}"
+                                    {{ $selectedBusinessPartnerId === $partner->id ? 'selected' : '' }}>
+                                    {{ $partner->displayName() }}{{ $partner->phone ? ' - ' . $partner->phone : '' }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('business_partner_id')<div class="sales-field-error">{{ $message }}</div>@enderror
+                    </div>
+                    <a href="{{ route('business-partners.create') }}" class="sales-quick-btn">Add Business Partner</a>
+                </div>
+            </div>
+            <div class="sales-col-4" data-sales-customer-mode="business_partner">
+                <div class="sales-inline">
+                    <div class="sales-field {{ $errors->has('partner_client_id') ? 'is-error' : '' }}">
+                        <label for="partner_client_id">Actual Client / Delivery Location</label>
+                        <select name="partner_client_id" id="partner_client_id" data-searchable-select data-search-placeholder="Search actual client by name, phone, address, or city">
+                            <option value="">Select actual client</option>
+                            @foreach($allPartnerClients as $client)
+                                <option
+                                    value="{{ $client->id }}"
+                                    data-business-partner-id="{{ $client->business_partner_id }}"
+                                    data-name="{{ $client->displayName() }}"
+                                    data-phone="{{ $client->primaryPhone() }}"
+                                    data-email=""
+                                    data-city="{{ $client->city }}"
+                                    data-state="{{ $client->state }}"
+                                    data-address="{{ $client->address }}"
+                                    data-location="{{ $client->openMapUrl() }}"
+                                    data-notes="{{ $client->delivery_notes }}"
+                                    data-search="{{ trim(implode(' ', array_filter([$client->displayName(), $client->primaryPhone(), $client->address, $client->city, $client->state]))) }}"
+                                    {{ $selectedPartnerClientId === $client->id ? 'selected' : '' }}>
+                                    {{ $client->displayName() }}{{ $client->primaryPhone() ? ' - ' . $client->primaryPhone() : '' }}
+                                </option>
+                            @endforeach
+                        </select>
+                        @error('partner_client_id')<div class="sales-field-error">{{ $message }}</div>@enderror
+                    </div>
+                    <a href="{{ $selectedBusinessPartner ? route('business-partners.clients.create', $selectedBusinessPartner) : '#' }}" data-route-template="{{ url('/business-partners/__PARTNER__/clients/create') }}" class="sales-quick-btn" id="saleAddActualClientLink">Add Actual Client</a>
+                </div>
+            </div>
             <div class="sales-col-4">
                 <div class="sales-customer-card">
-                    <strong id="saleCustomerName">{{ $selectedCustomer?->name ?: 'Select customer' }}</strong>
-                    <div id="saleCustomerPhone">{{ $selectedCustomer?->phone ?: 'Phone will appear here' }}</div>
-                    <div id="saleCustomerEmail">{{ $selectedCustomer?->email ?: 'Email will appear here' }}</div>
-                    <div id="saleCustomerCity">{{ $selectedCustomer?->city ?: 'City will appear here' }}</div>
+                    <div style="display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap;">
+                        <strong id="saleCustomerName">{{ $selectedCustomerType === 'business_partner' ? ($selectedBusinessPartner?->displayName() ?: 'Select business partner') : ($selectedCustomer?->name ?: 'Select customer') }}</strong>
+                        <span class="sales-customer-chip" id="saleCustomerFlowChip">{{ $selectedCustomerType === 'business_partner' ? 'Business Partner Flow' : 'Direct Customer Flow' }}</span>
+                    </div>
+                    <div id="saleCustomerPhone">{{ $selectedCustomerType === 'business_partner' ? ($selectedBusinessPartner?->phone ?: 'Phone will appear here') : ($selectedCustomer?->phone ?: 'Phone will appear here') }}</div>
+                    <div id="saleCustomerEmail">{{ $selectedCustomerType === 'business_partner' ? ($selectedBusinessPartner?->email ?: 'Email will appear here') : ($selectedCustomer?->email ?: 'Email will appear here') }}</div>
+                    <div id="saleCustomerCity">{{ $selectedCustomerType === 'business_partner' ? ($selectedBusinessPartner?->city ?: 'City will appear here') : ($selectedCustomer?->city ?: 'City will appear here') }}</div>
+                    <div style="margin-top:8px; padding-top:8px; border-top:1px solid #dbe3ef;">
+                        <div><strong style="font-size:12px;">Reminder / Payment Contact:</strong> <span id="saleReminderContactSummary">{{ $selectedCustomerType === 'business_partner' ? (($selectedBusinessPartner?->displayName() ?: 'Select business partner') . (($selectedBusinessPartner?->phone) ? ' - ' . $selectedBusinessPartner->phone : '')) : (($selectedCustomer?->name ?: 'Select customer') . (($selectedCustomer?->phone) ? ' - ' . $selectedCustomer->phone : '')) }}</span></div>
+                        <div style="margin-top:6px;"><strong style="font-size:12px;">Delivery / Service Contact:</strong> <span id="saleDeliveryContactSummary">{{ $selectedCustomerType === 'business_partner' ? (($selectedPartnerClient?->displayName() ?: 'Select actual client') . (($selectedPartnerClient?->primaryPhone()) ? ' - ' . $selectedPartnerClient->primaryPhone() : '')) : (($selectedCustomer?->name ?: 'Select customer') . (($selectedCustomer?->phone) ? ' - ' . $selectedCustomer->phone : '')) }}</span></div>
+                        <div id="saleDeliveryAddressSummary" style="margin-top:6px; color:#475569; font-size:12px;">{{ $selectedCustomerType === 'business_partner' ? collect([$selectedPartnerClient?->address, $selectedPartnerClient?->city, $selectedPartnerClient?->state])->filter()->join(', ') : '' }}</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -437,10 +549,16 @@
         const products = @json($productData);
         const assets = @json($assetData);
         const customers = @json($customerData);
+        const businessPartners = @json($businessPartnerData);
         const rentals = @json($rentalData);
         const organizationState = @json($organizationState);
 
+        const customerTypeSelect = document.getElementById('customer_type');
         const customerSelect = document.getElementById('customer_id');
+        const businessPartnerSelect = document.getElementById('business_partner_id');
+        const partnerClientSelect = document.getElementById('partner_client_id');
+        const saleAddActualClientLink = document.getElementById('saleAddActualClientLink');
+        const customerModeBlocks = Array.from(document.querySelectorAll('[data-sales-customer-mode]'));
         const rentalSelect = document.getElementById('rental_id');
         const saleItemsList = document.getElementById('saleItemsList');
         const addSaleItemButton = document.getElementById('addSaleItemButton');
@@ -455,11 +573,16 @@
         const saleCustomerPhone = document.getElementById('saleCustomerPhone');
         const saleCustomerEmail = document.getElementById('saleCustomerEmail');
         const saleCustomerCity = document.getElementById('saleCustomerCity');
+        const saleCustomerFlowChip = document.getElementById('saleCustomerFlowChip');
+        const saleReminderContactSummary = document.getElementById('saleReminderContactSummary');
+        const saleDeliveryContactSummary = document.getElementById('saleDeliveryContactSummary');
+        const saleDeliveryAddressSummary = document.getElementById('saleDeliveryAddressSummary');
         const standardGstRates = ['0.00', '5.00', '12.00', '18.00', '28.00'];
 
         const productMap = new Map(products.map(function (product) { return [parseInt(product.id, 10), product]; }));
         const assetMap = new Map(assets.map(function (asset) { return [parseInt(asset.id, 10), asset]; }));
         const customerMap = new Map(customers.map(function (customer) { return [parseInt(customer.id, 10), customer]; }));
+        const businessPartnerMap = new Map(businessPartners.map(function (partner) { return [parseInt(partner.id, 10), partner]; }));
 
         let saleItems = initialSaleItems.length ? initialSaleItems.map(normalizeItem) : [defaultSaleItem()];
 
@@ -509,13 +632,39 @@
             return String(value || '').trim().toLowerCase();
         }
 
+        function customerMode() {
+            return customerTypeSelect?.value === 'business_partner' ? 'business_partner' : 'direct_customer';
+        }
+
         function selectedCustomerData() {
             const customerId = customerSelect.value ? parseInt(customerSelect.value, 10) : null;
             return customerId ? customerMap.get(customerId) : null;
         }
 
+        function selectedBusinessPartnerData() {
+            const partnerId = businessPartnerSelect?.value ? parseInt(businessPartnerSelect.value, 10) : null;
+            return partnerId ? businessPartnerMap.get(partnerId) : null;
+        }
+
+        function selectedPartnerClientData() {
+            const partner = selectedBusinessPartnerData();
+            const clientId = partnerClientSelect?.value ? parseInt(partnerClientSelect.value, 10) : null;
+            if (!partner || !clientId) {
+                return null;
+            }
+
+            return (partner.clients || []).find(function (client) {
+                return parseInt(client.id, 10) === clientId;
+            }) || null;
+        }
+
         function recommendedTaxType(customerStateValue) {
-            const customerState = normalizeStateName(customerStateValue || selectedCustomerData()?.state);
+            const customerState = normalizeStateName(
+                customerStateValue
+                || (customerMode() === 'business_partner'
+                    ? (selectedPartnerClientData()?.state || selectedBusinessPartnerData()?.state)
+                    : selectedCustomerData()?.state)
+            );
             const orgState = normalizeStateName(organizationState);
 
             if (customerState && orgState && customerState !== orgState) {
@@ -625,6 +774,9 @@
                 let count = 0;
 
                 Array.from(select.options).forEach(function (option) {
+                    if (option.hidden) {
+                        return;
+                    }
                     const searchText = (option.getAttribute('data-search') || option.textContent || '').toLowerCase();
                     if (query && !searchText.includes(query)) {
                         return;
@@ -738,15 +890,34 @@
         }
 
         function updateCustomerPanel() {
+            const mode = customerMode();
             const customer = selectedCustomerData();
+            const partner = selectedBusinessPartnerData();
+            const client = selectedPartnerClientData();
 
-            saleCustomerMetric.textContent = customer ? customer.name : 'Select customer';
-            saleCustomerName.textContent = customer ? customer.name : 'Select customer';
-            saleCustomerPhone.textContent = customer && customer.phone ? customer.phone : 'Phone will appear here';
-            saleCustomerEmail.textContent = customer && customer.email ? customer.email : 'Email will appear here';
-            saleCustomerCity.textContent = customer && customer.city ? customer.city : 'City will appear here';
+            if (mode === 'business_partner') {
+                saleCustomerMetric.textContent = partner ? partner.name : 'Select business partner';
+                saleCustomerName.textContent = partner ? partner.name : 'Select business partner';
+                saleCustomerPhone.textContent = partner && partner.phone ? partner.phone : 'Phone will appear here';
+                saleCustomerEmail.textContent = partner && partner.email ? partner.email : 'Email will appear here';
+                saleCustomerCity.textContent = partner && partner.city ? partner.city : 'City will appear here';
+                saleReminderContactSummary.textContent = partner ? [partner.name, partner.phone].filter(Boolean).join(' - ') : 'Select business partner';
+                saleDeliveryContactSummary.textContent = client ? [client.name, client.phone].filter(Boolean).join(' - ') : 'Select actual client';
+                saleDeliveryAddressSummary.textContent = client ? [client.address, client.city, client.state].filter(Boolean).join(', ') : '';
+                saleCustomerFlowChip.textContent = 'Business Partner Flow';
+            } else {
+                saleCustomerMetric.textContent = customer ? customer.name : 'Select customer';
+                saleCustomerName.textContent = customer ? customer.name : 'Select customer';
+                saleCustomerPhone.textContent = customer && customer.phone ? customer.phone : 'Phone will appear here';
+                saleCustomerEmail.textContent = customer && customer.email ? customer.email : 'Email will appear here';
+                saleCustomerCity.textContent = customer && customer.city ? customer.city : 'City will appear here';
+                saleReminderContactSummary.textContent = customer ? [customer.name, customer.phone].filter(Boolean).join(' - ') : 'Select customer';
+                saleDeliveryContactSummary.textContent = customer ? [customer.name, customer.phone].filter(Boolean).join(' - ') : 'Select customer';
+                saleDeliveryAddressSummary.textContent = '';
+                saleCustomerFlowChip.textContent = 'Direct Customer Flow';
+            }
 
-            const recommended = recommendedTaxType(customer?.state);
+            const recommended = recommendedTaxType(mode === 'business_partner' ? (client?.state || partner?.state) : customer?.state);
             let needsRender = false;
 
             saleItems.forEach(function (item) {
@@ -763,17 +934,86 @@
             }
         }
 
+        function renderPartnerClientOptions() {
+            if (!partnerClientSelect) {
+                return;
+            }
+
+            const activePartnerId = businessPartnerSelect?.value || '';
+
+            Array.from(partnerClientSelect.options).forEach(function (option, index) {
+                if (index === 0) {
+                    option.hidden = false;
+                    return;
+                }
+
+                const optionPartnerId = option.getAttribute('data-business-partner-id') || '';
+                option.hidden = Boolean(activePartnerId) && optionPartnerId !== activePartnerId;
+            });
+
+            const selectedOption = partnerClientSelect.options[partnerClientSelect.selectedIndex];
+            if (selectedOption && selectedOption.hidden) {
+                partnerClientSelect.value = '';
+            }
+
+            partnerClientSelect._searchableSelect?.refresh?.();
+        }
+
+        function updateCustomerModeVisibility() {
+            const mode = customerMode();
+
+            customerModeBlocks.forEach(function (block) {
+                block.hidden = block.getAttribute('data-sales-customer-mode') !== mode;
+            });
+
+            customerSelect.required = mode === 'direct_customer';
+            if (businessPartnerSelect) {
+                businessPartnerSelect.required = mode === 'business_partner';
+            }
+            if (partnerClientSelect) {
+                partnerClientSelect.required = mode === 'business_partner';
+            }
+
+            renderPartnerClientOptions();
+
+            if (saleAddActualClientLink) {
+                const partner = selectedBusinessPartnerData();
+                const routeTemplate = saleAddActualClientLink.getAttribute('data-route-template') || '';
+                saleAddActualClientLink.href = partner ? routeTemplate.replace('__PARTNER__', String(partner.id)) : '#';
+                saleAddActualClientLink.setAttribute('aria-disabled', partner ? 'false' : 'true');
+            }
+
+            updateCustomerPanel();
+        }
+
         function syncCustomerFromRental() {
             const selected = selectedOption(rentalSelect);
             if (!selected || !rentalSelect.value) {
                 return;
             }
 
+            const rentalCustomerType = selected.getAttribute('data-customer-type') === 'business_partner'
+                ? 'business_partner'
+                : 'direct_customer';
+
+            if (customerTypeSelect.value !== rentalCustomerType) {
+                customerTypeSelect.value = rentalCustomerType;
+            }
+
+            if (rentalCustomerType === 'business_partner') {
+                businessPartnerSelect.value = selected.getAttribute('data-business-partner-id') || '';
+                renderPartnerClientOptions();
+                partnerClientSelect.value = selected.getAttribute('data-partner-client-id') || '';
+                updateCustomerModeVisibility();
+                return;
+            }
+
             const rentalCustomerId = selected.getAttribute('data-customer-id');
             if (rentalCustomerId && customerSelect.value !== rentalCustomerId) {
                 customerSelect.value = rentalCustomerId;
-                customerSelect.dispatchEvent(new Event('change', { bubbles: true }));
             }
+
+            updateCustomerModeVisibility();
         }
 
         function productOptionsHtml(selectedProductId) {
@@ -978,14 +1218,20 @@
             renderSaleItems();
         });
 
+        customerTypeSelect?.addEventListener('change', updateCustomerModeVisibility);
         customerSelect.addEventListener('change', updateCustomerPanel);
+        businessPartnerSelect?.addEventListener('change', updateCustomerModeVisibility);
+        partnerClientSelect?.addEventListener('change', updateCustomerPanel);
         rentalSelect.addEventListener('change', syncCustomerFromRental);
         if (saleShippingInput) {
             saleShippingInput.addEventListener('input', updateSaleSummary);
         }
 
         enhanceSearchableSelect(customerSelect);
+        enhanceSearchableSelect(businessPartnerSelect);
+        enhanceSearchableSelect(partnerClientSelect);
         enhanceSearchableSelect(rentalSelect);
+        updateCustomerModeVisibility();
         updateCustomerPanel();
         syncCustomerFromRental();
         renderSaleItems();

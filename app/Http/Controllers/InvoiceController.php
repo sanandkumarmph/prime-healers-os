@@ -729,7 +729,7 @@ class InvoiceController extends Controller
         $invoice->refresh();
         $invoice->syncFinancialStatus();
 
-        $customerWhatsapp = WhatsAppHelper::resolveCustomerNumber($invoice->customer);
+        $customerWhatsapp = WhatsAppHelper::normalizeNumber($invoice->bill_to_phone ?: ($invoice->customer?->phone));
         $whatsAppLinks = [
             'invoice' => WhatsAppHelper::chatUrl($customerWhatsapp, WhatsAppHelper::invoiceMessage($invoice)),
             'payment_reminder' => WhatsAppHelper::chatUrl($customerWhatsapp, WhatsAppHelper::paymentReminderForInvoice($invoice)),

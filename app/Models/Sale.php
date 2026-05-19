@@ -22,6 +22,9 @@ class Sale extends Model
 
     protected $fillable = [
         'customer_id',
+        'customer_type',
+        'business_partner_id',
+        'partner_client_id',
         'product_id',
         'asset_id',
         'rental_id',
@@ -58,6 +61,16 @@ class Sale extends Model
     public function customer()
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function businessPartner()
+    {
+        return $this->belongsTo(BusinessPartner::class);
+    }
+
+    public function partnerClient()
+    {
+        return $this->belongsTo(PartnerClient::class);
     }
 
     public function product()
@@ -110,6 +123,158 @@ class Sale extends Model
     public function organization()
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    public function customerTypeValue(): string
+    {
+        return $this->customer_type === 'business_partner'
+            ? 'business_partner'
+            : 'direct_customer';
+    }
+
+    public function usesBusinessPartnerFlow(): bool
+    {
+        return $this->customerTypeValue() === 'business_partner'
+            && (int) ($this->business_partner_id ?? 0) > 0
+            && (int) ($this->partner_client_id ?? 0) > 0;
+    }
+
+    public function billingContactName(): string
+    {
+        return $this->usesBusinessPartnerFlow()
+            ? ($this->businessPartner?->displayName() ?: 'Business Partner')
+            : ($this->customer?->displayName() ?: 'Customer');
+    }
+
+    public function billingContactPerson(): ?string
+    {
+        return $this->usesBusinessPartnerFlow()
+            ? ($this->businessPartner?->contact_person ?: null)
+            : ($this->customer?->contactPersonName() ?? null);
+    }
+
+    public function billingContactPhone(): ?string
+    {
+        return $this->usesBusinessPartnerFlow()
+            ? ($this->businessPartner?->phone ?: null)
+            : ($this->customer?->phone ?: null);
+    }
+
+    public function reminderContactPhone(): ?string
+    {
+        return $this->usesBusinessPartnerFlow()
+            ? ($this->businessPartner?->preferredReminderNumber() ?: $this->businessPartner?->phone)
+            : ($this->customer?->preferredWhatsAppNumber() ?: $this->customer?->phone);
+    }
+
+    public function reminderContactName(): string
+    {
+        return $this->usesBusinessPartnerFlow()
+            ? ($this->businessPartner?->displayName() ?: 'Business Partner')
+            : ($this->customer?->displayName() ?: 'Customer');
+    }
+
+    public function billingContactEmail(): ?string
+    {
+        return $this->usesBusinessPartnerFlow()
+            ? ($this->businessPartner?->email ?: null)
+            : ($this->customer?->email ?: null);
+    }
+
+    public function billingContactAddress(): ?string
+    {
+        return $this->usesBusinessPartnerFlow()
+            ? ($this->businessPartner?->address ?: null)
+            : ($this->customer?->address ?: null);
+    }
+
+    public function billingContactCity(): ?string
+    {
+        return $this->usesBusinessPartnerFlow()
+            ? ($this->businessPartner?->city ?: null)
+            : ($this->customer?->city ?: null);
+    }
+
+    public function billingContactState(): ?string
+    {
+        return $this->usesBusinessPartnerFlow()
+            ? ($this->businessPartner?->state ?: null)
+            : ($this->customer?->state ?: null);
+    }
+
+    public function billingContactPincode(): ?string
+    {
+        return $this->usesBusinessPartnerFlow()
+            ? ($this->businessPartner?->pincode ?: null)
+            : ($this->customer?->pincode ?: null);
+    }
+
+    public function deliveryContactName(): string
+    {
+        return $this->usesBusinessPartnerFlow()
+            ? ($this->partnerClient?->displayName() ?: 'Actual Client')
+            : ($this->customer?->displayName() ?: 'Customer');
+    }
+
+    public function deliveryContactPhone(): ?string
+    {
+        return $this->usesBusinessPartnerFlow()
+            ? ($this->partnerClient?->primaryPhone() ?: null)
+            : ($this->customer?->phone ?: null);
+    }
+
+    public function deliveryContactAddress(): ?string
+    {
+        return $this->usesBusinessPartnerFlow()
+            ? ($this->partnerClient?->address ?: null)
+            : ($this->customer?->address ?: null);
+    }
+
+    public function deliveryContactCity(): ?string
+    {
+        return $this->usesBusinessPartnerFlow()
+            ? ($this->partnerClient?->city ?: null)
+            : ($this->customer?->city ?: null);
+    }
+
+    public function deliveryContactState(): ?string
+    {
+        return $this->usesBusinessPartnerFlow()
+            ? ($this->partnerClient?->state ?: null)
+            : ($this->customer?->state ?: null);
+    }
+
+    public function deliveryContactPincode(): ?string
+    {
+        return $this->usesBusinessPartnerFlow()
+            ? ($this->partnerClient?->pincode ?: null)
+            : ($this->customer?->pincode ?: null);
+    }
+
+    public function deliveryContactMapUrl(): ?string
+    {
+        return $this->usesBusinessPartnerFlow()
+            ? ($this->partnerClient?->openMapUrl() ?: null)
+            : ($this->customer?->openMapUrl() ?: null);
+    }
+
+    public function deliveryContactNotes(): ?string
+    {
+        return $this->usesBusinessPartnerFlow()
+            ? ($this->partnerClient?->delivery_notes ?: null)
+            : null;
+    }
+
+    public function reminderContactEmail(): ?string
+    {
+        return $this->usesBusinessPartnerFlow()
+            ? ($this->businessPartner?->email ?: null)
+            : ($this->customer?->email ?: null);
+    }
+
+    public function primaryTaxState(): ?string
+    {
+        return $this->deliveryContactState() ?: $this->billingContactState();
     }
 
     public function gstLabel(): string

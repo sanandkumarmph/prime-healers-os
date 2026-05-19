@@ -147,9 +147,9 @@
                 }
             @endphp
             <div class="board-card">
-                @php($contactPhone = $isSaleTask ? ($delivery->sale?->customer?->phone) : ($delivery->rental?->phone))
+                @php($contactPhone = $delivery->linkedCustomerPhone())
                 @php($hasProofHistory = (int) ($delivery->proofs_count ?? 0) > 0)
-                <h2>{{ $isSaleTask ? ($delivery->sale?->customer?->name ?? 'N/A') : ($delivery->rental?->customer_name ?? 'N/A') }}</h2>
+                <h2>{{ $delivery->linkedCustomerName() ?: 'N/A' }}</h2>
                 <div class="ops-muted">{{ $isSaleTask ? ($delivery->sale?->product?->name ?? 'Sale product') : ($delivery->rental?->product?->name ?? 'N/A') }}</div>
                 <div class="ops-muted" style="margin-top:6px;">Warehouse: {{ $isSaleTask ? ($delivery->sale?->asset?->warehouse?->name ?? 'Sale dispatch') : ($delivery->rental?->dispatchWarehouse?->name ?? 'Any warehouse') }}</div>
                 <div class="ops-muted">{{ $isSaleTask ? 'Sale #' . $delivery->sale_id : 'Rental #' . ($delivery->rental_id ?? '-') }}</div>

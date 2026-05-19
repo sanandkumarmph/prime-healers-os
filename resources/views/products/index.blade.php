@@ -40,7 +40,56 @@
 
         return $direction === 'asc' ? '↑' : '↓';
     };
-    $hasActiveFilters = filled($search) || filled($category) || filled($typeFilter) || filled($stockStatus) || filled($brand);
+    $defaultSort = 'created_at';
+    $defaultDirection = 'desc';
+    $activeFilterChips = collect([
+        filled($search) ? 'Search: ' . $search : null,
+        filled($category) ? 'Category: ' . $category : null,
+        filled($typeFilter) ? 'Type: ' . match ($typeFilter) {
+            'rentable' => 'Rentable',
+            'sale_only' => 'Sale only',
+            'both' => 'Both',
+            'untracked' => 'Untracked',
+            default => ucfirst(str_replace('_', ' ', $typeFilter)),
+        } : null,
+        filled($stockStatus) ? 'Stock: ' . ucfirst(str_replace('_', ' ', $stockStatus)) : null,
+        filled($brand) ? 'Brand: ' . $brand : null,
+        $sort !== $defaultSort ? 'Sort: ' . ucfirst(str_replace('_', ' ', $sort)) : null,
+        $direction !== $defaultDirection ? 'Direction: ' . ucfirst($direction) : null,
+    ])->filter()->values();
+    $activeFilterCount = $activeFilterChips->count();
+    $hasActiveFilters = filled($search)
+        || filled($category)
+        || filled($typeFilter)
+        || filled($stockStatus)
+        || filled($brand)
+        || $sort !== $defaultSort
+        || $direction !== $defaultDirection;
+    $activeViewLabel = null;
+
+    if (filled($typeFilter)) {
+        $activeViewLabel = match ($typeFilter) {
+            'rentable' => 'Rentable',
+            'sale_only' => 'Sale only',
+            'both' => 'Both sellable and rentable',
+            'untracked' => 'Untracked',
+            default => ucfirst(str_replace('_', ' ', $typeFilter)),
+        };
+    } elseif (filled($stockStatus)) {
+        $activeViewLabel = match ($stockStatus) {
+            'available_to_rent' => 'Rental available',
+            'rented_out' => 'Rented out',
+            'maintenance' => 'Maintenance',
+            'out_of_stock' => 'Out of stock',
+            default => ucfirst(str_replace('_', ' ', $stockStatus)),
+        };
+    } elseif (filled($category)) {
+        $activeViewLabel = $category;
+    } elseif (filled($brand)) {
+        $activeViewLabel = $brand;
+    } elseif (filled($search)) {
+        $activeViewLabel = 'Search results';
+    }
     $productDashboardCards = [
         ['label' => 'Product Master', 'value' => null, 'url' => route('products.index'), 'tone' => 'catalog', 'subtext' => 'Catalog and stock-mode view'],
         ['label' => 'Sellable', 'value' => null, 'url' => route('products.index', ['type' => 'sale_only']), 'tone' => 'success', 'subtext' => 'Sale-unit products'],
@@ -170,6 +219,78 @@
         .product-filter-card {
             padding:0 22px 18px;
         }
+        .product-primary-search {
+            padding:18px 22px;
+            border-bottom:1px solid var(--ph-color-border);
+            background:linear-gradient(180deg, rgba(248,250,252,.95) 0%, rgba(255,255,255,1) 100%);
+            display:grid;
+            gap:12px;
+        }
+        .product-primary-search-form {
+            display:grid;
+            grid-template-columns:minmax(0, 1fr) auto auto;
+            gap:10px;
+            align-items:end;
+        }
+        .product-primary-search-field {
+            display:grid;
+            gap:6px;
+            min-width:0;
+        }
+        .product-primary-search-field label {
+            font-size:11px;
+            font-weight:700;
+            color:var(--ph-color-text-soft);
+            text-transform:uppercase;
+            letter-spacing:.04em;
+            font-family:var(--ph-font-heading);
+        }
+        .product-primary-search-field input {
+            width:100%;
+            min-width:0;
+            padding:12px 14px;
+            border-radius:14px;
+            border:1px solid var(--ph-color-border-strong);
+            background:#fff;
+            color:var(--ph-color-text);
+            font-size:14px;
+        }
+        .product-filter-status {
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:10px;
+            flex-wrap:wrap;
+        }
+        .product-filter-status-copy {
+            color:var(--ph-color-text-soft);
+            font-size:13px;
+        }
+        .product-filter-state {
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:10px;
+            flex-wrap:wrap;
+        }
+        .product-filter-chip-row {
+            display:flex;
+            flex-wrap:wrap;
+            gap:8px;
+        }
+        .product-filter-chip {
+            display:inline-flex;
+            align-items:center;
+            gap:6px;
+            min-height:30px;
+            padding:6px 10px;
+            border-radius:999px;
+            border:1px solid var(--ph-color-border);
+            background:#fff;
+            color:var(--ph-color-text);
+            font-size:12px;
+            font-weight:700;
+        }
         .product-filter-summary {
             cursor:pointer;
             list-style:none;
@@ -177,6 +298,11 @@
             font-weight:800;
             color:var(--ph-color-text);
             font-family:var(--ph-font-heading);
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:12px;
+            flex-wrap:wrap;
         }
         .product-filter-summary::-webkit-details-marker { display:none; }
         .product-filter-summary span {
@@ -402,6 +528,20 @@
         @media (max-width: 767px) {
             .product-desktop-hero,
             .product-desktop-dashboard { display:none !important; }
+            .product-primary-search {
+                padding:16px;
+            }
+            .product-primary-search-form {
+                grid-template-columns:1fr;
+            }
+            .product-primary-search-form .ph-btn,
+            .product-primary-search-form .ph-btn-soft {
+                width:100%;
+                justify-content:center;
+            }
+            .product-filter-state {
+                align-items:flex-start;
+            }
             .product-filter-card { padding:0 16px 16px; }
             .product-filter-grid { grid-template-columns:1fr; }
             .product-filter-field--search { grid-column:auto !important; }
@@ -540,14 +680,55 @@
             </div>
             </div>
 
-            <details class="product-filter-card" @if($hasActiveFilters) open @endif>
-                <summary class="product-filter-summary">Filters &amp; Sorting <span>{{ $hasActiveFilters ? 'Active' : 'Expand' }}</span></summary>
-                <form method="GET" action="{{ route('products.index') }}" class="product-filter-form">
-                    <div class="product-filter-grid">
-                        <div class="product-filter-field product-filter-field--search" style="grid-column: span 2;">
-                            <label for="product-search">Search</label>
-                            <input id="product-search" type="search" name="search" value="{{ $search }}" placeholder="Product name, brand, model, SKU, or product code">
+            <div class="product-primary-search">
+                <form method="GET" action="{{ route('products.index') }}" class="product-primary-search-form">
+                    <input type="hidden" name="category" value="{{ $category }}">
+                    <input type="hidden" name="type" value="{{ $typeFilter }}">
+                    <input type="hidden" name="stock_status" value="{{ $stockStatus }}">
+                    <input type="hidden" name="brand" value="{{ $brand }}">
+                    <input type="hidden" name="sort" value="{{ $sort }}">
+                    <input type="hidden" name="direction" value="{{ $direction }}">
+                    <div class="product-primary-search-field">
+                        <label for="product-primary-search">Search products</label>
+                        <input
+                            id="product-primary-search"
+                            type="search"
+                            name="search"
+                            value="{{ $search }}"
+                            placeholder="Search product name, brand, model, SKU, or product code">
+                    </div>
+                    <button type="submit" class="ph-btn">Search</button>
+                    <a href="{{ route('products.index') }}" class="ph-btn-soft">Clear Filters</a>
+                </form>
+                <div class="product-filter-status">
+                    <div class="product-filter-status-copy">Search is always available. Use Filters &amp; Sorting for category, stock, brand, and sort controls.</div>
+                    @if($hasActiveFilters)
+                        <span class="product-pill is-info">Filters Active · {{ $activeFilterCount }}</span>
+                    @endif
+                </div>
+                @if($hasActiveFilters)
+                    <div class="product-filter-state">
+                        <div class="product-filter-status-copy">
+                            Showing: <strong style="color:var(--ph-color-text);">{{ $activeViewLabel ?: 'Filtered results' }}</strong>
                         </div>
+                        <a href="{{ route('products.index') }}" class="ph-btn-soft">Clear Filters</a>
+                    </div>
+                    <div class="product-filter-chip-row">
+                        @foreach($activeFilterChips as $chip)
+                            <span class="product-filter-chip">{{ $chip }}</span>
+                        @endforeach
+                    </div>
+                @endif
+            </div>
+
+            <details class="product-filter-card" data-filter-panel data-filter-panel-key="products-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" @if($hasActiveFilters) open @endif>
+                <summary class="product-filter-summary">
+                    <span>Search &amp; Filters</span>
+                    <span>{{ $hasActiveFilters ? 'Refine current results' : 'Expand advanced filters' }}</span>
+                </summary>
+                <form method="GET" action="{{ route('products.index') }}" class="product-filter-form">
+                    <input type="hidden" name="search" value="{{ $search }}">
+                    <div class="product-filter-grid">
                         <div class="product-filter-field">
                             <label for="product-category-filter">Category</label>
                             <select id="product-category-filter" name="category">
@@ -615,7 +796,7 @@
                         <div class="product-actions">
                             <a href="{{ route('products.export.csv', $queryFor()) }}" class="ph-btn-secondary">Export CSV</a>
                             <button type="submit" class="ph-btn">Apply Filters</button>
-                            <a href="{{ route('products.index') }}" class="ph-btn-soft">Clear Filters</a>
+                            <a href="{{ route('products.index') }}" class="ph-btn-soft" data-filter-clear="products-index">Clear Filters</a>
                         </div>
                     </div>
                 </form>
