@@ -288,6 +288,11 @@ class User extends Authenticatable
         ]);
     }
 
+    public function canViewFinanceDashboard(): bool
+    {
+        return $this->canViewFinance();
+    }
+
     public function scopeType(?string $module = null): string
     {
         $roleScopes = $this->roleScopeMatrix()[$this->effective_role] ?? [];
@@ -356,12 +361,40 @@ class User extends Authenticatable
         return in_array($this->effective_role, $roles, true);
     }
 
-    private function canAccessDashboard(): bool
+    public function canAccessDashboard(): bool
     {
-        return $this->hasPermission('dashboard.main')
+        if (array_key_exists('is_active', $this->attributes) && !$this->is_active) {
+            return false;
+        }
+
+        return true
+            && (
+                $this->hasPermission('dashboard.main')
             || $this->hasPermission('dashboard.inventory')
             || $this->legacyRoleAllows('dashboard', 'read')
-            || $this->legacyRoleAllows('inventory', 'read');
+            || $this->legacyRoleAllows('inventory', 'read')
+            || $this->canAccessAnyModule([
+                'customers',
+                'rentals',
+                'sales',
+                'deliveries',
+                'assets',
+                'warehouses',
+                'invoices',
+                'payments',
+                'reports',
+                'products',
+            ], 'read')
+            || $this->canAccessAnyModule([
+                'customers',
+                'rentals',
+                'sales',
+                'deliveries',
+                'invoices',
+                'payments',
+                'products',
+            ], 'create')
+        );
     }
 
     private function legacyRoleAllows(string $module, string $action): bool

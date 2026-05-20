@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Asset;
+use App\Models\ActivityLog;
 use App\Models\BusinessPartner;
 use App\Models\Customer;
 use App\Models\Delivery;
+use App\Models\FollowUp;
 use App\Models\Invoice;
 use App\Models\Organization;
 use App\Models\PartnerClient;
@@ -39,6 +41,7 @@ use App\Models\User;
 use App\Models\Warehouse;
 use App\Support\ActivityLogger;
 use App\Support\ActivityTimelineService;
+use App\Support\FollowUpManager;
 use App\Support\PhoneNumber;
 use App\Support\WhatsAppHelper;
 use Carbon\Carbon;
@@ -3677,6 +3680,12 @@ class RentalController extends Controller
         $query = Delivery::query()
             ->where('organization_id', $this->orgId());
 
+        $user = auth()->user();
+
+        if ($user && $user->hasScope('assigned', 'deliveries') && $this->hasDeliveryAssignedUserColumn()) {
+            $query->where('assigned_user_id', $user->id);
+        }
+
         if ($includeRelations) {
             $query->with(['rental.customer', 'rental.product', 'assignedStaff']);
         }
@@ -3869,6 +3878,14 @@ class RentalController extends Controller
 
     public function dashboard(Request $request)
     {
+        $currentUser = auth()->user();
+        $canViewFinance = $currentUser?->canViewFinanceDashboard() ?? false;
+        $canReadDeliveries = $currentUser?->canAccessModule('deliveries', 'read') ?? false;
+        $restrictDashboardToSelfCreated = (bool) ($currentUser?->hasScope('self_created', 'rentals') ?? false);
+        $restrictDashboardToAssignedFollowUps = (bool) (
+            ($currentUser?->hasScope('assigned', 'deliveries') ?? false)
+            || ($currentUser?->hasScope('self_created', 'rentals') ?? false)
+        );
         $today = Carbon::today();
         $search = trim((string) $request->get('search', ''));
         $city = trim((string) $request->get('city', ''));
@@ -3881,12 +3898,7 @@ class RentalController extends Controller
         $baseFilterRequest = Request::create('/dashboard', 'GET', $request->query());
 
         $summaryQuery = $this->filteredRentalQuery($baseFilterRequest, false, false);
-        $recentRentals = $this->applyRentalSorting(
-            $this->filteredRentalQuery($baseFilterRequest, true, false),
-            $sortBy === 'priority' ? 'latest' : $sortBy
-        )
-            ->limit(10)
-            ->get();
+        $recentRentalsQuery = $this->filteredRentalQuery($baseFilterRequest, true, false);
         $dashboardSummaryQuery = $this->filteredRentalQuery($baseFilterRequest, false, false)
             ->with([
                 'customer:id,name,city',
@@ -3898,6 +3910,19 @@ class RentalController extends Controller
                 'pickupRecord.assignedUser:id,name',
                 'pickupRecord.assignedStaff:id,name,assignment_role',
             ]);
+
+        if ($restrictDashboardToSelfCreated && Schema::hasColumn('rentals', 'created_by_user_id')) {
+            $summaryQuery->where('created_by_user_id', $currentUser->id);
+            $recentRentalsQuery->where('created_by_user_id', $currentUser->id);
+            $dashboardSummaryQuery->where('created_by_user_id', $currentUser->id);
+        }
+
+        $recentRentals = $this->applyRentalSorting(
+            $recentRentalsQuery,
+            $sortBy === 'priority' ? 'latest' : $sortBy
+        )
+            ->limit(10)
+            ->get();
 
         if ($this->hasRentalItemsTable()) {
             $dashboardSummaryQuery->with(['rentalItems:id,rental_id,product_id,quantity,ordered_quantity,delivered_quantity,returned_quantity', 'rentalItems.product:id,name']);
@@ -3936,6 +3961,9 @@ class RentalController extends Controller
         $availableSaleUnits = (int) ($inventorySummary['saleStockAvailable'] ?? 0);
 
         $salesQuery = $this->filteredSalesQuery($baseFilterRequest, true);
+        if ($restrictDashboardToSelfCreated && $this->hasSalesCreatedByUserColumn()) {
+            $salesQuery->where('created_by_user_id', $currentUser->id);
+        }
         $invoiceQuery = $this->filteredInvoiceQuery($baseFilterRequest, true);
         $paymentQuery = $this->filteredPaymentQuery($baseFilterRequest, true);
         $deliveryQuery = $this->filteredDeliveryQuery($baseFilterRequest, true);
@@ -4009,6 +4037,9 @@ class RentalController extends Controller
         ])), false, false)
             ->whereNotIn('status', ['returned', 'cancelled'])
             ->lifecycleStarted();
+        if ($restrictDashboardToSelfCreated && Schema::hasColumn('rentals', 'created_by_user_id')) {
+            $renewalCenterBaseQuery->where('created_by_user_id', $currentUser->id);
+        }
         $renewalsDueTodayCount = (clone $renewalCenterBaseQuery)
             ->whereDate('end_date', $today)
             ->count();
@@ -4026,6 +4057,9 @@ class RentalController extends Controller
         $pickupCenterBaseQuery = Delivery::query()
             ->where('organization_id', $this->orgId())
             ->where('type', 'pickup');
+        if (($currentUser?->hasScope('assigned', 'deliveries') ?? false) && $this->hasDeliveryAssignedUserColumn()) {
+            $pickupCenterBaseQuery->where('assigned_user_id', $currentUser->id);
+        }
         $pickupsScheduledTodayCount = (clone $pickupCenterBaseQuery)
             ->whereIn('status', ['pending', 'in_progress'])
             ->when(Schema::hasColumn('deliveries', 'pickup_status'), fn ($query) => $query->whereNotIn('pickup_status', ['failed_attempt', 'cancelled', 'picked_up']))
@@ -4043,6 +4077,39 @@ class RentalController extends Controller
             ->where('organization_id', $this->orgId())
             ->where('asset_status', Asset::STATUS_AWAITING_VERIFICATION)
             ->count();
+        $followUpsDueTodayCount = 0;
+        $overdueFollowUpsCount = 0;
+        $pendingRenewalFollowUpsCount = 0;
+        $pendingPaymentFollowUpsCount = 0;
+        $pendingPickupFollowUpsCount = 0;
+
+        if (Schema::hasTable('follow_ups')) {
+            app(FollowUpManager::class)->syncOperationalFollowUps($this->orgId());
+
+            $communicationCenterBaseQuery = FollowUp::query()
+                ->where('organization_id', $this->orgId())
+                ->whereNotIn('status', [FollowUp::STATUS_COMPLETED, FollowUp::STATUS_CANCELLED]);
+
+            if ($restrictDashboardToAssignedFollowUps) {
+                $communicationCenterBaseQuery->where('assigned_user_id', $currentUser->id);
+            }
+
+            $followUpsDueTodayCount = (clone $communicationCenterBaseQuery)
+                ->whereDate('due_at', $today)
+                ->count();
+            $overdueFollowUpsCount = (clone $communicationCenterBaseQuery)
+                ->where('due_at', '<', now())
+                ->count();
+            $pendingRenewalFollowUpsCount = (clone $communicationCenterBaseQuery)
+                ->where('followup_type', FollowUp::TYPE_RENEWAL)
+                ->count();
+            $pendingPaymentFollowUpsCount = (clone $communicationCenterBaseQuery)
+                ->where('followup_type', FollowUp::TYPE_PAYMENT)
+                ->count();
+            $pendingPickupFollowUpsCount = (clone $communicationCenterBaseQuery)
+                ->where('followup_type', FollowUp::TYPE_PICKUP)
+                ->count();
+        }
         $pendingReceivableCount = (int) ($pendingReceivables['pendingReceivableCount'] ?? 0);
         $pendingReceivableAmount = (float) ($pendingReceivables['pendingReceivableAmount'] ?? 0);
         $pendingReceivableOverdueCount = (int) ($pendingReceivables['pendingReceivableOverdueCount'] ?? 0);
@@ -4090,18 +4157,28 @@ class RentalController extends Controller
         $completedPickupCount = (int) ($logisticsSummary['completedPickupCount'] ?? 0);
         $pickedUpTodayCount = (int) ($logisticsSummary['pickedUpTodayCount'] ?? 0);
 
-        $endingSoonRentals = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
+        $endingSoonRentalsQuery = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
             'filter' => 'ending_soon',
             'status' => null,
-        ])), true, false)->latest()->limit(5)->get();
-        $overdueRentals = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
+        ])), true, false);
+        $overdueRentalsQuery = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
             'filter' => 'overdue',
             'status' => null,
-        ])), true, false)->latest()->limit(5)->get();
-        $returnsDueToday = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
+        ])), true, false);
+        $returnsDueTodayQuery = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
             'filter' => 'returns_due_today',
             'status' => null,
-        ])), true, false)->latest()->limit(5)->get();
+        ])), true, false);
+
+        if ($restrictDashboardToSelfCreated && Schema::hasColumn('rentals', 'created_by_user_id')) {
+            $endingSoonRentalsQuery->where('created_by_user_id', $currentUser->id);
+            $overdueRentalsQuery->where('created_by_user_id', $currentUser->id);
+            $returnsDueTodayQuery->where('created_by_user_id', $currentUser->id);
+        }
+
+        $endingSoonRentals = $endingSoonRentalsQuery->latest()->limit(5)->get();
+        $overdueRentals = $overdueRentalsQuery->latest()->limit(5)->get();
+        $returnsDueToday = $returnsDueTodayQuery->latest()->limit(5)->get();
 
         if (!$this->hasRentalAssetsTable()) {
             $endingSoonRentals->each(fn ($rental) => $rental->setRelation('activeRentalAssets', collect()));
@@ -4110,6 +4187,357 @@ class RentalController extends Controller
         }
 
         $maintenanceAlertCount = (int) ($inventorySummary['maintenanceAlerts'] ?? 0);
+        $paymentsDueTodayCount = (clone $invoiceQuery)
+            ->whereIn('payment_status', ['unpaid', 'partial', 'overdue'])
+            ->where('balance_amount', '>', 0)
+            ->whereDate('due_date', $today)
+            ->count();
+        $failedDeliveriesCount = (clone $deliveryQuery)
+            ->where('type', 'delivery')
+            ->where('status', 'cancelled')
+            ->count();
+        $failedTasksCount = $failedPickupsCount + $failedDeliveriesCount;
+
+        $unassignedTasksCount = (clone $deliveryQuery)
+            ->whereIn('status', ['pending', 'in_progress'])
+            ->where(function ($query) {
+                if ($this->hasDeliveryAssignedUserColumn()) {
+                    $query->whereNull('assigned_user_id');
+                }
+
+                if ($this->hasDeliveryAssignedStaffColumn()) {
+                    $query->whereNull('assigned_staff_id');
+                }
+
+                if ($this->hasDeliveryThirdPartyNameColumn()) {
+                    $query->whereNull('third_party_name');
+                }
+            })
+            ->count();
+
+        $highPriorityFollowUpsCount = 0;
+        $highPriorityFollowUps = collect();
+        $todayFollowUps = collect();
+        $recentFollowUps = collect();
+
+        if (Schema::hasTable('follow_ups')) {
+            $followUpBaseQuery = FollowUp::query()
+                ->where('organization_id', $this->orgId())
+                ->whereNotIn('status', [FollowUp::STATUS_COMPLETED, FollowUp::STATUS_CANCELLED]);
+
+            if ($restrictDashboardToAssignedFollowUps) {
+                $followUpBaseQuery->where('assigned_user_id', $currentUser->id);
+            }
+
+            $highPriorityFollowUpsCount = (clone $followUpBaseQuery)
+                ->whereIn('priority', [FollowUp::PRIORITY_HIGH, FollowUp::PRIORITY_URGENT])
+                ->count();
+
+            $todayFollowUps = (clone $followUpBaseQuery)
+                ->with(['assignedUser', 'customer', 'businessPartner', 'partnerClient', 'rental.product', 'sale.product'])
+                ->whereDate('due_at', $today)
+                ->orderBy('due_at')
+                ->limit(5)
+                ->get();
+
+            $highPriorityFollowUps = (clone $followUpBaseQuery)
+                ->with(['assignedUser', 'customer', 'businessPartner', 'partnerClient', 'rental.product', 'sale.product'])
+                ->whereIn('priority', [FollowUp::PRIORITY_HIGH, FollowUp::PRIORITY_URGENT])
+                ->orderBy('due_at')
+                ->limit(5)
+                ->get();
+
+            $recentFollowUps = FollowUp::query()
+                ->where('organization_id', $this->orgId())
+                ->with(['assignedUser', 'customer', 'businessPartner', 'partnerClient', 'rental.product', 'sale.product'])
+                ->latest('updated_at')
+                ->limit(5)
+                ->get();
+        }
+
+        $largeOutstandingInvoiceCount = $canViewFinance
+            ? (clone $invoiceQuery)
+                ->whereIn('payment_status', ['unpaid', 'partial', 'overdue'])
+                ->where('balance_amount', '>', 10000)
+                ->count()
+            : 0;
+
+        $todayRenewalItems = (clone $renewalCenterBaseQuery)
+            ->with(['product:id,name', 'customer:id,name,phone,map_url', 'businessPartner:id,business_name,phone,location', 'partnerClient:id,client_name,phone,location,address'])
+            ->whereDate('end_date', $today)
+            ->orderBy('end_date')
+            ->limit(5)
+            ->get();
+
+        $todayPickupItems = Delivery::query()
+            ->where('organization_id', $this->orgId())
+            ->where('type', 'pickup')
+            ->whereIn('status', ['pending', 'in_progress'])
+            ->when(Schema::hasColumn('deliveries', 'pickup_status'), fn ($query) => $query->whereNotIn('pickup_status', ['failed_attempt', 'cancelled', 'picked_up']))
+            ->whereDate('scheduled_at', $today)
+            ->with([
+                'rental.product:id,name',
+                'rental.customer:id,name,phone,map_url,address,city',
+                'rental.businessPartner:id,business_name,phone,location',
+                'rental.partnerClient:id,client_name,phone,location,address,city',
+                'sale.product:id,name',
+                'sale.customer:id,name,phone,map_url,address,city',
+                'sale.businessPartner:id,business_name,phone,location',
+                'sale.partnerClient:id,client_name,phone,location,address,city',
+                'assignedUser:id,name',
+                'assignedStaff:id,name',
+            ])
+            ->orderBy('scheduled_at')
+            ->limit(5)
+            ->get();
+
+        $todayDeliveryItems = Delivery::query()
+            ->where('organization_id', $this->orgId())
+            ->where('type', 'delivery')
+            ->whereIn('status', ['pending', 'in_progress'])
+            ->whereDate('scheduled_at', $today)
+            ->with([
+                'rental.product:id,name',
+                'rental.customer:id,name,phone,map_url,address,city',
+                'rental.businessPartner:id,business_name,phone,location',
+                'rental.partnerClient:id,client_name,phone,location,address,city',
+                'sale.product:id,name',
+                'sale.customer:id,name,phone,map_url,address,city',
+                'sale.businessPartner:id,business_name,phone,location',
+                'sale.partnerClient:id,client_name,phone,location,address,city',
+                'assignedUser:id,name',
+                'assignedStaff:id,name',
+            ])
+            ->orderBy('scheduled_at')
+            ->limit(5)
+            ->get();
+
+        $pendingPaymentItems = $canViewFinance
+            ? (clone $invoiceQuery)
+                ->with([
+                    'customer:id,name,phone,map_url',
+                    'rental.businessPartner:id,business_name,phone,location',
+                    'rental.partnerClient:id,client_name,phone,location,address',
+                    'sale.businessPartner:id,business_name,phone,location',
+                    'sale.partnerClient:id,client_name,phone,location,address',
+                ])
+                ->whereIn('payment_status', ['unpaid', 'partial', 'overdue'])
+                ->where('balance_amount', '>', 0)
+                ->orderByRaw('CASE WHEN due_date IS NULL THEN 1 ELSE 0 END')
+                ->orderBy('due_date')
+                ->limit(5)
+                ->get()
+            : collect();
+
+        $recentCustomers = Customer::query()
+            ->where('organization_id', $this->orgId())
+            ->latest('id')
+            ->limit(5)
+            ->get(['id', 'name', 'phone', 'city', 'created_at']);
+
+        $recentPayments = $canViewFinance
+            ? (clone $paymentQuery)
+                ->with(['customer:id,name', 'invoice:id,invoice_number'])
+                ->latest('payment_date')
+                ->latest('id')
+                ->limit(5)
+                ->get()
+            : collect();
+
+        $recentDeliveries = $canReadDeliveries
+            ? (clone $deliveryQuery)
+                ->with([
+                    'rental.product:id,name',
+                    'rental.customer:id,name,phone',
+                    'rental.businessPartner:id,business_name,phone',
+                    'rental.partnerClient:id,client_name,phone,address',
+                    'sale.product:id,name',
+                    'sale.customer:id,name,phone',
+                    'sale.businessPartner:id,business_name,phone',
+                    'sale.partnerClient:id,client_name,phone,address',
+                    'assignedUser:id,name',
+                    'assignedStaff:id,name',
+                ])
+                ->latest('updated_at')
+                ->limit(5)
+                ->get()
+            : collect();
+
+        $recentActivities = collect();
+
+        if (Schema::hasTable('activity_logs')) {
+            $recentActivitiesQuery = ActivityLog::query()
+                ->where('organization_id', $this->orgId())
+                ->with('user');
+
+            if (!(auth()->user()?->canAccessModule('payments', 'read') ?? false)) {
+                $recentActivitiesQuery->where('action', 'not like', 'payment.%');
+            }
+
+            if (!(auth()->user()?->canAccessModule('invoices', 'read') ?? false)) {
+                $recentActivitiesQuery->where('action', 'not like', 'invoice.%')
+                    ->where('action', 'not like', '%.invoice.%');
+            }
+
+            $recentActivities = $recentActivitiesQuery
+                ->latest('created_at')
+                ->limit(8)
+                ->get();
+        }
+
+        $staffWorkloadRows = collect();
+
+        if ($this->hasDeliveryAssignedUserColumn()) {
+            $deliveryWorkloads = Delivery::query()
+                ->where('organization_id', $this->orgId())
+                ->whereIn('status', ['pending', 'in_progress'])
+                ->whereNotNull('assigned_user_id')
+                ->selectRaw("
+                    assigned_user_id,
+                    SUM(CASE WHEN type = 'delivery' THEN 1 ELSE 0 END) as delivery_count,
+                    SUM(CASE WHEN type = 'pickup' THEN 1 ELSE 0 END) as pickup_count,
+                    SUM(CASE WHEN scheduled_at IS NOT NULL AND DATE(scheduled_at) < ? THEN 1 ELSE 0 END) as overdue_task_count
+                ", [$today->toDateString()])
+                ->groupBy('assigned_user_id')
+                ->get()
+                ->keyBy('assigned_user_id');
+
+            $followUpWorkloads = Schema::hasTable('follow_ups')
+                ? FollowUp::query()
+                    ->where('organization_id', $this->orgId())
+                    ->whereNotIn('status', [FollowUp::STATUS_COMPLETED, FollowUp::STATUS_CANCELLED])
+                    ->whereNotNull('assigned_user_id')
+                    ->selectRaw("
+                        assigned_user_id,
+                        COUNT(*) as followup_count,
+                        SUM(CASE WHEN due_at < ? THEN 1 ELSE 0 END) as overdue_followup_count
+                    ", [now()])
+                    ->groupBy('assigned_user_id')
+                    ->get()
+                    ->keyBy('assigned_user_id')
+                : collect();
+
+            $workloadUserIds = $deliveryWorkloads->keys()
+                ->merge($followUpWorkloads->keys())
+                ->filter()
+                ->unique()
+                ->values();
+
+            if ($workloadUserIds->isNotEmpty()) {
+                $workloadUsers = User::query()
+                    ->where('organization_id', $this->orgId())
+                    ->whereIn('id', $workloadUserIds)
+                    ->get(['id', 'name', 'role']);
+
+                $staffWorkloadRows = $workloadUsers
+                    ->map(function (User $user) use ($deliveryWorkloads, $followUpWorkloads) {
+                        $deliveryRow = $deliveryWorkloads->get($user->id);
+                        $followUpRow = $followUpWorkloads->get($user->id);
+                        $deliveryCount = (int) ($deliveryRow->delivery_count ?? 0);
+                        $pickupCount = (int) ($deliveryRow->pickup_count ?? 0);
+                        $followUpCount = (int) ($followUpRow->followup_count ?? 0);
+                        $overdueCount = (int) ($deliveryRow->overdue_task_count ?? 0) + (int) ($followUpRow->overdue_followup_count ?? 0);
+                        $total = $deliveryCount + $pickupCount + $followUpCount;
+                        $loadState = $overdueCount >= 3 || $total >= 8
+                            ? 'Overloaded'
+                            : ($total >= 4 ? 'Balanced' : 'Light');
+
+                        return [
+                            'id' => $user->id,
+                            'name' => $user->name,
+                            'role' => $user->effective_role ?? $user->role,
+                            'delivery_count' => $deliveryCount,
+                            'pickup_count' => $pickupCount,
+                            'followup_count' => $followUpCount,
+                            'overdue_count' => $overdueCount,
+                            'total' => $total,
+                            'load_state' => $loadState,
+                        ];
+                    })
+                    ->sortByDesc('total')
+                    ->take(6)
+                    ->values();
+            }
+        }
+
+        $partnerOperationalRows = collect();
+
+        if ($this->businessPartnerFlowAvailable()) {
+            $partnerFollowUpSignals = Schema::hasTable('follow_ups')
+                ? FollowUp::query()
+                    ->where('organization_id', $this->orgId())
+                    ->whereNotIn('status', [FollowUp::STATUS_COMPLETED, FollowUp::STATUS_CANCELLED])
+                    ->whereNotNull('business_partner_id')
+                    ->selectRaw("
+                        business_partner_id,
+                        SUM(CASE WHEN followup_type = 'renewal' THEN 1 ELSE 0 END) as renewal_count,
+                        SUM(CASE WHEN followup_type = 'payment' THEN 1 ELSE 0 END) as payment_count
+                    ")
+                    ->groupBy('business_partner_id')
+                    ->get()
+                    ->keyBy('business_partner_id')
+                : collect();
+
+            $partnerOperationalRows = BusinessPartner::query()
+                ->where('organization_id', $this->orgId())
+                ->where('status', 'active')
+                ->withCount([
+                    'partnerClients as active_clients_count' => fn ($query) => $query
+                        ->where('organization_id', $this->orgId())
+                        ->where('status', 'active'),
+                    'rentals as open_rentals_count' => fn ($query) => $query
+                        ->where('organization_id', $this->orgId())
+                        ->whereNotIn('status', ['returned', 'cancelled']),
+                    'sales as active_sales_count' => fn ($query) => $query
+                        ->where('organization_id', $this->orgId()),
+                ])
+                ->get(['id', 'business_name', 'phone'])
+                ->map(function (BusinessPartner $partner) use ($partnerFollowUpSignals) {
+                    $signal = $partnerFollowUpSignals->get($partner->id);
+                    $renewalCount = (int) ($signal->renewal_count ?? 0);
+                    $paymentCount = (int) ($signal->payment_count ?? 0);
+
+                    return [
+                        'id' => $partner->id,
+                        'name' => $partner->displayName(),
+                        'phone' => $partner->phone,
+                        'active_clients_count' => (int) ($partner->active_clients_count ?? 0),
+                        'open_rentals_count' => (int) ($partner->open_rentals_count ?? 0),
+                        'active_sales_count' => (int) ($partner->active_sales_count ?? 0),
+                        'renewal_followups_count' => $renewalCount,
+                        'payment_followups_count' => $paymentCount,
+                        'score' => ($renewalCount * 3) + ($paymentCount * 3) + (int) ($partner->open_rentals_count ?? 0) + (int) ($partner->active_sales_count ?? 0),
+                    ];
+                })
+                ->sortByDesc('score')
+                ->take(5)
+                ->values();
+        }
+
+        $lowStockProducts = Product::query()
+            ->where('organization_id', $this->orgId())
+            ->where('total_quantity', '>', 0)
+            ->where('available_quantity', '<=', 2)
+            ->orderBy('available_quantity')
+            ->orderBy('name')
+            ->limit(5)
+            ->get(['id', 'name', 'product_type', 'available_quantity', 'total_quantity']);
+
+        $highUtilizationProducts = Product::query()
+            ->where('organization_id', $this->orgId())
+            ->where('product_type', Product::TYPE_RENTABLE)
+            ->where('total_quantity', '>', 0)
+            ->get(['id', 'name', 'available_quantity', 'total_quantity'])
+            ->sortBy(fn (Product $product) => $product->total_quantity > 0 ? ($product->available_quantity / max(1, $product->total_quantity)) : 1)
+            ->take(5)
+            ->values();
+
+        $idleInventoryProducts = Product::query()
+            ->where('organization_id', $this->orgId())
+            ->where('available_quantity', '>', 0)
+            ->orderByDesc('available_quantity')
+            ->limit(5)
+            ->get(['id', 'name', 'product_type', 'available_quantity', 'total_quantity']);
 
         $citySummary = $dashboardRentalCollection
             ->groupBy(fn ($rental) => optional($rental->customer)->city ?: 'Unspecified')
@@ -4267,11 +4695,38 @@ class RentalController extends Controller
             'pickupCenterOverdueCount',
             'failedPickupsCount',
             'awaitingReturnVerificationCount',
+            'followUpsDueTodayCount',
+            'overdueFollowUpsCount',
+            'pendingRenewalFollowUpsCount',
+            'pendingPaymentFollowUpsCount',
+            'pendingPickupFollowUpsCount',
+            'paymentsDueTodayCount',
+            'failedDeliveriesCount',
+            'failedTasksCount',
+            'unassignedTasksCount',
+            'highPriorityFollowUpsCount',
+            'largeOutstandingInvoiceCount',
             'financeSummary',
             'recentRentals',
+            'recentCustomers',
+            'recentPayments',
+            'recentDeliveries',
+            'recentFollowUps',
+            'recentActivities',
             'endingSoonRentals',
             'overdueRentals',
             'returnsDueToday',
+            'todayRenewalItems',
+            'todayPickupItems',
+            'todayDeliveryItems',
+            'todayFollowUps',
+            'highPriorityFollowUps',
+            'pendingPaymentItems',
+            'staffWorkloadRows',
+            'partnerOperationalRows',
+            'lowStockProducts',
+            'highUtilizationProducts',
+            'idleInventoryProducts',
             'maintenanceAlertCount',
             'citySummary',
             'vendorSummary',

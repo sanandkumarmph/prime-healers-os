@@ -37,8 +37,8 @@ class MobileMenuVisibilityRegressionTest extends TestCase
         $response = $this->actingAs($user)->get(route('profile.edit'));
 
         $response->assertOk()
+            ->assertSee('Dashboard')
             ->assertSee('Customers')
-            ->assertDontSee('Dashboard')
             ->assertDontSee('Rentals')
             ->assertDontSee('Sales')
             ->assertDontSee('Product Master')

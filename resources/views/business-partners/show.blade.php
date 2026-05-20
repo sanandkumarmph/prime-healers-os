@@ -1,6 +1,132 @@
 @extends('layouts.app')
 
 @section('content')
+@php
+    $currentUser = auth()->user();
+    $canCreateRentals = $currentUser?->canAccessModule('rentals', 'create') ?? false;
+    $canCreateSales = $currentUser?->canAccessModule('sales', 'create') ?? false;
+    $partnerPhone = $businessPartner->preferredReminderNumber() ?: $businessPartner->phone;
+    $partnerCallHref = $partnerPhone ? 'tel:' . preg_replace('/\D+/', '', $partnerPhone) : null;
+    $partnerWhatsappHref = \App\Support\WhatsAppHelper::chatUrl(
+        \App\Support\WhatsAppHelper::normalizeNumber($businessPartner->whatsapp ?: $partnerPhone),
+        $partnerPhone ? "Hello {$businessPartner->displayName()}, this is a quick update from Prime Healers." : null
+    );
+    $partnerFollowUpContextJson = json_encode([
+        'business_partner_id' => $businessPartner->id,
+        'reference' => 'Business Partner #' . $businessPartner->id,
+        'reminder_contact' => collect([$businessPartner->displayName(), $partnerPhone])->filter()->implode(' | '),
+        'service_contact' => $businessPartner->partnerClients->first()
+            ? collect([$businessPartner->partnerClients->first()->displayName(), $businessPartner->partnerClients->first()->primaryPhone()])->filter()->implode(' | ')
+            : null,
+        'service_address' => $businessPartner->partnerClients->first()?->address,
+    ]);
+    $partnerQuickActions = collect();
+    $partnerMoreActions = collect();
+    $partnerInfoItems = collect();
+
+    if ($partnerCallHref) {
+        $partnerQuickActions->push([
+            'type' => 'link',
+            'label' => 'Call',
+            'href' => $partnerCallHref,
+        ]);
+    }
+
+    if ($partnerWhatsappHref) {
+        $partnerQuickActions->push([
+            'type' => 'link',
+            'label' => 'WhatsApp',
+            'href' => $partnerWhatsappHref,
+            'target' => '_blank',
+            'rel' => 'noopener',
+            'accent' => true,
+        ]);
+    }
+
+    if ($canCreateRentals) {
+        $partnerQuickActions->push([
+            'type' => 'link',
+            'label' => 'New Rental',
+            'href' => route('rentals.create', ['customer_type' => 'business_partner', 'business_partner_id' => $businessPartner->id]),
+        ]);
+    }
+
+    if ($canCreateSales) {
+        $partnerQuickActions->push([
+            'type' => 'link',
+            'label' => 'New Sale',
+            'href' => route('sales.create', ['customer_type' => 'business_partner', 'business_partner_id' => $businessPartner->id]),
+        ]);
+    }
+
+    $partnerQuickActions->push([
+        'type' => 'link',
+        'label' => 'Add Actual Client',
+        'href' => route('business-partners.clients.create', $businessPartner),
+    ]);
+
+    $partnerMoreActions->push([
+        'type' => 'link',
+        'label' => 'Add Note',
+        'href' => '#business-partner-timeline',
+    ]);
+    $partnerMoreActions->push([
+        'type' => 'link',
+        'label' => 'View Timeline',
+        'href' => '#business-partner-timeline',
+    ]);
+    $partnerMoreActions->push([
+        'type' => 'button',
+        'label' => 'Add Follow-up',
+        'attributes' => [
+            'data-open-follow-up-modal' => true,
+            'data-follow-up-context' => $partnerFollowUpContextJson,
+            'data-follow-up-type' => \App\Models\FollowUp::TYPE_PAYMENT,
+            'data-follow-up-priority' => \App\Models\FollowUp::PRIORITY_MEDIUM,
+        ],
+    ]);
+    $partnerMoreActions->push([
+        'type' => 'link',
+        'label' => 'View Rentals',
+        'href' => route('rentals.index', ['business_partner_id' => $businessPartner->id]),
+    ]);
+    $partnerMoreActions->push([
+        'type' => 'link',
+        'label' => 'View Invoices',
+        'href' => route('invoices.index', ['business_partner_id' => $businessPartner->id]),
+    ]);
+    $partnerMoreActions->push([
+        'type' => 'link',
+        'label' => 'Edit Partner',
+        'href' => route('business-partners.edit', $businessPartner),
+    ]);
+
+    if ($businessPartner->openMapUrl()) {
+        $partnerMoreActions->push([
+            'type' => 'link',
+            'label' => 'Open Map',
+            'href' => $businessPartner->openMapUrl(),
+            'target' => '_blank',
+            'rel' => 'noopener',
+        ]);
+    }
+
+    $partnerInfoItems->push([
+        'label' => 'Reminder / Payment',
+        'value' => collect([$businessPartner->displayName(), $partnerPhone])->filter()->implode(' | '),
+    ]);
+
+    if ($businessPartner->address) {
+        $partnerInfoItems->push([
+            'label' => 'Billing Address',
+            'value' => collect([$businessPartner->address, collect([$businessPartner->city, $businessPartner->state, $businessPartner->pincode])->filter()->implode(', ')])->filter()->implode(' | '),
+            'href' => $businessPartner->openMapUrl(),
+            'target' => '_blank',
+            'rel' => 'noopener',
+            'linkLabel' => 'Open Map',
+        ]);
+    }
+@endphp
 <style>
     .bp-show { display:grid; gap:16px; padding:18px 22px 30px; max-width:1200px; margin:0 auto; }
     .bp-show-card { background:#fff; border:1px solid #dbe3ef; border-radius:16px; padding:18px; box-shadow:0 8px 24px rgba(15,23,42,.04); }
@@ -38,6 +164,13 @@
             </div>
         </div>
     </div>
+
+    @include('partials.quick-action-toolbar', [
+        'label' => 'Business Partner Quick Actions',
+        'actions' => $partnerQuickActions,
+        'moreActions' => $partnerMoreActions,
+        'infoItems' => $partnerInfoItems,
+    ])
 
     <div class="bp-show-card">
         <div class="bp-show-grid">
@@ -107,7 +240,7 @@
         </div>
     </div>
 
-    <div class="bp-show-card">
+    <div class="bp-show-card" id="actual-clients">
         <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
             <div>
                 <h2 style="margin:0;color:#0f172a;">Actual Clients</h2>
@@ -166,6 +299,18 @@
                             <td>{{ $client->delivery_notes ?: 'No notes' }}</td>
                             <td>
                                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                                    @if($client->primaryPhone())
+                                        <a href="tel:{{ preg_replace('/\D+/', '', $client->primaryPhone()) }}" class="bp-show-btn-light">Call</a>
+                                    @endif
+                                    @if($client->openMapUrl())
+                                        <a href="{{ $client->openMapUrl() }}" target="_blank" rel="noopener" class="bp-show-btn-light">Open Map</a>
+                                    @endif
+                                    @if($canCreateRentals)
+                                        <a href="{{ route('rentals.create', ['customer_type' => 'business_partner', 'business_partner_id' => $businessPartner->id, 'partner_client_id' => $client->id]) }}" class="bp-show-btn-light">New Rental</a>
+                                    @endif
+                                    @if($canCreateSales)
+                                        <a href="{{ route('sales.create', ['customer_type' => 'business_partner', 'business_partner_id' => $businessPartner->id, 'partner_client_id' => $client->id]) }}" class="bp-show-btn-light">New Sale</a>
+                                    @endif
                                     <a href="{{ route('business-partners.clients.edit', [$businessPartner, $client]) }}" class="bp-show-btn-light">Edit</a>
                                     <form action="{{ route('business-partners.clients.destroy', [$businessPartner, $client]) }}" method="POST" style="margin:0;">
                                         @csrf
@@ -194,7 +339,8 @@
         'timelineRoute' => 'business-partners.show',
         'noteAction' => route('business-partners.notes.store', $businessPartner),
         'noteLabel' => 'Add Note',
-        'anchorId' => 'business-partner-timeline',
+            'anchorId' => 'business-partner-timeline',
     ])
 </div>
+@include('partials.follow-up-modal')
 @endsection

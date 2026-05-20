@@ -6,6 +6,7 @@ use App\Models\Delivery;
 use App\Models\Staff;
 use App\Models\User;
 use App\Support\ActivityLogger;
+use App\Support\FollowUpManager;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -167,6 +168,14 @@ class PickupCenterController extends Controller
             'failed_attempt_note' => $validated['failed_attempt_note'] ?? null,
             'rescheduled_at' => optional($delivery->scheduled_at)->toDateTimeString(),
         ], 'Pickup failed attempt recorded.');
+
+        app(FollowUpManager::class)->ensureFailedPickupFollowUp(
+            $delivery->fresh(['rental.customer', 'rental.businessPartner', 'rental.partnerClient', 'rental.product']),
+            $validated['failed_attempt_note'] ?? null,
+            !empty($validated['reschedule_date'])
+                ? Carbon::parse($validated['reschedule_date'] . ' ' . $this->resolvePickupTimeSlot($validated['pickup_time_slot'] ?? null))
+                : Carbon::now()->addHours(2)
+        );
 
         return back()->with('success', !empty($validated['reschedule_date'])
             ? 'Failed attempt recorded and pickup rescheduled.'

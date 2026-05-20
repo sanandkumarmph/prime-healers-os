@@ -17,6 +17,13 @@
         : trim(collect([$customer->salutation, $customer->first_name, $customer->last_name])->filter()->implode(' '));
     $mapUrl = $customer->openMapUrl();
     $proofUrl = filled($customer->id_proof_file_path) ? route('customers.id-proof.download', $customer->id) : null;
+    $customerFollowUpContextJson = json_encode([
+        'customer_id' => $customer->id,
+        'reference' => 'Customer #' . $customer->id,
+        'reminder_contact' => collect([$customerName, $customer->phone])->filter()->implode(' | '),
+        'service_contact' => collect([$customerName, $customer->phone])->filter()->implode(' | '),
+        'service_address' => collect([$customer->address, collect([$customer->city, $customer->state, $customer->pincode])->filter()->implode(', ')])->filter()->implode(' | '),
+    ]);
 
     $generalWhatsAppUrl = \App\Support\WhatsAppHelper::chatUrl($customerWhatsapp, $customerWhatsapp ? "Hello {$customerName}, this is a quick update from Prime Healers." : null);
 
@@ -32,6 +39,12 @@
     $deliveryEntries = $customer->rentals
         ->filter(fn ($rental) => $rental->deliveryRecord || $rental->pickupRecord)
         ->take(6);
+    $deliveriesSearchHref = \Illuminate\Support\Facades\Route::has('deliveries.index')
+        ? route('deliveries.index', ['search' => $customerName])
+        : null;
+    $paymentsIndexHref = \Illuminate\Support\Facades\Route::has('payments.index')
+        ? route('payments.index', ['customer_id' => $customer->id])
+        : null;
 
     $mobilePrimaryActions = collect();
     $mobileMoreActions = collect();
@@ -145,6 +158,96 @@
             'method' => 'DELETE',
             'confirm' => 'Delete this customer? This will be blocked if dependencies exist.',
             'danger' => true,
+        ]);
+    }
+
+    $customerQuickActions = collect();
+    if ($customer->phone) {
+        $customerQuickActions->push([
+            'type' => 'link',
+            'label' => 'Call',
+            'href' => 'tel:' . preg_replace('/\D+/', '', $customer->phone),
+        ]);
+    }
+    if ($generalWhatsAppUrl) {
+        $customerQuickActions->push([
+            'type' => 'link',
+            'label' => 'WhatsApp',
+            'href' => $generalWhatsAppUrl,
+            'target' => '_blank',
+            'rel' => 'noopener',
+            'accent' => true,
+        ]);
+    }
+    if ($canCreateRentals) {
+        $customerQuickActions->push([
+            'type' => 'link',
+            'label' => 'New Rental',
+            'href' => route('rentals.create', ['customer_id' => $customer->id]),
+        ]);
+    }
+    if ($canCreateSales) {
+        $customerQuickActions->push([
+            'type' => 'link',
+            'label' => 'New Sale',
+            'href' => route('sales.create', ['customer_id' => $customer->id]),
+        ]);
+    }
+
+    $customerMoreActions = collect();
+    $customerMoreActions->push([
+        'type' => 'link',
+        'label' => 'Add Note',
+        'href' => '#customer-timeline',
+    ]);
+    $customerMoreActions->push([
+        'type' => 'link',
+        'label' => 'View Timeline',
+        'href' => '#customer-timeline',
+    ]);
+    $customerMoreActions->push([
+        'type' => 'button',
+        'label' => 'Add Follow-up',
+        'attributes' => [
+            'data-open-follow-up-modal' => true,
+            'data-follow-up-context' => $customerFollowUpContextJson,
+            'data-follow-up-type' => \App\Models\FollowUp::TYPE_CALLBACK,
+            'data-follow-up-priority' => \App\Models\FollowUp::PRIORITY_MEDIUM,
+        ],
+    ]);
+    $customerMoreActions->push([
+        'type' => 'link',
+        'label' => 'View Invoices',
+        'href' => route('invoices.index', ['customer_id' => $customer->id]),
+    ]);
+    if ($paymentsIndexHref) {
+        $customerMoreActions->push([
+            'type' => 'link',
+            'label' => 'View Payments',
+            'href' => $paymentsIndexHref,
+        ]);
+    }
+    if ($deliveriesSearchHref) {
+        $customerMoreActions->push([
+            'type' => 'link',
+            'label' => 'View Deliveries',
+            'href' => $deliveriesSearchHref,
+        ]);
+    }
+    if ($canUpdateCustomers) {
+        $customerMoreActions->push([
+            'type' => 'link',
+            'label' => 'Edit Customer',
+            'href' => route('customers.edit', $customer),
+        ]);
+    }
+    if ($mapUrl) {
+        $customerMoreActions->push([
+            'type' => 'link',
+            'label' => 'Open Map',
+            'href' => $mapUrl,
+            'target' => '_blank',
+            'rel' => 'noopener',
         ]);
     }
 
@@ -340,6 +443,16 @@
             @endif
         </div>
     </div>
+
+    @include('partials.quick-action-toolbar', [
+        'label' => 'Customer Quick Actions',
+        'actions' => $customerQuickActions->all(),
+        'moreActions' => $customerMoreActions->all(),
+        'infoItems' => [
+            ['label' => 'Customer', 'value' => $customerName . ($customer->phone ? ' • ' . $customer->phone : '')],
+            ['label' => 'Address', 'value' => collect([$customer->address, collect([$customer->city, $customer->state, $customer->pincode])->filter()->implode(', ')])->filter()->implode(' • '), 'href' => $mapUrl, 'linkLabel' => 'Open Map', 'target' => '_blank', 'rel' => 'noopener'],
+        ],
+    ])
 
     @if(session('success'))
         <div class="ops-card">
@@ -700,9 +813,9 @@
         </div>
 
         <div class="span-12">
-            @include('partials.activity-timeline', [
-                'timeline' => $activityTimeline ?? collect(),
-                'title' => 'Timeline',
+    @include('partials.activity-timeline', [
+        'timeline' => $activityTimeline ?? collect(),
+        'title' => 'Timeline',
                 'subtitle' => 'Rentals, sales, invoices, payments, deliveries, reminders, and notes linked to this customer.',
                 'timelineFilter' => $timelineFilter ?? 'all',
                 'timelineRoute' => 'customers.show',
@@ -713,6 +826,8 @@
         </div>
     </div>
 </div>
+
+@include('partials.follow-up-modal')
 
 @include('partials.mobile-action-bar', [
     'label' => 'Customer mobile actions',

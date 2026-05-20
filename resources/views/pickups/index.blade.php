@@ -361,6 +361,18 @@
                     ? route('deliveries.show', $pickup) . '#delivery-proof-history'
                     : $workflowHref($pickup);
                 $canManagePickup = $pickup->status !== 'completed' && $pickup->status !== 'cancelled';
+                $pickupFollowUpContextJson = json_encode([
+                    'customer_id' => $rental?->customer_id,
+                    'business_partner_id' => $rental?->business_partner_id,
+                    'partner_client_id' => $rental?->partner_client_id,
+                    'rental_id' => $rental?->id,
+                    'invoice_id' => $invoice?->id,
+                    'delivery_id' => $pickup->id,
+                    'reference' => 'Pickup #' . $pickup->id,
+                    'reminder_contact' => collect([$pickup->reminderContactName(), $reminderPhone])->filter()->implode(' | '),
+                    'service_contact' => collect([$pickup->linkedCustomerName(), $pickup->linkedCustomerPhone()])->filter()->implode(' | '),
+                    'service_address' => $pickup->linkedCustomerAddress(),
+                ]);
                 $whatsAppMessage = trim(collect([
                     'Pickup reminder for rental #' . ($rental?->id ?? $pickup->rental_id),
                     'Product: ' . ($rental?->product?->name ?? 'Rental product'),
@@ -425,6 +437,14 @@
                                         <button type="button" class="pickup-more-button" data-open-modal="failed-{{ $pickup->id }}">Failed Attempt</button>
                                         <button type="button" class="pickup-more-button" data-open-modal="reschedule-{{ $pickup->id }}">Reschedule</button>
                                         <button type="button" class="pickup-more-button" data-open-modal="note-{{ $pickup->id }}">Add Note</button>
+                                        <button type="button"
+                                                class="pickup-more-button"
+                                                data-open-follow-up-modal
+                                                data-follow-up-context='{{ $pickupFollowUpContextJson }}'
+                                                data-follow-up-type="{{ \App\Models\FollowUp::TYPE_PICKUP }}"
+                                                data-follow-up-priority="{{ \App\Models\FollowUp::PRIORITY_HIGH }}">
+                                            Add Follow-up
+                                        </button>
                                     @endif
                                     <a href="{{ route('rentals.show', $rental) }}" class="pickup-more-link">View Rental</a>
                                     @if($invoice)
@@ -611,6 +631,10 @@
 
     {{ $pickups->links() }}
 </div>
+
+@include('partials.follow-up-modal', [
+    'followUpAssignableUsers' => $assignableUsers,
+])
 
 <script>
     document.addEventListener('DOMContentLoaded', () => {

@@ -17,6 +17,7 @@ use App\Services\Metrics\LogisticsMetricsService;
 use App\Models\Staff;
 use App\Models\User;
 use App\Support\ActivityLogger;
+use App\Support\FollowUpManager;
 use App\Support\PhoneNumber;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -2388,6 +2389,13 @@ class DeliveryController extends Controller
             'status' => $delivery->status,
             'cancellation_reason' => $delivery->cancellation_reason ?? null,
         ], ucfirst($delivery->type) . ' cancelled.');
+
+        if ($delivery->type === 'delivery') {
+            app(FollowUpManager::class)->ensureFailedDeliveryFollowUp(
+                $delivery->fresh(['rental.customer', 'rental.businessPartner', 'rental.partnerClient', 'sale.customer', 'sale.businessPartner', 'sale.partnerClient']),
+                $delivery->cancellation_notes ?: ($delivery->cancellation_reason ? ('Reason: ' . Delivery::cancellationReasonLabel($delivery->cancellation_reason)) : null)
+            );
+        }
 
         return redirect()
             ->route('deliveries.show', $delivery)

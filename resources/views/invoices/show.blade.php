@@ -66,6 +66,140 @@
         $invoice->ship_to_phone ?: ($invoice->bill_to_phone ?: ''),
         $shippingAddress ?: $billingAddress,
     ])));
+    $canUpdateInvoices = auth()->user()?->canAccessModule('invoices', 'update') ?? false;
+    $canPrintInvoices = auth()->user()?->hasPermission('invoices.print') ?? false;
+    $invoiceCallHref = $invoice->bill_to_phone ? 'tel:' . preg_replace('/\D+/', '', $invoice->bill_to_phone) : null;
+    $invoicePaymentHref = $invoice->rental_id
+        ? route('rentals.show', $invoice->rental_id) . '#rental-billing-actions'
+        : ($invoice->sale_id ? route('sales.show', $invoice->sale_id) . '#sale-billing-actions' : '#invoice-payment-history');
+    $invoiceQuickActions = collect();
+    $invoiceMoreActions = collect();
+    $invoiceInfoItems = collect();
+    $invoiceFollowUpContextJson = json_encode([
+        'customer_id' => $invoice->customer_id,
+        'rental_id' => $invoice->rental_id,
+        'sale_id' => $invoice->sale_id,
+        'invoice_id' => $invoice->id,
+        'reference' => $invoice->invoice_number ? 'Invoice ' . $invoice->invoice_number : 'Invoice #' . $invoice->id,
+        'reminder_contact' => collect([$invoice->bill_to_name ?: ($invoice->customer->name ?? null), $invoice->bill_to_phone])->filter()->implode(' | '),
+        'service_contact' => collect([$invoice->ship_to_name ?: ($invoice->bill_to_name ?: ($invoice->customer->name ?? null)), $invoice->ship_to_phone])->filter()->implode(' | '),
+        'service_address' => str_replace("\n", ' | ', $shippingAddress ?: $billingAddress),
+    ]);
+
+    if ($invoiceCallHref) {
+        $invoiceQuickActions->push([
+            'type' => 'link',
+            'label' => 'Call',
+            'href' => $invoiceCallHref,
+        ]);
+    }
+
+    if (!empty($whatsAppLinks['invoice'])) {
+        $invoiceQuickActions->push([
+            'type' => 'link',
+            'label' => 'WhatsApp Invoice',
+            'href' => $whatsAppLinks['invoice'],
+            'target' => '_blank',
+            'rel' => 'noopener',
+            'accent' => true,
+        ]);
+    }
+
+    if ($canPrintInvoices) {
+        $invoiceQuickActions->push([
+            'type' => 'link',
+            'label' => 'Print',
+            'href' => route('invoices.print', $invoice->id),
+            'target' => '_blank',
+        ]);
+    }
+
+    if (($invoice->rental_id || $invoice->sale_id) && !in_array($invoice->payment_status, ['paid', 'cancelled'], true)) {
+        $invoiceQuickActions->push([
+            'type' => 'link',
+            'label' => 'Payment',
+            'href' => $invoicePaymentHref,
+        ]);
+    }
+
+    $invoiceQuickActions->push([
+        'type' => 'link',
+        'label' => 'Timeline',
+        'href' => '#invoice-activity-timeline',
+    ]);
+
+    if ($canUpdateInvoices) {
+        $invoiceMoreActions->push([
+            'type' => 'link',
+            'label' => 'Edit Invoice',
+            'href' => route('invoices.edit', $invoice->id),
+        ]);
+    }
+
+    $invoiceMoreActions->push([
+        'type' => 'button',
+        'label' => 'Add Follow-up',
+        'attributes' => [
+            'data-open-follow-up-modal' => true,
+            'data-follow-up-context' => $invoiceFollowUpContextJson,
+            'data-follow-up-type' => \App\Models\FollowUp::TYPE_PAYMENT,
+            'data-follow-up-priority' => \App\Models\FollowUp::PRIORITY_HIGH,
+        ],
+    ]);
+
+    if ($invoice->rental_id) {
+        $invoiceMoreActions->push([
+            'type' => 'link',
+            'label' => 'View Rental',
+            'href' => route('rentals.show', $invoice->rental_id),
+        ]);
+    }
+
+    if ($invoice->sale_id) {
+        $invoiceMoreActions->push([
+            'type' => 'link',
+            'label' => 'View Sale',
+            'href' => route('sales.show', $invoice->sale_id),
+        ]);
+    }
+
+    if ($invoice->customer_id) {
+        $invoiceMoreActions->push([
+            'type' => 'link',
+            'label' => 'View Customer',
+            'href' => route('customers.show', $invoice->customer_id),
+        ]);
+    }
+
+    if (auth()->user()?->canAccessModule('invoices', 'update') && $invoice->status !== 'cancelled' && $invoice->payment_status !== 'cancelled') {
+        $invoiceMoreActions->push([
+            'type' => 'form',
+            'label' => 'Void Invoice',
+            'action' => route('invoices.void', $invoice->id),
+            'method' => 'PUT',
+            'confirm' => 'Void this invoice? This keeps the invoice for audit history.',
+            'danger' => true,
+        ]);
+    }
+
+    $invoiceInfoItems->push([
+        'label' => 'Bill To',
+        'value' => collect([$invoice->bill_to_name ?: ($invoice->customer->name ?? null), $invoice->bill_to_phone])->filter()->implode(' | '),
+    ]);
+
+    if ($invoice->ship_to_name || $shippingAddress) {
+        $invoiceInfoItems->push([
+            'label' => 'Ship To',
+            'value' => collect([$invoice->ship_to_name ?: ($invoice->bill_to_name ?: ($invoice->customer->name ?? null)), $invoice->ship_to_phone ?: null])->filter()->implode(' • ') ?: ($invoice->ship_to_name ?: ($invoice->bill_to_name ?: 'Delivery Address')),
+        ]);
+    }
+
+    if ($billingAddress) {
+        $invoiceInfoItems->push([
+            'label' => 'Billing Address',
+            'value' => str_replace("\n", ' • ', $billingAddress),
+        ]);
+    }
 @endphp
 
 <div style="max-width:1180px; margin:0 auto;">
@@ -664,6 +798,13 @@
             </div>
         </div>
 
+        @include('partials.quick-action-toolbar', [
+            'label' => 'Invoice Quick Actions',
+            'actions' => $invoiceQuickActions,
+            'moreActions' => $invoiceMoreActions,
+            'infoItems' => $invoiceInfoItems,
+        ])
+
         @if(session('success'))
             <div style="background:#dcfce7; color:#166534; border:1px solid #bbf7d0; padding:14px 16px; border-radius:16px;">
                 {{ session('success') }}
@@ -701,6 +842,7 @@
             'logs' => $activityLogs ?? collect(),
             'title' => 'Operations History',
             'subtitle' => 'Creation, edits, payment actions, and linked rental or sale events for this invoice.',
+            'anchorId' => 'invoice-activity-timeline',
         ])
 
         <div class="invoice-address-grid">
@@ -740,7 +882,7 @@
             </div>
         </div>
 
-        <div class="invoice-table-card">
+        <div class="invoice-table-card" id="invoice-payment-history">
             <div class="invoice-table-wrap">
                 <table class="invoice-table">
                     <thead>
@@ -943,5 +1085,7 @@
         </div>
     </div>
 </div>
+
+@include('partials.follow-up-modal')
 
 @endsection

@@ -6,6 +6,7 @@ use App\Models\ActivityLog;
 use App\Models\BusinessPartner;
 use App\Models\Customer;
 use App\Models\Delivery;
+use App\Models\FollowUp;
 use App\Models\Invoice;
 use App\Models\PartnerClient;
 use App\Models\Payment;
@@ -239,6 +240,14 @@ class ActivityLogger
             $context['customer_id'] = $subject->rental?->customer_id ?? $subject->sale?->customer_id ?? null;
             $context['business_partner_id'] = $subject->rental?->business_partner_id ?? $subject->sale?->business_partner_id ?? null;
             $context['partner_client_id'] = $subject->rental?->partner_client_id ?? $subject->sale?->partner_client_id ?? null;
+        } elseif ($subject instanceof FollowUp) {
+            $context['customer_id'] = $subject->customer_id;
+            $context['business_partner_id'] = $subject->business_partner_id;
+            $context['partner_client_id'] = $subject->partner_client_id;
+            $context['rental_id'] = $subject->rental_id;
+            $context['sale_id'] = $subject->sale_id;
+            $context['invoice_id'] = $subject->invoice_id;
+            $context['delivery_id'] = $subject->delivery_id;
         } elseif ($subject instanceof BusinessPartner) {
             $context['business_partner_id'] = $subject->id;
         } elseif ($subject instanceof PartnerClient) {
@@ -302,6 +311,16 @@ class ActivityLogger
             $context['delivery_contact_phone'] = $context['delivery_contact_phone'] ?? $subject->phone;
             $context['delivery_contact_address'] = $context['delivery_contact_address'] ?? $subject->address;
             $context['delivery_contact_map_url'] = $context['delivery_contact_map_url'] ?? $subject->openMapUrl();
+        } elseif ($subject instanceof FollowUp) {
+            $context['followup_type'] = $context['followup_type'] ?? $subject->followup_type;
+            $context['priority'] = $context['priority'] ?? $subject->priority;
+            $context['status'] = $context['status'] ?? $subject->effectiveStatus();
+            $context['reminder_contact_name'] = $context['reminder_contact_name'] ?? $subject->reminderContactName();
+            $context['reminder_contact_phone'] = $context['reminder_contact_phone'] ?? $subject->reminderContactPhone();
+            $context['delivery_contact_name'] = $context['delivery_contact_name'] ?? $subject->serviceContactName();
+            $context['delivery_contact_phone'] = $context['delivery_contact_phone'] ?? $subject->serviceContactPhone();
+            $context['delivery_contact_address'] = $context['delivery_contact_address'] ?? $subject->serviceContactAddress();
+            $context['delivery_contact_map_url'] = $context['delivery_contact_map_url'] ?? $subject->serviceContactMapUrl();
         }
 
         return $context;

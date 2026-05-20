@@ -67,7 +67,7 @@
         [
             'label' => 'Main',
             'items' => [
-                ['key' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'dashboard', 'href' => $safeRoute('dashboard'), 'active' => request()->routeIs('dashboard'), 'visible' => $currentUser?->hasPermission('dashboard.main') ?? false],
+                ['key' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'dashboard', 'href' => $safeRoute('dashboard'), 'active' => request()->routeIs('dashboard'), 'visible' => $currentUser?->canAccessDashboard() ?? false],
                 ['key' => 'customers', 'label' => 'Customers', 'icon' => 'customers', 'href' => $safeRoute('customers.index'), 'active' => request()->routeIs('customers.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('customers', 'read') ?? false)],
                 ['key' => 'business_partners', 'label' => 'Business Partners', 'icon' => 'customers', 'href' => $safeRoute('business-partners.index'), 'active' => request()->routeIs('business-partners.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('customers', 'read') ?? false)],
                 ['key' => 'rentals', 'label' => 'Rentals', 'icon' => 'rentals', 'href' => $safeRoute('rentals.index'), 'active' => request()->routeIs('rentals.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('rentals', 'read') ?? false)],
@@ -79,6 +79,7 @@
             'items' => [
                 ['key' => 'renewal_center', 'label' => 'Renewal Center', 'icon' => 'rentals', 'href' => $safeRoute('renewal-center.index'), 'active' => request()->routeIs('renewal-center.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('rentals', 'read') ?? false)],
                 ['key' => 'pickup_center', 'label' => 'Pickup Center', 'icon' => 'pickup', 'href' => $safeRoute('pickup-center.index'), 'active' => request()->routeIs('pickup-center.*'), 'visible' => $currentUser?->canAccessModule('deliveries', 'read') ?? false],
+                ['key' => 'communication_center', 'label' => 'Communication Center', 'icon' => 'customers', 'href' => $safeRoute('communication-center.index'), 'active' => request()->routeIs('communication-center.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessAnyModule(['rentals', 'sales', 'customers', 'deliveries', 'invoices'], 'read') ?? false)],
                 ['key' => 'tasks_board', 'label' => 'Tasks Board', 'icon' => 'deliveries', 'href' => $safeRoute('deliveries.index'), 'active' => request()->routeIs('deliveries.*') || request()->routeIs('pickups.*'), 'visible' => $currentUser?->canAccessModule('deliveries', 'read') ?? false],
             ],
         ],
@@ -136,7 +137,7 @@
     })->filter(fn ($section) => !empty($section['items']))->values();
 
     $mobilePrimaryItems = collect([
-        ['label' => 'Dashboard', 'icon' => 'dashboard', 'href' => ($currentUser?->hasPermission('dashboard.main') ?? false) ? $safeRoute('dashboard') : null, 'active' => request()->routeIs('dashboard')],
+        ['label' => 'Dashboard', 'icon' => 'dashboard', 'href' => ($currentUser?->canAccessDashboard() ?? false) ? $safeRoute('dashboard') : null, 'active' => request()->routeIs('dashboard')],
         ['label' => 'Customers', 'icon' => 'customers', 'href' => (!$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('customers', 'read') ?? false)) ? $safeRoute('customers.index') : null, 'active' => request()->routeIs('customers.*')],
         ['label' => 'Rentals', 'icon' => 'rentals', 'href' => (!$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('rentals', 'read') ?? false)) ? $safeRoute('rentals.index') : null, 'active' => request()->routeIs('rentals.*')],
         ['label' => 'Sales', 'icon' => 'sales', 'href' => ($currentUser?->canAccessModule('sales', 'read') ?? false) ? $safeRoute('sales.index') : null, 'active' => request()->routeIs('sales.*')],
@@ -224,7 +225,7 @@
     ];
     $adminModules = ['users', 'roles', 'cities', 'warehouses', 'vendors'];
     $breadcrumbItems = [];
-    $dashboardHref = ($currentUser?->hasPermission('dashboard.main') ?? false)
+    $dashboardHref = ($currentUser?->canAccessDashboard() ?? false)
         ? route('dashboard')
         : ($visibleSidebarSections->flatMap(fn ($section) => $section['items'])->first()['href'] ?? url('/'));
 

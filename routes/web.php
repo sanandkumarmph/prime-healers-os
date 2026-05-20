@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\CityController;
+use App\Http\Controllers\CommunicationCenterController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\BusinessPartnerController;
 use App\Http\Controllers\DeliveryController;
@@ -38,7 +39,6 @@ Route::get('/dashboard', [RentalController::class, 'dashboard'])
     ->middleware([
         'auth',
         'verified',
-        'permission:dashboard.main',
     ])
     ->name('dashboard');
 
@@ -130,6 +130,14 @@ Route::middleware('auth')->group(function () {
     Route::post('/pickup-center/{delivery}/notes', [PickupCenterController::class, 'addNote'])
         ->middleware('module:deliveries,update')
         ->name('pickup-center.notes');
+    Route::get('/communication-center', [CommunicationCenterController::class, 'index'])
+        ->name('communication-center.index');
+    Route::post('/communication-center', [CommunicationCenterController::class, 'store'])
+        ->name('communication-center.store');
+    Route::post('/communication-center/{followUp}/complete', [CommunicationCenterController::class, 'complete'])
+        ->name('communication-center.complete');
+    Route::post('/communication-center/{followUp}/reschedule', [CommunicationCenterController::class, 'reschedule'])
+        ->name('communication-center.reschedule');
     Route::post('/rentals/{rental}/quick-renew', [RentalController::class, 'quickRenew'])
         ->middleware('module:rentals,update')
         ->name('rentals.quick-renew');

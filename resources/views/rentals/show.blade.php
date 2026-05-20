@@ -40,6 +40,30 @@
     $baseBookingPaidAmount = round((float) $baseBookingPayments->sum('amount'), 2);
     $baseBookingTotal = round($baseRentalAmount + $baseDepositAmount + $baseTransportAmount + $baseOtherAmount, 2);
     $baseBookingBalance = round(max($baseBookingTotal - $baseBookingPaidAmount, 0), 2);
+    $reminderContactName = $rental->reminderContactName();
+    $reminderContactPhone = $rental->reminderContactPhone();
+    $deliveryContactName = $rental->deliveryContactName();
+    $deliveryContactPhone = $rental->deliveryContactPhone();
+    $deliveryContactAddress = $rental->deliveryContactAddress();
+    $deliveryContactMapUrl = $rental->deliveryContactMapUrl();
+    $reminderCallHref = $reminderContactPhone ? 'tel:' . preg_replace('/\D+/', '', $reminderContactPhone) : null;
+    $reminderWhatsappHref = \App\Support\WhatsAppHelper::chatUrl(
+        \App\Support\WhatsAppHelper::normalizeNumber($reminderContactPhone),
+        $reminderContactPhone ? "Hello {$reminderContactName}, this is a quick update regarding rental #{$rental->id} from Prime Healers." : null
+    );
+    $rentalFollowUpContextJson = json_encode([
+        'customer_id' => $rental->customer_id,
+        'business_partner_id' => $rental->business_partner_id,
+        'partner_client_id' => $rental->partner_client_id,
+        'rental_id' => $rental->id,
+        'reference' => 'Rental #' . $rental->id,
+        'reminder_contact' => collect([$reminderContactName, $reminderContactPhone])->filter()->implode(' | '),
+        'service_contact' => collect([$deliveryContactName, $deliveryContactPhone])->filter()->implode(' | '),
+        'service_address' => $deliveryContactAddress,
+    ]);
+    $rentalQuickActions = collect();
+    $rentalMoreActions = collect();
+    $rentalInfoItems = collect();
 
     $badge = function (?string $status) {
         return match ($status) {
@@ -99,6 +123,172 @@
         'completed' => 'Completed',
         default => ucfirst(str_replace('_', ' ', $status ?: 'pending')),
     };
+
+    if ($reminderCallHref) {
+        $rentalQuickActions->push([
+            'type' => 'link',
+            'label' => 'Call',
+            'href' => $reminderCallHref,
+        ]);
+    }
+
+    if ($reminderWhatsappHref) {
+        $rentalQuickActions->push([
+            'type' => 'link',
+            'label' => 'WhatsApp',
+            'href' => $reminderWhatsappHref,
+            'target' => '_blank',
+            'rel' => 'noopener',
+            'accent' => true,
+        ]);
+    }
+
+    if ($rental->canRenew() && $canUpdateRentals) {
+        $rentalQuickActions->push([
+            'type' => 'button',
+            'label' => 'Renew',
+            'attributes' => ['data-open-renewal-modal' => true],
+        ]);
+    }
+
+    if ($pickupRecord && $hasOpenPickupTask) {
+        $rentalQuickActions->push([
+            'type' => 'link',
+            'label' => 'Pickup',
+            'href' => route('deliveries.show', $pickupRecord),
+        ]);
+    } elseif ($canAssignPickup && !$hasOpenPickupTask) {
+        $rentalQuickActions->push([
+            'type' => 'link',
+            'label' => 'Pickup',
+            'href' => route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'pickup']),
+        ]);
+    }
+
+    if (!empty($rentalInvoice)) {
+        $rentalQuickActions->push([
+            'type' => 'link',
+            'label' => 'Invoice',
+            'href' => route('invoices.show', $rentalInvoice),
+        ]);
+    } elseif ($canUpdateRentals) {
+        $rentalQuickActions->push([
+            'type' => 'form',
+            'label' => 'Invoice',
+            'action' => route('rentals.invoice', $rental),
+            'method' => 'POST',
+        ]);
+    }
+
+    if ($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true)) {
+        $rentalQuickActions->push([
+            'type' => 'link',
+            'label' => 'Payment',
+            'href' => '#rental-billing-actions',
+        ]);
+    }
+
+    $rentalQuickActions->push([
+        'type' => 'link',
+        'label' => 'Timeline',
+        'href' => '#rental-activity-timeline',
+    ]);
+
+    $rentalMoreActions->push([
+        'type' => 'link',
+        'label' => 'Add Note',
+        'href' => '#rental-activity-timeline',
+    ]);
+    $rentalMoreActions->push([
+        'type' => 'button',
+        'label' => 'Add Follow-up',
+        'attributes' => [
+            'data-open-follow-up-modal' => true,
+            'data-follow-up-context' => $rentalFollowUpContextJson,
+            'data-follow-up-type' => \App\Models\FollowUp::TYPE_RENEWAL,
+            'data-follow-up-priority' => \App\Models\FollowUp::PRIORITY_HIGH,
+        ],
+    ]);
+
+    if ($deliveryRecord && $hasOpenDeliveryTask && auth()->user()?->canAccessModule('deliveries', 'update')) {
+        $rentalMoreActions->push([
+            'type' => 'link',
+            'label' => 'Assign Delivery',
+            'href' => route('deliveries.edit', $deliveryRecord),
+        ]);
+    } elseif ($canCreateDeliveries && !$hasOpenDeliveryTask && $hasPendingDeliveryItems) {
+        $rentalMoreActions->push([
+            'type' => 'link',
+            'label' => 'Assign Delivery',
+            'href' => route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'delivery']),
+        ]);
+    }
+
+    if ($pickupRecord && $hasOpenPickupTask && auth()->user()?->canAccessModule('deliveries', 'update')) {
+        $rentalMoreActions->push([
+            'type' => 'link',
+            'label' => 'Assign Staff',
+            'href' => route('deliveries.edit', $pickupRecord),
+        ]);
+    } elseif ($canAssignPickup && !$hasOpenPickupTask) {
+        $rentalMoreActions->push([
+            'type' => 'link',
+            'label' => 'Assign Staff',
+            'href' => route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'pickup']),
+        ]);
+    }
+
+    if ($rental->customer_id) {
+        $rentalMoreActions->push([
+            'type' => 'link',
+            'label' => 'View Customer',
+            'href' => route('customers.show', $rental->customer_id),
+        ]);
+    }
+
+    if ($rental->business_partner_id) {
+        $rentalMoreActions->push([
+            'type' => 'link',
+            'label' => 'View Business Partner',
+            'href' => route('business-partners.show', $rental->business_partner_id),
+        ]);
+        $rentalMoreActions->push([
+            'type' => 'link',
+            'label' => 'View Actual Client',
+            'href' => route('business-partners.show', $rental->business_partner_id) . '#actual-clients',
+        ]);
+    }
+
+    if ($deliveryContactMapUrl) {
+        $rentalMoreActions->push([
+            'type' => 'link',
+            'label' => 'Open Map',
+            'href' => $deliveryContactMapUrl,
+            'target' => '_blank',
+            'rel' => 'noopener',
+        ]);
+    }
+
+    $rentalInfoItems->push([
+        'label' => 'Reminder / Payment',
+        'value' => collect([$reminderContactName, $reminderContactPhone])->filter()->implode(' | '),
+    ]);
+
+    $rentalInfoItems->push([
+        'label' => 'Delivery / Pickup',
+        'value' => collect([$deliveryContactName, $deliveryContactPhone])->filter()->implode(' | '),
+    ]);
+
+    if ($deliveryContactAddress) {
+        $rentalInfoItems->push([
+            'label' => 'Service Location',
+            'value' => $deliveryContactAddress,
+            'href' => $deliveryContactMapUrl,
+            'target' => '_blank',
+            'rel' => 'noopener',
+            'linkLabel' => 'Open Map',
+        ]);
+    }
 
     $mobilePrimaryActions = collect();
     $mobileMoreActions = collect();
@@ -996,6 +1186,13 @@
             @endif
         </div>
     </div>
+
+    @include('partials.quick-action-toolbar', [
+        'label' => 'Rental Quick Actions',
+        'actions' => $rentalQuickActions,
+        'moreActions' => $rentalMoreActions,
+        'infoItems' => $rentalInfoItems,
+    ])
 
     @if(session('success'))
         <div style="background:#dcfce7;color:#166534;border:1px solid #bbf7d0;padding:12px 14px;border-radius:12px;">
@@ -2045,6 +2242,7 @@
     'actions' => $mobilePrimaryActions->all(),
     'moreActions' => $mobileMoreActions->all(),
 ])
+@include('partials.follow-up-modal')
     {{--
         <div class="rental-cta-meta">
             <span class="rental-cta-eyebrow">Rental Actions</span>

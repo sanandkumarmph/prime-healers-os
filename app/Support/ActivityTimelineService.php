@@ -99,6 +99,9 @@ class ActivityTimelineService
             'pickup.failed_attempt' => 'Pickup failed',
             'pickup.rescheduled' => 'Pickup rescheduled',
             'pickup.note_added' => 'Pickup note added',
+            'followup.created' => 'Follow-up added',
+            'followup.completed' => 'Follow-up completed',
+            'followup.rescheduled' => 'Follow-up rescheduled',
             default => str($log->action)->replace('.', ' ')->replace('_', ' ')->title()->toString(),
         };
     }

@@ -6,6 +6,7 @@ use App\Models\Asset;
 use App\Models\BusinessPartner;
 use App\Models\Customer;
 use App\Models\Delivery;
+use App\Models\FollowUp;
 use App\Models\Invoice;
 use App\Models\Organization;
 use App\Models\PartnerClient;
@@ -182,6 +183,61 @@ class AppServiceProvider extends ServiceProvider
                 ]);
             }
 
+            $followUpsDueToday = (int) ($counts['followUpsDueToday'] ?? 0);
+            if ($followUpsDueToday > 0) {
+                $notifications->push([
+                    'label' => 'Follow-ups due today',
+                    'count' => $followUpsDueToday,
+                    'copy' => 'Calls, renewals, and payment reminders due today.',
+                    'href' => $safeRoute('communication-center.index', ['tab' => 'today']),
+                    'tone' => 'warning',
+                ]);
+            }
+
+            $overdueFollowUps = (int) ($counts['overdueFollowUps'] ?? 0);
+            if ($overdueFollowUps > 0) {
+                $notifications->push([
+                    'label' => 'Overdue follow-ups',
+                    'count' => $overdueFollowUps,
+                    'copy' => 'Missed coordination items that need attention now.',
+                    'href' => $safeRoute('communication-center.index', ['tab' => 'overdue']),
+                    'tone' => 'danger',
+                ]);
+            }
+
+            $failedPickupCount = (int) ($counts['failedPickupCount'] ?? 0);
+            if ($failedPickupCount > 0) {
+                $notifications->push([
+                    'label' => 'Failed pickups',
+                    'count' => $failedPickupCount,
+                    'copy' => 'Pickup attempts failed and need reschedule or escalation.',
+                    'href' => $safeRoute('pickup-center.index', ['tab' => 'failed_attempt']),
+                    'tone' => 'warning',
+                ]);
+            }
+
+            $failedDeliveryCount = (int) ($counts['failedDeliveryCount'] ?? 0);
+            if ($failedDeliveryCount > 0) {
+                $notifications->push([
+                    'label' => 'Failed deliveries',
+                    'count' => $failedDeliveryCount,
+                    'copy' => 'Delivery attempts failed or were cancelled.',
+                    'href' => $safeRoute('deliveries.index', ['status' => 'cancelled']),
+                    'tone' => 'danger',
+                ]);
+            }
+
+            $assignedFollowUps = (int) ($counts['assignedFollowUps'] ?? 0);
+            if ($assignedFollowUps > 0) {
+                $notifications->push([
+                    'label' => 'Assigned follow-ups',
+                    'count' => $assignedFollowUps,
+                    'copy' => 'Pending follow-ups assigned directly to you.',
+                    'href' => $safeRoute('communication-center.index'),
+                    'tone' => 'info',
+                ]);
+            }
+
             $viewAllHref = $safeRoute('dashboard')
                 ?? $notifications->pluck('href')->filter()->first();
 
@@ -215,6 +271,11 @@ class AppServiceProvider extends ServiceProvider
         $deliveriesToday = 0;
         $pickupsToday = 0;
         $maintenanceAssets = 0;
+        $followUpsDueToday = 0;
+        $overdueFollowUps = 0;
+        $failedPickupCount = 0;
+        $failedDeliveryCount = 0;
+        $assignedFollowUps = 0;
 
         if ($user?->canAccessModule('rentals', 'read') ?? false) {
             $overdueRentalsCount = Rental::query()
@@ -258,6 +319,20 @@ class AppServiceProvider extends ServiceProvider
                 ->whereDate('scheduled_at', $today)
                 ->count();
 
+            $failedPickupCount = Schema::hasColumn('deliveries', 'pickup_status')
+                ? Delivery::query()
+                    ->where('organization_id', $organizationId)
+                    ->where('type', 'pickup')
+                    ->where('pickup_status', 'failed_attempt')
+                    ->count()
+                : 0;
+
+            $failedDeliveryCount = Delivery::query()
+                ->where('organization_id', $organizationId)
+                ->where('type', 'delivery')
+                ->where('status', 'cancelled')
+                ->count();
+
             $sidebarPendingCounts['tasks_board'] = $openDeliveryTasks + $openPickupTasks;
         }
 
@@ -286,6 +361,28 @@ class AppServiceProvider extends ServiceProvider
             $sidebarPendingCounts['return_verification'] = $awaitingVerificationAssets;
         }
 
+        if (Schema::hasTable('follow_ups') && !($user?->isDelivery() ?? false)) {
+            $followUpBaseQuery = FollowUp::query()
+                ->where('organization_id', $organizationId)
+                ->whereNotIn('status', [FollowUp::STATUS_COMPLETED, FollowUp::STATUS_CANCELLED]);
+
+            $followUpsDueToday = (clone $followUpBaseQuery)
+                ->whereDate('due_at', $today)
+                ->count();
+
+            $overdueFollowUps = (clone $followUpBaseQuery)
+                ->where('due_at', '<', now())
+                ->count();
+
+            $assignedFollowUps = (clone $followUpBaseQuery)
+                ->where('assigned_user_id', $user->id)
+                ->count();
+
+            if ($followUpsDueToday > 0 || $overdueFollowUps > 0) {
+                $sidebarPendingCounts['communication_center'] = $followUpsDueToday + $overdueFollowUps;
+            }
+        }
+
         return [
             'sidebarPendingCounts' => $sidebarPendingCounts,
             'overdueRentalsCount' => $overdueRentalsCount,
@@ -293,6 +390,11 @@ class AppServiceProvider extends ServiceProvider
             'deliveriesToday' => $deliveriesToday,
             'pickupsToday' => $pickupsToday,
             'maintenanceAssets' => $maintenanceAssets,
+            'followUpsDueToday' => $followUpsDueToday,
+            'overdueFollowUps' => $overdueFollowUps,
+            'failedPickupCount' => $failedPickupCount,
+            'failedDeliveryCount' => $failedDeliveryCount,
+            'assignedFollowUps' => $assignedFollowUps,
         ];
     }
 
