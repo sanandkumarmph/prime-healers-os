@@ -61,13 +61,63 @@ class SaleController extends Controller
         return BusinessPartner::query()
             ->where('organization_id', $this->orgId())
             ->where('status', 'active')
-            ->with(['partnerClients' => function ($query) {
+            ->select([
+                'id',
+                'organization_id',
+                'business_name',
+                'contact_person',
+                'phone',
+                'whatsapp',
+                'email',
+                'address',
+                'city',
+                'state',
+                'location',
+                'gst_registered',
+                'gstin',
+                'legal_name',
+                'billing_state',
+                'billing_address',
+                'billing_city',
+                'billing_pincode',
+                'status',
+            ])
+            ->withCount(['partnerClients as partner_clients_count' => function ($query) {
                 $query->where('organization_id', $this->orgId())
-                    ->where('status', 'active')
-                    ->orderBy('client_name');
+                    ->where('status', 'active');
             }])
             ->orderBy('business_name')
             ->get();
+    }
+
+    private function partnerClientsForForm(?int $businessPartnerId)
+    {
+        if (!$this->businessPartnerFlowAvailable() || !$businessPartnerId) {
+            return collect();
+        }
+
+        return PartnerClient::query()
+            ->where('organization_id', $this->orgId())
+            ->where('business_partner_id', $businessPartnerId)
+            ->where('status', 'active')
+            ->orderBy('client_name')
+            ->get([
+                'id',
+                'organization_id',
+                'business_partner_id',
+                'client_name',
+                'phone',
+                'alternate_phone',
+                'address',
+                'city',
+                'state',
+                'pincode',
+                'location',
+                'latitude',
+                'longitude',
+                'delivery_notes',
+                'status',
+            ]);
     }
 
     private function hasBusinessPartnersTable(): bool
@@ -83,6 +133,27 @@ class SaleController extends Controller
     private function businessPartnerFlowAvailable(): bool
     {
         return $this->hasBusinessPartnersTable() && $this->hasPartnerClientsTable();
+    }
+
+    private function selectedBusinessPartnerIdFromRequest(?Sale $sale = null): ?int
+    {
+        $value = old('business_partner_id');
+
+        if (filled($value)) {
+            return (int) $value;
+        }
+
+        $fallback = request()->integer('business_partner_id');
+
+        if ($fallback > 0) {
+            return $fallback;
+        }
+
+        if ($sale?->business_partner_id) {
+            return (int) $sale->business_partner_id;
+        }
+
+        return null;
     }
 
     private function saleCustomerTypeFromRequest(Request $request, ?Sale $sale = null): string
@@ -1831,9 +1902,14 @@ class SaleController extends Controller
     {
         $this->authorize('create', Sale::class);
 
-        $customers = Customer::where('organization_id', $this->orgId())->orderBy('name')->get();
+        $customers = Customer::query()
+            ->where('organization_id', $this->orgId())
+            ->select(['id', 'name', 'phone', 'email', 'address', 'city', 'state', 'pincode', 'location'])
+            ->orderBy('name')
+            ->get();
         $businessPartnerFlowAvailable = $this->businessPartnerFlowAvailable();
         $businessPartners = $this->businessPartnersForForm();
+        $initialPartnerClients = $this->partnerClientsForForm($this->selectedBusinessPartnerIdFromRequest());
         $products = Product::where('organization_id', $this->orgId())
             ->orderBy('name')
             ->get()
@@ -1852,7 +1928,41 @@ class SaleController extends Controller
             ->latest('id')
             ->get();
 
-        return view('sales.create', compact('customers', 'businessPartners', 'businessPartnerFlowAvailable', 'products', 'assets', 'rentals'));
+        return view('sales.create', compact('customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'rentals'));
+    }
+
+    public function businessPartnerActualClients(BusinessPartner $businessPartner)
+    {
+        $this->authorize('create', Sale::class);
+
+        abort_unless($this->businessPartnerFlowAvailable(), 404);
+        abort_if((int) $businessPartner->organization_id !== (int) $this->orgId(), 403);
+
+        $clients = $this->partnerClientsForForm((int) $businessPartner->id)
+            ->map(fn (PartnerClient $client) => [
+                'id' => $client->id,
+                'business_partner_id' => $client->business_partner_id,
+                'name' => $client->displayName(),
+                'phone' => $client->primaryPhone(),
+                'alternate_phone' => $client->alternate_phone,
+                'address' => $client->address,
+                'city' => $client->city,
+                'state' => $client->state,
+                'location' => $client->openMapUrl(),
+                'delivery_notes' => $client->delivery_notes,
+                'search' => trim(implode(' ', array_filter([
+                    $client->displayName(),
+                    $client->primaryPhone(),
+                    $client->address,
+                    $client->city,
+                    $client->state,
+                ]))),
+            ])
+            ->values();
+
+        return response()->json([
+            'partner_clients' => $clients,
+        ]);
     }
 
     public function store(Request $request)
@@ -2187,9 +2297,14 @@ class SaleController extends Controller
                 ->all()
             : [(int) $sale->product_id];
 
-        $customers = Customer::where('organization_id', $this->orgId())->orderBy('name')->get();
+        $customers = Customer::query()
+            ->where('organization_id', $this->orgId())
+            ->select(['id', 'name', 'phone', 'email', 'address', 'city', 'state', 'pincode', 'location'])
+            ->orderBy('name')
+            ->get();
         $businessPartnerFlowAvailable = $this->businessPartnerFlowAvailable();
         $businessPartners = $this->businessPartnersForForm();
+        $initialPartnerClients = $this->partnerClientsForForm($this->selectedBusinessPartnerIdFromRequest($sale));
         $products = Product::where('organization_id', $this->orgId())
             ->orderBy('name')
             ->get()
@@ -2224,7 +2339,7 @@ class SaleController extends Controller
             $sale->loadMissing(['saleItems.product', 'saleItems.asset.warehouse', 'saleItems.warehouse']);
         }
 
-        return view('sales.edit', compact('sale', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'products', 'assets', 'rentals'));
+        return view('sales.edit', compact('sale', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'rentals'));
     }
 
     public function update(Request $request, Sale $sale)

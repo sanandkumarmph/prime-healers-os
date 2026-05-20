@@ -76,6 +76,25 @@ class PickupCenterRegressionTest extends TestCase
             ->assertSeeText($partner->displayName());
     }
 
+    public function test_pickup_center_renders_separate_contact_sections_and_compact_more_actions(): void
+    {
+        $pickup = $this->makePickupTask([
+            'pickup_status' => 'assigned',
+        ], [
+            'address' => 'Very Long Pickup Address, Block A, 4th Cross, Indiranagar Extension, Bengaluru, Karnataka 560038',
+        ]);
+
+        $this->get(route('pickup-center.index'))
+            ->assertOk()
+            ->assertSeeText('Pickup #' . $pickup->id)
+            ->assertSeeText('Pickup From')
+            ->assertSeeText('Reminder / Payment')
+            ->assertSeeText('Address')
+            ->assertSeeText('More')
+            ->assertSee('pickup-card-contacts', false)
+            ->assertSee('pickup-more-menu', false);
+    }
+
     public function test_assign_staff_updates_pickup_task(): void
     {
         $pickup = $this->makePickupTask();

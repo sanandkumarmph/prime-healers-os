@@ -117,35 +117,114 @@
         background:#f8fafc; border:1px solid #dbe3ef; color:#475569; font-size:12px; font-weight:700;
     }
     .pickup-list { display:grid; gap:14px; }
-    .pickup-center-card { padding:16px; display:grid; gap:14px; }
-    .pickup-card-top { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) auto; gap:16px; align-items:start; }
-    .pickup-card-main { display:grid; gap:8px; }
+    .pickup-center-card { padding:16px; display:grid; gap:14px; overflow:hidden; }
+    .pickup-card-top { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:16px; align-items:start; }
+    .pickup-card-main { display:grid; gap:8px; min-width:0; }
     .pickup-card-main h2 { margin:0; font-size:18px; color:#0f172a; }
-    .pickup-card-line { color:#475569; font-size:13px; }
+    .pickup-card-line { color:#475569; font-size:13px; min-width:0; overflow-wrap:anywhere; }
     .pickup-card-strong { color:#0f172a; font-weight:800; }
-    .pickup-card-subtle { color:#64748b; font-size:12px; line-height:1.55; }
+    .pickup-card-subtle { color:#64748b; font-size:12px; line-height:1.55; overflow-wrap:anywhere; }
+    .pickup-card-headline { display:flex; flex-wrap:wrap; gap:8px; align-items:center; min-width:0; }
     .pickup-status-chip {
         display:inline-flex; align-items:center; padding:6px 10px; border-radius:999px;
         border:1px solid transparent; font-size:11px; font-weight:800; letter-spacing:.04em; text-transform:uppercase;
     }
-    .pickup-card-side { display:grid; gap:8px; }
-    .pickup-summary-strip {
-        display:grid; gap:8px; padding:12px 14px; border-radius:16px; background:#f8fafc; border:1px solid #e5edf7;
-    }
-    .pickup-summary-row { display:grid; gap:4px; }
-    .pickup-summary-label { font-size:11px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:#64748b; }
-    .pickup-summary-value { font-size:13px; color:#0f172a; font-weight:700; }
-    .pickup-card-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+    .pickup-card-actions-wrap { display:grid; gap:10px; justify-items:end; min-width:0; max-width:420px; }
+    .pickup-card-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; min-width:0; }
     .pickup-card-actions > * { min-width:0; }
     .pickup-card-actions .pickup-btn,
     .pickup-card-actions .pickup-btn-soft,
     .pickup-card-actions .pickup-btn-ghost { min-height:40px; }
+    .pickup-more-menu { position:relative; min-width:0; }
+    .pickup-more-menu summary { list-style:none; }
+    .pickup-more-menu summary::-webkit-details-marker { display:none; }
+    .pickup-more-menu[open] summary {
+        background:#eef2ff;
+        border-color:#c7d2fe;
+        color:#3730a3;
+    }
+    .pickup-summary-strip { display:none; }
+    .pickup-more-panel {
+        position:absolute;
+        right:0;
+        top:calc(100% + 8px);
+        min-width:220px;
+        max-width:min(280px, calc(100vw - 48px));
+        padding:10px;
+        border-radius:16px;
+        border:1px solid #dbe3ef;
+        background:#fff;
+        box-shadow:0 18px 40px rgba(15,23,42,.12);
+        display:grid;
+        gap:8px;
+        z-index:30;
+    }
+    .pickup-more-link,
+    .pickup-more-button {
+        width:100%;
+        display:inline-flex;
+        align-items:center;
+        justify-content:flex-start;
+        min-height:38px;
+        padding:9px 11px;
+        border-radius:12px;
+        border:1px solid #e5edf7;
+        background:#fff;
+        color:#334155;
+        font-size:12px;
+        font-weight:800;
+        text-decoration:none;
+        cursor:pointer;
+        box-sizing:border-box;
+    }
+    .pickup-more-button { font-family:inherit; }
+    .pickup-more-link:hover,
+    .pickup-more-button:hover {
+        background:#f8fafc;
+        border-color:#cbd5e1;
+    }
+    .pickup-card-contacts { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; }
+    .pickup-contact-block {
+        display:grid;
+        gap:6px;
+        min-width:0;
+        padding:12px 14px;
+        border-radius:16px;
+        background:#f8fafc;
+        border:1px solid #e5edf7;
+    }
+    .pickup-contact-label {
+        font-size:11px;
+        font-weight:800;
+        letter-spacing:.05em;
+        text-transform:uppercase;
+        color:#64748b;
+    }
+    .pickup-contact-value {
+        font-size:13px;
+        color:#0f172a;
+        font-weight:700;
+        line-height:1.55;
+        overflow-wrap:anywhere;
+    }
+    .pickup-contact-link {
+        display:inline-flex;
+        align-items:center;
+        gap:6px;
+        color:#2563eb;
+        font-size:12px;
+        font-weight:800;
+        text-decoration:none;
+        width:max-content;
+        max-width:100%;
+    }
+    .pickup-contact-link:hover { text-decoration:underline; }
     .pickup-kv { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:10px; }
     .pickup-kv-item {
-        padding:12px 13px; border-radius:14px; background:#fbfdff; border:1px solid #e5edf7; display:grid; gap:4px;
+        padding:12px 13px; border-radius:14px; background:#fbfdff; border:1px solid #e5edf7; display:grid; gap:4px; min-width:0;
     }
     .pickup-kv-item span { font-size:11px; color:#64748b; font-weight:800; text-transform:uppercase; letter-spacing:.05em; }
-    .pickup-kv-item strong { font-size:13px; color:#0f172a; line-height:1.45; }
+    .pickup-kv-item strong { font-size:13px; color:#0f172a; line-height:1.45; overflow-wrap:anywhere; }
     .pickup-empty { padding:28px 18px; text-align:center; color:#64748b; }
     .pickup-empty strong { display:block; color:#0f172a; font-size:18px; margin-bottom:6px; }
     .pickup-modal[hidden] { display:none; }
@@ -177,7 +256,9 @@
     @media (max-width: 960px) {
         .pickup-search-row { grid-template-columns:repeat(2, minmax(0,1fr)); }
         .pickup-card-top { grid-template-columns:1fr; }
+        .pickup-card-actions-wrap { justify-items:start; max-width:none; }
         .pickup-card-actions { justify-content:flex-start; }
+        .pickup-card-contacts { grid-template-columns:1fr; }
         .pickup-kv { grid-template-columns:repeat(2, minmax(0, 1fr)); }
     }
     @media (max-width: 640px) {
@@ -193,6 +274,14 @@
             grid-template-columns:repeat(2, minmax(0, 1fr));
         }
         .pickup-card-actions > * { width:100%; }
+        .pickup-more-menu { width:100%; }
+        .pickup-more-panel {
+            position:static;
+            min-width:0;
+            max-width:none;
+            box-shadow:none;
+            margin-top:8px;
+        }
         .pickup-modal { padding:0; align-items:stretch; }
         .pickup-modal-dialog { width:100%; max-height:100vh; border-radius:0; }
     }
@@ -271,6 +360,7 @@
                 $workflowTarget = $pickup->status === 'completed'
                     ? route('deliveries.show', $pickup) . '#delivery-proof-history'
                     : $workflowHref($pickup);
+                $canManagePickup = $pickup->status !== 'completed' && $pickup->status !== 'cancelled';
                 $whatsAppMessage = trim(collect([
                     'Pickup reminder for rental #' . ($rental?->id ?? $pickup->rental_id),
                     'Product: ' . ($rental?->product?->name ?? 'Rental product'),
@@ -280,7 +370,7 @@
             <article class="pickup-center-card">
                 <div class="pickup-card-top">
                     <div class="pickup-card-main">
-                        <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+                        <div class="pickup-card-headline">
                             <h2>Pickup #{{ $pickup->id }}</h2>
                             <span class="pickup-status-chip" style="{{ $statusTone($status) }}">{{ $pickup->pickupOperationalLabel() }}</span>
                             @if($pickup->paymentPending())
@@ -315,26 +405,51 @@
                         </div>
                     </div>
 
-                    <div class="pickup-card-actions">
-                        @if($phoneLink($phone))
-                            <a href="{{ $phoneLink($phone) }}" class="pickup-btn-soft">Call</a>
-                        @endif
-                        @if($waLink($phone, $whatsAppMessage))
-                            <a href="{{ $waLink($phone, $whatsAppMessage) }}" target="_blank" rel="noopener" class="pickup-btn-soft">WhatsApp</a>
-                        @endif
+                    <div class="pickup-card-actions-wrap">
+                        <div class="pickup-card-actions">
+                            @if($phoneLink($phone))
+                                <a href="{{ $phoneLink($phone) }}" class="pickup-btn-soft">Call</a>
+                            @endif
+                            @if($waLink($phone, $whatsAppMessage))
+                                <a href="{{ $waLink($phone, $whatsAppMessage) }}" target="_blank" rel="noopener" class="pickup-btn-soft">WhatsApp</a>
+                            @endif
+                            @if($mapUrl)
+                                <a href="{{ $mapUrl }}" target="_blank" rel="noopener" class="pickup-btn-soft">Open Map</a>
+                            @endif
+                            <a href="{{ $workflowTarget }}" class="pickup-btn">{{ $workflowLabel }}</a>
+                            <details class="pickup-more-menu">
+                                <summary class="pickup-btn-ghost">More</summary>
+                                <div class="pickup-more-panel">
+                                    @if($canManagePickup)
+                                        <button type="button" class="pickup-more-button" data-open-modal="assign-{{ $pickup->id }}">Assign Staff</button>
+                                        <button type="button" class="pickup-more-button" data-open-modal="failed-{{ $pickup->id }}">Failed Attempt</button>
+                                        <button type="button" class="pickup-more-button" data-open-modal="reschedule-{{ $pickup->id }}">Reschedule</button>
+                                        <button type="button" class="pickup-more-button" data-open-modal="note-{{ $pickup->id }}">Add Note</button>
+                                    @endif
+                                    <a href="{{ route('rentals.show', $rental) }}" class="pickup-more-link">View Rental</a>
+                                    @if($invoice)
+                                        <a href="{{ route('invoices.show', $invoice) }}" class="pickup-more-link">View Invoice</a>
+                                    @endif
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pickup-card-contacts">
+                    <div class="pickup-contact-block">
+                        <span class="pickup-contact-label">Pickup From</span>
+                        <span class="pickup-contact-value">{{ $pickup->linkedCustomerName() }} • {{ $pickup->linkedCustomerPhone() ?: 'No phone' }}</span>
+                    </div>
+                    <div class="pickup-contact-block">
+                        <span class="pickup-contact-label">Reminder / Payment</span>
+                        <span class="pickup-contact-value">{{ $pickup->reminderContactName() }} • {{ $reminderPhone ?: 'No phone' }}</span>
+                    </div>
+                    <div class="pickup-contact-block">
+                        <span class="pickup-contact-label">Address</span>
+                        <span class="pickup-contact-value">{{ $pickup->linkedCustomerAddress() ?: 'No pickup address saved' }}</span>
                         @if($mapUrl)
-                            <a href="{{ $mapUrl }}" target="_blank" rel="noopener" class="pickup-btn-soft">Open Map</a>
-                        @endif
-                        <a href="{{ $workflowTarget }}" class="pickup-btn">{{ $workflowLabel }}</a>
-                        @if($pickup->status !== 'completed' && $pickup->status !== 'cancelled')
-                            <button type="button" class="pickup-btn-ghost" data-open-modal="assign-{{ $pickup->id }}">Assign Staff</button>
-                            <button type="button" class="pickup-btn-ghost" data-open-modal="failed-{{ $pickup->id }}">Failed Attempt</button>
-                            <button type="button" class="pickup-btn-ghost" data-open-modal="reschedule-{{ $pickup->id }}">Reschedule</button>
-                            <button type="button" class="pickup-btn-ghost" data-open-modal="note-{{ $pickup->id }}">Add Note</button>
-                        @endif
-                        <a href="{{ route('rentals.show', $rental) }}" class="pickup-btn-ghost">View Rental</a>
-                        @if($invoice)
-                            <a href="{{ route('invoices.show', $invoice) }}" class="pickup-btn-ghost">View Invoice</a>
+                            <a href="{{ $mapUrl }}" target="_blank" rel="noopener" class="pickup-contact-link">Open Map</a>
                         @endif
                     </div>
                 </div>
@@ -499,9 +614,19 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', () => {
+        const moreMenus = Array.from(document.querySelectorAll('.pickup-more-menu'));
+        const closeMoreMenus = (except = null) => {
+            moreMenus.forEach((menu) => {
+                if (menu !== except) {
+                    menu.removeAttribute('open');
+                }
+            });
+        };
+
         const openModal = (key) => {
             const modal = document.querySelector(`[data-pickup-modal="${key}"]`);
             if (!modal) return;
+            closeMoreMenus();
             modal.hidden = false;
             document.body.style.overflow = 'hidden';
         };
@@ -513,6 +638,14 @@
 
         document.querySelectorAll('[data-open-modal]').forEach((button) => {
             button.addEventListener('click', () => openModal(button.dataset.openModal));
+        });
+
+        moreMenus.forEach((menu) => {
+            menu.addEventListener('toggle', () => {
+                if (menu.open) {
+                    closeMoreMenus(menu);
+                }
+            });
         });
 
         document.querySelectorAll('[data-pickup-modal]').forEach((modal) => {
@@ -529,11 +662,18 @@
 
         document.addEventListener('keydown', (event) => {
             if (event.key !== 'Escape') return;
+            closeMoreMenus();
             document.querySelectorAll('[data-pickup-modal]').forEach((modal) => {
                 if (!modal.hidden) {
                     closeModal(modal);
                 }
             });
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!event.target.closest('.pickup-more-menu')) {
+                closeMoreMenus();
+            }
         });
     });
 </script>

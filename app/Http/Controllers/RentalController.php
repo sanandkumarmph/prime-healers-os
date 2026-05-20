@@ -93,13 +93,63 @@ class RentalController extends Controller
         return BusinessPartner::query()
             ->where('organization_id', $this->orgId())
             ->where('status', 'active')
-            ->with(['partnerClients' => function ($query) {
+            ->select([
+                'id',
+                'organization_id',
+                'business_name',
+                'contact_person',
+                'phone',
+                'whatsapp',
+                'email',
+                'address',
+                'city',
+                'state',
+                'location',
+                'gst_registered',
+                'gstin',
+                'legal_name',
+                'billing_state',
+                'billing_address',
+                'billing_city',
+                'billing_pincode',
+                'status',
+            ])
+            ->withCount(['partnerClients as partner_clients_count' => function ($query) {
                 $query->where('organization_id', $this->orgId())
-                    ->where('status', 'active')
-                    ->orderBy('client_name');
+                    ->where('status', 'active');
             }])
             ->orderBy('business_name')
             ->get();
+    }
+
+    private function partnerClientsForForm(?int $businessPartnerId)
+    {
+        if (!$this->businessPartnerFlowAvailable() || !$businessPartnerId) {
+            return collect();
+        }
+
+        return PartnerClient::query()
+            ->where('organization_id', $this->orgId())
+            ->where('business_partner_id', $businessPartnerId)
+            ->where('status', 'active')
+            ->orderBy('client_name')
+            ->get([
+                'id',
+                'organization_id',
+                'business_partner_id',
+                'client_name',
+                'phone',
+                'alternate_phone',
+                'address',
+                'city',
+                'state',
+                'pincode',
+                'location',
+                'latitude',
+                'longitude',
+                'delivery_notes',
+                'status',
+            ]);
     }
 
     private function hasBusinessPartnersTable(): bool
@@ -115,6 +165,27 @@ class RentalController extends Controller
     private function businessPartnerFlowAvailable(): bool
     {
         return $this->hasBusinessPartnersTable() && $this->hasPartnerClientsTable();
+    }
+
+    private function selectedBusinessPartnerIdFromRequest(?Rental $rental = null): ?int
+    {
+        $value = old('business_partner_id');
+
+        if (filled($value)) {
+            return (int) $value;
+        }
+
+        $fallback = request()->integer('business_partner_id');
+
+        if ($fallback > 0) {
+            return $fallback;
+        }
+
+        if ($rental?->business_partner_id) {
+            return (int) $rental->business_partner_id;
+        }
+
+        return null;
     }
 
     private function rentalCustomerTypeFromRequest(Request $request, ?Rental $rental = null): string
@@ -4464,6 +4535,8 @@ class RentalController extends Controller
         $selectedCustomer = null;
         $businessPartnerFlowAvailable = $this->businessPartnerFlowAvailable();
         $businessPartners = $this->businessPartnersForForm();
+        $selectedBusinessPartnerId = $this->selectedBusinessPartnerIdFromRequest();
+        $initialPartnerClients = $this->partnerClientsForForm($selectedBusinessPartnerId);
         $requestedCustomerId = request()->integer('customer_id');
 
         if ($requestedCustomerId > 0) {
@@ -4485,7 +4558,11 @@ class RentalController extends Controller
 
         $products = $this->productsForRentalForm();
         $rentalProducts = $this->rentalProductsForSelection($products);
-        $customers = Customer::where('organization_id', $this->orgId())->orderBy('name')->get();
+        $customers = Customer::query()
+            ->where('organization_id', $this->orgId())
+            ->select(['id', 'name', 'phone', 'email', 'address', 'city', 'state', 'pincode', 'location'])
+            ->orderBy('name')
+            ->get();
         $saleAssets = $this->availableSaleAssets();
         $staffMembers = $this->assignableStaffMembers();
         $assignableUsers = $this->assignableUsers();
@@ -4498,7 +4575,43 @@ class RentalController extends Controller
 
         $organization = Organization::find($this->orgId());
 
-        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses', 'organization', 'selectedCustomer'));
+        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses', 'organization', 'selectedCustomer'));
+    }
+
+    public function businessPartnerActualClients(BusinessPartner $businessPartner)
+    {
+        $this->ensureRentalAccess();
+        $this->authorize('create', Rental::class);
+
+        abort_unless($this->businessPartnerFlowAvailable(), 404);
+        abort_if((int) $businessPartner->organization_id !== (int) $this->orgId(), 403);
+
+        $clients = $this->partnerClientsForForm((int) $businessPartner->id)
+            ->map(fn (PartnerClient $client) => [
+                'id' => $client->id,
+                'business_partner_id' => $client->business_partner_id,
+                'name' => $client->displayName(),
+                'phone' => PhoneNumber::local($client->primaryPhone()) ?: $client->primaryPhone(),
+                'phone_country' => PhoneNumber::countryCode($client->primaryPhone()),
+                'alternate_phone' => $client->alternate_phone,
+                'address' => $client->address,
+                'city' => $client->city,
+                'state' => $client->state,
+                'location' => $client->openMapUrl(),
+                'delivery_notes' => $client->delivery_notes,
+                'search' => trim(implode(' ', array_filter([
+                    $client->displayName(),
+                    $client->primaryPhone(),
+                    $client->address,
+                    $client->city,
+                    $client->state,
+                ]))),
+            ])
+            ->values();
+
+        return response()->json([
+            'partner_clients' => $clients,
+        ]);
     }
 
     public function store(Request $request)
@@ -5243,8 +5356,13 @@ class RentalController extends Controller
         $businessPartnerFlowAvailable = $this->businessPartnerFlowAvailable();
         $products = $this->productsForRentalForm();
         $rentalProducts = $this->rentalProductsForSelection($products);
-        $customers = Customer::where('organization_id', $this->orgId())->orderBy('name')->get();
+        $customers = Customer::query()
+            ->where('organization_id', $this->orgId())
+            ->select(['id', 'name', 'phone', 'email', 'address', 'city', 'state', 'pincode', 'location'])
+            ->orderBy('name')
+            ->get();
         $businessPartners = $this->businessPartnersForForm();
+        $initialPartnerClients = $this->partnerClientsForForm($this->selectedBusinessPartnerIdFromRequest($rental));
         $saleAssets = $this->availableSaleAssets($rental);
         $staffMembers = $this->assignableStaffMembers();
         $assignableUsers = $this->assignableUsers();
@@ -5257,7 +5375,7 @@ class RentalController extends Controller
 
         $organization = Organization::find($this->orgId());
 
-        return view('rentals.edit', compact('rental', 'products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses', 'organization'));
+        return view('rentals.edit', compact('rental', 'products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses', 'organization'));
     }
 
     public function update(Request $request, Rental $rental)

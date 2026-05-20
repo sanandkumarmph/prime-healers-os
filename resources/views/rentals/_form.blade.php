@@ -2,6 +2,7 @@
     $isEdit = isset($rental);
     $selectedCustomer = $selectedCustomer ?? null;
     $businessPartners = $businessPartners ?? collect();
+    $initialPartnerClients = $initialPartnerClients ?? collect();
     $businessPartnerFlowAvailable = $businessPartnerFlowAvailable ?? true;
     $customerTypeValue = old('customer_type', $isEdit ? $rental->customerTypeValue() : 'direct_customer');
     if (!$businessPartnerFlowAvailable && $customerTypeValue === 'business_partner') {
@@ -11,8 +12,7 @@
     $selectedBusinessPartnerId = (int) old('business_partner_id', $isEdit ? ($rental->business_partner_id ?? 0) : 0);
     $selectedPartnerClientId = (int) old('partner_client_id', $isEdit ? ($rental->partner_client_id ?? 0) : 0);
     $selectedBusinessPartner = $businessPartners->firstWhere('id', $selectedBusinessPartnerId);
-    $allPartnerClients = $businessPartners->pluck('partnerClients')->flatten(1);
-    $selectedPartnerClient = $allPartnerClients->firstWhere('id', $selectedPartnerClientId);
+    $selectedPartnerClient = $initialPartnerClients->firstWhere('id', $selectedPartnerClientId);
     $shouldShowRentalCustomerSummary = $customerTypeValue === 'business_partner'
         ? (bool) ($selectedBusinessPartner || $selectedPartnerClient)
         : filled($selectedCustomerId);
@@ -98,39 +98,6 @@
         return in_array($staff->effective_role ?? null, ['vendor', 'third_party'], true);
     })->values();
     $phoneParts = \App\Support\PhoneNumber::split(old('phone', $isEdit ? $rental->phone : ($selectedCustomer?->phone ?? '')));
-    $businessPartnerData = $businessPartners->map(function ($partner) {
-        return [
-            'id' => $partner->id,
-            'name' => $partner->displayName(),
-            'contact_person' => $partner->contact_person,
-            'phone' => $partner->phone,
-            'whatsapp' => $partner->whatsapp,
-            'email' => $partner->email,
-            'gst_registered' => (bool) $partner->gst_registered,
-            'gstin' => $partner->gstin,
-            'legal_name' => $partner->legal_name,
-            'address' => $partner->address,
-            'city' => $partner->city,
-            'state' => $partner->state,
-            'billing_state' => $partner->billingStateValue(),
-            'location' => $partner->openMapUrl(),
-            'clients' => $partner->partnerClients->map(function ($client) {
-                return [
-                    'id' => $client->id,
-                    'business_partner_id' => $client->business_partner_id,
-                    'name' => $client->displayName(),
-                    'phone' => $client->primaryPhone(),
-                    'alternate_phone' => $client->alternate_phone,
-                    'address' => $client->address,
-                    'city' => $client->city,
-                    'state' => $client->state,
-                    'location' => $client->openMapUrl(),
-                    'delivery_notes' => $client->delivery_notes,
-                ];
-            })->values()->all(),
-        ];
-    })->values();
-
     if ($selectedDeliveryAssignment === null && $isEdit) {
         $selectedDeliveryAssignment = ($rental->deliveryRecord?->assignment_type ?? null) === 'third_party'
             ? 'third_party'
@@ -1073,7 +1040,12 @@
                                         data-name="{{ $partner->displayName() }}"
                                         data-phone="{{ $partner->phone }}"
                                         data-email="{{ $partner->email }}"
+                                        data-address="{{ $partner->address }}"
+                                        data-city="{{ $partner->city }}"
                                         data-state="{{ $partner->state }}"
+                                        data-billing-state="{{ $partner->billingStateValue() }}"
+                                        data-location="{{ $partner->openMapUrl() }}"
+                                        data-partner-clients-count="{{ (int) ($partner->partner_clients_count ?? 0) }}"
                                         data-search="{{ trim(implode(' ', array_filter([$partner->displayName(), $partner->contact_person, $partner->phone, $partner->email, $partner->city, $partner->state]))) }}"
                                         {{ $selectedBusinessPartnerId === $partner->id ? 'selected' : '' }}>
                                         {{ $partner->displayName() }}{{ $partner->phone ? ' • ' . $partner->phone : '' }}
@@ -1092,7 +1064,7 @@
                             <label for="partner_client_id">Actual Client / Delivery Location</label>
                             <select name="partner_client_id" id="partner_client_id" data-searchable-select data-search-placeholder="Search actual client by name, phone, address, or city">
                                 <option value="">Select actual client</option>
-                                @foreach($allPartnerClients as $client)
+                                @foreach($initialPartnerClients as $client)
                                     <option
                                         value="{{ $client->id }}"
                                         data-business-partner-id="{{ $client->business_partner_id }}"
@@ -1118,7 +1090,7 @@
                     </div>
                     <div class="party-flow-helper" id="partnerClientHelper" data-customer-mode-block="business_partner"{{ $selectedPartnerClient ? ' hidden' : '' }}>
                         <strong id="partnerClientHelperTitle">{{ $selectedBusinessPartner ? 'Select or add an actual delivery client.' : 'Select a business partner to continue.' }}</strong>
-                        <span id="partnerClientHelperText">{{ $selectedBusinessPartner ? ($selectedBusinessPartner->partnerClients->count() ? 'Choose the delivery or service client for this rental.' : 'No actual clients added for this business partner yet.') : 'The actual client will be used for delivery, pickup, and service.' }}</span>
+                        <span id="partnerClientHelperText">{{ $selectedBusinessPartner ? (((int) ($selectedBusinessPartner->partner_clients_count ?? 0)) > 0 ? 'Choose the delivery or service client for this rental.' : 'No actual clients added for this business partner yet.') : 'The actual client will be used for delivery, pickup, and service.' }}</span>
                     </div>
                 </div>
 
@@ -1664,21 +1636,23 @@
         let currentAssets = [];
         let rentalItems = @json($additionalRentalRows);
         let saleItems = @json($saleItemRows);
-        const businessPartners = @json($businessPartnerData);
         const standardGstRates = ['0.00', '5.00', '12.00', '18.00', '28.00'];
         let rentalAmountTouched = Boolean(@json($isEdit || (old('rental_amount') !== null && old('rental_amount') !== '')));
         const assetVisibleStep = 3;
         let visibleAssetCount = assetVisibleStep;
         const currentRentalId = @json($isEdit ? $rental->id : null);
         const organizationState = @json($organization?->state ?? null);
+        const partnerClientEndpointTemplate = @json($businessPartnerFlowAvailable ? route('rentals.business-partners.actual-clients', ['business_partner' => '__PARTNER__']) : null);
         const rentalProductOptionsHtml = `<option value="">Select rental product</option>@foreach($rentalProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->rental_price ?? $product->price_per_day ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-search="{{ e(trim(implode(' ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code, $product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))])))) }}">{{ e($product->name) }} | {{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}</option>@endforeach`;
         const saleProductOptionsHtml = `<option value="">Select new product</option>@foreach($sellableProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->sale_price ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-search="{{ e(trim(implode(' ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code, 'Sale ' . number_format((float) ($product->sale_price ?? 0), 2)])))) }}">{{ e($product->name) }} | Sale {{ number_format((float) ($product->sale_price ?? 0), 2) }}</option>@endforeach`;
         const saleAssetOptions = @json($saleAssetRows);
         const warehouseOptionsHtml = `<option value="">Auto / best stock</option>@foreach($warehouses as $warehouse)<option value="{{ $warehouse->id }}">{{ e($warehouse->name) }}</option>@endforeach`;
         const rentalItemAssetCache = {};
         const rentalItemAssetRequests = {};
+        const partnerClientCache = new Map();
         const inlineAssetVisibleStep = 3;
         let primaryAvailabilityLoadedFor = null;
+        let partnerClientRequestToken = 0;
 
         function escapeHtml(value) {
             return String(value || '')
@@ -1955,9 +1929,27 @@
         enhanceSearchableSelect(partnerClientSelect);
         enhanceSearchableSelect(productSelect);
 
-        const businessPartnerMap = new Map(businessPartners.map(function (partner) {
-            return [parseInt(partner.id, 10), partner];
-        }));
+        if (businessPartnerSelect?.value && partnerClientSelect) {
+            const seededClients = Array.from(partnerClientSelect.options)
+                .slice(1)
+                .map(function (option) {
+                    return {
+                        id: option.value,
+                        business_partner_id: option.getAttribute('data-business-partner-id') || businessPartnerSelect.value,
+                        name: option.getAttribute('data-name') || option.textContent.trim(),
+                        phone: option.getAttribute('data-phone') || '',
+                        phone_country: option.getAttribute('data-phone-country') || '',
+                        address: option.getAttribute('data-address') || '',
+                        city: option.getAttribute('data-city') || '',
+                        state: option.getAttribute('data-state') || '',
+                        location: option.getAttribute('data-location') || '',
+                        delivery_notes: option.getAttribute('data-notes') || '',
+                        search: option.getAttribute('data-search') || '',
+                    };
+                });
+
+            partnerClientCache.set(parseInt(businessPartnerSelect.value, 10), seededClients);
+        }
 
         function normalizeIdArray(values) {
             const source = Array.isArray(values) ? values : (values ? [values] : []);
@@ -1986,21 +1978,45 @@
         }
 
         function selectedBusinessPartnerData() {
-            const partnerId = businessPartnerSelect?.value ? parseInt(businessPartnerSelect.value, 10) : null;
-            return partnerId ? businessPartnerMap.get(partnerId) : null;
-        }
+            const option = businessPartnerSelect?.selectedOptions?.[0];
 
-        function selectedPartnerClientData() {
-            const partner = selectedBusinessPartnerData();
-            const clientId = partnerClientSelect?.value ? parseInt(partnerClientSelect.value, 10) : null;
-
-            if (!partner || !clientId) {
+            if (!option || !businessPartnerSelect?.value) {
                 return null;
             }
 
-            return (partner.clients || []).find(function (client) {
-                return parseInt(client.id, 10) === clientId;
-            }) || null;
+            return {
+                id: parseInt(option.value, 10),
+                name: option.getAttribute('data-name') || option.textContent.trim(),
+                phone: option.getAttribute('data-phone') || '',
+                email: option.getAttribute('data-email') || '',
+                address: option.getAttribute('data-address') || '',
+                city: option.getAttribute('data-city') || '',
+                state: option.getAttribute('data-state') || '',
+                billing_state: option.getAttribute('data-billing-state') || option.getAttribute('data-state') || '',
+                location: option.getAttribute('data-location') || '',
+                partner_clients_count: parseInt(option.getAttribute('data-partner-clients-count') || '0', 10) || 0,
+            };
+        }
+
+        function selectedPartnerClientData() {
+            const option = partnerClientSelect?.selectedOptions?.[0];
+
+            if (!option || !partnerClientSelect?.value) {
+                return null;
+            }
+
+            return {
+                id: parseInt(option.value, 10),
+                business_partner_id: parseInt(option.getAttribute('data-business-partner-id') || '0', 10) || null,
+                name: option.getAttribute('data-name') || option.textContent.trim(),
+                phone: option.getAttribute('data-phone') || '',
+                alternate_phone: option.getAttribute('data-alternate-phone') || '',
+                address: option.getAttribute('data-address') || '',
+                city: option.getAttribute('data-city') || '',
+                state: option.getAttribute('data-state') || '',
+                location: option.getAttribute('data-location') || '',
+                delivery_notes: option.getAttribute('data-notes') || '',
+            };
         }
 
         function syncCustomerFields() {
@@ -2023,57 +2039,162 @@
             }
         }
 
+        function partnerClientEndpoint(partnerId) {
+            if (!partnerClientEndpointTemplate || !partnerId) {
+                return null;
+            }
+
+            return partnerClientEndpointTemplate.replace('__PARTNER__', String(partnerId));
+        }
+
+        function buildPartnerClientOption(client, isSelected) {
+            const option = document.createElement('option');
+            option.value = String(client.id);
+            option.textContent = [client.name, client.phone].filter(Boolean).join(' • ') || client.name || 'Actual client';
+            option.setAttribute('data-business-partner-id', String(client.business_partner_id || ''));
+            option.setAttribute('data-name', client.name || '');
+            option.setAttribute('data-phone', client.phone || '');
+            option.setAttribute('data-phone-country', client.phone_country || '');
+            option.setAttribute('data-state', client.state || '');
+            option.setAttribute('data-address', client.address || '');
+            option.setAttribute('data-city', client.city || '');
+            option.setAttribute('data-location', client.location || '');
+            option.setAttribute('data-notes', client.delivery_notes || '');
+            option.setAttribute('data-search', client.search || [client.name, client.phone, client.address, client.city, client.state].filter(Boolean).join(' '));
+            if (isSelected) {
+                option.selected = true;
+            }
+
+            return option;
+        }
+
+        function setPartnerClientOptions(clients, selectedValue) {
+            if (!partnerClientSelect) {
+                return;
+            }
+
+            const preferred = selectedValue ? String(selectedValue) : '';
+            partnerClientSelect.innerHTML = '';
+            partnerClientSelect.appendChild(new Option('Select actual client', ''));
+
+            (clients || []).forEach(function (client) {
+                partnerClientSelect.appendChild(buildPartnerClientOption(client, preferred !== '' && String(client.id) === preferred));
+            });
+
+            if (preferred && !Array.from(partnerClientSelect.options).some(function (option) { return option.value === preferred; })) {
+                partnerClientSelect.value = '';
+            }
+
+            partnerClientSelect._searchableSelect?.refresh?.();
+        }
+
+        function updatePartnerClientHelperState(visibleClientCount, message) {
+            if (!partnerClientHelper) {
+                return;
+            }
+
+            const activePartnerId = businessPartnerSelect?.value || '';
+
+            if (!activePartnerId) {
+                partnerClientHelper.hidden = false;
+                if (partnerClientHelperTitle) {
+                    partnerClientHelperTitle.textContent = 'Select a business partner to continue.';
+                }
+                if (partnerClientHelperText) {
+                    partnerClientHelperText.textContent = 'The actual client will be used for delivery, pickup, and service.';
+                }
+                return;
+            }
+
+            if (partnerClientSelect?.value) {
+                partnerClientHelper.hidden = true;
+                return;
+            }
+
+            partnerClientHelper.hidden = false;
+            if (partnerClientHelperTitle) {
+                partnerClientHelperTitle.textContent = 'Select or add an actual delivery client.';
+            }
+            if (partnerClientHelperText) {
+                partnerClientHelperText.textContent = message || (visibleClientCount > 0
+                    ? 'Choose the delivery or service client for this rental.'
+                    : 'No actual clients added for this business partner yet.');
+            }
+        }
+
+        function loadPartnerClients(partnerId, selectedValue) {
+            if (!partnerClientSelect) {
+                return Promise.resolve();
+            }
+
+            if (!partnerId) {
+                setPartnerClientOptions([], null);
+                updatePartnerClientHelperState(0);
+                return Promise.resolve();
+            }
+
+            const normalizedPartnerId = parseInt(partnerId, 10);
+            if (Number.isNaN(normalizedPartnerId) || normalizedPartnerId <= 0) {
+                setPartnerClientOptions([], null);
+                updatePartnerClientHelperState(0);
+                return Promise.resolve();
+            }
+
+            if (partnerClientCache.has(normalizedPartnerId)) {
+                const cachedClients = partnerClientCache.get(normalizedPartnerId) || [];
+                setPartnerClientOptions(cachedClients, selectedValue);
+                updatePartnerClientHelperState(cachedClients.length);
+                return Promise.resolve(cachedClients);
+            }
+
+            const requestToken = ++partnerClientRequestToken;
+            setPartnerClientOptions([], null);
+            updatePartnerClientHelperState(0, 'Loading actual clients...');
+
+            return fetch(partnerClientEndpoint(normalizedPartnerId), {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            })
+                .then(function (response) {
+                    if (!response.ok) {
+                        throw new Error('Unable to load actual clients.');
+                    }
+
+                    return response.json();
+                })
+                .then(function (payload) {
+                    if (requestToken !== partnerClientRequestToken) {
+                        return [];
+                    }
+
+                    const clients = Array.isArray(payload?.partner_clients) ? payload.partner_clients : [];
+                    partnerClientCache.set(normalizedPartnerId, clients);
+                    setPartnerClientOptions(clients, selectedValue);
+                    updatePartnerClientHelperState(clients.length);
+
+                    return clients;
+                })
+                .catch(function () {
+                    if (requestToken !== partnerClientRequestToken) {
+                        return [];
+                    }
+
+                    setPartnerClientOptions([], null);
+                    updatePartnerClientHelperState(0, 'Unable to load actual clients right now. Try again.');
+                    return [];
+                });
+        }
+
         function renderPartnerClientOptions() {
             if (!partnerClientSelect) {
                 return;
             }
 
             const activePartnerId = businessPartnerSelect?.value || '';
-            let visibleClientCount = 0;
-
-            Array.from(partnerClientSelect.options).forEach(function (option, index) {
-                if (index === 0) {
-                    option.hidden = false;
-                    return;
-                }
-
-                const optionPartnerId = option.getAttribute('data-business-partner-id') || '';
-                option.hidden = Boolean(activePartnerId) && optionPartnerId !== activePartnerId;
-                if (!option.hidden) {
-                    visibleClientCount += 1;
-                }
-            });
-
-            const selectedOption = partnerClientSelect.options[partnerClientSelect.selectedIndex];
-            if (selectedOption && selectedOption.hidden) {
-                partnerClientSelect.value = '';
-            }
-
-            partnerClientSelect._searchableSelect?.refresh?.();
-
-            if (partnerClientHelper) {
-                if (!activePartnerId) {
-                    partnerClientHelper.hidden = false;
-                    if (partnerClientHelperTitle) {
-                        partnerClientHelperTitle.textContent = 'Select a business partner to continue.';
-                    }
-                    if (partnerClientHelperText) {
-                        partnerClientHelperText.textContent = 'The actual client will be used for delivery, pickup, and service.';
-                    }
-                } else if (partnerClientSelect.value) {
-                    partnerClientHelper.hidden = true;
-                } else {
-                    partnerClientHelper.hidden = false;
-                    if (partnerClientHelperTitle) {
-                        partnerClientHelperTitle.textContent = 'Select or add an actual delivery client.';
-                    }
-                    if (partnerClientHelperText) {
-                        partnerClientHelperText.textContent = visibleClientCount > 0
-                            ? 'Choose the delivery or service client for this rental.'
-                            : 'No actual clients added for this business partner yet.';
-                    }
-                }
-            }
+            const selectedValue = partnerClientSelect?.value || '';
+            loadPartnerClients(activePartnerId, selectedValue);
         }
 
         function syncPartnerClientFields() {
@@ -3546,7 +3667,7 @@
             renderSaleItems();
         });
         businessPartnerSelect?.addEventListener('change', function () {
-            renderPartnerClientOptions();
+            updateCustomerModeVisibility();
             syncPartnerClientFields();
             updateContactUsageSummary();
             if (primaryTaxTypeSelect) {
@@ -3567,19 +3688,21 @@
                 return;
             }
 
-            const partnerRecord = Object.assign({ clients: [] }, partner);
-            businessPartners.push(partnerRecord);
-            businessPartnerMap.set(parseInt(partner.id, 10), partnerRecord);
-
             const option = document.createElement('option');
             option.value = partner.id;
             option.textContent = partner.phone ? partner.name + ' • ' + partner.phone : partner.name;
             option.setAttribute('data-name', partner.name || '');
             option.setAttribute('data-phone', partner.phone || '');
             option.setAttribute('data-email', partner.email || '');
+            option.setAttribute('data-address', partner.address || '');
+            option.setAttribute('data-city', partner.city || '');
             option.setAttribute('data-state', partner.state || '');
+            option.setAttribute('data-billing-state', partner.billing_state || partner.state || '');
+            option.setAttribute('data-location', partner.location || '');
+            option.setAttribute('data-partner-clients-count', '0');
             option.setAttribute('data-search', [partner.name, partner.contact_person, partner.phone, partner.email, partner.city, partner.state].filter(Boolean).join(' '));
             businessPartnerSelect.appendChild(option);
+            partnerClientCache.set(parseInt(partner.id, 10), []);
             businessPartnerSelect.value = String(partner.id);
             businessPartnerSelect.dispatchEvent(new Event('change', { bubbles: true }));
         });
@@ -3591,11 +3714,13 @@
             }
 
             const partnerId = parseInt(client.business_partner_id || '0', 10);
-            const partner = businessPartnerMap.get(partnerId);
+            const cachedClients = partnerClientCache.get(partnerId) || [];
+            partnerClientCache.set(partnerId, cachedClients.concat([client]));
 
-            if (partner) {
-                partner.clients = Array.isArray(partner.clients) ? partner.clients : [];
-                partner.clients.push(client);
+            const currentPartnerOption = businessPartnerSelect?.querySelector(`option[value="${partnerId}"]`);
+            if (currentPartnerOption) {
+                const existingCount = parseInt(currentPartnerOption.getAttribute('data-partner-clients-count') || '0', 10) || 0;
+                currentPartnerOption.setAttribute('data-partner-clients-count', String(existingCount + 1));
             }
 
             const option = document.createElement('option');
@@ -3603,17 +3728,20 @@
             option.textContent = client.phone ? client.name + ' • ' + client.phone : client.name;
             option.setAttribute('data-business-partner-id', String(client.business_partner_id || ''));
             option.setAttribute('data-name', client.name || '');
-            option.setAttribute('data-phone', String(client.phone || '').replace(/\D+/g, '').slice(0, 15));
-            option.setAttribute('data-phone-country', String(client.phone || '').trim().startsWith('+') ? '+91' : '');
+            option.setAttribute('data-phone', client.phone || '');
+            option.setAttribute('data-phone-country', client.phone_country || '');
             option.setAttribute('data-state', client.state || '');
             option.setAttribute('data-address', client.address || '');
             option.setAttribute('data-city', client.city || '');
             option.setAttribute('data-location', client.location || '');
             option.setAttribute('data-notes', client.delivery_notes || '');
             option.setAttribute('data-search', [client.name, client.phone, client.address, client.city, client.state].filter(Boolean).join(' '));
-            partnerClientSelect.appendChild(option);
-            partnerClientSelect.value = String(client.id);
-            partnerClientSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+            if (String(businessPartnerSelect?.value || '') === String(partnerId)) {
+                partnerClientSelect.appendChild(option);
+                partnerClientSelect.value = String(client.id);
+                partnerClientSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            }
         });
         productSelect.addEventListener('change', handlePrimaryProductChange);
         productSelect.addEventListener('input', handlePrimaryProductChange);

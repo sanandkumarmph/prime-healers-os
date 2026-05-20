@@ -670,6 +670,7 @@
         align-items:center;
         justify-content:space-between;
         gap:14px;
+        flex-wrap:nowrap;
         margin-bottom:14px;
         padding:12px 14px;
         border:1px solid #dbe3ef;
@@ -682,7 +683,7 @@
         display:flex;
         align-items:center;
         gap:14px;
-        flex:1 1 auto;
+        flex:1 1 0%;
         min-width:0;
     }
     .app-shell-topbar-right {
@@ -690,13 +691,15 @@
         align-items:center;
         justify-content:flex-end;
         gap:10px;
-        flex-wrap:wrap;
+        flex:0 1 auto;
+        flex-wrap:nowrap;
         min-width:0;
+        white-space:nowrap;
     }
     .app-shell-search {
-        flex:1 1 560px;
-        min-width:300px;
-        max-width:660px;
+        flex:1 1 auto;
+        min-width:220px;
+        max-width:none;
         display:flex;
         align-items:center;
         gap:10px;
@@ -758,19 +761,30 @@
         font-size:11px;
         font-weight:800;
         line-height:1;
+        flex:0 0 auto;
+        white-space:nowrap;
     }
     .topbar-chip.is-role {
         background:#ecfeff;
         color:#0f766e;
         border-color:#bae6fd;
+        max-width:140px;
+        overflow:hidden;
+        text-overflow:ellipsis;
     }
     .quick-add-menu {
         position:relative;
+        flex:0 0 auto;
     }
     .quick-add-trigger {
         min-width:108px;
         list-style:none;
         cursor:pointer;
+    }
+    .quick-add-trigger span {
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
     }
     .quick-add-trigger::-webkit-details-marker {
         display:none;
@@ -823,6 +837,7 @@
     .topbar-notification-menu,
     .topbar-bell-menu {
         position:relative;
+        flex:0 0 auto;
     }
     .topbar-action-link {
         width:36px;
@@ -1006,11 +1021,16 @@
     }
     .topbar-user-menu {
         position:relative;
+        flex:0 1 220px;
+        min-width:0;
     }
     .topbar-user-trigger {
         display:flex;
         align-items:center;
         gap:10px;
+        width:100%;
+        min-width:0;
+        max-width:220px;
         padding:5px;
         border-radius:13px;
         border:1px solid #dbe3ef;
@@ -1054,6 +1074,9 @@
         color:#0f172a;
         font-size:11px;
         line-height:1.1;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
     }
     .topbar-user-meta span {
         display:block;
@@ -1061,6 +1084,13 @@
         color:#64748b;
         font-size:10px;
         line-height:1;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+    }
+    .topbar-user-meta {
+        min-width:0;
+        overflow:hidden;
     }
     .topbar-user-panel {
         position:absolute;
@@ -1076,6 +1106,51 @@
         display:grid;
         gap:8px;
     }
+    @media (max-width: 1480px) {
+        .app-shell-topbar {
+            gap:10px;
+            padding:10px 12px;
+        }
+        .app-shell-topbar-right {
+            gap:8px;
+        }
+        .app-shell-search {
+            min-width:180px;
+        }
+        .quick-add-trigger {
+            min-width:96px;
+        }
+        .topbar-chip {
+            padding:8px 10px;
+        }
+        .topbar-chip.is-role {
+            max-width:120px;
+        }
+        .topbar-user-menu {
+            flex-basis:190px;
+        }
+        .topbar-user-trigger {
+            max-width:190px;
+        }
+    }
+    @media (max-width: 1320px) {
+        .app-shell-search {
+            min-width:160px;
+        }
+        .topbar-chip.is-role {
+            max-width:100px;
+        }
+        .topbar-user-menu {
+            flex-basis:172px;
+        }
+        .topbar-user-trigger {
+            gap:8px;
+            max-width:172px;
+        }
+        .topbar-user-trigger::after {
+            margin-right:2px;
+        }
+    }
     @media (max-width: 1180px) {
         .app-shell-topbar {
             flex-wrap:wrap;
@@ -1087,6 +1162,7 @@
         }
         .app-shell-topbar-right {
             justify-content:space-between;
+            flex-wrap:wrap;
         }
         .app-shell-search {
             flex:1 1 100%;

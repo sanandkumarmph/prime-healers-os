@@ -90,6 +90,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/sales/customers/quick-store', [CustomerController::class, 'quickStore'])
         ->middleware('module:customers,create')
         ->name('sales.customers.quick-store');
+    Route::get('/sales/business-partners/{business_partner}/actual-clients', [SaleController::class, 'businessPartnerActualClients'])
+        ->middleware('module:sales,read')
+        ->name('sales.business-partners.actual-clients');
     Route::post('/invoices/customers/quick-store', [CustomerController::class, 'quickStore'])
         ->middleware('module:customers,create')
         ->name('invoices.customers.quick-store');
@@ -97,6 +100,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/rentals/available-assets', [RentalController::class, 'availableAssets'])
         ->middleware('module:rentals,read')
         ->name('rentals.available-assets');
+    Route::get('/rentals/business-partners/{business_partner}/actual-clients', [RentalController::class, 'businessPartnerActualClients'])
+        ->middleware('module:rentals,read')
+        ->name('rentals.business-partners.actual-clients');
     Route::get('/rentals/export/csv', [RentalController::class, 'exportCsv'])
         ->middleware('module:rentals,read')
         ->name('rentals.export.csv');

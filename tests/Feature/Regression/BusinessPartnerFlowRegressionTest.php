@@ -113,6 +113,25 @@ class BusinessPartnerFlowRegressionTest extends TestCase
             ->assertJsonPath('partner_client.name', 'Lakshmi Home');
     }
 
+    public function test_rental_and_sales_actual_client_lookup_returns_only_selected_partner_clients(): void
+    {
+        [$partner, $client] = $this->makeBusinessPartnerContext();
+        [$otherPartner] = $this->makeBusinessPartnerContext('Other Partner', 'Other Client');
+
+        $rentalLookup = $this->getJson(route('rentals.business-partners.actual-clients', $partner));
+        $saleLookup = $this->getJson(route('sales.business-partners.actual-clients', $partner));
+
+        $rentalLookup->assertOk()
+            ->assertJsonCount(1, 'partner_clients')
+            ->assertJsonPath('partner_clients.0.id', $client->id);
+
+        $saleLookup->assertOk()
+            ->assertJsonCount(1, 'partner_clients')
+            ->assertJsonPath('partner_clients.0.id', $client->id);
+
+        $this->assertNotSame($partner->id, $otherPartner->id);
+    }
+
     public function test_business_partner_can_be_created_with_gst_details_and_sale_invoice_uses_them(): void
     {
         $partnerResponse = $this->postJson(route('business-partners.store'), [
@@ -356,11 +375,14 @@ class BusinessPartnerFlowRegressionTest extends TestCase
         $response->assertSessionHasErrors(['business_partner_id', 'partner_client_id']);
     }
 
-    private function makeBusinessPartnerContext(): array
+    private function makeBusinessPartnerContext(
+        string $businessName = 'Apollo Tie-up',
+        string $clientName = 'Rajesh Kumar'
+    ): array
     {
         $partner = BusinessPartner::create([
             'organization_id' => $this->organizationId,
-            'business_name' => 'Apollo Tie-up',
+            'business_name' => $businessName,
             'contact_person' => 'Operations Desk',
             'phone' => '+919811112222',
             'whatsapp' => '+919811112222',
@@ -374,7 +396,7 @@ class BusinessPartnerFlowRegressionTest extends TestCase
         $client = PartnerClient::create([
             'organization_id' => $this->organizationId,
             'business_partner_id' => $partner->id,
-            'client_name' => 'Rajesh Kumar',
+            'client_name' => $clientName,
             'phone' => '+919822223333',
             'address' => '12 Patient Home',
             'city' => 'Chennai',
