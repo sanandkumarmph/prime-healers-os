@@ -222,13 +222,18 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
         $response = $this->actingAs($deliveryUser)->get(route('dashboard'));
 
         $response->assertOk()
+            ->assertSeeText('My Pending Deliveries')
+            ->assertSeeText('My Pending Pickups')
             ->assertDontSeeText('Business Partner Signals')
+            ->assertDontSeeText('Staff Workload')
+            ->assertDontSeeText('Inventory Intelligence')
+            ->assertDontSeeText('Sales Pulse')
             ->assertDontSeeText('Pending Payments')
             ->assertDontSeeText('Finance Summary')
             ->assertSeeText('Operational Widgets');
     }
 
-    public function test_sales_dashboard_is_accessible_without_dashboard_main_and_hides_finance_amount_sections(): void
+    public function test_sales_dashboard_is_accessible_without_dashboard_main_and_hides_sensitive_management_widgets(): void
     {
         $organization = TestData::organization();
         $salesRole = Role::create([
@@ -237,7 +242,7 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
             'slug' => User::ROLE_SALES,
             'permissions' => [
                 'customers' => ['read', 'create'],
-                'rentals' => ['read', 'create'],
+                'rentals' => ['read', 'create', 'update'],
                 'sales' => ['read', 'create'],
                 'invoices' => ['read'],
             ],
@@ -255,8 +260,14 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
         $response = $this->actingAs($salesUser)->get(route('dashboard'));
 
         $response->assertOk()
-            ->assertSeeText('Sales Pulse')
             ->assertSeeText('Add Follow-up')
+            ->assertSeeText('My Active Rentals')
+            ->assertSeeText('My Renewals Due Today')
+            ->assertDontSeeText('Sales Pulse')
+            ->assertDontSeeText('Staff Workload')
+            ->assertDontSeeText('Business Partner Signals')
+            ->assertDontSeeText('Inventory Intelligence')
+            ->assertDontSeeText('No partner pressure signals')
             ->assertDontSeeText('Finance Summary')
             ->assertDontSeeText('Collections This Month');
     }
@@ -287,7 +298,11 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
 
         $response->assertOk()
             ->assertSeeText('Finance Summary')
-            ->assertSeeText('Record Payment');
+            ->assertSeeText('Record Payment')
+            ->assertDontSeeText('Staff Workload')
+            ->assertDontSeeText('Business Partner Signals')
+            ->assertDontSeeText('Inventory Intelligence')
+            ->assertDontSeeText('Sales Pulse');
     }
 
     public function test_warehouse_style_dashboard_can_access_and_see_inventory_intelligence_without_finance(): void
@@ -318,6 +333,9 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
         $response->assertOk()
             ->assertSeeText('Inventory Intelligence')
             ->assertSeeText('Asset Alerts')
+            ->assertDontSeeText('Staff Workload')
+            ->assertDontSeeText('Business Partner Signals')
+            ->assertDontSeeText('Sales Pulse')
             ->assertDontSeeText('Finance Summary')
             ->assertDontSeeText('Collections This Month');
     }

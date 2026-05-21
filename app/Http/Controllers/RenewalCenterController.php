@@ -8,6 +8,7 @@ use App\Models\RentalReminderLog;
 use App\Models\Role;
 use App\Models\Staff;
 use App\Models\User;
+use App\Services\Metrics\DashboardMetricsService;
 use App\Support\ActivityLogger;
 use App\Support\WhatsAppHelper;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -20,6 +21,11 @@ use Illuminate\Validation\Rule;
 
 class RenewalCenterController extends Controller
 {
+    private function dashboardMetrics(): DashboardMetricsService
+    {
+        return app(DashboardMetricsService::class);
+    }
+
     private function orgId(): int
     {
         return (int) auth()->user()->organization_id;
@@ -114,7 +120,6 @@ class RenewalCenterController extends Controller
 
         if ($includeRelations) {
             $with = [
-                'customer:id,name,phone,whatsapp_number,email,address,city,state,pincode,map_url',
                 'product:id,name,brand,model',
                 'invoice:id,organization_id,rental_id,invoice_number,payment_status,status,balance_amount,total_amount,due_date',
                 'deliveryRecord:id,organization_id,rental_id,type,status,assigned_user_id,assigned_staff_id,scheduled_at,completed_at,notes',
@@ -123,11 +128,12 @@ class RenewalCenterController extends Controller
                 'pickupRecord:id,organization_id,rental_id,type,status,assigned_user_id,assigned_staff_id,scheduled_at,completed_at,notes',
                 'pickupRecord.assignedUser:id,name',
                 'pickupRecord.assignedStaff:id,name,assignment_role',
+                'customer' => fn ($query) => $query->select(\App\Models\Customer::relationSelectColumns()),
             ];
 
             if ($this->hasBusinessPartnerTables()) {
-                $with[] = 'businessPartner:id,organization_id,business_name,contact_person,phone,whatsapp,email,address,city,state,pincode,map_url';
-                $with[] = 'partnerClient:id,organization_id,business_partner_id,client_name,phone,alternate_phone,address,city,state,pincode,map_url,delivery_notes';
+                $with['businessPartner'] = fn ($query) => $query->select(\App\Models\BusinessPartner::relationSelectColumns());
+                $with['partnerClient'] = fn ($query) => $query->select(\App\Models\PartnerClient::relationSelectColumns());
             }
 
             if ($this->hasRentalRenewalsTable()) {
@@ -349,14 +355,7 @@ class RenewalCenterController extends Controller
     {
         $baseQuery = $this->applySearchAndFilters($this->baseRenewalQuery(false), $request);
 
-        $tabs = ['due_today', 'next_7_days', 'overdue', 'awaiting_confirmation', 'pickup_requested', 'renewed', 'all'];
-        $counts = [];
-
-        foreach ($tabs as $tab) {
-            $counts[$tab] = (clone $this->applyTab(clone $baseQuery, $tab, $today))->count();
-        }
-
-        return $counts;
+        return $this->dashboardMetrics()->renewalCounts($baseQuery, $today);
     }
 
     private function productsForFilter(): Collection

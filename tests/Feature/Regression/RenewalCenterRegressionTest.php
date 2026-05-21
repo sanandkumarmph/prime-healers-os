@@ -182,7 +182,7 @@ class RenewalCenterRegressionTest extends TestCase
             ->assertSeeText('Renewals Due Today')
             ->assertSeeText('Renewals Due This Week')
             ->assertSeeText('Overdue Renewals')
-            ->assertSeeText('Pickup Requested');
+            ->assertSeeText('Pickup Requests');
     }
 
     private function makeDirectCustomerRental(array $overrides = []): Rental

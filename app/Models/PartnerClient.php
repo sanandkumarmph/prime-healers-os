@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
 
 class PartnerClient extends Model
 {
@@ -69,5 +70,39 @@ class PartnerClient extends Model
         }
 
         return null;
+    }
+
+    public static function relationSelectColumns(array $extra = []): array
+    {
+        $columns = ['id'];
+
+        foreach ([
+            'organization_id',
+            'business_partner_id',
+            'client_name',
+            'phone',
+            'alternate_phone',
+            'address',
+            'city',
+            'state',
+            'pincode',
+            'location',
+            'latitude',
+            'longitude',
+            'delivery_notes',
+            'status',
+        ] as $column) {
+            if (Schema::hasColumn('partner_clients', $column)) {
+                $columns[] = $column;
+            }
+        }
+
+        foreach ($extra as $column) {
+            if ($column !== '' && !in_array($column, $columns, true) && Schema::hasColumn('partner_clients', $column)) {
+                $columns[] = $column;
+            }
+        }
+
+        return $columns;
     }
 }

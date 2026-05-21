@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Delivery;
 use App\Models\Staff;
 use App\Models\User;
+use App\Services\Metrics\DashboardMetricsService;
 use App\Support\ActivityLogger;
 use App\Support\FollowUpManager;
 use Carbon\Carbon;
@@ -15,6 +16,11 @@ use Illuminate\Validation\Rule;
 
 class PickupCenterController extends Controller
 {
+    private function dashboardMetrics(): DashboardMetricsService
+    {
+        return app(DashboardMetricsService::class);
+    }
+
     public function index(Request $request)
     {
         $this->authorize('viewAny', Delivery::class);
@@ -29,20 +35,7 @@ class PickupCenterController extends Controller
             $request
         );
 
-        $counts = collect([
-            'pickup_requested',
-            'scheduled_today',
-            'upcoming',
-            'overdue',
-            'failed_attempt',
-            'picked_up',
-            'all',
-        ])->mapWithKeys(function (string $key) use ($countQuery, $today) {
-            $query = clone $countQuery;
-            $this->applyPickupTab($query, $key, $today);
-
-            return [$key => $query->count()];
-        })->all();
+        $counts = $this->dashboardMetrics()->pickupCounts($countQuery, $today);
 
         $pickups = $this->applyPickupFilters($this->pickupBaseQuery(), $request);
         $this->applyPickupTab($pickups, $tab, $today);
@@ -304,29 +297,7 @@ class PickupCenterController extends Controller
 
     private function applyVisibilityScope(Builder $query): Builder
     {
-        $user = auth()->user();
-
-        if (!$user || !$user->hasScope('assigned', 'deliveries') || !Schema::hasColumn('deliveries', 'assigned_user_id')) {
-            return $query;
-        }
-
-        return $query->where(function (Builder $scope) use ($user): void {
-            $scope->where('assigned_user_id', $user->id)
-                ->orWhere(function (Builder $fallback): void {
-                    $fallback->whereNull('assigned_user_id');
-
-                    if (Schema::hasColumn('deliveries', 'assigned_staff_id')) {
-                        $fallback->whereNull('assigned_staff_id');
-                    }
-
-                    if (Schema::hasColumn('deliveries', 'assignment_type')) {
-                        $fallback->where(function (Builder $assignmentQuery): void {
-                            $assignmentQuery->whereNull('assignment_type')
-                                ->orWhereIn('assignment_type', ['delivery_team', 'third_party', '']);
-                        });
-                    }
-                });
-        });
+        return $this->dashboardMetrics()->scopePickupVisibility($query, auth()->user());
     }
 
     private function applyPickupFilters(Builder $query, Request $request): Builder

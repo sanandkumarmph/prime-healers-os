@@ -454,6 +454,18 @@
         ],
     ])
 
+    <x-section-nav
+        label="Customer page sections"
+        :items="[
+            ['id' => 'customer-overview-section', 'label' => 'Overview'],
+            ['id' => 'customer-rentals-section', 'label' => 'Rentals'],
+            ['id' => 'customer-sales-section', 'label' => 'Sales'],
+            ['id' => 'customer-invoices-section', 'label' => 'Invoices'],
+            ['id' => 'customer-payments-section', 'label' => 'Payments'],
+            ['id' => 'customer-timeline', 'label' => 'Timeline'],
+        ]"
+    />
+
     @if(session('success'))
         <div class="ops-card">
             <div class="ops-card-body" style="background:#dcfce7; color:#166534; border-radius:14px;">
@@ -499,7 +511,7 @@
     </div>
 
     <div class="profile-grid">
-        <div class="ops-card span-8">
+        <div class="ops-card span-8 section-nav-target" id="customer-overview-section">
             <div class="ops-card-body">
                 <div class="section-title">
                     <div>
@@ -632,7 +644,7 @@
             </div>
         </div>
 
-        <div class="ops-card span-6">
+        <div class="ops-card span-6 section-nav-target" id="customer-rentals-section">
             <div class="ops-card-body">
                 <div class="section-title">
                     <div>
@@ -665,7 +677,7 @@
             </div>
         </div>
 
-        <div class="ops-card span-6">
+        <div class="ops-card span-6 section-nav-target" id="customer-sales-section">
             <div class="ops-card-body">
                 <div class="section-title">
                     <div>
@@ -762,7 +774,7 @@
                                 @endforelse
                             </div>
 
-                            <div class="mini-item">
+                            <div class="mini-item section-nav-target" id="customer-invoices-section">
                                 <div class="mini-head">
                                     <strong>Recent Invoices</strong>
                                     <a href="{{ route('invoices.index', ['customer_id' => $customer->id]) }}" class="chip">View All</a>
@@ -788,7 +800,7 @@
                                 @endforelse
                             </div>
 
-                            <div class="mini-item">
+                            <div class="mini-item section-nav-target" id="customer-payments-section">
                                 <div class="mini-head">
                                     <strong>Recent Payments</strong>
                                 </div>
@@ -812,7 +824,7 @@
             </div>
         </div>
 
-        <div class="span-12">
+        <div class="span-12 section-nav-target" id="customer-timeline">
     @include('partials.activity-timeline', [
         'timeline' => $activityTimeline ?? collect(),
         'title' => 'Timeline',

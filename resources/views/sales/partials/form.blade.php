@@ -286,6 +286,17 @@
         </div>
     @endif
 
+    <x-section-nav
+        label="Sale form sections"
+        :items="[
+            ['id' => 'sale-details-section', 'label' => 'Details'],
+            ['id' => 'sale-customer-section', 'label' => 'Customer'],
+            ['id' => 'sale-products-section', 'label' => 'Product'],
+            ['id' => 'sale-pricing-section', 'label' => 'Pricing'],
+            ['id' => 'sale-save-section', 'label' => 'Save'],
+        ]"
+    />
+
     <div class="sales-card">
         <h2>Sale Snapshot</h2>
         <p>Quick summary before save.</p>
@@ -309,7 +320,7 @@
         </div>
     </div>
 
-    <div class="sales-card">
+    <div class="sales-card section-nav-target" id="sale-details-section">
         <h2>Sale Details</h2>
         <p>Use order-level fields here so finance and operations can read the transaction context quickly.</p>
         <div class="sales-grid">
@@ -358,7 +369,7 @@
         </div>
     </div>
 
-    <div class="sales-card">
+    <div class="sales-card section-nav-target" id="sale-customer-section">
         <h2>Customer</h2>
         <p>Keep billing/reminder contact separate from the actual delivery client when a tie-up partner is involved.</p>
         <div class="sales-grid">
@@ -505,7 +516,7 @@
         </div>
     </div>
 
-    <div class="sales-card">
+    <div class="sales-card section-nav-target" id="sale-products-section">
         <h2>Product Items</h2>
         <p>Add one or many product lines. Each line calculates its own total, then one common shipping charge is added at the sale level.</p>
 
@@ -516,7 +527,7 @@
 
         <div class="sales-item-list" id="saleItemsList"></div>
 
-        <div class="sales-order-total" style="margin-top:14px;">
+        <div class="sales-order-total section-nav-target" id="sale-pricing-section" style="margin-top:14px;">
             <div>
                 <div style="color:#64748b; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;">Sale Net Amount</div>
                 <strong id="saleOrderTotal">₹0.00</strong>
@@ -535,7 +546,7 @@
         </div>
     </div>
 
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+    <div class="section-nav-target" id="sale-save-section" style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
         <div style="border:1px solid #e2e8f0; border-radius:14px; background:#f8fafc; color:#475569; padding:12px 14px; font-size:12px;">
             This sale can still generate a single invoice, but that invoice will now carry every product line on the order.
         </div>

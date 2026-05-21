@@ -2,9 +2,12 @@
 
 namespace Tests\Feature\Regression;
 
+use App\Models\BusinessPartner;
 use App\Models\Customer;
 use App\Models\Delivery;
+use App\Models\FollowUp;
 use App\Models\Invoice;
+use App\Models\PartnerClient;
 use App\Models\Product;
 use App\Models\Rental;
 use App\Models\RentalRenewal;
@@ -314,6 +317,186 @@ class DashboardMetricConsistencyRegressionTest extends TestCase
         $this->assertSame(
             round((float) $dashboard->viewData('salesTotalPendingAmount'), 2),
             round((float) $salesPage->viewData('totalPendingSalesAmount'), 2)
+        );
+    }
+
+    public function test_dashboard_counts_match_renewal_pickup_and_communication_centers_and_include_partner_records(): void
+    {
+        $organization = TestData::organization();
+        $user = TestData::user($organization);
+        $this->actingAs($user);
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Timeline Direct Customer',
+            'phone' => '9876500011',
+            'city' => 'Bengaluru',
+        ]);
+
+        $partner = BusinessPartner::create([
+            'organization_id' => $organization->id,
+            'business_name' => 'Care Connect',
+            'contact_person' => 'Pooja',
+            'phone' => '9000001001',
+            'status' => 'active',
+        ]);
+
+        $partnerClient = PartnerClient::create([
+            'organization_id' => $organization->id,
+            'business_partner_id' => $partner->id,
+            'client_name' => 'Ramesh Kumar',
+            'phone' => '9000001002',
+            'address' => 'HSR Layout',
+            'city' => 'Bengaluru',
+            'status' => 'active',
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Alignment Product',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'price_per_day' => 500,
+            'rental_price' => 500,
+            'sale_price' => 0,
+            'available_quantity' => 8,
+            'total_quantity' => 8,
+        ]);
+
+        $directRental = $this->makeRental($organization->id, $customer->id, $product->id, [
+            'start_date' => now()->subDays(3)->toDateString(),
+            'end_date' => now()->toDateString(),
+            'status' => 'active',
+        ]);
+
+        $partnerRental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_type' => 'business_partner',
+            'business_partner_id' => $partner->id,
+            'partner_client_id' => $partnerClient->id,
+            'customer_id' => null,
+            'product_id' => $product->id,
+            'customer_name' => $partnerClient->client_name,
+            'phone' => $partnerClient->phone,
+            'quantity' => 1,
+            'start_date' => now()->subDays(2)->toDateString(),
+            'end_date' => now()->toDateString(),
+            'rental_amount' => 650,
+            'deposit_amount' => 0,
+            'transport_amount' => 0,
+            'other_amount' => 0,
+            'status' => 'active',
+        ]);
+
+        $this->completeDeliveryLifecycle($organization->id, $directRental->id);
+        $this->completeDeliveryLifecycle($organization->id, $partnerRental->id);
+
+        $partnerPickup = Delivery::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $partnerRental->id,
+            'type' => 'pickup',
+            'status' => 'pending',
+            'pickup_status' => 'assigned',
+            'scheduled_at' => now()->toDateTimeString(),
+            'assigned_user_id' => $user->id,
+        ]);
+
+        Delivery::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $directRental->id,
+            'type' => 'pickup',
+            'status' => 'pending',
+            'pickup_status' => 'failed_attempt',
+            'scheduled_at' => now()->subHour(),
+            'assigned_user_id' => $user->id,
+        ]);
+
+        FollowUp::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $customer->id,
+            'rental_id' => $directRental->id,
+            'followup_type' => FollowUp::TYPE_RENEWAL,
+            'title' => 'Renewal call',
+            'due_at' => now()->addHour(),
+            'status' => FollowUp::STATUS_PENDING,
+            'priority' => FollowUp::PRIORITY_HIGH,
+            'assigned_user_id' => $user->id,
+        ]);
+
+        FollowUp::create([
+            'organization_id' => $organization->id,
+            'business_partner_id' => $partner->id,
+            'partner_client_id' => $partnerClient->id,
+            'rental_id' => $partnerRental->id,
+            'followup_type' => FollowUp::TYPE_PAYMENT,
+            'title' => 'Partner payment call',
+            'due_at' => now()->addHours(2),
+            'status' => FollowUp::STATUS_PENDING,
+            'priority' => FollowUp::PRIORITY_MEDIUM,
+            'assigned_user_id' => $user->id,
+        ]);
+
+        FollowUp::create([
+            'organization_id' => $organization->id,
+            'business_partner_id' => $partner->id,
+            'partner_client_id' => $partnerClient->id,
+            'rental_id' => $partnerRental->id,
+            'delivery_id' => $partnerPickup->id,
+            'followup_type' => FollowUp::TYPE_PICKUP,
+            'title' => 'Pickup follow-up',
+            'due_at' => now()->addHours(3),
+            'status' => FollowUp::STATUS_PENDING,
+            'priority' => FollowUp::PRIORITY_HIGH,
+            'assigned_user_id' => $user->id,
+        ]);
+
+        $dashboard = $this->get(route('dashboard'));
+        $renewalCenter = $this->get(route('renewal-center.index'));
+        $pickupCenter = $this->get(route('pickup-center.index'));
+        $communicationCenter = $this->get(route('communication-center.index'));
+
+        $dashboard->assertOk();
+        $renewalCenter->assertOk();
+        $pickupCenter->assertOk();
+        $communicationCenter->assertOk();
+
+        $renewalCounts = $renewalCenter->viewData('counts');
+        $pickupCounts = $pickupCenter->viewData('counts');
+        $communicationCounts = $communicationCenter->viewData('counts');
+
+        $this->assertSame(2, (int) $dashboard->viewData('renewalsDueTodayCount'));
+        $this->assertSame(2, (int) ($renewalCounts['due_today'] ?? 0));
+        $this->assertSame(
+            (int) $dashboard->viewData('renewalsDueTodayCount'),
+            (int) ($renewalCounts['due_today'] ?? 0)
+        );
+        $this->assertSame(
+            (int) $dashboard->viewData('pickupRequestedRenewalCount'),
+            (int) ($renewalCounts['pickup_requested'] ?? 0)
+        );
+        $this->assertSame(
+            (int) $dashboard->viewData('pickupsScheduledTodayCount'),
+            (int) ($pickupCounts['scheduled_today'] ?? 0)
+        );
+        $this->assertSame(
+            (int) $dashboard->viewData('failedPickupsCount'),
+            (int) ($pickupCounts['failed_attempt'] ?? 0)
+        );
+        $this->assertSame(
+            (int) $dashboard->viewData('followUpsDueTodayCount'),
+            (int) ($communicationCounts['today'] ?? 0)
+        );
+        $this->assertSame(
+            (int) $dashboard->viewData('pendingRenewalFollowUpsCount'),
+            (int) ($communicationCounts['renewals'] ?? 0)
+        );
+        $this->assertSame(
+            (int) $dashboard->viewData('pendingPaymentFollowUpsCount'),
+            (int) ($communicationCounts['payments'] ?? 0)
+        );
+        $this->assertSame(
+            (int) $dashboard->viewData('pendingPickupFollowUpsCount'),
+            (int) ($communicationCounts['pickups'] ?? 0)
         );
     }
 

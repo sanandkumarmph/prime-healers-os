@@ -953,6 +953,20 @@
         </div>
     @endif
 
+    <x-section-nav
+        label="Rental form sections"
+        :items="[
+            ['id' => 'rental-customer-section', 'label' => 'Customer'],
+            ['id' => 'rental-product-section', 'label' => 'Product'],
+            ['id' => 'rental-dates-section', 'label' => 'Dates'],
+            ['id' => 'rental-pricing-section', 'label' => 'Pricing'],
+            ['id' => 'rental-delivery-section', 'label' => 'Delivery'],
+            ['id' => 'rental-notes-section', 'label' => 'Notes'],
+            ['id' => 'rental-assets-section', 'label' => 'Assets'],
+            ['id' => 'rental-addons-section', 'label' => 'Add-ons'],
+        ]"
+    />
+
     <div class="rental-card">
         <h2>Rental Snapshot</h2>
         <div class="rental-summary">
@@ -978,7 +992,7 @@
     <div class="rental-card">
         <h2>Customer & Rental Details</h2>
         <div class="rental-grid">
-            <div class="rental-col-12 party-flow-shell">
+            <div class="rental-col-12 party-flow-shell section-nav-target" id="rental-customer-section">
                 <div class="party-flow-toggle-wrap">
                     <div class="rental-field{{ $hasFieldError('customer_type') ? ' is-error' : '' }}" style="gap:8px;">
                         <label for="customer_type">Customer Type</label>
@@ -1145,7 +1159,7 @@
             <input type="hidden" name="phone_country_code" id="phone_country_code" value="{{ old('phone_country_code', $phoneParts['code']) }}">
             <input type="hidden" name="phone" id="phone" value="{{ $phoneParts['local'] }}">
 
-            <div class="rental-field rental-col-4{{ $hasFieldError('product_id', 'rental_items') ? ' is-error' : '' }}">
+            <div class="rental-field rental-col-4{{ $hasFieldError('product_id', 'rental_items') ? ' is-error' : '' }} section-nav-target" id="rental-product-section">
                 <label for="product_id">Product</label>
                 <select name="product_id" id="product_id" required data-searchable-select data-search-placeholder="Search product by name, brand, model, SKU, or code">
                     <option value="">Select product</option>
@@ -1202,7 +1216,7 @@
                 @endif
             </div>
 
-            <div class="rental-field rental-col-3{{ $hasFieldError('duration_preset') ? ' is-error' : '' }}">
+            <div class="rental-field rental-col-3{{ $hasFieldError('duration_preset') ? ' is-error' : '' }} section-nav-target" id="rental-dates-section">
                 <label for="duration_preset">Duration</label>
                 <select id="duration_preset" name="duration_preset">
                     <option value="custom">Custom</option>
@@ -1230,7 +1244,7 @@
                 @endif
             </div>
 
-            <div class="rental-field rental-col-3{{ $hasFieldError('rental_amount') ? ' is-error' : '' }}">
+            <div class="rental-field rental-col-3{{ $hasFieldError('rental_amount') ? ' is-error' : '' }} section-nav-target" id="rental-pricing-section">
                 <label for="rental_amount">Rental Amount</label>
                 <input type="number" step="0.01" min="0" name="rental_amount" id="rental_amount" value="{{ old('rental_amount', $isEdit ? $rental->rental_amount : 0) }}">
                 @if($hasFieldError('rental_amount'))
@@ -1299,7 +1313,7 @@
                 @endif
             </div>
 
-            <div class="rental-field {{ $isEdit ? 'rental-col-3' : 'rental-col-6' }}{{ $hasFieldError('delivery_staff_id') ? ' is-error' : '' }}">
+            <div class="rental-field {{ $isEdit ? 'rental-col-3' : 'rental-col-6' }}{{ $hasFieldError('delivery_staff_id') ? ' is-error' : '' }} section-nav-target" id="rental-delivery-section">
                 <label for="delivery_staff_id">Delivery Assignment</label>
                 <select name="delivery_staff_id" id="delivery_staff_id">
                     <option value="">Select delivery partner</option>
@@ -1402,14 +1416,14 @@
             </div>
             @endif
 
-            <div class="rental-field rental-col-12">
+            <div class="rental-field rental-col-12 section-nav-target" id="rental-notes-section">
                 <label for="internal_notes">Ops Note</label>
                 <textarea id="internal_notes" disabled placeholder="Use delivery notes after save.">{{ $isEdit ? 'Adjust delivery or assets after save.' : 'Delivery opens after save.' }}</textarea>
             </div>
         </div>
     </div>
 
-    <div class="rental-card{{ $hasFieldError('asset_ids') ? ' is-error' : '' }}">
+    <div class="rental-card{{ $hasFieldError('asset_ids') ? ' is-error' : '' }} section-nav-target" id="rental-assets-section">
         <h2>Asset Assignment</h2>
         <p class="section-copy">Select rental assets.</p>
         <div class="asset-panel">
@@ -1458,7 +1472,7 @@
         </div>
     </div>
 
-    <div class="rental-card">
+    <div class="rental-card section-nav-target" id="rental-addons-section">
         <details class="sale-section-disclosure compact-section-disclosure{{ $hasRentalItemsError ? ' is-error' : '' }}" id="additionalRentalDisclosure" {{ $additionalRentalExpanded ? 'open' : '' }}>
             <summary>
                 <span class="compact-section-title">

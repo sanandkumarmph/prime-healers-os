@@ -3,6 +3,7 @@
 @section('content')
 @php
     $currentUser = auth()->user();
+    $dashboardVisibility = $dashboardVisibility ?? [];
     $safeRoute = function (string $routeName, array $parameters = []) {
         return \Illuminate\Support\Facades\Route::has($routeName) ? route($routeName, $parameters) : null;
     };
@@ -17,25 +18,22 @@
     $canReadDeliveries = $currentUser?->canAccessModule('deliveries', 'read') ?? false;
     $canReadInvoices = $currentUser?->canAccessModule('invoices', 'read') ?? false;
     $canReadReports = $currentUser?->canAccessModule('reports', 'read') ?? false;
-    $canViewFinance = $currentUser?->canViewFinanceDashboard() ?? false;
-    $isDeliveryFacingMenuRole = in_array($currentUser?->effective_role, [
-        \App\Models\User::ROLE_DELIVERY,
-        \App\Models\User::ROLE_DELIVERY_EXECUTIVE,
-        \App\Models\User::ROLE_VENDOR,
-        \App\Models\User::ROLE_THIRD_PARTY,
-    ], true);
-    $isSalesDashboardRole = in_array($currentUser?->effective_role, [
-        \App\Models\User::ROLE_SALES,
-        \App\Models\User::ROLE_SALES_RENEWALS,
-    ], true);
-    $isWarehouseDashboardRole = ($currentUser?->canAccessModule('assets', 'read') ?? false)
-        && !($currentUser?->canAccessModule('sales', 'read') ?? false)
-        && !($currentUser?->canAccessModule('payments', 'read') ?? false)
-        && !($currentUser?->canAccessModule('invoices', 'read') ?? false)
-        && !($currentUser?->canAccessModule('deliveries', 'read') ?? false);
-    $showSalesOperationsSection = !$isDeliveryFacingMenuRole && (($currentUser?->canAccessModule('sales', 'read') ?? false) || ($currentUser?->canAccessModule('rentals', 'read') ?? false));
+    $canViewFinance = (bool) ($dashboardVisibility['finance_widgets'] ?? false);
+    $isDeliveryFacingMenuRole = (bool) ($dashboardVisibility['delivery_focused'] ?? false);
+    $isWarehouseDashboardRole = (bool) ($dashboardVisibility['warehouse_focused'] ?? false);
     $showFinanceSection = $canViewFinance;
-    $showWarehouseSection = ($currentUser?->canAccessModule('assets', 'read') ?? false) || ($currentUser?->canAccessModule('warehouses', 'read') ?? false);
+    $showSalesOperationsSection = (bool) ($dashboardVisibility['sales_analytics'] ?? false);
+    $showInventorySection = (bool) ($dashboardVisibility['inventory_intelligence'] ?? false);
+    $showStaffWorkloadSection = (bool) ($dashboardVisibility['staff_workload'] ?? false);
+    $showBusinessSignalsSection = (bool) ($dashboardVisibility['business_signals'] ?? false);
+    $showOrganizationAnalyticsSection = (bool) ($dashboardVisibility['organization_analytics'] ?? false);
+    $showStaffOpsSection = $showStaffWorkloadSection || $showBusinessSignalsSection || $showInventorySection;
+    $dashboardOrderScope = (string) ($dashboardOrderMetricsScope ?? 'organization');
+    $dashboardTaskScope = (string) ($dashboardTaskMetricsScope ?? 'organization');
+    $dashboardFollowUpScope = (string) ($dashboardFollowUpMetricsScope ?? 'organization');
+    $orderScopePrefix = $dashboardOrderScope === 'mine' ? 'My ' : 'All ';
+    $taskScopePrefix = $dashboardTaskScope === 'assigned' ? 'My ' : 'Total ';
+    $followUpScopePrefix = $dashboardFollowUpScope === 'assigned' ? 'My ' : 'All ';
 
     $currency = fn ($value) => "\u{20B9}" . number_format((float) $value, 2);
     $welcomeName = trim((string) ($currentUser?->name ?? 'Team'));
@@ -232,7 +230,7 @@
 
     $primaryPriorityCards = collect([
         [
-            'label' => 'Deliveries Pending',
+            'label' => $taskScopePrefix . 'Pending Deliveries',
             'value' => $deliveryTasksCountValue,
             'subtitle' => $overdueDeliveryCountValue . ' overdue task(s)',
             'note' => 'Open delivery tasks visible in Task Board',
@@ -241,7 +239,7 @@
             'icon' => 'delivery',
         ],
         [
-            'label' => 'Overdue Rentals',
+            'label' => $orderScopePrefix . 'Overdue Rentals',
             'value' => $overdueReturnsCount,
             'subtitle' => 'Delivered and past due',
             'note' => $returnsDueTodayCountValue . ' returns due today',
@@ -260,7 +258,7 @@
             'visible' => $canViewFinance,
         ],
         [
-            'label' => 'Pickups Pending',
+            'label' => $taskScopePrefix . 'Pending Pickups',
             'value' => $pickupTasksCountValue,
             'subtitle' => $overduePickupCountValue . ' overdue task(s)',
             'note' => 'Open pickup tasks visible in Task Board',
@@ -269,7 +267,7 @@
             'icon' => 'pickup',
         ],
         [
-            'label' => 'Completed Today',
+            'label' => $dashboardTaskScope === 'assigned' ? 'My Tasks Completed Today' : 'Completed Today',
             'value' => $completedTodayCountValue,
             'subtitle' => $completedDeliveryCountValue . ' deliveries + ' . $completedPickupCountValue . ' pickups completed',
             'note' => 'Tasks closed today only',
@@ -313,36 +311,36 @@
 
     $deliveryMiniTiles = collect([
         ['label' => 'Total Tasks', 'value' => $totalTasksCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index') : null, 'tone' => 'blue', 'icon' => 'tasks'],
-        ['label' => 'Deliveries Pending', 'value' => $deliveryTasksCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'delivery_workload']) : null, 'tone' => 'amber', 'icon' => 'delivery'],
-        ['label' => 'Pickups Pending', 'value' => $pickupTasksCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pickup_workload']) : null, 'tone' => 'amber', 'icon' => 'pickup'],
+        ['label' => $taskScopePrefix . 'Pending Deliveries', 'value' => $deliveryTasksCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'delivery_workload']) : null, 'tone' => 'amber', 'icon' => 'delivery'],
+        ['label' => $taskScopePrefix . 'Pending Pickups', 'value' => $pickupTasksCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pickup_workload']) : null, 'tone' => 'amber', 'icon' => 'pickup'],
         ['label' => 'Deliveries Completed', 'value' => $completedDeliveryCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_delivery']) : null, 'tone' => 'green', 'icon' => 'delivery'],
         ['label' => 'Pickups Completed', 'value' => $completedPickupCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_pickup']) : null, 'tone' => 'green', 'icon' => 'pickup'],
         ['label' => 'Completed Today', 'value' => $completedTodayCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_today']) : null, 'tone' => 'green', 'icon' => 'completed'],
     ]);
 
     $renewalMiniTiles = collect([
-        ['label' => 'Renewals Due Today', 'value' => (int) ($renewalsDueTodayCount ?? 0), 'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'due_today']) : null, 'tone' => 'amber', 'icon' => 'rental'],
-        ['label' => 'Renewals Due This Week', 'value' => (int) ($renewalsDueThisWeekCount ?? 0), 'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'next_7_days']) : null, 'tone' => 'blue', 'icon' => 'trend'],
-        ['label' => 'Overdue Renewals', 'value' => (int) ($overdueRenewalsCount ?? 0), 'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'overdue']) : null, 'tone' => 'red', 'icon' => 'overdue'],
-        ['label' => 'Pickup Requested', 'value' => (int) ($pickupRequestedRenewalCount ?? 0), 'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'pickup_requested']) : null, 'tone' => 'green', 'icon' => 'pickup'],
+        ['label' => $orderScopePrefix . 'Renewals Due Today', 'value' => (int) ($renewalsDueTodayCount ?? 0), 'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'due_today']) : null, 'tone' => 'amber', 'icon' => 'rental'],
+        ['label' => $orderScopePrefix . 'Renewals Due This Week', 'value' => (int) ($renewalsDueThisWeekCount ?? 0), 'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'next_7_days']) : null, 'tone' => 'blue', 'icon' => 'trend'],
+        ['label' => $orderScopePrefix . 'Overdue Renewals', 'value' => (int) ($overdueRenewalsCount ?? 0), 'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'overdue']) : null, 'tone' => 'red', 'icon' => 'overdue'],
+        ['label' => $orderScopePrefix . 'Pickup Requests', 'value' => (int) ($pickupRequestedRenewalCount ?? 0), 'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'pickup_requested']) : null, 'tone' => 'green', 'icon' => 'pickup'],
     ])->filter(fn ($tile) => $canUpdateRentals && !empty($tile['href']))->values();
     $pickupCenterMiniTiles = collect([
-        ['label' => 'Pickups Scheduled Today', 'value' => (int) ($pickupsScheduledTodayCount ?? 0), 'href' => $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'scheduled_today']) : null, 'tone' => 'amber', 'icon' => 'pickup'],
-        ['label' => 'Overdue Pickups', 'value' => (int) ($pickupCenterOverdueCount ?? 0), 'href' => $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'overdue']) : null, 'tone' => 'red', 'icon' => 'overdue'],
-        ['label' => 'Failed Pickups', 'value' => (int) ($failedPickupsCount ?? 0), 'href' => $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'failed_attempt']) : null, 'tone' => 'amber', 'icon' => 'pickup'],
+        ['label' => $taskScopePrefix . 'Pickups Scheduled Today', 'value' => (int) ($pickupsScheduledTodayCount ?? 0), 'href' => $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'scheduled_today']) : null, 'tone' => 'amber', 'icon' => 'pickup'],
+        ['label' => $taskScopePrefix . 'Overdue Pickups', 'value' => (int) ($pickupCenterOverdueCount ?? 0), 'href' => $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'overdue']) : null, 'tone' => 'red', 'icon' => 'overdue'],
+        ['label' => $taskScopePrefix . 'Failed Pickups', 'value' => (int) ($failedPickupsCount ?? 0), 'href' => $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'failed_attempt']) : null, 'tone' => 'amber', 'icon' => 'pickup'],
         ['label' => 'Awaiting Return Verification', 'value' => (int) ($awaitingReturnVerificationCount ?? 0), 'href' => $safeRoute('assets.pending-verification'), 'tone' => 'blue', 'icon' => 'assets'],
     ])->filter(fn ($tile) => !empty($tile['href']) && ($canReadDeliveries || ($currentUser?->canAccessModule('assets', 'read') ?? false)))->values();
     $communicationMiniTiles = collect([
-        ['label' => 'Follow-ups Due Today', 'value' => (int) ($followUpsDueTodayCount ?? 0), 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'today']) : null, 'tone' => 'amber', 'icon' => 'tasks'],
-        ['label' => 'Overdue Follow-ups', 'value' => (int) ($overdueFollowUpsCount ?? 0), 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'overdue']) : null, 'tone' => 'red', 'icon' => 'overdue'],
-        ['label' => 'Pending Renewals', 'value' => (int) ($pendingRenewalFollowUpsCount ?? 0), 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'renewals']) : null, 'tone' => 'blue', 'icon' => 'rental'],
-        ['label' => 'Pending Payments', 'value' => (int) ($pendingPaymentFollowUpsCount ?? 0), 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'payments']) : null, 'tone' => 'amber', 'icon' => 'payment'],
-        ['label' => 'Pending Pickups', 'value' => (int) ($pendingPickupFollowUpsCount ?? 0), 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'pickups']) : null, 'tone' => 'green', 'icon' => 'pickup'],
+        ['label' => $followUpScopePrefix . 'Follow-ups Due Today', 'value' => (int) ($followUpsDueTodayCount ?? 0), 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'today']) : null, 'tone' => 'amber', 'icon' => 'tasks'],
+        ['label' => $followUpScopePrefix . 'Overdue Follow-ups', 'value' => (int) ($overdueFollowUpsCount ?? 0), 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'overdue']) : null, 'tone' => 'red', 'icon' => 'overdue'],
+        ['label' => $followUpScopePrefix . 'Pending Renewals', 'value' => (int) ($pendingRenewalFollowUpsCount ?? 0), 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'renewals']) : null, 'tone' => 'blue', 'icon' => 'rental'],
+        ['label' => $followUpScopePrefix . 'Pending Payments', 'value' => (int) ($pendingPaymentFollowUpsCount ?? 0), 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'payments']) : null, 'tone' => 'amber', 'icon' => 'payment'],
+        ['label' => $followUpScopePrefix . 'Pending Pickups', 'value' => (int) ($pendingPickupFollowUpsCount ?? 0), 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'pickups']) : null, 'tone' => 'green', 'icon' => 'pickup'],
     ])->filter(fn ($tile) => !empty($tile['href']) && !$isDeliveryFacingMenuRole)->values();
 
     $kpiCards = collect([
         [
-            'label' => 'Active Rentals',
+            'label' => $dashboardOrderScope === 'mine' ? 'My Active Rentals' : 'Active Rentals',
             'value' => number_format($activeRentalsCount),
             'note' => 'Live rental orders on field',
             'subtitle' => $activePercent . '% of rental base',
@@ -351,7 +349,7 @@
             'tone' => 'green',
         ],
         [
-            'label' => 'Deliveries Today',
+            'label' => $dashboardTaskScope === 'assigned' ? 'My Deliveries Today' : 'Deliveries Today',
             'value' => number_format($deliveriesTodayCount),
             'note' => 'Completed deliveries today',
             'subtitle' => $pendingDeliveryCountValue . ' still pending',
@@ -401,7 +399,7 @@
             'visible' => $canReadInvoices,
         ],
         [
-            'label' => 'Overdue Rentals',
+            'label' => $orderScopePrefix . 'Overdue Rentals',
             'value' => number_format($overdueReturnsCount),
             'note' => number_format($returnsDueTodayCountValue) . ' due today',
             'subtitle' => 'Past promised return date',
@@ -427,7 +425,7 @@
             'icon' => 'asset',
             'href' => $availableRentalAssetsUrl ?: $inventoryUrl,
             'tone' => null,
-            'visible' => !empty($inventoryUrl),
+            'visible' => $showInventorySection && !empty($inventoryUrl),
         ],
         [
             'label' => 'Sale Stock Available',
@@ -437,7 +435,7 @@
             'icon' => 'sales',
             'href' => $productsIndexUrl ?: ($availableSaleUnitsUrl ?: $inventoryUrl),
             'tone' => null,
-            'visible' => !empty($productsIndexUrl) || !empty($inventoryUrl),
+            'visible' => $showInventorySection && (!empty($productsIndexUrl) || !empty($inventoryUrl)),
         ],
     ])->filter(fn ($card) => $card['visible'] ?? true)->values();
 
@@ -465,6 +463,7 @@
             'href' => $mergeDashboardQuery('invoices.index', ['status' => 'overdue']),
             'icon' => 'payment',
             'tone' => 'red',
+            'visible' => $canViewFinance,
         ],
         [
             'label' => 'Low Stock / Asset Alerts',
@@ -473,8 +472,9 @@
             'href' => $inventoryUrl,
             'icon' => 'low-stock',
             'tone' => null,
+            'visible' => $showInventorySection,
         ],
-    ]);
+    ])->filter(fn ($item) => $item['visible'] ?? true)->values();
 
     $snapshotItems = collect([
         [
@@ -514,7 +514,7 @@
             'copy' => 'Maintenance or unavailable',
             'icon' => 'low-stock',
             'tone' => $maintenanceAlertCountValue > 0 ? 'red' : 'blue',
-            'visible' => !empty($inventoryUrl),
+            'visible' => $showInventorySection && !empty($inventoryUrl),
         ],
     ])->filter(fn ($item) => $item['visible'] ?? true)->values();
 
@@ -549,7 +549,13 @@
                     ['label' => 'Product Master', 'href' => $productsIndexUrl, 'tone' => 'secondary'],
                     ['label' => 'Asset Register', 'href' => $safeRoute('assets.index'), 'tone' => 'secondary'],
                 ]
-                : ($canViewFinance
+                : (($dashboardVisibility['finance_focused'] ?? false)
+                    ? [
+                        ['label' => 'Record Payment', 'href' => $recordPaymentUrl, 'tone' => 'primary'],
+                        ['label' => 'Pending Invoices', 'href' => $invoiceIndexUrl ? $mergeDashboardQuery('invoices.index', ['status' => 'open']) : null, 'tone' => 'secondary'],
+                        ['label' => 'Payment Follow-ups', 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'payments']) : null, 'tone' => 'secondary'],
+                    ]
+                    : ($canViewFinance
                     ? [
                         ['label' => 'New Rental', 'href' => $newRentalUrl, 'tone' => 'primary'],
                         ['label' => 'New Sale', 'href' => $newSaleUrl, 'tone' => 'secondary'],
@@ -563,7 +569,7 @@
                         ['label' => 'New Sale', 'href' => $newSaleUrl, 'tone' => 'secondary'],
                         ['label' => 'Add Customer', 'href' => $newCustomerUrl, 'tone' => 'secondary'],
                         ['label' => 'Add Follow-up', 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'today']) : null, 'tone' => 'secondary'],
-                    ]))
+                    ])))
     )->filter(fn ($action) => !empty($action['href']))->values();
     $operationalAlerts = collect([
         [
@@ -1583,7 +1589,9 @@
         <div class="rx-card-body">
             <div class="dashboard-anchor-nav">
                 <a href="#today-widgets" class="rx-btn-secondary">Today's Widgets</a>
-                <a href="#staff-ops" class="rx-btn-secondary">Staff & Operations</a>
+                @if($showStaffOpsSection)
+                    <a href="#staff-ops" class="rx-btn-secondary">Staff & Operations</a>
+                @endif
                 <a href="#recent-ops" class="rx-btn-secondary">Recent Activity</a>
                 @if($canViewFinance)
                     <a href="#finance-summary" class="rx-btn-secondary">Finance Summary</a>
@@ -2285,7 +2293,9 @@
         </div>
     </section>
 
+    @if($showStaffOpsSection)
     <section class="dashboard-insight-grid" id="staff-ops">
+        @if($showStaffWorkloadSection)
         <div class="rx-card dashboard-feed-card">
             <div class="rx-card-header">
                 <div>
@@ -2316,8 +2326,9 @@
                 @endif
             </div>
         </div>
+        @endif
 
-        @unless($isDeliveryFacingMenuRole)
+        @if($showBusinessSignalsSection)
         <div class="rx-card dashboard-feed-card">
             <div class="rx-card-header">
                 <div>
@@ -2357,8 +2368,9 @@
                 @endif
             </div>
         </div>
-        @endunless
+        @endif
 
+        @if($showInventorySection)
         <div class="rx-card dashboard-feed-card">
             <div class="rx-card-header">
                 <div>
@@ -2407,7 +2419,9 @@
                 </div>
             </div>
         </div>
+        @endif
     </section>
+    @endif
 
     <section class="dashboard-recent-grid" id="recent-ops">
         <div class="rx-card dashboard-feed-card">
@@ -2683,7 +2697,7 @@
     </section>
     @endunless
 
-    @if($showFinanceSection)
+    @if($showOrganizationAnalyticsSection)
     <section class="dashboard-rank-grid">
         <div class="rx-card dashboard-rank-card">
             <div class="rx-card-header">

@@ -1194,6 +1194,23 @@
         'infoItems' => $rentalInfoItems,
     ])
 
+    <x-section-nav
+        label="Rental page sections"
+        :items="[
+            ['id' => 'rental-overview-section', 'label' => 'Overview'],
+            ['id' => 'rental-billing-actions', 'label' => 'Invoice'],
+            ['id' => 'rental-payments-section', 'label' => 'Payments'],
+            ['id' => 'renewal-workspace', 'label' => 'Renewals'],
+            ['id' => 'rental-products-section', 'label' => 'Products'],
+            ['id' => 'rental-customer-section', 'label' => 'Customer'],
+            ['id' => 'rental-delivery-section', 'label' => 'Delivery'],
+            ['id' => 'rental-pickup-section', 'label' => 'Pickup'],
+            ['id' => 'rental-activity-timeline', 'label' => 'Timeline'],
+        ]"
+    />
+
+    <div class="section-nav-target" id="rental-overview-section"></div>
+
     @if(session('success'))
         <div style="background:#dcfce7;color:#166534;border:1px solid #bbf7d0;padding:12px 14px;border-radius:12px;">
             {{ session('success') }}
@@ -1220,20 +1237,7 @@
         </div>
     @endif
 
-    <div id="rental-activity-timeline">
-        @include('partials.activity-timeline', [
-            'timeline' => $activityLogs ?? collect(),
-            'title' => 'Operations History',
-            'subtitle' => 'Renewals, reminders, invoices, delivery updates, and return activity for this rental.',
-            'timelineFilter' => $timelineFilter ?? 'all',
-            'timelineRoute' => 'rentals.show',
-            'noteAction' => route('rentals.notes.store', $rental),
-            'noteLabel' => 'Add Note',
-            'anchorId' => 'rental-activity-timeline',
-        ])
-    </div>
-
-    <div class="detail-card" id="rental-billing-actions">
+    <div class="detail-card section-nav-target" id="rental-billing-actions">
         <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
             <div>
                 <h2 style="margin:0; font-size:18px;">Billing Actions</h2>
@@ -1539,7 +1543,7 @@
         </div>
     </div>
 
-    <div class="detail-card">
+    <div class="detail-card section-nav-target" id="rental-payments-section">
         <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
             <div>
                 <h2 style="margin:0; font-size:18px;">Payment History</h2>
@@ -1580,7 +1584,7 @@
         </div>
     </div>
 
-    <div class="detail-card renewal-highlight" id="renewal-workspace">
+    <div class="detail-card renewal-highlight section-nav-target" id="renewal-workspace">
         <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
             <div>
                 <h2 style="margin:0; font-size:18px;">Renewal Workspace</h2>
@@ -1734,7 +1738,7 @@
         </div>
     </div>
 
-    <div class="detail-card">
+    <div class="detail-card section-nav-target" id="rental-products-section">
         <h2 style="margin-top:0; margin-bottom:14px; font-size:18px;">Rental Product Rows</h2>
         <div style="display:grid; gap:10px;">
             @foreach($rentalItems as $itemIndex => $item)
@@ -1802,7 +1806,7 @@
     @endif
 
     <div class="detail-grid">
-        <div class="detail-card span-6">
+        <div class="detail-card span-6 section-nav-target" id="rental-customer-section">
             <h2 style="margin-top:0; margin-bottom:14px; font-size:18px;">Customer Summary</h2>
             <div class="detail-grid">
                 <div class="span-6">
@@ -1921,7 +1925,7 @@
             </div>
         </div>
 
-        <div class="detail-card span-6">
+        <div class="detail-card span-6 section-nav-target" id="rental-delivery-section">
             <h2 style="margin-top:0; margin-bottom:14px; font-size:18px;">Delivery Workflow</h2>
             @if($deliveryRecord)
                 <div class="timeline">
@@ -2046,7 +2050,7 @@
             @endif
         </div>
 
-        <div class="detail-card span-6">
+        <div class="detail-card span-6 section-nav-target" id="rental-pickup-section">
             <h2 style="margin-top:0; margin-bottom:14px; font-size:18px;">Pickup Workflow</h2>
             @if($pickupRecord)
                 <div class="timeline">
@@ -2134,6 +2138,19 @@
               @endif
         </div>
     </div>
+</div>
+
+<div class="section-nav-target" id="rental-activity-timeline">
+    @include('partials.activity-timeline', [
+        'timeline' => $activityLogs ?? collect(),
+        'title' => 'Operations History',
+        'subtitle' => 'Renewals, reminders, invoices, delivery updates, and return activity for this rental.',
+        'timelineFilter' => $timelineFilter ?? 'all',
+        'timelineRoute' => 'rentals.show',
+        'noteAction' => route('rentals.notes.store', $rental),
+        'noteLabel' => 'Add Note',
+        'anchorId' => 'rental-activity-timeline',
+    ])
 </div>
 
 <div class="renewal-modal" id="renewalModal" aria-hidden="true">

@@ -11,6 +11,7 @@ use App\Models\PartnerClient;
 use App\Models\Rental;
 use App\Models\Sale;
 use App\Models\User;
+use App\Services\Metrics\DashboardMetricsService;
 use App\Support\ActivityLogger;
 use App\Support\FollowUpManager;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -26,6 +27,11 @@ class CommunicationCenterController extends Controller
 {
     public function __construct(private readonly FollowUpManager $followUpManager)
     {
+    }
+
+    private function dashboardMetrics(): DashboardMetricsService
+    {
+        return app(DashboardMetricsService::class);
     }
 
     public function index(Request $request)
@@ -52,14 +58,7 @@ class CommunicationCenterController extends Controller
         $countQuery = $this->applyScopedVisibility($this->baseQuery(false));
         $countQuery = $this->applyFilters($countQuery, $request);
 
-        $counts = collect(array_keys($this->tabs()))
-            ->mapWithKeys(function (string $key) use ($countQuery, $today) {
-                $query = clone $countQuery;
-                $this->applyTab($query, $key, $today);
-
-                return [$key => $query->count()];
-            })
-            ->all();
+        $counts = $this->dashboardMetrics()->followUpCounts($countQuery, $today);
 
         $query = $this->applyScopedVisibility($this->baseQuery());
         $query = $this->applyFilters($query, $request);
@@ -287,22 +286,7 @@ class CommunicationCenterController extends Controller
 
     private function applyScopedVisibility(Builder $query): Builder
     {
-        $user = auth()->user();
-
-        if (!$user || !$user->hasScope('assigned', 'deliveries')) {
-            return $query;
-        }
-
-        return $query->where(function (Builder $scoped) use ($user): void {
-            $scoped->where('assigned_user_id', $user->id)
-                ->orWhere(function (Builder $deliveryQuery) use ($user): void {
-                    $deliveryQuery
-                        ->whereIn('followup_type', [FollowUp::TYPE_PICKUP, FollowUp::TYPE_DELIVERY, FollowUp::TYPE_SERVICE])
-                        ->whereHas('delivery', function (Builder $taskQuery) use ($user): void {
-                            $taskQuery->where('assigned_user_id', $user->id);
-                        });
-                });
-        });
+        return $this->dashboardMetrics()->scopeFollowUpVisibility($query, auth()->user());
     }
 
     private function applyFilters(Builder $query, Request $request): Builder

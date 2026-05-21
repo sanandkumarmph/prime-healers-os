@@ -172,7 +172,16 @@
         'infoItems' => $partnerInfoItems,
     ])
 
-    <div class="bp-show-card">
+    <x-section-nav
+        label="Business partner page sections"
+        :items="[
+            ['id' => 'business-partner-overview-section', 'label' => 'Overview'],
+            ['id' => 'actual-clients', 'label' => 'Actual Clients'],
+            ['id' => 'business-partner-timeline', 'label' => 'Timeline'],
+        ]"
+    />
+
+    <div class="bp-show-card section-nav-target" id="business-partner-overview-section">
         <div class="bp-show-grid">
             <div class="bp-show-col-4">
                 <span class="bp-show-label">Contact Person</span>
@@ -240,7 +249,7 @@
         </div>
     </div>
 
-    <div class="bp-show-card" id="actual-clients">
+    <div class="bp-show-card section-nav-target" id="actual-clients">
         <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
             <div>
                 <h2 style="margin:0;color:#0f172a;">Actual Clients</h2>
@@ -331,16 +340,18 @@
         <div style="margin-top:14px;">{{ $clients->links() }}</div>
     </div>
 
-    @include('partials.activity-timeline', [
-        'timeline' => $activityTimeline ?? collect(),
-        'title' => 'Timeline',
-        'subtitle' => 'Partner setup, actual clients, rentals, sales, reminders, and follow-up history.',
-        'timelineFilter' => $timelineFilter ?? 'all',
-        'timelineRoute' => 'business-partners.show',
-        'noteAction' => route('business-partners.notes.store', $businessPartner),
-        'noteLabel' => 'Add Note',
-            'anchorId' => 'business-partner-timeline',
-    ])
+    <div class="section-nav-target" id="business-partner-timeline">
+        @include('partials.activity-timeline', [
+            'timeline' => $activityTimeline ?? collect(),
+            'title' => 'Timeline',
+            'subtitle' => 'Partner setup, actual clients, rentals, sales, reminders, and follow-up history.',
+            'timelineFilter' => $timelineFilter ?? 'all',
+            'timelineRoute' => 'business-partners.show',
+            'noteAction' => route('business-partners.notes.store', $businessPartner),
+            'noteLabel' => 'Add Note',
+                'anchorId' => 'business-partner-timeline',
+        ])
+    </div>
 </div>
 @include('partials.follow-up-modal')
 @endsection

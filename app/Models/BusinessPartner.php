@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Schema;
 
 class BusinessPartner extends Model
 {
@@ -115,5 +116,39 @@ class BusinessPartner extends Model
         }
 
         return null;
+    }
+
+    public static function relationSelectColumns(array $extra = []): array
+    {
+        $columns = ['id'];
+
+        foreach ([
+            'organization_id',
+            'business_name',
+            'contact_person',
+            'phone',
+            'whatsapp',
+            'email',
+            'address',
+            'city',
+            'state',
+            'pincode',
+            'location',
+            'latitude',
+            'longitude',
+            'status',
+        ] as $column) {
+            if (Schema::hasColumn('business_partners', $column)) {
+                $columns[] = $column;
+            }
+        }
+
+        foreach ($extra as $column) {
+            if ($column !== '' && !in_array($column, $columns, true) && Schema::hasColumn('business_partners', $column)) {
+                $columns[] = $column;
+            }
+        }
+
+        return $columns;
     }
 }

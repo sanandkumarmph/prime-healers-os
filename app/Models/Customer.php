@@ -102,6 +102,36 @@ class Customer extends Model
         return static::$hasIdProofOriginalNameColumn ??= Schema::hasColumn('customers', 'id_proof_original_name');
     }
 
+    public static function relationSelectColumns(array $extra = []): array
+    {
+        $columns = ['id', 'name', 'phone'];
+
+        $optionalColumns = [
+            'whatsapp_number' => self::hasWhatsappNumberColumn(),
+            'email' => Schema::hasColumn('customers', 'email'),
+            'address' => Schema::hasColumn('customers', 'address'),
+            'city' => Schema::hasColumn('customers', 'city'),
+            'state' => Schema::hasColumn('customers', 'state'),
+            'pincode' => Schema::hasColumn('customers', 'pincode'),
+            'map_location_text' => self::hasMapLocationTextColumn(),
+            'map_location_url' => self::hasMapLocationUrlColumn(),
+        ];
+
+        foreach ($optionalColumns as $column => $available) {
+            if ($available) {
+                $columns[] = $column;
+            }
+        }
+
+        foreach ($extra as $column) {
+            if ($column !== '' && !in_array($column, $columns, true) && Schema::hasColumn('customers', $column)) {
+                $columns[] = $column;
+            }
+        }
+
+        return $columns;
+    }
+
     public static function indianStates(): array
     {
         return CustomerProfileSupport::indianStates();
