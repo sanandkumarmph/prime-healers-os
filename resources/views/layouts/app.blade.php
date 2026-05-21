@@ -124,8 +124,11 @@
         ],
     ];
 
+    $dashboardSettingsHref = ($currentUser?->canAccessModule('settings', 'read') ?? false) ? $safeRoute('organization.dashboard-settings.edit') : null;
+
     $organizationItems = [
         ['label' => 'Company Profile', 'icon' => 'settings', 'href' => $companyHref, 'active' => request()->routeIs('organization.settings.*'), 'visible' => !empty($companyHref)],
+        ['label' => 'Dashboard Settings', 'icon' => 'dashboard', 'href' => $dashboardSettingsHref, 'active' => request()->routeIs('organization.dashboard-settings.*'), 'visible' => !empty($dashboardSettingsHref)],
         ['label' => 'Preferences', 'icon' => 'settings', 'href' => $preferencesHref, 'active' => request()->routeIs('organization.settings.*'), 'visible' => false],
         ['label' => 'Data Import', 'icon' => 'products', 'href' => $safeRoute('imports.index'), 'active' => request()->routeIs('imports.*'), 'visible' => $currentUser?->isSuperAdmin() ?? false],
     ];

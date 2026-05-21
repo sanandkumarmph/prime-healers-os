@@ -28,6 +28,14 @@
     $showBusinessSignalsSection = (bool) ($dashboardVisibility['business_signals'] ?? false);
     $showOrganizationAnalyticsSection = (bool) ($dashboardVisibility['organization_analytics'] ?? false);
     $showStaffOpsSection = $showStaffWorkloadSection || $showBusinessSignalsSection || $showInventorySection;
+    $dashboardWidgetOrder = $dashboardVisibility['widget_order'] ?? [];
+    $dashboardWidgetKeys = array_flip($dashboardVisibility['widget_keys'] ?? []);
+    $dashboardWidgetEnabled = function (string $widgetKey) use ($dashboardWidgetKeys): bool {
+        return array_key_exists($widgetKey, $dashboardWidgetKeys);
+    };
+    $dashboardWidgetSort = function (string $widgetKey, int $fallback = 999) use ($dashboardWidgetOrder): int {
+        return (int) ($dashboardWidgetOrder[$widgetKey]['sort_order'] ?? $fallback);
+    };
     $dashboardOrderScope = (string) ($dashboardOrderMetricsScope ?? 'organization');
     $dashboardTaskScope = (string) ($dashboardTaskMetricsScope ?? 'organization');
     $dashboardFollowUpScope = (string) ($dashboardFollowUpMetricsScope ?? 'organization');
@@ -230,6 +238,7 @@
 
     $primaryPriorityCards = collect([
         [
+            'widget_key' => 'primary_pending_deliveries',
             'label' => $taskScopePrefix . 'Pending Deliveries',
             'value' => $deliveryTasksCountValue,
             'subtitle' => $overdueDeliveryCountValue . ' overdue task(s)',
@@ -239,6 +248,7 @@
             'icon' => 'delivery',
         ],
         [
+            'widget_key' => 'primary_overdue_rentals',
             'label' => $orderScopePrefix . 'Overdue Rentals',
             'value' => $overdueReturnsCount,
             'subtitle' => 'Delivered and past due',
@@ -248,6 +258,7 @@
             'icon' => 'overdue',
         ],
         [
+            'widget_key' => 'primary_outstanding_dues',
             'label' => 'Outstanding Dues',
             'value' => $currency($outstandingDueAmountValue),
             'subtitle' => $openInvoiceCountValue . ' open invoices',
@@ -258,6 +269,7 @@
             'visible' => $canViewFinance,
         ],
         [
+            'widget_key' => 'primary_pending_pickups',
             'label' => $taskScopePrefix . 'Pending Pickups',
             'value' => $pickupTasksCountValue,
             'subtitle' => $overduePickupCountValue . ' overdue task(s)',
@@ -267,6 +279,7 @@
             'icon' => 'pickup',
         ],
         [
+            'widget_key' => 'primary_tasks_completed_today',
             'label' => $dashboardTaskScope === 'assigned' ? 'My Tasks Completed Today' : 'Completed Today',
             'value' => $completedTodayCountValue,
             'subtitle' => $completedDeliveryCountValue . ' deliveries + ' . $completedPickupCountValue . ' pickups completed',
@@ -275,9 +288,10 @@
             'tone' => 'green',
             'icon' => 'completed',
         ],
-    ])->filter(fn ($card) => $card['visible'] ?? true)->values();
+    ])->filter(fn ($card) => ($card['visible'] ?? true) && $dashboardWidgetEnabled($card['widget_key']))->sortBy(fn ($card) => $dashboardWidgetSort($card['widget_key']))->values();
 
-    $salesCards = $canViewFinance
+    $salesCards = $dashboardWidgetEnabled('section_sales_overview')
+        ? ($canViewFinance
         ? collect([
             ['label' => 'Sales Today', 'value' => $todaySalesCount, 'subtitle' => 'Orders created today', 'note' => $currency($paidSalesAmountValue) . ' paid value', 'href' => $mergeDashboardQuery('sales.index', ['date' => now()->toDateString()]), 'tone' => 'green', 'icon' => 'sales'],
             ['label' => 'Sales This Month', 'value' => $salesThisMonthCountValue, 'subtitle' => 'Month-to-date sales volume', 'note' => $currency($salesThisMonthAmountValue), 'href' => $salesIndexUrl, 'tone' => 'blue', 'icon' => 'trend'],
@@ -292,7 +306,8 @@
             ['label' => 'Open Sales Invoices', 'value' => number_format($salesOutstandingInvoiceCountValue), 'subtitle' => 'Invoice raised, payment pending', 'note' => 'Counts only for non-finance roles', 'href' => $salesIndexUrl, 'tone' => 'amber', 'icon' => 'payment'],
             ['label' => 'Unbilled Sales', 'value' => number_format($salesUnbilledCountValue), 'subtitle' => 'Orders without invoice', 'note' => 'Sales not yet invoiced', 'href' => $salesIndexUrl, 'tone' => 'amber', 'icon' => 'sales'],
             ['label' => 'Pending Sales Actions', 'value' => number_format($salesOutstandingInvoiceCountValue + $salesUnbilledCountValue), 'subtitle' => 'Orders needing invoice or payment follow-through', 'note' => 'No financial amounts shown', 'href' => $salesIndexUrl, 'tone' => 'red', 'icon' => 'trend'],
-        ]);
+        ]))
+        : collect();
 
     $financeCards = collect([
         ['label' => 'Gross Components', 'value' => $currency($grossBilledAmountValue), 'href' => $dashboardUrl, 'tone' => 'blue', 'icon' => 'trend', 'note' => 'Rental + sales + deposit + transport + other'],
@@ -307,7 +322,7 @@
         ['label' => 'Outstanding Dues', 'value' => $currency($outstandingDueAmountValue), 'href' => $mergeDashboardQuery('invoices.index', ['status' => 'open']), 'tone' => 'red', 'icon' => 'payment'],
         ['label' => 'Net Billed (Invoices)', 'value' => $currency($totalBilledAmountValue), 'href' => $invoiceIndexUrl, 'tone' => 'blue', 'icon' => 'trend', 'note' => $reconciliationGapAmountValue > 0 ? $currency($reconciliationGapAmountValue) . ' still outside invoiced total' : 'Fully invoiced against visible components'],
         ['label' => 'Unbilled / Gap', 'value' => $currency($reconciliationGapAmountValue), 'href' => $invoiceIndexUrl, 'tone' => $reconciliationGapAmountValue > 0 ? 'amber' : 'green', 'icon' => 'payment', 'note' => $adjustmentGapAmountValue !== 0.0 ? $currency($knownUnbilledGapAmountValue) . ' known unbilled, ' . $currency($adjustmentGapAmountValue) . ' adjustment gap' : $currency($knownUnbilledGapAmountValue) . ' explained by uninvoiced exposure'],
-    ]);
+    ])->when(!$dashboardWidgetEnabled('section_finance_summary'), fn ($cards) => collect());
 
     $deliveryMiniTiles = collect([
         ['label' => 'Total Tasks', 'value' => $totalTasksCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index') : null, 'tone' => 'blue', 'icon' => 'tasks'],
@@ -316,30 +331,38 @@
         ['label' => 'Deliveries Completed', 'value' => $completedDeliveryCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_delivery']) : null, 'tone' => 'green', 'icon' => 'delivery'],
         ['label' => 'Pickups Completed', 'value' => $completedPickupCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_pickup']) : null, 'tone' => 'green', 'icon' => 'pickup'],
         ['label' => 'Completed Today', 'value' => $completedTodayCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_today']) : null, 'tone' => 'green', 'icon' => 'completed'],
-    ]);
+    ])->filter(fn ($tile) => $dashboardWidgetEnabled(match ($tile['label']) {
+        'Total Tasks' => 'primary_tasks_completed_today',
+        $taskScopePrefix . 'Pending Deliveries' => 'primary_pending_deliveries',
+        $taskScopePrefix . 'Pending Pickups' => 'primary_pending_pickups',
+        'Deliveries Completed' => 'kpi_deliveries_today',
+        'Pickups Completed' => 'widget_today_pickups',
+        default => 'primary_tasks_completed_today',
+    }))->values();
 
     $renewalMiniTiles = collect([
         ['label' => $orderScopePrefix . 'Renewals Due Today', 'value' => (int) ($renewalsDueTodayCount ?? 0), 'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'due_today']) : null, 'tone' => 'amber', 'icon' => 'rental'],
         ['label' => $orderScopePrefix . 'Renewals Due This Week', 'value' => (int) ($renewalsDueThisWeekCount ?? 0), 'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'next_7_days']) : null, 'tone' => 'blue', 'icon' => 'trend'],
         ['label' => $orderScopePrefix . 'Overdue Renewals', 'value' => (int) ($overdueRenewalsCount ?? 0), 'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'overdue']) : null, 'tone' => 'red', 'icon' => 'overdue'],
         ['label' => $orderScopePrefix . 'Pickup Requests', 'value' => (int) ($pickupRequestedRenewalCount ?? 0), 'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'pickup_requested']) : null, 'tone' => 'green', 'icon' => 'pickup'],
-    ])->filter(fn ($tile) => $canUpdateRentals && !empty($tile['href']))->values();
+    ])->filter(fn ($tile) => $currentUser?->canAccessModule('rentals', 'read') && !empty($tile['href']) && $dashboardWidgetEnabled('widget_today_renewals'))->values();
     $pickupCenterMiniTiles = collect([
         ['label' => $taskScopePrefix . 'Pickups Scheduled Today', 'value' => (int) ($pickupsScheduledTodayCount ?? 0), 'href' => $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'scheduled_today']) : null, 'tone' => 'amber', 'icon' => 'pickup'],
         ['label' => $taskScopePrefix . 'Overdue Pickups', 'value' => (int) ($pickupCenterOverdueCount ?? 0), 'href' => $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'overdue']) : null, 'tone' => 'red', 'icon' => 'overdue'],
         ['label' => $taskScopePrefix . 'Failed Pickups', 'value' => (int) ($failedPickupsCount ?? 0), 'href' => $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'failed_attempt']) : null, 'tone' => 'amber', 'icon' => 'pickup'],
         ['label' => 'Awaiting Return Verification', 'value' => (int) ($awaitingReturnVerificationCount ?? 0), 'href' => $safeRoute('assets.pending-verification'), 'tone' => 'blue', 'icon' => 'assets'],
-    ])->filter(fn ($tile) => !empty($tile['href']) && ($canReadDeliveries || ($currentUser?->canAccessModule('assets', 'read') ?? false)))->values();
+    ])->filter(fn ($tile) => !empty($tile['href']) && ($canReadDeliveries || ($currentUser?->canAccessModule('assets', 'read') ?? false)) && $dashboardWidgetEnabled('widget_today_pickups'))->values();
     $communicationMiniTiles = collect([
         ['label' => $followUpScopePrefix . 'Follow-ups Due Today', 'value' => (int) ($followUpsDueTodayCount ?? 0), 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'today']) : null, 'tone' => 'amber', 'icon' => 'tasks'],
         ['label' => $followUpScopePrefix . 'Overdue Follow-ups', 'value' => (int) ($overdueFollowUpsCount ?? 0), 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'overdue']) : null, 'tone' => 'red', 'icon' => 'overdue'],
         ['label' => $followUpScopePrefix . 'Pending Renewals', 'value' => (int) ($pendingRenewalFollowUpsCount ?? 0), 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'renewals']) : null, 'tone' => 'blue', 'icon' => 'rental'],
         ['label' => $followUpScopePrefix . 'Pending Payments', 'value' => (int) ($pendingPaymentFollowUpsCount ?? 0), 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'payments']) : null, 'tone' => 'amber', 'icon' => 'payment'],
         ['label' => $followUpScopePrefix . 'Pending Pickups', 'value' => (int) ($pendingPickupFollowUpsCount ?? 0), 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'pickups']) : null, 'tone' => 'green', 'icon' => 'pickup'],
-    ])->filter(fn ($tile) => !empty($tile['href']) && !$isDeliveryFacingMenuRole)->values();
+    ])->filter(fn ($tile) => !empty($tile['href']) && !$isDeliveryFacingMenuRole && $dashboardWidgetEnabled('widget_today_followups'))->values();
 
     $kpiCards = collect([
         [
+            'widget_key' => 'kpi_active_rentals',
             'label' => $dashboardOrderScope === 'mine' ? 'My Active Rentals' : 'Active Rentals',
             'value' => number_format($activeRentalsCount),
             'note' => 'Live rental orders on field',
@@ -349,6 +372,7 @@
             'tone' => 'green',
         ],
         [
+            'widget_key' => 'kpi_deliveries_today',
             'label' => $dashboardTaskScope === 'assigned' ? 'My Deliveries Today' : 'Deliveries Today',
             'value' => number_format($deliveriesTodayCount),
             'note' => 'Completed deliveries today',
@@ -359,6 +383,7 @@
             'visible' => $canReadDeliveries,
         ],
         [
+            'widget_key' => 'kpi_outstanding_invoices',
             'label' => 'Outstanding Invoices (All)',
             'value' => number_format($outstandingInvoiceCountValue),
             'note' => $canViewFinance ? $currency($outstandingInvoiceAmountValue) . ' unpaid balance' : 'Open invoices awaiting collection',
@@ -369,6 +394,7 @@
             'visible' => $canReadInvoices,
         ],
         [
+            'widget_key' => 'kpi_unbilled_rentals',
             'label' => 'Unbilled Rentals',
             'value' => number_format($unbilledRentalReceivableCountValue),
             'note' => $canViewFinance ? $currency($unbilledRentalReceivableAmountValue) . ' not yet invoiced' : 'Delivered rentals awaiting invoice',
@@ -379,6 +405,7 @@
             'visible' => $canReadInvoices,
         ],
         [
+            'widget_key' => 'kpi_unpaid_renewal_invoices',
             'label' => 'Unpaid Renewal Invoices',
             'value' => number_format((int) ($unpaidRenewalCount ?? 0)),
             'note' => $canViewFinance ? $currency((float) ($unpaidRenewalAmount ?? 0)) . ' pending renewal collection' : 'Renewal invoices awaiting payment',
@@ -389,6 +416,7 @@
             'visible' => $canReadInvoices,
         ],
         [
+            'widget_key' => 'kpi_unbilled_sales',
             'label' => 'Unbilled Sales',
             'value' => number_format($unbilledSaleReceivableCountValue),
             'note' => $canViewFinance ? $currency($unbilledSaleReceivableAmountValue) . ' not yet invoiced' : 'Sales awaiting invoice',
@@ -399,6 +427,7 @@
             'visible' => $canReadInvoices,
         ],
         [
+            'widget_key' => 'kpi_overdue_rentals',
             'label' => $orderScopePrefix . 'Overdue Rentals',
             'value' => number_format($overdueReturnsCount),
             'note' => number_format($returnsDueTodayCountValue) . ' due today',
@@ -408,6 +437,7 @@
             'tone' => 'red',
         ],
         [
+            'widget_key' => 'kpi_collections_this_month',
             'label' => 'Collections This Month',
             'value' => $currency($paymentsReceivedThisMonthAmount),
             'note' => 'Payments collected this month',
@@ -418,6 +448,7 @@
             'visible' => $canViewFinance && ($canReadReports || $canReadInvoices),
         ],
         [
+            'widget_key' => 'kpi_rental_available',
             'label' => 'Rental Available',
             'value' => number_format($availableRentalAssetsCount),
             'note' => 'Tracked rental assets ready to dispatch',
@@ -428,6 +459,7 @@
             'visible' => $showInventorySection && !empty($inventoryUrl),
         ],
         [
+            'widget_key' => 'kpi_sale_stock_available',
             'label' => 'Sale Stock Available',
             'value' => number_format($availableSaleUnitsCount),
             'note' => 'Quantity-based sellable stock',
@@ -437,10 +469,11 @@
             'tone' => null,
             'visible' => $showInventorySection && (!empty($productsIndexUrl) || !empty($inventoryUrl)),
         ],
-    ])->filter(fn ($card) => $card['visible'] ?? true)->values();
+    ])->filter(fn ($card) => ($card['visible'] ?? true) && $dashboardWidgetEnabled($card['widget_key']))->sortBy(fn ($card) => $dashboardWidgetSort($card['widget_key']))->values();
 
     $actionItems = collect([
         [
+            'widget_key' => 'primary_pending_deliveries',
             'label' => 'Deliveries Pending',
             'count' => $deliveryTasksCountValue,
             'copy' => $overdueDeliveryCountValue > 0 ? $overdueDeliveryCountValue . ' overdue task(s)' : 'Open delivery tasks',
@@ -449,6 +482,7 @@
             'tone' => 'amber',
         ],
         [
+            'widget_key' => 'primary_pending_pickups',
             'label' => 'Pickups Pending',
             'count' => $pickupTasksCountValue,
             'copy' => $overduePickupCountValue > 0 ? $overduePickupCountValue . ' overdue task(s)' : 'Open pickup tasks',
@@ -457,6 +491,7 @@
             'tone' => 'blue',
         ],
         [
+            'widget_key' => 'primary_outstanding_dues',
             'label' => 'Overdue Payments',
             'count' => $overdueInvoiceCountValue,
             'copy' => 'Invoices needing finance follow-up',
@@ -466,6 +501,7 @@
             'visible' => $canViewFinance,
         ],
         [
+            'widget_key' => 'snapshot_asset_alerts',
             'label' => 'Low Stock / Asset Alerts',
             'count' => $maintenanceAlertCountValue,
             'copy' => 'Assets in maintenance or unavailable',
@@ -474,10 +510,11 @@
             'tone' => null,
             'visible' => $showInventorySection,
         ],
-    ])->filter(fn ($item) => $item['visible'] ?? true)->values();
+    ])->filter(fn ($item) => ($item['visible'] ?? true) && $dashboardWidgetEnabled($item['widget_key']))->sortBy(fn ($item) => $dashboardWidgetSort($item['widget_key']))->values();
 
     $snapshotItems = collect([
         [
+            'widget_key' => 'snapshot_collections_today',
             'label' => 'Collections Today',
             'value' => $currency($paymentsReceivedTodayAmount),
             'copy' => 'Cash received so far',
@@ -486,6 +523,7 @@
             'visible' => $canViewFinance,
         ],
         [
+            'widget_key' => 'snapshot_deliveries_pending',
             'label' => 'Deliveries Pending',
             'value' => number_format($pendingDeliveryCountValue),
             'copy' => 'Tasks waiting to leave',
@@ -494,6 +532,7 @@
             'visible' => $canReadDeliveries,
         ],
         [
+            'widget_key' => 'snapshot_returns_expected',
             'label' => 'Returns Expected',
             'value' => number_format($returnsDueTodayCountValue),
             'copy' => 'Due back today',
@@ -501,6 +540,7 @@
             'tone' => 'amber',
         ],
         [
+            'widget_key' => 'snapshot_open_invoices',
             'label' => 'Open Invoices',
             'value' => number_format($openInvoiceCountValue),
             'copy' => 'Awaiting closure',
@@ -509,6 +549,7 @@
             'visible' => $canReadInvoices,
         ],
         [
+            'widget_key' => 'snapshot_asset_alerts',
             'label' => 'Asset Alerts',
             'value' => number_format($maintenanceAlertCountValue),
             'copy' => 'Maintenance or unavailable',
@@ -516,21 +557,21 @@
             'tone' => $maintenanceAlertCountValue > 0 ? 'red' : 'blue',
             'visible' => $showInventorySection && !empty($inventoryUrl),
         ],
-    ])->filter(fn ($item) => $item['visible'] ?? true)->values();
+    ])->filter(fn ($item) => ($item['visible'] ?? true) && $dashboardWidgetEnabled($item['widget_key']))->sortBy(fn ($item) => $dashboardWidgetSort($item['widget_key']))->values();
 
-    $recentSalesSummary = collect($recentSales ?? collect())->take(5);
-    $recentRentalsSummary = collect($recentRentals ?? collect())->take(6);
-    $recentCustomersSummary = collect($recentCustomers ?? collect())->take(5);
-    $recentPaymentsSummary = collect($recentPayments ?? collect())->take(5);
-    $recentDeliveriesSummary = collect($recentDeliveries ?? collect())->take(5);
-    $recentFollowUpsSummary = collect($recentFollowUps ?? collect())->take(5);
-    $recentActivitiesSummary = collect($recentActivities ?? collect())->take(8);
-    $todayRenewalSummary = collect($todayRenewalItems ?? collect())->take(5);
-    $todayPickupSummary = collect($todayPickupItems ?? collect())->take(5);
-    $todayDeliverySummary = collect($todayDeliveryItems ?? collect())->take(5);
-    $todayFollowUpSummary = collect($todayFollowUps ?? collect())->take(5);
-    $pendingPaymentSummary = collect($pendingPaymentItems ?? collect())->take(5);
-    $highPriorityFollowUpSummary = collect($highPriorityFollowUps ?? collect())->take(5);
+    $recentSalesSummary = $dashboardWidgetEnabled('section_sales_overview') ? collect($recentSales ?? collect())->take(5) : collect();
+    $recentRentalsSummary = $dashboardWidgetEnabled('section_recent_rentals') ? collect($recentRentals ?? collect())->take(6) : collect();
+    $recentCustomersSummary = $dashboardWidgetEnabled('section_recent_customers') ? collect($recentCustomers ?? collect())->take(5) : collect();
+    $recentPaymentsSummary = $dashboardWidgetEnabled('section_recent_payments') ? collect($recentPayments ?? collect())->take(5) : collect();
+    $recentDeliveriesSummary = $dashboardWidgetEnabled('section_recent_deliveries') ? collect($recentDeliveries ?? collect())->take(5) : collect();
+    $recentFollowUpsSummary = $dashboardWidgetEnabled('section_high_priority_followups') ? collect($recentFollowUps ?? collect())->take(5) : collect();
+    $recentActivitiesSummary = $dashboardWidgetEnabled('section_recent_activity') ? collect($recentActivities ?? collect())->take(8) : collect();
+    $todayRenewalSummary = $dashboardWidgetEnabled('widget_today_renewals') ? collect($todayRenewalItems ?? collect())->take(5) : collect();
+    $todayPickupSummary = $dashboardWidgetEnabled('widget_today_pickups') ? collect($todayPickupItems ?? collect())->take(5) : collect();
+    $todayDeliverySummary = $dashboardWidgetEnabled('widget_today_deliveries') ? collect($todayDeliveryItems ?? collect())->take(5) : collect();
+    $todayFollowUpSummary = $dashboardWidgetEnabled('widget_today_followups') ? collect($todayFollowUps ?? collect())->take(5) : collect();
+    $pendingPaymentSummary = $dashboardWidgetEnabled('widget_pending_payments') ? collect($pendingPaymentItems ?? collect())->take(5) : collect();
+    $highPriorityFollowUpSummary = $dashboardWidgetEnabled('section_high_priority_followups') ? collect($highPriorityFollowUps ?? collect())->take(5) : collect();
     $staffWorkloadSummary = collect($staffWorkloadRows ?? collect())->take(6);
     $partnerOperationalSummary = collect($partnerOperationalRows ?? collect())->take(5);
     $lowStockSummary = collect($lowStockProducts ?? collect())->take(5);
@@ -573,6 +614,7 @@
     )->filter(fn ($action) => !empty($action['href']))->values();
     $operationalAlerts = collect([
         [
+            'widget_key' => 'alert_overdue_renewals',
             'label' => 'Renewals overdue',
             'count' => (int) ($overdueRenewalsCount ?? 0),
             'copy' => 'Rental renewals already beyond their promised end date.',
@@ -580,6 +622,7 @@
             'tone' => 'red',
         ],
         [
+            'widget_key' => 'alert_pickups_delayed',
             'label' => 'Pickups delayed',
             'count' => (int) ($pickupCenterOverdueCount ?? 0),
             'copy' => 'Pickup runs slipped past schedule and need field coordination.',
@@ -587,6 +630,7 @@
             'tone' => 'amber',
         ],
         [
+            'widget_key' => 'alert_failed_field_tasks',
             'label' => 'Failed field tasks',
             'count' => (int) ($failedTasksCount ?? 0),
             'copy' => 'Failed pickups or deliveries that need recovery and rescheduling.',
@@ -595,6 +639,7 @@
             'visible' => $canReadDeliveries,
         ],
         [
+            'widget_key' => 'alert_unassigned_tasks',
             'label' => 'Unassigned tasks',
             'count' => (int) ($unassignedTasksCount ?? 0),
             'copy' => 'Open tasks without a clear field owner.',
@@ -603,6 +648,7 @@
             'visible' => $canReadDeliveries,
         ],
         [
+            'widget_key' => 'alert_high_priority_followups',
             'label' => 'High priority follow-ups',
             'count' => (int) ($highPriorityFollowUpsCount ?? 0),
             'copy' => 'Urgent renewals, payments, and escalation calls waiting now.',
@@ -611,6 +657,7 @@
             'visible' => !$isDeliveryFacingMenuRole,
         ],
         [
+            'widget_key' => 'alert_large_unpaid_invoices',
             'label' => 'Large unpaid invoices',
             'count' => (int) ($largeOutstandingInvoiceCount ?? 0),
             'copy' => 'High-value invoices above ₹10,000 still awaiting collection.',
@@ -618,7 +665,7 @@
             'tone' => 'amber',
             'visible' => $canViewFinance,
         ],
-    ])->filter(fn ($alert) => ($alert['visible'] ?? true) && !empty($alert['href']) && ((int) ($alert['count'] ?? 0)) > 0)->values();
+    ])->filter(fn ($alert) => ($alert['visible'] ?? true) && $dashboardWidgetEnabled($alert['widget_key']) && !empty($alert['href']) && ((int) ($alert['count'] ?? 0)) > 0)->sortBy(fn ($alert) => $dashboardWidgetSort($alert['widget_key']))->values();
     $cities = $cities ?? collect();
     $vendors = $vendors ?? collect();
     $warehouses = $warehouses ?? collect();
@@ -1603,16 +1650,17 @@
     <section class="rx-card" id="today-widgets">
         <div class="rx-card-header dashboard-section-heading">
             <div>
-                <h2 class="rx-card-title">Today's Operational Widgets</h2>
+                <h2 class="rx-card-title">{{ "Today's Operational Widgets" }}</h2>
                 <p class="rx-card-copy">Focused lists for what needs calls, pickup planning, delivery movement, and collection follow-up right now.</p>
             </div>
         </div>
         <div class="rx-card-body">
             <div class="dashboard-widget-grid">
+                @if($dashboardWidgetEnabled('widget_today_renewals'))
                 <div class="rx-card dashboard-widget-card">
                     <div class="rx-card-header">
                         <div>
-                            <h3 class="rx-card-title">Today's Renewals</h3>
+                            <h3 class="rx-card-title">{{ "Today's Renewals" }}</h3>
                             <p class="rx-card-copy">Renewals due today with immediate drilldown to rental detail.</p>
                         </div>
                         <a href="{{ $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'due_today']) : ($rentalIndexUrl ?? '#') }}" class="rx-btn-secondary">Open</a>
@@ -1646,11 +1694,13 @@
                         @endif
                     </div>
                 </div>
+                @endif
 
+                @if($dashboardWidgetEnabled('widget_today_pickups'))
                 <div class="rx-card dashboard-widget-card">
                     <div class="rx-card-header">
                         <div>
-                            <h3 class="rx-card-title">Today's Pickups</h3>
+                            <h3 class="rx-card-title">{{ "Today's Pickups" }}</h3>
                             <p class="rx-card-copy">Pickup tasks that need route movement or confirmation.</p>
                         </div>
                         <a href="{{ $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'scheduled_today']) : ($deliveriesIndexUrl ?? '#') }}" class="rx-btn-secondary">Open</a>
@@ -1687,11 +1737,13 @@
                         @endif
                     </div>
                 </div>
+                @endif
 
+                @if($dashboardWidgetEnabled('widget_today_deliveries'))
                 <div class="rx-card dashboard-widget-card">
                     <div class="rx-card-header">
                         <div>
-                            <h3 class="rx-card-title">Today's Deliveries</h3>
+                            <h3 class="rx-card-title">{{ "Today's Deliveries" }}</h3>
                             <p class="rx-card-copy">Delivery tasks that need dispatch, proof, or completion follow-through.</p>
                         </div>
                         <a href="{{ $deliveriesIndexUrl ? route('deliveries.index', ['task_type' => 'delivery']) : '#' }}" class="rx-btn-secondary">Open</a>
@@ -1728,11 +1780,13 @@
                         @endif
                     </div>
                 </div>
+                @endif
 
+                @if($dashboardWidgetEnabled('widget_today_followups'))
                 <div class="rx-card dashboard-widget-card">
                     <div class="rx-card-header">
                         <div>
-                            <h3 class="rx-card-title">Today's Follow-ups</h3>
+                            <h3 class="rx-card-title">{{ "Today's Follow-ups" }}</h3>
                             <p class="rx-card-copy">Calls and communication tasks due today for renewals, payments, and escalations.</p>
                         </div>
                         <a href="{{ $communicationCenterUrl ? route('communication-center.index', ['tab' => 'today']) : '#' }}" class="rx-btn-secondary">Open</a>
@@ -1769,8 +1823,9 @@
                         @endif
                     </div>
                 </div>
+                @endif
 
-                @if($canViewFinance)
+                @if($canViewFinance && $dashboardWidgetEnabled('widget_pending_payments'))
                     <div class="rx-card dashboard-widget-card">
                         <div class="rx-card-header">
                             <div>
@@ -1886,7 +1941,9 @@
         </div>
     </details>
 
+    @if($primaryPriorityCards->isNotEmpty() || ($showSalesOperationsSection && $salesCards->isNotEmpty()))
     <section class="dashboard-main-grid">
+        @if($primaryPriorityCards->isNotEmpty())
         <div class="rx-card">
             <div class="rx-card-header">
                 <div>
@@ -1911,8 +1968,9 @@
                 </div>
             </div>
         </div>
+        @endif
 
-        @if($showSalesOperationsSection)
+        @if($showSalesOperationsSection && $salesCards->isNotEmpty())
             <div class="rx-card">
                 <div class="rx-card-header">
                     <div>
@@ -1939,7 +1997,9 @@
             </div>
         @endif
     </section>
+    @endif
 
+    @if($actionItems->isNotEmpty())
     <section class="dashboard-action-layout">
         <div class="rx-card">
             <div class="rx-card-header">
@@ -1966,7 +2026,11 @@
                 </div>
             </div>
         </div>
+    </section>
+    @endif
 
+    @if($deliveryMiniTiles->isNotEmpty())
+    <section class="rx-card">
         <div class="rx-card">
             <div class="rx-card-header">
                 <div>
@@ -1990,6 +2054,7 @@
             </div>
         </div>
     </section>
+    @endif
 
     @if($renewalMiniTiles->isNotEmpty())
         <section class="rx-card">
@@ -2069,229 +2134,6 @@
         </section>
     @endif
 
-    <section class="rx-card" hidden aria-hidden="true">
-        <div class="rx-card-header dashboard-section-heading">
-            <div>
-                <h2 class="rx-card-title">Today's Operational Widgets</h2>
-                <p class="rx-card-copy">Focused lists for what needs calls, pickup planning, delivery movement, and collection follow-up right now.</p>
-            </div>
-        </div>
-        <div class="rx-card-body">
-            <div class="dashboard-widget-grid">
-                <div class="rx-card dashboard-widget-card">
-                    <div class="rx-card-header">
-                        <div>
-                            <h3 class="rx-card-title">Today's Renewals</h3>
-                            <p class="rx-card-copy">Renewals due today with immediate drilldown to rental detail.</p>
-                        </div>
-                        <a href="{{ $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'due_today']) : ($rentalIndexUrl ?? '#') }}" class="rx-btn-secondary">Open</a>
-                    </div>
-                    <div class="rx-card-body">
-                        @if($todayRenewalSummary->isNotEmpty())
-                            <div class="dashboard-widget-list">
-                                @foreach($todayRenewalSummary as $rental)
-                                    <div class="dashboard-widget-item">
-                                        <div class="dashboard-widget-eyebrow">
-                                            <em>Rental #{{ $rental->id }}</em>
-                                            <span class="rx-badge {{ $statusBadgeClass($rental->status ?? 'active') }}">{{ \Illuminate\Support\Str::headline((string) ($rental->status ?? 'active')) }}</span>
-                                        </div>
-                                        <strong>{{ $rental->reminderContactName() }}</strong>
-                                        <span>{{ optional($rental->product)->name ?? 'Product N/A' }} • Renewal due {{ optional($rental->end_date)?->format('d M Y') ?? '-' }}</span>
-                                        <small>{{ $rental->usesBusinessPartnerFlow() ? 'Delivery / Service: ' . $rental->deliveryContactName() : 'Direct customer flow' }}</small>
-                                        <div class="dashboard-widget-actions">
-                                            <a href="{{ route('rentals.show', $rental) }}">Open</a>
-                                            @if($rental->reminderContactPhone())
-                                                <a href="tel:{{ preg_replace('/\s+/', '', (string) $rental->reminderContactPhone()) }}">Call</a>
-                                            @endif
-                                            @if($rental->deliveryContactMapUrl())
-                                                <a href="{{ $rental->deliveryContactMapUrl() }}" target="_blank" rel="noopener">Open Map</a>
-                                            @endif
-                                        </div>
-                                    </div>
-                                @endforeach
-                            </div>
-                        @else
-                            <div class="rx-empty dashboard-empty">
-                                <div class="rx-empty-icon">{!! $dashboardIcon('rental') !!}</div>
-                                <strong>No renewals due today</strong>
-                                <span>The renewal queue is clear for today in this filter view.</span>
-                            </div>
-                        @endif
-                    </div>
-                </div>
-
-                <div class="rx-card dashboard-widget-card">
-                    <div class="rx-card-header">
-                        <div>
-                            <h3 class="rx-card-title">Today's Pickups</h3>
-                            <p class="rx-card-copy">Pickup contact, location, and field owner in one scan.</p>
-                        </div>
-                        <a href="{{ $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'scheduled_today']) : ($pickupCenterUrl ?? '#') }}" class="rx-btn-secondary">Open</a>
-                    </div>
-                    <div class="rx-card-body">
-                        @if($todayPickupSummary->isNotEmpty())
-                            <div class="dashboard-widget-list">
-                                @foreach($todayPickupSummary as $task)
-                                    <div class="dashboard-widget-item">
-                                        <div class="dashboard-widget-eyebrow">
-                                            <em>Pickup #{{ $task->id }}</em>
-                                            <span class="rx-badge {{ $statusBadgeClass($task->pickupOperationalStatus()) }}">{{ $task->pickupOperationalLabel() }}</span>
-                                        </div>
-                                        <strong>{{ $task->linkedCustomerName() }}</strong>
-                                        <span>{{ $task->linkedCustomerPhone() ?: 'No phone' }} • {{ $task->linkedCustomerAddress() ?: 'Address not available' }}</span>
-                                        <small>{{ $task->assignedUser?->name ?: $task->assignedStaff?->name ?: 'Unassigned' }} • {{ optional($task->scheduled_at)?->format('d M, h:i A') ?? 'Schedule pending' }}</small>
-                                        <div class="dashboard-widget-actions">
-                                            <a href="{{ route('deliveries.show', $task) }}">Open</a>
-                                            @if($task->linkedCustomerPhone())
-                                                <a href="tel:{{ preg_replace('/\s+/', '', (string) $task->linkedCustomerPhone()) }}">Call</a>
-                                            @endif
-                                            @if($task->linkedCustomerMapUrl())
-                                                <a href="{{ $task->linkedCustomerMapUrl() }}" target="_blank" rel="noopener">Open Map</a>
-                                            @endif
-                                        </div>
-                                    </div>
-                                @endforeach
-                            </div>
-                        @else
-                            <div class="rx-empty dashboard-empty">
-                                <div class="rx-empty-icon">{!! $dashboardIcon('pickup') !!}</div>
-                                <strong>No pickups scheduled today</strong>
-                                <span>Today's pickup field board is clear in this organization view.</span>
-                            </div>
-                        @endif
-                    </div>
-                </div>
-
-                <div class="rx-card dashboard-widget-card">
-                    <div class="rx-card-header">
-                        <div>
-                            <h3 class="rx-card-title">Today's Deliveries</h3>
-                            <p class="rx-card-copy">Delivery contact, map, and assignment without opening Task Board first.</p>
-                        </div>
-                        <a href="{{ $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'delivery_workload']) : '#' }}" class="rx-btn-secondary">Open</a>
-                    </div>
-                    <div class="rx-card-body">
-                        @if($todayDeliverySummary->isNotEmpty())
-                            <div class="dashboard-widget-list">
-                                @foreach($todayDeliverySummary as $task)
-                                    <div class="dashboard-widget-item">
-                                        <div class="dashboard-widget-eyebrow">
-                                            <em>Delivery #{{ $task->id }}</em>
-                                            <span class="rx-badge {{ $statusBadgeClass($task->status) }}">{{ \Illuminate\Support\Str::headline((string) $task->status) }}</span>
-                                        </div>
-                                        <strong>{{ $task->linkedCustomerName() }}</strong>
-                                        <span>{{ $task->linkedCustomerPhone() ?: 'No phone' }} • {{ $task->linkedCustomerAddress() ?: 'Address not available' }}</span>
-                                        <small>{{ $task->assignedUser?->name ?: $task->assignedStaff?->name ?: 'Unassigned' }} • {{ optional($task->scheduled_at)?->format('d M, h:i A') ?? 'Schedule pending' }}</small>
-                                        <div class="dashboard-widget-actions">
-                                            <a href="{{ route('deliveries.show', $task) }}">Open</a>
-                                            @if($task->linkedCustomerPhone())
-                                                <a href="tel:{{ preg_replace('/\s+/', '', (string) $task->linkedCustomerPhone()) }}">Call</a>
-                                            @endif
-                                            @if($task->linkedCustomerMapUrl())
-                                                <a href="{{ $task->linkedCustomerMapUrl() }}" target="_blank" rel="noopener">Open Map</a>
-                                            @endif
-                                        </div>
-                                    </div>
-                                @endforeach
-                            </div>
-                        @else
-                            <div class="rx-empty dashboard-empty">
-                                <div class="rx-empty-icon">{!! $dashboardIcon('delivery') !!}</div>
-                                <strong>No deliveries scheduled today</strong>
-                                <span>There are no open delivery runs scheduled for today in this filtered view.</span>
-                            </div>
-                        @endif
-                    </div>
-                </div>
-
-                <div class="rx-card dashboard-widget-card">
-                    <div class="rx-card-header">
-                        <div>
-                            <h3 class="rx-card-title">Today's Follow-ups</h3>
-                            <p class="rx-card-copy">Callbacks, renewals, payments, and complaints due today.</p>
-                        </div>
-                        <a href="{{ $communicationCenterUrl ? route('communication-center.index', ['tab' => 'today']) : '#' }}" class="rx-btn-secondary">Open</a>
-                    </div>
-                    <div class="rx-card-body">
-                        @if($todayFollowUpSummary->isNotEmpty())
-                            <div class="dashboard-widget-list">
-                                @foreach($todayFollowUpSummary as $followUp)
-                                    <div class="dashboard-widget-item">
-                                        <div class="dashboard-widget-eyebrow">
-                                            <em>{{ $followUp->typeLabel() }}</em>
-                                            <span class="rx-badge {{ $statusBadgeClass($followUp->effectiveStatus()) }}">{{ $followUp->priorityLabel() }}</span>
-                                        </div>
-                                        <strong>{{ $followUp->title }}</strong>
-                                        <span>{{ $followUp->callTargetName() ?: 'Contact pending' }} • {{ $followUp->callTargetPhone() ?: 'No phone' }}</span>
-                                        <small>{{ optional($followUp->due_at)?->format('d M, h:i A') ?? 'Due now' }} • {{ $followUp->assignedUser?->name ?: 'Unassigned' }}</small>
-                                        <div class="dashboard-widget-actions">
-                                            <a href="{{ route('communication-center.index', ['tab' => 'today']) }}">Open</a>
-                                            @if($followUp->callTargetPhone())
-                                                <a href="tel:{{ preg_replace('/\s+/', '', (string) $followUp->callTargetPhone()) }}">Call</a>
-                                            @endif
-                                            @if($followUp->whatsappUrl())
-                                                <a href="{{ $followUp->whatsappUrl() }}" target="_blank" rel="noopener">WhatsApp</a>
-                                            @endif
-                                        </div>
-                                    </div>
-                                @endforeach
-                            </div>
-                        @else
-                            <div class="rx-empty dashboard-empty">
-                                <div class="rx-empty-icon">{!! $dashboardIcon('customer') !!}</div>
-                                <strong>No follow-ups due today</strong>
-                                <span>Calls and coordination reminders are under control for today.</span>
-                            </div>
-                        @endif
-                    </div>
-                </div>
-
-                @if($canViewFinance)
-                    <div class="rx-card dashboard-widget-card">
-                        <div class="rx-card-header">
-                            <div>
-                                <h3 class="rx-card-title">Pending Payments</h3>
-                                <p class="rx-card-copy">Invoices due now with direct finance drilldown.</p>
-                            </div>
-                            <a href="{{ $communicationCenterUrl ? route('communication-center.index', ['tab' => 'payments']) : ($invoiceIndexUrl ?? '#') }}" class="rx-btn-secondary">Open</a>
-                        </div>
-                        <div class="rx-card-body">
-                            @if($pendingPaymentSummary->isNotEmpty())
-                                <div class="dashboard-widget-list">
-                                    @foreach($pendingPaymentSummary as $invoice)
-                                        <div class="dashboard-widget-item">
-                                            <div class="dashboard-widget-eyebrow">
-                                                <em>{{ $invoice->invoice_number }}</em>
-                                                <span class="rx-badge {{ $statusBadgeClass($invoice->payment_status) }}">{{ \Illuminate\Support\Str::headline((string) $invoice->payment_status) }}</span>
-                                            </div>
-                                            <strong>{{ $invoice->bill_to_name ?: optional($invoice->customer)->name ?: 'Billing contact' }}</strong>
-                                            <span>{{ \App\Support\CurrencyFormatter::format((float) $invoice->balance_amount) }} outstanding • Due {{ optional($invoice->due_date)?->format('d M Y') ?? 'Not set' }}</span>
-                                            <small>{{ $invoice->bill_to_phone ?: optional($invoice->customer)->phone ?: 'No phone' }}</small>
-                                            <div class="dashboard-widget-actions">
-                                                <a href="{{ route('invoices.show', $invoice) }}">Open</a>
-                                                @if($invoice->bill_to_phone || optional($invoice->customer)->phone)
-                                                    <a href="tel:{{ preg_replace('/\s+/', '', (string) ($invoice->bill_to_phone ?: optional($invoice->customer)->phone)) }}">Call</a>
-                                                @endif
-                                                @if(\App\Support\WhatsAppHelper::chatUrl(\App\Support\WhatsAppHelper::normalizeNumber($invoice->bill_to_phone ?: optional($invoice->customer)->phone), \App\Support\WhatsAppHelper::paymentReminderForInvoice($invoice)))
-                                                    <a href="{{ \App\Support\WhatsAppHelper::chatUrl(\App\Support\WhatsAppHelper::normalizeNumber($invoice->bill_to_phone ?: optional($invoice->customer)->phone), \App\Support\WhatsAppHelper::paymentReminderForInvoice($invoice)) }}" target="_blank" rel="noopener">WhatsApp</a>
-                                                @endif
-                                            </div>
-                                        </div>
-                                    @endforeach
-                                </div>
-                            @else
-                                <div class="rx-empty dashboard-empty">
-                                    <div class="rx-empty-icon">{!! $dashboardIcon('payment') !!}</div>
-                                    <strong>No pending payment queue</strong>
-                                    <span>There are no open invoice collection items in this filter view.</span>
-                                </div>
-                            @endif
-                        </div>
-                    </div>
-                @endif
-            </div>
-        </div>
-    </section>
 
     @if($showStaffOpsSection)
     <section class="dashboard-insight-grid" id="staff-ops">
@@ -2423,7 +2265,13 @@
     </section>
     @endif
 
+    @if(
+        $dashboardWidgetEnabled('section_recent_activity')
+        || $dashboardWidgetEnabled('section_recent_deliveries')
+        || $dashboardWidgetEnabled('section_high_priority_followups')
+    )
     <section class="dashboard-recent-grid" id="recent-ops">
+        @if($dashboardWidgetEnabled('section_recent_activity'))
         <div class="rx-card dashboard-feed-card">
             <div class="rx-card-header">
                 <div>
@@ -2454,7 +2302,9 @@
                 @endif
             </div>
         </div>
+        @endif
 
+        @if($dashboardWidgetEnabled('section_recent_deliveries'))
         <div class="rx-card dashboard-feed-card">
             <div class="rx-card-header">
                 <div>
@@ -2497,7 +2347,9 @@
                 @endif
             </div>
         </div>
+        @endif
 
+        @if($dashboardWidgetEnabled('section_high_priority_followups'))
         <div class="rx-card dashboard-feed-card">
             <div class="rx-card-header">
                 <div>
@@ -2540,7 +2392,9 @@
                 @endif
             </div>
         </div>
+        @endif
     </section>
+    @endif
 
     @if($showFinanceSection)
         <section class="rx-card" id="finance-summary">
@@ -2643,7 +2497,7 @@
             </div>
         </div>
 
-        @if($showFinanceSection)
+        @if($showFinanceSection && $dashboardWidgetEnabled('section_recent_payments'))
         <div class="rx-card">
             <div class="rx-card-header">
                 <div>

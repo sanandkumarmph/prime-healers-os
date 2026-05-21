@@ -461,6 +461,73 @@
             'danger' => true,
         ]);
     }
+
+    $viewer = auth()->user();
+    $canViewFinanceAmounts = $viewer?->canViewFinanceDashboard() ?? false;
+    $canSeeRentalFinance = $canViewFinanceAmounts;
+    if (!$canViewFinanceAmounts) {
+        $rentalInvoiceDue = 0.0;
+    }
+    $rentalTypeLabel = $rental->usesBusinessPartnerFlow() ? 'Business Partner' : 'Direct Customer';
+    $daysUntilEnd = $rental->end_date
+        ? now()->startOfDay()->diffInDays($rental->end_date->copy()->startOfDay(), false)
+        : null;
+    $daysRemainingLabel = $daysUntilEnd === null
+        ? 'Schedule pending'
+        : ($daysUntilEnd < 0
+            ? abs($daysUntilEnd) . ' day' . (abs($daysUntilEnd) === 1 ? '' : 's') . ' overdue'
+            : ($daysUntilEnd === 0
+                ? 'Due today'
+                : $daysUntilEnd . ' day' . ($daysUntilEnd === 1 ? '' : 's') . ' remaining'));
+    $daysRemainingTone = $daysUntilEnd === null
+        ? 'neutral'
+        : ($daysUntilEnd < 0 ? 'danger' : ($daysUntilEnd <= 2 ? 'warning' : 'success'));
+    $rentalStatusTone = $isHotlisted
+        ? 'danger'
+        : match ($operationalStatus) {
+            'active', 'completed' => 'success',
+            'returned' => 'info',
+            'delivery_pending' => 'warning',
+            'cancelled' => 'neutral',
+            default => 'warning',
+        };
+    $invoiceStatusTone = $rentalInvoice
+        ? match ($rentalInvoiceStatus) {
+            'paid' => 'success',
+            'partial' => 'warning',
+            'cancelled' => 'neutral',
+            default => 'info',
+        }
+        : 'neutral';
+    $paymentStatusTone = match ($rentalInvoiceStatus) {
+        'paid' => 'success',
+        'partial' => 'warning',
+        'cancelled' => 'neutral',
+        default => 'danger',
+    };
+    $deliveryStatusTone = match ($rental->deliveryStatus()) {
+        'completed' => 'success',
+        'in_progress' => 'warning',
+        'pending', 'assigned' => 'info',
+        default => 'neutral',
+    };
+    $pickupStatusTone = match ($rental->pickupStatus()) {
+        'picked_up', 'returned', 'completed' => 'success',
+        'in_progress' => 'warning',
+        'pending', 'assigned' => 'info',
+        default => 'neutral',
+    };
+    $customerAddress = collect([
+        $rental->customer?->address,
+        $rental->customer?->city,
+        $rental->customer?->state,
+        $rental->customer?->pincode,
+    ])->filter()->implode(', ');
+    $partnerBillingAddress = $rental->businessPartner?->billingAddressLine();
+    $partnerBillingMeta = collect([
+        $rental->businessPartner?->billingStateValue(),
+        $rental->businessPartner?->gstin ? 'GSTIN ' . $rental->businessPartner->gstin : null,
+    ])->filter()->implode(' • ');
 @endphp
 
 <style>
@@ -470,6 +537,120 @@
     .detail-header p { margin:6px 0 0; color:#64748b; font-size:13px; }
     .detail-actions { display:flex; gap:8px; flex-wrap:wrap; }
     .mobile-inline-actions { display:none; }
+    .ph-rental-reference-shell {
+        display: grid;
+        gap: 18px;
+    }
+    .ph-rental-hero-tools {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+    .ph-rental-hero-tools .detail-btn-secondary,
+    .ph-rental-hero-tools .detail-btn-danger {
+        min-height: 38px;
+    }
+    .ph-rental-overview-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.3fr) minmax(320px, .9fr);
+        gap: 14px;
+    }
+    .ph-rental-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .ph-rental-action-links {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    .ph-rental-detail-list {
+        display: grid;
+        gap: 12px;
+    }
+    .ph-rental-detail-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #eef2f7;
+    }
+    .ph-rental-detail-row:last-child {
+        padding-bottom: 0;
+        border-bottom: none;
+    }
+    .ph-rental-detail-row span {
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+    }
+    .ph-rental-detail-row strong {
+        color: #0f172a;
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.5;
+        text-align: right;
+        overflow-wrap: anywhere;
+    }
+    .ph-rental-section-grid {
+        display: grid;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        gap: 14px;
+    }
+    .ph-rental-section-grid > .ph-rental-span-4 { grid-column: span 4; }
+    .ph-rental-section-grid > .ph-rental-span-5 { grid-column: span 5; }
+    .ph-rental-section-grid > .ph-rental-span-6 { grid-column: span 6; }
+    .ph-rental-section-grid > .ph-rental-span-7 { grid-column: span 7; }
+    .ph-rental-section-grid > .ph-rental-span-12 { grid-column: span 12; }
+    .ph-rental-contact-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+    }
+    .ph-rental-contact-stack {
+        display: grid;
+        gap: 14px;
+    }
+    .ph-rental-asset-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 10px;
+    }
+    .ph-rental-asset-tile {
+        display: grid;
+        gap: 6px;
+        padding: 14px;
+        border: 1px solid #e2e8f0;
+        border-radius: 18px;
+        background: #fff;
+    }
+    .ph-rental-asset-tile span {
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+    }
+    .ph-rental-asset-tile strong {
+        color: #0f172a;
+        font-size: 14px;
+        line-height: 1.5;
+        overflow-wrap: anywhere;
+    }
+    .ph-rental-inline-toolbar {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    .ph-rental-notes-shell {
+        display: grid;
+        gap: 12px;
+    }
     .rental-mobile-actions {
         display:grid;
         grid-template-columns:repeat(2, minmax(0, 1fr));
@@ -892,6 +1073,16 @@
     .renewal-field textarea { min-height:86px; resize:vertical; }
     .renewal-span-2 { grid-column:span 2; }
     @media (max-width: 920px) {
+        .ph-rental-overview-grid,
+        .ph-rental-contact-grid {
+            grid-template-columns: 1fr;
+        }
+        .ph-rental-section-grid > .ph-rental-span-4,
+        .ph-rental-section-grid > .ph-rental-span-5,
+        .ph-rental-section-grid > .ph-rental-span-6,
+        .ph-rental-section-grid > .ph-rental-span-7 {
+            grid-column: span 12;
+        }
         .span-4, .span-6 { grid-column:span 12; }
         .metric-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
         .booking-snapshot-card { grid-column:span 4; }
@@ -999,6 +1190,15 @@
         }
     }
     @media (max-width: 640px) {
+        .ph-rental-summary-grid {
+            grid-template-columns: 1fr;
+        }
+        .ph-rental-detail-row {
+            flex-direction: column;
+        }
+        .ph-rental-detail-row strong {
+            text-align: left;
+        }
         .detail-page { padding:14px; }
         .metric-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
         .detail-actions { display:none; }
@@ -1118,124 +1318,175 @@
 </style>
 
 <div class="container detail-page">
-    <div class="detail-header">
-        <div>
-            <h1>Rental #{{ $rental->id }}</h1>
-            <p>Compact operational view of customer, charges, assets, warehouse, delivery, and return workflow.</p>
-        </div>
-        <div class="detail-actions">
-            <a href="{{ route('rentals.index') }}" class="detail-btn-secondary">Back</a>
-            @if($canUpdateRentals)
-                <a href="{{ route('rentals.edit', $rental) }}" class="detail-btn-secondary">Edit</a>
-            @endif
-            @if(!empty($rentalInvoice))
-                <a href="{{ route('invoices.show', $rentalInvoice) }}" class="detail-btn-secondary">Rental Invoice</a>
-            @elseif(auth()->user()->canAccessModule('rentals', 'update'))
-                <form action="{{ route('rentals.invoice', $rental) }}" method="POST" style="margin:0;">
-                    @csrf
-                    <button type="submit" class="detail-btn-secondary">Generate Rental Invoice</button>
-                </form>
-            @endif
-            @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
-                <form action="{{ route('rentals.markPaid', $rental) }}" method="POST" style="margin:0;">
-                    @csrf
-                    <button type="submit" class="detail-btn-secondary">Mark as Paid</button>
-                </form>
-                <a href="#rental-billing-actions" class="detail-btn">Mark Partial Payment</a>
-            @endif
-            @if($deliveryRecord && $hasOpenDeliveryTask && auth()->user()?->canAccessModule('deliveries', 'update'))
-                <a href="{{ route('deliveries.edit', $deliveryRecord) }}" class="detail-btn-secondary">Edit Delivery Assignment</a>
-            @elseif($canCreateDeliveries && !$hasOpenDeliveryTask && $hasPendingDeliveryItems)
-                <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'delivery']) }}" class="detail-btn-secondary">Assign Delivery</a>
-            @endif
-            @if($pickupRecord && $hasOpenPickupTask && auth()->user()?->canAccessModule('deliveries', 'update'))
-                <a href="{{ route('deliveries.edit', $pickupRecord) }}" class="detail-btn-secondary">Edit Pickup Assignment</a>
-            @elseif($canAssignPickup && !$hasOpenPickupTask)
-                <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'pickup']) }}" class="detail-btn-secondary">Assign Pickup</a>
-            @endif
-            @if($renewalUrl)
-                <a href="{{ $renewalUrl }}" target="_blank" class="detail-btn-secondary">WhatsApp Renewal</a>
-            @endif
-            @if($rental->canRenew() && auth()->user()->canAccessModule('rentals', 'update'))
-                <form method="POST" action="{{ route('rentals.quick-renew', $rental) }}" style="margin:0;" data-quick-renew-form data-renewal-days="{{ $suggestedRenewalDays }}">
-                    @csrf
-                    <button type="submit" class="detail-btn-secondary">Quick Renew</button>
-                </form>
-                <button type="button" class="detail-btn" data-open-renewal-modal>Renew Rental</button>
-            @endif
-            @if($rental->canBeReturned())
-                <form action="{{ route('rentals.return', $rental) }}" method="POST" style="margin:0;">
-                    @csrf
-                    @method('PUT')
-                    <button type="submit" class="detail-btn-danger" onclick="return confirm('Mark this rental as returned?');">Return Rental</button>
-                </form>
-            @endif
-            @if(auth()->user()->canAccessModule('rentals', 'update') && !in_array($rental->status, ['returned', 'cancelled'], true))
-                <form action="{{ route('rentals.cancel', $rental) }}" method="POST" style="margin:0;">
-                    @csrf
-                    @method('PUT')
-                    <button type="submit" class="detail-btn-danger" onclick="return confirm('Cancel this rental? This keeps the record for audit history.');">Cancel Rental</button>
-                </form>
-            @endif
-            @if($canDeleteRentals)
-                <form action="{{ route('rentals.destroy', $rental) }}" method="POST" style="margin:0;">
-                    @csrf
-                    @method('DELETE')
-                    <button type="submit" class="detail-btn-danger" onclick="return confirm('Delete this rental order permanently? This will be blocked if invoices, payments, deliveries, renewals, or linked sales exist.');">Delete Rental</button>
-                </form>
-            @endif
-        </div>
-    </div>
+    <div class="ph-rental-reference-shell">
+        <x-operational-page-header
+            eyebrow="Rental Command View"
+            :title="'Rental #' . $rental->id"
+            subtitle="Premium operational view for customer communication, delivery, pickup, invoicing, and renewal coordination."
+            :back-url="route('rentals.index')"
+            back-label="Back to Rentals"
+            :meta="[
+                ['label' => 'Start Date', 'value' => optional($rental->start_date)->format('d M Y') ?: 'Not set'],
+                ['label' => 'End Date', 'value' => optional($rental->end_date)->format('d M Y') ?: 'Not set'],
+                ['label' => 'Timeline', 'value' => $daysRemainingLabel],
+            ]"
+            :chips="[
+                ['label' => $isHotlisted ? 'Hotlisted' : ucfirst(str_replace('_', ' ', $operationalStatus)), 'tone' => $rentalStatusTone],
+                ['label' => $rentalTypeLabel, 'tone' => 'accent'],
+                ['label' => $daysRemainingLabel, 'tone' => $daysRemainingTone],
+            ]"
+        >
+            <div class="ph-rental-hero-tools">
+                @if($canUpdateRentals)
+                    <a href="{{ route('rentals.edit', $rental) }}" class="detail-btn-secondary">Edit Rental</a>
+                @endif
+                @if($rental->canBeReturned())
+                    <form action="{{ route('rentals.return', $rental) }}" method="POST" style="margin:0;">
+                        @csrf
+                        @method('PUT')
+                        <button type="submit" class="detail-btn-danger" onclick="return confirm('Mark this rental as returned?');">Return Rental</button>
+                    </form>
+                @endif
+            </div>
+        </x-operational-page-header>
 
-    @include('partials.quick-action-toolbar', [
-        'label' => 'Rental Quick Actions',
-        'actions' => $rentalQuickActions,
-        'moreActions' => $rentalMoreActions,
-        'infoItems' => $rentalInfoItems,
-    ])
+        <x-operational-action-bar
+            label="Rental Actions"
+            description="Keep the primary rental actions close without leaving the operational view."
+            :actions="$rentalQuickActions->all()"
+            :more-actions="$rentalMoreActions->all()"
+            :info-items="$rentalInfoItems->all()"
+        />
 
-    <x-section-nav
-        label="Rental page sections"
-        :items="[
-            ['id' => 'rental-overview-section', 'label' => 'Overview'],
-            ['id' => 'rental-billing-actions', 'label' => 'Invoice'],
-            ['id' => 'rental-payments-section', 'label' => 'Payments'],
-            ['id' => 'renewal-workspace', 'label' => 'Renewals'],
-            ['id' => 'rental-products-section', 'label' => 'Products'],
-            ['id' => 'rental-customer-section', 'label' => 'Customer'],
-            ['id' => 'rental-delivery-section', 'label' => 'Delivery'],
-            ['id' => 'rental-pickup-section', 'label' => 'Pickup'],
-            ['id' => 'rental-activity-timeline', 'label' => 'Timeline'],
-        ]"
-    />
+        <x-section-nav
+            label="Rental page sections"
+            :items="[
+                ['id' => 'rental-overview-section', 'label' => 'Overview'],
+                ['id' => 'rental-customer-section', 'label' => 'Customer'],
+                ['id' => 'rental-products-section', 'label' => 'Product'],
+                ['id' => 'rental-billing-actions', 'label' => 'Invoice'],
+                ['id' => 'rental-delivery-section', 'label' => 'Delivery'],
+                ['id' => 'rental-pickup-section', 'label' => 'Pickup'],
+                ['id' => 'rental-payments-section', 'label' => 'Payments'],
+                ['id' => 'rental-activity-timeline', 'label' => 'Timeline'],
+                ['id' => 'rental-notes-section', 'label' => 'Notes'],
+            ]"
+        />
 
-    <div class="section-nav-target" id="rental-overview-section"></div>
+        @if(session('success'))
+            <div style="background:#dcfce7;color:#166534;border:1px solid #bbf7d0;padding:12px 14px;border-radius:12px;">
+                {{ session('success') }}
+            </div>
+        @endif
 
-    @if(session('success'))
-        <div style="background:#dcfce7;color:#166534;border:1px solid #bbf7d0;padding:12px 14px;border-radius:12px;">
-            {{ session('success') }}
-        </div>
-    @endif
+        @if(session('error'))
+            <div style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;padding:12px 14px;border-radius:12px;">
+                {{ session('error') }}
+            </div>
+        @endif
 
-    @if(session('error'))
-        <div style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;padding:12px 14px;border-radius:12px;">
-            {{ session('error') }}
-        </div>
-    @endif
+        @if(!empty($needsAssetAssignment))
+            <div style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:12px 14px;border-radius:12px;">
+                <strong>Needs Asset Assignment</strong><br>
+                This tracked rental still has one or more lines without assigned asset units. Assign the missing assets before the next delivery or return workflow.
+            </div>
+        @endif
 
-    @if(!empty($needsAssetAssignment))
-        <div style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:12px 14px;border-radius:12px;">
-            <strong>Needs Asset Assignment</strong><br>
-            This tracked rental still has one or more lines without assigned asset units. Assign the missing assets before the next delivery or return workflow.
-        </div>
-    @endif
+        @if(session('renewal_whatsapp_url'))
+            <div style="background:#ecfdf5;color:#166534;border:1px solid #bbf7d0;padding:12px 14px;border-radius:12px; display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                <div>Renewal saved. Open WhatsApp to send the renewal confirmation now.</div>
+                <a href="{{ session('renewal_whatsapp_url') }}" target="_blank" class="detail-btn-secondary">Open WhatsApp</a>
+            </div>
+        @endif
 
-    @if(session('renewal_whatsapp_url'))
-        <div style="background:#ecfdf5;color:#166534;border:1px solid #bbf7d0;padding:12px 14px;border-radius:12px; display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-            <div>Renewal saved. Open WhatsApp to send the renewal confirmation now.</div>
-            <a href="{{ session('renewal_whatsapp_url') }}" target="_blank" class="detail-btn-secondary">Open WhatsApp</a>
-        </div>
-    @endif
+        <x-operational-card
+            class="section-nav-target"
+            id="rental-overview-section"
+            title="Overview"
+            subtitle="Fast operational snapshot of the rental, finance posture, and next actions."
+        >
+            <div class="ph-rental-overview-grid">
+                <div class="ph-rental-summary-grid">
+                    <x-summary-card label="Rental ID" :value="'#' . $rental->id" meta="Primary reference for delivery, pickup, and finance coordination." />
+                    <x-summary-card label="Rental Type" :value="$rentalTypeLabel" meta="{{ $rentalTypeLabel === 'Business Partner' ? 'Partner handles reminders and payment communication.' : 'Customer remains the single contact for service and payment.' }}" />
+                    <x-summary-card label="Delivery Status" :value="$deliveryStatusLabel($rental->deliveryStatus())" :tone="$deliveryStatusTone" meta="{{ $deliveryAssigneeLabel !== 'Not assigned' ? 'Assigned to ' . $deliveryAssigneeLabel : 'Delivery team still needs assignment.' }}" />
+                    <x-summary-card label="Pickup Status" :value="ucfirst(str_replace('_', ' ', $rental->pickupStatus() ?: 'pending'))" :tone="$pickupStatusTone" meta="{{ $pickupAssigneeLabel !== 'Not assigned' ? 'Assigned to ' . $pickupAssigneeLabel : 'Pickup workflow has not started yet.' }}" />
+                    <x-summary-card label="End / Renewal Date" :value="optional($rental->end_date)->format('d M Y') ?: 'Not set'" :tone="$daysRemainingTone" :meta="$daysRemainingLabel" />
+                    <x-summary-card label="Created By" :value="$rental->createdBy->name ?? 'N/A'" meta="{{ optional($rental->created_at)->format('d M Y h:i A') ?: 'Created date unavailable' }}" />
+                </div>
+
+                <x-operational-card
+                    title="{{ $canSeeRentalFinance ? 'Financial Summary' : 'Operational Summary' }}"
+                    subtitle="{{ $canSeeRentalFinance ? 'Invoice status, payment posture, and quick next steps.' : 'Finance amounts are hidden for your role, but status remains visible.' }}"
+                    padding="sm"
+                >
+                    <div class="ph-rental-detail-list">
+                        @if($canSeeRentalFinance)
+                            <div class="ph-rental-detail-row">
+                                <span>Rent Amount</span>
+                                <strong>{{ $canViewFinanceAmounts ? $currency($rental->rental_amount) : ucfirst($rentalInvoiceStatus ?: 'pending') }}</strong>
+                            </div>
+                            <div class="ph-rental-detail-row">
+                                <span>Deposit</span>
+                                <strong>{{ $canViewFinanceAmounts ? $currency($rental->deposit_amount) : ($rental->deposit_amount > 0 ? 'Captured' : 'Not captured') }}</strong>
+                            </div>
+                            <div class="ph-rental-detail-row">
+                                <span>Invoice Status</span>
+                                <strong>{{ $rentalInvoice ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus ?: 'unpaid')) : 'Not generated' }}</strong>
+                            </div>
+                            <div class="ph-rental-detail-row">
+                                <span>Payment Status</span>
+                                <strong>
+                                    {{ $rentalInvoiceStatus ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus)) : 'Pending' }}
+                                    @if($canViewFinanceAmounts && $rentalInvoiceDue > 0)
+                                        • Due {{ $currency($rentalInvoiceDue) }}
+                                    @endif
+                                </strong>
+                            </div>
+                        @else
+                            <div class="ph-rental-detail-row">
+                                <span>Invoice</span>
+                                <strong>{{ $rentalInvoice ? 'Generated' : 'Pending' }}</strong>
+                            </div>
+                            <div class="ph-rental-detail-row">
+                                <span>Payment</span>
+                                <strong>{{ $rentalInvoiceStatus ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus)) : 'Pending' }}</strong>
+                            </div>
+                            <div class="ph-rental-detail-row">
+                                <span>Renewal</span>
+                                <strong>{{ $rental->canRenew() ? 'Available' : 'Not available yet' }}</strong>
+                            </div>
+                            <div class="ph-rental-detail-row">
+                                <span>Reminder Sent</span>
+                                <strong>{{ $latestReminderAt ? $latestReminderAt->format('d M Y h:i A') : 'Not logged yet' }}</strong>
+                            </div>
+                        @endif
+                    </div>
+
+                    <div class="ph-rental-action-links">
+                        @if($rentalInvoice)
+                            <a href="{{ route('invoices.show', $rentalInvoice) }}" class="detail-btn-secondary">View Invoice</a>
+                        @elseif($canUpdateRentals)
+                            <form action="{{ route('rentals.invoice', $rental) }}" method="POST" style="margin:0;">
+                                @csrf
+                                <button type="submit" class="detail-btn-secondary">Generate Invoice</button>
+                            </form>
+                        @endif
+                        @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
+                            <a href="#rental-billing-actions" class="detail-btn">Record Payment</a>
+                        @endif
+                        @if($pickupRecord && $hasOpenPickupTask)
+                            <a href="{{ route('deliveries.show', $pickupRecord) }}" class="detail-btn-secondary">View Pickup</a>
+                        @elseif($canAssignPickup)
+                            <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'pickup']) }}" class="detail-btn-secondary">Schedule Pickup</a>
+                        @endif
+                        @if($rental->canRenew() && $canUpdateRentals)
+                            <button type="button" class="detail-btn-secondary" data-open-renewal-modal>Renew / Extend</button>
+                        @endif
+                    </div>
+                </x-operational-card>
+            </div>
+        </x-operational-card>
 
     <div class="detail-card section-nav-target" id="rental-billing-actions">
         <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
@@ -1489,6 +1740,7 @@
         </div>
     </div>
 
+    @if($canSeeRentalFinance)
     <div class="detail-card">
         <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
             <div>
@@ -1542,6 +1794,7 @@
             </div>
         </div>
     </div>
+    @endif
 
     <div class="detail-card section-nav-target" id="rental-payments-section">
         <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
@@ -1568,7 +1821,7 @@
                     </div>
                     <div>
                         <span class="label">Amount</span>
-                        <div class="value">{{ $currency($payment->amount) }}</div>
+                        <div class="value">{{ $canViewFinanceAmounts ? $currency($payment->amount) : 'Restricted' }}</div>
                     </div>
                     @if($canDeletePayments)
                         <form action="{{ route('payments.destroy', $payment) }}" method="POST" style="margin:0;">
@@ -1765,8 +2018,10 @@
                             <div class="value">{{ $item->quantity ?? 1 }}</div>
                         </div>
                         <div>
-                            <span class="label">Line Amount</span>
-                            <div class="value">{{ $currency($item->line_total ?? 0) }}</div>
+                            <span class="label">{{ $canSeeRentalFinance ? 'Line Amount' : 'Line Status' }}</span>
+                            <div class="value">
+                                {{ $canSeeRentalFinance ? $currency($item->line_total ?? 0) : 'Operational line' }}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1785,7 +2040,10 @@
                             <div>
                                 <strong>{{ $saleItem->product->name ?? 'New product' }}</strong>
                                 <div class="ops-muted" style="margin-top:4px;">
-                                    Qty {{ $saleItem->quantity }} | Unit {{ $currency($saleItem->unit_price ?? 0) }}
+                                    Qty {{ $saleItem->quantity }}
+                                    @if($canSeeRentalFinance)
+                                        | Unit {{ $currency($saleItem->unit_price ?? 0) }}
+                                    @endif
                                     @if($saleItem->asset)
                                         | Asset {{ $saleItem->asset->serial_number ?: ($saleItem->asset->asset_name ?: ('#' . $saleItem->asset->id)) }}
                                     @endif
@@ -1794,7 +2052,7 @@
                                     @endif
                                 </div>
                             </div>
-                            <div style="font-weight:700; color:#0f172a;">{{ $currency($saleItem->line_total ?? 0) }}</div>
+                            <div style="font-weight:700; color:#0f172a;">{{ $canSeeRentalFinance ? $currency($saleItem->line_total ?? 0) : 'Operational item' }}</div>
                         </div>
                         @if($saleItem->notes)
                             <div class="ops-muted" style="margin-top:8px;">{{ $saleItem->notes }}</div>
@@ -1806,345 +2064,303 @@
     @endif
 
     <div class="detail-grid">
-        <div class="detail-card span-6 section-nav-target" id="rental-customer-section">
-            <h2 style="margin-top:0; margin-bottom:14px; font-size:18px;">Customer Summary</h2>
-            <div class="detail-grid">
-                <div class="span-6">
-                    <span class="label">Reminder / Billing Contact</span>
-                    <div class="value">{{ $rental->billingContactName() }}</div>
-                </div>
-                <div class="span-6">
-                    <span class="label">Reminder Phone</span>
-                    <div class="value">{{ $rental->reminderContactPhone() ?: '-' }}</div>
-                </div>
-                <div class="span-6">
-                    <span class="label">Delivery / Pickup Contact</span>
-                    <div class="value">{{ $rental->deliveryContactName() }}</div>
-                </div>
-                <div class="span-6">
-                    <span class="label">Delivery Phone</span>
-                    <div class="value">{{ $rental->deliveryContactPhone() ?: '-' }}</div>
-                </div>
-                <div class="span-12">
-                    <span class="label">Delivery Address</span>
-                    <div class="value">{{ collect([$rental->deliveryContactAddress(), $rental->deliveryContactCity(), $rental->deliveryContactState(), $rental->deliveryContactPincode()])->filter()->join(', ') ?: 'No delivery address captured.' }}</div>
-                </div>
-                <div class="span-6">
-                    <span class="label">Dates</span>
-                    <div class="value">{{ optional($rental->start_date)->format('d M Y') }} to {{ optional($rental->end_date)->format('d M Y') }}</div>
-                </div>
-                <div class="span-6">
-                    <span class="label">Created By</span>
-                    <div class="value">{{ $rental->createdBy->name ?? 'N/A' }}</div>
-                </div>
-                <div class="span-6">
-                    <span class="label">Delivery Staff</span>
-                    <div class="value">{{ $deliveryAssigneeLabel }}</div>
-                </div>
-                <div class="span-6">
-                    <span class="label">Pickup Staff</span>
-                    <div class="value">{{ $pickupAssigneeLabel }}</div>
-                </div>
-                <div class="span-12">
-                    <span class="label">Customer Actions</span>
-                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                        @if($deliveryUrl)
-                            <a href="{{ $deliveryUrl }}" target="_blank" class="detail-btn-secondary">Delivery Message</a>
-                        @endif
-                        @if($pickupUrl)
-                            <a href="{{ $pickupUrl }}" target="_blank" class="detail-btn-secondary">Pickup Reminder</a>
-                        @endif
-                    </div>
-                    @if($latestReminderAt)
-                        <div class="ops-muted" style="margin-top:8px;">Last reminder sent {{ $latestReminderAt->format('d M Y h:i A') }}</div>
-                    @endif
-                </div>
-            </div>
-        </div>
+        <x-operational-card
+            class="span-6 section-nav-target"
+            id="rental-customer-section"
+            :title="$rental->usesBusinessPartnerFlow() ? 'Customer & Partner Contacts' : 'Customer Contact'"
+            subtitle="Keep reminder/payment contact and delivery/service contact clearly separated."
+        >
+            @if($rental->usesBusinessPartnerFlow())
+                <div class="ph-rental-contact-grid">
+                    <x-contact-block
+                        title="Reminder / Payment Contact"
+                        :name="$rental->businessPartner?->displayName() ?? $rental->billingContactName()"
+                        :role="$rental->businessPartner?->contact_person ? 'Contact person: ' . $rental->businessPartner->contact_person : 'Business Partner'"
+                        :phone="$rental->businessPartner?->preferredReminderNumber()"
+                        :whatsapp="$rental->businessPartner?->preferredReminderNumber()"
+                        :email="$rental->businessPartner?->email"
+                        :address="$partnerBillingAddress ?: $rental->businessPartner?->address"
+                        :map-url="$rental->businessPartner?->openMapUrl()"
+                        :notes="$partnerBillingMeta ?: ($latestReminderAt ? 'Last reminder sent ' . $latestReminderAt->format('d M Y h:i A') : null)"
+                        view-label="View Partner"
+                        :view-url="route('business-partners.show', $rental->business_partner_id)"
+                        :chips="collect([
+                            $rental->businessPartner?->gstin ? ['label' => 'GST Available', 'tone' => 'success'] : null,
+                            $latestReminderAt ? ['label' => 'Reminder Logged', 'tone' => 'info'] : null,
+                        ])->filter()->values()->all()"
+                    />
 
-        <div class="detail-card span-6">
-            <h2 style="margin-top:0; margin-bottom:14px; font-size:18px;">Charges</h2>
-            <p class="charge-summary-note">Quick cost summary for this rental, including deposit and add-on charges.</p>
-            <div class="charge-summary-grid">
-                <div class="charge-summary-tile">
-                    <span class="charge-label">Rental</span>
-                    <div class="charge-value">{{ $currency($rental->rental_amount) }}</div>
-                </div>
-                <div class="charge-summary-tile">
-                    <span class="charge-label">Deposit</span>
-                    <div class="charge-value">{{ $currency($rental->deposit_amount) }}</div>
-                </div>
-                <div class="charge-summary-tile">
-                    <span class="charge-label">Transport</span>
-                    <div class="charge-value">{{ $currency($rental->transport_amount) }}</div>
-                </div>
-                <div class="charge-summary-tile">
-                    <span class="charge-label">Other Charges</span>
-                    <div class="charge-value">{{ $currency($rental->other_amount) }}</div>
-                </div>
-                <div class="charge-summary-tile charge-summary-tile--total">
-                    <span class="charge-label">Total Value</span>
-                    <div class="charge-value">{{ $currency(($rental->rental_amount ?? 0) + ($rental->deposit_amount ?? 0) + ($rental->transport_amount ?? 0) + ($rental->other_amount ?? 0)) }}</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="detail-card span-12">
-            <h2 style="margin-top:0; margin-bottom:14px; font-size:18px;">Product & Assigned Assets</h2>
-            <div class="detail-grid" style="margin-bottom:12px;">
-                <div class="span-4">
-                    <span class="label">Product</span>
-                    <div class="value">{{ $rental->product->name ?? 'N/A' }}</div>
-                </div>
-                <div class="span-4">
-                    <span class="label">Quantity</span>
-                    <div class="value">{{ $rental->quantity }}</div>
-                </div>
-                <div class="span-4">
-                    <span class="label">Returned At</span>
-                    <div class="value">{{ $rental->returned_at ? $rental->returned_at->format('d M Y h:i A') : 'Not returned yet' }}</div>
-                </div>
-            </div>
-
-            <div class="asset-grid">
-                @forelse($activeAssets as $assignment)
-                    <div class="asset-box">
-                        <span class="label">Serial</span>
-                        <div class="value">{{ $assignment->asset->serial_number ?? 'N/A' }}</div>
-                        <span class="label" style="margin-top:10px;">Barcode</span>
-                        <div class="value">{{ $assignment->asset->barcode_value ?? '-' }}</div>
-                        <span class="label" style="margin-top:10px;">Warehouse</span>
-                        <div class="value">{{ $assignment->asset->warehouse->name ?? 'Not set' }}</div>
-                    </div>
-                @empty
-                    <div class="asset-box">
-                        <div class="value">No specific assets were assigned to this rental.</div>
-                        <div class="ops-muted" style="margin-top:6px;">You can assign them later from the rental edit screen.</div>
-                    </div>
-                @endforelse
-            </div>
-        </div>
-
-        <div class="detail-card span-6 section-nav-target" id="rental-delivery-section">
-            <h2 style="margin-top:0; margin-bottom:14px; font-size:18px;">Delivery Workflow</h2>
-            @if($deliveryRecord)
-                <div class="timeline">
-                      <div class="timeline-item">
-                          <span class="label">Status</span>
-                          <div class="value">
-                              <span class="status-badge" style="{{ $itemProgressBadge($rental->deliveryStatus()) }}">
-                                  {{ $itemProgressLabel($rental->deliveryStatus()) }}
-                              </span>
-                          </div>
-                      </div>
-                    <div class="timeline-item">
-                        <span class="label">Assigned Person</span>
-                        <div class="value">{{ $assignedPersonLabel($deliveryRecord) }}</div>
-                    </div>
-                    <div class="timeline-item">
-                        <span class="label">Scheduled</span>
-                        <div class="value">{{ $deliveryRecord->scheduled_at ? $deliveryRecord->scheduled_at->format('d M Y h:i A') : 'Not scheduled' }}</div>
-                    </div>
-                    <div class="timeline-item">
-                        <span class="label">Actions</span>
-                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                            @if($canUpdateDeliveries)
-                                <a href="{{ route('deliveries.edit', $deliveryRecord) }}" class="detail-btn-secondary">Edit Assignment</a>
-                            @endif
-                            @if($deliveryRecord->status === 'pending')
-                                <form method="POST" action="{{ route('deliveries.in_progress', $deliveryRecord) }}" style="margin:0;">
-                                    @csrf
-                                    @method('PUT')
-                                    <button type="submit" class="detail-btn-secondary">Start Delivery</button>
-                                </form>
-                                @if($canUpdateDeliveries)
-                                    <form method="POST" action="{{ route('deliveries.cancel', $deliveryRecord) }}" style="margin:0;">
-                                        @csrf
-                                        @method('PUT')
-                                        <button type="submit" class="detail-btn-danger" onclick="return confirm('Cancel this delivery assignment?');">Cancel Delivery</button>
-                                    </form>
-                                @endif
-                              @elseif($deliveryRecord->status === 'in_progress')
-                                  <form method="POST" action="{{ route('deliveries.complete', $deliveryRecord) }}" style="margin:0;">
-                                      @csrf
-                                      @method('PUT')
-                                      @if($hasPendingDeliveryItems)
-                                          <input type="hidden" name="confirm_partial" value="1">
-                                          <button type="submit" class="detail-btn">Complete as Partial</button>
-                                      @else
-                                          <button type="submit" class="detail-btn">Complete Delivery</button>
-                                      @endif
-                                  </form>
-                                @if($canUpdateDeliveries)
-                                    <form method="POST" action="{{ route('deliveries.cancel', $deliveryRecord) }}" style="margin:0;">
-                                        @csrf
-                                        @method('PUT')
-                                        <button type="submit" class="detail-btn-danger" onclick="return confirm('Cancel this delivery assignment?');">Cancel Delivery</button>
-                                      </form>
-                                  @endif
-                              @else
-                                  @if($canCreateDeliveries && !$hasOpenDeliveryTask && $hasPendingDeliveryItems)
-                                      <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'delivery']) }}" class="detail-btn-secondary">Create Follow-up Delivery Task</a>
-                                  @else
-                                      <div class="ops-muted">No delivery action needed.</div>
-                                  @endif
-                              @endif
-                            @if($canDeleteDeliveries && in_array($deliveryRecord->status, ['pending', 'cancelled'], true))
-                                <form method="POST" action="{{ route('deliveries.destroy', $deliveryRecord) }}" style="margin:0;">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="detail-btn-danger" onclick="return confirm('Delete this delivery assignment record?');">Delete Delivery</button>
-                                </form>
-                            @endif
-                        </div>
-                    </div>
-                </div>
-            @elseif($rental->deliveryStaff)
-                <div class="timeline">
-                    <div class="timeline-item">
-                        <span class="label">Status</span>
-                        <div class="value">
-                            <span class="status-badge" style="{{ $badge('assigned') }}">
-                                Delivery Assigned
-                            </span>
-                        </div>
-                    </div>
-                    <div class="timeline-item">
-                        <span class="label">Assigned Person</span>
-                        <div class="value">{{ $rental->deliveryStaff->name }}</div>
-                    </div>
-                    <div class="timeline-item">
-                        <span class="label">Task Record</span>
-                        <div class="value">Delivery staff is selected on the rental, but no dispatch task has been created yet.</div>
-                    </div>
-                    <div class="timeline-item">
-                        <span class="label">Actions</span>
-                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                              @if($canCreateDeliveries && !$hasOpenDeliveryTask)
-                                  <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'delivery']) }}" class="detail-btn-secondary">Create Delivery Task</a>
-                            @elseif($hasOpenDeliveryTask)
-                                <div class="ops-muted">An open delivery task already exists for this rental.</div>
-                            @endif
-                            @if($canUpdateRentals)
-                                <form method="POST" action="{{ route('rentals.delivery-assignment.clear', $rental) }}" style="margin:0;">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="detail-btn-danger" onclick="return confirm('Clear this delivery assignment from the rental?');">Clear Delivery Assignment</button>
-                                </form>
-                            @endif
-                            @unless($canCreateDeliveries || $canUpdateRentals)
-                                <div class="ops-muted">No delivery action available.</div>
-                            @endunless
-                        </div>
-                    </div>
+                    <x-contact-block
+                        title="Delivery / Service Contact"
+                        :name="$rental->partnerClient?->displayName() ?? $rental->deliveryContactName()"
+                        role="Actual Client / Delivery Location"
+                        :phone="$rental->partnerClient?->primaryPhone() ?? $rental->deliveryContactPhone()"
+                        :whatsapp="$rental->partnerClient?->primaryPhone() ?? $rental->deliveryContactPhone()"
+                        :address="$rental->partnerClient?->address"
+                        :city="$rental->partnerClient?->city"
+                        :state="$rental->partnerClient?->state"
+                        :pincode="$rental->partnerClient?->pincode"
+                        :map-url="$rental->partnerClient?->openMapUrl() ?? $deliveryContactMapUrl"
+                        :notes="$rental->partnerClient?->delivery_notes"
+                        view-label="View Actual Client"
+                        :view-url="route('business-partners.show', $rental->business_partner_id) . '#actual-clients'"
+                        :chips="[['label' => 'Service Contact', 'tone' => 'accent']]"
+                    />
                 </div>
             @else
-                <div class="value" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-                    <span>No delivery record yet.</span>
-                    @if($canCreateDeliveries && !$hasOpenDeliveryTask)
-                        <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'delivery']) }}" class="detail-btn-secondary">Assign Delivery</a>
-                    @elseif($hasOpenDeliveryTask)
-                        <span class="ops-muted">Delivery is already assigned.</span>
-                    @endif
+                <div class="ph-rental-contact-stack">
+                    <x-contact-block
+                        title="Direct Customer"
+                        :name="$rental->customer?->displayName() ?? $rental->billingContactName()"
+                        :role="$rental->customer?->contactPersonName() ? 'Contact person: ' . $rental->customer->contactPersonName() : 'Direct customer rental'"
+                        :phone="$rental->customer?->phone ?? $rental->reminderContactPhone()"
+                        :whatsapp="$rental->customer?->preferredWhatsAppNumber()"
+                        :email="$rental->customer?->email"
+                        :address="$rental->customer?->address"
+                        :city="$rental->customer?->city"
+                        :state="$rental->customer?->state"
+                        :pincode="$rental->customer?->pincode"
+                        :map-url="$rental->customer?->openMapUrl()"
+                        :notes="$latestReminderAt ? 'Last reminder sent ' . $latestReminderAt->format('d M Y h:i A') : null"
+                        view-label="View Customer"
+                        :view-url="$rental->customer_id ? route('customers.show', $rental->customer_id) : null"
+                    />
                 </div>
             @endif
-        </div>
 
-        <div class="detail-card span-6 section-nav-target" id="rental-pickup-section">
-            <h2 style="margin-top:0; margin-bottom:14px; font-size:18px;">Pickup Workflow</h2>
-            @if($pickupRecord)
-                <div class="timeline">
-                      <div class="timeline-item">
-                          <span class="label">Status</span>
-                          <div class="value">
-                              <span class="status-badge" style="{{ $itemProgressBadge($rental->pickupStatus()) }}">
-                                  {{ $itemProgressLabel($rental->pickupStatus()) }}
-                              </span>
-                          </div>
-                      </div>
-                    <div class="timeline-item">
-                        <span class="label">Assigned Person</span>
-                        <div class="value">{{ $assignedPersonLabel($pickupRecord) }}</div>
-                    </div>
-                    <div class="timeline-item">
-                        <span class="label">Scheduled</span>
-                        <div class="value">{{ $pickupRecord->scheduled_at ? $pickupRecord->scheduled_at->format('d M Y h:i A') : 'Not scheduled' }}</div>
-                    </div>
-                    <div class="timeline-item">
-                        <span class="label">Actions</span>
-                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                            @if($canUpdateDeliveries)
-                                <a href="{{ route('deliveries.edit', $pickupRecord) }}" class="detail-btn-secondary">Edit Assignment</a>
-                            @endif
-                            @if($pickupRecord->status === 'pending')
-                                <form method="POST" action="{{ route('deliveries.in_progress', $pickupRecord) }}" style="margin:0;">
-                                    @csrf
-                                    @method('PUT')
-                                    <button type="submit" class="detail-btn-secondary">Start Pickup</button>
-                                </form>
-                                @if($canUpdateDeliveries)
-                                    <form method="POST" action="{{ route('deliveries.cancel', $pickupRecord) }}" style="margin:0;">
-                                        @csrf
-                                        @method('PUT')
-                                        <button type="submit" class="detail-btn-danger" onclick="return confirm('Cancel this pickup assignment?');">Cancel Pickup</button>
-                                    </form>
-                                @endif
-                              @elseif($pickupRecord->status === 'in_progress')
-                                  <form method="POST" action="{{ route('deliveries.complete', $pickupRecord) }}" style="margin:0;">
-                                      @csrf
-                                      @method('PUT')
-                                      @if($hasPendingPickupItems)
-                                          <input type="hidden" name="confirm_partial" value="1">
-                                          <button type="submit" class="detail-btn">Complete as Partial</button>
-                                      @else
-                                          <button type="submit" class="detail-btn">Complete Pickup</button>
-                                      @endif
-                                  </form>
-                                @if($canUpdateDeliveries)
-                                    <form method="POST" action="{{ route('deliveries.cancel', $pickupRecord) }}" style="margin:0;">
-                                        @csrf
-                                        @method('PUT')
-                                        <button type="submit" class="detail-btn-danger" onclick="return confirm('Cancel this pickup assignment?');">Cancel Pickup</button>
-                                      </form>
-                                  @endif
-                              @else
-                                  @if($canAssignPickup && !$hasOpenPickupTask && $hasPendingPickupItems)
-                                      <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'pickup']) }}" class="detail-btn-secondary">Create Follow-up Pickup Task</a>
-                                  @else
-                                      <div class="ops-muted">No pickup action needed.</div>
-                                  @endif
-                              @endif
-                            @if($canDeleteDeliveries && in_array($pickupRecord->status, ['pending', 'cancelled'], true))
-                                <form method="POST" action="{{ route('deliveries.destroy', $pickupRecord) }}" style="margin:0;">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="detail-btn-danger" onclick="return confirm('Delete this pickup assignment record?');">Delete Pickup</button>
-                                </form>
-                            @endif
-                        </div>
-                    </div>
+            <div class="ph-rental-inline-toolbar">
+                @if($deliveryUrl)
+                    <a href="{{ $deliveryUrl }}" target="_blank" rel="noopener" class="detail-btn-secondary">Delivery Message</a>
+                @endif
+                @if($pickupUrl)
+                    <a href="{{ $pickupUrl }}" target="_blank" rel="noopener" class="detail-btn-secondary">Pickup Reminder</a>
+                @endif
+                @if($deliveryContactMapUrl)
+                    <a href="{{ $deliveryContactMapUrl }}" target="_blank" rel="noopener" class="detail-btn-secondary">Open Service Map</a>
+                @endif
+            </div>
+        </x-operational-card>
+
+        <x-operational-card
+            class="span-6"
+            title="{{ $canSeeRentalFinance ? 'Finance Snapshot' : 'Operational Snapshot' }}"
+            subtitle="{{ $canSeeRentalFinance ? 'Keep charges, payment posture, and collection status visible without leaving the rental.' : 'Your role can see workflow status without exposing finance amounts.' }}"
+        >
+            @if($canSeeRentalFinance)
+                <div class="ph-rental-summary-grid">
+                    <x-summary-card label="Rental" :value="$canViewFinanceAmounts ? $currency($rental->rental_amount) : ucfirst($rentalInvoiceStatus ?: 'pending')" />
+                    <x-summary-card label="Deposit" :value="$canViewFinanceAmounts ? $currency($rental->deposit_amount) : ($rental->deposit_amount > 0 ? 'Captured' : 'Not captured')" />
+                    <x-summary-card label="Transport" :value="$canViewFinanceAmounts ? $currency($rental->transport_amount) : (($rental->transport_amount ?? 0) > 0 ? 'Added' : 'Not added')" />
+                    <x-summary-card label="Other Charges" :value="$canViewFinanceAmounts ? $currency($rental->other_amount) : (($rental->other_amount ?? 0) > 0 ? 'Added' : 'Not added')" />
+                    <x-summary-card label="Invoice Status" :value="$rentalInvoice ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus ?: 'unpaid')) : 'Not generated'" :tone="$invoiceStatusTone" />
+                    <x-summary-card label="Payment Status" :value="$rentalInvoiceStatus ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus)) : 'Pending'" :tone="$paymentStatusTone" :meta="$canViewFinanceAmounts && $rentalInvoiceDue > 0 ? 'Due ' . $currency($rentalInvoiceDue) : null" />
                 </div>
             @else
-                <div class="value" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-                    <span>No pickup record yet.</span>
-                      @if($canAssignPickup && !$hasOpenPickupTask)
-                          <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'pickup']) }}" class="detail-btn-secondary">Assign Pickup</a>
-                      @elseif($hasOpenPickupTask)
-                          <span class="ops-muted">Pickup is already assigned.</span>
-                      @elseif($canCreateDeliveries)
-                          <span class="ops-muted">Pickup unlocks when at least one item has been delivered.</span>
-                      @endif
-                  </div>
-              @endif
-        </div>
+                <div class="ph-rental-detail-list">
+                    <div class="ph-rental-detail-row">
+                        <span>Invoice</span>
+                        <strong>{{ $rentalInvoice ? 'Generated' : 'Pending' }}</strong>
+                    </div>
+                    <div class="ph-rental-detail-row">
+                        <span>Payment</span>
+                        <strong>{{ $rentalInvoiceStatus ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus)) : 'Pending' }}</strong>
+                    </div>
+                    <div class="ph-rental-detail-row">
+                        <span>Delivery Staff</span>
+                        <strong>{{ $deliveryAssigneeLabel }}</strong>
+                    </div>
+                    <div class="ph-rental-detail-row">
+                        <span>Pickup Staff</span>
+                        <strong>{{ $pickupAssigneeLabel }}</strong>
+                    </div>
+                </div>
+            @endif
+        </x-operational-card>
+
+        <x-operational-card
+            class="span-12"
+            title="Product & Assigned Assets"
+            subtitle="See which units are still with the customer and what will come back into verification."
+        >
+            <div class="ph-rental-summary-grid" style="margin-bottom:12px;">
+                <x-summary-card label="Primary Product" :value="$rental->product->name ?? 'N/A'" />
+                <x-summary-card label="Quantity" :value="$rental->quantity" />
+                <x-summary-card label="Returned At" :value="$rental->returned_at ? $rental->returned_at->format('d M Y h:i A') : 'Not returned yet'" />
+            </div>
+
+            <div class="ph-rental-asset-grid">
+                @forelse($activeAssets as $assignment)
+                    <div class="ph-rental-asset-tile">
+                        <span>Serial</span>
+                        <strong>{{ $assignment->asset->serial_number ?? 'N/A' }}</strong>
+                        <span>Barcode</span>
+                        <strong>{{ $assignment->asset->barcode_value ?? '-' }}</strong>
+                        <span>Warehouse</span>
+                        <strong>{{ $assignment->asset->warehouse->name ?? 'Not set' }}</strong>
+                    </div>
+                @empty
+                    <x-empty-state
+                        title="No assigned assets yet"
+                        message="This rental does not currently have tracked asset units linked. You can still continue delivery and update the assignment later if needed."
+                    />
+                @endforelse
+            </div>
+        </x-operational-card>
+
+        <x-operational-card
+            class="span-6 section-nav-target"
+            id="rental-delivery-section"
+            title="Delivery"
+            subtitle="Track assignment, service contact, schedule, and completion."
+        >
+            <div class="ph-rental-detail-list">
+                <div class="ph-rental-detail-row">
+                    <span>Status</span>
+                    <strong>{{ $deliveryStatusLabel($rental->deliveryStatus()) }}</strong>
+                </div>
+                <div class="ph-rental-detail-row">
+                    <span>Assigned Staff</span>
+                    <strong>{{ $deliveryAssigneeLabel }}</strong>
+                </div>
+                <div class="ph-rental-detail-row">
+                    <span>Scheduled</span>
+                    <strong>{{ $deliveryRecord?->scheduled_at ? $deliveryRecord->scheduled_at->format('d M Y h:i A') : 'Not scheduled' }}</strong>
+                </div>
+            </div>
+
+            <x-contact-block
+                title="Delivery Contact"
+                :name="$deliveryContactName"
+                role="Delivery / Service"
+                :phone="$deliveryContactPhone"
+                :whatsapp="$deliveryContactPhone"
+                :address="$rental->deliveryContactAddress()"
+                :city="$rental->deliveryContactCity()"
+                :state="$rental->deliveryContactState()"
+                :pincode="$rental->deliveryContactPincode()"
+                :map-url="$deliveryContactMapUrl"
+                :notes="$rental->deliveryContactNotes()"
+            />
+
+            <div class="ph-rental-inline-toolbar">
+                @if($deliveryRecord)
+                    @if($canUpdateDeliveries)
+                        <a href="{{ route('deliveries.edit', $deliveryRecord) }}" class="detail-btn-secondary">Assign</a>
+                    @endif
+                    @if($deliveryRecord->status === 'pending')
+                        <form method="POST" action="{{ route('deliveries.in_progress', $deliveryRecord) }}" style="margin:0;">
+                            @csrf
+                            @method('PUT')
+                            <button type="submit" class="detail-btn-secondary">Start</button>
+                        </form>
+                    @elseif($deliveryRecord->status === 'in_progress')
+                        <form method="POST" action="{{ route('deliveries.complete', $deliveryRecord) }}" style="margin:0;">
+                            @csrf
+                            @method('PUT')
+                            @if($hasPendingDeliveryItems)
+                                <input type="hidden" name="confirm_partial" value="1">
+                            @endif
+                            <button type="submit" class="detail-btn">Mark Delivered</button>
+                        </form>
+                    @endif
+                    @if($deliveryContactMapUrl)
+                        <a href="{{ $deliveryContactMapUrl }}" target="_blank" rel="noopener" class="detail-btn-secondary">Open Map</a>
+                    @endif
+                @elseif($rental->deliveryStaff)
+                    @if($canCreateDeliveries && !$hasOpenDeliveryTask)
+                        <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'delivery']) }}" class="detail-btn-secondary">Create Delivery Task</a>
+                    @endif
+                    @if($canUpdateRentals)
+                        <form method="POST" action="{{ route('rentals.delivery-assignment.clear', $rental) }}" style="margin:0;">
+                            @csrf
+                            @method('DELETE')
+                            <button type="submit" class="detail-btn-danger" onclick="return confirm('Clear this delivery assignment from the rental?');">Clear Assignment</button>
+                        </form>
+                    @endif
+                @elseif($canCreateDeliveries && !$hasOpenDeliveryTask)
+                    <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'delivery']) }}" class="detail-btn-secondary">Assign Delivery</a>
+                @else
+                    <span class="ops-muted">Delivery action is not available right now.</span>
+                @endif
+            </div>
+        </x-operational-card>
+
+        <x-operational-card
+            class="span-6 section-nav-target"
+            id="rental-pickup-section"
+            title="Pickup"
+            subtitle="Schedule, assign, and close the return workflow from the rental itself."
+        >
+            <div class="ph-rental-detail-list">
+                <div class="ph-rental-detail-row">
+                    <span>Status</span>
+                    <strong>{{ ucfirst(str_replace('_', ' ', $rental->pickupStatus() ?: 'pending')) }}</strong>
+                </div>
+                <div class="ph-rental-detail-row">
+                    <span>Assigned Staff</span>
+                    <strong>{{ $pickupAssigneeLabel }}</strong>
+                </div>
+                <div class="ph-rental-detail-row">
+                    <span>Scheduled</span>
+                    <strong>{{ $pickupRecord?->scheduled_at ? $pickupRecord->scheduled_at->format('d M Y h:i A') : 'Not scheduled' }}</strong>
+                </div>
+            </div>
+
+            <x-contact-block
+                title="Pickup Contact"
+                :name="$deliveryContactName"
+                role="Pickup / Return"
+                :phone="$deliveryContactPhone"
+                :whatsapp="$deliveryContactPhone"
+                :address="$rental->deliveryContactAddress()"
+                :city="$rental->deliveryContactCity()"
+                :state="$rental->deliveryContactState()"
+                :pincode="$rental->deliveryContactPincode()"
+                :map-url="$deliveryContactMapUrl"
+                :notes="$rental->deliveryContactNotes()"
+            />
+
+            <div class="ph-rental-inline-toolbar">
+                @if($pickupRecord)
+                    @if($canUpdateDeliveries)
+                        <a href="{{ route('deliveries.edit', $pickupRecord) }}" class="detail-btn-secondary">Assign Staff</a>
+                    @endif
+                    @if($pickupRecord->status === 'pending')
+                        <form method="POST" action="{{ route('deliveries.in_progress', $pickupRecord) }}" style="margin:0;">
+                            @csrf
+                            @method('PUT')
+                            <button type="submit" class="detail-btn-secondary">Start Pickup</button>
+                        </form>
+                    @elseif($pickupRecord->status === 'in_progress')
+                        <form method="POST" action="{{ route('deliveries.complete', $pickupRecord) }}" style="margin:0;">
+                            @csrf
+                            @method('PUT')
+                            @if($hasPendingPickupItems)
+                                <input type="hidden" name="confirm_partial" value="1">
+                            @endif
+                            <button type="submit" class="detail-btn">Mark Picked Up</button>
+                        </form>
+                    @endif
+                    @if($deliveryContactMapUrl)
+                        <a href="{{ $deliveryContactMapUrl }}" target="_blank" rel="noopener" class="detail-btn-secondary">Open Map</a>
+                    @endif
+                @elseif($canAssignPickup && !$hasOpenPickupTask)
+                    <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'pickup']) }}" class="detail-btn-secondary">Schedule Pickup</a>
+                @elseif($canCreateDeliveries)
+                    <span class="ops-muted">Pickup becomes actionable after at least one item is delivered.</span>
+                @endif
+            </div>
+        </x-operational-card>
     </div>
 </div>
 
-<div class="section-nav-target" id="rental-activity-timeline">
+<div class="ph-rental-notes-shell">
+    <div class="section-nav-target" id="rental-activity-timeline"></div>
+    <div class="section-nav-target" id="rental-notes-section"></div>
     @include('partials.activity-timeline', [
         'timeline' => $activityLogs ?? collect(),
-        'title' => 'Operations History',
-        'subtitle' => 'Renewals, reminders, invoices, delivery updates, and return activity for this rental.',
+        'title' => 'Timeline & Notes',
+        'subtitle' => 'Renewals, reminders, invoices, delivery updates, follow-ups, and internal notes stay together here.',
         'timelineFilter' => $timelineFilter ?? 'all',
         'timelineRoute' => 'rentals.show',
         'noteAction' => route('rentals.notes.store', $rental),

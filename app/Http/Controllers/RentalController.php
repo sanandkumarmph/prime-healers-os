@@ -4614,11 +4614,19 @@ class RentalController extends Controller
         $totalDepositValue = (clone $summaryQuery)->sum('deposit_amount');
         $totalTransportValue = (clone $summaryQuery)->sum('transport_amount');
         $totalOtherValue = (clone $summaryQuery)->sum('other_amount');
-        $dashboardOrderMetricsScope = $restrictDashboardToSelfCreated ? 'mine' : 'organization';
-        $dashboardTaskMetricsScope = (($currentUser?->hasScope('assigned', 'deliveries') ?? false) && $canReadDeliveries)
-            ? 'assigned'
-            : 'organization';
-        $dashboardFollowUpMetricsScope = $restrictDashboardToAssignedFollowUps ? 'assigned' : 'organization';
+        $dashboardOrderMetricsScope = (
+            $restrictDashboardToSelfCreated
+            || (bool) ($dashboardVisibility['sales_focused'] ?? false)
+        ) ? 'mine' : 'organization';
+        $dashboardTaskMetricsScope = (
+            (((bool) ($dashboardVisibility['delivery_focused'] ?? false)) || ($currentUser?->hasScope('assigned', 'deliveries') ?? false))
+            && $canReadDeliveries
+        ) ? 'assigned' : 'organization';
+        $dashboardFollowUpMetricsScope = (
+            $restrictDashboardToAssignedFollowUps
+            || (bool) ($dashboardVisibility['sales_focused'] ?? false)
+            || (bool) ($dashboardVisibility['delivery_focused'] ?? false)
+        ) ? 'assigned' : 'organization';
         $dashboardIntegritySummary = $this->dashboardMetrics()->integritySummary($this->orgId());
 
         return view('dashboard', array_merge($filterOptions, compact(

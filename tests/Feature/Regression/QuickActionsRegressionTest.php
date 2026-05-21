@@ -99,7 +99,7 @@ class QuickActionsRegressionTest extends TestCase
 
         $rentalResponse = $this->get(route('rentals.show', $rental));
         $rentalResponse->assertOk()
-            ->assertSeeText('Rental Quick Actions')
+            ->assertSeeText('Rental Actions')
             ->assertSeeText('Reminder / Payment')
             ->assertSeeText($partner->displayName())
             ->assertSeeText('Delivery / Pickup')

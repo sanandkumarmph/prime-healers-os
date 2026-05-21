@@ -3,6 +3,7 @@
 use App\Http\Controllers\AssetController;
 use App\Http\Controllers\CityController;
 use App\Http\Controllers\CommunicationCenterController;
+use App\Http\Controllers\DashboardSettingsController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\BusinessPartnerController;
 use App\Http\Controllers\DeliveryController;
@@ -288,6 +289,12 @@ Route::middleware('auth')->group(function () {
     Route::put('/organization/settings', [OrganizationSettingsController::class, 'update'])
         ->middleware('module:settings,update')
         ->name('organization.settings.update');
+    Route::get('/organization/dashboard-settings', [DashboardSettingsController::class, 'edit'])
+        ->middleware('module:settings,read')
+        ->name('organization.dashboard-settings.edit');
+    Route::put('/organization/dashboard-settings', [DashboardSettingsController::class, 'update'])
+        ->middleware('module:settings,update')
+        ->name('organization.dashboard-settings.update');
 
     Route::get('/inventory', [InventoryDashboardController::class, 'index'])
         ->middleware('permission:dashboard.inventory')
