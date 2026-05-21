@@ -15,6 +15,13 @@
     $emptyMessage = $emptyMessage ?? 'No activity has been logged for this record yet.';
     $groupedTimeline = $timelineItems->groupBy(fn ($log) => optional($log->created_at)->format('Y-m-d') ?: 'undated');
     $noteDetailsOpen = $errors->has('note') || $errors->has('note_type');
+    $timelineItemCount = $timelineItems->count();
+    $latestTimelineItem = $timelineItems->first();
+    $latestTimelineLabel = $latestTimelineItem
+        ? \App\Support\ActivityTimelineService::actionLabel($latestTimelineItem)
+        : 'Timeline activity will appear here.';
+    $latestTimelineAgo = $latestTimelineItem?->created_at?->diffForHumans();
+    $timelineShouldStartOpen = $noteDetailsOpen || request()->filled('timeline_filter');
     $noteTypeOptions = [
         'general' => 'General',
         'follow-up' => 'Follow-up',
@@ -28,12 +35,57 @@
 <style>
     .timeline-shell {
         display:grid;
-        gap:16px;
+        gap:12px;
         border:1px solid #dbe3ef;
-        border-radius:18px;
+        border-radius:16px;
         background:#fff;
-        padding:18px;
-        box-shadow:0 16px 40px rgba(15,23,42,.05);
+        padding:12px;
+        box-shadow:0 12px 28px rgba(15,23,42,.05);
+    }
+    .timeline-shell[open] {
+        padding-bottom:14px;
+    }
+    .timeline-shell > summary {
+        list-style:none;
+        cursor:pointer;
+    }
+    .timeline-shell > summary::-webkit-details-marker {
+        display:none;
+    }
+    .timeline-summary {
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        gap:12px;
+        flex-wrap:wrap;
+        padding:4px 4px 0;
+    }
+    .timeline-summary-copy {
+        display:grid;
+        gap:5px;
+        min-width:0;
+    }
+    .timeline-summary-copy h2 {
+        margin:0;
+        color:#0f172a;
+        font-size:18px;
+        letter-spacing:-.01em;
+    }
+    .timeline-summary-copy p {
+        margin:0;
+        color:#475569;
+        font-size:12px;
+        line-height:1.5;
+        overflow-wrap:anywhere;
+    }
+    .timeline-summary-copy p strong {
+        color:#0f172a;
+    }
+    .timeline-summary-actions {
+        display:flex;
+        align-items:center;
+        gap:8px;
+        flex-wrap:wrap;
     }
     .timeline-head {
         display:flex;
@@ -45,25 +97,25 @@
     .timeline-head h2 {
         margin:0;
         color:#0f172a;
-        font-size:20px;
+        font-size:18px;
         letter-spacing:-.01em;
     }
     .timeline-head p {
         margin:5px 0 0;
         color:#64748b;
-        font-size:13px;
+        font-size:12px;
     }
     .timeline-pill {
         display:inline-flex;
         align-items:center;
         gap:6px;
-        min-height:30px;
-        padding:6px 10px;
+        min-height:28px;
+        padding:5px 9px;
         border-radius:999px;
         background:#f8fafc;
         border:1px solid #d9e2ef;
         color:#475569;
-        font-size:12px;
+        font-size:11px;
         font-weight:700;
         text-decoration:none;
     }
@@ -88,13 +140,13 @@
         align-items:center;
         justify-content:center;
         gap:6px;
-        min-height:38px;
-        padding:10px 14px;
+        min-height:34px;
+        padding:8px 12px;
         border-radius:12px;
         border:1px solid #cbd5e1;
         background:#fff;
         color:#334155;
-        font-size:13px;
+        font-size:12px;
         font-weight:700;
         cursor:pointer;
     }
@@ -107,7 +159,7 @@
     .timeline-note-box summary {
         list-style:none;
         cursor:pointer;
-        padding:12px 14px;
+        padding:10px 12px;
     }
     .timeline-note-box summary::-webkit-details-marker {
         display:none;
@@ -115,7 +167,7 @@
     .timeline-note-form {
         display:grid;
         gap:12px;
-        padding:0 14px 14px;
+        padding:0 12px 12px;
     }
     .timeline-note-grid {
         display:grid;
@@ -138,7 +190,7 @@
         border:1px solid #cbd5e1;
         border-radius:12px;
         padding:10px 12px;
-        font-size:13px;
+        font-size:12px;
         background:#fff;
     }
     .timeline-note-form textarea {
@@ -152,7 +204,7 @@
     .timeline-date-heading {
         margin:0;
         color:#0f172a;
-        font-size:15px;
+        font-size:14px;
         font-weight:800;
     }
     .timeline-items {
@@ -163,9 +215,9 @@
         display:grid;
         grid-template-columns:92px minmax(0,1fr);
         gap:12px;
-        padding:14px;
+        padding:12px;
         border:1px solid #e8eef6;
-        border-radius:16px;
+        border-radius:14px;
         background:#fcfdff;
     }
     .timeline-time {
@@ -177,7 +229,7 @@
         display:block;
         margin-bottom:4px;
         color:#0f172a;
-        font-size:13px;
+        font-size:12px;
     }
     .timeline-body {
         display:grid;
@@ -193,7 +245,7 @@
     }
     .timeline-title {
         color:#0f172a;
-        font-size:15px;
+        font-size:14px;
         font-weight:800;
         line-height:1.35;
     }
@@ -211,13 +263,13 @@
     }
     .timeline-meta {
         color:#64748b;
-        font-size:12px;
+        font-size:11px;
         line-height:1.5;
     }
     .timeline-description {
         margin:0;
         color:#334155;
-        font-size:13px;
+        font-size:12px;
         line-height:1.6;
     }
     .timeline-inline-strip {
@@ -230,7 +282,7 @@
     }
     .timeline-inline-strip div {
         color:#334155;
-        font-size:12px;
+        font-size:11px;
         line-height:1.5;
     }
     .timeline-inline-strip strong {
@@ -253,17 +305,20 @@
         font-weight:700;
     }
     .timeline-empty {
-        padding:16px;
+        padding:14px;
         border:1px dashed #dbe3ef;
-        border-radius:16px;
+        border-radius:14px;
         color:#64748b;
-        font-size:13px;
+        font-size:12px;
         background:#fbfdff;
     }
     @media (max-width: 767px) {
         .timeline-shell {
-            padding:14px;
-            border-radius:16px;
+            padding:10px;
+            border-radius:14px;
+        }
+        .timeline-summary {
+            padding:2px 2px 0;
         }
         .timeline-note-grid,
         .timeline-item {
@@ -280,7 +335,26 @@
     }
 </style>
 
-<section class="timeline-shell" id="{{ $anchorId }}">
+<details class="timeline-shell" id="{{ $anchorId }}" data-activity-timeline data-timeline-anchor="{{ $anchorId }}" @if($timelineShouldStartOpen) open @endif>
+    <summary data-activity-timeline-toggle>
+        <div class="timeline-summary">
+            <div class="timeline-summary-copy">
+                <h2>{{ $title }}</h2>
+                <p>{{ $subtitle }}</p>
+                <p>
+                    <strong>Latest:</strong> {{ $latestTimelineLabel }}
+                    @if($latestTimelineAgo)
+                        <span style="color:#64748b;">&bull; {{ $latestTimelineAgo }}</span>
+                    @endif
+                </p>
+            </div>
+            <div class="timeline-summary-actions">
+                <span class="timeline-pill">{{ $timelineItemCount }} {{ \Illuminate\Support\Str::plural('entry', $timelineItemCount) }}</span>
+                <span class="timeline-pill" data-activity-timeline-state>{{ $timelineShouldStartOpen ? 'Collapse' : 'Expand' }}</span>
+            </div>
+        </div>
+    </summary>
+
     <div class="timeline-head">
         <div>
             <h2>{{ $title }}</h2>
@@ -372,9 +446,9 @@
                                 <div class="timeline-meta">
                                     {{ $log->user->name ?? 'System' }}
                                     @if($links !== [])
-                                        •
+                                        &bull;
                                         @foreach($links as $index => $link)
-                                            <a href="{{ $link['url'] }}" style="color:#2563eb;text-decoration:none;">{{ $link['label'] }}</a>@if($index < count($links) - 1) • @endif
+                                            <a href="{{ $link['url'] }}" style="color:#2563eb;text-decoration:none;">{{ $link['label'] }}</a>@if($index < count($links) - 1) &bull; @endif
                                         @endforeach
                                     @endif
                                 </div>
@@ -394,7 +468,7 @@
                                             <div>
                                                 <strong>Address:</strong> {{ $contactSummary['address'] }}
                                                 @if($contactSummary['map_url'])
-                                                    • <a href="{{ $contactSummary['map_url'] }}" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:none;">Open Map</a>
+                                                    &bull; <a href="{{ $contactSummary['map_url'] }}" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:none;">Open Map</a>
                                                 @endif
                                             </div>
                                         @endif
@@ -421,4 +495,57 @@
             </div>
         @endif
     @endif
-</section>
+</details>
+
+@once
+    <script>
+        (function () {
+            function syncTimelineState(details) {
+                const state = details.querySelector('[data-activity-timeline-state]');
+                if (state) {
+                    state.textContent = details.open ? 'Collapse' : 'Expand';
+                    state.setAttribute('aria-current', details.open ? 'true' : 'false');
+                }
+            }
+
+            function openTimelineFromHash() {
+                const hash = window.location.hash ? window.location.hash.replace('#', '') : '';
+                if (!hash) {
+                    return;
+                }
+
+                const timeline = document.querySelector('[data-activity-timeline][data-timeline-anchor="' + hash + '"]');
+                if (!(timeline instanceof HTMLDetailsElement)) {
+                    return;
+                }
+
+                timeline.open = true;
+                syncTimelineState(timeline);
+            }
+
+            function initActivityTimelines() {
+                document.querySelectorAll('[data-activity-timeline]').forEach(function (timeline) {
+                    if (!(timeline instanceof HTMLDetailsElement) || timeline.dataset.timelineReady === 'true') {
+                        return;
+                    }
+
+                    timeline.dataset.timelineReady = 'true';
+                    syncTimelineState(timeline);
+                    timeline.addEventListener('toggle', function () {
+                        syncTimelineState(timeline);
+                    });
+                });
+
+                openTimelineFromHash();
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initActivityTimelines, { once: true });
+            } else {
+                initActivityTimelines();
+            }
+
+            window.addEventListener('hashchange', openTimelineFromHash);
+        })();
+    </script>
+@endonce

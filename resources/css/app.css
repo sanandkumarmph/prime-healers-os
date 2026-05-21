@@ -41,6 +41,24 @@
     --ph-shadow-soft: 0 10px 28px rgba(11, 35, 66, 0.06);
     --ph-shadow-card: 0 16px 36px rgba(11, 35, 66, 0.08);
     --ph-shadow-float: 0 22px 46px rgba(11, 35, 66, 0.12);
+    --ph-z-content: 10;
+    --ph-z-sticky-nav: 30;
+    --ph-z-topbar: 40;
+    --ph-z-dropdown: 60;
+    --ph-z-modal: 80;
+    --ph-z-toast: 90;
+    --ph-page-title-size: clamp(1.6rem, 2.35vw, 1.9rem);
+    --ph-section-title-size: clamp(1.1rem, 1.6vw, 1.3rem);
+    --ph-card-title-size: 1rem;
+    --ph-body-text-size: 0.875rem;
+    --ph-label-text-size: 0.72rem;
+    --ph-button-text-size: 0.82rem;
+    --ph-chip-text-size: 0.72rem;
+    --ph-card-padding: 14px;
+    --ph-card-padding-sm: 12px;
+    --ph-card-padding-lg: 18px;
+    --ph-card-radius: 16px;
+    --ph-card-shadow: 0 12px 28px rgba(11, 35, 66, 0.06);
     --rx-bg: var(--ph-color-bg);
     --rx-surface: var(--ph-color-surface);
     --rx-surface-soft: var(--ph-color-surface-soft);
@@ -613,7 +631,7 @@ textarea::placeholder {
 .rx-page-title {
     margin: 0;
     color: var(--rx-text);
-    font-size: 25px;
+    font-size: var(--ph-page-title-size);
     font-weight: 800;
     letter-spacing: -0.04em;
     line-height: 1.08;
@@ -654,8 +672,8 @@ textarea::placeholder {
 .ph-panel {
     background: var(--ph-color-surface);
     border: 1px solid var(--ph-color-border);
-    border-radius: var(--ph-radius-lg);
-    box-shadow: var(--ph-shadow-soft);
+    border-radius: var(--ph-card-radius);
+    box-shadow: var(--ph-card-shadow);
 }
 
 .ph-card-header {
@@ -667,14 +685,14 @@ textarea::placeholder {
 }
 
 .ph-card-body {
-    padding: var(--ph-space-4);
+    padding: var(--ph-card-padding);
 }
 
 .ph-card-title {
     margin: 0;
     color: var(--ph-color-text);
     font-family: var(--ph-font-heading);
-    font-size: 1rem;
+    font-size: var(--ph-card-title-size);
     font-weight: 800;
     letter-spacing: -0.02em;
 }
@@ -682,7 +700,7 @@ textarea::placeholder {
 .ph-card-copy {
     margin: 6px 0 0;
     color: var(--ph-color-text-soft);
-    font-size: 0.78rem;
+    font-size: 0.76rem;
     line-height: 1.5;
 }
 
@@ -694,11 +712,11 @@ textarea::placeholder {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    min-height: 38px;
-    padding: 8px 14px;
+    min-height: 36px;
+    padding: 7px 12px;
     border-radius: var(--ph-radius-md);
     border: 1px solid transparent;
-    font-size: 12px;
+    font-size: var(--ph-button-text-size);
     font-weight: 700;
     line-height: 1;
     text-decoration: none;
@@ -733,12 +751,12 @@ textarea::placeholder {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    min-height: 26px;
-    padding: 5px 10px;
+    min-height: 24px;
+    padding: 4px 9px;
     border-radius: 999px;
     background: var(--ph-color-info-soft);
     color: var(--ph-color-info);
-    font-size: 10px;
+    font-size: var(--ph-chip-text-size);
     font-weight: 800;
     letter-spacing: .05em;
     text-transform: uppercase;
@@ -842,8 +860,8 @@ textarea::placeholder {
 .rx-card {
     background: var(--rx-surface);
     border: 1px solid var(--rx-border);
-    border-radius: var(--ph-radius-lg);
-    box-shadow: var(--rx-shadow-soft);
+    border-radius: var(--ph-card-radius);
+    box-shadow: var(--ph-card-shadow);
 }
 
 .rx-card-header {
@@ -852,17 +870,17 @@ textarea::placeholder {
     justify-content: space-between;
     gap: 14px;
     flex-wrap: wrap;
-    padding: 14px 16px 0;
+    padding: 12px 14px 0;
 }
 
 .rx-card-body {
-    padding: 14px 16px;
+    padding: 12px 14px;
 }
 
 .rx-card-title {
     margin: 0;
     color: var(--rx-text);
-    font-size: 16px;
+    font-size: var(--ph-card-title-size);
     font-weight: 800;
     letter-spacing: -0.02em;
     font-family: var(--ph-font-heading);
@@ -871,7 +889,7 @@ textarea::placeholder {
 .rx-card-copy {
     margin: 6px 0 0;
     color: var(--rx-text-soft);
-    font-size: 12px;
+    font-size: 11px;
     line-height: 1.45;
 }
 
@@ -886,12 +904,12 @@ textarea::placeholder {
     overflow: hidden;
     display: grid;
     gap: 6px;
-    min-height: 88px;
-    padding: 12px 13px;
-    border-radius: var(--ph-radius-lg);
+    min-height: 78px;
+    padding: 11px 12px;
+    border-radius: var(--ph-card-radius);
     border: 1px solid var(--rx-border);
     background: var(--rx-surface);
-    box-shadow: var(--rx-shadow-soft);
+    box-shadow: var(--ph-card-shadow);
 }
 
 .rx-stat-card::after {
@@ -1929,7 +1947,7 @@ body {
 .invoice-toolbar h1 {
     margin:0;
     color:var(--rn-text);
-    font-size:25px;
+    font-size:var(--ph-page-title-size);
     font-weight:800;
     letter-spacing:-0.04em;
     line-height:1.08;
@@ -2364,10 +2382,10 @@ body {
     display:grid;
     align-content:start;
     gap:8px;
-    min-height:98px;
-    border-radius:var(--ph-radius-lg);
+    min-height:86px;
+    border-radius:var(--ph-card-radius);
     border:1px solid var(--rn-border);
-    box-shadow:var(--ph-shadow-soft);
+    box-shadow:var(--ph-card-shadow);
 }
 
 .customers-page .summary-box span,
@@ -2395,7 +2413,7 @@ body {
 .invoice-summary-tile strong {
     display:block;
     max-width:100%;
-    font-size:26px;
+    font-size:23px;
     font-weight:800;
     line-height:1.08;
     letter-spacing:-0.04em;
@@ -2711,7 +2729,7 @@ body {
 .rn-report-title {
     margin:0;
     color:var(--rn-text);
-    font-size:26px;
+    font-size:var(--ph-page-title-size);
     font-weight:800;
     letter-spacing:-0.04em;
     line-height:1.04;

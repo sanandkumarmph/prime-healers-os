@@ -29,7 +29,7 @@
     <style>
         .ph-address-block {
             display: grid;
-            gap: 8px;
+            gap: 6px;
             min-width: 0;
         }
         .ph-address-block__label {
@@ -41,13 +41,13 @@
         }
         .ph-address-block__value {
             color: #0f172a;
-            font-size: 14px;
-            line-height: 1.6;
+            font-size: 13px;
+            line-height: 1.55;
             overflow-wrap: anywhere;
         }
         .ph-address-block__notes {
             color: #64748b;
-            font-size: 12px;
+            font-size: 11px;
             line-height: 1.6;
         }
         .ph-address-block__link {
@@ -55,7 +55,7 @@
             align-items: center;
             gap: 6px;
             color: #1d4ed8;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 800;
             text-decoration: none;
         }

@@ -128,15 +128,15 @@
     }
 @endphp
 <style>
-    .bp-show { display:grid; gap:16px; padding:18px 22px 30px; max-width:1200px; margin:0 auto; }
-    .bp-show-card { background:#fff; border:1px solid #dbe3ef; border-radius:16px; padding:18px; box-shadow:0 8px 24px rgba(15,23,42,.04); }
+    .bp-show { display:grid; gap:14px; padding:16px 20px 24px; max-width:1200px; margin:0 auto; }
+    .bp-show-card { background:#fff; border:1px solid #dbe3ef; border-radius:16px; padding:14px; box-shadow:0 10px 22px rgba(15,23,42,.05); }
     .bp-show-grid { display:grid; grid-template-columns:repeat(12, minmax(0,1fr)); gap:14px; }
     .bp-show-col-4 { grid-column:span 4; }
     .bp-show-col-6 { grid-column:span 6; }
     .bp-show-col-12 { grid-column:span 12; }
     .bp-show-label { display:block; margin-bottom:5px; color:#64748b; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; }
     .bp-show-value { color:#0f172a; font-size:14px; line-height:1.5; }
-    .bp-show-btn, .bp-show-btn-light { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:40px; padding:10px 14px; border-radius:12px; border:1px solid transparent; text-decoration:none; font-size:13px; font-weight:700; cursor:pointer; }
+    .bp-show-btn, .bp-show-btn-light { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:36px; padding:8px 12px; border-radius:12px; border:1px solid transparent; text-decoration:none; font-size:12px; font-weight:700; cursor:pointer; }
     .bp-show-btn { background:#0f172a; color:#fff; }
     .bp-show-btn-light { background:#fff; color:#334155; border-color:#cbd5e1; }
     .bp-show-table { width:100%; border-collapse:collapse; }
@@ -154,8 +154,8 @@
     <div class="bp-show-card">
         <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
             <div>
-                <h1 style="margin:0;color:#0f172a;">{{ $businessPartner->displayName() }}</h1>
-                <p style="margin:6px 0 0;color:#64748b;">Reminder and billing contact for tie-up rentals and sales.</p>
+                <h1 style="margin:0;color:#0f172a;font-size:26px;line-height:1.08;">{{ $businessPartner->displayName() }}</h1>
+                <p style="margin:6px 0 0;color:#64748b;font-size:12px;">Reminder and billing contact for tie-up rentals and sales.</p>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <a href="{{ route('business-partners.index') }}" class="bp-show-btn-light">Back</a>
@@ -252,7 +252,7 @@
     <div class="bp-show-card section-nav-target" id="actual-clients">
         <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
             <div>
-                <h2 style="margin:0;color:#0f172a;">Actual Clients</h2>
+                <h2 style="margin:0;color:#0f172a;font-size:18px;">Actual Clients</h2>
                 <div style="color:#64748b;font-size:12px;margin-top:4px;">Delivery and service locations linked to this business partner.</div>
             </div>
             <a href="{{ route('business-partners.clients.create', $businessPartner) }}" class="bp-show-btn">Add Actual Client</a>

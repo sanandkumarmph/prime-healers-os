@@ -46,17 +46,28 @@
     $logoutHref = \Illuminate\Support\Facades\Route::has('logout') ? route('logout') : null;
     $topbarNotifications = collect($topbarNotifications ?? []);
     $topbarNotificationCount = (int) ($topbarNotificationCount ?? 0);
-    $topbarNotificationsViewAllHref = $topbarNotificationsViewAllHref ?? ($safeRoute('dashboard'));
+    $topbarNotificationsViewAllHref = $topbarNotificationsViewAllHref ?? ($safeRoute('notifications.index') ?: $safeRoute('dashboard'));
     $topbarNotificationsLatestHref = $safeRoute('notifications.latest');
     $topbarNotificationsUnreadCountHref = $safeRoute('notifications.unread-count');
     $topbarNotificationsReadAllHref = $safeRoute('notifications.read-all');
+    $topbarNotificationsReadVisibleHref = $safeRoute('notifications.read-visible');
     $topbarNotificationsReadHrefTemplate = Route::has('notifications.read')
         ? url('/notifications/__NOTIFICATION__/read')
         : null;
     $topbarNotificationsPreferencesHref = $safeRoute('notifications.preferences');
     $notificationSoundEnabled = (bool) ($currentUser?->notification_sound_enabled ?? false);
     $notificationVoiceEnabled = (bool) ($currentUser?->notification_voice_enabled ?? false);
-    $notificationSoundAsset = asset('sounds/notification.wav');
+    $notificationSoundVariant = in_array((string) ($currentUser?->notification_sound_variant ?? 'default'), ['default', 'soft', 'chime'], true)
+        ? (string) ($currentUser?->notification_sound_variant ?? 'default')
+        : 'default';
+    $notificationSoundOptions = [
+        ['value' => 'default', 'label' => 'Default tone'],
+        ['value' => 'soft', 'label' => 'Soft tone'],
+        ['value' => 'chime', 'label' => 'Chime tone'],
+    ];
+    $notificationSoundAsset = $notificationSoundVariant === 'default'
+        ? asset('sounds/notification.wav')
+        : asset('sounds/notification-' . $notificationSoundVariant . '.wav');
     $knowledgeHubHref = $safeRoute('knowledge.index');
     $globalSearchHref = $safeRoute('search.global');
     $globalSearchValue = request()->routeIs('search.global')
@@ -807,10 +818,10 @@
         position:absolute;
         top:calc(100% + 8px);
         right:0;
-        z-index:180;
+        z-index:var(--ph-z-dropdown, 60);
         width:min(240px, 92vw);
         padding:8px;
-        border-radius:18px;
+        border-radius:16px;
         border:1px solid #dbe3ef;
         background:#fff;
         box-shadow:0 20px 44px rgba(15,23,42,.14);
@@ -928,10 +939,10 @@
         position:absolute;
         top:calc(100% + 10px);
         right:0;
-        z-index:190;
+        z-index:var(--ph-z-dropdown, 60);
         width:min(340px, calc(100vw - 28px));
         padding:10px;
-        border-radius:18px;
+        border-radius:16px;
         border:1px solid #dbe3ef;
         background:#fff;
         box-shadow:0 24px 52px rgba(15,23,42,.16);
@@ -981,8 +992,8 @@
         align-items:flex-start;
         justify-content:space-between;
         gap:10px;
-        padding:10px 12px;
-        border-radius:14px;
+        padding:9px 11px;
+        border-radius:12px;
         border:1px solid #e2e8f0;
         background:#f8fafc;
         text-decoration:none;
@@ -1000,14 +1011,14 @@
     }
     .topbar-bell-item strong {
         display:block;
-        font-size:13px;
+        font-size:12px;
         line-height:1.35;
         color:#0f172a;
     }
     .topbar-bell-item small {
         display:block;
         margin-top:3px;
-        font-size:12px;
+        font-size:11px;
         line-height:1.45;
         color:#64748b;
     }
@@ -1194,11 +1205,41 @@
         font-size:11px;
         line-height:1.45;
     }
+    .topbar-bell-tone-row {
+        margin-top:10px;
+    }
+    .topbar-bell-tone-label {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+        width:100%;
+        color:#475569;
+        font-size:12px;
+        font-weight:700;
+    }
+    .topbar-bell-tone-label span {
+        white-space:nowrap;
+    }
+    .topbar-bell-select {
+        min-width:140px;
+        border:1px solid rgba(148,163,184,.35);
+        border-radius:12px;
+        background:#fff;
+        color:#0f172a;
+        font:inherit;
+        font-size:12px;
+        font-weight:700;
+        padding:8px 12px;
+    }
+    .topbar-bell-list-page {
+        gap:12px;
+    }
     .topbar-toast-stack {
         position:fixed;
         top:86px;
         right:18px;
-        z-index:260;
+        z-index:var(--ph-z-toast, 90);
         display:grid;
         gap:10px;
         width:min(340px, calc(100vw - 28px));
@@ -1316,10 +1357,10 @@
         position:absolute;
         top:calc(100% + 10px);
         right:0;
-        z-index:190;
+        z-index:var(--ph-z-dropdown, 60);
         width:min(272px, calc(100vw - 28px));
         padding:10px;
-        border-radius:18px;
+        border-radius:16px;
         border:1px solid #dbe3ef;
         background:#fff;
         box-shadow:0 24px 52px rgba(15,23,42,.16);
@@ -2443,10 +2484,12 @@
                     @if($topbarNotificationsLatestHref) data-notifications-latest-url="{{ $topbarNotificationsLatestHref }}" @endif
                     @if($topbarNotificationsUnreadCountHref) data-notifications-count-url="{{ $topbarNotificationsUnreadCountHref }}" @endif
                     @if($topbarNotificationsReadAllHref) data-notifications-read-all-url="{{ $topbarNotificationsReadAllHref }}" @endif
+                    @if($topbarNotificationsReadVisibleHref) data-notifications-read-visible-url="{{ $topbarNotificationsReadVisibleHref }}" @endif
                     @if($topbarNotificationsReadHrefTemplate) data-notifications-read-url-template="{{ $topbarNotificationsReadHrefTemplate }}" @endif
                     @if($topbarNotificationsPreferencesHref) data-notifications-preferences-url="{{ $topbarNotificationsPreferencesHref }}" @endif
                     data-notification-sound-enabled="{{ $notificationSoundEnabled ? 'true' : 'false' }}"
                     data-notification-voice-enabled="{{ $notificationVoiceEnabled ? 'true' : 'false' }}"
+                    data-notification-sound-variant="{{ $notificationSoundVariant }}"
                     data-notification-sound-src="{{ $notificationSoundAsset }}"
                 >
                     <summary class="topbar-bell-trigger" aria-label="Open notifications">
@@ -2535,6 +2578,17 @@
                             </div>
                             <div class="topbar-bell-tools">
                                 <button type="button" class="topbar-bell-tool-button" data-notification-test-sound>Test Sound</button>
+                                <button type="button" class="topbar-bell-tool-button" data-notification-test-voice>Test Voice</button>
+                            </div>
+                            <div class="topbar-bell-tone-row">
+                                <label class="topbar-bell-tone-label" for="notification-sound-variant">
+                                    <span>Alert tone</span>
+                                    <select id="notification-sound-variant" class="topbar-bell-select" data-notification-sound-variant>
+                                        @foreach($notificationSoundOptions as $option)
+                                            <option value="{{ $option['value'] }}" @selected($notificationSoundVariant === $option['value'])>{{ $option['label'] }}</option>
+                                        @endforeach
+                                    </select>
+                                </label>
                             </div>
                             <div class="topbar-bell-settings-hint" data-notification-settings-hint hidden></div>
                         </div>

@@ -263,18 +263,18 @@
 @endphp
 
 <style>
-    .profile-page { padding: 18px 22px 28px; display: grid; gap: 16px; }
+    .profile-page { padding: 16px 20px 24px; display: grid; gap: 14px; }
     .profile-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
-    .profile-header h1 { margin:0; font-size:28px; color:#0f172a; }
-    .profile-header p { margin:6px 0 0; color:#64748b; font-size:13px; }
+    .profile-header h1 { margin:0; font-size:26px; color:#0f172a; line-height:1.08; }
+    .profile-header p { margin:6px 0 0; color:#64748b; font-size:12px; }
     .profile-actions { display:flex; gap:8px; flex-wrap:wrap; }
     .ops-card {
         background:#fff;
         border:1px solid #dbe3ef;
-        border-radius:14px;
-        box-shadow:0 8px 24px rgba(15, 23, 42, 0.04);
+        border-radius:16px;
+        box-shadow:0 10px 22px rgba(15, 23, 42, 0.05);
     }
-    .ops-card-body { padding:16px; }
+    .ops-card-body { padding:14px; }
     .ops-btn,
     .ops-btn-secondary,
     .ops-btn-light,
@@ -284,10 +284,10 @@
         align-items:center;
         justify-content:center;
         gap:6px;
-        padding:8px 12px;
+        padding:7px 11px;
         border-radius:10px;
-        font-size:13px;
-        font-weight:600;
+        font-size:12px;
+        font-weight:700;
         text-decoration:none;
         border:1px solid transparent;
         cursor:pointer;
@@ -303,12 +303,12 @@
         border-color:#e2e8f0;
         cursor:not-allowed;
     }
-    .metric-grid { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:12px; }
+    .metric-grid { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:10px; }
     .metric-box {
         border:1px solid #e2e8f0;
-        border-radius:12px;
+        border-radius:14px;
         background:linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-        padding:14px;
+        padding:12px;
         text-decoration:none;
         color:inherit;
         display:block;
@@ -322,7 +322,7 @@
         letter-spacing:.04em;
         margin-bottom:8px;
     }
-    .metric-box strong { font-size:24px; color:#0f172a; line-height:1; }
+    .metric-box strong { font-size:21px; color:#0f172a; line-height:1; }
     .metric-box small { display:block; margin-top:8px; color:#475569; font-size:12px; }
     .profile-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:16px; }
     .span-4 { grid-column:span 4; }
@@ -330,15 +330,15 @@
     .span-8 { grid-column:span 8; }
     .span-12 { grid-column:span 12; }
     .section-title { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:12px; }
-    .section-title h2 { margin:0; font-size:18px; color:#0f172a; }
+    .section-title h2 { margin:0; font-size:17px; color:#0f172a; }
     .section-title p { margin:4px 0 0; color:#64748b; font-size:12px; }
     .info-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
     .info-grid-compact { grid-template-columns:repeat(2, minmax(0, 1fr)); }
     .info-box {
         border:1px solid #e2e8f0;
-        border-radius:12px;
+        border-radius:14px;
         background:#fcfdff;
-        padding:12px;
+        padding:11px 12px;
     }
     .label {
         display:block;

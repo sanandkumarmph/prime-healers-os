@@ -42,19 +42,19 @@
     <style>
         .ph-operational-card {
             display: grid;
-            gap: 18px;
-            padding: 22px;
+            gap: 14px;
+            padding: 16px;
             border: 1px solid #dbe3ef;
-            border-radius: 24px;
+            border-radius: 18px;
             background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
-            box-shadow: 0 20px 44px rgba(15, 23, 42, 0.05);
+            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
         }
         .ph-operational-card--compact {
-            padding: 18px;
-            gap: 14px;
+            padding: 12px;
+            gap: 12px;
         }
         .ph-operational-card--spacious {
-            padding: 26px;
+            padding: 18px;
         }
         .ph-operational-card__head {
             display: flex;
@@ -71,15 +71,15 @@
         .ph-operational-card__heading h2 {
             margin: 0;
             color: #0f172a;
-            font-size: 19px;
+            font-size: 17px;
             line-height: 1.2;
             letter-spacing: -.02em;
         }
         .ph-operational-card__heading p {
             margin: 0;
             color: #64748b;
-            font-size: 13px;
-            line-height: 1.6;
+            font-size: 12px;
+            line-height: 1.55;
         }
         .ph-operational-card__actions {
             display: flex;
@@ -92,11 +92,11 @@
         }
         @media (max-width: 768px) {
             .ph-operational-card {
-                padding: 18px;
-                border-radius: 20px;
+                padding: 14px;
+                border-radius: 16px;
             }
             .ph-operational-card__heading h2 {
-                font-size: 17px;
+                font-size: 16px;
             }
         }
     </style>

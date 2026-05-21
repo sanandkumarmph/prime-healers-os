@@ -24,9 +24,9 @@
             display: grid;
             gap: 7px;
             min-width: 0;
-            padding: 16px 18px;
+            padding: 13px 14px;
             border: 1px solid #e2e8f0;
-            border-radius: 18px;
+            border-radius: 14px;
             background: #fff;
         }
         .ph-summary-card__label {
@@ -38,14 +38,14 @@
         }
         .ph-summary-card__value {
             color: #0f172a;
-            font-size: 20px;
+            font-size: 18px;
             line-height: 1.2;
             letter-spacing: -.03em;
             overflow-wrap: anywhere;
         }
         .ph-summary-card__meta {
             color: #64748b;
-            font-size: 12px;
+            font-size: 11px;
             line-height: 1.5;
         }
         .ph-summary-card--warning {

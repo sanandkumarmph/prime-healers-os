@@ -73,6 +73,7 @@ const initializeInAppNotifications = () => {
 
     const latestUrl = root.dataset.notificationsLatestUrl;
     const readAllUrl = root.dataset.notificationsReadAllUrl;
+    const readVisibleUrl = root.dataset.notificationsReadVisibleUrl;
     const readUrlTemplate = root.dataset.notificationsReadUrlTemplate;
     const preferencesUrl = root.dataset.notificationsPreferencesUrl;
     const soundSrc = root.dataset.notificationSoundSrc;
@@ -85,7 +86,9 @@ const initializeInAppNotifications = () => {
     const toastStack = document.querySelector('[data-notification-toast-stack]');
     const soundToggle = root.querySelector('[data-notification-sound-toggle]');
     const voiceToggle = root.querySelector('[data-notification-voice-toggle]');
+    const soundVariantSelect = root.querySelector('[data-notification-sound-variant]');
     const testSoundButton = root.querySelector('[data-notification-test-sound]');
+    const testVoiceButton = root.querySelector('[data-notification-test-voice]');
     const settingsHint = root.querySelector('[data-notification-settings-hint]');
     const storageKey = 'ph_seen_notifications';
     const audioUnlockKey = 'ph_notification_audio_unlocked';
@@ -131,11 +134,11 @@ const initializeInAppNotifications = () => {
     };
 
     const seenIds = loadSeenIds();
-    const notificationAudio = typeof Audio !== 'undefined' && soundSrc ? new Audio(soundSrc) : null;
+    let notificationAudio = typeof Audio !== 'undefined' && soundSrc ? new Audio(soundSrc) : null;
     let audioUnlocked = window.localStorage.getItem(audioUnlockKey) === '1';
     let soundEnabled = root.dataset.notificationSoundEnabled === 'true';
     let voiceEnabled = root.dataset.notificationVoiceEnabled === 'true';
-    let preferenceSaveHandle = null;
+    let soundVariant = root.dataset.notificationSoundVariant || 'default';
 
     root.querySelectorAll('[data-notification-id]').forEach((item) => {
         const id = item.getAttribute('data-notification-id');
@@ -147,6 +150,8 @@ const initializeInAppNotifications = () => {
 
     let hydrated = false;
     let pollingHandle = null;
+    let markVisibleHandle = null;
+    let isMarkingVisible = false;
 
     const setHint = (message, persistent = false) => {
         if (!(settingsHint instanceof HTMLElement)) {
@@ -171,26 +176,88 @@ const initializeInAppNotifications = () => {
         }
     };
 
-    const persistPreferences = () => {
-        if (!preferencesUrl) {
+    const updateAudioSource = (variant) => {
+        if (!soundSrc) {
             return;
         }
 
-        if (preferenceSaveHandle) {
-            window.clearTimeout(preferenceSaveHandle);
+        const normalizedVariant = ['default', 'soft', 'chime'].includes(String(variant || '').toLowerCase())
+            ? String(variant).toLowerCase()
+            : 'default';
+
+        const nextSrc = normalizedVariant === 'default'
+            ? soundSrc.replace(/notification-[a-z0-9_-]+\.wav$/i, 'notification.wav')
+            : soundSrc.replace(/notification-[a-z0-9_-]+\.wav$/i, `notification-${normalizedVariant}.wav`)
+                .replace(/notification\.wav$/i, `notification-${normalizedVariant}.wav`);
+
+        root.dataset.notificationSoundVariant = normalizedVariant;
+
+        if (notificationAudio) {
+            notificationAudio.src = nextSrc;
+            notificationAudio.load();
+            return;
         }
 
-        preferenceSaveHandle = window.setTimeout(async () => {
-            try {
-                await window.axios.post(preferencesUrl, {
-                    sound_alerts_enabled: soundEnabled,
-                    voice_alerts_enabled: voiceEnabled,
-                });
-            } catch (error) {
-                setHint('Could not save alert settings right now.', true);
-            }
-        }, 180);
+        if (typeof Audio !== 'undefined') {
+            notificationAudio = new Audio(nextSrc);
+        }
     };
+
+    const syncPreferenceControls = () => {
+        if (soundToggle instanceof HTMLInputElement) {
+            soundToggle.checked = soundEnabled;
+        }
+
+        if (voiceToggle instanceof HTMLInputElement) {
+            voiceToggle.checked = voiceEnabled;
+        }
+
+        if (soundVariantSelect instanceof HTMLSelectElement) {
+            soundVariantSelect.value = soundVariant;
+        }
+    };
+
+    const setPreferenceControlsDisabled = (disabled) => {
+        [soundToggle, voiceToggle, soundVariantSelect, testSoundButton, testVoiceButton].forEach((element) => {
+            if (element instanceof HTMLElement) {
+                element.toggleAttribute('disabled', disabled);
+            }
+        });
+    };
+
+    const persistPreferences = async (nextState) => {
+        if (!preferencesUrl) {
+            return true;
+        }
+
+        setPreferenceControlsDisabled(true);
+
+        try {
+            const response = await window.axios.post(preferencesUrl, {
+                sound_enabled: nextState.soundEnabled,
+                voice_enabled: nextState.voiceEnabled,
+                sound_variant: nextState.soundVariant,
+            });
+
+            soundEnabled = Boolean(response.data?.sound_enabled ?? response.data?.sound_alerts_enabled);
+            voiceEnabled = Boolean(response.data?.voice_enabled ?? response.data?.voice_alerts_enabled);
+            soundVariant = String(response.data?.sound_variant || nextState.soundVariant || 'default');
+            root.dataset.notificationSoundEnabled = soundEnabled ? 'true' : 'false';
+            root.dataset.notificationVoiceEnabled = voiceEnabled ? 'true' : 'false';
+            updateAudioSource(soundVariant);
+            syncPreferenceControls();
+            setHint('Saved');
+            return true;
+        } catch (error) {
+            syncPreferenceControls();
+            setHint('Unable to save preference right now.', true);
+            return false;
+        } finally {
+            setPreferenceControlsDisabled(false);
+        }
+    };
+
+    updateAudioSource(soundVariant);
 
     const unlockAudio = async () => {
         if (!notificationAudio) {
@@ -241,21 +308,29 @@ const initializeInAppNotifications = () => {
         }
     };
 
-    const speakNotification = (notification) => {
-        if (!voiceEnabled || typeof window.speechSynthesis === 'undefined') {
+    const speakNotification = (notification, { test = false } = {}) => {
+        if ((!voiceEnabled && !test) || typeof window.speechSynthesis === 'undefined') {
+            if (test && typeof window.speechSynthesis === 'undefined') {
+                setHint('Voice alerts are not supported in this browser.', true);
+            }
             return;
         }
 
-        const label = safeVoiceLabels[String(notification.type || '')] || 'New operational update';
+        const label = test
+            ? 'New task assigned'
+            : (safeVoiceLabels[String(notification.type || '')] || 'New operational update');
         try {
             window.speechSynthesis.cancel();
             const utterance = new window.SpeechSynthesisUtterance(label);
+            utterance.lang = 'en-IN';
             utterance.rate = 1;
             utterance.pitch = 1;
             utterance.volume = 1;
             window.speechSynthesis.speak(utterance);
         } catch (error) {
-            // Speech support is best-effort only.
+            if (test) {
+                setHint('Voice test could not start in this browser.', true);
+            }
         }
     };
 
@@ -324,6 +399,52 @@ const initializeInAppNotifications = () => {
             if (markAllButton instanceof HTMLElement) {
                 markAllButton.hidden = true;
             }
+        }
+    };
+
+    const markItemReadInDom = (notificationId) => {
+        if (!notificationId) {
+            return;
+        }
+
+        root.querySelectorAll(`[data-notification-id="${notificationId}"]`).forEach((item) => {
+            item.classList.remove('is-unread');
+            item.querySelectorAll('.topbar-bell-count').forEach((chip) => chip.remove());
+        });
+    };
+
+    const visibleUnreadIds = () => Array.from(root.querySelectorAll('[data-notification-item].is-unread[data-notification-id]'))
+        .map((item) => item.getAttribute('data-notification-id') || '')
+        .filter((id) => id !== '');
+
+    const markVisibleNotificationsRead = async () => {
+        if (!readVisibleUrl || isMarkingVisible) {
+            return;
+        }
+
+        const notificationIds = visibleUnreadIds();
+        if (!notificationIds.length) {
+            return;
+        }
+
+        isMarkingVisible = true;
+
+        try {
+            const response = await window.axios.post(readVisibleUrl, {
+                notification_ids: notificationIds,
+            });
+
+            notificationIds.forEach((notificationId) => {
+                markItemReadInDom(notificationId);
+                seenIds.add(notificationId);
+            });
+
+            persistSeenIds(seenIds);
+            syncCountUi(Number(response.data?.unread_count || 0));
+        } catch (error) {
+            // Keep current unread state on failure.
+        } finally {
+            isMarkingVisible = false;
         }
     };
 
@@ -452,15 +573,34 @@ const initializeInAppNotifications = () => {
 
     const markRead = async (notificationId) => {
         if (!readUrlTemplate || !notificationId) {
-            return;
+            return null;
         }
 
         try {
-            await window.axios.post(readUrlTemplate.replace('__NOTIFICATION__', notificationId));
+            const response = await window.axios.post(readUrlTemplate.replace('__NOTIFICATION__', notificationId));
+            return response.data || null;
         } catch (error) {
             // Navigation should still proceed even if read state fails.
+            return null;
         }
     };
+
+    root.addEventListener('toggle', (event) => {
+        if (event.target !== root) {
+            return;
+        }
+
+        if (markVisibleHandle) {
+            window.clearTimeout(markVisibleHandle);
+            markVisibleHandle = null;
+        }
+
+        if (root.open) {
+            markVisibleHandle = window.setTimeout(() => {
+                markVisibleNotificationsRead();
+            }, 900);
+        }
+    });
 
     root.addEventListener('click', async (event) => {
         const markAll = event.target.closest('[data-notification-mark-all]');
@@ -470,10 +610,17 @@ const initializeInAppNotifications = () => {
                 return;
             }
             try {
-                await window.axios.post(readAllUrl);
+                const response = await window.axios.post(readAllUrl);
                 root.querySelectorAll('[data-notification-item]').forEach((item) => item.classList.remove('is-unread'));
                 root.querySelectorAll('.topbar-bell-count').forEach((chip) => chip.remove());
-                syncCountUi(0);
+                root.querySelectorAll('[data-notification-id]').forEach((item) => {
+                    const id = item.getAttribute('data-notification-id');
+                    if (id) {
+                        seenIds.add(id);
+                    }
+                });
+                persistSeenIds(seenIds);
+                syncCountUi(Number(response.data?.unread_count || 0));
                 if (emptyState instanceof HTMLElement && !(root.querySelector('[data-notification-item]'))) {
                     emptyState.hidden = false;
                 }
@@ -495,11 +642,16 @@ const initializeInAppNotifications = () => {
             event.preventDefault();
         }
 
-        await markRead(notificationId);
+        const response = await markRead(notificationId);
 
         if (notificationId) {
             seenIds.add(notificationId);
             persistSeenIds(seenIds);
+            markItemReadInDom(notificationId);
+        }
+
+        if (response && typeof response.unread_count !== 'undefined') {
+            syncCountUi(Number(response.unread_count || 0));
         }
 
         if (href !== '#') {
@@ -511,30 +663,77 @@ const initializeInAppNotifications = () => {
         markAllButton.hidden = true;
     }
 
+    syncPreferenceControls();
+
     if (soundToggle instanceof HTMLInputElement) {
-        soundToggle.checked = soundEnabled;
         soundToggle.addEventListener('change', async () => {
+            const previousSoundEnabled = soundEnabled;
             soundEnabled = soundToggle.checked;
-            root.dataset.notificationSoundEnabled = soundEnabled ? 'true' : 'false';
-            persistPreferences();
             if (soundEnabled) {
                 await unlockAudio();
+            }
+            const saved = await persistPreferences({
+                soundEnabled,
+                voiceEnabled,
+                soundVariant,
+            });
+
+            if (!saved) {
+                soundEnabled = previousSoundEnabled;
+                root.dataset.notificationSoundEnabled = soundEnabled ? 'true' : 'false';
+                syncPreferenceControls();
             }
         });
     }
 
     if (voiceToggle instanceof HTMLInputElement) {
-        voiceToggle.checked = voiceEnabled;
-        voiceToggle.addEventListener('change', () => {
+        voiceToggle.addEventListener('change', async () => {
+            const previousVoiceEnabled = voiceEnabled;
             voiceEnabled = voiceToggle.checked;
-            root.dataset.notificationVoiceEnabled = voiceEnabled ? 'true' : 'false';
-            persistPreferences();
+            const saved = await persistPreferences({
+                soundEnabled,
+                voiceEnabled,
+                soundVariant,
+            });
+
+            if (!saved) {
+                voiceEnabled = previousVoiceEnabled;
+                root.dataset.notificationVoiceEnabled = voiceEnabled ? 'true' : 'false';
+                syncPreferenceControls();
+            }
+        });
+    }
+
+    if (soundVariantSelect instanceof HTMLSelectElement) {
+        soundVariantSelect.addEventListener('change', async () => {
+            const previousSoundVariant = soundVariant;
+            soundVariant = soundVariantSelect.value || 'default';
+            updateAudioSource(soundVariant);
+            const saved = await persistPreferences({
+                soundEnabled,
+                voiceEnabled,
+                soundVariant,
+            });
+
+            if (!saved) {
+                soundVariant = previousSoundVariant;
+                updateAudioSource(soundVariant);
+                syncPreferenceControls();
+            }
         });
     }
 
     if (testSoundButton instanceof HTMLButtonElement) {
         testSoundButton.addEventListener('click', async () => {
+            setHint('');
             await playNotificationSound({ test: true });
+        });
+    }
+
+    if (testVoiceButton instanceof HTMLButtonElement) {
+        testVoiceButton.addEventListener('click', () => {
+            setHint('');
+            speakNotification({ type: 'test' }, { test: true });
         });
     }
 

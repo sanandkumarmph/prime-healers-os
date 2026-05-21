@@ -92,12 +92,12 @@
     <style>
         .ph-operational-actions {
             display: grid;
-            gap: 14px;
-            padding: 16px 18px;
+            gap: 12px;
+            padding: 14px 16px;
             border: 1px solid #dbe3ef;
-            border-radius: 22px;
+            border-radius: 18px;
             background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-            box-shadow: 0 16px 36px rgba(15, 23, 42, 0.05);
+            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
         }
         .ph-operational-actions__header {
             display: flex;
@@ -112,12 +112,12 @@
         }
         .ph-operational-actions__title strong {
             color: #0f172a;
-            font-size: 16px;
+            font-size: 14px;
             line-height: 1.2;
         }
         .ph-operational-actions__title span {
             color: #64748b;
-            font-size: 12px;
+            font-size: 11px;
             line-height: 1.5;
         }
         .ph-operational-actions__buttons {
@@ -134,13 +134,13 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            min-height: 40px;
-            padding: 9px 13px;
+            min-height: 36px;
+            padding: 8px 12px;
             border: 1px solid #cbd5e1;
             border-radius: 12px;
             background: #fff;
             color: #0f172a;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 800;
             text-decoration: none;
             font-family: inherit;
@@ -172,9 +172,9 @@
             display: grid;
             gap: 4px;
             min-width: 0;
-            padding: 12px 14px;
+            padding: 10px 12px;
             border: 1px solid #e2e8f0;
-            border-radius: 16px;
+            border-radius: 14px;
             background: #fff;
         }
         .ph-operational-actions__info-card span {
@@ -186,7 +186,7 @@
         }
         .ph-operational-actions__info-card strong {
             color: #0f172a;
-            font-size: 13px;
+            font-size: 12px;
             line-height: 1.55;
             overflow-wrap: anywhere;
         }

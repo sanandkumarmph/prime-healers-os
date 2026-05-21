@@ -33,22 +33,24 @@
             --ph-section-nav-top: 96px;
             position: sticky;
             top: var(--ph-section-nav-top);
-            z-index: 110;
-            margin: 0 0 18px;
+            z-index: var(--ph-z-sticky-nav, 30);
+            margin: 0 0 14px;
+            pointer-events: none;
         }
         .ph-section-nav {
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 8px;
+            gap: 6px;
+            padding: 6px;
             overflow-x: auto;
             border: 1px solid rgba(203, 213, 225, 0.92);
             border-radius: 999px;
             background: rgba(255, 255, 255, 0.94);
-            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+            box-shadow: 0 10px 22px rgba(15, 23, 42, 0.05);
             backdrop-filter: blur(16px);
             scrollbar-width: none;
             -ms-overflow-style: none;
+            pointer-events: auto;
         }
         .ph-section-nav::-webkit-scrollbar {
             display: none;
@@ -58,11 +60,11 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            min-height: 38px;
-            padding: 9px 14px;
+            min-height: 34px;
+            padding: 8px 12px;
             border-radius: 999px;
             color: #52657d;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 700;
             line-height: 1;
             text-decoration: none;
@@ -80,7 +82,7 @@
         .ph-section-nav-link.is-active {
             background: #1777BD;
             color: #fff;
-            box-shadow: 0 10px 22px rgba(23, 119, 189, 0.2);
+            box-shadow: 0 8px 18px rgba(23, 119, 189, 0.18);
         }
         .section-nav-target {
             scroll-margin-top: calc(var(--ph-section-nav-top, 96px) + 64px);
@@ -90,11 +92,11 @@
                 --ph-section-nav-top: 84px;
             }
             .ph-section-nav {
-                padding: 7px;
+                padding: 6px;
             }
             .ph-section-nav-link {
-                min-height: 36px;
-                padding: 8px 12px;
+                min-height: 32px;
+                padding: 7px 11px;
                 font-size: 12px;
             }
         }

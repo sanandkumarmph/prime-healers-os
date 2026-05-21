@@ -63,6 +63,7 @@
     <style>
         .ph-action-dropdown {
             position: relative;
+            z-index: var(--ph-z-content, 10);
         }
         .ph-action-dropdown summary {
             list-style: none;
@@ -74,13 +75,13 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            min-height: 40px;
-            padding: 9px 13px;
+            min-height: 36px;
+            padding: 8px 12px;
             border-radius: 12px;
             border: 1px solid #cbd5e1;
             background: #fff;
             color: #0f172a;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 800;
             cursor: pointer;
             white-space: nowrap;
@@ -94,7 +95,7 @@
             position: absolute;
             right: 0;
             top: calc(100% + 8px);
-            z-index: 90;
+            z-index: var(--ph-z-dropdown, 60);
             width: min(280px, calc(100vw - 32px));
             display: grid;
             gap: 6px;
@@ -112,13 +113,13 @@
             align-items: center;
             justify-content: flex-start;
             width: 100%;
-            min-height: 38px;
-            padding: 9px 11px;
+            min-height: 36px;
+            padding: 8px 10px;
             border: 1px solid #e2e8f0;
             border-radius: 12px;
             background: #fff;
             color: #334155;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 800;
             text-decoration: none;
             font-family: inherit;

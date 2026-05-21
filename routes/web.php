@@ -144,8 +144,12 @@ Route::middleware('auth')->group(function () {
         ->name('notifications.unread-count');
     Route::get('/notifications/latest', [NotificationController::class, 'latest'])
         ->name('notifications.latest');
+    Route::get('/notifications', [NotificationController::class, 'index'])
+        ->name('notifications.index');
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead'])
         ->name('notifications.read-all');
+    Route::post('/notifications/read-visible', [NotificationController::class, 'markVisibleRead'])
+        ->name('notifications.read-visible');
     Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead'])
         ->name('notifications.read');
     Route::post('/notifications/preferences', [NotificationController::class, 'updatePreferences'])

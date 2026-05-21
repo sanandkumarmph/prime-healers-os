@@ -9,6 +9,8 @@ use App\Models\User;
 use App\Notifications\OperationalInAppNotification;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\DatabaseNotification;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Pagination\LengthAwarePaginator as Paginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
@@ -48,6 +50,18 @@ class NotificationCenterService
             ->values();
     }
 
+    public function paginateFor(User $user, int $perPage = 20): LengthAwarePaginator
+    {
+        if (!$this->available()) {
+            return new Paginator([], 0, $perPage);
+        }
+
+        return $user->notifications()
+            ->latest()
+            ->paginate($perPage)
+            ->through(fn (DatabaseNotification $notification) => $this->transform($notification));
+    }
+
     public function markAsRead(User $user, string $notificationId): bool
     {
         if (!$this->available()) {
@@ -77,6 +91,32 @@ class NotificationCenterService
             'read_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    /**
+     * @param  array<int, string>  $notificationIds
+     */
+    public function markManyAsRead(User $user, array $notificationIds): int
+    {
+        if (!$this->available()) {
+            return 0;
+        }
+
+        $ids = collect($notificationIds)
+            ->filter(fn ($id) => is_string($id) && $id !== '')
+            ->unique()
+            ->values();
+
+        if ($ids->isEmpty()) {
+            return 0;
+        }
+
+        return $user->unreadNotifications()
+            ->whereIn('id', $ids->all())
+            ->update([
+                'read_at' => now(),
+                'updated_at' => now(),
+            ]);
     }
 
     /**

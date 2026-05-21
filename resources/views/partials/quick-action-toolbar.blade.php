@@ -27,12 +27,12 @@
         <style>
             .ph-quick-actions {
                 display:grid;
-                gap:12px;
-                padding:14px 16px;
+                gap:10px;
+                padding:12px 14px;
                 border:1px solid #dbe3ef;
-                border-radius:18px;
+                border-radius:16px;
                 background:linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-                box-shadow:0 12px 28px rgba(15,23,42,.05);
+                box-shadow:0 10px 22px rgba(15,23,42,.05);
             }
 
             .ph-quick-actions-head {
@@ -50,13 +50,13 @@
 
             .ph-quick-actions-title strong {
                 color:#0f172a;
-                font-size:16px;
+                font-size:14px;
                 line-height:1.2;
             }
 
             .ph-quick-actions-title span {
                 color:#64748b;
-                font-size:12px;
+                font-size:11px;
                 line-height:1.5;
             }
 
@@ -70,8 +70,8 @@
                 display:grid;
                 gap:5px;
                 min-width:0;
-                padding:11px 13px;
-                border-radius:14px;
+                padding:10px 12px;
+                border-radius:12px;
                 border:1px solid #e2e8f0;
                 background:#fff;
             }
@@ -86,7 +86,7 @@
 
             .ph-quick-actions-info-card strong {
                 color:#0f172a;
-                font-size:13px;
+                font-size:12px;
                 line-height:1.55;
                 overflow-wrap:anywhere;
             }
@@ -118,14 +118,14 @@
                 align-items:center;
                 justify-content:center;
                 gap:6px;
-                min-height:40px;
-                padding:9px 13px;
+                min-height:36px;
+                padding:8px 12px;
                 border-radius:12px;
                 border:1px solid #cbd5e1;
                 background:#fff;
                 color:#0f172a;
                 text-decoration:none;
-                font-size:13px;
+                font-size:12px;
                 font-weight:800;
                 font-family:inherit;
                 cursor:pointer;
@@ -153,6 +153,7 @@
 
             .ph-quick-action-menu {
                 position:relative;
+                z-index:var(--ph-z-content, 10);
             }
 
             .ph-quick-action-menu summary {
@@ -181,20 +182,20 @@
                 border:1px solid #dbe3ef;
                 background:#fff;
                 box-shadow:0 20px 42px rgba(15,23,42,.16);
-                z-index:70;
+                z-index:var(--ph-z-dropdown, 60);
             }
 
             .ph-quick-action-panel a,
             .ph-quick-action-panel button {
                 width:100%;
                 justify-content:flex-start;
-                min-height:38px;
-                padding:9px 11px;
+                min-height:36px;
+                padding:8px 10px;
                 border-radius:12px;
                 border:1px solid #e2e8f0;
                 background:#fff;
                 color:#334155;
-                font-size:12px;
+                font-size:11px;
                 font-weight:800;
                 text-decoration:none;
                 font-family:inherit;

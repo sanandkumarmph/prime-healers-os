@@ -97,11 +97,11 @@
     <style>
         .ph-contact-block {
             display: grid;
-            gap: 16px;
+            gap: 12px;
             min-width: 0;
-            padding: 18px;
+            padding: 14px;
             border: 1px solid #e2e8f0;
-            border-radius: 20px;
+            border-radius: 16px;
             background: #fff;
         }
         .ph-contact-block__head {
@@ -125,7 +125,7 @@
         }
         .ph-contact-block__name {
             color: #0f172a;
-            font-size: 17px;
+            font-size: 15px;
             line-height: 1.3;
             overflow-wrap: anywhere;
         }
@@ -142,7 +142,7 @@
         }
         .ph-contact-block__body {
             display: grid;
-            gap: 12px;
+            gap: 10px;
             min-width: 0;
         }
         .ph-contact-block__row {
@@ -159,7 +159,7 @@
         .ph-contact-block__row strong,
         .ph-contact-block__row a {
             color: #0f172a;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 700;
             line-height: 1.5;
             text-decoration: none;
@@ -183,13 +183,13 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            min-height: 36px;
-            padding: 8px 12px;
+            min-height: 34px;
+            padding: 7px 11px;
             border-radius: 12px;
             border: 1px solid #cbd5e1;
             background: #fff;
             color: #0f172a;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 800;
             text-decoration: none;
         }

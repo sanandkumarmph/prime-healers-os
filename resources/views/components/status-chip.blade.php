@@ -29,19 +29,19 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            min-height: 32px;
-            padding: 7px 12px;
+            min-height: 28px;
+            padding: 6px 10px;
             border-radius: 999px;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 800;
             line-height: 1;
             letter-spacing: .01em;
             white-space: nowrap;
         }
         .ph-status-chip--sm {
-            min-height: 28px;
-            padding: 6px 10px;
-            font-size: 11px;
+            min-height: 24px;
+            padding: 5px 9px;
+            font-size: 10px;
         }
         .ph-status-chip--neutral {
             background: #f1f5f9;

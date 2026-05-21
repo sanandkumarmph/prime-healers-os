@@ -44,6 +44,7 @@ class User extends Authenticatable
         'is_active',
         'notification_sound_enabled',
         'notification_voice_enabled',
+        'notification_sound_variant',
     ];
 
     protected $hidden = [
@@ -59,6 +60,7 @@ class User extends Authenticatable
             'is_active' => 'boolean',
             'notification_sound_enabled' => 'boolean',
             'notification_voice_enabled' => 'boolean',
+            'notification_sound_variant' => 'string',
         ];
     }
 

@@ -100,6 +100,39 @@ class InAppNotificationCenterRegressionTest extends TestCase
         $this->assertSame(0, $deliveryUser->fresh()->unreadNotifications()->count());
     }
 
+    public function test_visible_notifications_can_be_marked_read_without_touching_other_users(): void
+    {
+        $deliveryUser = $this->makeDeliveryUser();
+        $otherUser = $this->makeDeliveryUser('isolated-' . uniqid() . '@example.test');
+        $pickup = $this->makePickupTask();
+
+        $this->post(route('pickup-center.assign', $pickup), [
+            'pickup_date' => now()->addDay()->toDateString(),
+            'pickup_time_slot' => '12:00-15:00',
+            'assignment_target' => 'user:' . $deliveryUser->id,
+            'notes' => 'Pickup from security gate',
+        ])->assertRedirect();
+
+        $this->post(route('pickup-center.assign', $pickup), [
+            'pickup_date' => now()->addDays(2)->toDateString(),
+            'pickup_time_slot' => '15:00-18:00',
+            'assignment_target' => 'user:' . $otherUser->id,
+            'notes' => 'Second assignment for isolation check',
+        ])->assertRedirect();
+
+        $visibleNotificationId = (string) $deliveryUser->fresh()->unreadNotifications()->value('id');
+
+        $this->actingAs($deliveryUser)
+            ->postJson(route('notifications.read-visible'), [
+                'notification_ids' => [$visibleNotificationId],
+            ])
+            ->assertOk()
+            ->assertJsonPath('unread_count', 0);
+
+        $this->assertSame(0, $deliveryUser->fresh()->unreadNotifications()->count());
+        $this->assertSame(1, $otherUser->fresh()->unreadNotifications()->count());
+    }
+
     public function test_authenticated_layout_renders_live_notification_hooks(): void
     {
         $this->get(route('dashboard'))
@@ -107,8 +140,12 @@ class InAppNotificationCenterRegressionTest extends TestCase
             ->assertSee('data-in-app-notifications', false)
             ->assertSee(Route::has('notifications.latest') ? route('notifications.latest') : '', false)
             ->assertSee(Route::has('notifications.preferences') ? route('notifications.preferences') : '', false)
+            ->assertSee(Route::has('notifications.read-visible') ? route('notifications.read-visible') : '', false)
+            ->assertSee(Route::has('notifications.index') ? route('notifications.index') : '', false)
             ->assertSee('data-notification-sound-toggle', false)
             ->assertSee('data-notification-voice-toggle', false)
+            ->assertSee('data-notification-test-voice', false)
+            ->assertSee('data-notification-sound-variant', false)
             ->assertSee('data-notification-toast-stack', false);
     }
 

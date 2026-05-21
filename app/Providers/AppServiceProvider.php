@@ -148,7 +148,8 @@ class AppServiceProvider extends ServiceProvider
             $notificationService = app(NotificationCenterService::class);
             $notifications = $notificationService->latestFor($user, 8);
             $unreadCount = $notificationService->unreadCountFor($user);
-            $viewAllHref = $safeRoute('communication-center.index')
+            $viewAllHref = $safeRoute('notifications.index')
+                ?? $safeRoute('communication-center.index')
                 ?? $safeRoute('dashboard');
 
             $view->with([

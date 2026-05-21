@@ -68,13 +68,13 @@
             display: flex;
             align-items: flex-start;
             justify-content: space-between;
-            gap: 18px;
+            gap: 14px;
             flex-wrap: wrap;
             padding: 0 0 6px;
         }
         .ph-operational-header__main {
             display: grid;
-            gap: 10px;
+            gap: 8px;
             min-width: 0;
         }
         .ph-operational-header__back {
@@ -95,7 +95,7 @@
         .ph-operational-header h1 {
             margin: 0;
             color: #0f172a;
-            font-size: clamp(30px, 4vw, 40px);
+            font-size: clamp(26px, 3vw, 32px);
             line-height: 1.04;
             letter-spacing: -.04em;
         }
@@ -103,13 +103,13 @@
             margin: 0;
             max-width: 760px;
             color: #64748b;
-            font-size: 14px;
-            line-height: 1.7;
+            font-size: 13px;
+            line-height: 1.6;
         }
         .ph-operational-header__meta {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(150px, max-content));
-            gap: 12px;
+            gap: 10px;
         }
         .ph-operational-header__meta-item {
             display: grid;
@@ -125,7 +125,7 @@
         }
         .ph-operational-header__meta-item strong {
             color: #0f172a;
-            font-size: 14px;
+            font-size: 13px;
             line-height: 1.4;
             overflow-wrap: anywhere;
         }
@@ -154,7 +154,7 @@
         }
         @media (max-width: 768px) {
             .ph-operational-header h1 {
-                font-size: 28px;
+                font-size: 24px;
             }
         }
     </style>
