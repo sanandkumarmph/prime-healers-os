@@ -13,6 +13,7 @@ use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\ImportTemplateController;
 use App\Http\Controllers\KnowledgeController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OrganizationSettingsController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PartnerClientController;
@@ -139,6 +140,16 @@ Route::middleware('auth')->group(function () {
         ->name('communication-center.complete');
     Route::post('/communication-center/{followUp}/reschedule', [CommunicationCenterController::class, 'reschedule'])
         ->name('communication-center.reschedule');
+    Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount'])
+        ->name('notifications.unread-count');
+    Route::get('/notifications/latest', [NotificationController::class, 'latest'])
+        ->name('notifications.latest');
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead'])
+        ->name('notifications.read-all');
+    Route::post('/notifications/{notification}/read', [NotificationController::class, 'markRead'])
+        ->name('notifications.read');
+    Route::post('/notifications/preferences', [NotificationController::class, 'updatePreferences'])
+        ->name('notifications.preferences');
     Route::post('/rentals/{rental}/quick-renew', [RentalController::class, 'quickRenew'])
         ->middleware('module:rentals,update')
         ->name('rentals.quick-renew');

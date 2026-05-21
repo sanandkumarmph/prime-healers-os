@@ -42,6 +42,8 @@ class User extends Authenticatable
         'city_id',
         'is_internal',
         'is_active',
+        'notification_sound_enabled',
+        'notification_voice_enabled',
     ];
 
     protected $hidden = [
@@ -55,6 +57,8 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
+            'notification_sound_enabled' => 'boolean',
+            'notification_voice_enabled' => 'boolean',
         ];
     }
 

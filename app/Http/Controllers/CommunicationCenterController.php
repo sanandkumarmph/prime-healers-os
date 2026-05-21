@@ -12,6 +12,7 @@ use App\Models\Rental;
 use App\Models\Sale;
 use App\Models\User;
 use App\Services\Metrics\DashboardMetricsService;
+use App\Services\NotificationCenterService;
 use App\Support\ActivityLogger;
 use App\Support\FollowUpManager;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -32,6 +33,11 @@ class CommunicationCenterController extends Controller
     private function dashboardMetrics(): DashboardMetricsService
     {
         return app(DashboardMetricsService::class);
+    }
+
+    private function notifications(): NotificationCenterService
+    {
+        return app(NotificationCenterService::class);
     }
 
     public function index(Request $request)
@@ -133,6 +139,10 @@ class CommunicationCenterController extends Controller
             'note_type' => 'follow-up',
         ], 'Follow-up added for operational coordination.');
 
+        if ($followUp->assigned_user_id && $followUp->assignedUser) {
+            $this->notifications()->notifyFollowUpAssignment($followUp, $followUp->assignedUser);
+        }
+
         return back()->with('success', 'Follow-up added successfully.');
     }
 
@@ -177,6 +187,8 @@ class CommunicationCenterController extends Controller
 
         $newDueAt = Carbon::parse($validated['due_at']);
 
+        $previousAssignedUserId = (int) ($followUp->assigned_user_id ?? 0);
+
         $followUp->update([
             'due_at' => $newDueAt,
             'assigned_user_id' => $this->validatedAssignedUserId($validated['assigned_user_id'] ?? $followUp->assigned_user_id),
@@ -193,6 +205,11 @@ class CommunicationCenterController extends Controller
             'due_at' => $newDueAt->toDateTimeString(),
             'note_type' => 'follow-up',
         ], 'Follow-up rescheduled.');
+
+        $followUp->loadMissing($this->followUpRelations());
+        if ($followUp->assigned_user_id && (int) $followUp->assigned_user_id !== $previousAssignedUserId && $followUp->assignedUser) {
+            $this->notifications()->notifyFollowUpAssignment($followUp, $followUp->assignedUser);
+        }
 
         return back()->with('success', 'Follow-up rescheduled successfully.');
     }

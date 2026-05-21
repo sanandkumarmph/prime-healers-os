@@ -47,6 +47,16 @@
     $topbarNotifications = collect($topbarNotifications ?? []);
     $topbarNotificationCount = (int) ($topbarNotificationCount ?? 0);
     $topbarNotificationsViewAllHref = $topbarNotificationsViewAllHref ?? ($safeRoute('dashboard'));
+    $topbarNotificationsLatestHref = $safeRoute('notifications.latest');
+    $topbarNotificationsUnreadCountHref = $safeRoute('notifications.unread-count');
+    $topbarNotificationsReadAllHref = $safeRoute('notifications.read-all');
+    $topbarNotificationsReadHrefTemplate = Route::has('notifications.read')
+        ? url('/notifications/__NOTIFICATION__/read')
+        : null;
+    $topbarNotificationsPreferencesHref = $safeRoute('notifications.preferences');
+    $notificationSoundEnabled = (bool) ($currentUser?->notification_sound_enabled ?? false);
+    $notificationVoiceEnabled = (bool) ($currentUser?->notification_voice_enabled ?? false);
+    $notificationSoundAsset = asset('sounds/notification.wav');
     $knowledgeHubHref = $safeRoute('knowledge.index');
     $globalSearchHref = $safeRoute('search.global');
     $globalSearchValue = request()->routeIs('search.global')
@@ -944,6 +954,24 @@
         color:#64748b;
         font-size:12px;
     }
+    .topbar-bell-head-actions {
+        display:flex;
+        align-items:center;
+        gap:8px;
+        flex-wrap:wrap;
+        justify-content:flex-end;
+    }
+    .topbar-bell-mark-all {
+        min-height:30px;
+        padding:6px 10px;
+        border-radius:999px;
+        border:1px solid #dbe3ef;
+        background:#fff;
+        color:#1d4ed8;
+        font-size:11px;
+        font-weight:800;
+        cursor:pointer;
+    }
     .topbar-bell-list {
         display:grid;
         gap:6px;
@@ -960,6 +988,10 @@
         text-decoration:none;
         color:#0f172a;
         transition:background .16s ease, border-color .16s ease, transform .16s ease;
+    }
+    .topbar-bell-item.is-unread {
+        border-color:#bfdbfe;
+        background:#eff6ff;
     }
     .topbar-bell-item:hover {
         background:#ffffff;
@@ -978,6 +1010,40 @@
         font-size:12px;
         line-height:1.45;
         color:#64748b;
+    }
+    .topbar-bell-meta {
+        display:flex;
+        align-items:center;
+        gap:6px;
+        flex-wrap:wrap;
+        margin-top:6px;
+    }
+    .topbar-bell-time {
+        color:#64748b;
+        font-size:11px;
+        font-weight:700;
+    }
+    .topbar-bell-priority {
+        display:inline-flex;
+        align-items:center;
+        min-height:20px;
+        padding:0 7px;
+        border-radius:999px;
+        font-size:10px;
+        font-weight:800;
+        letter-spacing:.04em;
+        text-transform:uppercase;
+        background:#eff6ff;
+        color:#1d4ed8;
+    }
+    .topbar-bell-priority.is-medium {
+        background:#fffbeb;
+        color:#b45309;
+    }
+    .topbar-bell-priority.is-high,
+    .topbar-bell-priority.is-urgent {
+        background:#fff1f2;
+        color:#b91c1c;
     }
     .topbar-bell-count {
         display:inline-flex;
@@ -1019,6 +1085,156 @@
         border-radius:12px;
         color:#1d4ed8;
         background:#eff6ff;
+        text-decoration:none;
+        font-size:12px;
+        font-weight:800;
+    }
+    .topbar-bell-settings {
+        display:grid;
+        gap:10px;
+        padding:10px 12px;
+        border-radius:14px;
+        border:1px solid #e2e8f0;
+        background:#fff;
+    }
+    .topbar-bell-settings-head {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+    }
+    .topbar-bell-settings-head strong {
+        color:#0f172a;
+        font-size:13px;
+    }
+    .topbar-bell-settings-head span {
+        color:#64748b;
+        font-size:11px;
+    }
+    .topbar-bell-switches {
+        display:grid;
+        gap:8px;
+    }
+    .topbar-bell-switch {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+    }
+    .topbar-bell-switch-copy {
+        display:grid;
+        gap:2px;
+        min-width:0;
+    }
+    .topbar-bell-switch-copy strong {
+        color:#0f172a;
+        font-size:12px;
+    }
+    .topbar-bell-switch-copy span {
+        color:#64748b;
+        font-size:11px;
+        line-height:1.4;
+    }
+    .topbar-bell-toggle {
+        position:relative;
+        width:44px;
+        height:26px;
+        flex:0 0 44px;
+    }
+    .topbar-bell-toggle input {
+        position:absolute;
+        inset:0;
+        opacity:0;
+        cursor:pointer;
+    }
+    .topbar-bell-toggle-track {
+        position:absolute;
+        inset:0;
+        border-radius:999px;
+        background:#cbd5e1;
+        transition:background .16s ease;
+    }
+    .topbar-bell-toggle-track::after {
+        content:"";
+        position:absolute;
+        top:3px;
+        left:3px;
+        width:20px;
+        height:20px;
+        border-radius:50%;
+        background:#fff;
+        box-shadow:0 3px 8px rgba(15,23,42,.14);
+        transition:transform .16s ease;
+    }
+    .topbar-bell-toggle input:checked + .topbar-bell-toggle-track {
+        background:#2563eb;
+    }
+    .topbar-bell-toggle input:checked + .topbar-bell-toggle-track::after {
+        transform:translateX(18px);
+    }
+    .topbar-bell-tools {
+        display:flex;
+        align-items:center;
+        gap:8px;
+        flex-wrap:wrap;
+    }
+    .topbar-bell-tool-button {
+        min-height:32px;
+        padding:7px 10px;
+        border-radius:10px;
+        border:1px solid #dbe3ef;
+        background:#fff;
+        color:#1d4ed8;
+        font-size:11px;
+        font-weight:800;
+        cursor:pointer;
+    }
+    .topbar-bell-settings-hint {
+        color:#64748b;
+        font-size:11px;
+        line-height:1.45;
+    }
+    .topbar-toast-stack {
+        position:fixed;
+        top:86px;
+        right:18px;
+        z-index:260;
+        display:grid;
+        gap:10px;
+        width:min(340px, calc(100vw - 28px));
+        pointer-events:none;
+    }
+    .topbar-toast {
+        display:grid;
+        gap:8px;
+        padding:14px 16px;
+        border-radius:18px;
+        border:1px solid #dbe3ef;
+        background:rgba(255,255,255,.98);
+        box-shadow:0 24px 52px rgba(15,23,42,.16);
+        pointer-events:auto;
+    }
+    .topbar-toast strong {
+        color:#0f172a;
+        font-size:13px;
+        line-height:1.3;
+    }
+    .topbar-toast p {
+        margin:0;
+        color:#64748b;
+        font-size:12px;
+        line-height:1.5;
+    }
+    .topbar-toast a {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        width:max-content;
+        min-height:34px;
+        padding:7px 12px;
+        border-radius:10px;
+        background:#0f172a;
+        color:#fff;
         text-decoration:none;
         font-size:12px;
         font-weight:800;
@@ -1176,6 +1392,15 @@
         .topbar-bell-panel,
         .topbar-user-panel {
             max-width:min(360px, calc(100vw - 44px));
+        }
+    }
+    @media (max-width: 768px) {
+        .topbar-toast-stack {
+            top:auto;
+            right:12px;
+            left:12px;
+            bottom:86px;
+            width:auto;
         }
     }
     .topbar-user-head {
@@ -2212,58 +2437,107 @@
                         </svg>
                     </a>
                 @endif
-                <details class="topbar-notification-menu topbar-bell-menu">
+                <details
+                    class="topbar-notification-menu topbar-bell-menu"
+                    data-in-app-notifications
+                    @if($topbarNotificationsLatestHref) data-notifications-latest-url="{{ $topbarNotificationsLatestHref }}" @endif
+                    @if($topbarNotificationsUnreadCountHref) data-notifications-count-url="{{ $topbarNotificationsUnreadCountHref }}" @endif
+                    @if($topbarNotificationsReadAllHref) data-notifications-read-all-url="{{ $topbarNotificationsReadAllHref }}" @endif
+                    @if($topbarNotificationsReadHrefTemplate) data-notifications-read-url-template="{{ $topbarNotificationsReadHrefTemplate }}" @endif
+                    @if($topbarNotificationsPreferencesHref) data-notifications-preferences-url="{{ $topbarNotificationsPreferencesHref }}" @endif
+                    data-notification-sound-enabled="{{ $notificationSoundEnabled ? 'true' : 'false' }}"
+                    data-notification-voice-enabled="{{ $notificationVoiceEnabled ? 'true' : 'false' }}"
+                    data-notification-sound-src="{{ $notificationSoundAsset }}"
+                >
                     <summary class="topbar-bell-trigger" aria-label="Open notifications">
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
                         @if($topbarNotificationCount > 0)
-                            <span class="topbar-bell-badge">{{ $topbarNotificationCount > 99 ? '99+' : $topbarNotificationCount }}</span>
+                            <span class="topbar-bell-badge" data-notification-badge>{{ $topbarNotificationCount > 99 ? '99+' : $topbarNotificationCount }}</span>
                         @endif
                     </summary>
                     <div class="topbar-bell-panel">
                         <div class="topbar-bell-head">
                             <div>
                                 <strong>Notifications</strong>
-                                <span>{{ $topbarNotificationCount > 0 ? 'Live operational attention points' : 'No urgent operational alerts right now' }}</span>
+                                <span data-notification-subtitle>{{ $topbarNotificationCount > 0 ? 'Live operational updates for you' : 'No unread notifications right now' }}</span>
                             </div>
-                            @if($topbarNotificationCount > 0)
-                                <span class="rn-badge rn-badge-warning">{{ $topbarNotificationCount }}</span>
-                            @endif
+                            <div class="topbar-bell-head-actions">
+                                <button
+                                    type="button"
+                                    class="topbar-bell-mark-all"
+                                    data-notification-mark-all
+                                    @if($topbarNotificationCount <= 0) hidden @endif
+                                >Mark all as read</button>
+                                @if($topbarNotificationCount > 0)
+                                    <span class="rn-badge rn-badge-warning" data-notification-head-count>{{ $topbarNotificationCount }}</span>
+                                @endif
+                            </div>
                         </div>
                         @if($topbarNotifications->isEmpty())
-                            <div class="topbar-bell-empty">No overdue rentals, scheduled delivery alerts, due pickups, pending payment alerts, or maintenance asset warnings are active right now.</div>
+                            <div class="topbar-bell-empty" data-notification-empty>No unread notifications right now. New assignments and operational updates will appear here automatically.</div>
                         @else
-                            <div class="topbar-bell-list">
+                            <div class="topbar-bell-list" data-notification-list>
                                 @foreach($topbarNotifications as $notification)
-                                    @php
-                                        $tone = $notification['tone'] ?? 'info';
-                                        $countClass = match ($tone) {
-                                            'danger' => 'is-danger',
-                                            'warning' => 'is-warning',
-                                            'muted' => 'is-muted',
-                                            default => '',
-                                        };
-                                        $notificationHref = $notification['href'] ?? null;
-                                    @endphp
-                                    @if(!empty($notificationHref))
-                                        <a href="{{ $notificationHref }}" class="topbar-bell-item">
-                                            <div>
-                                                <strong>{{ $notification['label'] ?? 'Alert' }}</strong>
-                                                <small>{{ $notification['copy'] ?? 'Open for details.' }}</small>
+                                    @php($priority = $notification['priority'] ?? 'medium')
+                                    <a
+                                        href="{{ $notification['action_url'] ?? '#' }}"
+                                        class="topbar-bell-item {{ !empty($notification['is_unread']) ? 'is-unread' : '' }}"
+                                        data-notification-item
+                                        data-notification-id="{{ $notification['id'] ?? '' }}"
+                                        data-notification-priority="{{ $priority }}"
+                                    >
+                                        <div>
+                                            <strong>{{ $notification['title'] ?? 'Operational update' }}</strong>
+                                            <small>{{ $notification['message'] ?? 'Open for details.' }}</small>
+                                            <div class="topbar-bell-meta">
+                                                <span class="topbar-bell-priority {{ in_array($priority, ['high', 'urgent'], true) ? 'is-high' : ($priority === 'medium' ? 'is-medium' : '') }}">{{ strtoupper($priority) }}</span>
+                                                <span class="topbar-bell-time">{{ $notification['time_ago'] ?? '' }}</span>
                                             </div>
-                                            <span class="topbar-bell-count {{ $countClass }}">{{ $notification['count'] ?? 0 }}</span>
-                                        </a>
-                                    @else
-                                        <div class="topbar-bell-item">
-                                            <div>
-                                                <strong>{{ $notification['label'] ?? 'Alert' }}</strong>
-                                                <small>{{ $notification['copy'] ?? 'Open for details.' }}</small>
-                                            </div>
-                                            <span class="topbar-bell-count {{ $countClass }}">{{ $notification['count'] ?? 0 }}</span>
                                         </div>
-                                    @endif
+                                        @if(!empty($notification['is_unread']))
+                                            <span class="topbar-bell-count">New</span>
+                                        @endif
+                                    </a>
                                 @endforeach
                             </div>
                         @endif
+                        @if($topbarNotifications->isNotEmpty())
+                            <div class="topbar-bell-empty" data-notification-empty hidden>No unread notifications right now. New assignments and operational updates will appear here automatically.</div>
+                        @endif
+                        <div class="topbar-bell-settings">
+                            <div class="topbar-bell-settings-head">
+                                <div>
+                                    <strong>Alert settings</strong>
+                                    <span>Optional and user-controlled</span>
+                                </div>
+                            </div>
+                            <div class="topbar-bell-switches">
+                                <label class="topbar-bell-switch">
+                                    <span class="topbar-bell-switch-copy">
+                                        <strong>Sound alerts</strong>
+                                        <span>Play a short sound for important new tasks.</span>
+                                    </span>
+                                    <span class="topbar-bell-toggle">
+                                        <input type="checkbox" data-notification-sound-toggle {{ $notificationSoundEnabled ? 'checked' : '' }}>
+                                        <span class="topbar-bell-toggle-track"></span>
+                                    </span>
+                                </label>
+                                <label class="topbar-bell-switch">
+                                    <span class="topbar-bell-switch-copy">
+                                        <strong>Voice alerts</strong>
+                                        <span>Speak short safe labels like “New pickup assigned”.</span>
+                                    </span>
+                                    <span class="topbar-bell-toggle">
+                                        <input type="checkbox" data-notification-voice-toggle {{ $notificationVoiceEnabled ? 'checked' : '' }}>
+                                        <span class="topbar-bell-toggle-track"></span>
+                                    </span>
+                                </label>
+                            </div>
+                            <div class="topbar-bell-tools">
+                                <button type="button" class="topbar-bell-tool-button" data-notification-test-sound>Test Sound</button>
+                            </div>
+                            <div class="topbar-bell-settings-hint" data-notification-settings-hint hidden></div>
+                        </div>
                         @if(!empty($topbarNotificationsViewAllHref))
                             <div class="topbar-bell-footer">
                                 <a href="{{ $topbarNotificationsViewAllHref }}">View all</a>
@@ -2271,6 +2545,7 @@
                         @endif
                     </div>
                 </details>
+                <div class="topbar-toast-stack" data-notification-toast-stack aria-live="polite" aria-atomic="true"></div>
                 <details class="topbar-user-menu">
                     <summary class="topbar-user-trigger" aria-label="Open user menu">
                         <div class="topbar-user-avatar">{{ $userInitials }}</div>

@@ -26,6 +26,7 @@ use App\Policies\RentalPolicy;
 use App\Policies\SalePolicy;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\ReportController;
+use App\Services\NotificationCenterService;
 use App\Support\InternalOrganization;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Pagination\Paginator;
@@ -125,125 +126,34 @@ class AppServiceProvider extends ServiceProvider
                 }
             );
 
-            $notifications = collect();
             $sidebarPendingCounts = $counts['sidebarPendingCounts'] ?? [];
             $overdueRentalsCount = (int) ($counts['overdueRentalsCount'] ?? 0);
             $pendingInvoiceCount = (int) ($counts['pendingInvoiceCount'] ?? 0);
 
-            if ($overdueRentalsCount > 0) {
-                $notifications->push([
-                    'label' => 'Overdue rentals',
-                    'count' => $overdueRentalsCount,
-                    'copy' => 'Delivered rentals that are past end date.',
-                    'href' => $safeRoute('rentals.index', ['filter' => 'overdue']),
-                    'tone' => 'danger',
-                ]);
-            }
-
             $deliveriesToday = (int) ($counts['deliveriesToday'] ?? 0);
-            if ($deliveriesToday > 0) {
-                $notifications->push([
-                    'label' => 'Deliveries today',
-                    'count' => $deliveriesToday,
-                    'copy' => 'Scheduled deliveries still open for today.',
-                    'href' => $safeRoute('deliveries.index', ['board' => 'pending_delivery']),
-                    'tone' => 'info',
-                ]);
-            }
 
             $pickupsToday = (int) ($counts['pickupsToday'] ?? 0);
-            if ($pickupsToday > 0) {
-                $notifications->push([
-                    'label' => 'Pickups due today',
-                    'count' => $pickupsToday,
-                    'copy' => 'Pickup tasks queued for return runs today.',
-                    'href' => $safeRoute('deliveries.index', ['board' => 'pending_pickup']),
-                    'tone' => 'warning',
-                ]);
-            }
-
-            if ($pendingInvoiceCount > 0) {
-                $notifications->push([
-                    'label' => 'Pending payments',
-                    'count' => $pendingInvoiceCount,
-                    'copy' => 'Invoices still waiting for collection.',
-                    'href' => $safeRoute('invoices.index', ['status' => 'unpaid']),
-                    'tone' => 'warning',
-                ]);
-            }
 
             $maintenanceAssets = (int) ($counts['maintenanceAssets'] ?? 0);
-            if ($maintenanceAssets > 0) {
-                $notifications->push([
-                    'label' => 'Maintenance assets',
-                    'count' => $maintenanceAssets,
-                    'copy' => 'Assets unavailable because they are under service.',
-                    'href' => $safeRoute('assets.index', ['asset_status' => 'maintenance']),
-                    'tone' => 'muted',
-                ]);
-            }
 
             $followUpsDueToday = (int) ($counts['followUpsDueToday'] ?? 0);
-            if ($followUpsDueToday > 0) {
-                $notifications->push([
-                    'label' => 'Follow-ups due today',
-                    'count' => $followUpsDueToday,
-                    'copy' => 'Calls, renewals, and payment reminders due today.',
-                    'href' => $safeRoute('communication-center.index', ['tab' => 'today']),
-                    'tone' => 'warning',
-                ]);
-            }
 
             $overdueFollowUps = (int) ($counts['overdueFollowUps'] ?? 0);
-            if ($overdueFollowUps > 0) {
-                $notifications->push([
-                    'label' => 'Overdue follow-ups',
-                    'count' => $overdueFollowUps,
-                    'copy' => 'Missed coordination items that need attention now.',
-                    'href' => $safeRoute('communication-center.index', ['tab' => 'overdue']),
-                    'tone' => 'danger',
-                ]);
-            }
 
             $failedPickupCount = (int) ($counts['failedPickupCount'] ?? 0);
-            if ($failedPickupCount > 0) {
-                $notifications->push([
-                    'label' => 'Failed pickups',
-                    'count' => $failedPickupCount,
-                    'copy' => 'Pickup attempts failed and need reschedule or escalation.',
-                    'href' => $safeRoute('pickup-center.index', ['tab' => 'failed_attempt']),
-                    'tone' => 'warning',
-                ]);
-            }
 
             $failedDeliveryCount = (int) ($counts['failedDeliveryCount'] ?? 0);
-            if ($failedDeliveryCount > 0) {
-                $notifications->push([
-                    'label' => 'Failed deliveries',
-                    'count' => $failedDeliveryCount,
-                    'copy' => 'Delivery attempts failed or were cancelled.',
-                    'href' => $safeRoute('deliveries.index', ['status' => 'cancelled']),
-                    'tone' => 'danger',
-                ]);
-            }
 
             $assignedFollowUps = (int) ($counts['assignedFollowUps'] ?? 0);
-            if ($assignedFollowUps > 0) {
-                $notifications->push([
-                    'label' => 'Assigned follow-ups',
-                    'count' => $assignedFollowUps,
-                    'copy' => 'Pending follow-ups assigned directly to you.',
-                    'href' => $safeRoute('communication-center.index'),
-                    'tone' => 'info',
-                ]);
-            }
-
-            $viewAllHref = $safeRoute('dashboard')
-                ?? $notifications->pluck('href')->filter()->first();
+            $notificationService = app(NotificationCenterService::class);
+            $notifications = $notificationService->latestFor($user, 8);
+            $unreadCount = $notificationService->unreadCountFor($user);
+            $viewAllHref = $safeRoute('communication-center.index')
+                ?? $safeRoute('dashboard');
 
             $view->with([
                 'topbarNotifications' => $notifications->values(),
-                'topbarNotificationCount' => (int) $notifications->sum('count'),
+                'topbarNotificationCount' => $unreadCount,
                 'topbarNotificationsViewAllHref' => $viewAllHref,
                 'sidebarPendingCounts' => $sidebarPendingCounts,
             ]);

@@ -6,6 +6,7 @@ use App\Models\Delivery;
 use App\Models\Staff;
 use App\Models\User;
 use App\Services\Metrics\DashboardMetricsService;
+use App\Services\NotificationCenterService;
 use App\Support\ActivityLogger;
 use App\Support\FollowUpManager;
 use Carbon\Carbon;
@@ -19,6 +20,11 @@ class PickupCenterController extends Controller
     private function dashboardMetrics(): DashboardMetricsService
     {
         return app(DashboardMetricsService::class);
+    }
+
+    private function notifications(): NotificationCenterService
+    {
+        return app(NotificationCenterService::class);
     }
 
     public function index(Request $request)
@@ -116,6 +122,11 @@ class PickupCenterController extends Controller
             'notes' => $validated['notes'] ?? null,
         ], 'Pickup assigned from Pickup Center.');
 
+        $delivery->loadMissing(['assignedUser', 'rental.customer', 'rental.businessPartner', 'rental.partnerClient', 'sale.customer', 'sale.businessPartner', 'sale.partnerClient']);
+        if ($delivery->assignedUser) {
+            $this->notifications()->notifyDeliveryAssignment($delivery, $delivery->assignedUser);
+        }
+
         return back()->with('success', 'Pickup assigned successfully.');
     }
 
@@ -161,6 +172,16 @@ class PickupCenterController extends Controller
             'failed_attempt_note' => $validated['failed_attempt_note'] ?? null,
             'rescheduled_at' => optional($delivery->scheduled_at)->toDateTimeString(),
         ], 'Pickup failed attempt recorded.');
+
+        $delivery->loadMissing(['assignedUser', 'rental.customer', 'rental.businessPartner', 'rental.partnerClient', 'sale.customer', 'sale.businessPartner', 'sale.partnerClient']);
+        $this->notifications()->notifyDeliveryStatusChange(
+            $delivery,
+            $this->notifications()->organizationManagers($this->orgId())->merge($delivery->assignedUser ? collect([$delivery->assignedUser]) : collect()),
+            'pickup_failed',
+            'Pickup attempt failed',
+            trim(($delivery->linkedCustomerName() ?: 'Pickup task') . ' · ' . Delivery::failedAttemptReasonLabel($validated['failed_attempt_reason'])),
+            'high'
+        );
 
         app(FollowUpManager::class)->ensureFailedPickupFollowUp(
             $delivery->fresh(['rental.customer', 'rental.businessPartner', 'rental.partnerClient', 'rental.product']),
@@ -226,6 +247,11 @@ class PickupCenterController extends Controller
             'assigned_user_id' => $assignedUserId,
             'assigned_staff_id' => $assignedStaffId,
         ], 'Pickup rescheduled from Pickup Center.');
+
+        $delivery->loadMissing(['assignedUser', 'rental.customer', 'rental.businessPartner', 'rental.partnerClient', 'sale.customer', 'sale.businessPartner', 'sale.partnerClient']);
+        if ($delivery->assignedUser) {
+            $this->notifications()->notifyDeliveryAssignment($delivery, $delivery->assignedUser);
+        }
 
         return back()->with('success', 'Pickup rescheduled successfully.');
     }

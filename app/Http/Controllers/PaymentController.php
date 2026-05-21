@@ -9,6 +9,7 @@ use App\Models\Rental;
 use App\Models\Sale;
 use App\Services\Finance\InvoiceLinkResolver;
 use App\Services\Finance\PaymentSyncService;
+use App\Services\NotificationCenterService;
 use App\Support\ActivityLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -18,6 +19,11 @@ use Illuminate\Validation\ValidationException;
 
 class PaymentController extends Controller
 {
+    private function notifications(): NotificationCenterService
+    {
+        return app(NotificationCenterService::class);
+    }
+
     private function orgId(): int
     {
         return (int) Auth::user()->organization_id;
@@ -197,6 +203,12 @@ class PaymentController extends Controller
             'invoice_number' => $invoice?->invoice_number,
         ], 'Rental payment recorded.');
 
+        $payment->loadMissing(['customer', 'invoice']);
+        $this->notifications()->notifyPaymentRecorded(
+            $payment,
+            $this->notifications()->organizationFinanceUsers($this->orgId())
+        );
+
         return redirect()->route('rentals.show', $rental)->with('success', 'Payment added successfully.');
     }
 
@@ -221,6 +233,12 @@ class PaymentController extends Controller
             'payment_method' => $payment->payment_method,
             'invoice_payment_status' => $invoice->payment_status,
         ], 'Invoice payment recorded.');
+
+        $payment->loadMissing(['customer', 'invoice']);
+        $this->notifications()->notifyPaymentRecorded(
+            $payment,
+            $this->notifications()->organizationFinanceUsers($this->orgId())
+        );
 
         return redirect()->route('invoices.show', $invoice->id)->with('success', 'Invoice payment recorded successfully.');
     }

@@ -14,6 +14,7 @@ use App\Models\Sale;
 use App\Services\Deliveries\DeliveryProofService;
 use App\Services\Deliveries\DeliveryWorkflowService;
 use App\Services\Metrics\LogisticsMetricsService;
+use App\Services\NotificationCenterService;
 use App\Models\Staff;
 use App\Models\User;
 use App\Support\ActivityLogger;
@@ -52,6 +53,11 @@ class DeliveryController extends Controller
     private ?bool $hasLastPickupNoteColumn = null;
     private ?bool $hasLastPickupNoteAtColumn = null;
     private ?bool $hasRescheduledFromAtColumn = null;
+
+    private function notifications(): NotificationCenterService
+    {
+        return app(NotificationCenterService::class);
+    }
 
     private function hasRentalAssetsTable(): bool
     {
@@ -1789,6 +1795,11 @@ class DeliveryController extends Controller
             'scheduled_at' => optional($delivery->scheduled_at)->toDateTimeString(),
         ], 'Delivery or pickup assignment created.');
 
+        $delivery->loadMissing(['assignedUser', 'rental.customer', 'rental.businessPartner', 'rental.partnerClient', 'sale.customer', 'sale.businessPartner', 'sale.partnerClient']);
+        if ($delivery->assignedUser) {
+            $this->notifications()->notifyDeliveryAssignment($delivery, $delivery->assignedUser);
+        }
+
         return $this->redirectAfterDeliveryMutation($delivery, 'Delivery/Pickup created successfully.');
     }
 
@@ -1908,6 +1919,7 @@ class DeliveryController extends Controller
         $delivery = $this->scopedDelivery($delivery);
         $this->authorize('update', $delivery);
         $wasCompleted = $delivery->status === 'completed';
+        $previousAssignedUserId = (int) ($delivery->assigned_user_id ?? 0);
 
         $validationRules = [
             'rental_id' => array_filter([
@@ -2120,6 +2132,11 @@ class DeliveryController extends Controller
             'assigned_staff_id' => $delivery->assigned_staff_id ?? null,
             'scheduled_at' => optional($delivery->scheduled_at)->toDateTimeString(),
         ], 'Delivery or pickup assignment updated.');
+
+        $delivery->loadMissing(['assignedUser', 'rental.customer', 'rental.businessPartner', 'rental.partnerClient', 'sale.customer', 'sale.businessPartner', 'sale.partnerClient']);
+        if ($delivery->assignedUser && (int) $delivery->assigned_user_id !== $previousAssignedUserId) {
+            $this->notifications()->notifyDeliveryAssignment($delivery, $delivery->assignedUser);
+        }
 
         return $this->redirectAfterDeliveryMutation($delivery, 'Delivery/Pickup updated successfully.');
     }
@@ -2348,6 +2365,16 @@ class DeliveryController extends Controller
             'proof_stage' => $delivery->type,
         ], ucfirst($delivery->type) . ' marked as completed.');
 
+        $delivery->loadMissing(['assignedUser', 'rental.customer', 'rental.businessPartner', 'rental.partnerClient', 'sale.customer', 'sale.businessPartner', 'sale.partnerClient']);
+        $this->notifications()->notifyDeliveryStatusChange(
+            $delivery,
+            $this->notifications()->organizationManagers($this->orgId())->merge($delivery->assignedUser ? collect([$delivery->assignedUser]) : collect()),
+            $delivery->isPickup() ? 'pickup_completed' : 'delivery_completed',
+            ucfirst($delivery->type) . ' completed',
+            trim(($delivery->linkedCustomerName() ?: ucfirst($delivery->type) . ' task') . ' completed'),
+            'medium'
+        );
+
         return redirect()->back()->with('success', ucfirst($delivery->type) . ' marked as completed.');
     }
 
@@ -2389,6 +2416,16 @@ class DeliveryController extends Controller
             'status' => $delivery->status,
             'cancellation_reason' => $delivery->cancellation_reason ?? null,
         ], ucfirst($delivery->type) . ' cancelled.');
+
+        $delivery->loadMissing(['assignedUser', 'rental.customer', 'rental.businessPartner', 'rental.partnerClient', 'sale.customer', 'sale.businessPartner', 'sale.partnerClient']);
+        $this->notifications()->notifyDeliveryStatusChange(
+            $delivery,
+            $this->notifications()->organizationManagers($this->orgId())->merge($delivery->assignedUser ? collect([$delivery->assignedUser]) : collect()),
+            $delivery->isPickup() ? 'pickup_failed' : 'delivery_failed',
+            ucfirst($delivery->type) . ' failed',
+            trim(($delivery->linkedCustomerName() ?: ucfirst($delivery->type) . ' task') . ' · ' . Delivery::cancellationReasonLabel($validated['cancellation_reason'])),
+            'high'
+        );
 
         if ($delivery->type === 'delivery') {
             app(FollowUpManager::class)->ensureFailedDeliveryFollowUp(
