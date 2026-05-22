@@ -9,6 +9,12 @@
     $canUpdateDeliveries = $currentUser?->canAccessModule('deliveries', 'update') ?? false;
     $canDeleteDeliveries = $currentUser?->canAccessModule('deliveries', 'delete') ?? false;
     $assignedScopedDeliveryUser = $currentUser?->hasScope('assigned', 'deliveries') ?? false;
+    $deliveryFocusedBoard = in_array($currentUser?->effective_role, [
+        \App\Models\User::ROLE_DELIVERY,
+        \App\Models\User::ROLE_DELIVERY_EXECUTIVE,
+        \App\Models\User::ROLE_VENDOR,
+        \App\Models\User::ROLE_THIRD_PARTY,
+    ], true);
 
     $tab = $tab ?? 'all';
     $search = $search ?? '';
@@ -86,56 +92,119 @@
         ['key' => 'my', 'label' => 'My Assigned Tasks'],
     ];
 
-    $statCards = [
-        [
-            'label' => 'Total Tasks',
-            'value' => $totalTasksCount ?? 0,
-            'copy' => 'All tasks visible in this board',
-            'href' => $boardHref(['tab' => 'all', 'task_type' => null, 'status' => null, 'workflow' => null], ['board']),
-            'tone' => 'info',
-            'icon' => 'tasks',
-        ],
-        [
-            'label' => 'Deliveries Pending',
-            'value' => $deliveryTasksCount ?? 0,
-            'copy' => 'Open delivery tasks in this board',
-            'href' => $boardHref(['tab' => 'deliveries', 'task_type' => 'delivery', 'workflow' => 'delivery_workload'], ['board', 'status']),
-            'tone' => 'delivery',
-            'icon' => 'delivery',
-        ],
-        [
-            'label' => 'Pickups Pending',
-            'value' => $pickupTasksCount ?? 0,
-            'copy' => 'Open pickup tasks in this board',
-            'href' => $boardHref(['tab' => 'pickups', 'task_type' => 'pickup', 'workflow' => 'pickup_workload'], ['board', 'status']),
-            'tone' => 'pickup',
-            'icon' => 'pickup',
-        ],
-        [
-            'label' => 'Deliveries Completed',
-            'value' => $completedDeliveryCount ?? 0,
-            'copy' => 'Completed delivery tasks in this board',
-            'href' => $boardHref(['tab' => 'completed', 'task_type' => 'delivery', 'status' => 'completed', 'workflow' => 'completed_delivery'], ['board']),
-            'tone' => 'success',
-            'icon' => 'delivery',
-        ],
-        [
-            'label' => 'Pickups Completed',
-            'value' => $completedPickupCount ?? 0,
-            'copy' => 'Completed pickup tasks in this board',
-            'href' => $boardHref(['tab' => 'completed', 'task_type' => 'pickup', 'status' => 'completed', 'workflow' => 'completed_pickup'], ['board']),
-            'tone' => 'success',
-            'icon' => 'pickup',
-        ],
-        [
-            'label' => 'Completed Today',
-            'value' => $completedTodayCount ?? 0,
-            'copy' => 'Tasks closed today',
-            'href' => $boardHref(['tab' => 'completed', 'task_type' => null, 'status' => 'completed', 'workflow' => 'completed_today'], ['board']),
-            'tone' => 'success',
-            'icon' => 'completed',
-        ],
+    $statCards = $deliveryFocusedBoard
+        ? [
+            [
+                'label' => 'Assigned Tasks',
+                'value' => $totalTasksCount ?? 0,
+                'copy' => 'Open field work',
+                'href' => $boardHref(['tab' => 'all', 'task_type' => null, 'status' => null, 'workflow' => null], ['board']),
+                'tone' => 'info',
+                'icon' => 'tasks',
+            ],
+            [
+                'label' => 'My Deliveries Today',
+                'value' => $deliveryTasksCount ?? 0,
+                'copy' => 'Delivery tasks to run',
+                'href' => $boardHref(['tab' => 'deliveries', 'task_type' => 'delivery', 'workflow' => 'delivery_workload'], ['board', 'status']),
+                'tone' => 'delivery',
+                'icon' => 'delivery',
+            ],
+            [
+                'label' => 'My Pickups Today',
+                'value' => $pickupTasksCount ?? 0,
+                'copy' => 'Pickup tasks to run',
+                'href' => $boardHref(['tab' => 'pickups', 'task_type' => 'pickup', 'workflow' => 'pickup_workload'], ['board', 'status']),
+                'tone' => 'pickup',
+                'icon' => 'pickup',
+            ],
+            [
+                'label' => 'Overdue',
+                'value' => $overdueTasksCount ?? 0,
+                'copy' => 'Needs action now',
+                'href' => $boardHref(['tab' => 'overdue', 'status' => null], ['board', 'workflow']),
+                'tone' => 'danger',
+                'icon' => 'overdue',
+            ],
+            [
+                'label' => 'Failed',
+                'value' => $failedTasksCount ?? 0,
+                'copy' => 'Failed or cancelled',
+                'href' => $boardHref(['status' => 'cancelled', 'tab' => 'all'], ['board', 'workflow']),
+                'tone' => 'danger',
+                'icon' => 'overdue',
+            ],
+        ]
+        : [
+            [
+                'label' => 'Total Tasks',
+                'value' => $totalTasksCount ?? 0,
+                'copy' => 'All tasks visible in this board',
+                'href' => $boardHref(['tab' => 'all', 'task_type' => null, 'status' => null, 'workflow' => null], ['board']),
+                'tone' => 'info',
+                'icon' => 'tasks',
+            ],
+            [
+                'label' => 'Deliveries Pending',
+                'value' => $deliveryTasksCount ?? 0,
+                'copy' => 'Open delivery tasks in this board',
+                'href' => $boardHref(['tab' => 'deliveries', 'task_type' => 'delivery', 'workflow' => 'delivery_workload'], ['board', 'status']),
+                'tone' => 'delivery',
+                'icon' => 'delivery',
+            ],
+            [
+                'label' => 'Pickups Pending',
+                'value' => $pickupTasksCount ?? 0,
+                'copy' => 'Open pickup tasks in this board',
+                'href' => $boardHref(['tab' => 'pickups', 'task_type' => 'pickup', 'workflow' => 'pickup_workload'], ['board', 'status']),
+                'tone' => 'pickup',
+                'icon' => 'pickup',
+            ],
+            [
+                'label' => 'Deliveries Completed',
+                'value' => $completedDeliveryCount ?? 0,
+                'copy' => 'Completed delivery tasks in this board',
+                'href' => $boardHref(['tab' => 'completed', 'task_type' => 'delivery', 'status' => 'completed', 'workflow' => 'completed_delivery'], ['board']),
+                'tone' => 'success',
+                'icon' => 'delivery',
+            ],
+            [
+                'label' => 'Pickups Completed',
+                'value' => $completedPickupCount ?? 0,
+                'copy' => 'Completed pickup tasks in this board',
+                'href' => $boardHref(['tab' => 'completed', 'task_type' => 'pickup', 'status' => 'completed', 'workflow' => 'completed_pickup'], ['board']),
+                'tone' => 'success',
+                'icon' => 'pickup',
+            ],
+            [
+                'label' => 'Completed Today',
+                'value' => $completedTodayCount ?? 0,
+                'copy' => 'Tasks closed today',
+                'href' => $boardHref(['tab' => 'completed', 'task_type' => null, 'status' => 'completed', 'workflow' => 'completed_today'], ['board']),
+                'tone' => 'success',
+                'icon' => 'completed',
+            ],
+        ];
+
+    $taskTypeTabs = [
+        ['label' => 'All', 'href' => $boardHref(['tab' => 'all', 'task_type' => null], ['board', 'workflow', 'status']) , 'active' => blank($taskType)],
+        ['label' => 'Deliveries', 'href' => $boardHref(['tab' => 'deliveries', 'task_type' => 'delivery', 'workflow' => 'delivery_workload'], ['board', 'status']), 'active' => $taskType === 'delivery'],
+        ['label' => 'Pickups', 'href' => $boardHref(['tab' => 'pickups', 'task_type' => 'pickup', 'workflow' => 'pickup_workload'], ['board', 'status']), 'active' => $taskType === 'pickup'],
     ];
+
+    $statusTabs = [
+        ['label' => 'Today', 'href' => $boardHref(['tab' => 'today', 'status' => null, 'workflow' => null], ['board']), 'active' => $tab === 'today'],
+        ['label' => 'Overdue', 'href' => $boardHref(['tab' => 'overdue', 'status' => null, 'workflow' => null], ['board']), 'active' => $tab === 'overdue'],
+        ['label' => 'Completed', 'href' => $boardHref(['tab' => 'completed', 'status' => 'completed', 'workflow' => null], ['board']), 'active' => $tab === 'completed' || $statusFilter === 'completed'],
+        ['label' => 'Failed', 'href' => $boardHref(['tab' => 'all', 'status' => 'cancelled', 'workflow' => null], ['board']), 'active' => $statusFilter === 'cancelled'],
+    ];
+
+    $scopeTabs = $currentUser?->hasScope('assigned', 'deliveries')
+        ? [
+            ['label' => 'My Tasks', 'href' => $boardHref(['ownership' => 'my'], ['board']), 'active' => $ownershipFilter === 'my'],
+            ['label' => 'All Tasks', 'href' => $boardHref(['ownership' => 'all'], ['board']), 'active' => $ownershipFilter === 'all'],
+        ]
+        : [];
 
     $taskTypeBadge = fn (string $type) => $type === 'pickup' ? 'rn-badge-maintenance' : 'rn-badge-active';
 
@@ -283,6 +352,8 @@
         display:inline-flex; align-items:center; min-height:30px; padding:6px 10px;
         border-radius:999px; border:1px solid var(--ph-color-border); background:#fff; color:var(--ph-color-text); font-size:12px; font-weight:700;
     }
+    .ops-mobile-command,
+    .ops-mobile-chip-groups { display:none; }
     .ops-filter-toggle summary {
         list-style:none; cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:10px;
         padding:12px 14px; border-radius:14px; border:1px solid var(--ph-color-border); background:var(--ph-color-surface-soft);
@@ -421,21 +492,110 @@
     .ops-action-panel form { margin:0; }
     .ops-mobile-list { display:none; }
     .ops-mobile-card {
-        display:grid; gap:12px; padding:14px; border-bottom:1px solid #eef2f7;
+        position:relative;
+        display:grid;
+        gap:12px;
+        padding:14px;
+        border-bottom:1px solid #eef2f7;
+        cursor:pointer;
     }
     .ops-mobile-card:last-child { border-bottom:none; }
-    .ops-mobile-top { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
-    .ops-mobile-title { display:grid; gap:5px; min-width:0; }
-    .ops-mobile-select { display:flex; align-items:flex-start; gap:10px; }
-    .ops-mobile-select .ops-mobile-title { flex:1 1 auto; }
-    .ops-mobile-serial { font-size:12px; font-weight:800; color:#475569; }
-    .ops-mobile-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
-    .ops-mobile-meta { display:grid; gap:3px; }
-    .ops-mobile-meta span:first-child { color:#64748b; font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
-    .ops-mobile-meta span:last-child { color:#0f172a; font-size:13px; line-height:1.4; }
-    .ops-mobile-actions { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:8px; }
+    .ops-mobile-card:focus-visible {
+        outline:none;
+        box-shadow:0 0 0 3px rgba(37,99,235,.12);
+    }
+    .ops-mobile-card.is-overdue {
+        background:linear-gradient(180deg, #fff8f8 0%, #ffffff 100%);
+    }
+    .ops-mobile-top {
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        gap:10px;
+    }
+    .ops-mobile-card-head {
+        display:grid;
+        gap:8px;
+        min-width:0;
+        flex:1 1 auto;
+    }
+    .ops-mobile-topline {
+        display:flex;
+        align-items:center;
+        gap:6px;
+        flex-wrap:wrap;
+    }
+    .ops-mobile-serial {
+        font-size:11px;
+        font-weight:800;
+        color:#475569;
+        letter-spacing:.04em;
+        text-transform:uppercase;
+    }
+    .ops-mobile-order {
+        color:#0f172a;
+        font-size:14px;
+        font-weight:800;
+        line-height:1.35;
+    }
+    .ops-mobile-order a {
+        color:inherit;
+        text-decoration:none;
+    }
+    .ops-mobile-contact {
+        display:grid;
+        gap:4px;
+    }
+    .ops-mobile-customer {
+        color:#0f172a;
+        font-size:14px;
+        font-weight:700;
+        line-height:1.35;
+    }
+    .ops-mobile-phone,
+    .ops-mobile-product {
+        color:#475569;
+        font-size:12px;
+        line-height:1.4;
+    }
+    .ops-mobile-grid {
+        display:grid;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:10px;
+    }
+    .ops-mobile-meta {
+        display:grid;
+        gap:3px;
+        min-width:0;
+    }
+    .ops-mobile-meta span:first-child {
+        color:#64748b;
+        font-size:10px;
+        font-weight:800;
+        letter-spacing:.05em;
+        text-transform:uppercase;
+    }
+    .ops-mobile-meta span:last-child {
+        color:#0f172a;
+        font-size:13px;
+        line-height:1.4;
+        overflow-wrap:anywhere;
+    }
+    .ops-mobile-actions {
+        display:grid;
+        grid-template-columns:repeat(4, minmax(0, 1fr));
+        gap:8px;
+        align-items:stretch;
+    }
     .ops-mobile-actions .ops-action-btn,
     .ops-mobile-actions .ops-action-btn-primary { min-height:40px; padding:0 8px; }
+    .ops-mobile-actions .ops-action-btn-primary {
+        grid-column:span 2;
+    }
+    .ops-mobile-more summary {
+        min-height:42px;
+        border-radius:12px;
+    }
     .ops-widget-stack { display:grid; gap:14px; }
     .ops-widget-card { padding:14px; display:grid; gap:12px; }
     .ops-widget-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
@@ -497,9 +657,123 @@
         .ops-board { gap:12px; }
         .ops-board-title h1 { font-size:22px; }
         .ops-board-title p { font-size:12px; }
+        .ops-board-title p,
+        .ops-task-head p { display:none; }
         .ops-stats { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
-        .ops-stat-card { min-height:118px; padding:12px; }
-        .ops-stat-value { font-size:25px; }
+        .ops-stat-card { min-height:92px; padding:10px 11px; gap:8px; border-radius:16px; }
+        .ops-stat-top span { font-size:10px; }
+        .ops-stat-copy { display:none; }
+        .ops-stat-value { font-size:22px; }
+        .ops-stat-icon { width:34px; height:34px; flex-basis:34px; border-radius:12px; }
+        .ops-tabs,
+        .ops-filters-card { display:none; }
+        .ops-mobile-command {
+            display:grid;
+            gap:10px;
+            padding:12px 14px;
+            border:1px solid var(--ph-color-border);
+            border-radius:18px;
+            background:#fff;
+            box-shadow:var(--ph-shadow-soft);
+        }
+        .ops-mobile-search-row {
+            display:grid;
+            grid-template-columns:minmax(0, 1fr) auto;
+            gap:8px;
+        }
+        .ops-mobile-search-row input {
+            min-height:40px;
+            border-radius:12px;
+            border:1px solid var(--ph-color-border-strong);
+            padding:0 12px;
+            font-size:14px;
+            min-width:0;
+        }
+        .ops-mobile-chip-groups {
+            display:grid;
+            gap:10px;
+        }
+        .ops-mobile-chip-group {
+            display:grid;
+            gap:6px;
+        }
+        .ops-mobile-chip-group label {
+            color:var(--ph-color-text-soft);
+            font-size:10px;
+            font-weight:800;
+            letter-spacing:.05em;
+            text-transform:uppercase;
+        }
+        .ops-mobile-chip-row {
+            display:flex;
+            gap:8px;
+            overflow-x:auto;
+            padding-bottom:2px;
+            scrollbar-width:none;
+        }
+        .ops-mobile-chip-row::-webkit-scrollbar { display:none; }
+        .ops-mobile-chip {
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            min-height:34px;
+            padding:0 12px;
+            border-radius:999px;
+            border:1px solid var(--ph-color-border);
+            background:#fff;
+            color:var(--ph-color-text-soft);
+            text-decoration:none;
+            font-size:12px;
+            font-weight:800;
+            white-space:nowrap;
+        }
+        .ops-mobile-chip.is-active {
+            background:var(--ph-color-sidebar);
+            border-color:var(--ph-color-sidebar);
+            color:#fff;
+        }
+        .ops-mobile-toolbar {
+            display:grid;
+            grid-template-columns:repeat(4, minmax(0, 1fr));
+            gap:8px;
+        }
+        .ops-mobile-toolbar .mobile-toolbar-btn,
+        .ops-mobile-toolbar .mobile-sort-trigger,
+        .ops-mobile-toolbar .rn-btn {
+            min-height:40px;
+            width:100%;
+            justify-content:center;
+        }
+        .ops-mobile-sort-anchor { position:relative; }
+        .ops-mobile-sort-menu {
+            position:absolute;
+            right:0;
+            top:calc(100% + 8px);
+            z-index:40;
+            display:grid;
+            gap:6px;
+            min-width:180px;
+            padding:8px;
+            border-radius:14px;
+            border:1px solid #dbe3ef;
+            background:#fff;
+            box-shadow:0 18px 42px rgba(15,23,42,.14);
+        }
+        .ops-mobile-sort-menu a {
+            display:flex;
+            align-items:center;
+            min-height:36px;
+            padding:0 10px;
+            border-radius:10px;
+            color:#334155;
+            text-decoration:none;
+            font-size:12px;
+            font-weight:700;
+        }
+        .ops-mobile-sort-menu a.is-active {
+            background:#eff6ff;
+            color:#1d4ed8;
+        }
         .ops-filter-grid,
         .ops-mobile-grid { grid-template-columns:1fr; }
         .ops-mobile-actions {
@@ -525,14 +799,6 @@
             width:18px;
             height:18px;
         }
-        .ops-mobile-actions .mobile-task-primary-form {
-            grid-column:span 2;
-            margin:0;
-            display:flex;
-        }
-        .ops-mobile-actions .mobile-task-primary-form button {
-            width:100%;
-        }
         .ops-board-actions { width:100%; }
         .ops-board-actions .rn-btn,
         .ops-board-actions .rn-btn-primary {
@@ -545,14 +811,6 @@
         .ops-sort-form {
             width:100%;
         }
-        .ops-sort-form {
-            display:grid;
-            grid-template-columns:repeat(2, minmax(0, 1fr));
-        }
-        .ops-sort-label {
-            grid-column:span 2;
-        }
-        .ops-tab { min-height:34px; padding:0 11px; font-size:11px; }
         .ops-action-panel { position:static; min-width:0; box-shadow:none; margin-top:8px; }
     }
 
@@ -592,6 +850,63 @@
                 <div class="ops-stat-copy">{{ $card['copy'] }}</div>
             </a>
         @endforeach
+    </div>
+
+    <div class="ops-mobile-command" aria-label="Mobile task controls">
+        <form method="GET" action="{{ route('deliveries.index') }}" class="ops-mobile-search-row">
+            <input type="hidden" name="ownership" value="{{ $ownershipFilter }}">
+            <input type="hidden" name="tab" value="{{ $tab }}">
+            @foreach($sortFormQuery as $queryKey => $queryValue)
+                @if(!in_array($queryKey, ['search', 'ownership', 'tab'], true))
+                    <input type="hidden" name="{{ $queryKey }}" value="{{ $queryValue }}">
+                @endif
+            @endforeach
+            <input type="search" name="search" value="{{ $search }}" placeholder="Search customer, phone, product">
+            <button type="submit" class="rn-btn-primary">Search</button>
+        </form>
+
+        <div class="ops-mobile-chip-groups">
+            <div class="ops-mobile-chip-group">
+                <label>Task Type</label>
+                <div class="ops-mobile-chip-row">
+                    @foreach($taskTypeTabs as $typeTab)
+                        <a href="{{ $typeTab['href'] }}" class="ops-mobile-chip {{ $typeTab['active'] ? 'is-active' : '' }}">{{ $typeTab['label'] }}</a>
+                    @endforeach
+                </div>
+            </div>
+            <div class="ops-mobile-chip-group">
+                <label>Status</label>
+                <div class="ops-mobile-chip-row">
+                    @foreach($statusTabs as $statusTab)
+                        <a href="{{ $statusTab['href'] }}" class="ops-mobile-chip {{ $statusTab['active'] ? 'is-active' : '' }}">{{ $statusTab['label'] }}</a>
+                    @endforeach
+                </div>
+            </div>
+            @if(!empty($scopeTabs))
+                <div class="ops-mobile-chip-group">
+                    <label>Scope</label>
+                    <div class="ops-mobile-chip-row">
+                        @foreach($scopeTabs as $scopeTab)
+                            <a href="{{ $scopeTab['href'] }}" class="ops-mobile-chip {{ $scopeTab['active'] ? 'is-active' : '' }}">{{ $scopeTab['label'] }}</a>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+        </div>
+
+        <div class="ops-mobile-toolbar" aria-label="Mobile task tools">
+            <button type="button" class="mobile-toolbar-btn" data-mobile-filter-open="deliveries-mobile-filters">Filter</button>
+            <div class="ops-mobile-sort-anchor" data-mobile-sort-root>
+                <button type="button" class="mobile-toolbar-btn mobile-sort-trigger" data-mobile-sort-trigger>Sort</button>
+                <div class="ops-mobile-sort-menu" data-mobile-sort-menu hidden>
+                    @foreach($sortOptions as $sortKey => $sortLabel)
+                        <a href="{{ $boardHref(['sort_by' => $sortKey, 'sort_dir' => $sortDirection], ['page']) }}" class="{{ $sortBy === $sortKey ? 'is-active' : '' }}">{{ $sortLabel }}</a>
+                    @endforeach
+                </div>
+            </div>
+            <a href="{{ route('deliveries.index') }}" class="rn-btn">Refresh</a>
+            <a href="{{ route('deliveries.index') }}" class="rn-btn" data-filter-clear="deliveries-index">Clear</a>
+        </div>
     </div>
 
     <div class="ops-filters-shell">
@@ -737,6 +1052,108 @@
                 </form>
             </div>
         </details>
+    </div>
+
+    <div id="deliveries-mobile-filters" class="mobile-filter-sheet" data-mobile-filter-sheet hidden>
+        <div class="mobile-filter-sheet-panel">
+            <div class="mobile-filter-sheet-header">
+                <div>
+                    <h3>Task Filters</h3>
+                    <p>Keep task type, assignee, area, and status within thumb reach.</p>
+                </div>
+                <button type="button" class="mobile-filter-sheet-close" data-mobile-sheet-close="deliveries-mobile-filters" aria-label="Close filters">×</button>
+            </div>
+            <div class="mobile-filter-sheet-body">
+                <form method="GET" action="{{ route('deliveries.index') }}" class="mobile-sheet-form">
+                    <input type="hidden" name="tab" value="{{ $tab }}">
+                    <input type="hidden" name="sort_by" value="{{ $sortBy }}">
+                    <input type="hidden" name="sort_dir" value="{{ $sortDirection }}">
+                    <div class="mobile-sheet-grid">
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_task_search">Search</label>
+                            <input id="mobile_task_search" type="search" name="search" value="{{ $search }}" placeholder="Customer, phone, product">
+                        </div>
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_task_date">Date</label>
+                            <input id="mobile_task_date" type="date" name="date" value="{{ $selectedDate }}">
+                        </div>
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_task_type">Task Type</label>
+                            <select id="mobile_task_type" name="task_type">
+                                <option value="">All</option>
+                                <option value="delivery" @selected($taskType === 'delivery')>Deliveries</option>
+                                <option value="pickup" @selected($taskType === 'pickup')>Pickups</option>
+                            </select>
+                        </div>
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_task_status">Status</label>
+                            <select id="mobile_task_status" name="status">
+                                <option value="">All</option>
+                                <option value="pending" @selected($statusFilter === 'pending')>Pending</option>
+                                <option value="in_progress" @selected($statusFilter === 'in_progress')>In Progress</option>
+                                <option value="completed" @selected($statusFilter === 'completed')>Completed</option>
+                                <option value="cancelled" @selected($statusFilter === 'cancelled')>Failed / Cancelled</option>
+                            </select>
+                        </div>
+                        @if($currentUser?->hasScope('assigned', 'deliveries'))
+                            <div class="mobile-sheet-field">
+                                <label for="mobile_task_ownership">Scope</label>
+                                <select id="mobile_task_ownership" name="ownership">
+                                    <option value="my" @selected($ownershipFilter === 'my')>My Tasks</option>
+                                    <option value="all" @selected($ownershipFilter === 'all')>All Tasks</option>
+                                </select>
+                            </div>
+                        @endif
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_task_staff">Staff</label>
+                            <select id="mobile_task_staff" name="staff">
+                                <option value="">All assignees</option>
+                                <option value="unassigned" @selected($staffFilter === 'unassigned')>Unassigned</option>
+                                @if($assignableUsers->isNotEmpty())
+                                    <optgroup label="Delivery Team">
+                                        @foreach($assignableUsers as $user)
+                                            <option value="user:{{ $user->id }}" @selected($staffFilter === 'user:' . $user->id)>{{ $user->name }}</option>
+                                        @endforeach
+                                    </optgroup>
+                                @endif
+                                @if($assignableStaffMembers->isNotEmpty())
+                                    <optgroup label="Vendor Staff">
+                                        @foreach($assignableStaffMembers as $staffMember)
+                                            <option value="staff:{{ $staffMember->id }}" @selected($staffFilter === 'staff:' . $staffMember->id)>{{ $staffMember->name }}</option>
+                                        @endforeach
+                                    </optgroup>
+                                @endif
+                                <option value="third_party" @selected($staffFilter === 'third_party')>Third party</option>
+                            </select>
+                        </div>
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_task_area">Area / Warehouse</label>
+                            <select id="mobile_task_area" name="area">
+                                <option value="">All areas</option>
+                                @if($warehouseOptions->isNotEmpty())
+                                    <optgroup label="Warehouses">
+                                        @foreach($warehouseOptions as $warehouse)
+                                            <option value="warehouse:{{ $warehouse->id }}" @selected($areaFilter === 'warehouse:' . $warehouse->id)>{{ $warehouse->name }}</option>
+                                        @endforeach
+                                    </optgroup>
+                                @endif
+                                @if($areaOptions->isNotEmpty())
+                                    <optgroup label="Customer Areas">
+                                        @foreach($areaOptions as $city)
+                                            <option value="city:{{ $city }}" @selected($areaFilter === 'city:' . $city)>{{ $city }}</option>
+                                        @endforeach
+                                    </optgroup>
+                                @endif
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mobile-sheet-actions">
+                        <button type="submit" class="rn-btn-primary">Apply Filters</button>
+                        <a href="{{ route('deliveries.index') }}" class="rn-btn">Reset</a>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 
     <div class="ops-board-grid">
@@ -1047,7 +1464,6 @@
                         @php
                             $serialNumber = $taskStartIndex + $loop->index;
                             $isSaleTask = (bool) $delivery->sale_id;
-                            $customerRecord = $isSaleTask ? $delivery->sale?->customer : $delivery->rental?->customer;
                             $customerName = $delivery->linkedCustomerName();
                             $customerPhone = $delivery->linkedCustomerPhone();
                             $customerCity = $delivery->linkedCustomerCity();
@@ -1111,40 +1527,57 @@
                             $completeActionLabel = $delivery->type === 'pickup' ? 'Complete Pickup' : 'Complete Delivery';
                             $showProofHistory = $canViewTask && (int) ($delivery->proofs_count ?? 0) > 0;
                             $proofHistoryHref = $showProofHistory ? route('deliveries.show', $delivery) . '#delivery-proof-history' : null;
+                            $taskDetailHref = $canViewTask && \Illuminate\Support\Facades\Route::has('deliveries.show')
+                                ? route('deliveries.show', $delivery)
+                                : null;
                         @endphp
-                        <div class="ops-mobile-card {{ $isOverdue ? 'is-overdue' : '' }}">
+                        <article
+                            class="ops-mobile-card {{ $isOverdue ? 'is-overdue' : '' }}"
+                            data-task-card
+                            data-task-href="{{ $taskDetailHref }}"
+                            tabindex="0"
+                            role="link"
+                            aria-label="Open {{ $delivery->type }} task {{ $delivery->id }}"
+                        >
                             <div class="ops-mobile-top">
-                                <div class="ops-mobile-select">
-                                    <input
-                                        type="checkbox"
-                                        class="ops-task-checkbox"
-                                        value="{{ $delivery->id }}"
-                                        data-task-id="{{ $delivery->id }}"
-                                        aria-label="Select task {{ $serialNumber }}"
-                                    >
-                                    <div class="ops-mobile-title">
-                                        <div class="ops-inline">
-                                            <span class="ops-mobile-serial">#{{ $serialNumber }}</span>
-                                            <span class="ops-type-badge {{ $delivery->type === 'pickup' ? 'ops-type-pickup' : 'ops-type-delivery' }}">
-                                                {!! $navIcon($delivery->type === 'pickup' ? 'pickup' : 'delivery') !!}
-                                                {{ ucfirst($delivery->type) }}
-                                            </span>
-                                            <span class="rn-badge {{ $taskStatusBadgeClass($displayStatus, $isOverdue) }}">{{ $taskStatusLabel($displayStatus) }}</span>
-                                        </div>
-                                        @if($isSaleTask && \Illuminate\Support\Facades\Route::has('sales.show') && $delivery->sale)
-                                            <a href="{{ route('sales.show', $delivery->sale) }}" class="ops-record-link">Sale #{{ $delivery->sale->id }}</a>
-                                        @elseif(!$isSaleTask && \Illuminate\Support\Facades\Route::has('rentals.show') && $delivery->rental)
-                                            <a href="{{ route('rentals.show', $delivery->rental) }}" class="ops-record-link">Rental #{{ $delivery->rental->id }}</a>
+                                <div class="ops-mobile-card-head">
+                                    <div class="ops-mobile-topline">
+                                        <input
+                                            type="checkbox"
+                                            class="ops-task-checkbox"
+                                            value="{{ $delivery->id }}"
+                                            data-task-id="{{ $delivery->id }}"
+                                            aria-label="Select task {{ $serialNumber }}"
+                                        >
+                                        <span class="ops-mobile-serial">Task #{{ $serialNumber }}</span>
+                                        <span class="ops-type-badge {{ $delivery->type === 'pickup' ? 'ops-type-pickup' : 'ops-type-delivery' }}">
+                                            {!! $navIcon($delivery->type === 'pickup' ? 'pickup' : 'delivery') !!}
+                                            {{ ucfirst($delivery->type) }}
+                                        </span>
+                                        <span class="rn-badge {{ $taskStatusBadgeClass($displayStatus, $isOverdue) }}">{{ $taskStatusLabel($displayStatus) }}</span>
+                                    </div>
+                                    <div class="ops-mobile-order">
+                                        @if($isSaleTask && $delivery->sale)
+                                            Sale #{{ $delivery->sale->id }}
+                                        @elseif(!$isSaleTask && $delivery->rental)
+                                            Rental #{{ $delivery->rental->id }}
                                         @else
-                                            <strong>Task #{{ $delivery->id }}</strong>
+                                            Task #{{ $delivery->id }}
                                         @endif
                                     </div>
+                                    <div class="ops-mobile-contact">
+                                        <span class="ops-mobile-customer">{{ $customerName }}</span>
+                                        @if($customerPhone)
+                                            <span class="ops-mobile-phone">{{ $customerPhone }}</span>
+                                        @endif
+                                        <span class="ops-mobile-product">{{ $items->take(1)->implode(', ') ?: 'No linked items yet' }}</span>
+                                    </div>
                                 </div>
-                                <details class="ops-action-menu">
+                                <details class="ops-action-menu ops-mobile-more">
                                     <summary aria-label="More actions for task {{ $delivery->id }}">{!! $navIcon('menu') !!}</summary>
                                     <div class="ops-action-panel">
-                                        @if($canViewTask && \Illuminate\Support\Facades\Route::has('deliveries.show'))
-                                            <a href="{{ route('deliveries.show', $delivery) }}">View</a>
+                                        @if($taskDetailHref)
+                                            <a href="{{ $taskDetailHref }}">View Details</a>
                                         @endif
                                         @if($canUpdateTask && $delivery->status === 'pending' && !$taskEffectivelyCompleted)
                                             <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section">{{ $startActionLabel }}</a>
@@ -1152,20 +1585,14 @@
                                         @if($canUpdateTask && $delivery->status === 'in_progress' && !$taskEffectivelyCompleted)
                                             <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section">{{ $completeActionLabel }}</a>
                                         @endif
-                                        @if($callHref)
-                                            <a href="{{ $callHref }}">Call Customer</a>
-                                        @endif
-                                        @if($whatsAppUrl)
-                                            <a href="{{ $whatsAppUrl }}" target="_blank" rel="noopener">WhatsApp Customer</a>
-                                        @endif
                                         @if($proofHistoryHref)
-                                            <a href="{{ $proofHistoryHref }}">View Proof</a>
+                                            <a href="{{ $proofHistoryHref }}">Proof History</a>
                                         @endif
                                         @if($canUpdateTask && !in_array($delivery->status, ['completed', 'cancelled'], true))
                                             <a href="{{ route('deliveries.show', $delivery) }}#delivery-cancellation-section">Cancel Task</a>
                                         @endif
                                         @if(!$assignedScopedDeliveryUser && $canUpdateTask && \Illuminate\Support\Facades\Route::has('deliveries.edit'))
-                                            <a href="{{ route('deliveries.edit', $delivery) }}">Edit</a>
+                                            <a href="{{ route('deliveries.edit', $delivery) }}">Edit Assignment</a>
                                         @endif
                                         @if(!$assignedScopedDeliveryUser && $canDeleteTask && \Illuminate\Support\Facades\Route::has('deliveries.destroy'))
                                             <form action="{{ route('deliveries.destroy', $delivery) }}" method="POST">
@@ -1180,10 +1607,6 @@
 
                             <div class="ops-mobile-grid">
                                 <div class="ops-mobile-meta">
-                                    <span>Customer</span>
-                                    <span>{{ $customerName }}</span>
-                                </div>
-                                <div class="ops-mobile-meta">
                                     <span>Schedule</span>
                                     <span>{{ $delivery->scheduled_at ? $delivery->scheduled_at->format('d M h:i A') : 'Not scheduled' }}</span>
                                 </div>
@@ -1192,8 +1615,12 @@
                                     <span>{{ $assignedName }}</span>
                                 </div>
                                 <div class="ops-mobile-meta">
-                                    <span>Items</span>
-                                    <span>{{ $items->take(2)->implode(', ') ?: 'No linked items yet' }}</span>
+                                    <span>Phone</span>
+                                    <span>{{ $customerPhone ?: 'No phone saved' }}</span>
+                                </div>
+                                <div class="ops-mobile-meta">
+                                    <span>Location</span>
+                                    <span>{{ $customerCity ?: 'No city saved' }}</span>
                                 </div>
                             </div>
 
@@ -1230,26 +1657,26 @@
                                         <span>Map</span>
                                     </a>
                                 @endif
-                                @if($canViewTask && \Illuminate\Support\Facades\Route::has('deliveries.show'))
-                                    <a href="{{ route('deliveries.show', $delivery) }}" class="ops-action-btn mobile-utility-btn" title="View task" aria-label="View task">
+                                @if($taskDetailHref)
+                                    <a href="{{ $taskDetailHref }}" class="ops-action-btn mobile-utility-btn" title="View task" aria-label="View task">
                                         {!! $navIcon('view') !!}
                                         <span>View</span>
                                     </a>
                                 @endif
                                 @if($canUpdateTask && $delivery->status === 'pending' && !$taskEffectivelyCompleted)
-                                    <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="ops-action-btn-primary mobile-task-primary-form" title="{{ $startActionLabel }}" aria-label="{{ $startActionLabel }}">
+                                    <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="ops-action-btn-primary" title="{{ $startActionLabel }}" aria-label="{{ $startActionLabel }}">
                                         {!! $navIcon('start') !!}
                                         <span>{{ $startActionLabel }}</span>
                                     </a>
                                 @endif
                                 @if($canUpdateTask && $delivery->status === 'in_progress' && !$taskEffectivelyCompleted)
-                                    <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="ops-action-btn-primary mobile-task-primary-form" title="{{ $completePartial ? $completeActionLabel . ' (partial allowed)' : $completeActionLabel }}" aria-label="{{ $completeActionLabel }}">
+                                    <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="ops-action-btn-primary" title="{{ $completePartial ? $completeActionLabel . ' (partial allowed)' : $completeActionLabel }}" aria-label="{{ $completeActionLabel }}">
                                         {!! $navIcon('completed') !!}
                                         <span>{{ $completeActionLabel }}</span>
                                     </a>
                                 @endif
                             </div>
-                        </div>
+                        </article>
                     @endforeach
                 </div>
 
@@ -1370,6 +1797,36 @@
 document.addEventListener('DOMContentLoaded', function () {
     const selectAll = document.getElementById('deliverySelectAll');
     const selectedCount = document.getElementById('deliverySelectedCount');
+    const taskCards = Array.from(document.querySelectorAll('[data-task-card][data-task-href]'));
+
+    const isInteractiveTarget = (target) => Boolean(
+        target.closest('a, button, input, select, textarea, summary, details, form, label')
+    );
+
+    taskCards.forEach((card) => {
+        const href = card.getAttribute('data-task-href');
+
+        if (!href) {
+            return;
+        }
+
+        card.addEventListener('click', function (event) {
+            if (isInteractiveTarget(event.target)) {
+                return;
+            }
+
+            window.location.href = href;
+        });
+
+        card.addEventListener('keydown', function (event) {
+            if (!['Enter', ' '].includes(event.key) || isInteractiveTarget(event.target)) {
+                return;
+            }
+
+            event.preventDefault();
+            window.location.href = href;
+        });
+    });
 
     if (!selectAll || !selectedCount) {
         return;

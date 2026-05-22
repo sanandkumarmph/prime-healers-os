@@ -160,12 +160,23 @@
         return $section;
     })->filter(fn ($section) => !empty($section['items']))->values();
 
-    $mobilePrimaryItems = collect([
-        ['label' => 'Dashboard', 'icon' => 'dashboard', 'href' => ($currentUser?->canAccessDashboard() ?? false) ? $safeRoute('dashboard') : null, 'active' => request()->routeIs('dashboard')],
-        ['label' => 'Customers', 'icon' => 'customers', 'href' => (!$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('customers', 'read') ?? false)) ? $safeRoute('customers.index') : null, 'active' => request()->routeIs('customers.*')],
-        ['label' => 'Rentals', 'icon' => 'rentals', 'href' => (!$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('rentals', 'read') ?? false)) ? $safeRoute('rentals.index') : null, 'active' => request()->routeIs('rentals.*')],
-        ['label' => 'Sales', 'icon' => 'sales', 'href' => ($currentUser?->canAccessModule('sales', 'read') ?? false) ? $safeRoute('sales.index') : null, 'active' => request()->routeIs('sales.*')],
-    ])->filter(fn ($item) => !empty($item['href']))->values();
+    $mobilePrimaryItems = $isDeliveryFacingMenuRole
+        ? collect([
+            ['label' => 'Dashboard', 'icon' => 'dashboard', 'href' => ($currentUser?->canAccessDashboard() ?? false) ? $safeRoute('dashboard') : null, 'active' => request()->routeIs('dashboard')],
+            ['label' => 'Tasks', 'icon' => 'deliveries', 'href' => ($currentUser?->canAccessModule('deliveries', 'read') ?? false) ? $safeRoute('deliveries.index') : null, 'active' => request()->routeIs('deliveries.index') || request()->routeIs('deliveries.show') || request()->routeIs('deliveries.edit')],
+            ['label' => 'Pickups', 'icon' => 'pickup', 'href' => $pickupsHref, 'active' => request()->routeIs('pickups.assigned') || (request()->routeIs('deliveries.index') && request('task_type') === 'pickup') || (request()->routeIs('deliveries.show') && request()->route('delivery')?->type === 'pickup')],
+            ['label' => 'Notifications', 'icon' => 'invoices', 'href' => $topbarNotificationsViewAllHref, 'active' => request()->routeIs('notifications.*')],
+        ])
+        : collect([
+            ['label' => 'Dashboard', 'icon' => 'dashboard', 'href' => ($currentUser?->canAccessDashboard() ?? false) ? $safeRoute('dashboard') : null, 'active' => request()->routeIs('dashboard')],
+            ['label' => 'Customers', 'icon' => 'customers', 'href' => (!$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('customers', 'read') ?? false)) ? $safeRoute('customers.index') : null, 'active' => request()->routeIs('customers.*')],
+            ['label' => 'Rentals', 'icon' => 'rentals', 'href' => (!$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('rentals', 'read') ?? false)) ? $safeRoute('rentals.index') : null, 'active' => request()->routeIs('rentals.*')],
+            ['label' => 'Sales', 'icon' => 'sales', 'href' => ($currentUser?->canAccessModule('sales', 'read') ?? false) ? $safeRoute('sales.index') : null, 'active' => request()->routeIs('sales.*')],
+        ]);
+
+    $mobilePrimaryItems = $mobilePrimaryItems
+        ->filter(fn ($item) => !empty($item['href']))
+        ->values();
 
     $quickAddItems = collect([
         ['label' => 'New Customer', 'icon' => 'customers', 'href' => ($currentUser?->canAccessModule('customers', 'create') ?? false) ? $safeRoute('customers.create') : null],
@@ -179,7 +190,7 @@
         ->flatMap(fn ($section) => $section['items'])
         ->merge(collect($organizationItems)->filter(fn ($item) => !empty($item['visible']) && !empty($item['href'])))
         ->filter(fn ($item) => !empty($item['href']))
-        ->reject(fn ($item) => in_array($item['label'], ['Dashboard', 'Rentals', 'Sales', 'Customers'], true))
+        ->reject(fn ($item) => in_array($item['label'], ['Dashboard', 'Rentals', 'Sales', 'Customers', 'Tasks', 'Pickups', 'Notifications'], true))
         ->values()
         ->all();
 
@@ -195,6 +206,7 @@
             'products' => '<svg '.$attrs.'><path d="M20.5 7.5 12 3 3.5 7.5 12 12l8.5-4.5Z"/><path d="M3.5 7.5V16L12 21l8.5-5V7.5"/><path d="M12 12v9"/></svg>',
             'assets' => '<svg '.$attrs.'><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7"/><path d="M2 7h20v5H2z"/><path d="M12 7v14"/><path d="M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7Z"/><path d="M12 7h4.5a2.5 2.5 0 1 0 0-5C13 2 12 7 12 7Z"/></svg>',
             'deliveries' => '<svg '.$attrs.'><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><path d="M7 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="M18 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/></svg>',
+            'pickup' => '<svg '.$attrs.'><path d="M12 3v11"/><path d="m8 10 4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>',
             'invoices' => '<svg '.$attrs.'><path d="M6 2h12v20l-3-2-3 2-3-2-3 2V2Z"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h3"/></svg>',
             'roles' => '<svg '.$attrs.'><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-5"/></svg>',
             'cities' => '<svg '.$attrs.'><path d="M12 21s7-5.1 7-11a7 7 0 1 0-14 0c0 5.9 7 11 7 11Z"/><path d="M12 10.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/></svg>',

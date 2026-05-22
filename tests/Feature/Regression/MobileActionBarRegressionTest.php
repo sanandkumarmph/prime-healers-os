@@ -185,4 +185,25 @@ class MobileActionBarRegressionTest extends TestCase
             ->assertSee('verify-return-form-grid', false)
             ->assertSee('verify-return-form-actions', false);
     }
+
+    public function test_delivery_taskboard_includes_compact_mobile_command_toolbar_and_clickable_task_cards(): void
+    {
+        $delivery = Delivery::create([
+            'organization_id' => $this->organizationId,
+            'type' => 'delivery',
+            'status' => 'pending',
+            'assigned_user_id' => auth()->id(),
+            'scheduled_at' => now(),
+            'notes' => 'Mobile taskboard compact workflow test',
+        ]);
+
+        $response = $this->get(route('deliveries.index'));
+
+        $response->assertOk()
+            ->assertSee('Mobile task controls', false)
+            ->assertSeeText('Task Type')
+            ->assertSee('data-task-card', false)
+            ->assertSee(route('deliveries.show', $delivery), false)
+            ->assertSeeText('Start Delivery');
+    }
 }

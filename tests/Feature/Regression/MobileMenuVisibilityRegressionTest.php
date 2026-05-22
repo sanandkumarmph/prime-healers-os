@@ -50,4 +50,23 @@ class MobileMenuVisibilityRegressionTest extends TestCase
             ->assertDontSee('mobile-nav-item is-disabled', false)
             ->assertDontSee('mobile-more-link is-disabled', false);
     }
+
+    public function test_delivery_user_mobile_navigation_prioritizes_field_ops_links(): void
+    {
+        $organization = TestData::organization();
+        $user = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+
+        $response = $this->actingAs($user)->get(route('profile.edit'));
+
+        $response->assertOk()
+            ->assertSee('Dashboard')
+            ->assertSee('Tasks')
+            ->assertSee('Pickups')
+            ->assertSee('Notifications')
+            ->assertDontSee('Customers')
+            ->assertDontSee('Rentals')
+            ->assertDontSee('Sales');
+    }
 }

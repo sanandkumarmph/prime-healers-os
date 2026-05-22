@@ -261,8 +261,31 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
         $this->get(route('deliveries.show', $delivery))
             ->assertOk()
             ->assertSeeText('View Proof')
+            ->assertSee('id="delivery-proof-history"', false)
+            ->assertDontSee('id="delivery-proof-history" class="proof-history-shell" open', false)
             ->assertDontSeeText('Start Checklist')
             ->assertDontSeeText('Completion Checklist');
+    }
+
+    public function test_delivery_detail_uses_compact_guided_workflow_copy_for_field_users(): void
+    {
+        $organization = TestData::organization();
+        $deliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+
+        $this->actingAs($deliveryUser);
+
+        $delivery = $this->makeDeliveryTask($organization->id, $deliveryUser->id, 'delivery', 'in_progress');
+
+        $this->get(route('deliveries.show', $delivery))
+            ->assertOk()
+            ->assertSeeText('Capture Photos')
+            ->assertSeeText('Capture GPS')
+            ->assertSeeText('Customer Signature')
+            ->assertSeeText('Capture GPS or add a reason.')
+            ->assertSeeText('Required steps only.')
+            ->assertSeeText('Finish each step before completion.');
     }
 
     public function test_delivery_completion_requires_photos_signature_and_location_or_reason(): void

@@ -256,12 +256,27 @@
     .detail-btn-secondary { background:#fff; border-color:#cbd5e1; color:#334155; }
     .detail-card { background:#fff; border:1px solid #dbe3ef; border-radius:14px; padding:14px; box-shadow:0 8px 24px rgba(15, 23, 42, 0.04); }
     .detail-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:14px; }
+    .detail-summary-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px 14px; }
+    .detail-summary-row { display:grid; gap:4px; min-width:0; }
+    .detail-summary-row.span-2 { grid-column:span 2; }
+    .detail-summary-row .label { margin-bottom:0; }
+    .detail-summary-row .value { overflow-wrap:anywhere; }
+    .detail-summary-note { color:#475569; font-size:12px; line-height:1.45; }
     .span-4 { grid-column:span 4; }
     .span-6 { grid-column:span 6; }
     .span-12 { grid-column:span 12; }
     .label { display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#64748b; margin-bottom:5px; }
     .value { color:#0f172a; font-size:14px; }
     .status-badge { display:inline-flex; align-items:center; padding:5px 10px; border-radius:999px; font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; }
+    .progress-card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px; }
+    .progress-card { border:1px solid #e2e8f0; border-radius:14px; padding:12px; background:#fcfdff; display:grid; gap:10px; }
+    .progress-card-head { display:grid; gap:4px; }
+    .progress-card-head strong { color:#0f172a; font-size:14px; line-height:1.4; }
+    .progress-card-head small { color:#64748b; font-size:12px; line-height:1.4; }
+    .progress-metric-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; }
+    .progress-metric { display:grid; gap:2px; padding:8px 10px; border:1px solid #edf2f7; border-radius:12px; background:#fff; }
+    .progress-metric span { color:#64748b; font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
+    .progress-metric strong { color:#0f172a; font-size:14px; }
     .asset-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:10px; }
     .asset-box { border:1px solid #dbe3ef; border-radius:12px; padding:12px; background:#fcfdff; }
     .item-progress-table { width:100%; border-collapse:separate; border-spacing:0; }
@@ -287,7 +302,7 @@
         background:#fff;
     }
     .workflow-proof-field textarea { min-height:86px; resize:vertical; }
-    .workflow-proof-help { color:#64748b; font-size:12px; line-height:1.45; }
+    .workflow-proof-help { color:#64748b; font-size:11.5px; line-height:1.45; }
     .workflow-proof-badges { display:flex; gap:8px; flex-wrap:wrap; }
     .workflow-proof-badge {
         display:inline-flex;
@@ -360,10 +375,69 @@
         touch-action:none;
         cursor:crosshair;
     }
+    .workflow-step-list { display:grid; gap:12px; }
+    .workflow-step {
+        display:grid;
+        gap:10px;
+        padding:12px;
+        border:1px solid #e2e8f0;
+        border-radius:14px;
+        background:#fbfdff;
+    }
+    .workflow-step-head {
+        display:flex;
+        align-items:flex-start;
+        gap:10px;
+    }
+    .workflow-step-index {
+        width:26px;
+        height:26px;
+        flex:0 0 26px;
+        border-radius:999px;
+        display:grid;
+        place-items:center;
+        background:#dbeafe;
+        color:#1d4ed8;
+        font-size:11px;
+        font-weight:800;
+    }
+    .workflow-step-head strong {
+        display:block;
+        color:#0f172a;
+        font-size:13px;
+        line-height:1.35;
+    }
+    .workflow-step-head span {
+        display:block;
+        color:#64748b;
+        font-size:11.5px;
+        line-height:1.45;
+        margin-top:3px;
+    }
     .workflow-proof-history {
         display:grid;
         gap:12px;
     }
+    .proof-history-shell {
+        border:1px solid #e2e8f0;
+        border-radius:16px;
+        background:#fff;
+        overflow:hidden;
+    }
+    .proof-history-shell > summary {
+        list-style:none;
+        cursor:pointer;
+        padding:12px 14px;
+    }
+    .proof-history-shell > summary::-webkit-details-marker { display:none; }
+    .proof-history-summary {
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        gap:12px;
+        flex-wrap:wrap;
+    }
+    .proof-history-body { padding:0 14px 14px; }
     .workflow-proof-history-item {
         display:grid;
         grid-template-columns:minmax(0, 120px) minmax(0, 1fr);
@@ -387,6 +461,9 @@
     .workflow-proof-divider { height:1px; background:#e2e8f0; margin:4px 0; }
     @media (max-width: 900px) {
         .span-4, .span-6 { grid-column:span 12; }
+        .detail-summary-grid { grid-template-columns:1fr; }
+        .detail-summary-row.span-2 { grid-column:span 1; }
+        .progress-metric-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
         .item-progress-table, .item-progress-table tbody, .item-progress-table tr, .item-progress-table td { display:block; width:100%; }
         .item-progress-table thead { display:none; }
         .item-progress-table tr { border:1px solid #e2e8f0; border-radius:12px; margin-bottom:10px; overflow:hidden; }
@@ -422,7 +499,7 @@
     <div class="delivery-detail-header">
         <div>
             <h1>{{ ucfirst($delivery->type) }} #{{ $delivery->id }}</h1>
-            <p>Compact logistics detail for scheduling, assignee, warehouse, and linked {{ $isSaleTask ? 'sale order' : 'rental assets' }}.</p>
+            <p>Field task summary, proof steps, and contact details for this {{ $delivery->type }}.</p>
         </div>
         <div class="detail-actions">
             <a href="{{ route('deliveries.index') }}" class="detail-btn-secondary">Back</a>
@@ -442,37 +519,72 @@
         </div>
     </div>
     <div class="mobile-inline-actions" aria-label="Delivery quick actions">
-        @foreach($mobileQuickActions as $action)
-            @php
-                $method = strtoupper((string) ($action['method'] ?? 'POST'));
-            @endphp
-            @if(($action['type'] ?? 'link') === 'form')
-                <form action="{{ $action['action'] }}" method="{{ in_array($method, ['GET', 'POST'], true) ? $method : 'POST' }}" @if(filled($action['confirm'] ?? null)) onsubmit="return confirm('{{ e($action['confirm']) }}');" @endif style="margin:0;">
-                    @csrf
-                    @if(!in_array($method, ['GET', 'POST'], true))
-                        @method($method)
-                    @endif
-                    <button type="submit" class="detail-btn-secondary{{ !empty($action['danger']) ? ' is-danger' : '' }}" style="{{ !empty($action['danger']) ? 'background:#fff1f2;border-color:#fecaca;color:#991b1b;' : '' }}">{{ $action['label'] }}</button>
-                </form>
-            @else
-                <a href="{{ $action['href'] }}" class="detail-btn-secondary" @if(!empty($action['target'])) target="{{ $action['target'] }}" @endif @if(!empty($action['rel'])) rel="{{ $action['rel'] }}" @endif>{{ $action['label'] }}</a>
-            @endif
-        @endforeach
+        @if($linkedPhone)
+            <a href="tel:{{ preg_replace('/\D+/', '', $linkedPhone) }}" class="detail-btn-secondary" aria-label="Call contact">Call</a>
+        @endif
+        @if($linkedWhatsapp)
+            <a href="https://wa.me/{{ preg_replace('/\D+/', '', $linkedWhatsapp) }}" target="_blank" rel="noopener noreferrer" class="detail-btn-secondary" aria-label="WhatsApp contact">WhatsApp</a>
+        @endif
+        @if($linkedMapUrl)
+            <a href="{{ $linkedMapUrl }}" target="_blank" rel="noopener" class="detail-btn-secondary" aria-label="Open map">Map</a>
+        @endif
+        @if($canUpdateTask && $delivery->status === 'pending')
+            <a href="#{{ $workflowProofSectionId }}" class="detail-btn">{{ $delivery->type === 'pickup' ? 'Start Pickup' : 'Start Delivery' }}</a>
+        @elseif($canUpdateTask && $delivery->status === 'in_progress')
+            <a href="#{{ $workflowProofSectionId }}" class="detail-btn">{{ $delivery->type === 'pickup' ? 'Complete Pickup' : 'Complete Delivery' }}</a>
+        @elseif($hasProofHistory)
+            <a href="#delivery-proof-history" class="detail-btn">Proof</a>
+        @endif
+        <details class="mobile-actions-menu">
+            <summary aria-label="More task actions">More</summary>
+            <div class="mobile-actions-panel">
+                <a href="{{ route('deliveries.index') }}">Back to Tasks</a>
+                @if($hasProofHistory)
+                    <a href="#delivery-proof-history">Proof History</a>
+                @endif
+                @if($canUpdateTask)
+                    <a href="{{ route('deliveries.edit', $delivery) }}">Edit Assignment</a>
+                @endif
+                @if($canCancelTask)
+                    <a href="#{{ $cancellationSectionId }}">Cancel Task</a>
+                @endif
+            </div>
+        </details>
     </div>
 
     <div class="detail-card">
-        <div class="detail-grid">
-            <div class="span-4">
+        <div class="detail-summary-grid">
+            <div class="detail-summary-row">
                 <span class="label">Status</span>
                 <span class="status-badge" style="{{ $statusStyle }}">{{ $displayStatusLabel }}</span>
             </div>
-            <div class="span-4">
-                <span class="label">Assignment Type</span>
-                <div class="value">{{ ucwords(str_replace('_', ' ', $delivery->assignment_type ?? 'delivery_team')) }}</div>
+            <div class="detail-summary-row">
+                <span class="label">Type</span>
+                <div class="value">{{ ucfirst($delivery->type) }}</div>
             </div>
-            <div class="span-4">
-                <span class="label">Scheduled At</span>
+            <div class="detail-summary-row">
+                <span class="label">Scheduled</span>
                 <div class="value">{{ $delivery->scheduled_at ? $delivery->scheduled_at->format('d M Y h:i A') : 'Not scheduled' }}</div>
+            </div>
+            <div class="detail-summary-row">
+                <span class="label">Contact</span>
+                <div class="value">{{ $linkedCustomerName ?: 'Customer' }}</div>
+                <div class="detail-summary-note">{{ $linkedPhone ?: 'No phone saved' }}</div>
+            </div>
+            <div class="detail-summary-row">
+                <span class="label">Product</span>
+                <div class="value">{{ $isSaleTask ? ($delivery->sale?->product?->name ?? 'Sale item') : ($delivery->rental?->product?->name ?? 'Rental item') }}</div>
+            </div>
+            <div class="detail-summary-row">
+                <span class="label">Warehouse</span>
+                <div class="value">{{ $isSaleTask ? ($delivery->sale?->asset?->warehouse?->name ?? 'Sale dispatch') : ($delivery->rental?->dispatchWarehouse?->name ?? 'Any warehouse') }}</div>
+            </div>
+            <div class="detail-summary-row span-2">
+                <span class="label">Service Address</span>
+                <div class="value">{{ collect([$linkedAddress, $linkedCity])->filter()->join(', ') ?: 'No service address captured.' }}</div>
+                @if($linkedMapUrl)
+                    <div style="margin-top:8px;"><a href="{{ $linkedMapUrl }}" target="_blank" rel="noopener" class="detail-btn-secondary">Open Map</a></div>
+                @endif
             </div>
         </div>
     </div>
@@ -482,108 +594,89 @@
         <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
             <div>
                 <h2 style="margin:0;">Item Progress</h2>
-                <div style="margin-top:6px; color:#64748b; font-size:13px;">Record delivered and picked-up quantities per rental item without closing the entire rental at once.</div>
+                <div style="margin-top:6px; color:#64748b; font-size:12px;">Clear counts for each rental item.</div>
             </div>
         </div>
-        <div style="overflow:auto; margin-top:14px;">
-            <table class="item-progress-table">
-                <thead>
-                    <tr>
-                        <th>Item</th>
-                        <th>Ordered</th>
-                        <th>Delivered</th>
-                        <th>Pending Delivery</th>
-                        <th>Returned</th>
-                        <th>Pending Pickup</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($rentalItems as $item)
-                        @php
-                            $orderedQty = (int) ($item->ordered_quantity ?? $item->quantity ?? 0);
-                            $deliveredQty = (int) ($item->delivered_quantity_value ?? 0);
-                            $pendingDeliveryQty = (int) ($item->pending_delivery_quantity ?? max($orderedQty - $deliveredQty, 0));
-                            $returnedQty = (int) ($item->returned_quantity_value ?? 0);
-                            $pendingPickupQty = (int) ($item->pending_pickup_quantity ?? max($deliveredQty - $returnedQty, 0));
-                            $linkedAssetIds = collect($item->asset_ids ?? [])
-                                ->filter(fn ($assetId) => filled($assetId))
-                                ->map(fn ($assetId) => (int) $assetId)
-                                ->filter(fn ($assetId) => $assetId > 0)
-                                ->values();
-                            $hasAwaitingVerificationAsset = $linkedAssetIds->isNotEmpty()
-                                && \App\Models\Asset::query()
-                                    ->where('organization_id', $delivery->organization_id)
-                                    ->whereIn('id', $linkedAssetIds->all())
-                                    ->where('asset_status', \App\Models\Asset::STATUS_AWAITING_VERIFICATION)
-                                    ->exists();
-                            $itemDeliveryStatus = $pendingDeliveryQty > 0
-                                ? ($deliveredQty > 0 ? 'partially_delivered' : 'delivery_pending')
-                                : ($deliveredQty > 0 ? 'delivered' : 'delivery_pending');
-                            $itemLifecycleStatuses = collect();
+        <div class="progress-card-grid" style="margin-top:14px;">
+            @foreach($rentalItems as $item)
+                @php
+                    $orderedQty = (int) ($item->ordered_quantity ?? $item->quantity ?? 0);
+                    $deliveredQty = (int) ($item->delivered_quantity_value ?? 0);
+                    $pendingDeliveryQty = (int) ($item->pending_delivery_quantity ?? max($orderedQty - $deliveredQty, 0));
+                    $returnedQty = (int) ($item->returned_quantity_value ?? 0);
+                    $pendingPickupQty = (int) ($item->pending_pickup_quantity ?? max($deliveredQty - $returnedQty, 0));
+                    $linkedAssetIds = collect($item->asset_ids ?? [])
+                        ->filter(fn ($assetId) => filled($assetId))
+                        ->map(fn ($assetId) => (int) $assetId)
+                        ->filter(fn ($assetId) => $assetId > 0)
+                        ->values();
+                    $hasAwaitingVerificationAsset = $linkedAssetIds->isNotEmpty()
+                        && \App\Models\Asset::query()
+                            ->where('organization_id', $delivery->organization_id)
+                            ->whereIn('id', $linkedAssetIds->all())
+                            ->where('asset_status', \App\Models\Asset::STATUS_AWAITING_VERIFICATION)
+                            ->exists();
+                    $itemDeliveryStatus = $pendingDeliveryQty > 0
+                        ? ($deliveredQty > 0 ? 'partially_delivered' : 'delivery_pending')
+                        : ($deliveredQty > 0 ? 'delivered' : 'delivery_pending');
+                    $itemLifecycleStatuses = collect();
 
-                            if ($deliveredQty > $returnedQty) {
-                                $itemLifecycleStatuses->push('with_customer');
-                            }
+                    if ($deliveredQty > $returnedQty) {
+                        $itemLifecycleStatuses->push('with_customer');
+                    }
 
-                            if ($pendingPickupQty > 0) {
-                                if (!$pickupAssigned) {
-                                    $itemLifecycleStatuses->push('pickup_not_assigned');
-                                } else {
-                                    $itemLifecycleStatuses->push($returnedQty > 0 ? 'partially_returned' : 'pickup_pending');
-                                }
-                            } elseif ($deliveredQty > 0 && $returnedQty === $deliveredQty) {
-                                $itemLifecycleStatuses->push($hasAwaitingVerificationAsset ? 'awaiting_verification' : 'returned');
-                            }
+                    if ($pendingPickupQty > 0) {
+                        if (!$pickupAssigned) {
+                            $itemLifecycleStatuses->push('pickup_not_assigned');
+                        } else {
+                            $itemLifecycleStatuses->push($returnedQty > 0 ? 'partially_returned' : 'pickup_pending');
+                        }
+                    } elseif ($deliveredQty > 0 && $returnedQty === $deliveredQty) {
+                        $itemLifecycleStatuses->push($hasAwaitingVerificationAsset ? 'awaiting_verification' : 'returned');
+                    }
 
-                            $itemLifecycleStatuses = $itemLifecycleStatuses->unique()->values();
-                        @endphp
-                        <tr>
-                            <td>
-                                <div class="value" style="font-weight:700;">{{ $item->product->name ?? $delivery->rental?->product?->name ?? 'Rental item' }}</div>
-                                @if(!empty($item->notes))
-                                    <div style="margin-top:4px; color:#64748b; font-size:12px;">{{ $item->notes }}</div>
-                                @endif
-                            </td>
-                            <td class="value">{{ $orderedQty }}</td>
-                            <td class="value">{{ $deliveredQty }}</td>
-                            <td class="value">{{ $pendingDeliveryQty }}</td>
-                            <td class="value">{{ $returnedQty }}</td>
-                            <td class="value">{{ $pendingPickupQty }}</td>
-                            <td>
-                                <div style="display:grid; gap:6px;">
-                                    <span class="status-badge" style="{{ $itemProgressBadge($itemDeliveryStatus) }}">{{ $itemProgressLabel($itemDeliveryStatus) }}</span>
-                                    @foreach($itemLifecycleStatuses as $itemLifecycleStatus)
-                                        <span class="status-badge" style="{{ $itemProgressBadge($itemLifecycleStatus) }}">{{ $itemProgressLabel($itemLifecycleStatus) }}</span>
-                                    @endforeach
-                                </div>
-                            </td>
-                            <td>
-                                @if($canUpdateTask && $delivery->type === 'delivery' && in_array($delivery->status, ['pending', 'in_progress'], true) && $pendingDeliveryQty > 0)
-                                    <form method="POST" action="{{ route('deliveries.partial_delivery', $delivery) }}" class="item-progress-form">
-                                        @csrf
-                                        @method('PUT')
-                                        <input type="hidden" name="rental_item_id" value="{{ $item->id }}">
-                                        <input type="number" name="quantity" min="1" max="{{ $pendingDeliveryQty }}" value="1" aria-label="Deliver quantity">
-                                        <button type="submit" class="detail-btn">Deliver</button>
-                                    </form>
-                                @elseif($canUpdateTask && $delivery->type === 'pickup' && in_array($delivery->status, ['pending', 'in_progress'], true) && $pendingPickupQty > 0)
-                                    <form method="POST" action="{{ route('deliveries.partial_pickup', $delivery) }}" class="item-progress-form">
-                                        @csrf
-                                        @method('PUT')
-                                        <input type="hidden" name="rental_item_id" value="{{ $item->id }}">
-                                        <input type="number" name="quantity" min="1" max="{{ $pendingPickupQty }}" value="1" aria-label="Pickup quantity">
-                                        <button type="submit" class="detail-btn">Pickup</button>
-                                    </form>
-                                @else
-                                    <span style="color:#64748b; font-size:12px;">No action pending.</span>
-                                @endif
-                            </td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
+                    $itemLifecycleStatuses = $itemLifecycleStatuses->unique()->values();
+                @endphp
+                <div class="progress-card">
+                    <div class="progress-card-head">
+                        <strong>{{ $item->product->name ?? $delivery->rental?->product?->name ?? 'Rental item' }}</strong>
+                        @if(!empty($item->notes))
+                            <small>{{ $item->notes }}</small>
+                        @endif
+                    </div>
+                    <div class="progress-metric-grid">
+                        <div class="progress-metric"><span>Ordered</span><strong>{{ $orderedQty }}</strong></div>
+                        <div class="progress-metric"><span>Delivered</span><strong>{{ $deliveredQty }}</strong></div>
+                        <div class="progress-metric"><span>Picked Up</span><strong>{{ $returnedQty }}</strong></div>
+                        <div class="progress-metric"><span>Qty Pending</span><strong>{{ $delivery->type === 'pickup' ? $pendingPickupQty : $pendingDeliveryQty }}</strong></div>
+                    </div>
+                    <div style="display:grid; gap:6px;">
+                        <span class="status-badge" style="{{ $itemProgressBadge($itemDeliveryStatus) }}">{{ $itemProgressLabel($itemDeliveryStatus) }}</span>
+                        @foreach($itemLifecycleStatuses as $itemLifecycleStatus)
+                            <span class="status-badge" style="{{ $itemProgressBadge($itemLifecycleStatus) }}">{{ $itemProgressLabel($itemLifecycleStatus) }}</span>
+                        @endforeach
+                    </div>
+                    @if($canUpdateTask && $delivery->type === 'delivery' && in_array($delivery->status, ['pending', 'in_progress'], true) && $pendingDeliveryQty > 0)
+                        <form method="POST" action="{{ route('deliveries.partial_delivery', $delivery) }}" class="item-progress-form">
+                            @csrf
+                            @method('PUT')
+                            <input type="hidden" name="rental_item_id" value="{{ $item->id }}">
+                            <input type="number" name="quantity" min="1" max="{{ $pendingDeliveryQty }}" value="1" aria-label="Deliver quantity">
+                            <button type="submit" class="detail-btn">Deliver</button>
+                        </form>
+                    @elseif($canUpdateTask && $delivery->type === 'pickup' && in_array($delivery->status, ['pending', 'in_progress'], true) && $pendingPickupQty > 0)
+                        <form method="POST" action="{{ route('deliveries.partial_pickup', $delivery) }}" class="item-progress-form">
+                            @csrf
+                            @method('PUT')
+                            <input type="hidden" name="rental_item_id" value="{{ $item->id }}">
+                            <input type="number" name="quantity" min="1" max="{{ $pendingPickupQty }}" value="1" aria-label="Pickup quantity">
+                            <button type="submit" class="detail-btn">Pickup</button>
+                        </form>
+                    @else
+                        <span style="color:#64748b; font-size:12px;">No action pending.</span>
+                    @endif
+                </div>
+            @endforeach
         </div>
     </div>
     @endif
@@ -591,8 +684,8 @@
     <div class="detail-card workflow-proof-card" id="{{ $workflowProofSectionId }}">
         <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
             <div>
-                <h2 style="margin:0;">{{ $delivery->type === 'pickup' ? 'Pickup' : 'Delivery' }} Proof Capture</h2>
-                <div style="margin-top:6px; color:#64748b; font-size:13px;">Capture location, customer acknowledgement, and small compressed proof images without exposing files publicly.</div>
+                <h2 style="margin:0;">{{ $delivery->type === 'pickup' ? 'Pickup Workflow' : 'Delivery Workflow' }}</h2>
+                <div style="margin-top:6px; color:#64748b; font-size:12px;">Finish each step before completion.</div>
             </div>
             <div class="workflow-proof-badges">
                 <span class="workflow-proof-badge">Target image size {{ $proofConfig['target_kb'] }} KB</span>
@@ -611,10 +704,18 @@
                 @csrf
                 @method('PUT')
                 <input type="hidden" name="workflow_capture_form" value="1">
-                <div class="workflow-proof-grid">
+                <div class="workflow-step-list">
+                    <section class="workflow-step">
+                        <div class="workflow-step-head">
+                            <span class="workflow-step-index">1</span>
+                            <div>
+                                <strong>Start {{ ucfirst($delivery->type) }}</strong>
+                                <span>Capture GPS or add a reason.</span>
+                            </div>
+                        </div>
+                        <div class="workflow-proof-grid">
                     <div class="workflow-proof-field span-12">
-                        <label>Start location capture</label>
-                        <div class="workflow-proof-help">Use browser GPS at {{ $delivery->type }} start. If location permission is denied, add the reason and continue.</div>
+                        <label>Start location</label>
                         <div class="workflow-proof-actions">
                             <button type="button" class="workflow-proof-trigger is-primary" data-capture-location>Capture Current Location</button>
                             <button type="button" class="workflow-proof-trigger" data-recapture-location hidden>Re-capture Location</button>
@@ -625,14 +726,14 @@
                     </div>
                     <div class="workflow-proof-field">
                         <label for="location_missing_reason_start">Location unavailable reason</label>
-                        <textarea id="location_missing_reason_start" name="location_missing_reason" placeholder="Explain why location could not be captured.">{{ old('location_missing_reason') }}</textarea>
+                        <textarea id="location_missing_reason_start" name="location_missing_reason" placeholder="Why GPS could not be captured.">{{ old('location_missing_reason') }}</textarea>
                         @error('location_missing_reason')
                             <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
                         @enderror
                     </div>
                     <div class="workflow-proof-field">
                         <label>Captured coordinates</label>
-                        <div class="workflow-proof-help">Latitude, longitude, and accuracy are filled automatically when GPS succeeds.</div>
+                        <div class="workflow-proof-help">Filled after GPS capture.</div>
                         <div class="workflow-proof-status">
                             <div>Lat: <span data-location-lat-preview>{{ old('location_latitude', '-') }}</span></div>
                             <div>Lng: <span data-location-lng-preview>{{ old('location_longitude', '-') }}</span></div>
@@ -640,6 +741,8 @@
                             <div>Captured: <span data-location-captured-preview>{{ old('location_captured_at', '-') }}</span></div>
                         </div>
                     </div>
+                        </div>
+                    </section>
                 </div>
                 <input type="hidden" name="location_latitude" value="{{ old('location_latitude') }}" data-location-latitude>
                 <input type="hidden" name="location_longitude" value="{{ old('location_longitude') }}" data-location-longitude>
@@ -647,7 +750,7 @@
                 <input type="hidden" name="location_captured_at" value="{{ old('location_captured_at') }}" data-location-captured-at>
                 <div class="workflow-proof-actions">
                     <button type="submit" class="detail-btn">{{ $delivery->type === 'pickup' ? 'Start Pickup' : 'Start Delivery' }}</button>
-                    <div class="workflow-proof-help">Start is blocked until GPS is captured or a missing-location reason is provided.</div>
+                    <div class="workflow-proof-help">GPS or reason required.</div>
                 </div>
             </form>
         @elseif($canUpdateTask && $delivery->status === 'in_progress')
@@ -658,12 +761,21 @@
                 @if((!$isSaleTask && $delivery->type === 'delivery' && $delivery->rental?->pendingDeliveryQuantityTotal() > 0) || (!$isSaleTask && $delivery->type === 'pickup' && $delivery->rental?->pendingPickupQuantityTotal() > 0))
                     <input type="hidden" name="confirm_partial" value="1">
                 @endif
-                <div class="workflow-proof-grid">
+                <div class="workflow-step-list">
+                    <section class="workflow-step">
+                        <div class="workflow-step-head">
+                            <span class="workflow-step-index">2</span>
+                            <div>
+                                <strong>Capture Photos</strong>
+                                <span>{{ $delivery->type === 'pickup' ? 'Capture pickup proof.' : 'Capture delivery proof.' }}</span>
+                            </div>
+                        </div>
+                        <div class="workflow-proof-grid">
                     @if($delivery->type === 'delivery')
                         <div class="workflow-proof-field">
                             <label for="delivery_device_photos">Delivered device photo(s)</label>
                             <input id="delivery_device_photos" type="file" name="delivery_device_photos[]" accept="image/*" capture="environment" multiple data-compress-images>
-                            <div class="workflow-proof-help">At least one compressed device or product photo is required at delivery.</div>
+                            <div class="workflow-proof-help">Add at least one device photo.</div>
                             @error('delivery_device_photos')
                                 <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
                             @enderror
@@ -674,7 +786,7 @@
                         <div class="workflow-proof-field">
                             <label for="premises_photo">Premises / location photo</label>
                             <input id="premises_photo" type="file" name="premises_photo" accept="image/*" capture="environment" data-compress-images>
-                            <div class="workflow-proof-help">Premises photo is required only during delivery completion.</div>
+                            <div class="workflow-proof-help">Add one location photo.</div>
                             @error('premises_photo')
                                 <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
                             @enderror
@@ -683,7 +795,7 @@
                         <div class="workflow-proof-field">
                             <label for="pickup_device_photos">Picked-up device photo(s)</label>
                             <input id="pickup_device_photos" type="file" name="pickup_device_photos[]" accept="image/*" capture="environment" multiple data-compress-images>
-                            <div class="workflow-proof-help">At least one compressed pickup photo is required.</div>
+                            <div class="workflow-proof-help">Add at least one pickup photo.</div>
                             @error('pickup_device_photos')
                                 <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
                             @enderror
@@ -694,7 +806,7 @@
                         <div class="workflow-proof-field">
                             <label for="damage_photos">Damage photo(s)</label>
                             <input id="damage_photos" type="file" name="damage_photos[]" accept="image/*" capture="environment" multiple data-compress-images>
-                            <div class="workflow-proof-help">Required if damage is reported at pickup.</div>
+                            <div class="workflow-proof-help">Required if damage is reported.</div>
                             @error('damage_photos')
                                 <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
                             @enderror
@@ -705,7 +817,7 @@
                         <div class="workflow-proof-field span-12">
                             <label style="display:flex; align-items:center; gap:8px;">
                                 <input type="checkbox" name="damage_reported" value="1" {{ old('damage_reported') ? 'checked' : '' }}>
-                                Damage or missing accessories reported at pickup
+                                Damage or missing accessories reported
                             </label>
                             @error('damage_reported')
                                 <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
@@ -713,23 +825,47 @@
                         </div>
                         <div class="workflow-proof-field">
                             <label for="damage_notes">Damage notes</label>
-                            <textarea id="damage_notes" name="damage_notes" placeholder="Describe visible damage or concerns.">{{ old('damage_notes') }}</textarea>
+                            <textarea id="damage_notes" name="damage_notes" placeholder="Describe damage or issue.">{{ old('damage_notes') }}</textarea>
                             @error('damage_notes')
                                 <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
                             @enderror
                         </div>
                         <div class="workflow-proof-field">
                             <label for="missing_accessories_notes">Missing accessories notes</label>
-                            <textarea id="missing_accessories_notes" name="missing_accessories_notes" placeholder="List missing adapters, masks, humidifiers, etc.">{{ old('missing_accessories_notes') }}</textarea>
+                            <textarea id="missing_accessories_notes" name="missing_accessories_notes" placeholder="List missing accessories.">{{ old('missing_accessories_notes') }}</textarea>
                             @error('missing_accessories_notes')
                                 <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
                             @enderror
                         </div>
                     @endif
+                        </div>
+                    </section>
+
+                    @if($delivery->type === 'pickup')
+                        <section class="workflow-step">
+                            <div class="workflow-step-head">
+                                <span class="workflow-step-index">3</span>
+                                <div>
+                                    <strong>Condition Check</strong>
+                                <span>Log damage, missing accessories, or inspection need.</span>
+                                </div>
+                            </div>
+                            <div class="workflow-proof-help">Use notes and photos if the item is not in good condition.</div>
+                        </section>
+                    @endif
+
+                    <section class="workflow-step">
+                        <div class="workflow-step-head">
+                            <span class="workflow-step-index">4</span>
+                            <div>
+                                <strong>Capture GPS</strong>
+                                <span>Capture GPS or add a reason.</span>
+                            </div>
+                        </div>
+                        <div class="workflow-proof-grid">
 
                     <div class="workflow-proof-field span-12">
                         <label>{{ ucfirst($delivery->type) }} completion location</label>
-                        <div class="workflow-proof-help">Capture GPS on completion. If blocked, give a reason so the workflow is marked as location-missing.</div>
                         <div class="workflow-proof-actions">
                             <button type="button" class="workflow-proof-trigger is-primary" data-capture-location>Capture Current Location</button>
                             <button type="button" class="workflow-proof-trigger" data-recapture-location hidden>Re-capture Location</button>
@@ -739,7 +875,7 @@
                     </div>
                     <div class="workflow-proof-field">
                         <label for="location_missing_reason_complete">Location unavailable reason</label>
-                        <textarea id="location_missing_reason_complete" name="location_missing_reason" placeholder="Explain why GPS could not be captured.">{{ old('location_missing_reason') }}</textarea>
+                        <textarea id="location_missing_reason_complete" name="location_missing_reason" placeholder="Why GPS could not be captured.">{{ old('location_missing_reason') }}</textarea>
                         @error('location_missing_reason')
                             <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
                         @enderror
@@ -753,30 +889,56 @@
                             <div>Captured: <span data-location-captured-preview>{{ old('location_captured_at', '-') }}</span></div>
                         </div>
                     </div>
+                        </div>
+                    </section>
+
+                    <section class="workflow-step">
+                        <div class="workflow-step-head">
+                            <span class="workflow-step-index">5</span>
+                            <div>
+                                <strong>Customer Signature</strong>
+                                <span>Signature is required before completion.</span>
+                            </div>
+                        </div>
+                        <div class="workflow-proof-grid">
 
                     <div class="workflow-proof-field span-12">
-                        <label>Acknowledgement required before signature</label>
+                        <label>Acknowledgement</label>
                         <div class="workflow-proof-signature-wrap">
                             <div class="workflow-proof-help">{{ $acknowledgementText }}</div>
                             <canvas class="workflow-proof-signature-pad" data-signature-pad data-target-input="signature_data"></canvas>
                             <input type="hidden" name="signature_data" value="{{ old('signature_data') }}">
                             <div class="workflow-proof-actions">
                                 <button type="button" class="workflow-proof-trigger" data-signature-clear>Clear Signature</button>
-                                <div class="workflow-proof-help">Sign with a finger or stylus on mobile. Signature is stored privately.</div>
+                                <div class="workflow-proof-help">Sign with finger or stylus.</div>
                             </div>
                             @error('signature_data')
                                 <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
                             @enderror
                         </div>
                     </div>
+                        </div>
+                    </section>
+
+                    <section class="workflow-step">
+                        <div class="workflow-step-head">
+                            <span class="workflow-step-index">6</span>
+                            <div>
+                                <strong>Notes</strong>
+                                <span>Add short field notes if needed.</span>
+                            </div>
+                        </div>
+                        <div class="workflow-proof-grid">
 
                     <div class="workflow-proof-field span-12">
                         <label for="proof_notes">Workflow notes</label>
-                        <textarea id="proof_notes" name="proof_notes" placeholder="Add delivery or pickup notes for the operations team.">{{ old('proof_notes') }}</textarea>
+                        <textarea id="proof_notes" name="proof_notes" placeholder="Add short delivery or pickup notes.">{{ old('proof_notes') }}</textarea>
                         @error('proof_notes')
                             <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
                         @enderror
                     </div>
+                        </div>
+                    </section>
                 </div>
                 <input type="hidden" name="location_latitude" value="{{ old('location_latitude') }}" data-location-latitude>
                 <input type="hidden" name="location_longitude" value="{{ old('location_longitude') }}" data-location-longitude>
@@ -784,11 +946,11 @@
                 <input type="hidden" name="location_captured_at" value="{{ old('location_captured_at') }}" data-location-captured-at>
                 <div class="workflow-proof-actions">
                     <button type="submit" class="detail-btn">{{ $delivery->type === 'pickup' ? 'Complete Pickup' : 'Complete Delivery' }}</button>
-                    <div class="workflow-proof-help">Completion requires proof photos, customer signature, and location capture or a missing-location reason.</div>
+                    <div class="workflow-proof-help">Required steps only.</div>
                 </div>
             </form>
         @elseif(!$canUpdateTask && in_array($delivery->status, ['pending', 'in_progress'], true))
-            <div class="workflow-proof-status">You can review proof history for this task, but only the assigned workflow owner can capture start or completion proof.</div>
+            <div class="workflow-proof-status">You can review proof history, but only the assigned workflow owner can capture proof.</div>
         @endif
 
         @if($canCancelTask)
@@ -800,7 +962,7 @@
                 <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
                     <div>
                         <h3 style="margin:0; font-size:18px; color:#0f172a;">Cancel {{ ucfirst($delivery->type) }}</h3>
-                        <div class="workflow-proof-help">Cancellation requires a reason and removes this task from pending or in-progress workload counts.</div>
+                        <div class="workflow-proof-help">Reason required.</div>
                     </div>
                     <span class="workflow-proof-badge" style="background:#fff7ed; color:#9a3412;">Reason required</span>
                 </div>
@@ -835,23 +997,25 @@
 
                 <div class="workflow-proof-actions">
                     <button type="submit" class="detail-btn-secondary" style="background:#fff1f2;border-color:#fecaca;color:#991b1b;">Cancel {{ ucfirst($delivery->type) }}</button>
-                    <div class="workflow-proof-help">Cancelled tasks stay in history, but no longer count as pending or completed work.</div>
+                    <div class="workflow-proof-help">Cancelled tasks stay in history.</div>
                 </div>
             </form>
         @endif
 
         <div class="workflow-proof-divider"></div>
 
-        <div id="delivery-proof-history" class="workflow-proof-history">
-            <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
-                <div>
-                    <h3 style="margin:0; font-size:18px; color:#0f172a;">Proof History</h3>
-                    <div class="workflow-proof-help">Private proof files, location captures, signatures, and damage notes captured for this task.</div>
-                </div>
-                <div class="workflow-proof-badges">
+        <details id="delivery-proof-history" class="proof-history-shell">
+            <summary>
+                <div class="proof-history-summary">
+                    <div>
+                        <strong style="display:block; color:#0f172a; font-size:16px;">Proof History</strong>
+                        <span class="workflow-proof-help">Latest: {{ $deliveryProofs->first() ? \App\Models\DeliveryProof::labelForType($deliveryProofs->first()->proof_type) : 'No proof yet' }}</span>
+                    </div>
                     <span class="workflow-proof-badge">{{ $deliveryProofs->count() }} item{{ $deliveryProofs->count() === 1 ? '' : 's' }}</span>
                 </div>
-            </div>
+            </summary>
+            <div class="proof-history-body">
+        <div class="workflow-proof-history">
 
             @forelse($deliveryProofs as $proof)
                 @php
@@ -906,6 +1070,8 @@
                 <div class="workflow-proof-status">No proof has been captured for this task yet.</div>
             @endforelse
         </div>
+            </div>
+        </details>
     </div>
 
     @include('partials.activity-timeline', [
@@ -1048,7 +1214,20 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     const workflowSection = document.getElementById(@json($workflowProofSectionId));
     const cancellationSection = document.getElementById(@json($cancellationSectionId));
+    const proofHistorySection = document.getElementById('delivery-proof-history');
     const workflowErrorSummary = document.querySelector('[data-workflow-error-summary]');
+    const openProofHistoryFromHash = () => {
+        if (!(proofHistorySection instanceof HTMLDetailsElement)) {
+            return;
+        }
+
+        if (window.location.hash !== '#delivery-proof-history') {
+            return;
+        }
+
+        proofHistorySection.open = true;
+        proofHistorySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
 
     if (workflowSection && (window.location.hash === '#{{ $workflowProofSectionId }}' || {{ $hasWorkflowErrors ? 'true' : 'false' }})) {
         workflowSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1061,6 +1240,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (cancellationSection && (window.location.hash === '#{{ $cancellationSectionId }}' || {{ $hasCancellationErrors ? 'true' : 'false' }})) {
         cancellationSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
+
+    openProofHistoryFromHash();
+    window.addEventListener('hashchange', openProofHistoryFromHash);
 
     const canvasToBlob = (canvas, type, quality) => new Promise((resolve) => {
         canvas.toBlob((blob) => resolve(blob), type, quality);
