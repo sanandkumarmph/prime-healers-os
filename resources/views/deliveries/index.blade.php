@@ -310,11 +310,11 @@
     .ops-board-header { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; }
     .ops-board-title { display:grid; gap:8px; max-width:760px; }
     .ops-board-title h1 { margin:0; font-size:28px; line-height:1.08; letter-spacing:-0.03em; color:var(--ph-color-text); font-family: var(--ph-font-heading); }
-    .ops-board-title p { margin:0; color:var(--ph-color-text-soft); font-size:13px; line-height:1.6; }
+    .ops-board-title p { margin:0; color:var(--ph-color-text-soft); font-size:13px; line-height:1.55; }
     .ops-board-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     .ops-board-actions .rn-btn,
     .ops-board-actions .rn-btn-primary { min-height:40px; padding:0 14px; border-radius:12px; }
-    .ops-stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; }
+    .ops-stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(168px, 1fr)); gap:10px; }
     .ops-stat-card {
         display:grid; gap:10px; padding:14px 15px; text-decoration:none; color:inherit;
         border:1px solid var(--ph-color-border); border-radius:18px; background:#fff;
@@ -497,8 +497,8 @@
     .ops-mobile-card {
         position:relative;
         display:grid;
-        gap:12px;
-        padding:14px;
+        gap:10px;
+        padding:12px;
         border-bottom:1px solid #eef2f7;
         cursor:pointer;
     }
@@ -518,7 +518,7 @@
     }
     .ops-mobile-card-head {
         display:grid;
-        gap:8px;
+        gap:6px;
         min-width:0;
         flex:1 1 auto;
     }
@@ -537,7 +537,7 @@
     }
     .ops-mobile-order {
         color:#0f172a;
-        font-size:14px;
+        font-size:13px;
         font-weight:800;
         line-height:1.35;
     }
@@ -547,18 +547,18 @@
     }
     .ops-mobile-contact {
         display:grid;
-        gap:4px;
+        gap:3px;
     }
     .ops-mobile-customer {
         color:#0f172a;
-        font-size:14px;
+        font-size:13px;
         font-weight:700;
         line-height:1.35;
     }
     .ops-mobile-phone,
     .ops-mobile-product {
         color:#475569;
-        font-size:12px;
+        font-size:11.5px;
         line-height:1.4;
     }
     .ops-mobile-grid {
@@ -586,6 +586,10 @@
     }
     .ops-mobile-actions {
         display:grid;
+        gap:8px;
+    }
+    .ops-mobile-icon-row {
+        display:grid;
         grid-template-columns:repeat(4, minmax(0, 1fr));
         gap:8px;
         align-items:stretch;
@@ -593,7 +597,8 @@
     .ops-mobile-actions .ops-action-btn,
     .ops-mobile-actions .ops-action-btn-primary { min-height:40px; padding:0 8px; }
     .ops-mobile-actions .ops-action-btn-primary {
-        grid-column:span 2;
+        width:100%;
+        min-height:42px;
     }
     .ops-mobile-more summary {
         min-height:42px;
@@ -659,15 +664,15 @@
         .ops-search-shell { display:none; }
         .ops-board { gap:12px; }
         .ops-board-title h1 { font-size:22px; }
-        .ops-board-title p { font-size:12px; }
+        .ops-board-title p { font-size:11px; }
         .ops-board-title p,
         .ops-task-head p { display:none; }
         .ops-stats { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
-        .ops-stat-card { min-height:84px; padding:9px 10px; gap:7px; border-radius:15px; }
+        .ops-stat-card { min-height:76px; padding:8px 9px; gap:6px; border-radius:15px; }
         .ops-stat-top span { font-size:10px; }
         .ops-stat-copy { display:none; }
-        .ops-stat-value { font-size:21px; }
-        .ops-stat-icon { width:32px; height:32px; flex-basis:32px; border-radius:11px; }
+        .ops-stat-value { font-size:19px; }
+        .ops-stat-icon { width:28px; height:28px; flex-basis:28px; border-radius:10px; }
         .ops-tabs,
         .ops-filters-card { display:none; }
         .ops-mobile-command {
@@ -780,26 +785,24 @@
         }
         .ops-filter-grid,
         .ops-mobile-grid { grid-template-columns:1fr; }
-        .ops-mobile-actions {
-            grid-template-columns:repeat(4, minmax(0, 1fr));
-            align-items:stretch;
-        }
+        .ops-mobile-actions { gap:8px; }
+        .ops-mobile-icon-row { grid-template-columns:repeat(4, minmax(0, 1fr)); align-items:stretch; }
         .ops-mobile-actions .ops-action-btn,
         .ops-mobile-actions .ops-action-btn-primary {
             width:100%;
-            min-height:44px;
+            min-height:40px;
             padding:0 8px;
             border-radius:12px;
             justify-content:center;
         }
-        .ops-mobile-actions .mobile-utility-btn {
+        .ops-mobile-icon-row .mobile-utility-btn {
             padding:0;
             aspect-ratio:1 / 1;
         }
-        .ops-mobile-actions .mobile-utility-btn span {
+        .ops-mobile-icon-row .mobile-utility-btn span {
             display:none;
         }
-        .ops-mobile-actions .mobile-utility-btn svg {
+        .ops-mobile-icon-row .mobile-utility-btn svg {
             width:18px;
             height:18px;
         }
@@ -820,8 +823,8 @@
 
     @media (max-width: 420px) {
         .ops-stats { grid-template-columns:repeat(2, minmax(0, 1fr)); }
-        .ops-stat-card { min-height:96px; padding:9px; }
-        .ops-stat-value { font-size:20px; }
+        .ops-stat-card { min-height:74px; padding:8px; }
+        .ops-stat-value { font-size:18px; }
     }
 </style>
 
@@ -830,7 +833,7 @@
         <div class="ops-board-title">
             <div class="rx-eyebrow">Operations</div>
             <h1>Tasks Board</h1>
-            <p>Unified delivery and pickup control for the day. Keep field staff moving, collections visible, and partial work easier to follow without bouncing between separate pages.</p>
+            <p>Compact field taskboard for deliveries, pickups, and proof-first execution.</p>
         </div>
         <div class="ops-board-actions">
             @if($canCreateDeliveries && \Illuminate\Support\Facades\Route::has('deliveries.create'))
@@ -1643,30 +1646,32 @@
                             @endif
 
                             <div class="ops-mobile-actions">
-                                @if($callHref)
-                                    <a href="{{ $callHref }}" class="ops-action-btn mobile-utility-btn" title="Call customer" aria-label="Call customer">
-                                        {!! $navIcon('call') !!}
-                                        <span>Call</span>
-                                    </a>
-                                @endif
-                                @if($whatsAppUrl)
-                                    <a href="{{ $whatsAppUrl }}" target="_blank" rel="noopener" class="ops-action-btn ops-action-btn-wa mobile-utility-btn" title="WhatsApp customer" aria-label="WhatsApp customer">
-                                        {!! $navIcon('whatsapp') !!}
-                                        <span>WhatsApp</span>
-                                    </a>
-                                @endif
-                                @if($mapUrl)
-                                    <a href="{{ $mapUrl }}" target="_blank" rel="noopener" class="ops-action-btn ops-action-btn-map mobile-utility-btn" title="Open map" aria-label="Open map">
-                                        {!! $navIcon('map') !!}
-                                        <span>Map</span>
-                                    </a>
-                                @endif
-                                @if($taskDetailHref)
-                                    <a href="{{ $taskDetailHref }}" class="ops-action-btn mobile-utility-btn" title="View task" aria-label="View task">
-                                        {!! $navIcon('view') !!}
-                                        <span>View</span>
-                                    </a>
-                                @endif
+                                <div class="ops-mobile-icon-row">
+                                    @if($callHref)
+                                        <a href="{{ $callHref }}" class="ops-action-btn mobile-utility-btn" title="Call customer" aria-label="Call customer">
+                                            {!! $navIcon('call') !!}
+                                            <span>Call</span>
+                                        </a>
+                                    @endif
+                                    @if($whatsAppUrl)
+                                        <a href="{{ $whatsAppUrl }}" target="_blank" rel="noopener" class="ops-action-btn ops-action-btn-wa mobile-utility-btn" title="WhatsApp customer" aria-label="WhatsApp customer">
+                                            {!! $navIcon('whatsapp') !!}
+                                            <span>WhatsApp</span>
+                                        </a>
+                                    @endif
+                                    @if($mapUrl)
+                                        <a href="{{ $mapUrl }}" target="_blank" rel="noopener" class="ops-action-btn ops-action-btn-map mobile-utility-btn" title="Open map" aria-label="Open map">
+                                            {!! $navIcon('map') !!}
+                                            <span>Map</span>
+                                        </a>
+                                    @endif
+                                    @if($taskDetailHref)
+                                        <a href="{{ $taskDetailHref }}" class="ops-action-btn mobile-utility-btn" title="View task" aria-label="View task">
+                                            {!! $navIcon('view') !!}
+                                            <span>View</span>
+                                        </a>
+                                    @endif
+                                </div>
                                 @if($canUpdateTask && $delivery->status === 'pending' && !$taskEffectivelyCompleted)
                                     <a href="{{ route('deliveries.show', $delivery) }}#workflow-proof-section" class="ops-action-btn-primary" title="{{ $startActionLabel }}" aria-label="{{ $startActionLabel }}">
                                         {!! $navIcon('start') !!}

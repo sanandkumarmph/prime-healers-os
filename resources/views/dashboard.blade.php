@@ -1538,9 +1538,9 @@
         }
         .dashboard-shell.is-delivery-focused .dashboard-kpi-card,
         .dashboard-shell.is-delivery-focused .dashboard-logistics-card {
-            min-height: 66px;
-            padding: 8px;
-            gap: 6px;
+            min-height: 60px;
+            padding: 7px;
+            gap: 5px;
         }
         .dashboard-shell.is-delivery-focused .dashboard-kpi-note,
         .dashboard-shell.is-delivery-focused .dashboard-kpi-subtitle {
@@ -1553,7 +1553,7 @@
         }
         .dashboard-shell.is-delivery-focused .dashboard-kpi-value,
         .dashboard-shell.is-delivery-focused .dashboard-card-value {
-            font-size: 20px;
+            font-size: 18px;
             line-height: 1.05;
         }
     }
