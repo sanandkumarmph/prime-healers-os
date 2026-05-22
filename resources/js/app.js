@@ -807,6 +807,7 @@ const initializeUnifiedInAppNotifications = () => {
         testSoundButtons: Array.from(root.querySelectorAll('[data-notification-test-sound]')),
         testVoiceButtons: Array.from(root.querySelectorAll('[data-notification-test-voice]')),
         emptyStates: Array.from(root.querySelectorAll('[data-notification-empty]')),
+        isMobileSheet: root.classList.contains('mobile-notification-menu'),
         markVisibleHandle: null,
         isMarkingVisible: false,
     })).filter((state) => state.panel instanceof HTMLElement);
@@ -850,6 +851,34 @@ const initializeUnifiedInAppNotifications = () => {
     let soundVariant = primaryRoot.dataset.notificationSoundVariant || 'default';
     let hydrated = false;
     let pollingHandle = null;
+    let mobileSheetOpenCount = 0;
+
+    const setMobileSheetLock = (isOpen) => {
+        const bodyLock = window.rentnexisModalLock;
+
+        if (isOpen) {
+            mobileSheetOpenCount += 1;
+        } else {
+            mobileSheetOpenCount = Math.max(mobileSheetOpenCount - 1, 0);
+        }
+
+        if (bodyLock && typeof bodyLock.lock === 'function' && typeof bodyLock.unlock === 'function') {
+            if (isOpen) {
+                bodyLock.lock();
+            } else if (mobileSheetOpenCount === 0) {
+                bodyLock.unlock();
+            }
+
+            return;
+        }
+
+        if (mobileSheetOpenCount > 0) {
+            document.body.style.overflow = 'hidden';
+            return;
+        }
+
+        document.body.style.overflow = '';
+    };
 
     const setHint = (message, persistent = false, targetState = null) => {
         const states = targetState ? [targetState] : rootStates;
@@ -1337,6 +1366,10 @@ const initializeUnifiedInAppNotifications = () => {
                 return;
             }
 
+            if (state.isMobileSheet) {
+                setMobileSheetLock(state.root.open);
+            }
+
             if (state.markVisibleHandle) {
                 window.clearTimeout(state.markVisibleHandle);
                 state.markVisibleHandle = null;
@@ -1531,6 +1564,10 @@ const initializeUnifiedInAppNotifications = () => {
     window.addEventListener('beforeunload', () => {
         if (pollingHandle) {
             window.clearInterval(pollingHandle);
+        }
+
+        if (mobileSheetOpenCount > 0) {
+            document.body.style.overflow = '';
         }
     });
 };

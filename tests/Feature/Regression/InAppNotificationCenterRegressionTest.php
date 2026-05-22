@@ -147,6 +147,8 @@ class InAppNotificationCenterRegressionTest extends TestCase
             ->assertSee('data-notification-test-voice', false)
             ->assertSee('data-notification-sound-variant', false)
             ->assertSee('mobile-notification-menu', false)
+            ->assertSee('mobile-notification-scroll', false)
+            ->assertSee('mobile-notification-footer', false)
             ->assertSee('data-notification-close', false)
             ->assertSee('Tap Test Sound once to enable browser audio.', false)
             ->assertSee('data-notification-toast-stack', false);

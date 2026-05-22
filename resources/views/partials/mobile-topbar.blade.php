@@ -48,19 +48,13 @@
                 @endif
             </summary>
             <div class="mobile-notification-backdrop" data-notification-backdrop aria-hidden="true"></div>
-            <div class="topbar-bell-panel mobile-notification-panel">
+            <div class="topbar-bell-panel mobile-notification-panel" role="dialog" aria-modal="true" aria-label="Notifications">
                 <div class="topbar-bell-head">
                     <div>
                         <strong>Notifications</strong>
                         <span data-notification-subtitle>{{ ($topbarNotificationCount ?? 0) > 0 ? 'Live operational updates for you' : 'No unread notifications right now' }}</span>
                     </div>
                     <div class="topbar-bell-head-actions">
-                        <button
-                            type="button"
-                            class="topbar-bell-mark-all"
-                            data-notification-mark-all
-                            @if(($topbarNotificationCount ?? 0) <= 0) hidden @endif
-                        >Mark all as read</button>
                         @if(($topbarNotificationCount ?? 0) > 0)
                             <span class="rn-badge rn-badge-warning" data-notification-head-count>{{ $topbarNotificationCount }}</span>
                         @endif
@@ -69,90 +63,105 @@
                         </button>
                     </div>
                 </div>
-                @if(($topbarNotifications ?? collect())->isEmpty())
-                    <div class="topbar-bell-empty" data-notification-empty>No unread notifications right now. New assignments and operational updates will appear here automatically.</div>
-                @else
-                    <div class="topbar-bell-list" data-notification-list>
-                        @foreach($topbarNotifications as $notification)
-                            @php($priority = $notification['priority'] ?? 'medium')
-                            <a
-                                href="{{ $notification['action_url'] ?? '#' }}"
-                                class="topbar-bell-item {{ !empty($notification['is_unread']) ? 'is-unread' : '' }}"
-                                data-notification-item
-                                data-notification-id="{{ $notification['id'] ?? '' }}"
-                                data-notification-priority="{{ $priority }}"
-                            >
-                                <div>
-                                    <strong>{{ $notification['title'] ?? 'Operational update' }}</strong>
-                                    <small>{{ $notification['message'] ?? 'Open for details.' }}</small>
-                                    <div class="topbar-bell-meta">
-                                        <span class="topbar-bell-priority {{ in_array($priority, ['high', 'urgent'], true) ? 'is-high' : ($priority === 'medium' ? 'is-medium' : '') }}">{{ strtoupper($priority) }}</span>
-                                        <span class="topbar-bell-time">{{ $notification['time_ago'] ?? '' }}</span>
+
+                <div class="mobile-notification-scroll">
+                    @if(($topbarNotifications ?? collect())->isEmpty())
+                        <div class="topbar-bell-empty" data-notification-empty>No unread notifications right now. New assignments and operational updates will appear here automatically.</div>
+                    @else
+                        <div class="topbar-bell-list" data-notification-list>
+                            @foreach($topbarNotifications as $notification)
+                                @php($priority = $notification['priority'] ?? 'medium')
+                                <a
+                                    href="{{ $notification['action_url'] ?? '#' }}"
+                                    class="topbar-bell-item {{ !empty($notification['is_unread']) ? 'is-unread' : '' }}"
+                                    data-notification-item
+                                    data-notification-id="{{ $notification['id'] ?? '' }}"
+                                    data-notification-priority="{{ $priority }}"
+                                >
+                                    <div>
+                                        <strong>{{ $notification['title'] ?? 'Operational update' }}</strong>
+                                        <small>{{ $notification['message'] ?? 'Open for details.' }}</small>
+                                        <div class="topbar-bell-meta">
+                                            <span class="topbar-bell-priority {{ in_array($priority, ['high', 'urgent'], true) ? 'is-high' : ($priority === 'medium' ? 'is-medium' : '') }}">{{ strtoupper($priority) }}</span>
+                                            <span class="topbar-bell-time">{{ $notification['time_ago'] ?? '' }}</span>
+                                        </div>
                                     </div>
-                                </div>
-                                @if(!empty($notification['is_unread']))
-                                    <span class="topbar-bell-count">New</span>
-                                @endif
-                            </a>
-                        @endforeach
-                    </div>
-                @endif
-                @if(($topbarNotifications ?? collect())->isNotEmpty())
-                    <div class="topbar-bell-empty" data-notification-empty hidden>No unread notifications right now. New assignments and operational updates will appear here automatically.</div>
-                @endif
-                <div class="topbar-bell-settings mobile-notification-settings">
-                    <div class="topbar-bell-settings-head">
-                        <div>
-                            <strong>Alert settings</strong>
-                            <span>Optional and user-controlled</span>
+                                    @if(!empty($notification['is_unread']))
+                                        <span class="topbar-bell-count">New</span>
+                                    @endif
+                                </a>
+                            @endforeach
                         </div>
+                    @endif
+                    @if(($topbarNotifications ?? collect())->isNotEmpty())
+                        <div class="topbar-bell-empty" data-notification-empty hidden>No unread notifications right now. New assignments and operational updates will appear here automatically.</div>
+                    @endif
+
+                    <div class="topbar-bell-settings mobile-notification-settings">
+                        <div class="topbar-bell-settings-head">
+                            <div>
+                                <strong>Alert settings</strong>
+                                <span>Optional and user-controlled</span>
+                            </div>
+                        </div>
+                        <div class="mobile-notification-helper">
+                            Sound and voice alerts work while the app is open. Tap Test Sound once to enable browser audio.
+                        </div>
+                        <div class="topbar-bell-switches">
+                            <label class="topbar-bell-switch">
+                                <span class="topbar-bell-switch-copy">
+                                    <strong>Sound alerts</strong>
+                                    <span>Play a short sound for important new tasks.</span>
+                                </span>
+                                <span class="topbar-bell-toggle">
+                                    <input type="checkbox" data-notification-sound-toggle {{ $notificationSoundEnabled ? 'checked' : '' }}>
+                                    <span class="topbar-bell-toggle-track"></span>
+                                </span>
+                            </label>
+                            <label class="topbar-bell-switch">
+                                <span class="topbar-bell-switch-copy">
+                                    <strong>Voice alerts</strong>
+                                    <span>Speak short safe labels like "New pickup assigned".</span>
+                                </span>
+                                <span class="topbar-bell-toggle">
+                                    <input type="checkbox" data-notification-voice-toggle {{ $notificationVoiceEnabled ? 'checked' : '' }}>
+                                    <span class="topbar-bell-toggle-track"></span>
+                                </span>
+                            </label>
+                        </div>
+                        <div class="topbar-bell-tools">
+                            <button type="button" class="topbar-bell-tool-button" data-notification-test-sound>Test Sound</button>
+                            <button type="button" class="topbar-bell-tool-button" data-notification-test-voice>Test Voice</button>
+                        </div>
+                        <div class="topbar-bell-tone-row">
+                            <label class="topbar-bell-tone-label">
+                                <span>Alert tone</span>
+                                <select class="topbar-bell-select" data-notification-sound-variant>
+                                    @foreach($notificationSoundOptions as $option)
+                                        <option value="{{ $option['value'] }}" @selected($notificationSoundVariant === $option['value'])>{{ $option['label'] }}</option>
+                                    @endforeach
+                                </select>
+                            </label>
+                        </div>
+                        <div class="topbar-bell-settings-hint" data-notification-settings-hint hidden></div>
                     </div>
-                    <div class="mobile-notification-helper">
-                        Sound and voice alerts work while the app is open. Tap Test Sound once to enable browser audio.
-                    </div>
-                    <div class="topbar-bell-switches">
-                        <label class="topbar-bell-switch">
-                            <span class="topbar-bell-switch-copy">
-                                <strong>Sound alerts</strong>
-                                <span>Play a short sound for important new tasks.</span>
-                            </span>
-                            <span class="topbar-bell-toggle">
-                                <input type="checkbox" data-notification-sound-toggle {{ $notificationSoundEnabled ? 'checked' : '' }}>
-                                <span class="topbar-bell-toggle-track"></span>
-                            </span>
-                        </label>
-                        <label class="topbar-bell-switch">
-                            <span class="topbar-bell-switch-copy">
-                                <strong>Voice alerts</strong>
-                                <span>Speak short safe labels like “New pickup assigned”.</span>
-                            </span>
-                            <span class="topbar-bell-toggle">
-                                <input type="checkbox" data-notification-voice-toggle {{ $notificationVoiceEnabled ? 'checked' : '' }}>
-                                <span class="topbar-bell-toggle-track"></span>
-                            </span>
-                        </label>
-                    </div>
-                    <div class="topbar-bell-tools">
-                        <button type="button" class="topbar-bell-tool-button" data-notification-test-sound>Test Sound</button>
-                        <button type="button" class="topbar-bell-tool-button" data-notification-test-voice>Test Voice</button>
-                    </div>
-                    <div class="topbar-bell-tone-row">
-                        <label class="topbar-bell-tone-label">
-                            <span>Alert tone</span>
-                            <select class="topbar-bell-select" data-notification-sound-variant>
-                                @foreach($notificationSoundOptions as $option)
-                                    <option value="{{ $option['value'] }}" @selected($notificationSoundVariant === $option['value'])>{{ $option['label'] }}</option>
-                                @endforeach
-                            </select>
-                        </label>
-                    </div>
-                    <div class="topbar-bell-settings-hint" data-notification-settings-hint hidden></div>
                 </div>
-                @if(!empty($topbarNotificationsViewAllHref))
-                    <div class="topbar-bell-footer">
-                        <a href="{{ $topbarNotificationsViewAllHref }}">View all</a>
-                    </div>
-                @endif
+
+                <div class="mobile-notification-footer">
+                    <button
+                        type="button"
+                        class="topbar-bell-mark-all"
+                        data-notification-mark-all
+                        @if(($topbarNotificationCount ?? 0) <= 0) hidden @endif
+                    >Mark all as read</button>
+                    @if(!empty($topbarNotificationsViewAllHref))
+                        <div class="topbar-bell-footer">
+                            <a href="{{ $topbarNotificationsViewAllHref }}">View all</a>
+                        </div>
+                    @else
+                        <div></div>
+                    @endif
+                </div>
             </div>
         </details>
         <button type="button" class="mobile-icon-button" data-mobile-more-open aria-label="Open mobile menu">
