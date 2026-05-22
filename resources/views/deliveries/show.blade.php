@@ -345,17 +345,17 @@
 @endphp
 
 <style>
-    .delivery-detail { display:grid; gap:14px; padding:10px 0 18px; max-width:1120px; margin:0 auto; }
+    .delivery-detail { display:grid; gap:10px; padding:8px 0 16px; max-width:1120px; margin:0 auto; }
     .delivery-detail-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
-    .delivery-detail-header h1 { margin:0; font-size:26px; color:#0f172a; line-height:1.04; letter-spacing:-0.03em; }
-    .delivery-detail-header p { margin:5px 0 0; color:#64748b; font-size:12px; }
+    .delivery-detail-header h1 { margin:0; font-size:23px; color:#0f172a; line-height:1.04; letter-spacing:-0.03em; }
+    .delivery-detail-header p { margin:4px 0 0; color:#64748b; font-size:11px; }
     .detail-actions { display:flex; gap:8px; flex-wrap:wrap; }
     .workflow-preview-shell {
         display:grid;
-        gap:10px;
-        padding:12px 14px;
+        gap:8px;
+        padding:10px 11px;
         border:1px solid #dbe3ef;
-        border-radius:18px;
+        border-radius:15px;
         background:linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
         box-shadow:0 10px 28px rgba(15, 23, 42, 0.04);
     }
@@ -380,7 +380,7 @@
     }
     .workflow-preview-track {
         display:flex;
-        gap:8px;
+        gap:6px;
         overflow-x:auto;
         padding-bottom:2px;
         scrollbar-width:none;
@@ -390,13 +390,13 @@
         display:inline-flex;
         align-items:center;
         gap:6px;
-        min-height:32px;
-        padding:0 10px;
+        min-height:28px;
+        padding:0 8px;
         border-radius:999px;
         border:1px solid #dbe3ef;
         background:#fff;
         color:#64748b;
-        font-size:11px;
+        font-size:10px;
         font-weight:800;
         white-space:nowrap;
     }
@@ -411,15 +411,15 @@
         color:#166534;
     }
     .workflow-preview-pill-index {
-        width:18px;
-        height:18px;
-        flex:0 0 18px;
+        width:16px;
+        height:16px;
+        flex:0 0 16px;
         border-radius:999px;
         display:grid;
         place-items:center;
         background:#e2e8f0;
         color:#475569;
-        font-size:10px;
+        font-size:9px;
         font-weight:900;
     }
     .workflow-preview-pill.is-active .workflow-preview-pill-index {
@@ -433,7 +433,7 @@
     .mobile-inline-actions { display:none; }
     .fieldops-overview-card {
         display:grid;
-        gap:12px;
+        gap:10px;
     }
     .fieldops-overview-head {
         display:flex;
@@ -494,23 +494,23 @@
     }
     .fieldops-task-shell {
         display:grid;
-        gap:12px;
-        padding:14px;
+        gap:10px;
+        padding:11px;
         border:1px solid #dbe3ef;
-        border-radius:20px;
+        border-radius:16px;
         background:linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
         box-shadow:0 14px 34px rgba(15, 23, 42, 0.06);
     }
     .fieldops-task-shell-top {
         display:grid;
-        grid-template-columns:72px minmax(0, 1fr);
+        grid-template-columns:58px minmax(0, 1fr);
         gap:12px;
         align-items:center;
     }
     .fieldops-task-shell-ill {
-        width:72px;
-        height:72px;
-        border-radius:20px;
+        width:58px;
+        height:58px;
+        border-radius:16px;
         overflow:hidden;
         border:1px solid #bfdbfe;
         background:#eff6ff;
@@ -527,7 +527,7 @@
     }
     .fieldops-task-shell-copy strong {
         color:#0f172a;
-        font-size:21px;
+        font-size:18px;
         line-height:1.05;
     }
     .fieldops-task-shell-copy p {
@@ -545,15 +545,15 @@
     .fieldops-task-meta-grid {
         display:grid;
         grid-template-columns:repeat(2, minmax(0, 1fr));
-        gap:8px;
+        gap:6px;
     }
     .fieldops-task-meta {
         display:grid;
         gap:3px;
         min-width:0;
-        padding:10px 11px;
+        padding:9px 10px;
         border:1px solid #e2e8f0;
-        border-radius:14px;
+        border-radius:12px;
         background:#fff;
     }
     .fieldops-task-meta.is-wide {
@@ -575,16 +575,16 @@
     .fieldops-icon-actions {
         display:grid;
         grid-template-columns:repeat(4, minmax(0, 1fr));
-        gap:8px;
+        gap:6px;
     }
     .fieldops-icon-action {
         min-width:0;
-        min-height:44px;
+        min-height:40px;
         display:grid;
         place-items:center;
         gap:4px;
-        padding:8px 6px;
-        border-radius:14px;
+        padding:7px 6px;
+        border-radius:12px;
         border:1px solid #dbe3ef;
         background:#fff;
         color:#0f172a;
@@ -594,20 +594,20 @@
         line-height:1.2;
     }
     .fieldops-icon-action svg {
-        width:17px;
-        height:17px;
+        width:15px;
+        height:15px;
         color:#2563eb;
     }
     .fieldops-primary-bar {
         display:grid;
         grid-template-columns:minmax(0, 1fr) auto;
-        gap:8px;
+        gap:6px;
         align-items:center;
     }
     .fieldops-primary-bar .detail-btn,
     .fieldops-primary-bar .mobile-actions-menu summary {
-        min-height:46px;
-        border-radius:14px;
+        min-height:40px;
+        border-radius:12px;
     }
     .fieldops-primary-note {
         color:#64748b;

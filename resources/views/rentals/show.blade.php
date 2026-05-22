@@ -531,15 +531,15 @@
 @endphp
 
 <style>
-    .detail-page { display:grid; gap:16px; padding:18px 22px 28px; }
+    .detail-page { display:grid; gap:12px; padding:12px 16px 20px; }
     .detail-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
-    .detail-header h1 { margin:0; font-size:28px; color:#0f172a; }
-    .detail-header p { margin:6px 0 0; color:#64748b; font-size:13px; }
+    .detail-header h1 { margin:0; font-size:24px; color:#0f172a; line-height:1.08; }
+    .detail-header p { margin:4px 0 0; color:#64748b; font-size:11.5px; line-height:1.45; }
     .detail-actions { display:flex; gap:8px; flex-wrap:wrap; }
     .mobile-inline-actions { display:none; }
     .ph-rental-reference-shell {
         display: grid;
-        gap: 18px;
+        gap: 12px;
     }
     .ph-rental-hero-tools {
         display: flex;
@@ -554,12 +554,12 @@
     .ph-rental-overview-grid {
         display: grid;
         grid-template-columns: minmax(0, 1.3fr) minmax(320px, .9fr);
-        gap: 14px;
+        gap: 10px;
     }
     .ph-rental-summary-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
+        gap: 8px;
     }
     .ph-rental-action-links {
         display: flex;
@@ -568,14 +568,14 @@
     }
     .ph-rental-detail-list {
         display: grid;
-        gap: 12px;
+        gap: 10px;
     }
     .ph-rental-detail-row {
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
-        gap: 12px;
-        padding-bottom: 12px;
+        gap: 10px;
+        padding-bottom: 10px;
         border-bottom: 1px solid #eef2f7;
     }
     .ph-rental-detail-row:last-child {
@@ -591,7 +591,7 @@
     }
     .ph-rental-detail-row strong {
         color: #0f172a;
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 700;
         line-height: 1.5;
         text-align: right;
@@ -600,7 +600,7 @@
     .ph-rental-section-grid {
         display: grid;
         grid-template-columns: repeat(12, minmax(0, 1fr));
-        gap: 14px;
+        gap: 10px;
     }
     .ph-rental-section-grid > .ph-rental-span-4 { grid-column: span 4; }
     .ph-rental-section-grid > .ph-rental-span-5 { grid-column: span 5; }
@@ -610,23 +610,23 @@
     .ph-rental-contact-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 14px;
+        gap: 10px;
     }
     .ph-rental-contact-stack {
         display: grid;
-        gap: 14px;
+        gap: 10px;
     }
     .ph-rental-asset-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 10px;
+        gap: 8px;
     }
     .ph-rental-asset-tile {
         display: grid;
         gap: 6px;
-        padding: 14px;
+        padding: 11px;
         border: 1px solid #e2e8f0;
-        border-radius: 18px;
+        border-radius: 14px;
         background: #fff;
     }
     .ph-rental-asset-tile span {
@@ -638,18 +638,18 @@
     }
     .ph-rental-asset-tile strong {
         color: #0f172a;
-        font-size: 14px;
+        font-size: 13px;
         line-height: 1.5;
         overflow-wrap: anywhere;
     }
     .ph-rental-inline-toolbar {
         display: flex;
-        gap: 8px;
+        gap: 6px;
         flex-wrap: wrap;
     }
     .ph-rental-notes-shell {
         display: grid;
-        gap: 12px;
+        gap: 10px;
     }
     .rental-mobile-actions {
         display:grid;

@@ -306,29 +306,29 @@
 @endphp
 
 <style>
-    .ops-board { display:grid; gap:16px; max-width:100%; min-width:0; overflow-x:hidden; }
+    .ops-board { display:grid; gap:12px; max-width:100%; min-width:0; overflow-x:hidden; }
     .ops-board-header { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; }
     .ops-board-title { display:grid; gap:8px; max-width:760px; }
-    .ops-board-title h1 { margin:0; font-size:28px; line-height:1.08; letter-spacing:-0.03em; color:var(--ph-color-text); font-family: var(--ph-font-heading); }
-    .ops-board-title p { margin:0; color:var(--ph-color-text-soft); font-size:13px; line-height:1.55; }
+    .ops-board-title h1 { margin:0; font-size:24px; line-height:1.08; letter-spacing:-0.03em; color:var(--ph-color-text); font-family: var(--ph-font-heading); }
+    .ops-board-title p { margin:0; color:var(--ph-color-text-soft); font-size:11.5px; line-height:1.45; }
     .ops-board-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     .ops-board-actions .rn-btn,
     .ops-board-actions .rn-btn-primary { min-height:40px; padding:0 14px; border-radius:12px; }
-    .ops-stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(168px, 1fr)); gap:10px; }
+    .ops-stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(152px, 1fr)); gap:8px; }
     .ops-stat-card {
-        display:grid; gap:10px; padding:14px 15px; text-decoration:none; color:inherit;
-        border:1px solid var(--ph-color-border); border-radius:18px; background:#fff;
+        display:grid; gap:8px; padding:11px 12px; text-decoration:none; color:inherit;
+        border:1px solid var(--ph-color-border); border-radius:14px; background:#fff;
         box-shadow:var(--ph-shadow-soft);
         transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
-        min-height:132px;
+        min-height:96px;
     }
     .ops-stat-card:hover { transform:translateY(-2px); box-shadow:0 16px 34px rgba(15,23,42,.08); }
     .ops-stat-top { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
-    .ops-stat-top span { display:block; font-size:12px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--ph-color-text-soft); line-height:1.3; }
-    .ops-stat-value { font-size:29px; font-weight:800; line-height:1.05; color:var(--ph-color-text); }
-    .ops-stat-copy { font-size:12px; line-height:1.45; color:var(--ph-color-text-soft); }
+    .ops-stat-top span { display:block; font-size:10px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--ph-color-text-soft); line-height:1.25; }
+    .ops-stat-value { font-size:23px; font-weight:800; line-height:1.02; color:var(--ph-color-text); }
+    .ops-stat-copy { font-size:11px; line-height:1.35; color:var(--ph-color-text-soft); }
     .ops-stat-icon {
-        width:40px; height:40px; border-radius:14px; display:grid; place-items:center; flex:0 0 40px;
+        width:32px; height:32px; border-radius:12px; display:grid; place-items:center; flex:0 0 32px;
         border:1px solid rgba(23,119,189,.18); background:var(--ph-color-info-soft); color:var(--ph-color-primary);
     }
     .ops-stat-card.is-pickup .ops-stat-icon { background:var(--ph-color-warning-soft); border-color:rgba(183,121,31,.18); color:var(--ph-color-warning); }
@@ -340,10 +340,10 @@
     .ops-widget-card {
         background:#fff; border:1px solid var(--ph-color-border); border-radius:18px; box-shadow:var(--ph-shadow-soft);
     }
-    .ops-filters-shell { padding:12px 14px; display:grid; gap:12px; }
+    .ops-filters-shell { padding:10px 11px; display:grid; gap:10px; }
     .ops-filters-card { display:grid; gap:12px; }
     .ops-search-shell {
-        display:grid; gap:10px; padding:12px 14px; border:1px solid var(--ph-color-border); border-radius:16px;
+        display:grid; gap:8px; padding:10px 11px; border:1px solid var(--ph-color-border); border-radius:14px;
         background:linear-gradient(180deg, #f8fbff 0%, #ffffff 100%); box-shadow:var(--ph-shadow-soft);
     }
     .ops-search-form {
@@ -497,8 +497,8 @@
     .ops-mobile-card {
         position:relative;
         display:grid;
-        gap:10px;
-        padding:12px;
+        gap:8px;
+        padding:10px 11px;
         border-bottom:1px solid #eef2f7;
         cursor:pointer;
     }

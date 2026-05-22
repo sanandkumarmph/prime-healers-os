@@ -123,71 +123,72 @@
 <style>
     .renewal-center-shell {
         display: grid;
-        gap: 16px;
+        gap: 12px;
         max-width: 1320px;
         margin: 0 auto;
     }
     .renewal-hero,
     .renewal-card {
         border: 1px solid #e2e8f0;
-        border-radius: 22px;
+        border-radius: 16px;
         background: #fff;
-        box-shadow: 0 18px 42px rgba(15, 23, 42, 0.06);
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
     }
     .renewal-hero {
-        padding: 18px;
+        padding: 14px;
         display: grid;
-        gap: 14px;
+        gap: 10px;
         background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
     }
     .renewal-hero-top {
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
-        gap: 14px;
+        gap: 12px;
         flex-wrap: wrap;
     }
     .renewal-eyebrow {
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 700;
         letter-spacing: .08em;
         text-transform: uppercase;
         color: #2563eb;
     }
     .renewal-title {
-        margin: 6px 0 4px;
-        font-size: clamp(28px, 3vw, 38px);
-        line-height: 1.02;
+        margin: 5px 0 3px;
+        font-size: clamp(24px, 2.4vw, 30px);
+        line-height: 1.04;
         letter-spacing: -.04em;
         color: #0f172a;
     }
     .renewal-copy {
         max-width: 780px;
         color: #475569;
-        font-size: 14px;
+        font-size: 12px;
+        line-height: 1.5;
     }
     .renewal-stat-strip {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 10px;
+        gap: 8px;
     }
     .renewal-stat {
         border: 1px solid #dbe7f5;
-        border-radius: 18px;
-        padding: 12px 14px;
+        border-radius: 14px;
+        padding: 10px 11px;
         background: #f8fbff;
         display: grid;
-        gap: 4px;
+        gap: 3px;
     }
     .renewal-stat-label {
-        font-size: 12px;
+        font-size: 10px;
         color: #64748b;
         text-transform: uppercase;
         letter-spacing: .05em;
-        font-weight: 700;
+        font-weight: 800;
     }
     .renewal-stat-value {
-        font-size: 28px;
+        font-size: 23px;
         font-weight: 800;
         color: #0f172a;
         letter-spacing: -.04em;
@@ -201,14 +202,14 @@
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        padding: 9px 14px;
+        padding: 7px 11px;
         border-radius: 999px;
         border: 1px solid #dbe7f5;
         background: #fff;
         color: #334155;
         text-decoration: none;
-        font-weight: 700;
-        font-size: 13px;
+        font-weight: 800;
+        font-size: 11px;
     }
     .renewal-tab.is-active {
         background: #0f172a;
@@ -231,15 +232,15 @@
         background: rgba(255, 255, 255, 0.18);
     }
     .renewal-card {
-        padding: 18px;
+        padding: 14px;
         display: grid;
-        gap: 14px;
+        gap: 10px;
     }
     .renewal-toolbar,
     .renewal-filter-grid,
     .renewal-list-actions {
         display: grid;
-        gap: 12px;
+        gap: 10px;
     }
     .renewal-toolbar {
         grid-template-columns: minmax(0, 1.4fr) minmax(220px, .8fr) auto auto;
@@ -250,7 +251,7 @@
         gap: 6px;
     }
     .renewal-field label {
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 700;
         color: #475569;
         text-transform: uppercase;

@@ -1383,13 +1383,13 @@
     }
     .fieldops-home {
         display:grid;
-        gap:12px;
+        gap:10px;
     }
     .fieldops-home-hero {
         display:grid;
-        gap:12px;
-        padding:14px;
-        border-radius:20px;
+        gap:10px;
+        padding:12px;
+        border-radius:16px;
         border:1px solid #dbe3ef;
         background:linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
         box-shadow:var(--ph-shadow-soft);
@@ -1401,9 +1401,9 @@
         align-items:center;
     }
     .fieldops-home-hero-ill {
-        width:72px;
-        height:72px;
-        border-radius:20px;
+        width:62px;
+        height:62px;
+        border-radius:16px;
         overflow:hidden;
         border:1px solid #bfdbfe;
         background:#eff6ff;
@@ -1420,26 +1420,26 @@
     }
     .fieldops-home-hero-copy strong {
         color:#0f172a;
-        font-size:22px;
+        font-size:20px;
         line-height:1.1;
     }
     .fieldops-home-hero-copy p {
         margin:0;
         color:#64748b;
-        font-size:13px;
+        font-size:12px;
         line-height:1.45;
     }
     .fieldops-home-kpis {
         display:grid;
         grid-template-columns:repeat(2, minmax(0, 1fr));
-        gap:10px;
+        gap:8px;
     }
     .fieldops-home-kpi {
         display:grid;
         gap:6px;
-        min-height:84px;
-        padding:11px;
-        border-radius:18px;
+        min-height:72px;
+        padding:9px 10px;
+        border-radius:14px;
         border:1px solid #dbe3ef;
         background:#fff;
         text-decoration:none;
@@ -1463,21 +1463,21 @@
         text-transform:uppercase;
     }
     .fieldops-home-kpi-icon {
-        width:30px;
-        height:30px;
-        border-radius:12px;
+        width:26px;
+        height:26px;
+        border-radius:10px;
         display:grid;
         place-items:center;
         background:#eff6ff;
         color:#1d4ed8;
     }
     .fieldops-home-kpi-icon svg {
-        width:16px;
-        height:16px;
+        width:14px;
+        height:14px;
     }
     .fieldops-home-kpi-value {
         color:#0f172a;
-        font-size:26px;
+        font-size:22px;
         font-weight:900;
         line-height:1;
     }
@@ -1489,8 +1489,8 @@
     .fieldops-home-section {
         display:grid;
         gap:10px;
-        padding:12px 14px;
-        border-radius:18px;
+        padding:10px 11px;
+        border-radius:14px;
         border:1px solid #dbe3ef;
         background:#fff;
         box-shadow:var(--ph-shadow-soft);
@@ -1520,7 +1520,7 @@
     .fieldops-home-item {
         display:grid;
         gap:5px;
-        padding:10px 0;
+        padding:8px 0;
         border-top:1px solid #eef2f7;
     }
     .fieldops-home-item:first-child {
