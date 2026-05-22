@@ -222,6 +222,8 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
         $response = $this->actingAs($deliveryUser)->get(route('dashboard'));
 
         $response->assertOk()
+            ->assertSeeText('Hi, Delivery Team')
+            ->assertSeeText('field work today')
             ->assertSeeText('My Deliveries Today')
             ->assertSeeText('My Pickups Today')
             ->assertSeeText('My Assigned Tasks')
@@ -236,7 +238,8 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
             ->assertDontSeeText('Sales Pulse')
             ->assertDontSeeText('Pending Payments')
             ->assertDontSeeText('Finance Summary')
-            ->assertSeeText('Operational Widgets');
+            ->assertSeeText('Today')
+            ->assertSeeText('Task Flow');
     }
 
     public function test_sales_dashboard_is_accessible_without_dashboard_main_and_hides_sensitive_management_widgets(): void

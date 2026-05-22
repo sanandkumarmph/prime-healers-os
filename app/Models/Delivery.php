@@ -39,6 +39,15 @@ class Delivery extends Model
         'other',
     ];
 
+    public const COLLECTION_PAYMENT_MODES = ['cash', 'upi', 'card', 'bank_transfer'];
+
+    public const COLLECTION_NOT_COLLECTED_REASONS = [
+        'customer_refused',
+        'already_paid',
+        'no_payment_proof',
+        'other',
+    ];
+
     public const ASSIGNMENT_TYPES = ['delivery_team', 'vendor', 'third_party'];
 
     protected $fillable = [
@@ -51,6 +60,13 @@ class Delivery extends Model
         'pickup_status',
         'pickup_time_slot',
         'notes',
+        'collection_required',
+        'collection_amount_to_collect',
+        'collection_amount_collected',
+        'collection_payment_mode',
+        'collection_transaction_reference',
+        'collection_note',
+        'collection_not_collected_reason',
         'cancellation_reason',
         'cancellation_notes',
         'failed_attempt_reason',
@@ -75,6 +91,9 @@ class Delivery extends Model
         'failed_attempt_at' => 'datetime',
         'last_pickup_note_at' => 'datetime',
         'rescheduled_from_at' => 'datetime',
+        'collection_required' => 'boolean',
+        'collection_amount_to_collect' => 'decimal:2',
+        'collection_amount_collected' => 'decimal:2',
     ];
 
     public function rental()
@@ -206,6 +225,17 @@ class Delivery extends Model
             'phone_not_reachable' => 'Phone not reachable',
             'pickup_refused' => 'Pickup refused',
             'product_not_ready' => 'Product not ready',
+            'other' => 'Other',
+            default => ucfirst(str_replace('_', ' ', (string) $reason)),
+        };
+    }
+
+    public static function collectionNotCollectedReasonLabel(?string $reason): string
+    {
+        return match ($reason) {
+            'customer_refused' => 'Customer refused',
+            'already_paid' => 'Already paid',
+            'no_payment_proof' => 'No payment proof',
             'other' => 'Other',
             default => ucfirst(str_replace('_', ' ', (string) $reason)),
         };

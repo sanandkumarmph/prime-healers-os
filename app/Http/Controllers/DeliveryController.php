@@ -416,9 +416,27 @@ class DeliveryController extends Controller
             'location_accuracy' => ['nullable', 'numeric', 'min:0'],
             'location_captured_at' => ['nullable', 'date'],
             'location_missing_reason' => ['nullable', 'string', 'max:500'],
-            'signature_data' => ['required', 'string'],
+            'signature_data' => ['nullable', 'string'],
+            'signature_unavailable_reason' => ['nullable', 'string', 'max:500'],
             'proof_notes' => ['nullable', 'string', 'max:1000'],
+            'completion_confirmed' => ['required', 'accepted'],
         ];
+
+        if ((bool) ($delivery->collection_required ?? false)) {
+            $rules['collection_amount_collected'] = ['nullable', 'numeric', 'min:0'];
+            $rules['collection_payment_mode'] = ['nullable', Rule::in(Delivery::COLLECTION_PAYMENT_MODES)];
+            $rules['collection_payment_proof'] = array_merge(['nullable'], $commonImageRule);
+            $rules['collection_transaction_reference'] = ['nullable', 'string', 'max:255'];
+            $rules['collection_note'] = ['nullable', 'string', 'max:1000'];
+            $rules['collection_not_collected_reason'] = ['nullable', Rule::in(Delivery::COLLECTION_NOT_COLLECTED_REASONS)];
+        } else {
+            $rules['collection_amount_collected'] = ['prohibited'];
+            $rules['collection_payment_mode'] = ['prohibited'];
+            $rules['collection_payment_proof'] = ['prohibited'];
+            $rules['collection_transaction_reference'] = ['prohibited'];
+            $rules['collection_note'] = ['prohibited'];
+            $rules['collection_not_collected_reason'] = ['prohibited'];
+        }
 
         if ($delivery->type === 'delivery') {
             $rules['delivery_device_photos'] = ['required', 'array', 'min:1'];
@@ -463,8 +481,10 @@ class DeliveryController extends Controller
         $actionLabel = $delivery->type === 'pickup' ? 'pickup' : 'delivery';
         $validator = Validator::make($request->all(), $this->completionWorkflowValidationRules($delivery), [
             'signature_data.required' => 'Add customer signature to continue.',
+            'signature_unavailable_reason.max' => 'Keep the acknowledgement reason short and clear.',
             'proof_notes.max' => 'Keep notes under 1000 characters.',
             'location_missing_reason.max' => 'Keep the GPS reason short and clear.',
+            'completion_confirmed.accepted' => 'Confirm the review checklist before completing the task.',
             'delivery_device_photos.required' => 'Add product photo to continue.',
             'delivery_device_photos.min' => 'Add at least one product photo to continue.',
             'delivery_device_photos.*.image' => 'Upload a valid product photo.',
@@ -480,14 +500,27 @@ class DeliveryController extends Controller
             'missing_accessories_notes.max' => 'Keep missing item notes under 1000 characters.',
             'damage_photos.*.image' => 'Upload a valid damage photo.',
             'damage_photos.*.max' => 'One of the damage photos is too large. Retake it with less background.',
+            'collection_amount_collected.numeric' => 'Enter the collected amount in numbers only.',
+            'collection_amount_collected.min' => 'Collected amount cannot be negative.',
+            'collection_payment_mode.in' => 'Choose a valid payment mode.',
+            'collection_payment_proof.image' => 'Upload a valid payment proof image.',
+            'collection_payment_proof.max' => 'The payment proof image is too large. Retake it with less background.',
+            'collection_transaction_reference.max' => 'Keep the transaction reference short and clear.',
+            'collection_note.max' => 'Keep the collection note under 1000 characters.',
+            'collection_not_collected_reason.in' => 'Choose a valid collection reason.',
             'workflow_capture_form.accepted' => 'Open the ' . $actionLabel . ' workflow to continue.',
         ]);
         $validator->after(function ($validator) use ($delivery) {
             $data = $validator->getData();
             $this->appendLocationCaptureErrors($validator, $data);
+            $this->appendSignatureErrors($validator, $data);
 
             if ($delivery->type === 'pickup') {
                 $this->appendPickupDamageProofErrors($validator, $data);
+            }
+
+            if ((bool) ($delivery->collection_required ?? false)) {
+                $this->appendCollectionErrors($validator, $data);
             }
         });
 
@@ -543,6 +576,35 @@ class DeliveryController extends Controller
         }
     }
 
+    private function appendSignatureErrors($validator, array $validated): void
+    {
+        $signatureData = trim((string) ($validated['signature_data'] ?? ''));
+        $signatureReason = trim((string) ($validated['signature_unavailable_reason'] ?? ''));
+
+        if ($signatureData !== '' || $signatureReason !== '') {
+            return;
+        }
+
+        $validator->errors()->add('signature_data', 'Add customer signature to continue, or record why signing was not possible.');
+    }
+
+    private function appendCollectionErrors($validator, array $validated): void
+    {
+        $amountCollected = $validated['collection_amount_collected'] ?? null;
+        $hasAmount = $amountCollected !== null && $amountCollected !== '' && (float) $amountCollected > 0;
+        $notCollectedReason = trim((string) ($validated['collection_not_collected_reason'] ?? ''));
+        $paymentMode = trim((string) ($validated['collection_payment_mode'] ?? ''));
+
+        if (! $hasAmount && $notCollectedReason === '') {
+            $validator->errors()->add('collection_not_collected_reason', 'Record the collected amount or choose why collection could not be completed.');
+            return;
+        }
+
+        if ($hasAmount && $paymentMode === '') {
+            $validator->errors()->add('collection_payment_mode', 'Choose the payment mode to continue.');
+        }
+    }
+
     private function storeDeliveryWorkflowLocation(Delivery $delivery, User $user, string $captureMoment, array $validated): void
     {
         $this->deliveryProofService()->storeLocationCapture(
@@ -562,6 +624,7 @@ class DeliveryController extends Controller
     {
         $acknowledgementText = $this->deliveryProofAcknowledgement($delivery);
         $proofNotes = trim((string) ($validated['proof_notes'] ?? '')) ?: null;
+        $signatureUnavailableReason = trim((string) ($validated['signature_unavailable_reason'] ?? '')) ?: null;
 
         $this->storeDeliveryWorkflowLocation($delivery, $user, DeliveryProof::MOMENT_COMPLETE, $validated);
 
@@ -631,16 +694,64 @@ class DeliveryController extends Controller
             ];
         }
 
-        $this->deliveryProofService()->storeSignature(
-            $delivery,
-            $user,
-            $delivery->type,
-            DeliveryProof::MOMENT_COMPLETE,
-            (string) $validated['signature_data'],
-            $acknowledgementText,
-            $proofNotes,
-            $signatureMeta
-        );
+        if ($signatureUnavailableReason) {
+            DeliveryProof::create([
+                'organization_id' => $delivery->organization_id,
+                'delivery_id' => $delivery->id,
+                'rental_id' => $delivery->rental_id,
+                'workflow_stage' => $delivery->type,
+                'capture_moment' => DeliveryProof::MOMENT_COMPLETE,
+                'proof_type' => DeliveryProof::TYPE_ACKNOWLEDGEMENT_REASON,
+                'captured_at' => now(),
+                'acknowledgement_text' => $acknowledgementText,
+                'notes' => $signatureUnavailableReason,
+                'meta' => $signatureMeta,
+                'created_by_user_id' => $user->id,
+            ]);
+        } else {
+            $this->deliveryProofService()->storeSignature(
+                $delivery,
+                $user,
+                $delivery->type,
+                DeliveryProof::MOMENT_COMPLETE,
+                (string) $validated['signature_data'],
+                $acknowledgementText,
+                $proofNotes,
+                $signatureMeta
+            );
+        }
+
+        if ((bool) ($delivery->collection_required ?? false)) {
+            $collectionData = [
+                'collection_amount_collected' => ($validated['collection_amount_collected'] ?? null) !== null && $validated['collection_amount_collected'] !== ''
+                    ? (float) $validated['collection_amount_collected']
+                    : null,
+                'collection_payment_mode' => $validated['collection_payment_mode'] ?? null,
+                'collection_transaction_reference' => trim((string) ($validated['collection_transaction_reference'] ?? '')) ?: null,
+                'collection_note' => trim((string) ($validated['collection_note'] ?? '')) ?: null,
+                'collection_not_collected_reason' => trim((string) ($validated['collection_not_collected_reason'] ?? '')) ?: null,
+            ];
+
+            $delivery->forceFill($collectionData)->saveQuietly();
+
+            if (!empty($validated['collection_payment_proof'])) {
+                $this->deliveryProofService()->storeUploadedFiles(
+                    $delivery,
+                    $user,
+                    $delivery->type,
+                    DeliveryProof::MOMENT_COMPLETE,
+                    DeliveryProof::TYPE_COLLECTION,
+                    [$validated['collection_payment_proof']],
+                    $collectionData['collection_note'],
+                    [
+                        'payment_mode' => $collectionData['collection_payment_mode'],
+                        'transaction_reference' => $collectionData['collection_transaction_reference'],
+                        'amount_collected' => $collectionData['collection_amount_collected'],
+                        'not_collected_reason' => $collectionData['collection_not_collected_reason'],
+                    ]
+                );
+            }
+        }
     }
 
     private function applyDeliveryScope($query)

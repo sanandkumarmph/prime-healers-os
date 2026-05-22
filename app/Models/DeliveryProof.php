@@ -18,6 +18,8 @@ class DeliveryProof extends Model
     public const TYPE_PICKED_UP_DEVICE = 'picked_up_device';
     public const TYPE_DAMAGE = 'damage';
     public const TYPE_SIGNATURE = 'signature';
+    public const TYPE_ACKNOWLEDGEMENT_REASON = 'acknowledgement_reason';
+    public const TYPE_COLLECTION = 'collection';
     public const TYPE_LOCATION = 'location';
 
     protected $fillable = [
@@ -68,6 +70,8 @@ class DeliveryProof extends Model
             self::TYPE_PICKED_UP_DEVICE => 'Picked-up Device Photo',
             self::TYPE_DAMAGE => 'Damage Photo',
             self::TYPE_SIGNATURE => 'Customer Signature',
+            self::TYPE_ACKNOWLEDGEMENT_REASON => 'Acknowledgement Reason',
+            self::TYPE_COLLECTION => 'Collection Proof',
             self::TYPE_LOCATION => 'Location Capture',
             default => ucwords(str_replace('_', ' ', $type)),
         };

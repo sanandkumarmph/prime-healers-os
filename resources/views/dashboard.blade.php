@@ -1381,6 +1381,206 @@
         display: grid;
         gap: 8px;
     }
+    .fieldops-home {
+        display:grid;
+        gap:12px;
+    }
+    .fieldops-home-hero {
+        display:grid;
+        gap:12px;
+        padding:14px;
+        border-radius:20px;
+        border:1px solid #dbe3ef;
+        background:linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+        box-shadow:var(--ph-shadow-soft);
+    }
+    .fieldops-home-hero-top {
+        display:grid;
+        grid-template-columns:72px minmax(0, 1fr);
+        gap:12px;
+        align-items:center;
+    }
+    .fieldops-home-hero-ill {
+        width:72px;
+        height:72px;
+        border-radius:20px;
+        overflow:hidden;
+        border:1px solid #bfdbfe;
+        background:#eff6ff;
+    }
+    .fieldops-home-hero-ill svg {
+        width:100%;
+        height:100%;
+        display:block;
+    }
+    .fieldops-home-hero-copy {
+        min-width:0;
+        display:grid;
+        gap:3px;
+    }
+    .fieldops-home-hero-copy strong {
+        color:#0f172a;
+        font-size:22px;
+        line-height:1.1;
+    }
+    .fieldops-home-hero-copy p {
+        margin:0;
+        color:#64748b;
+        font-size:13px;
+        line-height:1.45;
+    }
+    .fieldops-home-kpis {
+        display:grid;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:10px;
+    }
+    .fieldops-home-kpi {
+        display:grid;
+        gap:6px;
+        min-height:84px;
+        padding:11px;
+        border-radius:18px;
+        border:1px solid #dbe3ef;
+        background:#fff;
+        text-decoration:none;
+        box-shadow:var(--ph-shadow-soft);
+    }
+    .fieldops-home-kpi.is-blue .fieldops-home-kpi-icon { background:#eff6ff; color:#1d4ed8; }
+    .fieldops-home-kpi.is-amber .fieldops-home-kpi-icon { background:#fff7ed; color:#b45309; }
+    .fieldops-home-kpi.is-red .fieldops-home-kpi-icon { background:#fff1f2; color:#b91c1c; }
+    .fieldops-home-kpi.is-green .fieldops-home-kpi-icon { background:#f0fdf4; color:#166534; }
+    .fieldops-home-kpi-top {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:8px;
+    }
+    .fieldops-home-kpi-label {
+        color:#64748b;
+        font-size:10px;
+        font-weight:800;
+        letter-spacing:.05em;
+        text-transform:uppercase;
+    }
+    .fieldops-home-kpi-icon {
+        width:30px;
+        height:30px;
+        border-radius:12px;
+        display:grid;
+        place-items:center;
+        background:#eff6ff;
+        color:#1d4ed8;
+    }
+    .fieldops-home-kpi-icon svg {
+        width:16px;
+        height:16px;
+    }
+    .fieldops-home-kpi-value {
+        color:#0f172a;
+        font-size:26px;
+        font-weight:900;
+        line-height:1;
+    }
+    .fieldops-home-kpi-copy {
+        color:#64748b;
+        font-size:11px;
+        line-height:1.35;
+    }
+    .fieldops-home-section {
+        display:grid;
+        gap:10px;
+        padding:12px 14px;
+        border-radius:18px;
+        border:1px solid #dbe3ef;
+        background:#fff;
+        box-shadow:var(--ph-shadow-soft);
+    }
+    .fieldops-home-section-head {
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        gap:10px;
+    }
+    .fieldops-home-section-head h2 {
+        margin:0;
+        color:#0f172a;
+        font-size:15px;
+        line-height:1.25;
+    }
+    .fieldops-home-section-head p {
+        margin:3px 0 0;
+        color:#64748b;
+        font-size:11.5px;
+        line-height:1.45;
+    }
+    .fieldops-home-list {
+        display:grid;
+        gap:9px;
+    }
+    .fieldops-home-item {
+        display:grid;
+        gap:5px;
+        padding:10px 0;
+        border-top:1px solid #eef2f7;
+    }
+    .fieldops-home-item:first-child {
+        padding-top:0;
+        border-top:0;
+    }
+    .fieldops-home-item-top {
+        display:flex;
+        align-items:center;
+        gap:8px;
+        flex-wrap:wrap;
+        min-width:0;
+    }
+    .fieldops-home-item-top strong {
+        color:#0f172a;
+        font-size:12px;
+        line-height:1.35;
+        min-width:0;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+    }
+    .fieldops-home-item-top span {
+        color:#64748b;
+        font-size:10px;
+        font-weight:800;
+        letter-spacing:.05em;
+        text-transform:uppercase;
+    }
+    .fieldops-home-item-chip {
+        display:inline-flex;
+        align-items:center;
+        padding:4px 8px;
+        border-radius:999px;
+        background:#eff6ff;
+        color:#1d4ed8;
+        font-size:10px;
+        font-weight:800;
+        letter-spacing:.04em;
+        text-transform:uppercase;
+    }
+    .fieldops-home-item p,
+    .fieldops-home-item small {
+        margin:0;
+        color:#64748b;
+        font-size:11px;
+        line-height:1.45;
+        overflow-wrap:anywhere;
+    }
+    .fieldops-home-links {
+        display:flex;
+        gap:8px;
+        flex-wrap:wrap;
+    }
+    .fieldops-home-links a {
+        color:var(--ph-color-primary);
+        text-decoration:none;
+        font-size:11px;
+        font-weight:700;
+    }
     @media (max-width: 1080px) {
         .dashboard-main-grid,
         .dashboard-action-layout,
@@ -1397,6 +1597,35 @@
         }
         .dashboard-shell.is-delivery-focused .dashboard-hero-summary {
             display: none;
+        }
+        .fieldops-home-hero-top {
+            grid-template-columns:56px minmax(0, 1fr);
+        }
+        .fieldops-home-hero-ill {
+            width:56px;
+            height:56px;
+            border-radius:16px;
+        }
+        .fieldops-home-hero-copy strong {
+            font-size:18px;
+        }
+        .fieldops-home-hero-copy p {
+            font-size:12px;
+        }
+        .fieldops-home-kpis {
+            gap:8px;
+        }
+        .fieldops-home-kpi {
+            min-height:76px;
+            padding:9px 10px;
+            border-radius:16px;
+        }
+        .fieldops-home-kpi-value {
+            font-size:21px;
+        }
+        .fieldops-home-section {
+            padding:11px 12px;
+            border-radius:16px;
         }
         .dashboard-hero {
             padding: 12px;
@@ -1590,6 +1819,99 @@
 </style>
 
 <div class="dashboard-shell rx-page {{ $isDeliveryFacingMenuRole ? 'is-delivery-focused' : '' }}">
+    @if($isDeliveryFacingMenuRole)
+        @php
+            $fieldOpsTiles = collect($deliveryMiniTiles)->take(5)->values();
+            $fieldOpsItems = collect($todayDeliverySummary ?? collect())
+                ->concat(collect($todayPickupSummary ?? collect()))
+                ->sortBy(fn ($task) => optional($task->scheduled_at)?->timestamp ?? PHP_INT_MAX)
+                ->take(5)
+                ->values();
+            $fieldOpsIll = <<<'SVG'
+                <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect x="12" y="12" width="96" height="96" rx="26" fill="#EFF6FF"/>
+                    <circle cx="56" cy="34" r="11" fill="#F8C9A7"/>
+                    <path d="M43 52c0-5 4-9 9-9h8c5 0 9 4 9 9v19H43V52Z" fill="#2563EB"/>
+                    <path d="M42 72h30c4 0 8 3 8 8v8H34v-8c0-5 4-8 8-8Z" fill="#1D4ED8"/>
+                    <rect x="70" y="50" width="22" height="22" rx="4" fill="#F6D7A8" stroke="#D39A42" stroke-width="2"/>
+                    <path d="M77 50v-8l8-4 7 4v8" stroke="#D39A42" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M41 88h41" stroke="#BFDBFE" stroke-width="4" stroke-linecap="round"/>
+                </svg>
+            SVG;
+        @endphp
+        <section class="fieldops-home">
+            <div class="fieldops-home-hero">
+                <div class="fieldops-home-hero-top">
+                    <div class="fieldops-home-hero-ill">{!! $fieldOpsIll !!}</div>
+                    <div class="fieldops-home-hero-copy">
+                        <strong>Hi, Delivery Team</strong>
+                        <p>Here’s your field work today.</p>
+                    </div>
+                </div>
+                <div class="fieldops-home-kpis">
+                    @foreach($fieldOpsTiles as $tile)
+                        <a href="{{ $tile['href'] ?? '#' }}" class="fieldops-home-kpi is-{{ $tile['tone'] ?? 'blue' }}">
+                            <div class="fieldops-home-kpi-top">
+                                <span class="fieldops-home-kpi-label">{{ $tile['label'] }}</span>
+                                <span class="fieldops-home-kpi-icon">{!! $dashboardIcon($tile['icon']) !!}</span>
+                            </div>
+                            <strong class="fieldops-home-kpi-value">{{ $tile['value'] }}</strong>
+                            <span class="fieldops-home-kpi-copy">
+                                {{ match ($tile['label']) {
+                                    'My Assigned Tasks' => 'Open work',
+                                    'My Deliveries Today' => 'Delivery run',
+                                    'My Pickups Today' => 'Pickup run',
+                                    'My Overdue Tasks' => 'Needs action',
+                                    'Failed Attempts' => 'Retry queue',
+                                    default => 'Open queue',
+                                } }}
+                            </span>
+                        </a>
+                    @endforeach
+                </div>
+            </div>
+
+            <div class="fieldops-home-section">
+                <div class="fieldops-home-section-head">
+                    <div>
+                        <h2>Today’s Task Flow</h2>
+                        <p>Open the next delivery or pickup without hunting through long cards.</p>
+                    </div>
+                    <a href="{{ $myAssignedTasksUrl ?? $deliveriesIndexUrl ?? '#' }}" class="rx-btn-secondary">View All</a>
+                </div>
+                @if($fieldOpsItems->isNotEmpty())
+                    <div class="fieldops-home-list">
+                        @foreach($fieldOpsItems as $task)
+                            <div class="fieldops-home-item">
+                                <div class="fieldops-home-item-top">
+                                    <strong>{{ ucfirst($task->type) }} #{{ $task->id }}</strong>
+                                    <span class="fieldops-home-item-chip">{{ ucfirst(str_replace('_', ' ', $task->status)) }}</span>
+                                    <span>{{ optional($task->scheduled_at)?->format('h:i A') ?? 'No time' }}</span>
+                                </div>
+                                <p>{{ $task->linkedCustomerName() }} • {{ optional($task->scheduled_at)?->format('d M') ?? 'Today' }}</p>
+                                <small>{{ \Illuminate\Support\Str::limit(collect([$task->linkedCustomerAddress(), $task->linkedCustomerCity()])->filter()->implode(', '), 70) ?: 'Address pending' }}</small>
+                                <div class="fieldops-home-links">
+                                    <a href="{{ route('deliveries.show', $task) }}">Open</a>
+                                    @if($task->linkedCustomerPhone())
+                                        <a href="tel:{{ preg_replace('/\s+/', '', (string) $task->linkedCustomerPhone()) }}">Call</a>
+                                    @endif
+                                    @if($task->linkedCustomerMapUrl())
+                                        <a href="{{ $task->linkedCustomerMapUrl() }}" target="_blank" rel="noopener">Map</a>
+                                    @endif
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                @else
+                    <div class="rx-empty dashboard-empty">
+                        <div class="rx-empty-icon">{!! $dashboardIcon('delivery') !!}</div>
+                        <strong>No field tasks queued</strong>
+                        <span>Your assigned delivery and pickup list is clear right now.</span>
+                    </div>
+                @endif
+            </div>
+        </section>
+    @else
     <section class="dashboard-hero">
         <div class="dashboard-hero-header">
             <div class="dashboard-hero-copy">
@@ -2945,6 +3267,7 @@
             </div>
         </div>
     </section>
+    @endif
     @endif
 </div>
 <script>

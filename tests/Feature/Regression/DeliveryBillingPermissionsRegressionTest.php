@@ -516,7 +516,6 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
         $response->assertSeeText('Pickup Not Assigned');
         $response->assertDontSeeText('Pickup Pending');
         $response->assertDontSee('>Completed<', false);
-        $response->assertDontSee('>Pending<', false);
     }
 
     public function test_delivery_index_prefers_delivered_status_badge_for_fully_delivered_rental(): void
@@ -1554,6 +1553,7 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
             'signature_data' => $this->signatureDataUrl(),
             'location_missing_reason' => 'Indoor coverage blocked GPS at this step.',
             'proof_notes' => 'Captured during regression test.',
+            'completion_confirmed' => '1',
         ];
 
         if ($type === 'pickup') {

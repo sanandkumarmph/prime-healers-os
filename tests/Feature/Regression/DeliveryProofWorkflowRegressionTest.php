@@ -76,6 +76,7 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
                 'location_longitude' => '77.594700',
                 'location_accuracy' => '12.0',
                 'location_captured_at' => now()->toIso8601String(),
+                'completion_confirmed' => '1',
             ]);
 
         $completeResponse->assertRedirect(route('deliveries.show', $delivery));

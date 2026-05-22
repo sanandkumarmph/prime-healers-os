@@ -108,7 +108,7 @@
     $hasProofHistory = $deliveryProofs->isNotEmpty();
     $primaryWorkflowCtaLabel = $delivery->status === 'pending'
         ? ($delivery->type === 'pickup' ? 'Start Pickup' : 'Start Delivery')
-        : ($delivery->type === 'pickup' ? 'Complete Pickup' : 'Complete Delivery');
+        : ($delivery->type === 'pickup' ? 'Continue Pickup' : 'Continue Delivery');
     $workflowErrorFields = [
         'delivery_device_photos',
         'delivery_device_photos.*',
@@ -120,32 +120,56 @@
         'damage_notes',
         'missing_accessories_notes',
         'signature_data',
+        'signature_unavailable_reason',
         'location_missing_reason',
         'location_latitude',
         'location_longitude',
+        'collection_amount_collected',
+        'collection_payment_mode',
+        'collection_payment_proof',
+        'collection_transaction_reference',
+        'collection_note',
+        'collection_not_collected_reason',
+        'completion_confirmed',
     ];
     $hasWorkflowErrors = collect($workflowErrorFields)->contains(fn ($field) => $errors->has($field));
     $hasCancellationErrors = $errors->has('cancellation_reason') || $errors->has('cancellation_notes');
     $selectedCancellationReason = old('cancellation_reason', $delivery->cancellation_reason);
     $selectedCancellationNotes = old('cancellation_notes', $delivery->cancellation_notes);
+    $supportsCollectionStep = (bool) ($delivery->collection_required ?? false);
+    $collectionAmountToCollect = (float) ($delivery->collection_amount_to_collect ?? 0);
+    $collectionModes = [
+        'cash' => 'Cash',
+        'upi' => 'UPI',
+        'card' => 'Card',
+        'bank_transfer' => 'Bank Transfer',
+    ];
+    $collectionReasonOptions = [
+        'customer_refused' => 'Customer refused',
+        'already_paid' => 'Already paid',
+        'no_payment_proof' => 'No payment proof',
+        'other' => 'Other',
+    ];
     $workflowPreviewSteps = $delivery->type === 'pickup'
-        ? ['Dashboard', 'Taskboard', 'Overview', 'Start Pickup', 'Location', 'Photos', 'Condition', 'Notes', 'Signature', 'Complete']
-        : ['Dashboard', 'Taskboard', 'Overview', 'Start Delivery', 'Location', 'Photos', 'Notes', 'Signature', 'Complete'];
+        ? ['Dashboard', 'Taskboard', 'Overview', 'Start Pickup', 'GPS', 'Photos', 'Check', 'Notes', 'Sign', ...($supportsCollectionStep ? ['Collect'] : []), 'Complete']
+        : ['Dashboard', 'Taskboard', 'Overview', 'Start Delivery', 'GPS', 'Photos', 'Notes', 'Sign', ...($supportsCollectionStep ? ['Collect'] : []), 'Complete'];
     $completionSteps = $delivery->type === 'pickup'
         ? [
-            ['index' => 1, 'key' => 'location', 'label' => 'Location', 'copy' => 'Capture GPS or add reason.'],
+            ['index' => 1, 'key' => 'location', 'label' => 'GPS', 'copy' => 'Capture GPS or add reason.'],
             ['index' => 2, 'key' => 'photos', 'label' => 'Photos', 'copy' => 'Capture pickup proof.'],
-            ['index' => 3, 'key' => 'condition', 'label' => 'Condition', 'copy' => 'Check damage and accessories.'],
+            ['index' => 3, 'key' => 'condition', 'label' => 'Check', 'copy' => 'Check damage and accessories.'],
             ['index' => 4, 'key' => 'notes', 'label' => 'Notes', 'copy' => 'Add damage or missing items.'],
-            ['index' => 5, 'key' => 'signature', 'label' => 'Signature', 'copy' => 'Capture acknowledgement.'],
-            ['index' => 6, 'key' => 'complete', 'label' => 'Complete', 'copy' => 'Review and finish pickup.'],
+            ['index' => 5, 'key' => 'signature', 'label' => 'Sign', 'copy' => 'Capture acknowledgement.'],
+            ...($supportsCollectionStep ? [['index' => 6, 'key' => 'collection', 'label' => 'Collect', 'copy' => 'Record collection or reason.']] : []),
+            ['index' => $supportsCollectionStep ? 7 : 6, 'key' => 'complete', 'label' => 'Complete', 'copy' => 'Review and finish pickup.'],
         ]
         : [
-            ['index' => 1, 'key' => 'location', 'label' => 'Location', 'copy' => 'Capture GPS or add reason.'],
+            ['index' => 1, 'key' => 'location', 'label' => 'GPS', 'copy' => 'Capture GPS or add reason.'],
             ['index' => 2, 'key' => 'photos', 'label' => 'Photos', 'copy' => 'Capture delivery proof.'],
             ['index' => 3, 'key' => 'notes', 'label' => 'Notes', 'copy' => 'Add field notes if needed.'],
-            ['index' => 4, 'key' => 'signature', 'label' => 'Signature', 'copy' => 'Capture acknowledgement.'],
-            ['index' => 5, 'key' => 'complete', 'label' => 'Complete', 'copy' => 'Review and finish delivery.'],
+            ['index' => 4, 'key' => 'signature', 'label' => 'Sign', 'copy' => 'Capture acknowledgement.'],
+            ...($supportsCollectionStep ? [['index' => 5, 'key' => 'collection', 'label' => 'Collect', 'copy' => 'Record collection or reason.']] : []),
+            ['index' => $supportsCollectionStep ? 6 : 5, 'key' => 'complete', 'label' => 'Complete', 'copy' => 'Review and finish delivery.'],
         ];
     $workflowStepCount = count($completionSteps);
     $workflowCurrentStep = match ($delivery->status) {
@@ -160,13 +184,13 @@
             2 => ['pickup_device_photos', 'pickup_device_photos.*', 'damage_photos', 'damage_photos.*'],
             3 => ['damage_reported'],
             4 => ['damage_notes', 'missing_accessories_notes'],
-            5 => ['signature_data'],
+            5 => ['signature_data', 'signature_unavailable_reason'],
         ]
         : [
             1 => ['location_missing_reason', 'location_latitude', 'location_longitude', 'location_accuracy', 'location_captured_at'],
             2 => ['delivery_device_photos', 'delivery_device_photos.*', 'premises_photo'],
             3 => ['proof_notes'],
-            4 => ['signature_data'],
+            4 => ['signature_data', 'signature_unavailable_reason'],
         ];
     $initialCompletionStep = 1;
     foreach ($completionStepErrorMap as $stepIndex => $stepFields) {
@@ -174,6 +198,14 @@
             $initialCompletionStep = $stepIndex;
             break;
         }
+    }
+    if ($supportsCollectionStep && collect(['collection_amount_collected', 'collection_payment_mode', 'collection_payment_proof', 'collection_transaction_reference', 'collection_note', 'collection_not_collected_reason'])->contains(fn ($field) => $errors->has($field))) {
+        $initialCompletionStep = $delivery->type === 'pickup' ? 6 : 5;
+    }
+    if ($errors->has('completion_confirmed')) {
+        $initialCompletionStep = $delivery->type === 'pickup'
+            ? ($supportsCollectionStep ? 7 : 6)
+            : ($supportsCollectionStep ? 6 : 5);
     }
     $selectedPickupCondition = old('pickup_condition_choice', old('damage_reported') ? 'damaged' : '');
     $orderReferenceLabel = $isSaleTask ? 'Sale' : 'Rental';
@@ -185,7 +217,6 @@
     $latestProofPreview = $deliveryProofs->first()
         ? \App\Models\DeliveryProof::labelForType($deliveryProofs->first()->proof_type)
         : 'No proof yet';
-    $supportsCollectionStep = false;
     $workflowIllustration = function (string $key): string {
         return match ($key) {
             'start' => <<<SVG
@@ -237,6 +268,16 @@
                     <path d="M38 63c6-12 11 6 17-5 4-8 11-7 14 2 3 9 10 5 12-4" stroke="#1D4ED8" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
                     <path d="M38 85h44" stroke="#CBD5E1" stroke-width="4" stroke-linecap="round"/>
                     <path d="m84 80 8-16 6 6-14 10Z" fill="#2563EB"/>
+                </svg>
+            SVG,
+            'payment' => <<<SVG
+                <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect x="16" y="16" width="88" height="88" rx="24" fill="#F8FAFC"/>
+                    <rect x="26" y="34" width="68" height="48" rx="14" fill="white" stroke="#DDE7F2" stroke-width="2"/>
+                    <rect x="34" y="44" width="52" height="8" rx="4" fill="#DBEAFE"/>
+                    <rect x="34" y="60" width="28" height="8" rx="4" fill="#BFDBFE"/>
+                    <circle cx="82" cy="70" r="14" fill="#DCFCE7"/>
+                    <path d="m76 70 4 4 8-9" stroke="#16A34A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
             SVG,
             'complete' => <<<SVG
@@ -450,6 +491,128 @@
         color:#475569;
         font-size:11px;
         font-weight:700;
+    }
+    .fieldops-task-shell {
+        display:grid;
+        gap:12px;
+        padding:14px;
+        border:1px solid #dbe3ef;
+        border-radius:20px;
+        background:linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+        box-shadow:0 14px 34px rgba(15, 23, 42, 0.06);
+    }
+    .fieldops-task-shell-top {
+        display:grid;
+        grid-template-columns:72px minmax(0, 1fr);
+        gap:12px;
+        align-items:center;
+    }
+    .fieldops-task-shell-ill {
+        width:72px;
+        height:72px;
+        border-radius:20px;
+        overflow:hidden;
+        border:1px solid #bfdbfe;
+        background:#eff6ff;
+    }
+    .fieldops-task-shell-ill svg {
+        width:100%;
+        height:100%;
+        display:block;
+    }
+    .fieldops-task-shell-copy {
+        min-width:0;
+        display:grid;
+        gap:4px;
+    }
+    .fieldops-task-shell-copy strong {
+        color:#0f172a;
+        font-size:21px;
+        line-height:1.05;
+    }
+    .fieldops-task-shell-copy p {
+        margin:0;
+        color:#64748b;
+        font-size:12px;
+        line-height:1.45;
+    }
+    .fieldops-task-shell-chips {
+        display:flex;
+        align-items:center;
+        gap:6px;
+        flex-wrap:wrap;
+    }
+    .fieldops-task-meta-grid {
+        display:grid;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:8px;
+    }
+    .fieldops-task-meta {
+        display:grid;
+        gap:3px;
+        min-width:0;
+        padding:10px 11px;
+        border:1px solid #e2e8f0;
+        border-radius:14px;
+        background:#fff;
+    }
+    .fieldops-task-meta.is-wide {
+        grid-column:span 2;
+    }
+    .fieldops-task-meta span {
+        color:#64748b;
+        font-size:10px;
+        font-weight:800;
+        letter-spacing:.05em;
+        text-transform:uppercase;
+    }
+    .fieldops-task-meta strong {
+        color:#0f172a;
+        font-size:13px;
+        line-height:1.4;
+        overflow-wrap:anywhere;
+    }
+    .fieldops-icon-actions {
+        display:grid;
+        grid-template-columns:repeat(4, minmax(0, 1fr));
+        gap:8px;
+    }
+    .fieldops-icon-action {
+        min-width:0;
+        min-height:44px;
+        display:grid;
+        place-items:center;
+        gap:4px;
+        padding:8px 6px;
+        border-radius:14px;
+        border:1px solid #dbe3ef;
+        background:#fff;
+        color:#0f172a;
+        text-decoration:none;
+        font-size:10px;
+        font-weight:800;
+        line-height:1.2;
+    }
+    .fieldops-icon-action svg {
+        width:17px;
+        height:17px;
+        color:#2563eb;
+    }
+    .fieldops-primary-bar {
+        display:grid;
+        grid-template-columns:minmax(0, 1fr) auto;
+        gap:8px;
+        align-items:center;
+    }
+    .fieldops-primary-bar .detail-btn,
+    .fieldops-primary-bar .mobile-actions-menu summary {
+        min-height:46px;
+        border-radius:14px;
+    }
+    .fieldops-primary-note {
+        color:#64748b;
+        font-size:11px;
+        line-height:1.45;
     }
     .workflow-start-shell {
         gap:16px;
@@ -700,6 +863,13 @@
         font-size:11px;
         font-weight:800;
         white-space:nowrap;
+        min-width:0;
+        flex:0 0 auto;
+    }
+    .workflow-mobile-stepper-tab span:last-child {
+        min-width:0;
+        overflow:hidden;
+        text-overflow:ellipsis;
     }
     .workflow-mobile-stepper-tab.is-active {
         background:#eff6ff;
@@ -729,6 +899,13 @@
     .workflow-mobile-stepper-tab.is-complete .workflow-mobile-stepper-tab-index {
         background:#16a34a;
         color:#fff;
+    }
+    .workflow-mobile-stepper-tab.is-complete .workflow-mobile-stepper-tab-index::before {
+        content:"✓";
+        font-size:11px;
+    }
+    .workflow-mobile-stepper-tab.is-complete .workflow-mobile-stepper-tab-index {
+        font-size:0;
     }
     .workflow-proof-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:14px; }
     .workflow-proof-field { grid-column:span 6; display:grid; gap:6px; }
@@ -962,6 +1139,33 @@
         display:grid;
         gap:8px;
     }
+    .workflow-review-summary-grid {
+        display:grid;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:8px;
+    }
+    .workflow-review-summary-card {
+        display:grid;
+        gap:3px;
+        min-width:0;
+        padding:10px 11px;
+        border:1px solid #dbe3ef;
+        border-radius:14px;
+        background:#fff;
+    }
+    .workflow-review-summary-card span {
+        color:#64748b;
+        font-size:10px;
+        font-weight:800;
+        letter-spacing:.05em;
+        text-transform:uppercase;
+    }
+    .workflow-review-summary-card strong {
+        color:#0f172a;
+        font-size:12.5px;
+        line-height:1.4;
+        overflow-wrap:anywhere;
+    }
     .workflow-review-item {
         display:flex;
         align-items:flex-start;
@@ -1069,25 +1273,37 @@
         body.workflow-mobile-open {
             overflow:hidden;
         }
-        .workflow-preview-shell {
-            padding:10px 12px;
-            gap:8px;
+        .workflow-preview-shell { display:none; }
+        .fieldops-task-shell {
+            gap:10px;
+            padding:12px;
+            border-radius:18px;
         }
-        .workflow-preview-head span { font-size:11px; }
-        .mobile-inline-actions {
-            display:grid;
-            grid-template-columns:repeat(5, minmax(0, 1fr));
-            gap:8px;
-            width:100%;
+        .fieldops-task-shell-top {
+            grid-template-columns:56px minmax(0, 1fr);
+            gap:10px;
         }
-        .mobile-inline-actions > * { min-width:0; }
-        .mobile-inline-actions .detail-btn-secondary,
-        .mobile-inline-actions .detail-btn,
-        .mobile-inline-actions .mobile-actions-menu summary {
-            width:100%;
-            min-height:44px;
-            box-sizing:border-box;
+        .fieldops-task-shell-ill {
+            width:56px;
+            height:56px;
+            border-radius:16px;
         }
+        .fieldops-task-shell-copy strong {
+            font-size:18px;
+        }
+        .fieldops-task-shell-copy p {
+            font-size:11px;
+        }
+        .fieldops-task-meta-grid {
+            gap:7px;
+        }
+        .fieldops-task-meta {
+            padding:9px 10px;
+        }
+        .fieldops-task-meta strong {
+            font-size:12px;
+        }
+        .mobile-inline-actions { display:none; }
         .item-progress-form { display:none; }
         .detail-card { padding:12px; }
         .fieldops-overview-card {
@@ -1165,6 +1381,9 @@
             padding:0 9px;
             font-size:10px;
         }
+        .workflow-review-summary-grid {
+            grid-template-columns:1fr;
+        }
         .workflow-step {
             padding:11px;
             gap:9px;
@@ -1185,9 +1404,6 @@
         }
         .workflow-proof-signature-pad { height:148px; }
         .workflow-step-actions {
-            position:sticky;
-            bottom:calc(76px + env(safe-area-inset-bottom, 0px));
-            z-index:4;
             padding-top:8px;
             background:linear-gradient(180deg, rgba(255,255,255,0) 0%, #fbfdff 28%, #fbfdff 100%);
         }
@@ -1271,6 +1487,25 @@
         .workflow-mobile-shell .workflow-proof-divider {
             display:none;
         }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] [data-workflow-step-panel] {
+            padding-bottom:108px;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] [data-workflow-step-panel].is-current .workflow-step-actions {
+            position:fixed;
+            left:12px;
+            right:12px;
+            bottom:calc(86px + env(safe-area-inset-bottom, 0px));
+            z-index:7;
+            padding:10px 12px;
+            border-radius:16px;
+            border:1px solid #dbe3ef;
+            background:rgba(255,255,255,.96);
+            box-shadow:0 16px 36px rgba(15,23,42,.14);
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] [data-workflow-step-panel].is-current .workflow-step-helper {
+            width:100%;
+            order:3;
+        }
         .detail-support-grid {
             display:none;
         }
@@ -1310,68 +1545,92 @@
         </div>
     </div>
 
-    <div class="workflow-preview-shell">
-        <div class="workflow-preview-head">
-            <div>
-                <strong>{{ $delivery->type === 'pickup' ? 'Pickup flow' : 'Delivery flow' }}</strong>
-                <span>{{ $delivery->type === 'pickup' ? 'Compact, guided, and proof-first for field pickup execution.' : 'Compact, guided, and proof-first for field delivery execution.' }}</span>
+    <div class="fieldops-task-shell">
+        <div class="fieldops-task-shell-top">
+            <div class="fieldops-task-shell-ill" aria-hidden="true">{!! $workflowIllustration('start') !!}</div>
+            <div class="fieldops-task-shell-copy">
+                <div class="fieldops-task-shell-chips">
+                    <span class="status-badge" style="{{ $statusStyle }}">{{ $displayStatusLabel }}</span>
+                    <span class="status-badge" style="background:#eff6ff;color:#1d4ed8;">{{ ucfirst($delivery->type) }}</span>
+                </div>
+                <strong>{{ ucfirst($delivery->type) }} #{{ $delivery->id }}</strong>
+                <p>{{ $delivery->type === 'pickup' ? 'Pickup proof flow with GPS, photos, condition, sign-off, and final review.' : 'Delivery proof flow with GPS, photos, sign-off, and final review.' }}</p>
             </div>
-            <span class="status-badge" style="{{ $statusStyle }}">{{ $displayStatusLabel }}</span>
         </div>
-        <div class="workflow-preview-track" aria-label="Workflow preview">
-            @foreach($workflowPreviewSteps as $index => $previewStep)
-                @php
-                    $stepNumber = $index + 1;
-                    $stepClass = $stepNumber < $workflowCurrentStep
-                        ? 'is-complete'
-                        : ($stepNumber === $workflowCurrentStep ? 'is-active' : '');
-                @endphp
-                <span class="workflow-preview-pill {{ $stepClass }}">
-                    <span class="workflow-preview-pill-index">{{ $stepNumber }}</span>
-                    <span>{{ $previewStep }}</span>
-                </span>
-            @endforeach
-        </div>
-    </div>
 
-    <div class="mobile-inline-actions" aria-label="Delivery quick actions">
-        @if($linkedPhone)
-            <a href="tel:{{ preg_replace('/\D+/', '', $linkedPhone) }}" class="detail-btn-secondary" aria-label="Call contact">Call</a>
-        @endif
-        @if($linkedWhatsapp)
-            <a href="https://wa.me/{{ preg_replace('/\D+/', '', $linkedWhatsapp) }}" target="_blank" rel="noopener noreferrer" class="detail-btn-secondary" aria-label="WhatsApp contact">WhatsApp</a>
-        @endif
-        @if($linkedMapUrl)
-            <a href="{{ $linkedMapUrl }}" target="_blank" rel="noopener" class="detail-btn-secondary" aria-label="Open map">Map</a>
-        @endif
-        @if($canUpdateTask && $delivery->status === 'pending')
-            <a href="#{{ $workflowProofSectionId }}" class="detail-btn">{{ $delivery->type === 'pickup' ? 'Start Pickup' : 'Start Delivery' }}</a>
-        @elseif($canUpdateTask && $delivery->status === 'in_progress')
-            <a href="#{{ $workflowProofSectionId }}" class="detail-btn">{{ $delivery->type === 'pickup' ? 'Complete Pickup' : 'Complete Delivery' }}</a>
-        @elseif($hasProofHistory)
-            <a href="#delivery-proof-history" class="detail-btn">Proof</a>
-        @endif
-        <details class="mobile-actions-menu">
-            <summary aria-label="More task actions">More</summary>
-            <div class="mobile-actions-panel">
-                <a href="{{ route('deliveries.index') }}">Back to Tasks</a>
-                @if($delivery->rental_id)
-                    <a href="{{ route('rentals.show', $delivery->rental_id) }}">View Rental</a>
-                @elseif($delivery->sale_id)
-                    <a href="{{ route('sales.show', $delivery->sale_id) }}">View Sale</a>
-                @endif
-                @if($hasProofHistory)
-                    <a href="#delivery-proof-history">Proof History</a>
-                @endif
-                <a href="#activity-timeline">Operations History</a>
-                @if($canUpdateTask)
-                    <a href="{{ route('deliveries.edit', $delivery) }}">Edit Assignment</a>
-                @endif
-                @if($canCancelTask)
-                    <a href="#{{ $cancellationSectionId }}">Unable to complete</a>
-                @endif
+        <div class="fieldops-task-meta-grid">
+            <div class="fieldops-task-meta">
+                <span>Customer</span>
+                <strong>{{ $linkedCustomerName ?: 'Customer' }}</strong>
             </div>
-        </details>
+            <div class="fieldops-task-meta">
+                <span>Scheduled</span>
+                <strong>{{ $delivery->scheduled_at ? $delivery->scheduled_at->format('d M h:i A') : 'Not scheduled' }}</strong>
+            </div>
+            <div class="fieldops-task-meta">
+                <span>Product</span>
+                <strong>{{ $taskProductLabel }}</strong>
+            </div>
+            <div class="fieldops-task-meta">
+                <span>Warehouse</span>
+                <strong>{{ $taskWarehouseLabel }}</strong>
+            </div>
+            <div class="fieldops-task-meta is-wide">
+                <span>Service Address</span>
+                <strong>{{ collect([$linkedAddress, $linkedCity])->filter()->join(', ') ?: 'No service address captured.' }}</strong>
+            </div>
+        </div>
+
+        <div class="fieldops-icon-actions" aria-label="Delivery quick actions">
+            @if($linkedPhone)
+                <a href="tel:{{ preg_replace('/\D+/', '', $linkedPhone) }}" class="fieldops-icon-action" aria-label="Call contact">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.2 19.2 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8l-1.3 1.3a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 1.8-.6l3 .5A2 2 0 0 1 22 16.9Z"/></svg>
+                    <span>Call</span>
+                </a>
+            @endif
+            @if($linkedWhatsapp)
+                <a href="https://wa.me/{{ preg_replace('/\D+/', '', $linkedWhatsapp) }}" target="_blank" rel="noopener noreferrer" class="fieldops-icon-action" aria-label="WhatsApp contact">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 11.4c0 4.7-3.9 8.6-8.8 8.6-1.5 0-3-.4-4.2-1.1L3 20l1.2-3.7A8.4 8.4 0 0 1 2.4 11.4C2.4 6.7 6.3 3 11.2 3 16.1 3 20 6.7 20 11.4Zm-4.8 2.2c-.2-.1-1.2-.6-1.4-.7s-.3-.1-.4.1-.5.7-.7.9-.3.2-.5.1a5.9 5.9 0 0 1-1.7-1c-.6-.5-1-1.2-1.1-1.4-.1-.2 0-.3.1-.4l.3-.4.2-.3v-.4c0-.1-.4-1.1-.6-1.6-.2-.4-.3-.4-.4-.4h-.4c-.1 0-.4 0-.6.3-.2.2-.8.8-.8 1.9s.8 2.1 1 2.3c.1.1 1.5 2.3 3.8 3.2.5.2 1 .4 1.3.5.6.2 1.2.2 1.7.1.5-.1 1.2-.5 1.4-1 .2-.5.2-1 .1-1Z"/></svg>
+                    <span>WhatsApp</span>
+                </a>
+            @endif
+            @if($linkedMapUrl)
+                <a href="{{ $linkedMapUrl }}" target="_blank" rel="noopener" class="fieldops-icon-action" aria-label="Open map">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-5.1 7-11a7 7 0 1 0-14 0c0 5.9 7 11 7 11Z"/><circle cx="12" cy="10" r="2.5"/></svg>
+                    <span>Map</span>
+                </a>
+            @endif
+            <details class="mobile-actions-menu">
+                <summary aria-label="More task actions">More</summary>
+                <div class="mobile-actions-panel">
+                    <a href="{{ route('deliveries.index') }}">Back to Tasks</a>
+                    @if($delivery->rental_id)
+                        <a href="{{ route('rentals.show', $delivery->rental_id) }}">View Rental</a>
+                    @elseif($delivery->sale_id)
+                        <a href="{{ route('sales.show', $delivery->sale_id) }}">View Sale</a>
+                    @endif
+                    @if($hasProofHistory)
+                        <a href="#delivery-proof-history">Proof History</a>
+                    @endif
+                    <a href="#activity-timeline">Operations History</a>
+                    @if($canUpdateTask)
+                        <a href="{{ route('deliveries.edit', $delivery) }}">Edit Assignment</a>
+                    @endif
+                    @if($canCancelTask)
+                        <a href="#{{ $cancellationSectionId }}" class="is-danger">Unable to complete</a>
+                    @endif
+                </div>
+            </details>
+        </div>
+
+        <div class="fieldops-primary-bar">
+            @if(($canUpdateTask && in_array($delivery->status, ['pending', 'in_progress'], true)) || $hasProofHistory)
+                <a href="#{{ $canUpdateTask ? $workflowProofSectionId : 'delivery-proof-history' }}" class="detail-btn">
+                    {{ $canUpdateTask ? $primaryWorkflowCtaLabel : 'View Proof History' }}
+                </a>
+            @endif
+            <span class="fieldops-primary-note">{{ $delivery->type === 'pickup' ? 'Proof must be complete before pickup can close.' : 'Proof must be complete before delivery can close.' }}</span>
+        </div>
     </div>
 
     <div class="detail-card fieldops-overview-card">
@@ -1922,14 +2181,19 @@
                                 <label>Acknowledgement</label>
                                 <div class="workflow-proof-signature-wrap">
                                     <div class="workflow-proof-help">{{ $acknowledgementText }}</div>
-                                    <div class="workflow-proof-help">Signature is required for completion.</div>
+                                    <div class="workflow-proof-help">Signature is preferred. If not possible, add a short reason below.</div>
                                     <canvas class="workflow-proof-signature-pad" data-signature-pad data-target-input="signature_data"></canvas>
                                     <input type="hidden" name="signature_data" value="{{ old('signature_data') }}">
                                     <div class="workflow-proof-actions">
                                         <button type="button" class="workflow-proof-trigger" data-signature-clear>Clear Signature</button>
                                         <div class="workflow-proof-help">Sign with finger or stylus.</div>
                                     </div>
+                                    <label for="signature_unavailable_reason">Unable to sign reason</label>
+                                    <textarea id="signature_unavailable_reason" name="signature_unavailable_reason" placeholder="Add reason if the customer could not sign.">{{ old('signature_unavailable_reason') }}</textarea>
                                     @error('signature_data')
+                                        <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                                    @enderror
+                                    @error('signature_unavailable_reason')
                                         <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
                                     @enderror
                                 </div>
@@ -1941,12 +2205,96 @@
                         </div>
                     </section>
 
+                    @if($supportsCollectionStep)
                     <section class="workflow-step" data-workflow-step-panel data-workflow-step-index="{{ $delivery->type === 'pickup' ? 6 : 5 }}">
                         <div class="workflow-step-head">
                             <span class="workflow-step-index">{{ $delivery->type === 'pickup' ? 6 : 5 }}</span>
                             <div>
                                 <div class="workflow-step-copy">
                                     <span class="workflow-step-counter">Step {{ $delivery->type === 'pickup' ? 6 : 5 }} of {{ $workflowStepCount }}</span>
+                                    <strong>Collection</strong>
+                                    <p>Collect payment if this task was assigned with collection.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="workflow-step-hero">
+                            <div class="workflow-step-hero-icon" aria-hidden="true">{!! $workflowIllustration('payment') !!}</div>
+                            <div class="workflow-step-hero-copy">
+                                <strong>Record collection</strong>
+                                <span>Enter the received amount or choose why payment could not be collected.</span>
+                            </div>
+                        </div>
+                        <div class="workflow-proof-grid">
+                            <div class="workflow-proof-field">
+                                <label>Amount to collect</label>
+                                <input type="text" value="{{ $collectionAmountToCollect > 0 ? '₹ ' . number_format($collectionAmountToCollect, 2) : 'As instructed' }}" readonly>
+                            </div>
+                            <div class="workflow-proof-field">
+                                <label for="collection_amount_collected">Amount collected</label>
+                                <input id="collection_amount_collected" type="text" name="collection_amount_collected" value="{{ old('collection_amount_collected', $delivery->collection_amount_collected) }}" placeholder="0.00">
+                                @error('collection_amount_collected')
+                                    <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="workflow-proof-field">
+                                <label for="collection_payment_mode">Payment mode</label>
+                                <select id="collection_payment_mode" name="collection_payment_mode" style="width:100%; border:1px solid #cbd5e1; border-radius:12px; padding:10px 12px; font-size:13px; color:#0f172a; background:#fff;">
+                                    <option value="">Select mode</option>
+                                    @foreach($collectionModes as $collectionModeKey => $collectionModeLabel)
+                                        <option value="{{ $collectionModeKey }}" @selected(old('collection_payment_mode', $delivery->collection_payment_mode) === $collectionModeKey)>{{ $collectionModeLabel }}</option>
+                                    @endforeach
+                                </select>
+                                @error('collection_payment_mode')
+                                    <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="workflow-proof-field">
+                                <label for="collection_transaction_reference">Transaction reference</label>
+                                <input id="collection_transaction_reference" type="text" name="collection_transaction_reference" value="{{ old('collection_transaction_reference', $delivery->collection_transaction_reference) }}" placeholder="UPI / bank reference">
+                                @error('collection_transaction_reference')
+                                    <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="workflow-proof-field span-12">
+                                <label for="collection_payment_proof">Payment proof</label>
+                                <input id="collection_payment_proof" type="file" name="collection_payment_proof" accept="image/*" capture="environment" data-compress-images>
+                                @error('collection_payment_proof')
+                                    <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="workflow-proof-field">
+                                <label for="collection_not_collected_reason">If not collected</label>
+                                <select id="collection_not_collected_reason" name="collection_not_collected_reason" style="width:100%; border:1px solid #cbd5e1; border-radius:12px; padding:10px 12px; font-size:13px; color:#0f172a; background:#fff;">
+                                    <option value="">Select reason</option>
+                                    @foreach($collectionReasonOptions as $reasonKey => $reasonLabel)
+                                        <option value="{{ $reasonKey }}" @selected(old('collection_not_collected_reason', $delivery->collection_not_collected_reason) === $reasonKey)>{{ $reasonLabel }}</option>
+                                    @endforeach
+                                </select>
+                                @error('collection_not_collected_reason')
+                                    <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="workflow-proof-field">
+                                <label for="collection_note">Collection note</label>
+                                <textarea id="collection_note" name="collection_note" placeholder="Add a short collection note if needed.">{{ old('collection_note', $delivery->collection_note) }}</textarea>
+                                @error('collection_note')
+                                    <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                                @enderror
+                            </div>
+                        </div>
+                        <div class="workflow-step-actions">
+                            <button type="button" class="detail-btn-secondary" data-workflow-back>Back</button>
+                            <button type="button" class="detail-btn" data-workflow-next>Next</button>
+                        </div>
+                    </section>
+                    @endif
+
+                    <section class="workflow-step" data-workflow-step-panel data-workflow-step-index="{{ $delivery->type === 'pickup' ? ($supportsCollectionStep ? 7 : 6) : ($supportsCollectionStep ? 6 : 5) }}">
+                        <div class="workflow-step-head">
+                            <span class="workflow-step-index">{{ $delivery->type === 'pickup' ? ($supportsCollectionStep ? 7 : 6) : ($supportsCollectionStep ? 6 : 5) }}</span>
+                            <div>
+                                <div class="workflow-step-copy">
+                                    <span class="workflow-step-counter">Step {{ $delivery->type === 'pickup' ? ($supportsCollectionStep ? 7 : 6) : ($supportsCollectionStep ? 6 : 5) }} of {{ $workflowStepCount }}</span>
                                     <strong>Review &amp; Complete</strong>
                                     <p>Review required proofs before completion.</p>
                                 </div>
@@ -1959,6 +2307,42 @@
                                 <span>Complete only when every required proof is ready.</span>
                             </div>
                         </div>
+                        <div class="workflow-review-summary-grid">
+                            <div class="workflow-review-summary-card">
+                                <span>Customer</span>
+                                <strong>{{ $linkedCustomerName ?: 'Customer' }}</strong>
+                            </div>
+                            <div class="workflow-review-summary-card">
+                                <span>Product</span>
+                                <strong>{{ $taskProductLabel }}</strong>
+                            </div>
+                            <div class="workflow-review-summary-card">
+                                <span>GPS</span>
+                                <strong data-review-summary="location">Pending</strong>
+                            </div>
+                            <div class="workflow-review-summary-card">
+                                <span>Photos</span>
+                                <strong data-review-summary="photos">Pending</strong>
+                            </div>
+                            <div class="workflow-review-summary-card">
+                                <span>Signature</span>
+                                <strong data-review-summary="signature">Pending</strong>
+                            </div>
+                            <div class="workflow-review-summary-card">
+                                <span>{{ $supportsCollectionStep ? 'Collection' : 'Task Status' }}</span>
+                                <strong data-review-summary="{{ $supportsCollectionStep ? 'collection' : 'complete' }}">{{ $supportsCollectionStep ? 'Pending' : 'Ready to complete after proof review' }}</strong>
+                            </div>
+                            @if($delivery->type === 'pickup')
+                                <div class="workflow-review-summary-card">
+                                    <span>Condition</span>
+                                    <strong data-review-summary="condition">Pending</strong>
+                                </div>
+                            @endif
+                            <div class="workflow-review-summary-card">
+                                <span>Notes</span>
+                                <strong data-review-summary="notes">Optional</strong>
+                            </div>
+                        </div>
                         <div class="workflow-review-list">
                             <div class="workflow-review-item" data-review-item="location" data-review-ready="false"><strong>Location</strong><span>GPS captured or reason added.</span><span class="workflow-review-status">Missing</span></div>
                             <div class="workflow-review-item" data-review-item="photos" data-review-ready="false"><strong>Photos</strong><span>{{ $delivery->type === 'pickup' ? 'Pickup photos ready.' : 'Delivery proof photos ready.' }}</span><span class="workflow-review-status">Missing</span></div>
@@ -1966,12 +2350,27 @@
                                 <div class="workflow-review-item" data-review-item="condition" data-review-ready="false"><strong>Condition</strong><span>Damage and accessories reviewed.</span><span class="workflow-review-status">Missing</span></div>
                             @endif
                             <div class="workflow-review-item" data-review-item="signature" data-review-ready="false"><strong>Signature</strong><span>Customer acknowledgement captured.</span><span class="workflow-review-status">Missing</span></div>
+                            @if($supportsCollectionStep)
+                                <div class="workflow-review-item" data-review-item="collection" data-review-ready="false"><strong>Collection</strong><span>Amount recorded or reason added.</span><span class="workflow-review-status">Missing</span></div>
+                            @endif
                             <div class="workflow-review-item" data-review-item="notes" data-review-ready="true"><strong>Notes</strong><span>Only operational notes, no extra narrative.</span><span class="workflow-review-status">Optional</span></div>
+                        </div>
+                        <div class="workflow-proof-field span-12">
+                            <label style="display:flex; align-items:flex-start; gap:10px; text-transform:none; letter-spacing:0; font-size:12px; color:#0f172a;">
+                                <input type="checkbox" name="completion_confirmed" value="1" {{ old('completion_confirmed') ? 'checked' : '' }} style="margin-top:2px;">
+                                <span>I confirm the above details are correct and proof has been captured.</span>
+                            </label>
+                            @error('completion_confirmed')
+                                <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                            @enderror
                         </div>
                         <div class="workflow-step-actions">
                             <button type="button" class="detail-btn-secondary" data-workflow-back>Back</button>
                             <button type="submit" class="detail-btn" data-workflow-complete>{{ $delivery->type === 'pickup' ? 'Complete Pickup' : 'Complete Delivery' }}</button>
                         </div>
+                        @if($delivery->type === 'pickup')
+                            <div class="workflow-proof-help">Returned assets will stay in verification flow until warehouse checks are complete.</div>
+                        @endif
                     </section>
                 </div>
                 </div>
@@ -2608,6 +3007,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const setReviewItemState = (form, key, ready, text) => {
         const item = form.querySelector(`[data-review-item="${key}"]`);
         if (!item) {
+            const summaryOnly = form.querySelector(`[data-review-summary="${key}"]`);
+
+            if (summaryOnly) {
+                summaryOnly.textContent = text;
+            }
+
             return;
         }
 
@@ -2617,6 +3022,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (status) {
             status.textContent = text;
+        }
+
+        const summary = form.querySelector(`[data-review-summary="${key}"]`);
+        if (summary) {
+            summary.textContent = text;
         }
     };
 
@@ -2658,7 +3068,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 || (pickupCondition === 'missing_accessories' && missingAccessoryNotes !== '')
                 || ['good', 'needs_inspection', ''].includes(pickupCondition)
             );
-        const signatureReady = Boolean(form.querySelector('input[name="signature_data"]')?.value);
+        const signatureReady = Boolean(form.querySelector('input[name="signature_data"]')?.value)
+            || Boolean(form.querySelector('textarea[name="signature_unavailable_reason"]')?.value?.trim());
+        const collectionRequired = {{ $supportsCollectionStep ? 'true' : 'false' }};
+        const hasCollectedAmount = (() => {
+            const raw = form.querySelector('input[name="collection_amount_collected"]')?.value?.trim() || '';
+            return raw !== '' && !Number.isNaN(Number(raw)) && Number(raw) > 0;
+        })();
+        const collectionReason = form.querySelector('select[name="collection_not_collected_reason"]')?.value || '';
+        const collectionMode = form.querySelector('select[name="collection_payment_mode"]')?.value || '';
+        const collectionReady = !collectionRequired || ((hasCollectedAmount && collectionMode !== '') || (!hasCollectedAmount && collectionReason !== ''));
+        const consentReady = Boolean(form.querySelector('input[name="completion_confirmed"]')?.checked);
 
         return {
             workflowType,
@@ -2669,6 +3089,9 @@ document.addEventListener('DOMContentLoaded', () => {
             signatureReady,
             pickupCondition,
             damagePhotoReady,
+            collectionRequired,
+            collectionReady,
+            consentReady,
         };
     };
 
@@ -2680,6 +3103,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (state.workflowType === 'pickup') {
             setReviewItemState(form, 'condition', state.conditionReady, state.conditionReady ? 'Ready' : 'Missing');
+        }
+
+        if (state.collectionRequired) {
+            setReviewItemState(form, 'collection', state.collectionReady, state.collectionReady ? 'Ready' : 'Missing');
         }
 
         const notesStateLabel = state.workflowType === 'pickup'
@@ -2700,7 +3127,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const canComplete = state.locationReady
                 && state.photoReady
                 && state.signatureReady
-                && (state.workflowType !== 'pickup' || (state.conditionReady && state.notesReady));
+                && (state.workflowType !== 'pickup' || (state.conditionReady && state.notesReady))
+                && (!state.collectionRequired || state.collectionReady)
+                && state.consentReady;
+
+            setReviewItemState(form, 'complete', canComplete, canComplete ? 'Ready to finish' : 'Review pending');
 
             completeButton.disabled = !canComplete;
             completeButton.setAttribute('aria-disabled', canComplete ? 'false' : 'true');
@@ -2741,6 +3172,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (((workflowType === 'pickup' && currentStep === 5) || (workflowType === 'delivery' && currentStep === 4)) && !state.signatureReady) {
             form.querySelector('[data-signature-pad]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return false;
+        }
+
+        if (state.collectionRequired && ((workflowType === 'pickup' && currentStep === 6) || (workflowType === 'delivery' && currentStep === 5)) && !state.collectionReady) {
+            form.querySelector('input[name="collection_amount_collected"]')?.focus();
             return false;
         }
 
