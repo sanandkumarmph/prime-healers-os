@@ -535,9 +535,16 @@
         letter-spacing:.04em;
         text-transform:uppercase;
     }
+    .ops-mobile-time {
+        margin-left:auto;
+        color:#64748b;
+        font-size:11px;
+        font-weight:800;
+        white-space:nowrap;
+    }
     .ops-mobile-order {
         color:#0f172a;
-        font-size:13px;
+        font-size:12px;
         font-weight:800;
         line-height:1.35;
     }
@@ -556,20 +563,25 @@
         line-height:1.35;
     }
     .ops-mobile-phone,
-    .ops-mobile-product {
+    .ops-mobile-product,
+    .ops-mobile-address {
         color:#475569;
         font-size:11.5px;
         line-height:1.4;
     }
-    .ops-mobile-grid {
+    .ops-mobile-meta-row {
         display:grid;
         grid-template-columns:repeat(2, minmax(0, 1fr));
-        gap:10px;
+        gap:8px;
     }
     .ops-mobile-meta {
         display:grid;
-        gap:3px;
+        gap:2px;
         min-width:0;
+        padding:8px 9px;
+        border-radius:12px;
+        border:1px solid #eef2f7;
+        background:#f8fafc;
     }
     .ops-mobile-meta span:first-child {
         color:#64748b;
@@ -784,7 +796,7 @@
             color:#1d4ed8;
         }
         .ops-filter-grid,
-        .ops-mobile-grid { grid-template-columns:1fr; }
+        .ops-mobile-meta-row { grid-template-columns:1fr; }
         .ops-mobile-actions { gap:8px; }
         .ops-mobile-icon-row { grid-template-columns:repeat(4, minmax(0, 1fr)); align-items:stretch; }
         .ops-mobile-actions .ops-action-btn,
@@ -819,6 +831,34 @@
             width:100%;
         }
         .ops-action-panel { position:static; min-width:0; box-shadow:none; margin-top:8px; }
+        .ops-task-checkbox {
+            display:none;
+        }
+        .ops-mobile-card {
+            gap:8px;
+            padding:10px 11px;
+        }
+        .ops-mobile-card-head {
+            gap:5px;
+        }
+        .ops-mobile-topline {
+            gap:5px;
+        }
+        .ops-mobile-order {
+            font-size:11px;
+            color:#64748b;
+        }
+        .ops-mobile-customer {
+            font-size:12.5px;
+        }
+        .ops-mobile-phone,
+        .ops-mobile-product,
+        .ops-mobile-address {
+            font-size:11px;
+        }
+        .ops-mobile-meta span:last-child {
+            font-size:12px;
+        }
     }
 
     @media (max-width: 420px) {
@@ -1537,6 +1577,8 @@
                             $taskDetailHref = $canViewTask && \Illuminate\Support\Facades\Route::has('deliveries.show')
                                 ? route('deliveries.show', $delivery)
                                 : null;
+                            $scheduleLabel = $delivery->scheduled_at ? $delivery->scheduled_at->format('h:i A') : 'No time';
+                            $locationLabel = collect([$delivery->linkedCustomerAddress(), $customerCity])->filter()->implode(', ');
                         @endphp
                         <article
                             class="ops-mobile-card {{ $isOverdue ? 'is-overdue' : '' }}"
@@ -1549,19 +1591,13 @@
                             <div class="ops-mobile-top">
                                 <div class="ops-mobile-card-head">
                                     <div class="ops-mobile-topline">
-                                        <input
-                                            type="checkbox"
-                                            class="ops-task-checkbox"
-                                            value="{{ $delivery->id }}"
-                                            data-task-id="{{ $delivery->id }}"
-                                            aria-label="Select task {{ $serialNumber }}"
-                                        >
                                         <span class="ops-mobile-serial">{{ ucfirst($delivery->type) }} #{{ $delivery->id }}</span>
                                         <span class="ops-type-badge {{ $delivery->type === 'pickup' ? 'ops-type-pickup' : 'ops-type-delivery' }}">
                                             {!! $navIcon($delivery->type === 'pickup' ? 'pickup' : 'delivery') !!}
                                             {{ ucfirst($delivery->type) }}
                                         </span>
                                         <span class="rn-badge {{ $taskStatusBadgeClass($displayStatus, $isOverdue) }}">{{ $taskStatusLabel($displayStatus) }}</span>
+                                        <span class="ops-mobile-time">{{ $scheduleLabel }}</span>
                                     </div>
                                     <div class="ops-mobile-order">
                                         @if($isSaleTask && $delivery->sale)
@@ -1578,6 +1614,9 @@
                                             <span class="ops-mobile-phone">{{ $customerPhone }}</span>
                                         @endif
                                         <span class="ops-mobile-product">{{ $items->take(1)->implode(', ') ?: 'No linked items yet' }}</span>
+                                        @if($locationLabel !== '')
+                                            <span class="ops-mobile-address">{{ \Illuminate\Support\Str::limit($locationLabel, 58) }}</span>
+                                        @endif
                                     </div>
                                 </div>
                                 <details class="ops-action-menu ops-mobile-more">
@@ -1612,18 +1651,14 @@
                                 </details>
                             </div>
 
-                            <div class="ops-mobile-grid">
+                            <div class="ops-mobile-meta-row">
                                 <div class="ops-mobile-meta">
-                                    <span>Schedule</span>
-                                    <span>{{ $delivery->scheduled_at ? $delivery->scheduled_at->format('d M h:i A') : 'Not scheduled' }}</span>
+                                    <span>{{ $delivery->type === 'pickup' ? 'Pickup' : 'Delivery' }}</span>
+                                    <span>{{ $delivery->scheduled_at ? $delivery->scheduled_at->format('d M') : 'Not scheduled' }}</span>
                                 </div>
                                 <div class="ops-mobile-meta">
                                     <span>Staff</span>
                                     <span>{{ $assignedName }}</span>
-                                </div>
-                                <div class="ops-mobile-meta">
-                                    <span>Phone</span>
-                                    <span>{{ $customerPhone ?: 'No phone saved' }}</span>
                                 </div>
                                 <div class="ops-mobile-meta">
                                     <span>Location</span>

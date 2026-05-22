@@ -388,7 +388,7 @@ class DeliveryController extends Controller
 
         return $this->redirectToWorkflowChecklist(
             $delivery,
-            'Open the delivery task detail page to ' . $verb . ' before continuing.'
+            'Open the task workflow to ' . $verb . ' before continuing.'
         );
     }
 
@@ -448,7 +448,9 @@ class DeliveryController extends Controller
 
     private function validateStartWorkflowRequest(Request $request): array
     {
-        $validator = Validator::make($request->all(), $this->startWorkflowValidationRules());
+        $validator = Validator::make($request->all(), $this->startWorkflowValidationRules(), [
+            'location_missing_reason.max' => 'Keep the GPS reason short and clear.',
+        ]);
         $validator->after(function ($validator) {
             $this->appendLocationCaptureErrors($validator, $validator->getData());
         });
@@ -458,7 +460,28 @@ class DeliveryController extends Controller
 
     private function validateCompletionWorkflowRequest(Request $request, Delivery $delivery): array
     {
-        $validator = Validator::make($request->all(), $this->completionWorkflowValidationRules($delivery));
+        $actionLabel = $delivery->type === 'pickup' ? 'pickup' : 'delivery';
+        $validator = Validator::make($request->all(), $this->completionWorkflowValidationRules($delivery), [
+            'signature_data.required' => 'Add customer signature to continue.',
+            'proof_notes.max' => 'Keep notes under 1000 characters.',
+            'location_missing_reason.max' => 'Keep the GPS reason short and clear.',
+            'delivery_device_photos.required' => 'Add product photo to continue.',
+            'delivery_device_photos.min' => 'Add at least one product photo to continue.',
+            'delivery_device_photos.*.image' => 'Upload a valid product photo.',
+            'delivery_device_photos.*.max' => 'One of the product photos is too large. Retake it with less background.',
+            'premises_photo.required' => 'Add on-site proof photo to continue.',
+            'premises_photo.image' => 'Upload a valid on-site proof photo.',
+            'premises_photo.max' => 'The on-site proof photo is too large. Retake it with less background.',
+            'pickup_device_photos.required' => 'Add pickup photo to continue.',
+            'pickup_device_photos.min' => 'Add at least one pickup photo to continue.',
+            'pickup_device_photos.*.image' => 'Upload a valid pickup photo.',
+            'pickup_device_photos.*.max' => 'One of the pickup photos is too large. Retake it with less background.',
+            'damage_notes.max' => 'Keep damage notes under 1000 characters.',
+            'missing_accessories_notes.max' => 'Keep missing item notes under 1000 characters.',
+            'damage_photos.*.image' => 'Upload a valid damage photo.',
+            'damage_photos.*.max' => 'One of the damage photos is too large. Retake it with less background.',
+            'workflow_capture_form.accepted' => 'Open the ' . $actionLabel . ' workflow to continue.',
+        ]);
         $validator->after(function ($validator) use ($delivery) {
             $data = $validator->getData();
             $this->appendLocationCaptureErrors($validator, $data);
@@ -491,7 +514,7 @@ class DeliveryController extends Controller
             return;
         }
 
-        $validator->errors()->add('location_missing_reason', 'Capture the current location or enter a reason why location could not be captured.');
+        $validator->errors()->add('location_missing_reason', 'Capture GPS or add a reason to continue.');
     }
 
     private function appendPickupDamageProofErrors($validator, array $validated): void
@@ -508,11 +531,11 @@ class DeliveryController extends Controller
         $messages = [];
 
         if ($damageNotes === '') {
-            $messages['damage_notes'] = 'Damage notes are required when damage is reported at pickup.';
+            $messages['damage_notes'] = 'Add damage notes to continue.';
         }
 
         if ($damagePhotos->isEmpty()) {
-            $messages['damage_photos'] = 'At least one damage photo is required when damage is reported at pickup.';
+            $messages['damage_photos'] = 'Add damage photo to continue.';
         }
 
         foreach ($messages as $key => $message) {

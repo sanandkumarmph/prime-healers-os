@@ -186,6 +186,69 @@
         ? \App\Models\DeliveryProof::labelForType($deliveryProofs->first()->proof_type)
         : 'No proof yet';
     $supportsCollectionStep = false;
+    $workflowIllustration = function (string $key): string {
+        return match ($key) {
+            'start' => <<<SVG
+                <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect x="12" y="12" width="96" height="96" rx="26" fill="#EFF6FF"/>
+                    <circle cx="56" cy="34" r="11" fill="#F8C9A7"/>
+                    <path d="M43 52c0-5 4-9 9-9h8c5 0 9 4 9 9v19H43V52Z" fill="#2563EB"/>
+                    <path d="M42 72h30c4 0 8 3 8 8v8H34v-8c0-5 4-8 8-8Z" fill="#1D4ED8"/>
+                    <rect x="70" y="50" width="22" height="22" rx="4" fill="#F6D7A8" stroke="#D39A42" stroke-width="2"/>
+                    <path d="M77 50v-8l8-4 7 4v8" stroke="#D39A42" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M41 88h41" stroke="#BFDBFE" stroke-width="4" stroke-linecap="round"/>
+                </svg>
+            SVG,
+            'gps' => <<<SVG
+                <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect x="16" y="16" width="88" height="88" rx="24" fill="#EFF6FF"/>
+                    <circle cx="60" cy="58" r="21" fill="#DBEAFE"/>
+                    <path d="M60 34c-10.5 0-19 8.2-19 18.7 0 13.4 16.6 27.3 18.4 28.8a1 1 0 0 0 1.2 0C62.4 80 79 66.1 79 52.7 79 42.2 70.5 34 60 34Z" fill="#2563EB"/>
+                    <circle cx="60" cy="52" r="6.5" fill="white"/>
+                    <path d="M32 88h56" stroke="#BFDBFE" stroke-width="4" stroke-linecap="round"/>
+                </svg>
+            SVG,
+            'photos' => <<<SVG
+                <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect x="14" y="18" width="92" height="84" rx="20" fill="#F8FAFC"/>
+                    <rect x="24" y="28" width="72" height="54" rx="12" fill="#EFF6FF" stroke="#BFDBFE" stroke-width="2"/>
+                    <rect x="42" y="86" width="36" height="8" rx="4" fill="#BFDBFE"/>
+                    <path d="M39 57h20l9-12 13 17H39v-5Z" fill="#93C5FD"/>
+                    <circle cx="74" cy="44" r="5" fill="#2563EB"/>
+                    <path d="M53 41h10c2 0 4 2 4 4v6H49v-6c0-2 2-4 4-4Z" fill="#1D4ED8"/>
+                </svg>
+            SVG,
+            'condition' => <<<SVG
+                <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect x="16" y="16" width="88" height="88" rx="24" fill="#F8FAFC"/>
+                    <rect x="30" y="28" width="60" height="64" rx="16" fill="white" stroke="#DDE7F2" stroke-width="2"/>
+                    <path d="M44 46h32" stroke="#CBD5E1" stroke-width="4" stroke-linecap="round"/>
+                    <path d="M44 60h32" stroke="#CBD5E1" stroke-width="4" stroke-linecap="round"/>
+                    <path d="m44 74 5 5 9-10" stroke="#16A34A" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="84" cy="35" r="10" fill="#FEF3C7"/>
+                    <path d="M84 31v8" stroke="#B45309" stroke-width="3" stroke-linecap="round"/>
+                    <circle cx="84" cy="42" r="1.5" fill="#B45309"/>
+                </svg>
+            SVG,
+            'signature' => <<<SVG
+                <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect x="16" y="18" width="88" height="84" rx="22" fill="#F8FAFC"/>
+                    <rect x="28" y="34" width="64" height="42" rx="10" fill="white" stroke="#DDE7F2" stroke-width="2"/>
+                    <path d="M38 63c6-12 11 6 17-5 4-8 11-7 14 2 3 9 10 5 12-4" stroke="#1D4ED8" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M38 85h44" stroke="#CBD5E1" stroke-width="4" stroke-linecap="round"/>
+                    <path d="m84 80 8-16 6 6-14 10Z" fill="#2563EB"/>
+                </svg>
+            SVG,
+            'complete' => <<<SVG
+                <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect x="16" y="16" width="88" height="88" rx="24" fill="#F0FDF4"/>
+                    <path d="M60 30 82 38v18c0 17-12 28-22 34-10-6-22-17-22-34V38l22-8Z" fill="#22C55E"/>
+                    <path d="m49 58 8 8 15-17" stroke="white" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            SVG,
+            default => '',
+        };
+    };
 
     $mobileQuickActions = collect([
         [
@@ -413,6 +476,12 @@
         font-size:28px;
         box-shadow:inset 0 1px 0 rgba(255,255,255,.7);
     }
+    .workflow-start-illustration svg,
+    .workflow-step-hero-icon svg {
+        width:100%;
+        height:100%;
+        display:block;
+    }
     .workflow-step-counter {
         display:inline-flex;
         align-items:center;
@@ -465,6 +534,48 @@
         font-size:13px;
         line-height:1.35;
         overflow-wrap:anywhere;
+    }
+    .workflow-step-hero {
+        display:grid;
+        grid-template-columns:56px minmax(0, 1fr);
+        gap:10px;
+        align-items:center;
+        padding:10px 12px;
+        border:1px solid #dbe3ef;
+        border-radius:16px;
+        background:linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+    }
+    .workflow-step-hero-icon {
+        width:56px;
+        height:56px;
+        border-radius:18px;
+        display:grid;
+        place-items:center;
+        background:#f8fafc;
+        border:1px solid #dbe3ef;
+        overflow:hidden;
+    }
+    .workflow-step-hero-copy {
+        display:grid;
+        gap:3px;
+        min-width:0;
+    }
+    .workflow-step-hero-copy strong {
+        color:#0f172a;
+        font-size:13px;
+        line-height:1.3;
+    }
+    .workflow-step-hero-copy span {
+        color:#64748b;
+        font-size:11px;
+        line-height:1.45;
+    }
+    .workflow-mobile-shell-head {
+        display:none;
+    }
+    .workflow-mobile-shell-body {
+        display:grid;
+        gap:14px;
     }
     .mobile-actions-menu {
         position:relative;
@@ -955,6 +1066,9 @@
     @media (max-width: 767px) {
         .delivery-detail { padding:8px 0 16px; }
         .detail-actions { display:none; }
+        body.workflow-mobile-open {
+            overflow:hidden;
+        }
         .workflow-preview-shell {
             padding:10px 12px;
             gap:8px;
@@ -1005,6 +1119,21 @@
         .workflow-start-copy strong,
         .workflow-step-copy strong {
             font-size:16px;
+        }
+        .workflow-step-hero {
+            grid-template-columns:48px minmax(0, 1fr);
+            padding:9px 10px;
+        }
+        .workflow-step-hero-icon {
+            width:48px;
+            height:48px;
+            border-radius:14px;
+        }
+        .workflow-step-hero-copy strong {
+            font-size:12px;
+        }
+        .workflow-step-hero-copy span {
+            font-size:10.5px;
         }
         .progress-metric-grid { grid-template-columns:repeat(4, minmax(0, 1fr)); gap:6px; }
         .progress-metric { padding:7px 6px; }
@@ -1073,6 +1202,73 @@
             display:grid;
         }
         .workflow-mobile-stepper[data-mobile-workflow-active="true"] [data-workflow-desktop-actions] {
+            display:none;
+        }
+        .workflow-mobile-shell {
+            position:fixed;
+            inset:0;
+            z-index:1095;
+            display:none;
+            grid-template-rows:auto minmax(0, 1fr);
+            gap:0;
+            padding:0;
+            border:none;
+            border-radius:0;
+            box-shadow:none;
+            background:#f8fbff;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] {
+            display:grid;
+        }
+        .workflow-mobile-shell-head {
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:12px;
+            padding:calc(12px + env(safe-area-inset-top, 0px)) 12px 10px;
+            border-bottom:1px solid #dbe3ef;
+            background:rgba(255,255,255,.96);
+            backdrop-filter:blur(16px);
+        }
+        .workflow-mobile-shell-head strong {
+            display:block;
+            color:#0f172a;
+            font-size:15px;
+            line-height:1.2;
+        }
+        .workflow-mobile-shell-head span {
+            display:block;
+            margin-top:3px;
+            color:#64748b;
+            font-size:11px;
+            line-height:1.4;
+        }
+        .workflow-mobile-shell-close {
+            width:36px;
+            height:36px;
+            flex:0 0 36px;
+            display:grid;
+            place-items:center;
+            border-radius:12px;
+            border:1px solid #cbd5e1;
+            background:#fff;
+            color:#0f172a;
+            font-size:20px;
+            font-weight:700;
+            cursor:pointer;
+        }
+        .workflow-mobile-shell-body {
+            min-height:0;
+            overflow-y:auto;
+            padding:12px 12px calc(98px + env(safe-area-inset-bottom, 0px));
+            -webkit-overflow-scrolling:touch;
+        }
+        .workflow-mobile-shell .workflow-proof-badges,
+        .workflow-mobile-shell [data-workflow-desktop-actions] {
+            display:none;
+        }
+        .workflow-mobile-shell .proof-history-shell,
+        .workflow-mobile-shell .workflow-proof-divider {
             display:none;
         }
         .detail-support-grid {
@@ -1321,7 +1517,15 @@
     </div>
     @endif
 
-    <div class="detail-card workflow-proof-card" id="{{ $workflowProofSectionId }}">
+    <div class="detail-card workflow-proof-card workflow-mobile-shell" id="{{ $workflowProofSectionId }}" data-mobile-workflow-shell data-mobile-shell-state="closed">
+        <div class="workflow-mobile-shell-head">
+            <div>
+                <strong>{{ $delivery->type === 'pickup' ? 'Pickup Workflow' : 'Delivery Workflow' }}</strong>
+                <span>One step at a time. Finish proof, then complete.</span>
+            </div>
+            <button type="button" class="workflow-mobile-shell-close" data-close-mobile-workflow aria-label="Close workflow">×</button>
+        </div>
+        <div class="workflow-mobile-shell-body">
         <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
             <div>
                 <h2 style="margin:0;">{{ $delivery->type === 'pickup' ? 'Pickup Workflow' : 'Delivery Workflow' }}</h2>
@@ -1345,7 +1549,7 @@
                 @method('PUT')
                 <input type="hidden" name="workflow_capture_form" value="1">
                 <section class="workflow-start-hero">
-                    <div class="workflow-start-illustration" aria-hidden="true">{{ $delivery->type === 'pickup' ? 'PK' : 'DL' }}</div>
+                    <div class="workflow-start-illustration" aria-hidden="true">{!! $workflowIllustration('start') !!}</div>
                     <div class="workflow-start-copy">
                         <span class="workflow-step-counter">Step 1 of 2</span>
                         <strong>{{ $delivery->type === 'pickup' ? 'Ready to start pickup?' : 'Ready to start delivery?' }}</strong>
@@ -1378,6 +1582,13 @@
                                 <span class="workflow-step-counter">Step 2 of 2</span>
                                 <strong>Location Capture</strong>
                                 <p>GPS required or reason needed.</p>
+                            </div>
+                        </div>
+                        <div class="workflow-step-hero">
+                            <div class="workflow-step-hero-icon" aria-hidden="true">{!! $workflowIllustration('gps') !!}</div>
+                            <div class="workflow-step-hero-copy">
+                                <strong>Capture current location</strong>
+                                <span>Tap once, then continue when GPS is ready.</span>
                             </div>
                         </div>
                         <div class="workflow-proof-grid">
@@ -1448,6 +1659,13 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="workflow-step-hero">
+                            <div class="workflow-step-hero-icon" aria-hidden="true">{!! $workflowIllustration('gps') !!}</div>
+                            <div class="workflow-step-hero-copy">
+                                <strong>Location first</strong>
+                                <span>GPS is required, or add a short reason if it is unavailable.</span>
+                            </div>
+                        </div>
                         <div class="workflow-proof-grid">
                             <div class="workflow-proof-field span-12">
                                 <label>{{ ucfirst($delivery->type) }} location</label>
@@ -1490,6 +1708,13 @@
                                     <strong>Capture Photos</strong>
                                     <p>{{ $delivery->type === 'pickup' ? 'Capture item and accessory proof.' : 'Capture device and location proof.' }}</p>
                                 </div>
+                            </div>
+                        </div>
+                        <div class="workflow-step-hero">
+                            <div class="workflow-step-hero-icon" aria-hidden="true">{!! $workflowIllustration('photos') !!}</div>
+                            <div class="workflow-step-hero-copy">
+                                <strong>Camera-first proof</strong>
+                                <span>{{ $delivery->type === 'pickup' ? 'Take clear pickup photos before you move on.' : 'Add the item and on-site proof photos.' }}</span>
                             </div>
                         </div>
                         <div class="workflow-camera-grid">
@@ -1574,6 +1799,13 @@
                                     </div>
                                 </div>
                             </div>
+                            <div class="workflow-step-hero">
+                                <div class="workflow-step-hero-icon" aria-hidden="true">{!! $workflowIllustration('condition') !!}</div>
+                                <div class="workflow-step-hero-copy">
+                                    <strong>Mark the item condition</strong>
+                                    <span>Choose one clear condition before continuing.</span>
+                                </div>
+                            </div>
                             <div class="workflow-proof-grid">
                                 <div class="workflow-proof-field span-12">
                                     <label for="pickup_condition_choice">Condition status</label>
@@ -1619,6 +1851,13 @@
                                     <strong>Notes / Damage</strong>
                                     <p>{{ $delivery->type === 'pickup' ? 'Add damage or missing item notes.' : 'Add short field notes only if needed.' }}</p>
                                 </div>
+                            </div>
+                        </div>
+                        <div class="workflow-step-hero">
+                            <div class="workflow-step-hero-icon" aria-hidden="true">{!! $workflowIllustration('condition') !!}</div>
+                            <div class="workflow-step-hero-copy">
+                                <strong>Keep notes short</strong>
+                                <span>{{ $delivery->type === 'pickup' ? 'Only add damage or missing item details that matter in the field.' : 'Only add a short operational note when needed.' }}</span>
                             </div>
                         </div>
                         <div class="workflow-proof-grid">
@@ -1671,6 +1910,13 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="workflow-step-hero">
+                            <div class="workflow-step-hero-icon" aria-hidden="true">{!! $workflowIllustration('signature') !!}</div>
+                            <div class="workflow-step-hero-copy">
+                                <strong>Capture acknowledgement</strong>
+                                <span>Ask the customer to sign before you finish the task.</span>
+                            </div>
+                        </div>
                         <div class="workflow-proof-grid">
                             <div class="workflow-proof-field span-12">
                                 <label>Acknowledgement</label>
@@ -1704,6 +1950,13 @@
                                     <strong>Review &amp; Complete</strong>
                                     <p>Review required proofs before completion.</p>
                                 </div>
+                            </div>
+                        </div>
+                        <div class="workflow-step-hero">
+                            <div class="workflow-step-hero-icon" aria-hidden="true">{!! $workflowIllustration('complete') !!}</div>
+                            <div class="workflow-step-hero-copy">
+                                <strong>Review and finish</strong>
+                                <span>Complete only when every required proof is ready.</span>
                             </div>
                         </div>
                         <div class="workflow-review-list">
@@ -1803,7 +2056,7 @@
                 </div>
             </summary>
             <div class="proof-history-body">
-        <div class="workflow-proof-history">
+            <div class="workflow-proof-history">
 
             @forelse($deliveryProofs as $proof)
                 @php
@@ -1860,6 +2113,7 @@
         </div>
             </div>
         </details>
+        </div>
     </div>
 
     @include('partials.activity-timeline', [
@@ -2004,6 +2258,64 @@ document.addEventListener('DOMContentLoaded', () => {
     const cancellationSection = document.getElementById(@json($cancellationSectionId));
     const proofHistorySection = document.getElementById('delivery-proof-history');
     const workflowErrorSummary = document.querySelector('[data-workflow-error-summary]');
+    const mobileWorkflowMedia = window.matchMedia('(max-width: 767px)');
+    const mobileWorkflowShell = document.querySelector('[data-mobile-workflow-shell]');
+    const mobileWorkflowCloseButtons = Array.from(document.querySelectorAll('[data-close-mobile-workflow]'));
+
+    const closeMobileWorkflowShell = ({ preserveHash = false } = {}) => {
+        if (!(mobileWorkflowShell instanceof HTMLElement)) {
+            return;
+        }
+
+        mobileWorkflowShell.dataset.mobileShellState = 'closed';
+        document.body.classList.remove('workflow-mobile-open');
+
+        if (!preserveHash && window.location.hash === '#{{ $workflowProofSectionId }}') {
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+    };
+
+    const openMobileWorkflowShell = () => {
+        if (!(mobileWorkflowShell instanceof HTMLElement) || !mobileWorkflowMedia.matches) {
+            return;
+        }
+
+        mobileWorkflowShell.dataset.mobileShellState = 'open';
+        document.body.classList.add('workflow-mobile-open');
+    };
+
+    document.querySelectorAll('a[href]').forEach((anchor) => {
+        try {
+            const url = new URL(anchor.href, window.location.origin);
+
+            if (url.hash !== '#{{ $workflowProofSectionId }}' || url.pathname !== window.location.pathname) {
+                return;
+            }
+
+            anchor.addEventListener('click', (event) => {
+                if (!mobileWorkflowMedia.matches) {
+                    return;
+                }
+
+                event.preventDefault();
+                history.replaceState(null, '', '#{{ $workflowProofSectionId }}');
+                openMobileWorkflowShell();
+            });
+        } catch (error) {
+            // Ignore malformed or external links.
+        }
+    });
+
+    mobileWorkflowCloseButtons.forEach((button) => {
+        button.addEventListener('click', () => closeMobileWorkflowShell());
+    });
+
+    window.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            closeMobileWorkflowShell();
+        }
+    });
+
     const openProofHistoryFromHash = () => {
         if (!(proofHistorySection instanceof HTMLDetailsElement)) {
             return;
@@ -2018,6 +2330,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     if (workflowSection && (window.location.hash === '#{{ $workflowProofSectionId }}' || {{ $hasWorkflowErrors ? 'true' : 'false' }})) {
+        openMobileWorkflowShell();
         workflowSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
         if (workflowErrorSummary instanceof HTMLElement) {
@@ -2036,7 +2349,6 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('hashchange', openProofHistoryFromHash);
 
     const mobileWorkflowSteppers = Array.from(document.querySelectorAll('[data-mobile-workflow-stepper]'));
-    const mobileWorkflowMedia = window.matchMedia('(max-width: 767px)');
 
     const initializeMobileWorkflowStepper = (stepper) => {
         const form = stepper.closest('form');
@@ -2101,7 +2413,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        mobileWorkflowMedia.addEventListener('change', sync);
+        mobileWorkflowMedia.addEventListener('change', () => {
+            sync();
+
+            if (!mobileWorkflowMedia.matches) {
+                closeMobileWorkflowShell({ preserveHash: true });
+            }
+        });
         sync();
     };
 
