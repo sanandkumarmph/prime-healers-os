@@ -1578,6 +1578,12 @@
             border-bottom:1px solid #dbe3ef;
             backdrop-filter:blur(14px);
         }
+        .mobile-topbar-actions {
+            display:flex;
+            align-items:center;
+            gap:8px;
+            flex:0 0 auto;
+        }
         .mobile-back-row {
             position:fixed;
             top:58px;
@@ -1690,6 +1696,70 @@
             place-items:center;
             cursor:pointer;
             box-shadow:0 8px 18px rgba(15,23,42,.06);
+        }
+        .mobile-notification-menu {
+            position:relative;
+            flex:0 0 auto;
+        }
+        .mobile-notification-trigger {
+            width:40px;
+            height:40px;
+            border-radius:14px;
+            border:1px solid #cbd5e1;
+            box-shadow:0 8px 18px rgba(15,23,42,.06);
+        }
+        .mobile-notification-backdrop {
+            display:none;
+        }
+        .mobile-notification-panel {
+            position:fixed;
+            left:0;
+            right:0;
+            bottom:0;
+            top:auto;
+            width:100%;
+            max-width:none;
+            max-height:min(82vh, calc(100vh - 76px));
+            overflow:auto;
+            border-radius:24px 24px 0 0;
+            padding:14px 14px calc(18px + env(safe-area-inset-bottom, 0px));
+            border:1px solid #dbe3ef;
+            box-shadow:0 -18px 52px rgba(15,23,42,.28);
+            z-index:1060;
+        }
+        .mobile-notification-menu[open] .mobile-notification-backdrop {
+            display:block;
+            position:fixed;
+            inset:0;
+            background:rgba(15,23,42,.46);
+            z-index:1050;
+        }
+        .mobile-notification-panel .topbar-bell-head {
+            position:sticky;
+            top:0;
+            z-index:2;
+            background:#fff;
+            padding-top:2px;
+        }
+        .mobile-notification-close {
+            width:34px;
+            height:34px;
+            min-height:34px;
+            border-radius:12px;
+            box-shadow:none;
+            flex:0 0 34px;
+        }
+        .mobile-notification-helper {
+            color:#64748b;
+            font-size:11px;
+            line-height:1.5;
+            padding:10px 12px;
+            border-radius:12px;
+            background:#f8fafc;
+            border:1px solid #e2e8f0;
+        }
+        .mobile-notification-settings {
+            margin-top:2px;
         }
         .mobile-topbar-search {
             min-width:0;
@@ -2282,11 +2352,14 @@
             padding:10px 10px 8px;
         }
         .mobile-brand {
-            flex:1 1 calc(100% - 50px);
-            max-width:calc(100% - 50px);
+            flex:1 1 calc(100% - 98px);
+            max-width:calc(100% - 98px);
         }
         .mobile-brand-copy small {
             display:none;
+        }
+        .mobile-topbar-actions {
+            gap:6px;
         }
         .mobile-topbar-search {
             order:3;
@@ -2599,7 +2672,6 @@
                         @endif
                     </div>
                 </details>
-                <div class="topbar-toast-stack" data-notification-toast-stack aria-live="polite" aria-atomic="true"></div>
                 <details class="topbar-user-menu">
                     <summary class="topbar-user-trigger" aria-label="Open user menu">
                         <div class="topbar-user-avatar">{{ $userInitials }}</div>
@@ -2684,6 +2756,7 @@
 </div>
 @include('partials.mobile-bottom-nav', ['mobilePrimaryItems' => $mobilePrimaryItems, 'navIcon' => $navIcon])
 @include('partials.mobile-more-menu', ['mobileMoreItems' => $mobileMoreItems, 'navIcon' => $navIcon, 'currentUser' => $currentUser, 'userInitials' => $userInitials, 'userRoleLabel' => $userRoleLabel, 'profileHref' => $profileHref, 'logoutHref' => $logoutHref])
+<div class="topbar-toast-stack" data-notification-toast-stack aria-live="polite" aria-atomic="true"></div>
 @if(session('success') || session('error') || session('status'))
     <div
         data-action-toast

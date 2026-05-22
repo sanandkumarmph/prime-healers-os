@@ -43,6 +43,8 @@ class MobileMenuVisibilityRegressionTest extends TestCase
             ->assertDontSee('Sales')
             ->assertDontSee('Product Master')
             ->assertDontSee('Asset Register')
+            ->assertSee('mobile-notification-menu', false)
+            ->assertSee('data-notification-sound-toggle', false)
             ->assertDontSee('mobile-nav-item is-disabled', false)
             ->assertDontSee('mobile-more-link is-disabled', false);
     }
