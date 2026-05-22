@@ -801,6 +801,8 @@ const initializeUnifiedInAppNotifications = () => {
         subtitle: root.querySelector('[data-notification-subtitle]'),
         settingsHints: Array.from(root.querySelectorAll('[data-notification-settings-hint]')),
         markAllButtons: Array.from(root.querySelectorAll('[data-notification-mark-all]')),
+        closeButtons: Array.from(root.querySelectorAll('[data-notification-close]')),
+        backdrops: Array.from(root.querySelectorAll('[data-notification-backdrop]')),
         soundToggles: Array.from(root.querySelectorAll('[data-notification-sound-toggle]')),
         voiceToggles: Array.from(root.querySelectorAll('[data-notification-voice-toggle]')),
         soundVariantSelects: Array.from(root.querySelectorAll('[data-notification-sound-variant]')),
@@ -878,6 +880,24 @@ const initializeUnifiedInAppNotifications = () => {
         }
 
         document.body.style.overflow = '';
+    };
+
+    const closeNotificationRoot = (state) => {
+        if (!state?.root?.open) {
+            return;
+        }
+
+        if (state.markVisibleHandle) {
+            window.clearTimeout(state.markVisibleHandle);
+            state.markVisibleHandle = null;
+        }
+
+        state.root.open = false;
+        state.root.removeAttribute('open');
+
+        if (state.isMobileSheet) {
+            setMobileSheetLock(false);
+        }
     };
 
     const setHint = (message, persistent = false, targetState = null) => {
@@ -1361,6 +1381,21 @@ const initializeUnifiedInAppNotifications = () => {
     syncPreferenceControls();
 
     rootStates.forEach((state) => {
+        const bindCloseHandler = (element) => {
+            if (!(element instanceof HTMLElement)) {
+                return;
+            }
+
+            element.addEventListener('click', (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                closeNotificationRoot(state);
+            });
+        };
+
+        state.closeButtons.forEach(bindCloseHandler);
+        state.backdrops.forEach(bindCloseHandler);
+
         state.root.addEventListener('toggle', (event) => {
             if (event.target !== state.root) {
                 return;
@@ -1383,13 +1418,6 @@ const initializeUnifiedInAppNotifications = () => {
         });
 
         state.root.addEventListener('click', async (event) => {
-            const closeTrigger = event.target.closest('[data-notification-close], [data-notification-backdrop]');
-            if (closeTrigger) {
-                event.preventDefault();
-                state.root.removeAttribute('open');
-                return;
-            }
-
             const markAll = event.target.closest('[data-notification-mark-all]');
             if (markAll) {
                 event.preventDefault();
@@ -1443,6 +1471,7 @@ const initializeUnifiedInAppNotifications = () => {
             }
 
             if (href !== '#') {
+                closeNotificationRoot(state);
                 window.location.assign(href);
             }
         });
@@ -1559,6 +1588,18 @@ const initializeUnifiedInAppNotifications = () => {
         if (document.visibilityState === 'visible') {
             hydrate();
         }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') {
+            return;
+        }
+
+        rootStates.forEach((state) => {
+            if (state.root.open) {
+                closeNotificationRoot(state);
+            }
+        });
     });
 
     window.addEventListener('beforeunload', () => {

@@ -83,6 +83,37 @@ class BusinessPartnerFlowRegressionTest extends TestCase
             ->assertSee('aria-disabled="true"', false);
     }
 
+    public function test_rental_and_sales_create_load_with_customer_and_partner_selectors_even_when_location_fields_are_nullable(): void
+    {
+        $customer = Customer::create([
+            'organization_id' => $this->organizationId,
+            'name' => 'Direct Care Customer',
+            'phone' => '+919900000111',
+            'email' => 'direct@example.test',
+            'address' => '42 Green Avenue',
+            'city' => 'Bengaluru',
+            'state' => 'Karnataka',
+            'pincode' => '560001',
+            'map_location_text' => null,
+            'map_location_url' => null,
+        ]);
+
+        [$partner, $client] = $this->makeBusinessPartnerContext('Selector Partner', 'Selector Client');
+        $partner->update(['location' => null]);
+        $client->update(['location' => null, 'latitude' => null, 'longitude' => null]);
+
+        $rentalCreate = $this->get(route('rentals.create', ['customer_id' => $customer->id]));
+        $saleCreate = $this->get(route('sales.create'));
+
+        $rentalCreate->assertOk()
+            ->assertSee($customer->displayName())
+            ->assertSee($partner->displayName());
+
+        $saleCreate->assertOk()
+            ->assertSee($customer->displayName())
+            ->assertSee($partner->displayName());
+    }
+
     public function test_business_partner_and_actual_client_can_be_created_inline_over_json(): void
     {
         $partnerResponse = $this->postJson(route('business-partners.store'), [

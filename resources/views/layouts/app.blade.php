@@ -1359,13 +1359,16 @@
         right:0;
         z-index:var(--ph-z-dropdown, 60);
         width:min(272px, calc(100vw - 28px));
+        max-width:calc(100vw - 28px);
         padding:10px;
+        box-sizing:border-box;
         border-radius:16px;
         border:1px solid #dbe3ef;
         background:#fff;
         box-shadow:0 24px 52px rgba(15,23,42,.16);
         display:grid;
         gap:8px;
+        overflow:hidden;
     }
     @media (max-width: 1480px) {
         .app-shell-topbar {
@@ -1451,16 +1454,34 @@
         border-bottom:1px solid #eef2f7;
     }
     .topbar-user-head strong {
+        display:block;
+        min-width:0;
         color:#0f172a;
         font-size:14px;
+        line-height:1.25;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
     }
     .topbar-user-head span {
+        display:-webkit-box;
+        min-width:0;
         color:#64748b;
         font-size:12px;
+        line-height:1.35;
+        overflow:hidden;
+        word-break:break-word;
+        -webkit-line-clamp:2;
+        -webkit-box-orient:vertical;
+    }
+    .topbar-user-head {
+        min-width:0;
+        overflow:hidden;
     }
     .topbar-user-role {
         margin-top:4px;
         width:max-content;
+        max-width:100%;
     }
     .topbar-user-link,
     .topbar-user-logout {
@@ -1470,6 +1491,7 @@
         width:100%;
         min-height:42px;
         padding:10px 12px;
+        box-sizing:border-box;
         border:none;
         border-radius:12px;
         background:#fff;
@@ -1479,6 +1501,13 @@
         font-size:13px;
         font-weight:700;
         cursor:pointer;
+    }
+    .topbar-user-link span:last-child,
+    .topbar-user-logout span:last-child {
+        min-width:0;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
     }
     .topbar-user-action-icon {
         width:32px;

@@ -61,18 +61,7 @@ class SaleController extends Controller
         return BusinessPartner::query()
             ->where('organization_id', $this->orgId())
             ->where('status', 'active')
-            ->select([
-                'id',
-                'organization_id',
-                'business_name',
-                'contact_person',
-                'phone',
-                'whatsapp',
-                'email',
-                'address',
-                'city',
-                'state',
-                'location',
+            ->select(BusinessPartner::relationSelectColumns([
                 'gst_registered',
                 'gstin',
                 'legal_name',
@@ -80,8 +69,7 @@ class SaleController extends Controller
                 'billing_address',
                 'billing_city',
                 'billing_pincode',
-                'status',
-            ])
+            ]))
             ->withCount(['partnerClients as partner_clients_count' => function ($query) {
                 $query->where('organization_id', $this->orgId())
                     ->where('status', 'active');
@@ -101,23 +89,9 @@ class SaleController extends Controller
             ->where('business_partner_id', $businessPartnerId)
             ->where('status', 'active')
             ->orderBy('client_name')
-            ->get([
-                'id',
-                'organization_id',
-                'business_partner_id',
-                'client_name',
-                'phone',
-                'alternate_phone',
-                'address',
-                'city',
-                'state',
-                'pincode',
-                'location',
-                'latitude',
-                'longitude',
+            ->get(PartnerClient::relationSelectColumns([
                 'delivery_notes',
-                'status',
-            ]);
+            ]));
     }
 
     private function hasBusinessPartnersTable(): bool
@@ -1904,7 +1878,7 @@ class SaleController extends Controller
 
         $customers = Customer::query()
             ->where('organization_id', $this->orgId())
-            ->select(['id', 'name', 'phone', 'email', 'address', 'city', 'state', 'pincode', 'location'])
+            ->select(Customer::relationSelectColumns())
             ->orderBy('name')
             ->get();
         $businessPartnerFlowAvailable = $this->businessPartnerFlowAvailable();
@@ -2299,7 +2273,7 @@ class SaleController extends Controller
 
         $customers = Customer::query()
             ->where('organization_id', $this->orgId())
-            ->select(['id', 'name', 'phone', 'email', 'address', 'city', 'state', 'pincode', 'location'])
+            ->select(Customer::relationSelectColumns())
             ->orderBy('name')
             ->get();
         $businessPartnerFlowAvailable = $this->businessPartnerFlowAvailable();

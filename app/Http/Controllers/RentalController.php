@@ -108,18 +108,7 @@ class RentalController extends Controller
         return BusinessPartner::query()
             ->where('organization_id', $this->orgId())
             ->where('status', 'active')
-            ->select([
-                'id',
-                'organization_id',
-                'business_name',
-                'contact_person',
-                'phone',
-                'whatsapp',
-                'email',
-                'address',
-                'city',
-                'state',
-                'location',
+            ->select(BusinessPartner::relationSelectColumns([
                 'gst_registered',
                 'gstin',
                 'legal_name',
@@ -127,8 +116,7 @@ class RentalController extends Controller
                 'billing_address',
                 'billing_city',
                 'billing_pincode',
-                'status',
-            ])
+            ]))
             ->withCount(['partnerClients as partner_clients_count' => function ($query) {
                 $query->where('organization_id', $this->orgId())
                     ->where('status', 'active');
@@ -148,23 +136,9 @@ class RentalController extends Controller
             ->where('business_partner_id', $businessPartnerId)
             ->where('status', 'active')
             ->orderBy('client_name')
-            ->get([
-                'id',
-                'organization_id',
-                'business_partner_id',
-                'client_name',
-                'phone',
-                'alternate_phone',
-                'address',
-                'city',
-                'state',
-                'pincode',
-                'location',
-                'latitude',
-                'longitude',
+            ->get(PartnerClient::relationSelectColumns([
                 'delivery_notes',
-                'status',
-            ]);
+            ]));
     }
 
     private function hasBusinessPartnersTable(): bool
@@ -5025,17 +4999,9 @@ class RentalController extends Controller
         if ($requestedCustomerId > 0) {
             $selectedCustomer = Customer::query()
                 ->where('organization_id', $this->orgId())
-                ->select([
-                    'id',
-                    'name',
-                    'phone',
-                    'email',
-                    'address',
-                    'city',
-                    'state',
-                    'pincode',
+                ->select(Customer::relationSelectColumns([
                     'place_of_supply',
-                ])
+                ]))
                 ->find($requestedCustomerId);
         }
 
@@ -5043,7 +5009,7 @@ class RentalController extends Controller
         $rentalProducts = $this->rentalProductsForSelection($products);
         $customers = Customer::query()
             ->where('organization_id', $this->orgId())
-            ->select(['id', 'name', 'phone', 'email', 'address', 'city', 'state', 'pincode', 'location'])
+            ->select(Customer::relationSelectColumns())
             ->orderBy('name')
             ->get();
         $saleAssets = $this->availableSaleAssets();
@@ -5841,7 +5807,7 @@ class RentalController extends Controller
         $rentalProducts = $this->rentalProductsForSelection($products);
         $customers = Customer::query()
             ->where('organization_id', $this->orgId())
-            ->select(['id', 'name', 'phone', 'email', 'address', 'city', 'state', 'pincode', 'location'])
+            ->select(Customer::relationSelectColumns())
             ->orderBy('name')
             ->get();
         $businessPartners = $this->businessPartnersForForm();
