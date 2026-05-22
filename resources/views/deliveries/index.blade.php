@@ -1556,7 +1556,7 @@
                                             data-task-id="{{ $delivery->id }}"
                                             aria-label="Select task {{ $serialNumber }}"
                                         >
-                                        <span class="ops-mobile-serial">Task #{{ $serialNumber }}</span>
+                                        <span class="ops-mobile-serial">{{ ucfirst($delivery->type) }} #{{ $delivery->id }}</span>
                                         <span class="ops-type-badge {{ $delivery->type === 'pickup' ? 'ops-type-pickup' : 'ops-type-delivery' }}">
                                             {!! $navIcon($delivery->type === 'pickup' ? 'pickup' : 'delivery') !!}
                                             {{ ucfirst($delivery->type) }}
