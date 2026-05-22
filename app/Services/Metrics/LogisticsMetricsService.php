@@ -24,6 +24,7 @@ class LogisticsMetricsService
         'pickup_workload',
         'live',
         'overdue',
+        'failed',
     ];
 
     public function dedupe(Collection $deliveries): Collection
@@ -63,6 +64,7 @@ class LogisticsMetricsService
 
         $completedTodayTasks = $tasks->filter(fn (Delivery $delivery) => $this->isEffectivelyCompleted($delivery) && $this->completionDate($delivery) === $todayKey)->values();
         $overdueTasks = $overdueDeliveryTasks->concat($overduePickupTasks)->values();
+        $failedTasks = $this->applyWorkflowFilter($tasks, 'failed', $today);
         $deliveryWorkloadTasks = $pendingDeliveryTasks
             ->concat($scheduledDeliveryTasks)
             ->concat($outForDeliveryTasks)
@@ -82,6 +84,7 @@ class LogisticsMetricsService
             'deliveryTasksCount' => (int) $deliveryWorkloadTasks->count(),
             'pickupTasksCount' => (int) $pickupWorkloadTasks->count(),
             'overdueTasksCount' => (int) $overdueTasks->count(),
+            'failedTasksCount' => (int) $failedTasks->count(),
             'completedTodayCount' => (int) $completedTodayTasks->count(),
             'pendingDeliveryCount' => (int) $pendingDeliveryTasks->count(),
             'scheduledDeliveryCount' => (int) $scheduledDeliveryTasks->count(),
@@ -160,6 +163,7 @@ class LogisticsMetricsService
                 ->concat($this->applyWorkflowFilter($tasks, 'pickup_workload', $today))
                 ->values(),
             'overdue' => $tasks->filter(fn (Delivery $delivery) => $this->isOverdueTask($delivery, $todayKey))->values(),
+            'failed' => $tasks->filter(fn (Delivery $delivery) => $this->isFailedTask($delivery))->values(),
             default => $tasks,
         };
     }
@@ -177,6 +181,19 @@ class LogisticsMetricsService
     private function completionDate(Delivery $delivery): ?string
     {
         return optional($delivery->completed_at ?? $delivery->updated_at)->toDateString();
+    }
+
+    private function isFailedTask(Delivery $delivery): bool
+    {
+        if ($delivery->status === 'cancelled') {
+            return true;
+        }
+
+        if (($delivery->pickup_status ?? null) === 'failed_attempt') {
+            return true;
+        }
+
+        return filled($delivery->failed_attempt_reason ?? null);
     }
 
     private function isOverdueTask(Delivery $delivery, string $todayKey): bool

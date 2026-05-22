@@ -1585,7 +1585,7 @@
         .app-shell-sidebar { display:none; }
         .app-shell-topbar { display:none; }
         .app-shell-main {
-            padding:96px 12px 168px !important;
+            padding:96px 12px calc(188px + env(safe-area-inset-bottom, 0px)) !important;
             min-height:100vh;
             max-width:100vw !important;
         }
@@ -2503,7 +2503,7 @@
             padding-left:10px !important;
             padding-right:10px !important;
             padding-top:128px !important;
-            padding-bottom:156px !important;
+            padding-bottom:calc(176px + env(safe-area-inset-bottom, 0px)) !important;
         }
         .mobile-topbar {
             flex-wrap:wrap;

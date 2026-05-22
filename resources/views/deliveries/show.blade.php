@@ -174,7 +174,7 @@
     if ($canCancelTask) {
         $mobileQuickActions->push([
             'type' => 'link',
-            'label' => 'Cancel Task',
+            'label' => 'Unable to complete',
             'href' => '#' . $cancellationSectionId,
         ]);
     }
@@ -315,20 +315,20 @@
         font-size:11px;
         font-weight:800;
     }
-    .workflow-proof-actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .workflow-proof-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     .workflow-proof-trigger {
         display:inline-flex;
         align-items:center;
         justify-content:center;
         gap:6px;
-        min-height:42px;
-        padding:10px 14px;
-        border-radius:12px;
+        min-height:36px;
+        padding:8px 12px;
+        border-radius:10px;
         border:1px solid #cbd5e1;
         background:#f8fafc;
         color:#0f172a;
-        font-size:13px;
-        font-weight:800;
+        font-size:12px;
+        font-weight:700;
         text-decoration:none;
     }
     .workflow-proof-trigger.is-primary {
@@ -487,6 +487,7 @@
             min-height:44px;
             box-sizing:border-box;
         }
+        .item-progress-form { display:none; }
         .delivery-page-spacer {
             display:block;
             height:calc(96px + env(safe-area-inset-bottom, 0px));
@@ -512,9 +513,6 @@
             @endif
             @if($canUpdateTask)
                 <a href="{{ route('deliveries.edit', $delivery) }}" class="detail-btn-secondary">Edit</a>
-            @endif
-            @if($canCancelTask)
-                <a href="#{{ $cancellationSectionId }}" class="detail-btn-secondary">Cancel</a>
             @endif
         </div>
     </div>
@@ -546,7 +544,7 @@
                     <a href="{{ route('deliveries.edit', $delivery) }}">Edit Assignment</a>
                 @endif
                 @if($canCancelTask)
-                    <a href="#{{ $cancellationSectionId }}">Cancel Task</a>
+                    <a href="#{{ $cancellationSectionId }}">Unable to complete</a>
                 @endif
             </div>
         </details>
@@ -956,50 +954,56 @@
         @if($canCancelTask)
             <div class="workflow-proof-divider"></div>
 
-            <form id="{{ $cancellationSectionId }}" action="{{ route('deliveries.cancel', $delivery) }}" method="POST" class="workflow-proof-card">
-                @csrf
-                @method('PUT')
-                <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
-                    <div>
-                        <h3 style="margin:0; font-size:18px; color:#0f172a;">Cancel {{ ucfirst($delivery->type) }}</h3>
-                        <div class="workflow-proof-help">Reason required.</div>
+            <details id="{{ $cancellationSectionId }}" class="proof-history-shell" @if($hasCancellationErrors) open @endif>
+                <summary>
+                    <div class="proof-history-summary">
+                        <div>
+                            <strong style="display:block; color:#0f172a; font-size:16px;">Unable to complete</strong>
+                            <span class="workflow-proof-help">Use this only when the task cannot be finished in the field.</span>
+                        </div>
+                        <span class="workflow-proof-badge" style="background:#fff7ed; color:#9a3412;">Reason required</span>
                     </div>
-                    <span class="workflow-proof-badge" style="background:#fff7ed; color:#9a3412;">Reason required</span>
-                </div>
+                </summary>
+                <div class="proof-history-body">
+                    <form action="{{ route('deliveries.cancel', $delivery) }}" method="POST" class="workflow-proof-card">
+                        @csrf
+                        @method('PUT')
 
-                @if($hasCancellationErrors)
-                    <div class="workflow-proof-status is-warning">
-                        Select a cancellation reason before cancelling this {{ $delivery->type }} task.
-                    </div>
-                @endif
+                        @if($hasCancellationErrors)
+                            <div class="workflow-proof-status is-warning">
+                                Select a cancellation reason before cancelling this {{ $delivery->type }} task.
+                            </div>
+                        @endif
 
-                <div class="workflow-proof-grid">
-                    <div class="workflow-proof-field">
-                        <label for="cancellation_reason">Cancellation reason</label>
-                        <select id="cancellation_reason" name="cancellation_reason" style="width:100%; border:1px solid #cbd5e1; border-radius:12px; padding:10px 12px; font-size:13px; color:#0f172a; background:#fff;">
-                            <option value="">Select reason</option>
-                            @foreach($cancellationReasonOptions as $reasonValue => $reasonLabel)
-                                <option value="{{ $reasonValue }}" {{ $selectedCancellationReason === $reasonValue ? 'selected' : '' }}>{{ $reasonLabel }}</option>
-                            @endforeach
-                        </select>
-                        @error('cancellation_reason')
-                            <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
-                        @enderror
-                    </div>
-                    <div class="workflow-proof-field">
-                        <label for="cancellation_notes">Additional remarks</label>
-                        <textarea id="cancellation_notes" name="cancellation_notes" placeholder="Add any extra context, especially for Other or reschedule scenarios.">{{ $selectedCancellationNotes }}</textarea>
-                        @error('cancellation_notes')
-                            <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
-                        @enderror
-                    </div>
-                </div>
+                        <div class="workflow-proof-grid">
+                            <div class="workflow-proof-field">
+                                <label for="cancellation_reason">Cancellation reason</label>
+                                <select id="cancellation_reason" name="cancellation_reason" style="width:100%; border:1px solid #cbd5e1; border-radius:12px; padding:10px 12px; font-size:13px; color:#0f172a; background:#fff;">
+                                    <option value="">Select reason</option>
+                                    @foreach($cancellationReasonOptions as $reasonValue => $reasonLabel)
+                                        <option value="{{ $reasonValue }}" {{ $selectedCancellationReason === $reasonValue ? 'selected' : '' }}>{{ $reasonLabel }}</option>
+                                    @endforeach
+                                </select>
+                                @error('cancellation_reason')
+                                    <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="workflow-proof-field">
+                                <label for="cancellation_notes">Additional remarks</label>
+                                <textarea id="cancellation_notes" name="cancellation_notes" placeholder="Add any extra context, especially for Other or reschedule scenarios.">{{ $selectedCancellationNotes }}</textarea>
+                                @error('cancellation_notes')
+                                    <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                                @enderror
+                            </div>
+                        </div>
 
-                <div class="workflow-proof-actions">
-                    <button type="submit" class="detail-btn-secondary" style="background:#fff1f2;border-color:#fecaca;color:#991b1b;">Cancel {{ ucfirst($delivery->type) }}</button>
-                    <div class="workflow-proof-help">Cancelled tasks stay in history.</div>
+                        <div class="workflow-proof-actions">
+                            <button type="submit" class="detail-btn-secondary" style="background:#fff1f2;border-color:#fecaca;color:#991b1b;">Cancel {{ ucfirst($delivery->type) }}</button>
+                            <div class="workflow-proof-help">Cancelled tasks stay in history.</div>
+                        </div>
+                    </form>
                 </div>
-            </form>
+            </details>
         @endif
 
         <div class="workflow-proof-divider"></div>
@@ -1238,6 +1242,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (cancellationSection && (window.location.hash === '#{{ $cancellationSectionId }}' || {{ $hasCancellationErrors ? 'true' : 'false' }})) {
+        if (cancellationSection instanceof HTMLDetailsElement) {
+            cancellationSection.open = true;
+        }
         cancellationSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 

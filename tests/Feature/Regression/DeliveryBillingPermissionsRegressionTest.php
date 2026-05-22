@@ -940,10 +940,14 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
             ->get(route('deliveries.index'));
 
         $response->assertOk()
-            ->assertSee(route('deliveries.show', $delivery), false)
-            ->assertDontSee(route('deliveries.edit', $delivery), false)
-            ->assertDontSee(route('deliveries.in_progress', $delivery), false)
-            ->assertDontSee(route('deliveries.complete', $delivery), false);
+            ->assertDontSee(route('deliveries.show', $delivery, false), false);
+
+        $this->actingAs($assignedUser)
+            ->get(route('deliveries.show', $delivery))
+            ->assertOk()
+            ->assertDontSee(route('deliveries.edit', $delivery, false), false)
+            ->assertDontSee(route('deliveries.in_progress', $delivery, false), false)
+            ->assertDontSee(route('deliveries.complete', $delivery, false), false);
     }
 
     public function test_delivery_team_can_cancel_allowed_pending_delivery_with_reason(): void

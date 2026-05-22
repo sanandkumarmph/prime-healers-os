@@ -112,6 +112,6 @@ class DashboardWidgetSettingsRegressionTest extends TestCase
 
         $dashboard->assertOk()
             ->assertDontSeeText('Today\'s Deliveries')
-            ->assertSeeText('My Pending Pickups');
+            ->assertSeeText('My Pickups Today');
     }
 }

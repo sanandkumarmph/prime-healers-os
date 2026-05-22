@@ -1099,6 +1099,9 @@ class DeliveryController extends Controller
 
         $legacyDefault = $legacyBoardDefaults[$legacyBoard] ?? [];
 
+        $restrictedToAssignedTasks = (bool) (auth()->user()?->hasScope('assigned', 'deliveries') ?? false);
+        $defaultOwnershipFilter = $restrictedToAssignedTasks ? 'my' : 'all';
+
         $tab = strtolower((string) $request->query('tab', $legacyDefault['tab'] ?? 'all'));
         $search = trim((string) $request->query('search', ''));
         $selectedDate = trim((string) $request->query('date', ''));
@@ -1107,12 +1110,16 @@ class DeliveryController extends Controller
         $areaFilter = trim((string) $request->query('area', ''));
         $statusFilter = strtolower((string) $request->query('status', $legacyDefault['status'] ?? ''));
         $workflowFilter = strtolower((string) $request->query('workflow', $legacyDefault['workflow'] ?? ''));
-        $ownershipFilter = strtolower((string) $request->query('ownership', 'all'));
+        $ownershipFilter = strtolower((string) $request->query('ownership', $defaultOwnershipFilter));
         $sortBy = strtolower((string) $request->query('sort_by', 'action_priority'));
         $sortDirection = strtolower((string) $request->query('sort_dir', 'asc'));
 
         if (!in_array($ownershipFilter, ['all', 'my'], true)) {
-            $ownershipFilter = 'all';
+            $ownershipFilter = $defaultOwnershipFilter;
+        }
+
+        if ($restrictedToAssignedTasks) {
+            $ownershipFilter = 'my';
         }
 
         if (!in_array($sortBy, ['action_priority', 'schedule_date', 'status', 'type', 'staff', 'customer', 'recently_updated'], true)) {
@@ -1351,7 +1358,7 @@ class DeliveryController extends Controller
         if (in_array($statusFilter, ['pending', 'in_progress', 'completed', 'cancelled'], true)) {
             $deliveriesQuery->where('status', $statusFilter);
             $summaryQuery->where('status', $statusFilter);
-        } else {
+        } elseif ($workflowFilter !== 'failed') {
             $deliveriesQuery->where('status', '!=', 'cancelled');
             $summaryQuery->where('status', '!=', 'cancelled');
         }
@@ -1468,6 +1475,18 @@ class DeliveryController extends Controller
         $todayDeliveryCount = (int) ($logisticsSummary['todayDeliveryCount'] ?? 0);
         $todayPickupCount = (int) ($logisticsSummary['todayPickupCount'] ?? 0);
         $pendingCollectionsCount = (int) ($logisticsSummary['pendingCollectionsCount'] ?? 0);
+        $failedTasksCount = (int) ($logisticsSummary['failedTasksCount'] ?? 0);
+        $activeTasksCount = $deliveryTasksCount + $pickupTasksCount;
+        $todayOpenDeliveryCount = (int) $summaryDeliveries
+            ->filter(fn (Delivery $delivery) => $delivery->type === 'delivery'
+                && in_array($delivery->status, ['pending', 'in_progress'], true)
+                && optional($delivery->scheduled_at)?->isSameDay($todayStart))
+            ->count();
+        $todayOpenPickupCount = (int) $summaryDeliveries
+            ->filter(fn (Delivery $delivery) => $delivery->type === 'pickup'
+                && in_array($delivery->status, ['pending', 'in_progress'], true)
+                && optional($delivery->scheduled_at)?->isSameDay($todayStart))
+            ->count();
 
         $todayOverviewTaskIds = collect($logisticsSummary['todayTasks'] ?? collect())
             ->sortBy(fn (Delivery $delivery) => $delivery->scheduled_at?->timestamp ?? PHP_INT_MAX)
@@ -1524,6 +1543,7 @@ class DeliveryController extends Controller
             'totalTasksCount',
             'deliveryTasksCount',
             'pickupTasksCount',
+            'activeTasksCount',
             'overdueTasksCount',
             'completedTodayCount',
             'pendingDeliveryCount',
@@ -1540,6 +1560,9 @@ class DeliveryController extends Controller
             'todayTaskCount',
             'todayDeliveryCount',
             'todayPickupCount',
+            'todayOpenDeliveryCount',
+            'todayOpenPickupCount',
+            'failedTasksCount',
             'pendingCollectionsCount',
             'todayOverviewTasks',
             'overdueTasks',

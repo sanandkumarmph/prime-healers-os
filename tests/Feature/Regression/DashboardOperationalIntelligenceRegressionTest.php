@@ -222,9 +222,10 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
         $response = $this->actingAs($deliveryUser)->get(route('dashboard'));
 
         $response->assertOk()
-            ->assertSeeText('My Pending Deliveries')
-            ->assertSeeText('My Pending Pickups')
             ->assertSeeText('My Deliveries Today')
+            ->assertSeeText('My Pickups Today')
+            ->assertSeeText('My Assigned Tasks')
+            ->assertSeeText('Failed Attempts')
             ->assertDontSeeText('Active Rentals')
             ->assertDontSeeText('All Overdue Rentals')
             ->assertDontSeeText('Returns Expected')

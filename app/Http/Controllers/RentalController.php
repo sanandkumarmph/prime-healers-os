@@ -4121,6 +4121,18 @@ class RentalController extends Controller
         $deliveredTodayCount = (int) ($logisticsSummary['deliveredTodayCount'] ?? 0);
         $completedPickupCount = (int) ($logisticsSummary['completedPickupCount'] ?? 0);
         $pickedUpTodayCount = (int) ($logisticsSummary['pickedUpTodayCount'] ?? 0);
+        $failedTasksCount = (int) ($logisticsSummary['failedTasksCount'] ?? 0);
+        $assignedOpenTasksCount = $deliveryTasksCount + $pickupTasksCount;
+        $myDeliveriesTodayCount = (int) $dedupedDeliveryRecords
+            ->filter(fn ($delivery) => $delivery->type === 'delivery'
+                && in_array($delivery->status, ['pending', 'in_progress'], true)
+                && optional($delivery->scheduled_at)?->isSameDay($today))
+            ->count();
+        $myPickupsTodayCount = (int) $dedupedDeliveryRecords
+            ->filter(fn ($delivery) => $delivery->type === 'pickup'
+                && in_array($delivery->status, ['pending', 'in_progress'], true)
+                && optional($delivery->scheduled_at)?->isSameDay($today))
+            ->count();
 
         $endingSoonRentalsQuery = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
             'filter' => 'ending_soon',
@@ -4679,6 +4691,10 @@ class RentalController extends Controller
             'deliveredTodayCount',
             'completedPickupCount',
             'pickedUpTodayCount',
+            'failedTasksCount',
+            'assignedOpenTasksCount',
+            'myDeliveriesTodayCount',
+            'myPickupsTodayCount',
             'sortBy',
             'totalRentalValue',
             'totalDepositValue',

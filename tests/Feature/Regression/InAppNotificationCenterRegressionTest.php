@@ -100,6 +100,27 @@ class InAppNotificationCenterRegressionTest extends TestCase
         $this->assertSame(0, $deliveryUser->fresh()->unreadNotifications()->count());
     }
 
+    public function test_delivery_creation_with_assigned_user_creates_delivery_assignment_notification(): void
+    {
+        $deliveryUser = $this->makeDeliveryUser();
+        $rental = $this->makeRental();
+
+        $this->post(route('deliveries.store'), [
+            'rental_id' => $rental->id,
+            'type' => 'delivery',
+            'scheduled_at' => now()->addHour()->format('Y-m-d H:i:s'),
+            'status' => 'pending',
+            'assignment_type' => 'delivery_team',
+            'assigned_user_id' => $deliveryUser->id,
+        ])->assertRedirect();
+
+        $this->actingAs($deliveryUser)
+            ->getJson(route('notifications.latest'))
+            ->assertOk()
+            ->assertJsonPath('unread_count', 1)
+            ->assertJsonPath('notifications.0.title', 'New delivery task assigned');
+    }
+
     public function test_visible_notifications_can_be_marked_read_without_touching_other_users(): void
     {
         $deliveryUser = $this->makeDeliveryUser();

@@ -80,6 +80,11 @@
     $productsIndexUrl = $safeRoute('products.index');
     $customersIndexUrl = $safeRoute('customers.index');
     $deliveriesIndexUrl = $safeRoute('deliveries.index');
+    $myAssignedTasksUrl = $deliveriesIndexUrl ? route('deliveries.index', ['ownership' => 'my', 'workflow' => 'live']) : null;
+    $myDeliveriesTodayUrl = $deliveriesIndexUrl ? route('deliveries.index', ['ownership' => 'my', 'tab' => 'today', 'task_type' => 'delivery']) : null;
+    $myPickupsTodayUrl = $deliveriesIndexUrl ? route('deliveries.index', ['ownership' => 'my', 'tab' => 'today', 'task_type' => 'pickup']) : null;
+    $myOverdueTasksUrl = $deliveriesIndexUrl ? route('deliveries.index', ['ownership' => 'my', 'tab' => 'overdue']) : null;
+    $myFailedTasksUrl = $deliveriesIndexUrl ? route('deliveries.index', ['ownership' => 'my', 'workflow' => 'failed']) : null;
     $newRentalUrl = $canCreateRentals ? $safeRoute('rentals.create') : null;
     $newCustomerUrl = $canCreateCustomers ? $safeRoute('customers.create') : null;
     $newSaleUrl = $canCreateSales ? $safeRoute('sales.create') : null;
@@ -239,11 +244,13 @@
     $primaryPriorityCards = collect([
         [
             'widget_key' => 'primary_pending_deliveries',
-            'label' => $taskScopePrefix . 'Pending Deliveries',
-            'value' => $deliveryTasksCountValue,
-            'subtitle' => $overdueDeliveryCountValue . ' overdue task(s)',
-            'note' => 'Open delivery tasks visible in Task Board',
-            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'delivery_workload']) : null,
+            'label' => $dashboardTaskScope === 'assigned' ? 'My Deliveries Today' : $taskScopePrefix . 'Pending Deliveries',
+            'value' => $dashboardTaskScope === 'assigned' ? number_format((int) ($myDeliveriesTodayCount ?? 0)) : $deliveryTasksCountValue,
+            'subtitle' => $dashboardTaskScope === 'assigned' ? $overdueDeliveryCountValue . ' overdue delivery task(s)' : $overdueDeliveryCountValue . ' overdue task(s)',
+            'note' => $dashboardTaskScope === 'assigned' ? 'Scheduled for today and still open' : 'Open delivery tasks visible in Task Board',
+            'href' => $dashboardTaskScope === 'assigned'
+                ? $myDeliveriesTodayUrl
+                : ($deliveriesIndexUrl ? route('deliveries.index', ['board' => 'delivery_workload']) : null),
             'tone' => 'amber',
             'icon' => 'delivery',
         ],
@@ -270,21 +277,27 @@
         ],
         [
             'widget_key' => 'primary_pending_pickups',
-            'label' => $taskScopePrefix . 'Pending Pickups',
-            'value' => $pickupTasksCountValue,
-            'subtitle' => $overduePickupCountValue . ' overdue task(s)',
-            'note' => 'Open pickup tasks visible in Task Board',
-            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pickup_workload']) : null,
+            'label' => $dashboardTaskScope === 'assigned' ? 'My Pickups Today' : $taskScopePrefix . 'Pending Pickups',
+            'value' => $dashboardTaskScope === 'assigned' ? number_format((int) ($myPickupsTodayCount ?? 0)) : $pickupTasksCountValue,
+            'subtitle' => $dashboardTaskScope === 'assigned' ? $overduePickupCountValue . ' overdue pickup task(s)' : $overduePickupCountValue . ' overdue task(s)',
+            'note' => $dashboardTaskScope === 'assigned' ? 'Scheduled for today and still open' : 'Open pickup tasks visible in Task Board',
+            'href' => $dashboardTaskScope === 'assigned'
+                ? $myPickupsTodayUrl
+                : ($deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pickup_workload']) : null),
             'tone' => 'amber',
             'icon' => 'pickup',
         ],
         [
             'widget_key' => 'primary_tasks_completed_today',
-            'label' => $dashboardTaskScope === 'assigned' ? 'My Tasks Completed Today' : 'Completed Today',
-            'value' => $completedTodayCountValue,
-            'subtitle' => $completedDeliveryCountValue . ' deliveries + ' . $completedPickupCountValue . ' pickups completed',
-            'note' => 'Tasks closed today only',
-            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_today']) : null,
+            'label' => $dashboardTaskScope === 'assigned' ? 'My Assigned Tasks' : 'Completed Today',
+            'value' => $dashboardTaskScope === 'assigned' ? number_format((int) ($assignedOpenTasksCount ?? 0)) : $completedTodayCountValue,
+            'subtitle' => $dashboardTaskScope === 'assigned'
+                ? number_format((int) ($failedTasksCount ?? 0)) . ' failed/cancelled tasks in history'
+                : $completedDeliveryCountValue . ' deliveries + ' . $completedPickupCountValue . ' pickups completed',
+            'note' => $dashboardTaskScope === 'assigned' ? 'Open delivery + pickup workload assigned to you' : 'Tasks closed today only',
+            'href' => $dashboardTaskScope === 'assigned'
+                ? $myAssignedTasksUrl
+                : ($deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_today']) : null),
             'tone' => 'green',
             'icon' => 'completed',
         ],
@@ -325,17 +338,21 @@
     ])->when(!$dashboardWidgetEnabled('section_finance_summary'), fn ($cards) => collect());
 
     $deliveryMiniTiles = collect([
-        ['label' => 'Total Tasks', 'value' => $totalTasksCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index') : null, 'tone' => 'blue', 'icon' => 'tasks'],
-        ['label' => $taskScopePrefix . 'Pending Deliveries', 'value' => $deliveryTasksCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'delivery_workload']) : null, 'tone' => 'amber', 'icon' => 'delivery'],
-        ['label' => $taskScopePrefix . 'Pending Pickups', 'value' => $pickupTasksCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pickup_workload']) : null, 'tone' => 'amber', 'icon' => 'pickup'],
-        ['label' => 'Deliveries Completed', 'value' => $completedDeliveryCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_delivery']) : null, 'tone' => 'green', 'icon' => 'delivery'],
-        ['label' => 'Pickups Completed', 'value' => $completedPickupCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_pickup']) : null, 'tone' => 'green', 'icon' => 'pickup'],
-        ['label' => 'Completed Today', 'value' => $completedTodayCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_today']) : null, 'tone' => 'green', 'icon' => 'completed'],
+        ['label' => $dashboardTaskScope === 'assigned' ? 'My Assigned Tasks' : 'Total Tasks', 'value' => $dashboardTaskScope === 'assigned' ? number_format((int) ($assignedOpenTasksCount ?? 0)) : $totalTasksCountValue, 'href' => $dashboardTaskScope === 'assigned' ? $myAssignedTasksUrl : ($deliveriesIndexUrl ? route('deliveries.index') : null), 'tone' => 'blue', 'icon' => 'tasks'],
+        ['label' => $dashboardTaskScope === 'assigned' ? 'My Deliveries Today' : $taskScopePrefix . 'Pending Deliveries', 'value' => $dashboardTaskScope === 'assigned' ? number_format((int) ($myDeliveriesTodayCount ?? 0)) : $deliveryTasksCountValue, 'href' => $dashboardTaskScope === 'assigned' ? $myDeliveriesTodayUrl : ($deliveriesIndexUrl ? route('deliveries.index', ['board' => 'delivery_workload']) : null), 'tone' => 'amber', 'icon' => 'delivery'],
+        ['label' => $dashboardTaskScope === 'assigned' ? 'My Pickups Today' : $taskScopePrefix . 'Pending Pickups', 'value' => $dashboardTaskScope === 'assigned' ? number_format((int) ($myPickupsTodayCount ?? 0)) : $pickupTasksCountValue, 'href' => $dashboardTaskScope === 'assigned' ? $myPickupsTodayUrl : ($deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pickup_workload']) : null), 'tone' => 'amber', 'icon' => 'pickup'],
+        ['label' => $dashboardTaskScope === 'assigned' ? 'My Overdue Tasks' : 'Deliveries Completed', 'value' => $dashboardTaskScope === 'assigned' ? number_format((int) ($overdueDeliveryCountValue + $overduePickupCountValue)) : $completedDeliveryCountValue, 'href' => $dashboardTaskScope === 'assigned' ? $myOverdueTasksUrl : ($deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_delivery']) : null), 'tone' => $dashboardTaskScope === 'assigned' ? 'red' : 'green', 'icon' => $dashboardTaskScope === 'assigned' ? 'overdue' : 'delivery'],
+        ['label' => $dashboardTaskScope === 'assigned' ? 'Failed Attempts' : 'Pickups Completed', 'value' => $dashboardTaskScope === 'assigned' ? number_format((int) ($failedTasksCount ?? 0)) : $completedPickupCountValue, 'href' => $dashboardTaskScope === 'assigned' ? $myFailedTasksUrl : ($deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_pickup']) : null), 'tone' => $dashboardTaskScope === 'assigned' ? 'amber' : 'green', 'icon' => 'pickup'],
+        ['label' => $dashboardTaskScope === 'assigned' ? 'Completed Today' : 'Completed Today', 'value' => $completedTodayCountValue, 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_today']) : null, 'tone' => 'green', 'icon' => 'completed'],
     ])->filter(fn ($tile) => $dashboardWidgetEnabled(match ($tile['label']) {
-        'Total Tasks' => 'primary_tasks_completed_today',
+        'Total Tasks', 'My Assigned Tasks' => 'primary_tasks_completed_today',
         $taskScopePrefix . 'Pending Deliveries' => 'primary_pending_deliveries',
         $taskScopePrefix . 'Pending Pickups' => 'primary_pending_pickups',
+        'My Deliveries Today' => 'primary_pending_deliveries',
+        'My Pickups Today' => 'primary_pending_pickups',
         'Deliveries Completed' => 'kpi_deliveries_today',
+        'My Overdue Tasks' => 'primary_pending_deliveries',
+        'Failed Attempts' => 'primary_pending_pickups',
         'Pickups Completed' => 'widget_today_pickups',
         default => 'primary_tasks_completed_today',
     }))->values();
@@ -374,11 +391,13 @@
         [
             'widget_key' => 'kpi_deliveries_today',
             'label' => $dashboardTaskScope === 'assigned' ? 'My Deliveries Today' : 'Deliveries Today',
-            'value' => number_format($deliveriesTodayCount),
-            'note' => 'Completed deliveries today',
-            'subtitle' => $pendingDeliveryCountValue . ' still pending',
+            'value' => $dashboardTaskScope === 'assigned' ? number_format((int) ($myDeliveriesTodayCount ?? 0)) : number_format($deliveriesTodayCount),
+            'note' => $dashboardTaskScope === 'assigned' ? 'Scheduled for today and still open' : 'Completed deliveries today',
+            'subtitle' => $dashboardTaskScope === 'assigned' ? $pendingDeliveryCountValue . ' still pending overall' : $pendingDeliveryCountValue . ' still pending',
             'icon' => 'delivery',
-            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_delivery']) : null,
+            'href' => $dashboardTaskScope === 'assigned'
+                ? $myDeliveriesTodayUrl
+                : ($deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_delivery']) : null),
             'tone' => 'blue',
             'visible' => $canReadDeliveries,
         ],
@@ -1376,6 +1395,9 @@
         .dashboard-shell {
             gap: 10px;
         }
+        .dashboard-shell.is-delivery-focused .dashboard-hero-summary {
+            display: none;
+        }
         .dashboard-hero {
             padding: 12px;
             border-radius: 16px;
@@ -1510,6 +1532,30 @@
         .dashboard-filter-toggle {
             display: inline-flex;
         }
+        .dashboard-shell.is-delivery-focused .dashboard-kpi-grid,
+        .dashboard-shell.is-delivery-focused .dashboard-logistics-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .dashboard-shell.is-delivery-focused .dashboard-kpi-card,
+        .dashboard-shell.is-delivery-focused .dashboard-logistics-card {
+            min-height: 66px;
+            padding: 8px;
+            gap: 6px;
+        }
+        .dashboard-shell.is-delivery-focused .dashboard-kpi-note,
+        .dashboard-shell.is-delivery-focused .dashboard-kpi-subtitle {
+            display: none;
+        }
+        .dashboard-shell.is-delivery-focused .dashboard-kpi-label,
+        .dashboard-shell.is-delivery-focused .dashboard-logistics-label {
+            font-size: 9px;
+            line-height: 1.25;
+        }
+        .dashboard-shell.is-delivery-focused .dashboard-kpi-value,
+        .dashboard-shell.is-delivery-focused .dashboard-card-value {
+            font-size: 20px;
+            line-height: 1.05;
+        }
     }
     @media (max-width: 420px) {
         .dashboard-kpi-grid,
@@ -1543,7 +1589,7 @@
     }
 </style>
 
-<div class="dashboard-shell rx-page">
+<div class="dashboard-shell rx-page {{ $isDeliveryFacingMenuRole ? 'is-delivery-focused' : '' }}">
     <section class="dashboard-hero">
         <div class="dashboard-hero-header">
             <div class="dashboard-hero-copy">

@@ -116,6 +116,25 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
             ->assertDontSeeText('Completion Checklist');
     }
 
+    public function test_delivery_detail_keeps_unable_to_complete_section_collapsed_by_default(): void
+    {
+        $organization = TestData::organization();
+        $deliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+
+        $this->actingAs($deliveryUser);
+
+        $delivery = $this->makeDeliveryTask($organization->id, $deliveryUser->id, 'pickup', 'pending');
+
+        $this->get(route('deliveries.show', $delivery))
+            ->assertOk()
+            ->assertSeeText('Unable to complete')
+            ->assertSee('id="delivery-cancellation-section"', false)
+            ->assertDontSee('id="delivery-cancellation-section" class="proof-history-shell" open', false)
+            ->assertDontSeeText('Cancel Task');
+    }
+
     public function test_delivery_detail_shows_location_clear_recapture_controls_and_mobile_compression_guidance(): void
     {
         $organization = TestData::organization();
@@ -472,13 +491,10 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
         ]);
 
         $response = $this->get(route('deliveries.index'));
-        $editHref = route('deliveries.edit', $ownPendingDelivery, false);
-        $deleteHref = route('deliveries.destroy', $ownPendingDelivery, false);
-
         $response->assertOk();
         $response->assertSeeText('View Proof');
-        $response->assertDontSee($editHref, false);
-        $response->assertDontSee($deleteHref, false);
+        $response->assertDontSeeText('Edit Assignment');
+        $response->assertDontSeeText('Delete this task record?');
     }
 
     private function makeDeliveryTask(int $organizationId, int $assignedUserId, string $type = 'delivery', string $status = 'pending'): Delivery

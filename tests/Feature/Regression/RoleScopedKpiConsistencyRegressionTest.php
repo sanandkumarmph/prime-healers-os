@@ -186,7 +186,8 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
         $this->assertSame((int) $superadminTaskboard->viewData('completedDeliveryCount'), (int) $deliveryTaskboard->viewData('completedDeliveryCount'));
         $this->assertSame((int) $superadminTaskboard->viewData('completedPickupCount'), (int) $deliveryTaskboard->viewData('completedPickupCount'));
         $this->assertSame((int) $superadminTaskboard->viewData('completedTodayCount'), (int) $deliveryTaskboard->viewData('completedTodayCount'));
-        $this->assertSame(4, (int) $deliveryTaskboard->viewData('taskResultsCount'));
+        $this->assertSame('my', (string) $deliveryTaskboard->viewData('ownershipFilter'));
+        $this->assertSame(2, (int) $deliveryTaskboard->viewData('taskResultsCount'));
         $this->assertSame(2, (int) $myTaskboard->viewData('taskResultsCount'));
 
         $superadminRentals = $this->actingAs($superadmin)->get(route('rentals.index'));

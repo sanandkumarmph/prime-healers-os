@@ -24,7 +24,7 @@
     $areaFilter = $areaFilter ?? '';
     $statusFilter = $statusFilter ?? '';
     $workflowFilter = $workflowFilter ?? '';
-    $ownershipFilter = $ownershipFilter ?? 'all';
+    $ownershipFilter = $ownershipFilter ?? ($assignedScopedDeliveryUser ? 'my' : 'all');
     $sortBy = $sortBy ?? 'action_priority';
     $sortDirection = $sortDirection ?? 'asc';
 
@@ -42,7 +42,8 @@
         'asc' => 'Ascending',
         'desc' => 'Descending',
     ];
-    $hasActiveFilters = filled($search) || filled($selectedDate) || filled($taskType) || filled($staffFilter) || filled($areaFilter) || filled($statusFilter) || filled($workflowFilter) || $ownershipFilter !== 'all' || $sortBy !== 'action_priority' || $sortDirection !== 'asc';
+    $defaultOwnershipView = $assignedScopedDeliveryUser ? 'my' : 'all';
+    $hasActiveFilters = filled($search) || filled($selectedDate) || filled($taskType) || filled($staffFilter) || filled($areaFilter) || filled($statusFilter) || filled($workflowFilter) || $ownershipFilter !== $defaultOwnershipView || $sortBy !== 'action_priority' || $sortDirection !== 'asc';
     $activeFilterChips = collect([
         filled($search) ? 'Search: ' . $search : null,
         filled($selectedDate) ? 'Date: ' . $selectedDate : null,
@@ -51,7 +52,7 @@
         filled($areaFilter) ? 'Area filter active' : null,
         filled($statusFilter) ? 'Status: ' . ucfirst(str_replace('_', ' ', $statusFilter)) : null,
         filled($workflowFilter) ? 'Workflow: ' . ucfirst(str_replace('_', ' ', $workflowFilter)) : null,
-        $ownershipFilter !== 'all' ? 'View: My Assigned Tasks' : null,
+        $ownershipFilter !== $defaultOwnershipView ? 'View: My Assigned Tasks' : null,
         $sortBy !== 'action_priority' ? 'Sort: ' . ($sortOptions[$sortBy] ?? 'Custom') : null,
         $sortDirection !== 'asc' ? 'Direction: Descending' : null,
     ])->filter()->values();
@@ -79,7 +80,7 @@
         ->all();
 
     $tabs = [
-        ['key' => 'all', 'label' => 'All Tasks'],
+        ['key' => 'all', 'label' => 'All'],
         ['key' => 'deliveries', 'label' => 'Deliveries'],
         ['key' => 'pickups', 'label' => 'Pickups'],
         ['key' => 'completed', 'label' => 'Completed'],
@@ -87,42 +88,44 @@
         ['key' => 'overdue', 'label' => 'Overdue'],
     ];
 
-    $ownershipTabs = [
-        ['key' => 'all', 'label' => 'All Tasks'],
-        ['key' => 'my', 'label' => 'My Assigned Tasks'],
-    ];
+    $ownershipTabs = $assignedScopedDeliveryUser
+        ? []
+        : [
+            ['key' => 'all', 'label' => 'All Tasks'],
+            ['key' => 'my', 'label' => 'My Assigned Tasks'],
+        ];
 
     $statCards = $deliveryFocusedBoard
         ? [
             [
-                'label' => 'Assigned Tasks',
-                'value' => $totalTasksCount ?? 0,
+                'label' => 'My Assigned Tasks',
+                'value' => $activeTasksCount ?? 0,
                 'copy' => 'Open field work',
-                'href' => $boardHref(['tab' => 'all', 'task_type' => null, 'status' => null, 'workflow' => null], ['board']),
+                'href' => $boardHref(['ownership' => 'my', 'tab' => 'all', 'task_type' => null, 'status' => null, 'workflow' => 'live'], ['board']),
                 'tone' => 'info',
                 'icon' => 'tasks',
             ],
             [
                 'label' => 'My Deliveries Today',
-                'value' => $deliveryTasksCount ?? 0,
+                'value' => $todayOpenDeliveryCount ?? 0,
                 'copy' => 'Delivery tasks to run',
-                'href' => $boardHref(['tab' => 'deliveries', 'task_type' => 'delivery', 'workflow' => 'delivery_workload'], ['board', 'status']),
+                'href' => $boardHref(['ownership' => 'my', 'tab' => 'today', 'task_type' => 'delivery', 'status' => null, 'workflow' => null], ['board']),
                 'tone' => 'delivery',
                 'icon' => 'delivery',
             ],
             [
                 'label' => 'My Pickups Today',
-                'value' => $pickupTasksCount ?? 0,
+                'value' => $todayOpenPickupCount ?? 0,
                 'copy' => 'Pickup tasks to run',
-                'href' => $boardHref(['tab' => 'pickups', 'task_type' => 'pickup', 'workflow' => 'pickup_workload'], ['board', 'status']),
+                'href' => $boardHref(['ownership' => 'my', 'tab' => 'today', 'task_type' => 'pickup', 'status' => null, 'workflow' => null], ['board']),
                 'tone' => 'pickup',
                 'icon' => 'pickup',
             ],
             [
-                'label' => 'Overdue',
+                'label' => 'My Overdue',
                 'value' => $overdueTasksCount ?? 0,
                 'copy' => 'Needs action now',
-                'href' => $boardHref(['tab' => 'overdue', 'status' => null], ['board', 'workflow']),
+                'href' => $boardHref(['ownership' => 'my', 'tab' => 'overdue', 'status' => null, 'workflow' => null], ['board']),
                 'tone' => 'danger',
                 'icon' => 'overdue',
             ],
@@ -130,7 +133,7 @@
                 'label' => 'Failed',
                 'value' => $failedTasksCount ?? 0,
                 'copy' => 'Failed or cancelled',
-                'href' => $boardHref(['status' => 'cancelled', 'tab' => 'all'], ['board', 'workflow']),
+                'href' => $boardHref(['ownership' => 'my', 'tab' => 'all', 'status' => null, 'workflow' => 'failed'], ['board']),
                 'tone' => 'danger',
                 'icon' => 'overdue',
             ],
@@ -196,10 +199,10 @@
         ['label' => 'Today', 'href' => $boardHref(['tab' => 'today', 'status' => null, 'workflow' => null], ['board']), 'active' => $tab === 'today'],
         ['label' => 'Overdue', 'href' => $boardHref(['tab' => 'overdue', 'status' => null, 'workflow' => null], ['board']), 'active' => $tab === 'overdue'],
         ['label' => 'Completed', 'href' => $boardHref(['tab' => 'completed', 'status' => 'completed', 'workflow' => null], ['board']), 'active' => $tab === 'completed' || $statusFilter === 'completed'],
-        ['label' => 'Failed', 'href' => $boardHref(['tab' => 'all', 'status' => 'cancelled', 'workflow' => null], ['board']), 'active' => $statusFilter === 'cancelled'],
+        ['label' => 'Failed', 'href' => $boardHref(['tab' => 'all', 'status' => null, 'workflow' => 'failed'], ['board']), 'active' => $workflowFilter === 'failed'],
     ];
 
-    $scopeTabs = $currentUser?->hasScope('assigned', 'deliveries')
+    $scopeTabs = $currentUser?->hasScope('assigned', 'deliveries') && !$assignedScopedDeliveryUser
         ? [
             ['label' => 'My Tasks', 'href' => $boardHref(['ownership' => 'my'], ['board']), 'active' => $ownershipFilter === 'my'],
             ['label' => 'All Tasks', 'href' => $boardHref(['ownership' => 'all'], ['board']), 'active' => $ownershipFilter === 'all'],
@@ -660,11 +663,11 @@
         .ops-board-title p,
         .ops-task-head p { display:none; }
         .ops-stats { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
-        .ops-stat-card { min-height:92px; padding:10px 11px; gap:8px; border-radius:16px; }
+        .ops-stat-card { min-height:84px; padding:9px 10px; gap:7px; border-radius:15px; }
         .ops-stat-top span { font-size:10px; }
         .ops-stat-copy { display:none; }
-        .ops-stat-value { font-size:22px; }
-        .ops-stat-icon { width:34px; height:34px; flex-basis:34px; border-radius:12px; }
+        .ops-stat-value { font-size:21px; }
+        .ops-stat-icon { width:32px; height:32px; flex-basis:32px; border-radius:11px; }
         .ops-tabs,
         .ops-filters-card { display:none; }
         .ops-mobile-command {
@@ -759,6 +762,7 @@
             background:#fff;
             box-shadow:0 18px 42px rgba(15,23,42,.14);
         }
+        .ops-mobile-sort-menu[hidden] { display:none !important; }
         .ops-mobile-sort-menu a {
             display:flex;
             align-items:center;
@@ -816,8 +820,8 @@
 
     @media (max-width: 420px) {
         .ops-stats { grid-template-columns:repeat(2, minmax(0, 1fr)); }
-        .ops-stat-card { min-height:108px; padding:10px; }
-        .ops-stat-value { font-size:22px; }
+        .ops-stat-card { min-height:96px; padding:9px; }
+        .ops-stat-value { font-size:20px; }
     }
 </style>
 
@@ -1095,7 +1099,7 @@
                                 <option value="cancelled" @selected($statusFilter === 'cancelled')>Failed / Cancelled</option>
                             </select>
                         </div>
-                        @if($currentUser?->hasScope('assigned', 'deliveries'))
+                        @if($currentUser?->hasScope('assigned', 'deliveries') && !$assignedScopedDeliveryUser)
                             <div class="mobile-sheet-field">
                                 <label for="mobile_task_ownership">Scope</label>
                                 <select id="mobile_task_ownership" name="ownership">
@@ -1437,7 +1441,7 @@
                                                         <a href="{{ $proofHistoryHref }}">View Proof</a>
                                                     @endif
                                                     @if($canUpdateTask && !in_array($delivery->status, ['completed', 'cancelled'], true))
-                                                        <a href="{{ route('deliveries.show', $delivery) }}#delivery-cancellation-section">Cancel Task</a>
+                                                        <a href="{{ route('deliveries.show', $delivery) }}#delivery-cancellation-section">Unable to complete</a>
                                                     @endif
                                                     @if(!$assignedScopedDeliveryUser && $canUpdateTask && \Illuminate\Support\Facades\Route::has('deliveries.edit'))
                                                         <a href="{{ route('deliveries.edit', $delivery) }}">Edit</a>
@@ -1589,7 +1593,7 @@
                                             <a href="{{ $proofHistoryHref }}">Proof History</a>
                                         @endif
                                         @if($canUpdateTask && !in_array($delivery->status, ['completed', 'cancelled'], true))
-                                            <a href="{{ route('deliveries.show', $delivery) }}#delivery-cancellation-section">Cancel Task</a>
+                                            <a href="{{ route('deliveries.show', $delivery) }}#delivery-cancellation-section">Unable to complete</a>
                                         @endif
                                         @if(!$assignedScopedDeliveryUser && $canUpdateTask && \Illuminate\Support\Facades\Route::has('deliveries.edit'))
                                             <a href="{{ route('deliveries.edit', $delivery) }}">Edit Assignment</a>
