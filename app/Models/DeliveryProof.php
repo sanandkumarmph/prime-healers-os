@@ -77,6 +77,24 @@ class DeliveryProof extends Model
         };
     }
 
+    public static function historyLabelFor(self $proof): string
+    {
+        $meta = $proof->meta ?? [];
+        $isExtra = (bool) ($meta['is_extra'] ?? false);
+
+        return match ($proof->proof_type) {
+            self::TYPE_LOCATION => 'Location Proof',
+            self::TYPE_PREMISES => $proof->workflow_stage === self::STAGE_PICKUP ? 'Accessories Photo' : 'Delivery Photo',
+            self::TYPE_DELIVERED_DEVICE => $isExtra ? 'Extra Photo' : 'Product Photo',
+            self::TYPE_PICKED_UP_DEVICE => $isExtra ? 'Extra Photo' : 'Product Photo',
+            self::TYPE_DAMAGE => 'Condition Photo',
+            self::TYPE_SIGNATURE => 'Customer Signature',
+            self::TYPE_ACKNOWLEDGEMENT_REASON => 'Customer Consent Reason',
+            self::TYPE_COLLECTION => 'Payment Proof',
+            default => self::labelForType($proof->proof_type),
+        };
+    }
+
     public function delivery()
     {
         return $this->belongsTo(Delivery::class);

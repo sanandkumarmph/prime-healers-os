@@ -840,16 +840,17 @@
     .label { display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#64748b; margin-bottom:5px; }
     .value { color:#0f172a; font-size:14px; }
     .status-badge { display:inline-flex; align-items:center; padding:4px 9px; border-radius:999px; font-size:10.5px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; }
-    .progress-card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px; }
-    .progress-card { border:1px solid #e2e8f0; border-radius:14px; padding:11px; background:#fcfdff; display:grid; gap:10px; }
+    .progress-card-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:8px; }
+    .progress-card { border:1px solid #e2e8f0; border-radius:14px; padding:10px; background:#fcfdff; display:grid; gap:8px; }
     .progress-card-head { display:grid; gap:4px; }
     .progress-card-head strong { color:#0f172a; font-size:14px; line-height:1.4; }
     .progress-card-head small { color:#64748b; font-size:12px; line-height:1.4; }
-    .progress-metric-grid { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:6px; }
-    .progress-metric { display:grid; gap:2px; padding:8px 10px; border:1px solid #edf2f7; border-radius:12px; background:#fff; }
+    .progress-metric-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:6px; }
+    .progress-metric { display:grid; gap:2px; padding:7px 9px; border:1px solid #edf2f7; border-radius:12px; background:#fff; min-width:0; }
     .progress-metric span { color:#64748b; font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; }
     .progress-metric strong { color:#0f172a; font-size:14px; }
     .progress-status-row { display:flex; flex-wrap:wrap; gap:6px; }
+    .progress-action-copy { color:#64748b; font-size:12px; line-height:1.4; }
     .asset-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:10px; }
     .asset-box { border:1px solid #dbe3ef; border-radius:12px; padding:12px; background:#fcfdff; }
     .item-progress-table { width:100%; border-collapse:separate; border-spacing:0; }
@@ -1104,15 +1105,17 @@
     }
     .workflow-camera-preview {
         display:none;
-        grid-template-columns:repeat(3, minmax(0, 1fr));
-        gap:6px;
+        grid-template-columns:repeat(auto-fit, minmax(96px, 1fr));
+        gap:8px;
+        min-width:0;
     }
     .workflow-camera-preview.is-visible {
         display:grid;
     }
     .workflow-camera-preview img {
         width:100%;
-        height:64px;
+        min-width:0;
+        height:96px;
         object-fit:cover;
         border-radius:10px;
         border:1px solid #dbe3ef;
@@ -1161,15 +1164,35 @@
         background:#fcfdff;
         display:grid;
         gap:10px;
+        min-width:0;
+        overflow:hidden;
     }
     .workflow-proof-signature-pad {
+        display:block;
         width:100%;
+        min-width:0;
         height:180px;
         border:1px solid #cbd5e1;
         border-radius:14px;
         background:#fff;
         touch-action:none;
         cursor:crosshair;
+    }
+    .workflow-proof-signature-preview {
+        display:none;
+        gap:8px;
+    }
+    .workflow-proof-signature-preview.is-visible {
+        display:grid;
+    }
+    .workflow-proof-signature-preview img {
+        width:100%;
+        max-width:240px;
+        min-width:0;
+        height:auto;
+        border:1px solid #dbe3ef;
+        border-radius:12px;
+        background:#fff;
     }
     .workflow-step-list { display:grid; gap:12px; }
     .workflow-step {
@@ -1215,13 +1238,14 @@
         align-items:center;
         justify-content:space-between;
         gap:8px;
-        flex-wrap:wrap;
+        flex-wrap:nowrap;
+        min-width:0;
     }
     .workflow-step-actions .detail-btn,
     .workflow-step-actions .detail-btn-secondary {
         min-height:40px;
         white-space:nowrap;
-        min-width:0;
+        min-width:96px;
         flex:1 1 0;
     }
     .workflow-step-helper {
@@ -1261,9 +1285,9 @@
         overflow-wrap:anywhere;
     }
     .workflow-review-item {
-        display:flex;
+        display:grid;
+        grid-template-columns:auto minmax(0, 1fr) auto;
         align-items:flex-start;
-        justify-content:space-between;
         gap:10px;
         padding:10px 12px;
         border:1px solid #e2e8f0;
@@ -1271,11 +1295,14 @@
         background:#fff;
         color:#334155;
         font-size:12px;
+        min-width:0;
     }
     .workflow-review-item strong {
         color:#0f172a;
         font-size:12px;
+        min-width:0;
     }
+    .workflow-review-item span { min-width:0; white-space:normal; word-break:break-word; }
     .workflow-review-item[data-review-ready="true"] {
         border-color:#bbf7d0;
         background:#f0fdf4;
@@ -1350,7 +1377,7 @@
         .span-4, .span-6 { grid-column:span 12; }
         .detail-summary-grid { grid-template-columns:1fr; }
         .detail-summary-row.span-2 { grid-column:span 1; }
-        .progress-metric-grid { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+        .progress-metric-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
         .item-progress-table, .item-progress-table tbody, .item-progress-table tr, .item-progress-table td { display:block; width:100%; }
         .item-progress-table thead { display:none; }
         .item-progress-table tr { border:1px solid #e2e8f0; border-radius:12px; margin-bottom:10px; overflow:hidden; }
@@ -1453,7 +1480,7 @@
         .workflow-step-hero-copy span {
             font-size:10.5px;
         }
-        .progress-metric-grid { grid-template-columns:repeat(4, minmax(0, 1fr)); gap:6px; }
+        .progress-metric-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:6px; }
         .progress-metric { padding:7px 6px; }
         .progress-metric span { font-size:9px; }
         .progress-metric strong { font-size:12px; }
@@ -1467,6 +1494,12 @@
             align-items:center;
             justify-items:start;
             text-align:left;
+        }
+        .workflow-camera-preview {
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+        }
+        .workflow-camera-preview img {
+            height:90px;
         }
         .workflow-camera-icon {
             width:40px;
@@ -1504,7 +1537,7 @@
             padding:9px 10px;
             font-size:11.5px;
         }
-        .workflow-proof-signature-pad { height:148px; }
+        .workflow-proof-signature-pad { height:168px; }
         .workflow-step-actions {
             padding-top:8px;
             background:linear-gradient(180deg, rgba(255,255,255,0) 0%, #fbfdff 28%, #fbfdff 100%);
@@ -1513,6 +1546,14 @@
         .workflow-step-actions .detail-btn-secondary {
             flex:1 1 0;
             min-width:0;
+            width:100%;
+        }
+        .workflow-review-item {
+            grid-template-columns:minmax(0, 1fr);
+            gap:6px;
+        }
+        .workflow-review-status {
+            justify-self:start;
         }
         .workflow-mobile-stepper[data-mobile-workflow-active="true"] [data-workflow-step-panel] {
             display:none;
@@ -1709,7 +1750,7 @@
                         <a href="{{ route('sales.show', $delivery->sale_id) }}">View Sale</a>
                     @endif
                     @if($hasProofHistory)
-                        <a href="#delivery-proof-history">Proof History</a>
+                        <a href="{{ route('deliveries.show', $delivery) }}#delivery-proof-history" data-open-proof-history>Proof History</a>
                     @endif
                     <a href="#activity-timeline">Operations History</a>
                     @if($canUpdateTask)
@@ -1724,7 +1765,11 @@
 
         <div class="fieldops-primary-bar">
             @if((!$workflowCompleted && $canUpdateTask && in_array($delivery->status, ['pending', 'in_progress'], true)) || $hasProofHistory)
-                <a href="#{{ (!$workflowCompleted && $canUpdateTask) ? $workflowProofSectionId : 'delivery-proof-history' }}" class="detail-btn">
+                <a
+                    href="{{ (!$workflowCompleted && $canUpdateTask) ? '#' . $workflowProofSectionId : route('deliveries.show', $delivery) . '#delivery-proof-history' }}"
+                    class="detail-btn"
+                    @if($workflowCompleted || !(!$workflowCompleted && $canUpdateTask)) data-open-proof-history @endif
+                >
                     {{ (!$workflowCompleted && $canUpdateTask) ? $primaryWorkflowCtaLabel : 'View Proof History' }}
                 </a>
             @endif
@@ -1795,10 +1840,10 @@
             @foreach($rentalItems as $item)
                 @php
                     $orderedQty = (int) ($item->ordered_quantity ?? $item->quantity ?? 0);
-                    $deliveredQty = (int) ($item->delivered_quantity_value ?? 0);
-                    $pendingDeliveryQty = (int) ($item->pending_delivery_quantity ?? max($orderedQty - $deliveredQty, 0));
-                    $returnedQty = (int) ($item->returned_quantity_value ?? 0);
-                    $pendingPickupQty = (int) ($item->pending_pickup_quantity ?? max($deliveredQty - $returnedQty, 0));
+                    $deliveredQty = (int) ($item->delivered_quantity_value ?? min(max((int) ($item->delivered_quantity ?? 0), 0), $orderedQty));
+                    $pendingDeliveryQty = max($orderedQty - $deliveredQty, 0);
+                    $returnedQty = (int) ($item->returned_quantity_value ?? min(max((int) ($item->returned_quantity ?? 0), 0), $deliveredQty));
+                    $pendingPickupQty = max($deliveredQty - $returnedQty, 0);
                     $linkedAssetIds = collect($item->asset_ids ?? [])
                         ->filter(fn ($assetId) => filled($assetId))
                         ->map(fn ($assetId) => (int) $assetId)
@@ -1810,26 +1855,40 @@
                             ->whereIn('id', $linkedAssetIds->all())
                             ->where('asset_status', \App\Models\Asset::STATUS_AWAITING_VERIFICATION)
                             ->exists();
-                    $itemDeliveryStatus = $pendingDeliveryQty > 0
-                        ? ($deliveredQty > 0 ? 'partially_delivered' : 'delivery_pending')
-                        : ($deliveredQty > 0 ? 'delivered' : 'delivery_pending');
+                    $itemPrimaryStatus = $delivery->type === 'pickup'
+                        ? ($pendingPickupQty > 0
+                            ? ($returnedQty > 0 ? 'partially_returned' : 'pickup_pending')
+                            : ($returnedQty > 0 ? 'picked_up' : 'pickup_pending'))
+                        : ($pendingDeliveryQty > 0
+                            ? ($deliveredQty > 0 ? 'partially_delivered' : 'delivery_pending')
+                            : ($deliveredQty > 0 ? 'delivered' : 'delivery_pending'));
                     $itemLifecycleStatuses = collect();
 
-                    if ($deliveredQty > $returnedQty) {
-                        $itemLifecycleStatuses->push('with_customer');
-                    }
-
-                    if ($pendingPickupQty > 0) {
-                        if (!$pickupAssigned) {
-                            $itemLifecycleStatuses->push('pickup_not_assigned');
-                        } else {
-                            $itemLifecycleStatuses->push($returnedQty > 0 ? 'partially_returned' : 'pickup_pending');
+                    if ($delivery->type === 'delivery') {
+                        if ($deliveredQty > $returnedQty && $deliveredQty > 0) {
+                            $itemLifecycleStatuses->push('with_customer');
                         }
-                    } elseif ($deliveredQty > 0 && $returnedQty === $deliveredQty) {
-                        $itemLifecycleStatuses->push($hasAwaitingVerificationAsset ? 'awaiting_verification' : 'returned');
+
+                        if ($pendingPickupQty > 0) {
+                            $itemLifecycleStatuses->push(!$pickupAssigned ? 'pickup_not_assigned' : 'pickup_pending');
+                        } elseif ($deliveredQty > 0 && $returnedQty === $deliveredQty) {
+                            $itemLifecycleStatuses->push($hasAwaitingVerificationAsset ? 'awaiting_verification' : 'returned');
+                        }
+                    } elseif ($pendingPickupQty <= 0 && $returnedQty > 0 && $hasAwaitingVerificationAsset) {
+                        $itemLifecycleStatuses->push('awaiting_verification');
                     }
 
-                    $itemLifecycleStatuses = $itemLifecycleStatuses->unique()->values();
+                    $itemLifecycleStatuses = $itemLifecycleStatuses
+                        ->reject(fn ($status) => $status === $itemPrimaryStatus)
+                        ->unique()
+                        ->values();
+                    $itemActionCopy = $delivery->type === 'pickup'
+                        ? ($pendingPickupQty > 0
+                            ? (!$pickupAssigned ? 'Pickup not assigned yet' : ($returnedQty > 0 ? 'Pending pickup' : 'Pending pickup'))
+                            : ($hasAwaitingVerificationAsset ? 'Awaiting verification' : 'Pickup completed'))
+                        : ($pendingDeliveryQty > 0
+                            ? ($deliveredQty > 0 ? 'Pending delivery' : 'Pending delivery')
+                            : 'Delivery completed');
                 @endphp
                 <div class="progress-card">
                     <div class="progress-card-head">
@@ -1842,10 +1901,10 @@
                         <div class="progress-metric"><span>{{ $delivery->type === 'pickup' ? 'Issued' : 'Ordered' }}</span><strong>{{ $orderedQty }}</strong></div>
                         <div class="progress-metric"><span>Delivered</span><strong>{{ $deliveredQty }}</strong></div>
                         <div class="progress-metric"><span>{{ $delivery->type === 'pickup' ? 'Returned' : 'Picked Up' }}</span><strong>{{ $returnedQty }}</strong></div>
-                        <div class="progress-metric"><span>Pending Qty</span><strong>{{ $delivery->type === 'pickup' ? $pendingPickupQty : $pendingDeliveryQty }}</strong></div>
+                        <div class="progress-metric"><span>Pending</span><strong>{{ $delivery->type === 'pickup' ? $pendingPickupQty : $pendingDeliveryQty }}</strong></div>
                     </div>
                     <div class="progress-status-row">
-                        <span class="status-badge" style="{{ $itemProgressBadge($itemDeliveryStatus) }}">{{ $itemProgressLabel($itemDeliveryStatus) }}</span>
+                        <span class="status-badge" style="{{ $itemProgressBadge($itemPrimaryStatus) }}">{{ $itemProgressLabel($itemPrimaryStatus) }}</span>
                         @foreach($itemLifecycleStatuses as $itemLifecycleStatus)
                             <span class="status-badge" style="{{ $itemProgressBadge($itemLifecycleStatus) }}">{{ $itemProgressLabel($itemLifecycleStatus) }}</span>
                         @endforeach
@@ -1867,7 +1926,7 @@
                             <button type="submit" class="detail-btn">Pickup</button>
                         </form>
                     @else
-                        <span style="color:#64748b; font-size:12px;">No action pending.</span>
+                        <span class="progress-action-copy">{{ $itemActionCopy }}</span>
                     @endif
                 </div>
             @endforeach
@@ -2360,6 +2419,10 @@
                                     <div class="workflow-proof-help">Signature is preferred. If not possible, add a short reason below.</div>
                                     <canvas class="workflow-proof-signature-pad" data-signature-pad data-target-input="signature_data"></canvas>
                                     <input type="hidden" name="signature_data" value="{{ old('signature_data') }}">
+                                    <div class="workflow-proof-signature-preview" data-signature-preview-wrap>
+                                        <div class="workflow-proof-help"><strong>Saved preview</strong></div>
+                                        <img src="" alt="Signature preview" data-signature-preview-image>
+                                    </div>
                                     <div class="workflow-proof-actions">
                                         <button type="button" class="workflow-proof-trigger" data-signature-clear>Clear Signature</button>
                                         <div class="workflow-proof-help">Sign with finger or stylus.</div>
@@ -2635,11 +2698,14 @@
 
             @forelse($deliveryProofs as $proof)
                 @php
-                    $proofLabel = \App\Models\DeliveryProof::labelForType($proof->proof_type);
+                    $proofLabel = \App\Models\DeliveryProof::historyLabelFor($proof);
                     $proofWhen = $proof->captured_at ?: $proof->created_at;
                     $proofMeta = collect($proof->meta ?? [])->filter(fn ($value) => filled($value));
                     $proofUrl = $proof->file_path ? route('deliveries.proofs.view', [$delivery, $proof]) : null;
                     $hasCoordinates = filled($proof->latitude) && filled($proof->longitude);
+                    $proofMapUrl = $hasCoordinates
+                        ? 'https://www.google.com/maps/search/?api=1&query=' . $proof->latitude . ',' . $proof->longitude
+                        : null;
                 @endphp
                 <article class="workflow-proof-history-item">
                     <div>
@@ -2664,6 +2730,18 @@
                             <div class="workflow-proof-help"><strong>Coordinates:</strong> {{ number_format((float) $proof->latitude, 6) }}, {{ number_format((float) $proof->longitude, 6) }} @if(filled($proof->accuracy)) · Accuracy {{ number_format((float) $proof->accuracy, 1) }} m @endif</div>
                         @elseif($proof->proof_type === \App\Models\DeliveryProof::TYPE_LOCATION)
                             <div class="workflow-proof-help"><strong>Location missing reason:</strong> {{ $proof->notes ?: 'No reason provided' }}</div>
+                        @endif
+                        @if($hasCoordinates)
+                            @php($proofMapUrl = 'https://www.google.com/maps/search/?api=1&query=' . $proof->latitude . ',' . $proof->longitude)
+                            <div class="workflow-proof-help"><strong>Latitude:</strong> {{ number_format((float) $proof->latitude, 6) }}</div>
+                            <div class="workflow-proof-help"><strong>Longitude:</strong> {{ number_format((float) $proof->longitude, 6) }}</div>
+                            @if(filled($proof->accuracy))
+                                <div class="workflow-proof-help"><strong>Accuracy:</strong> {{ number_format((float) $proof->accuracy, 1) }} m</div>
+                            @endif
+                            <div class="workflow-proof-help"><strong>Captured:</strong> {{ optional($proofWhen)->format('d M Y h:i A') }}</div>
+                            <div class="workflow-proof-actions">
+                                <a href="{{ $proofMapUrl }}" target="_blank" rel="noopener" class="workflow-proof-trigger">Open Map</a>
+                            </div>
                         @endif
                         @if($proof->notes && $proof->proof_type !== \App\Models\DeliveryProof::TYPE_LOCATION)
                             <div class="workflow-proof-help"><strong>Notes:</strong> {{ $proof->notes }}</div>
@@ -2909,6 +2987,18 @@ document.addEventListener('DOMContentLoaded', () => {
         proofHistorySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
+    const openProofHistoryPanel = (updateHash = true) => {
+        if (!(proofHistorySection instanceof HTMLDetailsElement)) {
+            return;
+        }
+
+        if (updateHash) {
+            history.replaceState(null, '', '#delivery-proof-history');
+        }
+
+        openProofHistoryFromHash();
+    };
+
     if (workflowSection && (window.location.hash === '#{{ $workflowProofSectionId }}' || {{ $hasWorkflowErrors ? 'true' : 'false' }})) {
         openMobileWorkflowShell();
         workflowSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2927,6 +3017,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     openProofHistoryFromHash();
     window.addEventListener('hashchange', openProofHistoryFromHash);
+
+    document.querySelectorAll('[data-open-proof-history]').forEach((anchor) => {
+        anchor.addEventListener('click', (event) => {
+            event.preventDefault();
+            openProofHistoryPanel(true);
+        });
+    });
 
     const mobileWorkflowSteppers = Array.from(document.querySelectorAll('[data-mobile-workflow-stepper]'));
 
@@ -3528,26 +3625,70 @@ document.addEventListener('DOMContentLoaded', () => {
         const hiddenInputName = canvas.dataset.targetInput;
         const hiddenInput = form?.querySelector(`input[name="${hiddenInputName}"]`);
         const clearButton = form?.querySelector('[data-signature-clear]');
+        const previewWrap = form?.querySelector('[data-signature-preview-wrap]');
+        const previewImage = form?.querySelector('[data-signature-preview-image]');
         const context = canvas.getContext('2d');
         let drawing = false;
         let hasSignature = false;
+        let currentSignatureData = hiddenInput?.value || '';
         const refreshWorkflowState = () => {
             if (form?.hasAttribute('data-workflow-review-form')) {
                 syncWorkflowReview(form);
             }
         };
 
-        const resizeCanvas = () => {
-            const ratio = window.devicePixelRatio || 1;
-            const bounds = canvas.getBoundingClientRect();
-            canvas.width = Math.max(Math.floor(bounds.width * ratio), 300);
-            canvas.height = Math.max(Math.floor(bounds.height * ratio), 160);
+        const drawSignaturePreview = (dataUrl) => {
+            if (!(previewWrap instanceof HTMLElement) || !(previewImage instanceof HTMLImageElement)) {
+                return;
+            }
+
+            if (!dataUrl) {
+                previewWrap.classList.remove('is-visible');
+                previewImage.removeAttribute('src');
+                return;
+            }
+
+            previewImage.src = dataUrl;
+            previewWrap.classList.add('is-visible');
+        };
+
+        const applyCanvasStyles = () => {
             context.setTransform(1, 0, 0, 1, 0, 0);
-            context.scale(ratio, ratio);
             context.lineWidth = 2;
             context.lineCap = 'round';
             context.lineJoin = 'round';
             context.strokeStyle = '#0f172a';
+        };
+
+        const redrawSignature = (dataUrl) => {
+            if (!dataUrl) {
+                context.clearRect(0, 0, canvas.width, canvas.height);
+                return;
+            }
+
+            const image = new Image();
+            image.onload = () => {
+                context.clearRect(0, 0, canvas.width, canvas.height);
+                context.drawImage(image, 0, 0, canvas.clientWidth, canvas.clientHeight);
+            };
+            image.src = dataUrl;
+        };
+
+        const resizeCanvas = () => {
+            const ratio = window.devicePixelRatio || 1;
+            const bounds = canvas.getBoundingClientRect();
+            const width = Math.max(Math.floor(bounds.width), 280);
+            const height = Math.max(Math.floor(bounds.height), 160);
+            const preservedSignature = currentSignatureData || hiddenInput?.value || '';
+
+            canvas.width = Math.max(Math.floor(width * ratio), 1);
+            canvas.height = Math.max(Math.floor(height * ratio), 1);
+            canvas.style.width = `${width}px`;
+            canvas.style.height = `${height}px`;
+
+            context.setTransform(ratio, 0, 0, ratio, 0, 0);
+            applyCanvasStyles();
+            redrawSignature(preservedSignature);
         };
 
         const positionForEvent = (event) => {
@@ -3584,7 +3725,9 @@ document.addEventListener('DOMContentLoaded', () => {
             drawing = false;
 
             if (hasSignature && hiddenInput) {
-                hiddenInput.value = canvas.toDataURL('image/png');
+                currentSignatureData = canvas.toDataURL('image/png');
+                hiddenInput.value = currentSignatureData;
+                drawSignaturePreview(currentSignatureData);
             }
 
             refreshWorkflowState();
@@ -3592,6 +3735,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
+        drawSignaturePreview(currentSignatureData);
+        if (currentSignatureData) {
+            hasSignature = true;
+        }
 
         canvas.addEventListener('mousedown', startStroke);
         canvas.addEventListener('mousemove', continueStroke);
@@ -3604,9 +3751,11 @@ document.addEventListener('DOMContentLoaded', () => {
         clearButton?.addEventListener('click', () => {
             context.clearRect(0, 0, canvas.width, canvas.height);
             hasSignature = false;
+            currentSignatureData = '';
             if (hiddenInput) {
                 hiddenInput.value = '';
             }
+            drawSignaturePreview('');
             refreshWorkflowState();
         });
 
@@ -3616,7 +3765,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (hasSignature) {
-                hiddenInput.value = canvas.toDataURL('image/png');
+                currentSignatureData = canvas.toDataURL('image/png');
+                hiddenInput.value = currentSignatureData;
             }
         });
     });

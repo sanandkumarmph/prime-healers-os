@@ -6,6 +6,8 @@ use App\Models\Delivery;
 use App\Models\DeliveryProof;
 use App\Models\Customer;
 use App\Models\Product;
+use App\Models\Rental;
+use App\Models\RentalItem;
 use App\Models\Sale;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -288,6 +290,122 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
             ->assertDontSeeText('Completion Checklist');
     }
 
+    public function test_delivery_proof_history_renders_all_expected_proof_items_and_mobile_more_action_hook(): void
+    {
+        $organization = TestData::organization();
+        $deliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+
+        $this->actingAs($deliveryUser);
+
+        $delivery = $this->makeDeliveryTask($organization->id, $deliveryUser->id, 'delivery', 'completed');
+
+        Storage::disk('local')->put('delivery-proofs/product-proof.jpg', 'product-proof');
+        Storage::disk('local')->put('delivery-proofs/site-proof.jpg', 'site-proof');
+        Storage::disk('local')->put('delivery-proofs/extra-proof.jpg', 'extra-proof');
+        Storage::disk('local')->put('delivery-proofs/signature-proof.png', 'signature-proof');
+        Storage::disk('local')->put('delivery-proofs/payment-proof.jpg', 'payment-proof');
+
+        DeliveryProof::create([
+            'organization_id' => $organization->id,
+            'delivery_id' => $delivery->id,
+            'workflow_stage' => DeliveryProof::STAGE_DELIVERY,
+            'capture_moment' => DeliveryProof::MOMENT_START,
+            'proof_type' => DeliveryProof::TYPE_LOCATION,
+            'latitude' => 12.971598,
+            'longitude' => 77.594566,
+            'accuracy' => 8.4,
+            'captured_at' => now()->subMinutes(20),
+            'created_by_user_id' => $deliveryUser->id,
+        ]);
+
+        DeliveryProof::create([
+            'organization_id' => $organization->id,
+            'delivery_id' => $delivery->id,
+            'workflow_stage' => DeliveryProof::STAGE_DELIVERY,
+            'capture_moment' => DeliveryProof::MOMENT_COMPLETE,
+            'proof_type' => DeliveryProof::TYPE_DELIVERED_DEVICE,
+            'file_path' => 'delivery-proofs/product-proof.jpg',
+            'original_name' => 'product-proof.jpg',
+            'mime_type' => 'image/jpeg',
+            'size_bytes' => strlen('product-proof'),
+            'created_by_user_id' => $deliveryUser->id,
+        ]);
+
+        DeliveryProof::create([
+            'organization_id' => $organization->id,
+            'delivery_id' => $delivery->id,
+            'workflow_stage' => DeliveryProof::STAGE_DELIVERY,
+            'capture_moment' => DeliveryProof::MOMENT_COMPLETE,
+            'proof_type' => DeliveryProof::TYPE_PREMISES,
+            'file_path' => 'delivery-proofs/site-proof.jpg',
+            'original_name' => 'site-proof.jpg',
+            'mime_type' => 'image/jpeg',
+            'size_bytes' => strlen('site-proof'),
+            'created_by_user_id' => $deliveryUser->id,
+        ]);
+
+        DeliveryProof::create([
+            'organization_id' => $organization->id,
+            'delivery_id' => $delivery->id,
+            'workflow_stage' => DeliveryProof::STAGE_DELIVERY,
+            'capture_moment' => DeliveryProof::MOMENT_COMPLETE,
+            'proof_type' => DeliveryProof::TYPE_DELIVERED_DEVICE,
+            'file_path' => 'delivery-proofs/extra-proof.jpg',
+            'original_name' => 'extra-proof.jpg',
+            'mime_type' => 'image/jpeg',
+            'size_bytes' => strlen('extra-proof'),
+            'meta' => ['is_extra' => true],
+            'created_by_user_id' => $deliveryUser->id,
+        ]);
+
+        DeliveryProof::create([
+            'organization_id' => $organization->id,
+            'delivery_id' => $delivery->id,
+            'workflow_stage' => DeliveryProof::STAGE_DELIVERY,
+            'capture_moment' => DeliveryProof::MOMENT_COMPLETE,
+            'proof_type' => DeliveryProof::TYPE_SIGNATURE,
+            'file_path' => 'delivery-proofs/signature-proof.png',
+            'original_name' => 'signature-proof.png',
+            'mime_type' => 'image/png',
+            'size_bytes' => strlen('signature-proof'),
+            'created_by_user_id' => $deliveryUser->id,
+        ]);
+
+        DeliveryProof::create([
+            'organization_id' => $organization->id,
+            'delivery_id' => $delivery->id,
+            'workflow_stage' => DeliveryProof::STAGE_DELIVERY,
+            'capture_moment' => DeliveryProof::MOMENT_COMPLETE,
+            'proof_type' => DeliveryProof::TYPE_COLLECTION,
+            'file_path' => 'delivery-proofs/payment-proof.jpg',
+            'original_name' => 'payment-proof.jpg',
+            'mime_type' => 'image/jpeg',
+            'size_bytes' => strlen('payment-proof'),
+            'meta' => ['payment_mode' => 'UPI', 'amount_collected' => 1500],
+            'created_by_user_id' => $deliveryUser->id,
+        ]);
+
+        $response = $this->get(route('deliveries.show', $delivery));
+
+        $response->assertOk()
+            ->assertSee(route('deliveries.show', $delivery) . '#delivery-proof-history', false)
+            ->assertSee('data-open-proof-history', false)
+            ->assertSeeText('6 items')
+            ->assertSeeText('Location Proof')
+            ->assertSeeText('Product Photo')
+            ->assertSeeText('Delivery Photo')
+            ->assertSeeText('Extra Photo')
+            ->assertSeeText('Customer Signature')
+            ->assertSeeText('Payment Proof')
+            ->assertSeeText('Latitude:')
+            ->assertSeeText('Longitude:')
+            ->assertSeeText('Accuracy:')
+            ->assertSeeText('Open Map')
+            ->assertSeeText('View Full Size');
+    }
+
     public function test_delivery_detail_uses_compact_guided_workflow_copy_for_field_users(): void
     {
         $organization = TestData::organization();
@@ -307,6 +425,61 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
             ->assertSeeText('Capture GPS or add a reason.')
             ->assertSeeText('Required steps only.')
             ->assertSeeText('Finish each step before completion.');
+    }
+
+    public function test_delivery_mobile_workflow_renders_signature_preview_photo_preview_and_single_column_review_hooks(): void
+    {
+        $organization = TestData::organization();
+        $deliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+
+        $this->actingAs($deliveryUser);
+
+        $delivery = $this->makeDeliveryTask($organization->id, $deliveryUser->id, 'delivery', 'in_progress');
+
+        $this->get(route('deliveries.show', $delivery))
+            ->assertOk()
+            ->assertSee('data-signature-preview-wrap', false)
+            ->assertSee('data-signature-preview-image', false)
+            ->assertSee('data-preview-target="delivery-device-preview"', false)
+            ->assertSee('data-preview-target="premises-preview"', false)
+            ->assertSee('data-review-summary="location"', false)
+            ->assertSee('data-review-summary="photos"', false)
+            ->assertSee('data-review-summary="signature"', false)
+            ->assertSeeText('Review and finish');
+    }
+
+    public function test_rental_backed_delivery_detail_shows_completed_item_progress_copy_instead_of_generic_pending_copy(): void
+    {
+        $organization = TestData::organization();
+        $deliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+
+        $this->actingAs($deliveryUser);
+
+        $deliveredTask = $this->makeRentalBackedTask($organization->id, $deliveryUser->id, 'delivery', [
+            'delivered_quantity' => 1,
+            'returned_quantity' => 0,
+        ]);
+
+        $pickupTask = $this->makeRentalBackedTask($organization->id, $deliveryUser->id, 'pickup', [
+            'delivered_quantity' => 1,
+            'returned_quantity' => 1,
+        ]);
+
+        $this->get(route('deliveries.show', $deliveredTask))
+            ->assertOk()
+            ->assertSeeText('Delivery completed')
+            ->assertDontSeeText('No action pending.')
+            ->assertDontSeeText('Delivery Pending');
+
+        $this->get(route('deliveries.show', $pickupTask))
+            ->assertOk()
+            ->assertSeeText('Pickup completed')
+            ->assertDontSeeText('No action pending.')
+            ->assertDontSeeText('Pickup Pending');
     }
 
     public function test_delivery_completion_requires_photos_signature_and_location_or_reason(): void
@@ -508,6 +681,74 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
             'assigned_user_id' => $assignedUserId,
             'scheduled_at' => now(),
             'notes' => 'Proof workflow test task',
+        ]);
+    }
+
+    private function makeRentalBackedTask(int $organizationId, int $assignedUserId, string $type, array $itemOverrides = []): Delivery
+    {
+        $customer = Customer::create([
+            'organization_id' => $organizationId,
+            'name' => ucfirst($type) . ' Customer',
+            'phone' => '9000000111',
+            'address' => '12 Field Street',
+            'city' => 'Bengaluru',
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organizationId,
+            'name' => ucfirst($type) . ' Product',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'price_per_day' => 100,
+            'rental_price' => 100,
+            'sale_price' => 0,
+            'available_quantity' => 5,
+            'total_quantity' => 5,
+        ]);
+
+        $rentalStatus = $type === 'pickup' ? 'returned' : 'active';
+
+        $rental = Rental::create([
+            'organization_id' => $organizationId,
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'start_date' => now()->subDays(2)->toDateString(),
+            'end_date' => now()->addDays(2)->toDateString(),
+            'rental_amount' => 100,
+            'deposit_amount' => 0,
+            'status' => $rentalStatus,
+        ]);
+
+        RentalItem::create(array_merge([
+            'organization_id' => $organizationId,
+            'rental_id' => $rental->id,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'ordered_quantity' => 1,
+            'delivered_quantity' => 0,
+            'returned_quantity' => 0,
+            'unit_rental_amount' => 100,
+            'gst_rate' => 0,
+            'gst_mode' => 'exclusive',
+            'tax_type' => 'cgst_sgst',
+            'taxable_amount' => 100,
+            'cgst_amount' => 0,
+            'sgst_amount' => 0,
+            'igst_amount' => 0,
+            'line_total' => 100,
+        ], $itemOverrides));
+
+        return Delivery::create([
+            'organization_id' => $organizationId,
+            'rental_id' => $rental->id,
+            'type' => $type,
+            'status' => 'completed',
+            'assigned_user_id' => $assignedUserId,
+            'scheduled_at' => now(),
+            'notes' => ucfirst($type) . ' rental progress test task',
         ]);
     }
 

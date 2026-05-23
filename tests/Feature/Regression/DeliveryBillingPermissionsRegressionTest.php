@@ -606,7 +606,7 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
         $response->assertOk();
         $response->assertSee('>Delivered<', false);
         $response->assertDontSee('class="rn-badge rn-badge-active">In Progress</span>', false);
-        $response->assertSeeText('1/1 delivered');
+        $response->assertSeeText('Delivery completed');
     }
 
     public function test_delivery_index_excludes_completed_pickups_from_pending_widget_and_hides_complete_action(): void

@@ -1270,6 +1270,13 @@ class DeliveryController extends Controller
 
         $legacyDefault = $legacyBoardDefaults[$legacyBoard] ?? [];
 
+        $currentUser = auth()->user();
+        $deliveryFocusedBoard = in_array($currentUser?->effective_role, [
+            User::ROLE_DELIVERY,
+            User::ROLE_DELIVERY_EXECUTIVE,
+            User::ROLE_VENDOR,
+            User::ROLE_THIRD_PARTY,
+        ], true);
         $restrictedToAssignedTasks = (bool) (auth()->user()?->hasScope('assigned', 'deliveries') ?? false);
         $defaultOwnershipFilter = $restrictedToAssignedTasks ? 'my' : 'all';
 
@@ -1658,6 +1665,45 @@ class DeliveryController extends Controller
                 && in_array($delivery->status, ['pending', 'in_progress'], true)
                 && optional($delivery->scheduled_at)?->isSameDay($todayStart))
             ->count();
+
+        if ($restrictedToAssignedTasks || $deliveryFocusedBoard) {
+            $focusedTaskSummaryQuery = $this->applyDeliveryScope(clone $summaryBaseQuery);
+
+            $activeTasksCount = (int) (clone $focusedTaskSummaryQuery)
+                ->whereIn('status', ['pending', 'in_progress'])
+                ->count();
+
+            $todayOpenDeliveryCount = (int) (clone $focusedTaskSummaryQuery)
+                ->where('type', 'delivery')
+                ->whereIn('status', ['pending', 'in_progress'])
+                ->whereDate('scheduled_at', $today)
+                ->count();
+
+            $todayOpenPickupCount = (int) (clone $focusedTaskSummaryQuery)
+                ->where('type', 'pickup')
+                ->whereIn('status', ['pending', 'in_progress'])
+                ->whereDate('scheduled_at', $today)
+                ->count();
+
+            $overdueTasksCount = (int) (clone $focusedTaskSummaryQuery)
+                ->whereIn('status', ['pending', 'in_progress'])
+                ->whereDate('scheduled_at', '<', $today)
+                ->count();
+
+            $failedTasksCount = (int) (clone $focusedTaskSummaryQuery)
+                ->where(function ($query) {
+                    $query->where('status', 'cancelled');
+
+                    if ($this->hasPickupStatusColumn()) {
+                        $query->orWhere('pickup_status', 'failed_attempt');
+                    }
+
+                    if ($this->hasFailedAttemptReasonColumn()) {
+                        $query->orWhereNotNull('failed_attempt_reason');
+                    }
+                })
+                ->count();
+        }
 
         $todayOverviewTaskIds = collect($logisticsSummary['todayTasks'] ?? collect())
             ->sortBy(fn (Delivery $delivery) => $delivery->scheduled_at?->timestamp ?? PHP_INT_MAX)

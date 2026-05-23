@@ -272,12 +272,41 @@
 
         if ($delivery->type === 'delivery') {
             $ordered = max($delivery->rental->displayRentalItems()->sum(fn ($item) => (int) ($item->ordered_quantity ?? $item->quantity ?? 0)), 0);
-            return $ordered > 0 ? $delivery->rental->deliveredQuantityTotal() . '/' . $ordered . ' delivered' : null;
+            $delivered = max($delivery->rental->deliveredQuantityTotal(), 0);
+            $pending = max($ordered - $delivered, 0);
+
+            if ($ordered <= 0) {
+                return null;
+            }
+
+            if ($pending === 0 && $delivered > 0) {
+                return 'Delivery completed';
+            }
+
+            if ($delivered > 0) {
+                return $delivered . '/' . $ordered . ' delivered';
+            }
+
+            return 'Pending delivery';
         }
 
         $delivered = max($delivery->rental->deliveredQuantityTotal(), 0);
+        $returned = max($delivery->rental->returnedQuantityTotal(), 0);
+        $pending = max($delivered - $returned, 0);
 
-        return $delivered > 0 ? $delivery->rental->returnedQuantityTotal() . '/' . $delivered . ' picked up' : null;
+        if ($delivered <= 0) {
+            return 'Pending pickup';
+        }
+
+        if ($pending === 0 && $returned > 0) {
+            return 'Pickup completed';
+        }
+
+        if ($returned > 0) {
+            return $returned . '/' . $delivered . ' picked up';
+        }
+
+        return 'Pending pickup';
     };
 
     $formatTaskItems = function ($delivery) {
@@ -497,8 +526,8 @@
     .ops-mobile-card {
         position:relative;
         display:grid;
-        gap:8px;
-        padding:10px 11px;
+        gap:6px;
+        padding:9px 10px;
         border-bottom:1px solid #eef2f7;
         cursor:pointer;
     }
@@ -514,11 +543,11 @@
         display:flex;
         align-items:flex-start;
         justify-content:space-between;
-        gap:10px;
+        gap:8px;
     }
     .ops-mobile-card-head {
         display:grid;
-        gap:6px;
+        gap:4px;
         min-width:0;
         flex:1 1 auto;
     }
@@ -544,9 +573,9 @@
     }
     .ops-mobile-order {
         color:#0f172a;
-        font-size:12px;
+        font-size:11.5px;
         font-weight:800;
-        line-height:1.35;
+        line-height:1.25;
     }
     .ops-mobile-order a {
         color:inherit;
@@ -554,7 +583,8 @@
     }
     .ops-mobile-contact {
         display:grid;
-        gap:3px;
+        gap:2px;
+        min-width:0;
     }
     .ops-mobile-customer {
         color:#0f172a;
@@ -567,19 +597,71 @@
     .ops-mobile-address {
         color:#475569;
         font-size:11.5px;
-        line-height:1.4;
+        line-height:1.35;
+        min-width:0;
+    }
+    .ops-mobile-main {
+        display:grid;
+        grid-template-columns:minmax(0, 1fr) minmax(84px, auto);
+        gap:8px;
+        align-items:start;
+        min-width:0;
+    }
+    .ops-mobile-side {
+        display:grid;
+        gap:6px;
+        min-width:0;
+        text-align:right;
+    }
+    .ops-mobile-side-row {
+        display:grid;
+        gap:1px;
+        min-width:0;
+    }
+    .ops-mobile-side-row span:first-child {
+        color:#64748b;
+        font-size:9.5px;
+        font-weight:800;
+        letter-spacing:.05em;
+        text-transform:uppercase;
+    }
+    .ops-mobile-side-row span:last-child {
+        color:#0f172a;
+        font-size:11.5px;
+        line-height:1.3;
+        font-weight:700;
+        min-width:0;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+    }
+    .ops-mobile-address {
+        display:-webkit-box;
+        -webkit-box-orient:vertical;
+        -webkit-line-clamp:2;
+        overflow:hidden;
+    }
+    .ops-mobile-address-more {
+        display:inline-flex;
+        align-items:center;
+        gap:4px;
+        width:max-content;
+        font-size:10.5px;
+        font-weight:700;
+        color:#2563eb;
+        text-decoration:none;
     }
     .ops-mobile-meta-row {
         display:grid;
         grid-template-columns:repeat(2, minmax(0, 1fr));
-        gap:8px;
+        gap:6px;
     }
     .ops-mobile-meta {
         display:grid;
         gap:2px;
         min-width:0;
-        padding:8px 9px;
-        border-radius:12px;
+        padding:6px 8px;
+        border-radius:10px;
         border:1px solid #eef2f7;
         background:#f8fafc;
     }
@@ -598,23 +680,26 @@
     }
     .ops-mobile-actions {
         display:grid;
-        gap:8px;
+        gap:6px;
     }
     .ops-mobile-icon-row {
         display:grid;
         grid-template-columns:repeat(4, minmax(0, 1fr));
-        gap:8px;
+        gap:6px;
         align-items:stretch;
     }
     .ops-mobile-actions .ops-action-btn,
-    .ops-mobile-actions .ops-action-btn-primary { min-height:40px; padding:0 8px; }
+    .ops-mobile-actions .ops-action-btn-primary { min-height:36px; padding:0 8px; }
     .ops-mobile-actions .ops-action-btn-primary {
         width:100%;
-        min-height:42px;
+        min-height:38px;
+        white-space:nowrap;
     }
     .ops-mobile-more summary {
-        min-height:42px;
-        border-radius:12px;
+        min-height:36px;
+        width:36px;
+        height:36px;
+        border-radius:10px;
     }
     .ops-widget-stack { display:grid; gap:14px; }
     .ops-widget-card { padding:14px; display:grid; gap:12px; }
@@ -796,27 +881,32 @@
             color:#1d4ed8;
         }
         .ops-filter-grid,
-        .ops-mobile-meta-row { grid-template-columns:1fr; }
+        .ops-mobile-main {
+            grid-template-columns:minmax(0, 1fr) 86px;
+            gap:8px;
+        }
+        .ops-mobile-meta-row { grid-template-columns:repeat(2, minmax(0, 1fr)); }
         .ops-mobile-actions { gap:8px; }
         .ops-mobile-icon-row { grid-template-columns:repeat(4, minmax(0, 1fr)); align-items:stretch; }
         .ops-mobile-actions .ops-action-btn,
         .ops-mobile-actions .ops-action-btn-primary {
             width:100%;
-            min-height:40px;
+            min-height:36px;
             padding:0 8px;
-            border-radius:12px;
+            border-radius:10px;
             justify-content:center;
         }
         .ops-mobile-icon-row .mobile-utility-btn {
             padding:0;
+            min-height:34px;
             aspect-ratio:1 / 1;
         }
         .ops-mobile-icon-row .mobile-utility-btn span {
             display:none;
         }
         .ops-mobile-icon-row .mobile-utility-btn svg {
-            width:18px;
-            height:18px;
+            width:16px;
+            height:16px;
         }
         .ops-board-actions { width:100%; }
         .ops-board-actions .rn-btn,
@@ -835,11 +925,11 @@
             display:none;
         }
         .ops-mobile-card {
-            gap:8px;
-            padding:10px 11px;
+            gap:6px;
+            padding:9px 10px;
         }
         .ops-mobile-card-head {
-            gap:5px;
+            gap:4px;
         }
         .ops-mobile-topline {
             gap:5px;
@@ -854,6 +944,9 @@
         .ops-mobile-phone,
         .ops-mobile-product,
         .ops-mobile-address {
+            font-size:11px;
+        }
+        .ops-mobile-side-row span:last-child {
             font-size:11px;
         }
         .ops-mobile-meta span:last-child {
@@ -1615,7 +1708,10 @@
                                         @endif
                                         <span class="ops-mobile-product">{{ $items->take(1)->implode(', ') ?: 'No linked items yet' }}</span>
                                         @if($locationLabel !== '')
-                                            <span class="ops-mobile-address">{{ \Illuminate\Support\Str::limit($locationLabel, 58) }}</span>
+                                            <span class="ops-mobile-address">{{ $locationLabel }}</span>
+                                            @if(\Illuminate\Support\Str::length($locationLabel) > 58 && $taskDetailHref)
+                                                <a href="{{ $taskDetailHref }}" class="ops-mobile-address-more">View more</a>
+                                            @endif
                                         @endif
                                     </div>
                                 </div>
@@ -1651,18 +1747,30 @@
                                 </details>
                             </div>
 
-                            <div class="ops-mobile-meta-row">
-                                <div class="ops-mobile-meta">
-                                    <span>{{ $delivery->type === 'pickup' ? 'Pickup' : 'Delivery' }}</span>
-                                    <span>{{ $delivery->scheduled_at ? $delivery->scheduled_at->format('d M') : 'Not scheduled' }}</span>
+                            <div class="ops-mobile-main">
+                                <div class="ops-mobile-meta-row">
+                                    <div class="ops-mobile-meta">
+                                        <span>{{ $delivery->type === 'pickup' ? 'Pickup' : 'Delivery' }}</span>
+                                        <span>{{ $delivery->scheduled_at ? $delivery->scheduled_at->format('d M') : 'Not scheduled' }}</span>
+                                    </div>
+                                    <div class="ops-mobile-meta">
+                                        <span>Warehouse</span>
+                                        <span>{{ \Illuminate\Support\Str::limit($delivery->rental?->dispatchWarehouse?->name ?? $delivery->sale?->asset?->warehouse?->name ?? 'Any warehouse', 18) }}</span>
+                                    </div>
                                 </div>
-                                <div class="ops-mobile-meta">
-                                    <span>Staff</span>
-                                    <span>{{ $assignedName }}</span>
-                                </div>
-                                <div class="ops-mobile-meta">
-                                    <span>Location</span>
-                                    <span>{{ $customerCity ?: 'No city saved' }}</span>
+                                <div class="ops-mobile-side">
+                                    <div class="ops-mobile-side-row">
+                                        <span>Time</span>
+                                        <span>{{ $scheduleLabel }}</span>
+                                    </div>
+                                    <div class="ops-mobile-side-row">
+                                        <span>Staff</span>
+                                        <span>{{ \Illuminate\Support\Str::limit($assignedName, 16) }}</span>
+                                    </div>
+                                    <div class="ops-mobile-side-row">
+                                        <span>Area</span>
+                                        <span>{{ \Illuminate\Support\Str::limit($customerCity ?: 'No city saved', 16) }}</span>
+                                    </div>
                                 </div>
                             </div>
 

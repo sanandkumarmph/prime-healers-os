@@ -189,6 +189,9 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
         $this->assertSame('my', (string) $deliveryTaskboard->viewData('ownershipFilter'));
         $this->assertSame(2, (int) $deliveryTaskboard->viewData('taskResultsCount'));
         $this->assertSame(2, (int) $myTaskboard->viewData('taskResultsCount'));
+        $this->assertSame(0, (int) $deliveryTaskboard->viewData('activeTasksCount'));
+        $this->assertSame(0, (int) $deliveryTaskboard->viewData('todayOpenDeliveryCount'));
+        $this->assertSame(0, (int) $deliveryTaskboard->viewData('todayOpenPickupCount'));
 
         $superadminRentals = $this->actingAs($superadmin)->get(route('rentals.index'));
         $deliveryRentals = $this->actingAs($deliveryUser)->get(route('rentals.index'));
@@ -216,6 +219,95 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
             (float) (($superadminInvoices->viewData('invoiceStats')['outstandingAmount'] ?? 0)),
             (float) (($deliveryInvoices->viewData('invoiceStats')['outstandingAmount'] ?? 0))
         );
+    }
+
+    public function test_delivery_taskboard_compact_kpis_count_open_assigned_tasks_for_delivery_user(): void
+    {
+        $organization = TestData::organization();
+        $deliveryRole = Role::create([
+            'organization_id' => $organization->id,
+            'name' => 'Delivery Team',
+            'slug' => User::ROLE_DELIVERY,
+            'permissions' => [
+                'deliveries' => ['read', 'update'],
+                'rentals' => ['read'],
+            ],
+        ]);
+
+        $deliveryUser = User::factory()->create([
+            'organization_id' => $organization->id,
+            'role' => User::ROLE_DELIVERY,
+            'role_id' => $deliveryRole->id,
+            'is_internal' => true,
+            'is_active' => true,
+            'email_verified_at' => now(),
+        ]);
+
+        $otherDeliveryUser = User::factory()->create([
+            'organization_id' => $organization->id,
+            'role' => User::ROLE_DELIVERY,
+            'role_id' => $deliveryRole->id,
+            'is_internal' => true,
+            'is_active' => true,
+            'email_verified_at' => now(),
+        ]);
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Field Taskboard Customer',
+            'phone' => '9000000123',
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Taskboard Product',
+            'product_type' => Product::TYPE_SELLABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'available_quantity' => 8,
+            'total_quantity' => 8,
+            'sale_price' => 250,
+            'rental_price' => 0,
+            'price_per_day' => 0,
+        ]);
+
+        $saleOne = $this->makeSale($organization->id, $customer->id, $product->id, 250);
+        $saleTwo = $this->makeSale($organization->id, $customer->id, $product->id, 300);
+        $saleThree = $this->makeSale($organization->id, $customer->id, $product->id, 350);
+
+        Delivery::create([
+            'organization_id' => $organization->id,
+            'sale_id' => $saleOne->id,
+            'assigned_user_id' => $deliveryUser->id,
+            'type' => 'delivery',
+            'status' => 'pending',
+            'scheduled_at' => now()->addHour(),
+        ]);
+
+        Delivery::create([
+            'organization_id' => $organization->id,
+            'sale_id' => $saleTwo->id,
+            'assigned_user_id' => $deliveryUser->id,
+            'type' => 'pickup',
+            'status' => 'in_progress',
+            'scheduled_at' => now()->addHours(2),
+        ]);
+
+        Delivery::create([
+            'organization_id' => $organization->id,
+            'sale_id' => $saleThree->id,
+            'assigned_user_id' => $otherDeliveryUser->id,
+            'type' => 'delivery',
+            'status' => 'pending',
+            'scheduled_at' => now()->addHours(3),
+        ]);
+
+        $response = $this->actingAs($deliveryUser)->get(route('deliveries.index'));
+
+        $response->assertOk();
+        $this->assertSame('my', (string) $response->viewData('ownershipFilter'));
+        $this->assertSame(2, (int) $response->viewData('activeTasksCount'));
+        $this->assertSame(1, (int) $response->viewData('todayOpenDeliveryCount'));
+        $this->assertSame(1, (int) $response->viewData('todayOpenPickupCount'));
     }
 
     public function test_superadmin_and_sales_user_share_org_level_rental_sales_and_invoice_lists(): void
