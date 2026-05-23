@@ -2,7 +2,10 @@
 
 namespace App\Models;
 
+use App\Services\NotificationCenterService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class Delivery extends Model
 {
@@ -96,6 +99,21 @@ class Delivery extends Model
         'collection_amount_collected' => 'decimal:2',
     ];
 
+    protected static function booted(): void
+    {
+        static::created(function (Delivery $delivery): void {
+            $delivery->dispatchAssignmentNotification(null);
+        });
+
+        static::updated(function (Delivery $delivery): void {
+            if (!$delivery->wasChanged('assigned_user_id')) {
+                return;
+            }
+
+            $delivery->dispatchAssignmentNotification($delivery->getOriginal('assigned_user_id'));
+        });
+    }
+
     public function rental()
     {
         return $this->belongsTo(Rental::class);
@@ -124,6 +142,11 @@ class Delivery extends Model
     public function proofs()
     {
         return $this->hasMany(DeliveryProof::class);
+    }
+
+    public function scopeOpenOperational(Builder $query): Builder
+    {
+        return $query->whereIn('status', ['pending', 'in_progress']);
     }
 
     public function linkedCustomerName(): string
@@ -246,6 +269,11 @@ class Delivery extends Model
         return $this->type === 'pickup';
     }
 
+    public function needsOperationalAction(): bool
+    {
+        return in_array($this->status, ['pending', 'in_progress'], true);
+    }
+
     public function pickupOperationalStatus(): ?string
     {
         if (!$this->isPickup()) {
@@ -328,5 +356,39 @@ class Delivery extends Model
             ?: $this->cancellation_notes
             ?: ''
         )) ?: null;
+    }
+
+    private function dispatchAssignmentNotification(mixed $previousAssignedUserId): void
+    {
+        $currentAssignedUserId = (int) ($this->assigned_user_id ?? 0);
+        $previousAssignedUserId = (int) ($previousAssignedUserId ?? 0);
+
+        if ($currentAssignedUserId <= 0 || $currentAssignedUserId === $previousAssignedUserId) {
+            return;
+        }
+
+        DB::afterCommit(function () use ($currentAssignedUserId): void {
+            $delivery = self::query()
+                ->with([
+                    'assignedUser',
+                    'rental.customer',
+                    'rental.businessPartner',
+                    'rental.partnerClient',
+                    'sale.customer',
+                    'sale.businessPartner',
+                    'sale.partnerClient',
+                ])
+                ->find($this->id);
+
+            if (!$delivery || (int) ($delivery->assigned_user_id ?? 0) !== $currentAssignedUserId) {
+                return;
+            }
+
+            if (!$delivery->assignedUser || !$delivery->needsOperationalAction()) {
+                return;
+            }
+
+            app(NotificationCenterService::class)->notifyDeliveryAssignment($delivery, $delivery->assignedUser);
+        });
     }
 }

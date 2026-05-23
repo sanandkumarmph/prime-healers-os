@@ -120,7 +120,7 @@ class RenewalCenterController extends Controller
 
         if ($includeRelations) {
             $with = [
-                'product:id,name,brand,model',
+                'product:id,name,brand,model_name',
                 'invoice:id,organization_id,rental_id,invoice_number,payment_status,status,balance_amount,total_amount,due_date',
                 'deliveryRecord:id,organization_id,rental_id,type,status,assigned_user_id,assigned_staff_id,scheduled_at,completed_at,notes',
                 'deliveryRecord.assignedUser:id,name',
@@ -168,7 +168,7 @@ class RenewalCenterController extends Controller
                         $productQuery
                             ->where('name', 'like', '%' . $search . '%')
                             ->orWhere('brand', 'like', '%' . $search . '%')
-                            ->orWhere('model', 'like', '%' . $search . '%');
+                            ->orWhere('model_name', 'like', '%' . $search . '%');
                     })
                     ->orWhereHas('customer', function (Builder $customerQuery) use ($search) {
                         $customerQuery

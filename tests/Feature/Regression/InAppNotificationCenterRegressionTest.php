@@ -121,6 +121,43 @@ class InAppNotificationCenterRegressionTest extends TestCase
             ->assertJsonPath('notifications.0.title', 'New delivery task assigned');
     }
 
+    public function test_direct_delivery_model_creation_with_assigned_user_creates_assignment_notification(): void
+    {
+        $deliveryUser = $this->makeDeliveryUser();
+        $rental = $this->makeRental();
+
+        Delivery::create([
+            'organization_id' => $this->organizationId,
+            'rental_id' => $rental->id,
+            'assigned_user_id' => $deliveryUser->id,
+            'type' => 'delivery',
+            'status' => 'pending',
+            'scheduled_at' => now()->addHour(),
+        ]);
+
+        $this->actingAs($deliveryUser)
+            ->getJson(route('notifications.latest'))
+            ->assertOk()
+            ->assertJsonPath('unread_count', 1)
+            ->assertJsonPath('notifications.0.title', 'New delivery task assigned');
+    }
+
+    public function test_assigning_user_on_existing_task_creates_assignment_notification_for_new_assignee(): void
+    {
+        $deliveryUser = $this->makeDeliveryUser();
+        $pickup = $this->makePickupTask();
+
+        $pickup->update([
+            'assigned_user_id' => $deliveryUser->id,
+        ]);
+
+        $this->actingAs($deliveryUser)
+            ->getJson(route('notifications.latest'))
+            ->assertOk()
+            ->assertJsonPath('unread_count', 1)
+            ->assertJsonPath('notifications.0.title', 'New pickup task assigned');
+    }
+
     public function test_visible_notifications_can_be_marked_read_without_touching_other_users(): void
     {
         $deliveryUser = $this->makeDeliveryUser();

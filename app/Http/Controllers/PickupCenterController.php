@@ -122,11 +122,6 @@ class PickupCenterController extends Controller
             'notes' => $validated['notes'] ?? null,
         ], 'Pickup assigned from Pickup Center.');
 
-        $delivery->loadMissing(['assignedUser', 'rental.customer', 'rental.businessPartner', 'rental.partnerClient', 'sale.customer', 'sale.businessPartner', 'sale.partnerClient']);
-        if ($delivery->assignedUser) {
-            $this->notifications()->notifyDeliveryAssignment($delivery, $delivery->assignedUser);
-        }
-
         return back()->with('success', 'Pickup assigned successfully.');
     }
 
@@ -247,11 +242,6 @@ class PickupCenterController extends Controller
             'assigned_user_id' => $assignedUserId,
             'assigned_staff_id' => $assignedStaffId,
         ], 'Pickup rescheduled from Pickup Center.');
-
-        $delivery->loadMissing(['assignedUser', 'rental.customer', 'rental.businessPartner', 'rental.partnerClient', 'sale.customer', 'sale.businessPartner', 'sale.partnerClient']);
-        if ($delivery->assignedUser) {
-            $this->notifications()->notifyDeliveryAssignment($delivery, $delivery->assignedUser);
-        }
 
         return back()->with('success', 'Pickup rescheduled successfully.');
     }

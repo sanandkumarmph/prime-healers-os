@@ -1952,11 +1952,6 @@ class DeliveryController extends Controller
             'scheduled_at' => optional($delivery->scheduled_at)->toDateTimeString(),
         ], 'Delivery or pickup assignment created.');
 
-        $delivery->loadMissing(['assignedUser', 'rental.customer', 'rental.businessPartner', 'rental.partnerClient', 'sale.customer', 'sale.businessPartner', 'sale.partnerClient']);
-        if ($delivery->assignedUser) {
-            $this->notifications()->notifyDeliveryAssignment($delivery, $delivery->assignedUser);
-        }
-
         return $this->redirectAfterDeliveryMutation($delivery, 'Delivery/Pickup created successfully.');
     }
 
@@ -2289,11 +2284,6 @@ class DeliveryController extends Controller
             'assigned_staff_id' => $delivery->assigned_staff_id ?? null,
             'scheduled_at' => optional($delivery->scheduled_at)->toDateTimeString(),
         ], 'Delivery or pickup assignment updated.');
-
-        $delivery->loadMissing(['assignedUser', 'rental.customer', 'rental.businessPartner', 'rental.partnerClient', 'sale.customer', 'sale.businessPartner', 'sale.partnerClient']);
-        if ($delivery->assignedUser && (int) $delivery->assigned_user_id !== $previousAssignedUserId) {
-            $this->notifications()->notifyDeliveryAssignment($delivery, $delivery->assignedUser);
-        }
 
         return $this->redirectAfterDeliveryMutation($delivery, 'Delivery/Pickup updated successfully.');
     }

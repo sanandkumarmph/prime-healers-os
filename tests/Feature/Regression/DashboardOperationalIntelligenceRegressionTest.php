@@ -242,6 +242,81 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
             ->assertSeeText('Task Flow');
     }
 
+    public function test_delivery_dashboard_counts_all_open_assigned_tasks_without_collapsing_duplicate_task_records(): void
+    {
+        $organization = TestData::organization();
+        $deliveryRole = Role::create([
+            'organization_id' => $organization->id,
+            'name' => 'Delivery Team',
+            'slug' => User::ROLE_DELIVERY,
+            'permissions' => [
+                'deliveries' => ['read', 'update'],
+                'rentals' => ['read'],
+            ],
+        ]);
+
+        $deliveryUser = User::factory()->create([
+            'organization_id' => $organization->id,
+            'role' => User::ROLE_DELIVERY,
+            'role_id' => $deliveryRole->id,
+            'is_internal' => true,
+            'is_active' => true,
+            'email_verified_at' => now(),
+        ]);
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Field Ops Customer',
+            'phone' => '9000000001',
+            'address' => 'HSR Layout',
+            'city' => 'Bengaluru',
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Field Ops Product',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'available_quantity' => 20,
+            'total_quantity' => 20,
+            'price_per_day' => 200,
+            'rental_price' => 1200,
+            'sale_price' => 0,
+        ]);
+
+        $rental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'start_date' => now()->subDays(2)->toDateString(),
+            'end_date' => now()->addDays(5)->toDateString(),
+            'status' => 'active',
+            'rental_amount' => 1200,
+        ]);
+
+        foreach (range(1, 11) as $index) {
+            Delivery::create([
+                'organization_id' => $organization->id,
+                'rental_id' => $rental->id,
+                'assigned_user_id' => $deliveryUser->id,
+                'type' => $index % 2 === 0 ? 'pickup' : 'delivery',
+                'status' => $index % 3 === 0 ? 'in_progress' : 'pending',
+                'scheduled_at' => now()->addHours($index),
+            ]);
+        }
+
+        $response = $this->actingAs($deliveryUser)->get(route('dashboard'));
+
+        $response->assertOk()
+            ->assertViewHas('dashboardTaskMetricsScope', 'assigned')
+            ->assertViewHas('assignedOpenTasksCount', 11)
+            ->assertViewHas('myDeliveriesTodayCount', 6)
+            ->assertViewHas('myPickupsTodayCount', 5);
+    }
+
     public function test_sales_dashboard_is_accessible_without_dashboard_main_and_hides_sensitive_management_widgets(): void
     {
         $organization = TestData::organization();

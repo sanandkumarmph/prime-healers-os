@@ -104,6 +104,24 @@ class RenewalCenterRegressionTest extends TestCase
             ->assertSeeText($rental->customer->phone);
     }
 
+    public function test_renewal_center_searches_product_model_name_without_querying_legacy_model_column(): void
+    {
+        $rental = $this->makeDirectCustomerRental([
+            'end_date' => now()->toDateString(),
+        ]);
+
+        $rental->product->update([
+            'model_name' => 'Oxymed Mini LP',
+        ]);
+
+        $this->get(route('renewal-center.index', [
+            'search' => 'Mini LP',
+        ]))
+            ->assertOk()
+            ->assertSeeText('Renewal Center')
+            ->assertSeeText('Rental #' . $rental->id);
+    }
+
     public function test_mark_reminder_sent_stores_timestamp_and_log_entry(): void
     {
         $rental = $this->makeDirectCustomerRental([

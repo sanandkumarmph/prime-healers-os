@@ -79,6 +79,18 @@ class Product extends Model
         'is_rentable' => 'boolean',
     ];
 
+    public function getDisplayModelAttribute(): ?string
+    {
+        $modelName = trim((string) ($this->model_name ?? ''));
+        if ($modelName !== '') {
+            return $modelName;
+        }
+
+        $legacyModel = trim((string) ($this->getAttributeFromArray('model') ?? ''));
+
+        return $legacyModel !== '' ? $legacyModel : null;
+    }
+
     protected static function booted(): void
     {
         static::saving(function (Product $product) {
