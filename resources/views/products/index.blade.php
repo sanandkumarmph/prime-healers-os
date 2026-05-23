@@ -102,7 +102,7 @@
 
 @section('content')
     <style>
-        .product-page { display:grid; gap:12px; }
+        .product-page { display:grid; gap:12px; padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px)); }
         .product-hero { margin-bottom:0 !important; }
         .product-shell {
             background:#fff;

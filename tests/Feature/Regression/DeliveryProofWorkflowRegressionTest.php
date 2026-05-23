@@ -52,7 +52,7 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
                 'location_captured_at' => now()->toIso8601String(),
             ]);
 
-        $startResponse->assertRedirect(route('deliveries.show', $delivery));
+        $startResponse->assertRedirect(route('deliveries.show', $delivery) . '#workflow-proof-section');
         $this->assertSame('in_progress', $delivery->fresh()->status);
         $this->assertDatabaseHas('delivery_proofs', [
             'delivery_id' => $delivery->id,
@@ -243,7 +243,7 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
                 'workflow_capture_form' => '1',
                 'location_missing_reason' => 'Third-party handoff location recorded manually.',
             ])
-            ->assertRedirect(route('deliveries.show', $delivery));
+            ->assertRedirect(route('deliveries.show', $delivery) . '#workflow-proof-section');
 
         $this->assertSame('in_progress', $delivery->fresh()->status);
 
@@ -283,6 +283,7 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
             ->assertSeeText('View Proof')
             ->assertSee('id="delivery-proof-history"', false)
             ->assertDontSee('id="delivery-proof-history" class="proof-history-shell" open', false)
+            ->assertDontSeeText('Continue Delivery')
             ->assertDontSeeText('Start Checklist')
             ->assertDontSeeText('Completion Checklist');
     }

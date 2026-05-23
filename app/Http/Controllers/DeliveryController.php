@@ -441,8 +441,11 @@ class DeliveryController extends Controller
         if ($delivery->type === 'delivery') {
             $rules['delivery_device_photos'] = ['required', 'array', 'min:1'];
             $rules['delivery_device_photos.*'] = $commonImageRule;
+            $rules['delivery_extra_photos'] = ['nullable', 'array'];
+            $rules['delivery_extra_photos.*'] = $commonImageRule;
             $rules['premises_photo'] = array_merge(['required'], $commonImageRule);
             $rules['pickup_device_photos'] = ['prohibited'];
+            $rules['pickup_extra_photos'] = ['prohibited'];
             $rules['damage_reported'] = ['prohibited'];
             $rules['damage_notes'] = ['prohibited'];
             $rules['missing_accessories_notes'] = ['prohibited'];
@@ -451,6 +454,8 @@ class DeliveryController extends Controller
         } else {
             $rules['pickup_device_photos'] = ['required', 'array', 'min:1'];
             $rules['pickup_device_photos.*'] = $commonImageRule;
+            $rules['pickup_extra_photos'] = ['nullable', 'array'];
+            $rules['pickup_extra_photos.*'] = $commonImageRule;
             $rules['damage_reported'] = ['nullable', 'boolean'];
             $rules['damage_notes'] = ['nullable', 'string', 'max:1000'];
             $rules['missing_accessories_notes'] = ['nullable', 'string', 'max:1000'];
@@ -458,6 +463,8 @@ class DeliveryController extends Controller
             $rules['damage_photos.*'] = $commonImageRule;
             $rules['delivery_device_photos'] = ['prohibited'];
             $rules['delivery_device_photos.*'] = ['prohibited'];
+            $rules['delivery_extra_photos'] = ['prohibited'];
+            $rules['delivery_extra_photos.*'] = ['prohibited'];
             $rules['premises_photo'] = ['prohibited'];
         }
 
@@ -489,6 +496,8 @@ class DeliveryController extends Controller
             'delivery_device_photos.min' => 'Add at least one product photo to continue.',
             'delivery_device_photos.*.image' => 'Upload a valid product photo.',
             'delivery_device_photos.*.max' => 'One of the product photos is too large. Retake it with less background.',
+            'delivery_extra_photos.*.image' => 'Upload a valid extra proof photo.',
+            'delivery_extra_photos.*.max' => 'One of the extra proof photos is too large. Retake it with less background.',
             'premises_photo.required' => 'Add on-site proof photo to continue.',
             'premises_photo.image' => 'Upload a valid on-site proof photo.',
             'premises_photo.max' => 'The on-site proof photo is too large. Retake it with less background.',
@@ -496,6 +505,8 @@ class DeliveryController extends Controller
             'pickup_device_photos.min' => 'Add at least one pickup photo to continue.',
             'pickup_device_photos.*.image' => 'Upload a valid pickup photo.',
             'pickup_device_photos.*.max' => 'One of the pickup photos is too large. Retake it with less background.',
+            'pickup_extra_photos.*.image' => 'Upload a valid extra proof photo.',
+            'pickup_extra_photos.*.max' => 'One of the extra proof photos is too large. Retake it with less background.',
             'damage_notes.max' => 'Keep damage notes under 1000 characters.',
             'missing_accessories_notes.max' => 'Keep missing item notes under 1000 characters.',
             'damage_photos.*.image' => 'Upload a valid damage photo.',
@@ -639,6 +650,19 @@ class DeliveryController extends Controller
                 $proofNotes
             );
 
+            if (!empty($validated['delivery_extra_photos'])) {
+                $this->deliveryProofService()->storeUploadedFiles(
+                    $delivery,
+                    $user,
+                    DeliveryProof::STAGE_DELIVERY,
+                    DeliveryProof::MOMENT_COMPLETE,
+                    DeliveryProof::TYPE_DELIVERED_DEVICE,
+                    $validated['delivery_extra_photos'],
+                    $proofNotes,
+                    ['is_extra' => true]
+                );
+            }
+
             $premisesPhoto = $validated['premises_photo'] ?? null;
 
             if ($premisesPhoto) {
@@ -670,6 +694,19 @@ class DeliveryController extends Controller
                 $validated['pickup_device_photos'] ?? [],
                 $proofNotes
             );
+
+            if (!empty($validated['pickup_extra_photos'])) {
+                $this->deliveryProofService()->storeUploadedFiles(
+                    $delivery,
+                    $user,
+                    DeliveryProof::STAGE_PICKUP,
+                    DeliveryProof::MOMENT_COMPLETE,
+                    DeliveryProof::TYPE_PICKED_UP_DEVICE,
+                    $validated['pickup_extra_photos'],
+                    $proofNotes,
+                    ['is_extra' => true]
+                );
+            }
 
             if ($damageReported) {
                 $this->deliveryProofService()->storeUploadedFiles(
@@ -2444,7 +2481,9 @@ class DeliveryController extends Controller
             'location_captured' => filled($validated['location_latitude'] ?? null) && filled($validated['location_longitude'] ?? null),
         ], ucfirst($delivery->type) . ' marked as in progress.');
 
-        return redirect()->back()->with('success', ucfirst($delivery->type) . ' marked as in progress.');
+        return redirect()
+            ->to(route('deliveries.show', $delivery) . '#workflow-proof-section')
+            ->with('success', ucfirst($delivery->type) . ' marked as in progress.');
     }
 
     public function markCompleted(Request $request, Delivery $delivery)

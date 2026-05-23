@@ -244,6 +244,8 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
 
     public function test_delivery_dashboard_counts_all_open_assigned_tasks_without_collapsing_duplicate_task_records(): void
     {
+        $this->travelTo(now()->startOfDay()->addHours(9));
+
         $organization = TestData::organization();
         $deliveryRole = Role::create([
             'organization_id' => $organization->id,
@@ -315,6 +317,8 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
             ->assertViewHas('assignedOpenTasksCount', 11)
             ->assertViewHas('myDeliveriesTodayCount', 6)
             ->assertViewHas('myPickupsTodayCount', 5);
+
+        $this->travelBack();
     }
 
     public function test_sales_dashboard_is_accessible_without_dashboard_main_and_hides_sensitive_management_widgets(): void

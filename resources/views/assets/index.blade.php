@@ -70,6 +70,7 @@
         .asset-register-page {
             display: grid;
             gap: 18px;
+            padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
         }
         .asset-hero {
             margin-bottom: 0 !important;

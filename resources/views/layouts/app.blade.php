@@ -164,7 +164,6 @@
         ? collect([
             ['label' => 'Dashboard', 'icon' => 'dashboard', 'href' => ($currentUser?->canAccessDashboard() ?? false) ? $safeRoute('dashboard') : null, 'active' => request()->routeIs('dashboard')],
             ['label' => 'Tasks', 'icon' => 'deliveries', 'href' => ($currentUser?->canAccessModule('deliveries', 'read') ?? false) ? $safeRoute('deliveries.index') : null, 'active' => request()->routeIs('deliveries.index') || request()->routeIs('deliveries.show') || request()->routeIs('deliveries.edit')],
-            ['label' => 'Pickups', 'icon' => 'pickup', 'href' => $pickupsHref, 'active' => request()->routeIs('pickups.assigned') || (request()->routeIs('deliveries.index') && request('task_type') === 'pickup') || (request()->routeIs('deliveries.show') && request()->route('delivery')?->type === 'pickup')],
             ['label' => 'Notifications', 'icon' => 'invoices', 'href' => $topbarNotificationsViewAllHref, 'active' => request()->routeIs('notifications.*')],
         ])
         : collect([

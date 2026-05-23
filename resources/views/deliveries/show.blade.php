@@ -103,12 +103,31 @@
     $acknowledgementText = \App\Models\DeliveryProof::acknowledgementFor($workflowStage, ! $isSaleTask);
     $locationProofs = $deliveryProofs->where('proof_type', \App\Models\DeliveryProof::TYPE_LOCATION)->values();
     $fileProofs = $deliveryProofs->reject(fn ($proof) => $proof->proof_type === \App\Models\DeliveryProof::TYPE_LOCATION)->values();
+    $latestLocationProof = $locationProofs
+        ->sortByDesc(fn ($proof) => optional($proof->captured_at ?? $proof->created_at)?->timestamp ?? 0)
+        ->first();
     $hasPendingWorkflowCapture = $canUpdateTask && in_array($delivery->status, ['pending', 'in_progress'], true);
     $canCancelTask = $canUpdateTask && !in_array($delivery->status, ['completed', 'cancelled'], true);
     $hasProofHistory = $deliveryProofs->isNotEmpty();
-    $primaryWorkflowCtaLabel = $delivery->status === 'pending'
-        ? ($delivery->type === 'pickup' ? 'Start Pickup' : 'Start Delivery')
-        : ($delivery->type === 'pickup' ? 'Continue Pickup' : 'Continue Delivery');
+    $workflowCompleted = in_array($displayStatus, ['delivered', 'picked_up', 'completed'], true) || $delivery->status === 'completed';
+    $primaryWorkflowCtaLabel = $workflowCompleted
+        ? null
+        : ($delivery->status === 'pending'
+            ? ($delivery->type === 'pickup' ? 'Start Pickup' : 'Start Delivery')
+            : ($delivery->type === 'pickup' ? 'Continue Pickup' : 'Continue Delivery'));
+    $defaultWorkflowLatitude = old('location_latitude', filled($latestLocationProof?->latitude) ? number_format((float) $latestLocationProof->latitude, 6, '.', '') : '');
+    $defaultWorkflowLongitude = old('location_longitude', filled($latestLocationProof?->longitude) ? number_format((float) $latestLocationProof->longitude, 6, '.', '') : '');
+    $defaultWorkflowAccuracy = old('location_accuracy', filled($latestLocationProof?->accuracy) ? number_format((float) $latestLocationProof->accuracy, 1, '.', '') : '');
+    $defaultWorkflowCapturedAt = old(
+        'location_captured_at',
+        optional($latestLocationProof?->captured_at ?? $latestLocationProof?->created_at)->toIso8601String()
+    );
+    $defaultWorkflowLocationReason = old(
+        'location_missing_reason',
+        ($latestLocationProof && !filled($latestLocationProof->latitude) && !filled($latestLocationProof->longitude))
+            ? (string) ($latestLocationProof->notes ?? '')
+            : ''
+    );
     $workflowErrorFields = [
         'delivery_device_photos',
         'delivery_device_photos.*',
@@ -172,10 +191,12 @@
             ['index' => $supportsCollectionStep ? 6 : 5, 'key' => 'complete', 'label' => 'Complete', 'copy' => 'Review and finish delivery.'],
         ];
     $workflowStepCount = count($completionSteps);
-    $workflowCurrentStep = match ($delivery->status) {
-        'pending' => 4,
-        'in_progress' => 5,
-        'completed' => count($workflowPreviewSteps),
+    $workflowDisplayOffset = 1;
+    $workflowDisplayStepCount = $workflowStepCount + $workflowDisplayOffset;
+    $workflowCurrentStep = match (true) {
+        $workflowCompleted => count($workflowPreviewSteps),
+        $delivery->status === 'in_progress' => 6,
+        $delivery->status === 'pending' => 4,
         default => 3,
     };
     $completionStepErrorMap = $delivery->type === 'pickup'
@@ -192,7 +213,7 @@
             3 => ['proof_notes'],
             4 => ['signature_data', 'signature_unavailable_reason'],
         ];
-    $initialCompletionStep = 1;
+    $initialCompletionStep = $delivery->status === 'in_progress' ? 2 : 1;
     foreach ($completionStepErrorMap as $stepIndex => $stepFields) {
         if (collect($stepFields)->contains(fn ($field) => $errors->has($field))) {
             $initialCompletionStep = $stepIndex;
@@ -801,7 +822,7 @@
     .detail-btn, .detail-btn-secondary {
         display:inline-flex; align-items:center; justify-content:center; gap:6px;
         border-radius:10px; padding:8px 12px; font-size:12px; font-weight:700; text-decoration:none;
-        border:1px solid transparent; cursor:pointer;
+        border:1px solid transparent; cursor:pointer; white-space:nowrap; min-width:0; text-align:center; line-height:1.2;
     }
     .detail-btn { background:#2563eb; color:#fff; }
     .detail-btn-secondary { background:#fff; border-color:#cbd5e1; color:#334155; }
@@ -882,8 +903,8 @@
         color:#166534;
     }
     .workflow-mobile-stepper-tab-index {
-        width:18px;
-        height:18px;
+        width:20px;
+        height:20px;
         border-radius:999px;
         display:grid;
         place-items:center;
@@ -891,6 +912,8 @@
         color:#475569;
         font-size:10px;
         font-weight:900;
+        line-height:1;
+        flex:0 0 20px;
     }
     .workflow-mobile-stepper-tab.is-active .workflow-mobile-stepper-tab-index {
         background:#2563eb;
@@ -987,15 +1010,15 @@
     .workflow-camera-card {
         position:relative;
         display:grid;
-        align-content:center;
-        justify-items:center;
-        gap:8px;
+        align-content:start;
+        justify-items:stretch;
+        gap:10px;
         min-height:150px;
-        padding:14px 12px;
+        padding:14px;
         border:1px solid #dbe3ef;
         border-radius:16px;
         background:#fff;
-        text-align:center;
+        text-align:left;
         overflow:hidden;
     }
     .workflow-camera-card input[type="file"] {
@@ -1026,6 +1049,74 @@
         color:#64748b;
         font-size:11px;
         line-height:1.45;
+    }
+    .workflow-camera-meta {
+        display:grid;
+        gap:4px;
+        min-width:0;
+    }
+    .workflow-camera-footer {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:8px;
+        flex-wrap:wrap;
+    }
+    .workflow-camera-chip {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        min-height:22px;
+        padding:0 8px;
+        border-radius:999px;
+        background:#e0ecff;
+        color:#1d4ed8;
+        font-size:10px;
+        font-weight:800;
+        text-transform:uppercase;
+        letter-spacing:.04em;
+    }
+    .workflow-camera-chip.is-optional {
+        background:#f1f5f9;
+        color:#475569;
+    }
+    .workflow-camera-trigger {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        min-height:28px;
+        padding:0 10px;
+        border-radius:999px;
+        background:#2563eb;
+        color:#fff;
+        font-size:11px;
+        font-weight:800;
+        white-space:nowrap;
+    }
+    .workflow-camera-status {
+        display:none;
+        color:#166534;
+        font-size:11px;
+        font-weight:700;
+    }
+    .workflow-camera-status.is-visible {
+        display:block;
+    }
+    .workflow-camera-preview {
+        display:none;
+        grid-template-columns:repeat(3, minmax(0, 1fr));
+        gap:6px;
+    }
+    .workflow-camera-preview.is-visible {
+        display:grid;
+    }
+    .workflow-camera-preview img {
+        width:100%;
+        height:64px;
+        object-fit:cover;
+        border-radius:10px;
+        border:1px solid #dbe3ef;
+        background:#fff;
     }
     .workflow-condition-grid {
         display:grid;
@@ -1128,7 +1219,10 @@
     }
     .workflow-step-actions .detail-btn,
     .workflow-step-actions .detail-btn-secondary {
-        min-height:38px;
+        min-height:40px;
+        white-space:nowrap;
+        min-width:0;
+        flex:1 1 0;
     }
     .workflow-step-helper {
         color:#64748b;
@@ -1322,6 +1416,14 @@
             grid-template-columns:repeat(2, minmax(0, 1fr));
             gap:8px;
         }
+        .fieldops-primary-bar {
+            grid-template-columns:1fr;
+            align-items:stretch;
+        }
+        .fieldops-primary-bar .detail-btn,
+        .fieldops-primary-bar .mobile-actions-menu summary {
+            width:100%;
+        }
         .workflow-start-hero {
             grid-template-columns:56px minmax(0, 1fr);
             padding:12px;
@@ -1410,6 +1512,7 @@
         .workflow-step-actions .detail-btn,
         .workflow-step-actions .detail-btn-secondary {
             flex:1 1 0;
+            min-width:0;
         }
         .workflow-mobile-stepper[data-mobile-workflow-active="true"] [data-workflow-step-panel] {
             display:none;
@@ -1483,19 +1586,15 @@
         .workflow-mobile-shell [data-workflow-desktop-actions] {
             display:none;
         }
-        .workflow-mobile-shell .proof-history-shell,
-        .workflow-mobile-shell .workflow-proof-divider {
-            display:none;
-        }
         .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] [data-workflow-step-panel] {
-            padding-bottom:108px;
+            padding-bottom:132px;
         }
         .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] [data-workflow-step-panel].is-current .workflow-step-actions {
             position:fixed;
             left:12px;
             right:12px;
             bottom:calc(86px + env(safe-area-inset-bottom, 0px));
-            z-index:7;
+            z-index:30;
             padding:10px 12px;
             border-radius:16px;
             border:1px solid #dbe3ef;
@@ -1532,9 +1631,9 @@
         </div>
         <div class="detail-actions">
             <a href="{{ route('deliveries.index') }}" class="detail-btn-secondary">Back</a>
-            @if($canUpdateTask && $delivery->status === 'pending')
+            @if($canUpdateTask && !$workflowCompleted && $delivery->status === 'pending')
                 <a href="#{{ $workflowProofSectionId }}" class="detail-btn">{{ $primaryWorkflowCtaLabel }}</a>
-            @elseif($canUpdateTask && $delivery->status === 'in_progress')
+            @elseif($canUpdateTask && !$workflowCompleted && $delivery->status === 'in_progress')
                 <a href="#{{ $workflowProofSectionId }}" class="detail-btn">{{ $primaryWorkflowCtaLabel }}</a>
             @elseif($hasProofHistory)
                 <a href="#delivery-proof-history" class="detail-btn">View Proof</a>
@@ -1624,9 +1723,9 @@
         </div>
 
         <div class="fieldops-primary-bar">
-            @if(($canUpdateTask && in_array($delivery->status, ['pending', 'in_progress'], true)) || $hasProofHistory)
-                <a href="#{{ $canUpdateTask ? $workflowProofSectionId : 'delivery-proof-history' }}" class="detail-btn">
-                    {{ $canUpdateTask ? $primaryWorkflowCtaLabel : 'View Proof History' }}
+            @if((!$workflowCompleted && $canUpdateTask && in_array($delivery->status, ['pending', 'in_progress'], true)) || $hasProofHistory)
+                <a href="#{{ (!$workflowCompleted && $canUpdateTask) ? $workflowProofSectionId : 'delivery-proof-history' }}" class="detail-btn">
+                    {{ (!$workflowCompleted && $canUpdateTask) ? $primaryWorkflowCtaLabel : 'View Proof History' }}
                 </a>
             @endif
             <span class="fieldops-primary-note">{{ $delivery->type === 'pickup' ? 'Proof must be complete before pickup can close.' : 'Proof must be complete before delivery can close.' }}</span>
@@ -1807,87 +1906,114 @@
                 @csrf
                 @method('PUT')
                 <input type="hidden" name="workflow_capture_form" value="1">
-                <section class="workflow-start-hero">
-                    <div class="workflow-start-illustration" aria-hidden="true">{!! $workflowIllustration('start') !!}</div>
-                    <div class="workflow-start-copy">
-                        <span class="workflow-step-counter">Step 1 of 2</span>
-                        <strong>{{ $delivery->type === 'pickup' ? 'Ready to start pickup?' : 'Ready to start delivery?' }}</strong>
-                        <p>{{ $delivery->type === 'pickup' ? 'Confirm the task, then capture start location before collecting the item.' : 'Confirm the task, then capture start location before handing over the item.' }}</p>
+                <div class="workflow-mobile-stepper" data-mobile-workflow-stepper data-workflow-initial-step="{{ $hasWorkflowErrors ? 2 : 1 }}" data-workflow-step-count="2">
+                    <div class="workflow-mobile-stepper-bar" aria-label="Start workflow steps">
+                        <button type="button" class="workflow-mobile-stepper-tab" data-workflow-step-tab="1">
+                            <span class="workflow-mobile-stepper-tab-index">1</span>
+                            <span>Start</span>
+                        </button>
+                        <button type="button" class="workflow-mobile-stepper-tab" data-workflow-step-tab="2">
+                            <span class="workflow-mobile-stepper-tab-index">2</span>
+                            <span>GPS</span>
+                        </button>
                     </div>
-                </section>
-                <div class="workflow-mini-summary">
-                    <div class="workflow-mini-summary-item">
-                        <span>Contact</span>
-                        <strong>{{ $linkedCustomerName ?: 'Customer' }}</strong>
-                    </div>
-                    <div class="workflow-mini-summary-item">
-                        <span>Phone</span>
-                        <strong>{{ $linkedPhone ?: 'No phone saved' }}</strong>
-                    </div>
-                    <div class="workflow-mini-summary-item">
-                        <span>Product</span>
-                        <strong>{{ $taskProductLabel }}</strong>
-                    </div>
-                    <div class="workflow-mini-summary-item">
-                        <span>Scheduled</span>
-                        <strong>{{ $delivery->scheduled_at ? $delivery->scheduled_at->format('d M h:i A') : 'Not scheduled' }}</strong>
-                    </div>
-                </div>
-                <div class="workflow-step-list">
-                    <section class="workflow-step">
-                        <div class="workflow-step-head">
-                            <span class="workflow-step-index">2</span>
-                            <div class="workflow-step-copy">
-                                <span class="workflow-step-counter">Step 2 of 2</span>
-                                <strong>Location Capture</strong>
-                                <p>GPS required or reason needed.</p>
+                    <div class="workflow-step-list">
+                        <section class="workflow-step" data-workflow-step-panel data-workflow-step-index="1">
+                            <div class="workflow-step-head">
+                                <span class="workflow-step-index">1</span>
+                                <div class="workflow-step-copy">
+                                    <span class="workflow-step-counter">Step 1 of 2</span>
+                                    <strong>{{ $delivery->type === 'pickup' ? 'Ready to start pickup?' : 'Ready to start delivery?' }}</strong>
+                                    <p>{{ $delivery->type === 'pickup' ? 'Confirm the pickup, then move into proof capture.' : 'Confirm the delivery, then move into proof capture.' }}</p>
+                                </div>
                             </div>
-                        </div>
-                        <div class="workflow-step-hero">
-                            <div class="workflow-step-hero-icon" aria-hidden="true">{!! $workflowIllustration('gps') !!}</div>
-                            <div class="workflow-step-hero-copy">
-                                <strong>Capture current location</strong>
-                                <span>Tap once, then continue when GPS is ready.</span>
+                            <section class="workflow-start-hero">
+                                <div class="workflow-start-illustration" aria-hidden="true">{!! $workflowIllustration('start') !!}</div>
+                                <div class="workflow-start-copy">
+                                    <span class="workflow-step-counter">{{ ucfirst($delivery->type) }} task</span>
+                                    <strong>{{ $delivery->type === 'pickup' ? 'Pickup is assigned and ready.' : 'Delivery is assigned and ready.' }}</strong>
+                                    <p>Review the task, then continue to location capture.</p>
+                                </div>
+                            </section>
+                            <div class="workflow-mini-summary">
+                                <div class="workflow-mini-summary-item">
+                                    <span>Contact</span>
+                                    <strong>{{ $linkedCustomerName ?: 'Customer' }}</strong>
+                                </div>
+                                <div class="workflow-mini-summary-item">
+                                    <span>Phone</span>
+                                    <strong>{{ $linkedPhone ?: 'No phone saved' }}</strong>
+                                </div>
+                                <div class="workflow-mini-summary-item">
+                                    <span>Product</span>
+                                    <strong>{{ $taskProductLabel }}</strong>
+                                </div>
+                                <div class="workflow-mini-summary-item">
+                                    <span>Scheduled</span>
+                                    <strong>{{ $delivery->scheduled_at ? $delivery->scheduled_at->format('d M h:i A') : 'Not scheduled' }}</strong>
+                                </div>
                             </div>
-                        </div>
-                        <div class="workflow-proof-grid">
-                    <div class="workflow-proof-field span-12">
-                        <label>Location Proof</label>
-                        <div class="workflow-proof-actions">
-                            <button type="button" class="workflow-proof-trigger is-primary" data-capture-location>Capture Current Location</button>
-                            <button type="button" class="workflow-proof-trigger" data-recapture-location hidden>Re-capture Location</button>
-                            <button type="button" class="workflow-proof-trigger" data-clear-location hidden>Clear Location</button>
-                        </div>
-                        <div class="workflow-proof-status" data-location-status>Location not captured yet.</div>
+                            <div class="workflow-step-actions">
+                                <span class="workflow-step-helper">Start first, then capture GPS.</span>
+                                <button type="button" class="detail-btn" data-workflow-next>Next</button>
+                            </div>
+                        </section>
+
+                        <section class="workflow-step" data-workflow-step-panel data-workflow-step-index="2">
+                            <div class="workflow-step-head">
+                                <span class="workflow-step-index">2</span>
+                                <div class="workflow-step-copy">
+                                    <span class="workflow-step-counter">Step 2 of 2</span>
+                                    <strong>Capture GPS</strong>
+                                    <p>GPS required or reason needed.</p>
+                                </div>
+                            </div>
+                            <div class="workflow-step-hero">
+                                <div class="workflow-step-hero-icon" aria-hidden="true">{!! $workflowIllustration('gps') !!}</div>
+                                <div class="workflow-step-hero-copy">
+                                    <strong>Capture current location</strong>
+                                    <span>Tap once, then continue when GPS is ready.</span>
+                                </div>
+                            </div>
+                            <div class="workflow-proof-grid">
+                                <div class="workflow-proof-field span-12">
+                                    <label>Location Proof</label>
+                                    <div class="workflow-proof-actions">
+                                        <button type="button" class="workflow-proof-trigger is-primary" data-capture-location>Capture Current Location</button>
+                                        <button type="button" class="workflow-proof-trigger" data-recapture-location hidden>Re-capture Location</button>
+                                        <button type="button" class="workflow-proof-trigger" data-clear-location hidden>Clear Location</button>
+                                    </div>
+                                    <div class="workflow-proof-status" data-location-status>Location not captured yet.</div>
+                                </div>
+                                <div class="workflow-proof-field">
+                                    <label for="location_missing_reason_start">Location unavailable reason</label>
+                                    <textarea id="location_missing_reason_start" name="location_missing_reason" placeholder="Add reason if GPS is unavailable.">{{ $defaultWorkflowLocationReason }}</textarea>
+                                    @error('location_missing_reason')
+                                        <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                                    @enderror
+                                </div>
+                                <div class="workflow-proof-field">
+                                    <label>Captured coordinates</label>
+                                    <div class="workflow-proof-help">Filled after GPS capture.</div>
+                                    <div class="workflow-proof-status">
+                                        <div>Lat: <span data-location-lat-preview>{{ $defaultWorkflowLatitude !== '' ? $defaultWorkflowLatitude : '-' }}</span></div>
+                                        <div>Lng: <span data-location-lng-preview>{{ $defaultWorkflowLongitude !== '' ? $defaultWorkflowLongitude : '-' }}</span></div>
+                                        <div>Accuracy: <span data-location-accuracy-preview>{{ $defaultWorkflowAccuracy !== '' ? $defaultWorkflowAccuracy : '-' }}</span></div>
+                                        <div>Captured: <span data-location-captured-preview>{{ $defaultWorkflowCapturedAt ?: '-' }}</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="workflow-step-actions">
+                                <button type="button" class="detail-btn-secondary" data-workflow-back>Back</button>
+                                <button type="button" class="detail-btn" data-workflow-next data-workflow-submit-on-next>Next</button>
+                            </div>
+                        </section>
                     </div>
-                    <div class="workflow-proof-field">
-                        <label for="location_missing_reason_start">Location unavailable reason</label>
-                        <textarea id="location_missing_reason_start" name="location_missing_reason" placeholder="Add reason if GPS is unavailable.">{{ old('location_missing_reason') }}</textarea>
-                        @error('location_missing_reason')
-                            <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
-                        @enderror
-                    </div>
-                    <div class="workflow-proof-field">
-                        <label>Captured coordinates</label>
-                        <div class="workflow-proof-help">Filled after GPS capture.</div>
-                        <div class="workflow-proof-status">
-                            <div>Lat: <span data-location-lat-preview>{{ old('location_latitude', '-') }}</span></div>
-                            <div>Lng: <span data-location-lng-preview>{{ old('location_longitude', '-') }}</span></div>
-                            <div>Accuracy: <span data-location-accuracy-preview>{{ old('location_accuracy', '-') }}</span></div>
-                            <div>Captured: <span data-location-captured-preview>{{ old('location_captured_at', '-') }}</span></div>
-                        </div>
-                    </div>
-                        </div>
-                    </section>
                 </div>
-                <input type="hidden" name="location_latitude" value="{{ old('location_latitude') }}" data-location-latitude>
-                <input type="hidden" name="location_longitude" value="{{ old('location_longitude') }}" data-location-longitude>
-                <input type="hidden" name="location_accuracy" value="{{ old('location_accuracy') }}" data-location-accuracy>
-                <input type="hidden" name="location_captured_at" value="{{ old('location_captured_at') }}" data-location-captured-at>
-                <div class="workflow-proof-actions">
-                    <button type="submit" class="detail-btn">{{ $delivery->type === 'pickup' ? 'Start Pickup' : 'Start Delivery' }}</button>
-                    <div class="workflow-proof-help">GPS or reason required.</div>
-                </div>
+                <input type="hidden" name="location_latitude" value="{{ $defaultWorkflowLatitude }}" data-location-latitude>
+                <input type="hidden" name="location_longitude" value="{{ $defaultWorkflowLongitude }}" data-location-longitude>
+                <input type="hidden" name="location_accuracy" value="{{ $defaultWorkflowAccuracy }}" data-location-accuracy>
+                <input type="hidden" name="location_captured_at" value="{{ $defaultWorkflowCapturedAt }}" data-location-captured-at>
             </form>
         @elseif($canUpdateTask && $delivery->status === 'in_progress')
             <form action="{{ route('deliveries.complete', $delivery) }}" method="POST" enctype="multipart/form-data" class="workflow-proof-card" data-workflow-form="complete" data-workflow-review-form data-workflow-type="{{ $delivery->type }}">
@@ -1901,7 +2027,7 @@
                     <div class="workflow-mobile-stepper-bar" aria-label="Workflow steps">
                         @foreach($completionSteps as $step)
                             <button type="button" class="workflow-mobile-stepper-tab" data-workflow-step-tab="{{ $step['index'] }}">
-                                <span class="workflow-mobile-stepper-tab-index">{{ $step['index'] }}</span>
+                                <span class="workflow-mobile-stepper-tab-index">{{ $step['index'] + $workflowDisplayOffset }}</span>
                                 <span>{{ $step['label'] }}</span>
                             </button>
                         @endforeach
@@ -1909,10 +2035,10 @@
                     <div class="workflow-step-list">
                     <section class="workflow-step" data-workflow-step-panel data-workflow-step-index="1">
                         <div class="workflow-step-head">
-                            <span class="workflow-step-index">1</span>
+                            <span class="workflow-step-index">{{ 1 + $workflowDisplayOffset }}</span>
                             <div>
                                 <div class="workflow-step-copy">
-                                    <span class="workflow-step-counter">Step 1 of {{ $workflowStepCount }}</span>
+                                    <span class="workflow-step-counter">Step {{ 1 + $workflowDisplayOffset }} of {{ $workflowDisplayStepCount }}</span>
                                     <strong>Capture GPS</strong>
                                     <p>Capture GPS or add a reason.</p>
                                 </div>
@@ -1937,7 +2063,7 @@
                             </div>
                             <div class="workflow-proof-field">
                                 <label for="location_missing_reason_complete">Location unavailable reason</label>
-                                <textarea id="location_missing_reason_complete" name="location_missing_reason" placeholder="Add reason if GPS is unavailable.">{{ old('location_missing_reason') }}</textarea>
+                                <textarea id="location_missing_reason_complete" name="location_missing_reason" placeholder="Add reason if GPS is unavailable.">{{ $defaultWorkflowLocationReason }}</textarea>
                                 @error('location_missing_reason')
                                     <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
                                 @enderror
@@ -1945,10 +2071,10 @@
                             <div class="workflow-proof-field">
                                 <label>Captured coordinates</label>
                                 <div class="workflow-proof-status">
-                                    <div>Lat: <span data-location-lat-preview>{{ old('location_latitude', '-') }}</span></div>
-                                    <div>Lng: <span data-location-lng-preview>{{ old('location_longitude', '-') }}</span></div>
-                                    <div>Accuracy: <span data-location-accuracy-preview>{{ old('location_accuracy', '-') }}</span></div>
-                                    <div>Captured: <span data-location-captured-preview>{{ old('location_captured_at', '-') }}</span></div>
+                                    <div>Lat: <span data-location-lat-preview>{{ $defaultWorkflowLatitude !== '' ? $defaultWorkflowLatitude : '-' }}</span></div>
+                                    <div>Lng: <span data-location-lng-preview>{{ $defaultWorkflowLongitude !== '' ? $defaultWorkflowLongitude : '-' }}</span></div>
+                                    <div>Accuracy: <span data-location-accuracy-preview>{{ $defaultWorkflowAccuracy !== '' ? $defaultWorkflowAccuracy : '-' }}</span></div>
+                                    <div>Captured: <span data-location-captured-preview>{{ $defaultWorkflowCapturedAt ?: '-' }}</span></div>
                                 </div>
                             </div>
                         </div>
@@ -1960,10 +2086,10 @@
 
                     <section class="workflow-step" data-workflow-step-panel data-workflow-step-index="2">
                         <div class="workflow-step-head">
-                            <span class="workflow-step-index">2</span>
+                            <span class="workflow-step-index">{{ 2 + $workflowDisplayOffset }}</span>
                             <div>
                                 <div class="workflow-step-copy">
-                                    <span class="workflow-step-counter">Step 2 of {{ $workflowStepCount }}</span>
+                                    <span class="workflow-step-counter">Step {{ 2 + $workflowDisplayOffset }} of {{ $workflowDisplayStepCount }}</span>
                                     <strong>Capture Photos</strong>
                                     <p>{{ $delivery->type === 'pickup' ? 'Capture item and accessory proof.' : 'Capture device and location proof.' }}</p>
                                 </div>
@@ -1980,39 +2106,89 @@
                     @if($delivery->type === 'delivery')
                         <label class="workflow-camera-card" for="delivery_device_photos">
                             <span class="workflow-camera-icon" aria-hidden="true">CAM</span>
-                            <strong>Product Photo</strong>
-                            <span>Required. Add at least one product photo.</span>
-                            <input id="delivery_device_photos" type="file" name="delivery_device_photos[]" accept="image/*" capture="environment" multiple data-compress-images data-review-source="delivery_device_photos">
+                            <div class="workflow-camera-meta">
+                                <strong>Product Photo</strong>
+                                <span>Add at least one product photo.</span>
+                            </div>
+                            <div class="workflow-camera-footer">
+                                <span class="workflow-camera-chip">Required</span>
+                                <span class="workflow-camera-trigger">Capture / Upload</span>
+                            </div>
+                            <div class="workflow-camera-status" data-file-status>Waiting for upload</div>
+                            <div class="workflow-camera-preview" id="delivery-device-preview"></div>
+                            <input id="delivery_device_photos" type="file" name="delivery_device_photos[]" accept="image/*" capture="environment" multiple data-compress-images data-review-source="delivery_device_photos" data-preview-target="delivery-device-preview">
                         </label>
                         <label class="workflow-camera-card" for="premises_photo">
                             <span class="workflow-camera-icon" aria-hidden="true">LOC</span>
-                            <strong>Delivery / Installation</strong>
-                            <span>Required. Add one proof photo on site.</span>
-                            <input id="premises_photo" type="file" name="premises_photo" accept="image/*" capture="environment" data-compress-images data-review-source="premises_photo">
+                            <div class="workflow-camera-meta">
+                                <strong>Delivery / Installation</strong>
+                                <span>Add one on-site proof photo.</span>
+                            </div>
+                            <div class="workflow-camera-footer">
+                                <span class="workflow-camera-chip">Required</span>
+                                <span class="workflow-camera-trigger">Capture / Upload</span>
+                            </div>
+                            <div class="workflow-camera-status" data-file-status>Waiting for upload</div>
+                            <div class="workflow-camera-preview" id="premises-preview"></div>
+                            <input id="premises_photo" type="file" name="premises_photo" accept="image/*" capture="environment" data-compress-images data-review-source="premises_photo" data-preview-target="premises-preview">
                         </label>
-                        <div class="workflow-camera-card">
-                            <span class="workflow-camera-icon" aria-hidden="true">OK</span>
-                            <strong>Keep it compact</strong>
-                            <span>Use closer photos with less background for faster upload.</span>
-                        </div>
+                        <label class="workflow-camera-card" for="delivery_extra_photos">
+                            <span class="workflow-camera-icon" aria-hidden="true">ADD</span>
+                            <div class="workflow-camera-meta">
+                                <strong>Extra Photo</strong>
+                                <span>Add one more proof image if needed.</span>
+                            </div>
+                            <div class="workflow-camera-footer">
+                                <span class="workflow-camera-chip is-optional">Optional</span>
+                                <span class="workflow-camera-trigger">Capture / Upload</span>
+                            </div>
+                            <div class="workflow-camera-status" data-file-status>Optional</div>
+                            <div class="workflow-camera-preview" id="delivery-extra-preview"></div>
+                            <input id="delivery_extra_photos" type="file" name="delivery_extra_photos[]" accept="image/*" capture="environment" multiple data-compress-images data-preview-target="delivery-extra-preview">
+                        </label>
                     @else
                         <label class="workflow-camera-card" for="pickup_device_photos">
                             <span class="workflow-camera-icon" aria-hidden="true">CAM</span>
-                            <strong>Product Photo</strong>
-                            <span>Required. Add at least one pickup photo.</span>
-                            <input id="pickup_device_photos" type="file" name="pickup_device_photos[]" accept="image/*" capture="environment" multiple data-compress-images data-review-source="pickup_device_photos">
+                            <div class="workflow-camera-meta">
+                                <strong>Product Photo</strong>
+                                <span>Add at least one pickup photo.</span>
+                            </div>
+                            <div class="workflow-camera-footer">
+                                <span class="workflow-camera-chip">Required</span>
+                                <span class="workflow-camera-trigger">Capture / Upload</span>
+                            </div>
+                            <div class="workflow-camera-status" data-file-status>Waiting for upload</div>
+                            <div class="workflow-camera-preview" id="pickup-device-preview"></div>
+                            <input id="pickup_device_photos" type="file" name="pickup_device_photos[]" accept="image/*" capture="environment" multiple data-compress-images data-review-source="pickup_device_photos" data-preview-target="pickup-device-preview">
                         </label>
                         <label class="workflow-camera-card" for="damage_photos">
                             <span class="workflow-camera-icon" aria-hidden="true">PRF</span>
-                            <strong>Accessories / Damage</strong>
-                            <span>Add if damage is reported or accessories are missing.</span>
-                            <input id="damage_photos" type="file" name="damage_photos[]" accept="image/*" capture="environment" multiple data-compress-images data-review-source="damage_photos">
+                            <div class="workflow-camera-meta">
+                                <strong>Accessories / Parts</strong>
+                                <span>Add if accessories are missing or damage is visible.</span>
+                            </div>
+                            <div class="workflow-camera-footer">
+                                <span class="workflow-camera-chip is-optional">Optional</span>
+                                <span class="workflow-camera-trigger">Capture / Upload</span>
+                            </div>
+                            <div class="workflow-camera-status" data-file-status>Optional</div>
+                            <div class="workflow-camera-preview" id="pickup-damage-preview"></div>
+                            <input id="damage_photos" type="file" name="damage_photos[]" accept="image/*" capture="environment" multiple data-compress-images data-review-source="damage_photos" data-preview-target="pickup-damage-preview">
                         </label>
-                        <div class="workflow-camera-card">
+                        <label class="workflow-camera-card" for="pickup_extra_photos">
                             <span class="workflow-camera-icon" aria-hidden="true">ADD</span>
-                            <strong>Additional proof</strong>
-                            <span>Retake with better lighting if details are unclear.</span>
-                        </div>
+                            <div class="workflow-camera-meta">
+                                <strong>Extra Photo</strong>
+                                <span>Add one more proof image if needed.</span>
+                            </div>
+                            <div class="workflow-camera-footer">
+                                <span class="workflow-camera-chip is-optional">Optional</span>
+                                <span class="workflow-camera-trigger">Capture / Upload</span>
+                            </div>
+                            <div class="workflow-camera-status" data-file-status>Optional</div>
+                            <div class="workflow-camera-preview" id="pickup-extra-preview"></div>
+                            <input id="pickup_extra_photos" type="file" name="pickup_extra_photos[]" accept="image/*" capture="environment" multiple data-compress-images data-preview-target="pickup-extra-preview">
+                        </label>
                     @endif
                         </div>
                         <div class="workflow-proof-grid">
@@ -2049,10 +2225,10 @@
                     @if($delivery->type === 'pickup')
                         <section class="workflow-step" data-workflow-step-panel data-workflow-step-index="3">
                             <div class="workflow-step-head">
-                                <span class="workflow-step-index">3</span>
+                                <span class="workflow-step-index">{{ 3 + $workflowDisplayOffset }}</span>
                                 <div>
                                     <div class="workflow-step-copy">
-                                        <span class="workflow-step-counter">Step 3 of {{ $workflowStepCount }}</span>
+                                        <span class="workflow-step-counter">Step {{ 3 + $workflowDisplayOffset }} of {{ $workflowDisplayStepCount }}</span>
                                         <strong>Condition Check</strong>
                                         <p>Select product condition and accessory status.</p>
                                     </div>
@@ -2103,10 +2279,10 @@
 
                     <section class="workflow-step" data-workflow-step-panel data-workflow-step-index="{{ $delivery->type === 'pickup' ? 4 : 3 }}">
                         <div class="workflow-step-head">
-                            <span class="workflow-step-index">{{ $delivery->type === 'pickup' ? 4 : 3 }}</span>
+                            <span class="workflow-step-index">{{ ($delivery->type === 'pickup' ? 4 : 3) + $workflowDisplayOffset }}</span>
                             <div>
                                 <div class="workflow-step-copy">
-                                    <span class="workflow-step-counter">Step {{ $delivery->type === 'pickup' ? 4 : 3 }} of {{ $workflowStepCount }}</span>
+                                    <span class="workflow-step-counter">Step {{ ($delivery->type === 'pickup' ? 4 : 3) + $workflowDisplayOffset }} of {{ $workflowDisplayStepCount }}</span>
                                     <strong>Notes / Damage</strong>
                                     <p>{{ $delivery->type === 'pickup' ? 'Add damage or missing item notes.' : 'Add short field notes only if needed.' }}</p>
                                 </div>
@@ -2160,10 +2336,10 @@
 
                     <section class="workflow-step" data-workflow-step-panel data-workflow-step-index="{{ $delivery->type === 'pickup' ? 5 : 4 }}">
                         <div class="workflow-step-head">
-                            <span class="workflow-step-index">{{ $delivery->type === 'pickup' ? 5 : 4 }}</span>
+                            <span class="workflow-step-index">{{ ($delivery->type === 'pickup' ? 5 : 4) + $workflowDisplayOffset }}</span>
                             <div>
                                 <div class="workflow-step-copy">
-                                    <span class="workflow-step-counter">Step {{ $delivery->type === 'pickup' ? 5 : 4 }} of {{ $workflowStepCount }}</span>
+                                    <span class="workflow-step-counter">Step {{ ($delivery->type === 'pickup' ? 5 : 4) + $workflowDisplayOffset }} of {{ $workflowDisplayStepCount }}</span>
                                     <strong>Customer Signature</strong>
                                     <p>Capture customer acknowledgement.</p>
                                 </div>
@@ -2208,10 +2384,10 @@
                     @if($supportsCollectionStep)
                     <section class="workflow-step" data-workflow-step-panel data-workflow-step-index="{{ $delivery->type === 'pickup' ? 6 : 5 }}">
                         <div class="workflow-step-head">
-                            <span class="workflow-step-index">{{ $delivery->type === 'pickup' ? 6 : 5 }}</span>
+                            <span class="workflow-step-index">{{ ($delivery->type === 'pickup' ? 6 : 5) + $workflowDisplayOffset }}</span>
                             <div>
                                 <div class="workflow-step-copy">
-                                    <span class="workflow-step-counter">Step {{ $delivery->type === 'pickup' ? 6 : 5 }} of {{ $workflowStepCount }}</span>
+                                    <span class="workflow-step-counter">Step {{ ($delivery->type === 'pickup' ? 6 : 5) + $workflowDisplayOffset }} of {{ $workflowDisplayStepCount }}</span>
                                     <strong>Collection</strong>
                                     <p>Collect payment if this task was assigned with collection.</p>
                                 </div>
@@ -2291,10 +2467,10 @@
 
                     <section class="workflow-step" data-workflow-step-panel data-workflow-step-index="{{ $delivery->type === 'pickup' ? ($supportsCollectionStep ? 7 : 6) : ($supportsCollectionStep ? 6 : 5) }}">
                         <div class="workflow-step-head">
-                            <span class="workflow-step-index">{{ $delivery->type === 'pickup' ? ($supportsCollectionStep ? 7 : 6) : ($supportsCollectionStep ? 6 : 5) }}</span>
+                            <span class="workflow-step-index">{{ ($delivery->type === 'pickup' ? ($supportsCollectionStep ? 7 : 6) : ($supportsCollectionStep ? 6 : 5)) + $workflowDisplayOffset }}</span>
                             <div>
                                 <div class="workflow-step-copy">
-                                    <span class="workflow-step-counter">Step {{ $delivery->type === 'pickup' ? ($supportsCollectionStep ? 7 : 6) : ($supportsCollectionStep ? 6 : 5) }} of {{ $workflowStepCount }}</span>
+                                    <span class="workflow-step-counter">Step {{ ($delivery->type === 'pickup' ? ($supportsCollectionStep ? 7 : 6) : ($supportsCollectionStep ? 6 : 5)) + $workflowDisplayOffset }} of {{ $workflowDisplayStepCount }}</span>
                                     <strong>Review &amp; Complete</strong>
                                     <p>Review required proofs before completion.</p>
                                 </div>
@@ -2374,10 +2550,10 @@
                     </section>
                 </div>
                 </div>
-                <input type="hidden" name="location_latitude" value="{{ old('location_latitude') }}" data-location-latitude>
-                <input type="hidden" name="location_longitude" value="{{ old('location_longitude') }}" data-location-longitude>
-                <input type="hidden" name="location_accuracy" value="{{ old('location_accuracy') }}" data-location-accuracy>
-                <input type="hidden" name="location_captured_at" value="{{ old('location_captured_at') }}" data-location-captured-at>
+                <input type="hidden" name="location_latitude" value="{{ $defaultWorkflowLatitude }}" data-location-latitude>
+                <input type="hidden" name="location_longitude" value="{{ $defaultWorkflowLongitude }}" data-location-longitude>
+                <input type="hidden" name="location_accuracy" value="{{ $defaultWorkflowAccuracy }}" data-location-accuracy>
+                <input type="hidden" name="location_captured_at" value="{{ $defaultWorkflowCapturedAt }}" data-location-captured-at>
                 <div class="workflow-proof-actions" data-workflow-desktop-actions>
                     <button type="submit" class="detail-btn">{{ $delivery->type === 'pickup' ? 'Complete Pickup' : 'Complete Delivery' }}</button>
                     <div class="workflow-proof-help">Required steps only.</div>
@@ -2724,6 +2900,11 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        if (mobileWorkflowMedia.matches && mobileWorkflowShell instanceof HTMLElement) {
+            mobileWorkflowShell.dataset.mobileShellState = 'open';
+            document.body.classList.add('workflow-mobile-open');
+        }
+
         proofHistorySection.open = true;
         proofHistorySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
@@ -2787,6 +2968,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (nextButton) {
                 event.preventDefault();
                 if (typeof form?.__canAdvanceFromStep === 'function' && !form.__canAdvanceFromStep(currentStep)) {
+                    return;
+                }
+                if (nextButton.hasAttribute('data-workflow-submit-on-next')) {
+                    form?.requestSubmit();
                     return;
                 }
                 currentStep = Math.min(currentStep + 1, stepPanels.length);
@@ -2947,6 +3132,52 @@ document.addEventListener('DOMContentLoaded', () => {
                 input.reportValidity();
             }
         });
+    });
+
+    const syncFilePreview = (input) => {
+        if (!(input instanceof HTMLInputElement)) {
+            return;
+        }
+
+        const previewId = input.dataset.previewTarget || '';
+        const preview = previewId ? document.getElementById(previewId) : null;
+        const status = input.closest('.workflow-camera-card')?.querySelector('[data-file-status]');
+
+        if (!(preview instanceof HTMLElement)) {
+            return;
+        }
+
+        preview.innerHTML = '';
+
+        const files = input.files ? Array.from(input.files) : [];
+
+        if (files.length === 0) {
+            preview.classList.remove('is-visible');
+            if (status instanceof HTMLElement && !status.textContent?.trim()) {
+                status.classList.remove('is-visible');
+            }
+            return;
+        }
+
+        files.slice(0, 3).forEach((file) => {
+            const image = document.createElement('img');
+            image.alt = file.name || 'Proof preview';
+            image.src = URL.createObjectURL(file);
+            image.addEventListener('load', () => URL.revokeObjectURL(image.src), { once: true });
+            preview.appendChild(image);
+        });
+
+        preview.classList.add('is-visible');
+
+        if (status instanceof HTMLElement) {
+            status.textContent = files.length === 1 ? '1 file ready' : `${files.length} files ready`;
+            status.classList.add('is-visible');
+        }
+    };
+
+    document.querySelectorAll('[data-preview-target]').forEach((input) => {
+        input.addEventListener('change', () => syncFilePreview(input));
+        syncFilePreview(input);
     });
 
     const updateLocationPreview = (form) => {
@@ -3246,7 +3477,13 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         updateLocationPreview(form);
-        form.__canAdvanceFromStep = (currentStep) => focusStepRequirement(form, currentStep);
+        form.__canAdvanceFromStep = (currentStep) => {
+            if (form.dataset.workflowForm === 'start') {
+                return currentStep !== 2 || focusStepRequirement(form, 1);
+            }
+
+            return focusStepRequirement(form, currentStep);
+        };
 
         reasonField?.addEventListener('input', () => {
             if (reasonField.value.trim() !== '') {

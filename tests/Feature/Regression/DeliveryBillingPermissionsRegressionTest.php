@@ -227,7 +227,7 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
             $this->startCapturePayload()
         );
 
-        $response->assertRedirect(route('deliveries.show', $delivery));
+        $response->assertRedirect(route('deliveries.show', $delivery) . '#workflow-proof-section');
         $this->assertSame('in_progress', $delivery->fresh()->status);
         $this->assertSame('reserved', $asset->fresh()->asset_status);
     }
@@ -884,7 +884,7 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
         $this->actingAs($assignedUser)
             ->from(route('deliveries.show', $ownDelivery))
             ->put(route('deliveries.in_progress', $ownDelivery), $this->startCapturePayload())
-            ->assertRedirect(route('deliveries.show', $ownDelivery));
+            ->assertRedirect(route('deliveries.show', $ownDelivery) . '#workflow-proof-section');
 
         $this->assertSame('in_progress', $ownDelivery->fresh()->status);
 

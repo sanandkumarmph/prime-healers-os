@@ -63,8 +63,8 @@ class MobileMenuVisibilityRegressionTest extends TestCase
         $response->assertOk()
             ->assertSee('Dashboard')
             ->assertSee('Tasks')
-            ->assertSee('Pickups')
             ->assertSee('Notifications')
+            ->assertDontSee('Pickups')
             ->assertDontSee('Customers')
             ->assertDontSee('Rentals')
             ->assertDontSee('Sales');
