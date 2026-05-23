@@ -1352,6 +1352,7 @@ class DeliveryController extends Controller
 
         if ($ownershipFilter === 'my') {
             $baseQuery = $this->applyDeliveryScope($baseQuery);
+            $summaryBaseQuery = $this->applyDeliveryScope($summaryBaseQuery);
         }
 
         $applySearchFilter = function ($query) use ($search) {
@@ -1536,73 +1537,78 @@ class DeliveryController extends Controller
                 ->values();
         };
 
-        $deliveriesQuery = clone $baseQuery;
-        $summaryQuery = clone $summaryBaseQuery;
-
-        if (in_array($taskType, ['delivery', 'pickup'], true)) {
-            $deliveriesQuery->where('type', $taskType);
-            $summaryQuery->where('type', $taskType);
-        }
-
-        if (in_array($statusFilter, ['pending', 'in_progress', 'completed', 'cancelled'], true)) {
-            $deliveriesQuery->where('status', $statusFilter);
-            $summaryQuery->where('status', $statusFilter);
-        } elseif ($workflowFilter !== 'failed') {
-            $deliveriesQuery->where('status', '!=', 'cancelled');
-            $summaryQuery->where('status', '!=', 'cancelled');
-        }
-
         $today = now()->toDateString();
-
-        switch ($tab) {
-            case 'deliveries':
-                $deliveriesQuery->where('type', 'delivery');
-                $summaryQuery->where('type', 'delivery');
-                break;
-            case 'pickups':
-                $deliveriesQuery->where('type', 'pickup');
-                $summaryQuery->where('type', 'pickup');
-                break;
-            case 'in_progress':
-                $deliveriesQuery->where('status', 'in_progress');
-                $summaryQuery->where('status', 'in_progress');
-                break;
-            case 'completed':
-                $deliveriesQuery->where('status', 'completed');
-                $summaryQuery->where('status', 'completed');
-                break;
-            case 'today':
-                $deliveriesQuery->whereDate('scheduled_at', $today);
-                $summaryQuery->whereDate('scheduled_at', $today);
-                break;
-            case 'overdue':
-                $deliveriesQuery
-                    ->whereIn('status', ['pending', 'in_progress'])
-                    ->whereDate('scheduled_at', '<', $today);
-                $summaryQuery
-                    ->whereIn('status', ['pending', 'in_progress'])
-                    ->whereDate('scheduled_at', '<', $today);
-                break;
-            default:
-                $tab = 'all';
-                break;
-        }
-
-        $dedupedTaskIds = $this->dedupeDeliveryCollection(
-            $orderedMinimalDeliveryQuery(clone $deliveriesQuery)->get()
+        $todayStart = now()->startOfDay();
+        $boardBaseTaskIds = $this->dedupeDeliveryCollection(
+            $orderedMinimalDeliveryQuery(clone $summaryBaseQuery)->get()
         )
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
             ->values();
+        $boardBaseDeliveries = $hydrateDeliveries($boardBaseTaskIds);
 
-        $todayStart = now()->startOfDay();
-        $visibleTasks = $hydrateDeliveries($dedupedTaskIds);
+        $applyTaskboardCollectionFilters = function (Collection $deliveries) use ($taskType, $statusFilter, $workflowFilter, $tab, $today, $todayStart, $deliveryFocusedBoard) {
+            $filtered = $deliveries->values();
 
-        if ($this->logisticsMetrics()->isSupportedWorkflow($workflowFilter)) {
-            $visibleTasks = $this->logisticsMetrics()
-                ->applyWorkflowFilter($visibleTasks, $workflowFilter, $todayStart)
-                ->values();
-        }
+            if (in_array($taskType, ['delivery', 'pickup'], true)) {
+                $filtered = $filtered->where('type', $taskType)->values();
+            }
+
+            $usesImplicitOpenOnly = $deliveryFocusedBoard
+                && $statusFilter === ''
+                && $workflowFilter === ''
+                && in_array($tab, ['all', 'deliveries', 'pickups', 'today', 'overdue', 'in_progress'], true);
+
+            if (in_array($statusFilter, ['pending', 'in_progress', 'completed', 'cancelled'], true)) {
+                $filtered = $filtered->where('status', $statusFilter)->values();
+            } elseif ($usesImplicitOpenOnly) {
+                $filtered = $filtered
+                    ->filter(fn (Delivery $delivery) => in_array($delivery->status, ['pending', 'in_progress'], true))
+                    ->values();
+            } elseif ($workflowFilter !== 'failed') {
+                $filtered = $filtered
+                    ->reject(fn (Delivery $delivery) => $delivery->status === 'cancelled')
+                    ->values();
+            }
+
+            switch ($tab) {
+                case 'deliveries':
+                    $filtered = $filtered->where('type', 'delivery')->values();
+                    break;
+                case 'pickups':
+                    $filtered = $filtered->where('type', 'pickup')->values();
+                    break;
+                case 'in_progress':
+                    $filtered = $filtered->where('status', 'in_progress')->values();
+                    break;
+                case 'completed':
+                    $filtered = $filtered->filter(fn (Delivery $delivery) => $delivery->status === 'completed')->values();
+                    break;
+                case 'today':
+                    $filtered = $filtered
+                        ->filter(fn (Delivery $delivery) => optional($delivery->scheduled_at)?->toDateString() === $today)
+                        ->values();
+                    break;
+                case 'overdue':
+                    $filtered = $filtered
+                        ->filter(fn (Delivery $delivery) => in_array($delivery->status, ['pending', 'in_progress'], true)
+                            && optional($delivery->scheduled_at)?->toDateString() < $today)
+                        ->values();
+                    break;
+                default:
+                    break;
+            }
+
+            if ($this->logisticsMetrics()->isSupportedWorkflow($workflowFilter)) {
+                $filtered = $this->logisticsMetrics()
+                    ->applyWorkflowFilter($filtered, $workflowFilter, $todayStart)
+                    ->values();
+            }
+
+            return $filtered->values();
+        };
+
+        $visibleTasks = $applyTaskboardCollectionFilters($boardBaseDeliveries);
 
         $dedupedTaskIds = $this->sortDeliveryBoardCollection($visibleTasks, $sortBy, $sortDirection, $todayStart)
             ->pluck('id')
@@ -1627,43 +1633,29 @@ class DeliveryController extends Controller
             ]
         );
 
-        $summaryTaskIds = $this->dedupeDeliveryCollection(
-            $orderedMinimalDeliveryQuery(clone $summaryQuery)->get()
-        )
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->values();
-
-        if ($this->logisticsMetrics()->isSupportedWorkflow($workflowFilter)) {
-            $summaryTaskIds = $this->logisticsMetrics()
-                ->applyWorkflowFilter($hydrateDeliveries($summaryTaskIds), $workflowFilter, $todayStart)
-                ->pluck('id')
-                ->map(fn ($id) => (int) $id)
-                ->values();
-        }
-
-        $summaryDeliveries = $hydrateDeliveries($summaryTaskIds);
+        $summaryDeliveries = $boardBaseDeliveries;
         $logisticsSummary = $this->logisticsMetrics()->summary($summaryDeliveries, $todayStart);
-        $totalTasksCount = (int) ($logisticsSummary['totalTasksCount'] ?? 0);
-        $deliveryTasksCount = (int) ($logisticsSummary['deliveryTasksCount'] ?? 0);
-        $pickupTasksCount = (int) ($logisticsSummary['pickupTasksCount'] ?? 0);
-        $overdueTasksCount = (int) ($logisticsSummary['overdueTasksCount'] ?? 0);
-        $completedTodayCount = (int) ($logisticsSummary['completedTodayCount'] ?? 0);
-        $pendingDeliveryCount = (int) ($logisticsSummary['pendingDeliveryCount'] ?? 0);
-        $scheduledDeliveryCount = (int) ($logisticsSummary['scheduledDeliveryCount'] ?? 0);
-        $outForDeliveryCount = (int) ($logisticsSummary['outForDeliveryCount'] ?? 0);
-        $overdueDeliveryCount = (int) ($logisticsSummary['overdueDeliveryCount'] ?? 0);
-        $completedDeliveryCount = (int) ($logisticsSummary['completedDeliveryCount'] ?? 0);
-        $deliveredTodayCount = (int) ($logisticsSummary['deliveredTodayCount'] ?? 0);
-        $pendingPickupCount = (int) ($logisticsSummary['pendingPickupCount'] ?? 0);
-        $scheduledPickupCount = (int) ($logisticsSummary['scheduledPickupCount'] ?? 0);
-        $outForPickupCount = (int) ($logisticsSummary['outForPickupCount'] ?? 0);
-        $overduePickupCount = (int) ($logisticsSummary['overduePickupCount'] ?? 0);
-        $completedPickupCount = (int) ($logisticsSummary['completedPickupCount'] ?? 0);
-        $todayTaskCount = (int) ($logisticsSummary['todayTaskCount'] ?? 0);
-        $todayDeliveryCount = (int) ($logisticsSummary['todayDeliveryCount'] ?? 0);
-        $todayPickupCount = (int) ($logisticsSummary['todayPickupCount'] ?? 0);
-        $pendingCollectionsCount = (int) ($logisticsSummary['pendingCollectionsCount'] ?? 0);
+        $visibleLogisticsSummary = $this->logisticsMetrics()->summary($visibleTasks, $todayStart);
+        $totalTasksCount = (int) ($visibleLogisticsSummary['totalTasksCount'] ?? 0);
+        $deliveryTasksCount = (int) ($visibleLogisticsSummary['deliveryTasksCount'] ?? 0);
+        $pickupTasksCount = (int) ($visibleLogisticsSummary['pickupTasksCount'] ?? 0);
+        $overdueTasksCount = (int) ($visibleLogisticsSummary['overdueTasksCount'] ?? 0);
+        $completedTodayCount = (int) ($visibleLogisticsSummary['completedTodayCount'] ?? 0);
+        $pendingDeliveryCount = (int) ($visibleLogisticsSummary['pendingDeliveryCount'] ?? 0);
+        $scheduledDeliveryCount = (int) ($visibleLogisticsSummary['scheduledDeliveryCount'] ?? 0);
+        $outForDeliveryCount = (int) ($visibleLogisticsSummary['outForDeliveryCount'] ?? 0);
+        $overdueDeliveryCount = (int) ($visibleLogisticsSummary['overdueDeliveryCount'] ?? 0);
+        $completedDeliveryCount = (int) ($visibleLogisticsSummary['completedDeliveryCount'] ?? 0);
+        $deliveredTodayCount = (int) ($visibleLogisticsSummary['deliveredTodayCount'] ?? 0);
+        $pendingPickupCount = (int) ($visibleLogisticsSummary['pendingPickupCount'] ?? 0);
+        $scheduledPickupCount = (int) ($visibleLogisticsSummary['scheduledPickupCount'] ?? 0);
+        $outForPickupCount = (int) ($visibleLogisticsSummary['outForPickupCount'] ?? 0);
+        $overduePickupCount = (int) ($visibleLogisticsSummary['overduePickupCount'] ?? 0);
+        $completedPickupCount = (int) ($visibleLogisticsSummary['completedPickupCount'] ?? 0);
+        $todayTaskCount = (int) ($visibleLogisticsSummary['todayTaskCount'] ?? 0);
+        $todayDeliveryCount = (int) ($visibleLogisticsSummary['todayDeliveryCount'] ?? 0);
+        $todayPickupCount = (int) ($visibleLogisticsSummary['todayPickupCount'] ?? 0);
+        $pendingCollectionsCount = (int) ($visibleLogisticsSummary['pendingCollectionsCount'] ?? 0);
         $failedTasksCount = (int) ($logisticsSummary['failedTasksCount'] ?? 0);
         $activeTasksCount = $deliveryTasksCount + $pickupTasksCount;
         $todayOpenDeliveryCount = (int) $summaryDeliveries
@@ -1678,45 +1670,30 @@ class DeliveryController extends Controller
             ->count();
 
         if ($restrictedToAssignedTasks) {
-            $focusedTaskSummaryQuery = $this->applyDeliveryScope(clone $summaryBaseQuery);
+            $focusedBaseDeliveries = $boardBaseDeliveries->values();
+            $usesDefaultAssignedBoard = $taskType === ''
+                && $statusFilter === ''
+                && $workflowFilter === ''
+                && $tab === 'all';
 
-            $activeTasksCount = (int) (clone $focusedTaskSummaryQuery)
-                ->whereIn('status', ['pending', 'in_progress'])
+            $activeTasksCount = $usesDefaultAssignedBoard
+                ? (int) $visibleTasks->count()
+                : (int) $this->logisticsMetrics()->applyWorkflowFilter($focusedBaseDeliveries, 'live', $todayStart)->count();
+            $todayOpenDeliveryCount = (int) $focusedBaseDeliveries
+                ->filter(fn (Delivery $delivery) => $delivery->type === 'delivery'
+                    && in_array($delivery->status, ['pending', 'in_progress'], true)
+                    && optional($delivery->scheduled_at)?->isSameDay($todayStart))
                 ->count();
-
-            $todayOpenDeliveryCount = (int) (clone $focusedTaskSummaryQuery)
-                ->where('type', 'delivery')
-                ->whereIn('status', ['pending', 'in_progress'])
-                ->whereDate('scheduled_at', $today)
+            $todayOpenPickupCount = (int) $focusedBaseDeliveries
+                ->filter(fn (Delivery $delivery) => $delivery->type === 'pickup'
+                    && in_array($delivery->status, ['pending', 'in_progress'], true)
+                    && optional($delivery->scheduled_at)?->isSameDay($todayStart))
                 ->count();
-
-            $todayOpenPickupCount = (int) (clone $focusedTaskSummaryQuery)
-                ->where('type', 'pickup')
-                ->whereIn('status', ['pending', 'in_progress'])
-                ->whereDate('scheduled_at', $today)
-                ->count();
-
-            $overdueTasksCount = (int) (clone $focusedTaskSummaryQuery)
-                ->whereIn('status', ['pending', 'in_progress'])
-                ->whereDate('scheduled_at', '<', $today)
-                ->count();
-
-            $failedTasksCount = (int) (clone $focusedTaskSummaryQuery)
-                ->where(function ($query) {
-                    $query->where('status', 'cancelled');
-
-                    if ($this->hasPickupStatusColumn()) {
-                        $query->orWhere('pickup_status', 'failed_attempt');
-                    }
-
-                    if ($this->hasFailedAttemptReasonColumn()) {
-                        $query->orWhereNotNull('failed_attempt_reason');
-                    }
-                })
-                ->count();
+            $overdueTasksCount = (int) $this->logisticsMetrics()->applyWorkflowFilter($focusedBaseDeliveries, 'overdue', $todayStart)->count();
+            $failedTasksCount = (int) $this->logisticsMetrics()->applyWorkflowFilter($focusedBaseDeliveries, 'failed', $todayStart)->count();
         }
 
-        $todayOverviewTaskIds = collect($logisticsSummary['todayTasks'] ?? collect())
+        $todayOverviewTaskIds = collect($visibleLogisticsSummary['todayTasks'] ?? collect())
             ->sortBy(fn (Delivery $delivery) => $delivery->scheduled_at?->timestamp ?? PHP_INT_MAX)
             ->take(5)
             ->pluck('id')
@@ -1724,7 +1701,7 @@ class DeliveryController extends Controller
             ->values();
         $todayOverviewTasks = $hydrateDeliveries($todayOverviewTaskIds);
 
-        $overdueTaskIds = collect($logisticsSummary['overdueTasks'] ?? collect())
+        $overdueTaskIds = collect($visibleLogisticsSummary['overdueTasks'] ?? collect())
             ->sortBy(fn (Delivery $delivery) => $delivery->scheduled_at?->timestamp ?? PHP_INT_MAX)
             ->take(5)
             ->pluck('id')
@@ -1732,7 +1709,7 @@ class DeliveryController extends Controller
             ->values();
         $overdueTasks = $hydrateDeliveries($overdueTaskIds);
 
-        $pendingCollectionIds = collect($logisticsSummary['pendingPickupTasks'] ?? collect())
+        $pendingCollectionIds = collect($visibleLogisticsSummary['pendingPickupTasks'] ?? collect())
             ->sortBy(fn (Delivery $delivery) => $delivery->scheduled_at?->timestamp ?? PHP_INT_MAX)
             ->take(5)
             ->pluck('id')

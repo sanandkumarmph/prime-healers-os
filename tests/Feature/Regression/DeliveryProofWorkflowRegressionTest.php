@@ -786,7 +786,10 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
             'created_by_user_id' => $deliveryUser->id,
         ]);
 
-        $response = $this->get(route('deliveries.index'));
+        $response = $this->get(route('deliveries.index', [
+            'tab' => 'completed',
+            'status' => 'completed',
+        ]));
         $response->assertOk();
         $response->assertSeeText('View Proof');
         $response->assertDontSeeText('Edit Assignment');

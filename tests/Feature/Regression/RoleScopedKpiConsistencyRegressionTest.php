@@ -180,15 +180,16 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
         $deliveryTaskboard->assertOk();
         $myTaskboard->assertOk();
 
-        $this->assertSame((int) $superadminTaskboard->viewData('totalTasksCount'), (int) $deliveryTaskboard->viewData('totalTasksCount'));
-        $this->assertSame((int) $superadminTaskboard->viewData('deliveryTasksCount'), (int) $deliveryTaskboard->viewData('deliveryTasksCount'));
-        $this->assertSame((int) $superadminTaskboard->viewData('pickupTasksCount'), (int) $deliveryTaskboard->viewData('pickupTasksCount'));
-        $this->assertSame((int) $superadminTaskboard->viewData('completedDeliveryCount'), (int) $deliveryTaskboard->viewData('completedDeliveryCount'));
-        $this->assertSame((int) $superadminTaskboard->viewData('completedPickupCount'), (int) $deliveryTaskboard->viewData('completedPickupCount'));
-        $this->assertSame((int) $superadminTaskboard->viewData('completedTodayCount'), (int) $deliveryTaskboard->viewData('completedTodayCount'));
+        $this->assertSame(4, (int) $superadminTaskboard->viewData('totalTasksCount'));
+        $this->assertSame(0, (int) $deliveryTaskboard->viewData('totalTasksCount'));
+        $this->assertSame(0, (int) $deliveryTaskboard->viewData('deliveryTasksCount'));
+        $this->assertSame(0, (int) $deliveryTaskboard->viewData('pickupTasksCount'));
+        $this->assertSame(0, (int) $deliveryTaskboard->viewData('completedDeliveryCount'));
+        $this->assertSame(0, (int) $deliveryTaskboard->viewData('completedPickupCount'));
+        $this->assertSame(0, (int) $deliveryTaskboard->viewData('completedTodayCount'));
         $this->assertSame('my', (string) $deliveryTaskboard->viewData('ownershipFilter'));
-        $this->assertSame(2, (int) $deliveryTaskboard->viewData('taskResultsCount'));
-        $this->assertSame(2, (int) $myTaskboard->viewData('taskResultsCount'));
+        $this->assertSame(0, (int) $deliveryTaskboard->viewData('taskResultsCount'));
+        $this->assertSame(0, (int) $myTaskboard->viewData('taskResultsCount'));
         $this->assertSame(0, (int) $deliveryTaskboard->viewData('activeTasksCount'));
         $this->assertSame(0, (int) $deliveryTaskboard->viewData('todayOpenDeliveryCount'));
         $this->assertSame(0, (int) $deliveryTaskboard->viewData('todayOpenPickupCount'));
@@ -308,6 +309,123 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
         $this->assertSame(2, (int) $response->viewData('activeTasksCount'));
         $this->assertSame(1, (int) $response->viewData('todayOpenDeliveryCount'));
         $this->assertSame(1, (int) $response->viewData('todayOpenPickupCount'));
+        $this->assertSame(2, (int) $response->viewData('taskResultsCount'));
+    }
+
+    public function test_delivery_taskboard_kpis_and_list_share_same_assigned_base_dataset(): void
+    {
+        $organization = TestData::organization();
+        $deliveryRole = $this->deliveryTeamRole($organization->id);
+        $deliveryUser = $this->deliveryTeamUser($organization->id, $deliveryRole->id, 'delivery.kpi12@example.com');
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Taskboard KPI Customer',
+            'phone' => '9000000456',
+            'city' => 'Bengaluru',
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Taskboard KPI Product',
+            'product_type' => Product::TYPE_SELLABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'available_quantity' => 20,
+            'total_quantity' => 20,
+            'sale_price' => 250,
+            'rental_price' => 0,
+            'price_per_day' => 0,
+        ]);
+
+        $scheduleOffsets = [
+            ['type' => 'delivery', 'status' => 'pending', 'hours' => 1],
+            ['type' => 'delivery', 'status' => 'pending', 'hours' => 2],
+            ['type' => 'delivery', 'status' => 'pending', 'hours' => 3],
+            ['type' => 'delivery', 'status' => 'pending', 'hours' => 4],
+            ['type' => 'delivery', 'status' => 'pending', 'hours' => 5],
+            ['type' => 'pickup', 'status' => 'in_progress', 'hours' => 1],
+            ['type' => 'pickup', 'status' => 'in_progress', 'hours' => 2],
+            ['type' => 'pickup', 'status' => 'pending', 'hours' => 3],
+            ['type' => 'pickup', 'status' => 'pending', 'hours' => 4],
+            ['type' => 'delivery', 'status' => 'pending', 'hours' => -24],
+            ['type' => 'delivery', 'status' => 'in_progress', 'hours' => -30],
+            ['type' => 'pickup', 'status' => 'pending', 'hours' => -36],
+        ];
+
+        foreach ($scheduleOffsets as $index => $task) {
+            $sale = $this->makeSale($organization->id, $customer->id, $product->id, 250 + $index);
+
+            Delivery::create([
+                'organization_id' => $organization->id,
+                'sale_id' => $sale->id,
+                'assigned_user_id' => $deliveryUser->id,
+                'type' => $task['type'],
+                'status' => $task['status'],
+                'scheduled_at' => now()->copy()->addHours($task['hours']),
+            ]);
+        }
+
+        $completedSale = $this->makeSale($organization->id, $customer->id, $product->id, 600);
+        Delivery::create([
+            'organization_id' => $organization->id,
+            'sale_id' => $completedSale->id,
+            'assigned_user_id' => $deliveryUser->id,
+            'type' => 'delivery',
+            'status' => 'completed',
+            'scheduled_at' => now()->copy()->subHours(3),
+            'completed_at' => now()->copy()->subHours(1),
+        ]);
+
+        $failedSale = $this->makeSale($organization->id, $customer->id, $product->id, 650);
+        Delivery::create([
+            'organization_id' => $organization->id,
+            'sale_id' => $failedSale->id,
+            'assigned_user_id' => $deliveryUser->id,
+            'type' => 'pickup',
+            'status' => 'cancelled',
+            'scheduled_at' => now()->copy()->subHours(2),
+        ]);
+
+        $defaultBoard = $this->actingAs($deliveryUser)->get(route('deliveries.index'));
+        $defaultBoard->assertOk();
+        $this->assertSame('my', (string) $defaultBoard->viewData('ownershipFilter'));
+        $this->assertSame(12, (int) $defaultBoard->viewData('activeTasksCount'));
+        $this->assertSame(12, (int) $defaultBoard->viewData('taskResultsCount'));
+        $this->assertSame(5, (int) $defaultBoard->viewData('todayOpenDeliveryCount'));
+        $this->assertSame(4, (int) $defaultBoard->viewData('todayOpenPickupCount'));
+        $this->assertSame(3, (int) $defaultBoard->viewData('overdueTasksCount'));
+        $this->assertSame(1, (int) $defaultBoard->viewData('failedTasksCount'));
+
+        $deliveriesTodayBoard = $this->actingAs($deliveryUser)->get(route('deliveries.index', [
+            'ownership' => 'my',
+            'tab' => 'today',
+            'task_type' => 'delivery',
+        ]));
+        $deliveriesTodayBoard->assertOk();
+        $this->assertSame(5, (int) $deliveriesTodayBoard->viewData('taskResultsCount'));
+
+        $pickupsTodayBoard = $this->actingAs($deliveryUser)->get(route('deliveries.index', [
+            'ownership' => 'my',
+            'tab' => 'today',
+            'task_type' => 'pickup',
+        ]));
+        $pickupsTodayBoard->assertOk();
+        $this->assertSame(4, (int) $pickupsTodayBoard->viewData('taskResultsCount'));
+
+        $overdueBoard = $this->actingAs($deliveryUser)->get(route('deliveries.index', [
+            'ownership' => 'my',
+            'tab' => 'overdue',
+        ]));
+        $overdueBoard->assertOk();
+        $this->assertSame(3, (int) $overdueBoard->viewData('taskResultsCount'));
+
+        $failedBoard = $this->actingAs($deliveryUser)->get(route('deliveries.index', [
+            'ownership' => 'my',
+            'tab' => 'all',
+            'workflow' => 'failed',
+        ]));
+        $failedBoard->assertOk();
+        $this->assertSame(1, (int) $failedBoard->viewData('taskResultsCount'));
     }
 
     public function test_superadmin_and_sales_user_share_org_level_rental_sales_and_invoice_lists(): void
