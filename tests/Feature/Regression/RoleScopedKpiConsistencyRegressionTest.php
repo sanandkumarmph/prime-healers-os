@@ -224,6 +224,8 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
 
     public function test_delivery_taskboard_compact_kpis_count_open_assigned_tasks_for_delivery_user(): void
     {
+        $this->travelTo(now()->startOfDay()->addHours(9));
+
         $organization = TestData::organization();
         $deliveryRole = Role::create([
             'organization_id' => $organization->id,
@@ -310,6 +312,8 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
         $this->assertSame(1, (int) $response->viewData('todayOpenDeliveryCount'));
         $this->assertSame(1, (int) $response->viewData('todayOpenPickupCount'));
         $this->assertSame(2, (int) $response->viewData('taskResultsCount'));
+
+        $this->travelBack();
     }
 
     public function test_delivery_taskboard_kpis_and_list_share_same_assigned_base_dataset(): void

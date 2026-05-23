@@ -827,15 +827,39 @@ class DeliveryController extends Controller
 
     private function redirectAfterDeliveryMutation(Delivery $delivery, string $message)
     {
+        $user = auth()->user();
+
         if ($this->hasSaleColumn() && $delivery->sale_id) {
-            return redirect()
-                ->route('sales.show', $delivery->sale_id)
-                ->with('success', $message);
+            $sale = $delivery->relationLoaded('sale')
+                ? $delivery->sale
+                : Sale::query()
+                    ->where('organization_id', $this->orgId())
+                    ->find($delivery->sale_id);
+
+            if ($sale && $user?->can('view', $sale)) {
+                return redirect()
+                    ->route('sales.show', $sale)
+                    ->with('success', $message);
+            }
         }
 
         if ($delivery->rental_id) {
+            $rental = $delivery->relationLoaded('rental')
+                ? $delivery->rental
+                : Rental::query()
+                    ->where('organization_id', $this->orgId())
+                    ->find($delivery->rental_id);
+
+            if ($rental && $user?->can('view', $rental)) {
+                return redirect()
+                    ->route('rentals.show', $rental)
+                    ->with('success', $message);
+            }
+        }
+
+        if ($user?->can('view', $delivery)) {
             return redirect()
-                ->route('rentals.show', $delivery->rental_id)
+                ->route('deliveries.show', $delivery)
                 ->with('success', $message);
         }
 

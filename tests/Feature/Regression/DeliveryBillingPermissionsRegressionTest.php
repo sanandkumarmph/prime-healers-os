@@ -11,6 +11,7 @@ use App\Models\Product;
 use App\Models\Rental;
 use App\Models\RentalAsset;
 use App\Models\RentalItem;
+use App\Models\Role;
 use App\Models\SaleInventory;
 use App\Models\Sale;
 use App\Models\User;
@@ -986,6 +987,90 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
             ->assertSeeText('Cancellation Reason')
             ->assertSeeText('Customer unavailable')
             ->assertSeeText('Customer asked to retry tomorrow.');
+    }
+
+    public function test_delivery_user_update_falls_back_to_delivery_detail_when_related_rental_page_is_not_readable(): void
+    {
+        $organization = TestData::organization();
+
+        $deliveryRole = Role::create([
+            'organization_id' => $organization->id,
+            'name' => 'Delivery Limited',
+            'slug' => User::ROLE_DELIVERY,
+            'permissions' => [
+                'deliveries' => ['read', 'update'],
+            ],
+        ]);
+
+        $deliveryUser = User::factory()->create([
+            'organization_id' => $organization->id,
+            'role' => User::ROLE_DELIVERY,
+            'role_id' => $deliveryRole->id,
+            'is_internal' => true,
+            'is_active' => true,
+            'email_verified_at' => now(),
+            'email' => 'delivery-no-rental-read@example.com',
+        ]);
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Fallback Customer',
+            'phone' => '9000000888',
+            'city' => 'Bengaluru',
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Fallback Product',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'available_quantity' => 5,
+            'total_quantity' => 5,
+            'rental_price' => 800,
+            'price_per_day' => 100,
+            'sale_price' => 0,
+        ]);
+
+        $rental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'start_date' => now()->subDays(2)->toDateString(),
+            'end_date' => now()->addDays(2)->toDateString(),
+            'status' => 'active',
+            'rental_amount' => 800,
+        ]);
+
+        $delivery = Delivery::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'assigned_user_id' => $deliveryUser->id,
+            'type' => 'delivery',
+            'status' => 'completed',
+            'scheduled_at' => now()->subHour(),
+            'completed_at' => now()->subMinutes(20),
+        ]);
+
+        $response = $this->actingAs($deliveryUser)
+            ->from(route('deliveries.edit', $delivery))
+            ->put(route('deliveries.update', $delivery), [
+                'rental_id' => $rental->id,
+                'type' => 'delivery',
+                'scheduled_at' => now()->addHour()->format('Y-m-d\TH:i'),
+                'status' => 'pending',
+                'notes' => 'Reopened after field correction.',
+                'assignment_type' => 'delivery_team',
+                'assigned_user_id' => $deliveryUser->id,
+            ]);
+
+        $response->assertRedirect(route('deliveries.show', $delivery));
+
+        $delivery->refresh();
+        $this->assertSame('pending', $delivery->status);
+        $this->assertNull($delivery->completed_at);
     }
 
     public function test_cancellation_without_reason_fails_validation(): void
