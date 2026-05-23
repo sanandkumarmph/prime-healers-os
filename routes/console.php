@@ -3,6 +3,7 @@
 use App\Console\Commands\RepairUatData;
 use App\Console\Commands\ResetAppData;
 use App\Console\Commands\MigrateProofFiles;
+use App\Console\Commands\RepairCompletedDeliveryProgress;
 use App\Console\Commands\ResetUatData;
 use Illuminate\Console\Application as ArtisanApplication;
 use Illuminate\Foundation\Inspiring;
@@ -11,7 +12,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
 
 ArtisanApplication::starting(function ($artisan) {
-    $artisan->resolveCommands([ResetAppData::class, RepairUatData::class, ResetUatData::class, MigrateProofFiles::class]);
+    $artisan->resolveCommands([ResetAppData::class, RepairUatData::class, RepairCompletedDeliveryProgress::class, ResetUatData::class, MigrateProofFiles::class]);
 });
 
 Artisan::command('inspire', function () {

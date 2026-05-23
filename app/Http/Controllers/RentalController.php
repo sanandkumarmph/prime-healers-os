@@ -4124,8 +4124,10 @@ class RentalController extends Controller
         $completedPickupCount = (int) ($logisticsSummary['completedPickupCount'] ?? 0);
         $pickedUpTodayCount = (int) ($logisticsSummary['pickedUpTodayCount'] ?? 0);
         $failedTasksCount = (int) ($logisticsSummary['failedTasksCount'] ?? 0);
-        $deliveryRoleTaskScope = $canReadDeliveries && ($currentUser?->hasScope('assigned', 'deliveries') ?? false);
-        $deliveryRoleTaskQuery = $deliveryRoleTaskScope && $this->hasDeliveryAssignedUserColumn()
+        $deliveryRoleTaskScope = $canReadDeliveries
+            && $this->hasDeliveryAssignedUserColumn()
+            && (((bool) ($dashboardVisibility['delivery_focused'] ?? false)) || ($currentUser?->hasScope('assigned', 'deliveries') ?? false));
+        $deliveryRoleTaskQuery = $deliveryRoleTaskScope
             ? Delivery::query()
                 ->where('organization_id', $this->orgId())
                 ->where('assigned_user_id', $currentUser->id)

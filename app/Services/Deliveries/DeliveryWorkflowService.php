@@ -345,6 +345,27 @@ class DeliveryWorkflowService
         }
     }
 
+    public function finalizeDeliveryCompletionForRental(int $organizationId, Rental $rental): void
+    {
+        if (!Rental::hasRentalItemsTable()) {
+            return;
+        }
+
+        foreach ($this->loadRentalProgressItems($organizationId, $rental) as $item) {
+            $outstandingQuantity = max((int) $item->ordered_quantity - (int) $item->delivered_quantity_value, 0);
+
+            if ($outstandingQuantity <= 0) {
+                continue;
+            }
+
+            $item->update([
+                'delivered_quantity' => min($item->ordered_quantity, $item->delivered_quantity_value + $outstandingQuantity),
+            ]);
+        }
+
+        $rental->unsetRelation('rentalItems');
+    }
+
     public function recordPartialDelivery(
         int $organizationId,
         Delivery $delivery,
@@ -484,8 +505,12 @@ class DeliveryWorkflowService
 
         $this->cancelOlderDuplicateTasks($organizationId, $delivery);
 
-        if ($delivery->type === 'pickup' && $rental) {
-            $this->finalizePickupCompletionForRental($organizationId, $rental, optional($delivery->completed_at)->toDateTimeString());
+        if ($rental) {
+            if ($delivery->type === 'pickup') {
+                $this->finalizePickupCompletionForRental($organizationId, $rental, optional($delivery->completed_at)->toDateTimeString());
+            } elseif ($delivery->type === 'delivery') {
+                $this->finalizeDeliveryCompletionForRental($organizationId, $rental);
+            }
         }
 
         $syncAssignedAssetStatuses($delivery);

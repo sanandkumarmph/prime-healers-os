@@ -482,6 +482,127 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
             ->assertDontSeeText('Pickup Pending');
     }
 
+    public function test_completed_delivery_detail_derives_delivered_progress_for_stale_legacy_rental_items(): void
+    {
+        $organization = TestData::organization();
+        $deliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+
+        $this->actingAs($deliveryUser);
+
+        $delivery = $this->makeRentalBackedTask($organization->id, $deliveryUser->id, 'delivery', [
+            'delivered_quantity' => 0,
+            'returned_quantity' => 0,
+        ]);
+
+        $this->get(route('deliveries.show', $delivery))
+            ->assertOk()
+            ->assertSeeText('Delivered')
+            ->assertSeeText('1')
+            ->assertSeeText('Pending')
+            ->assertSeeText('0')
+            ->assertSeeText('Delivery completed')
+            ->assertDontSeeText('Delivery Pending');
+    }
+
+    public function test_completing_a_rental_backed_delivery_syncs_delivered_item_quantities(): void
+    {
+        $organization = TestData::organization();
+        $deliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+
+        $this->actingAs($deliveryUser);
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Delivered Customer',
+            'phone' => '9000000211',
+            'address' => '14 Delivery Street',
+            'city' => 'Bengaluru',
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Delivered Product',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'price_per_day' => 100,
+            'rental_price' => 100,
+            'sale_price' => 0,
+            'available_quantity' => 5,
+            'total_quantity' => 5,
+        ]);
+
+        $rental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'start_date' => now()->subDays(2)->toDateString(),
+            'end_date' => now()->addDays(2)->toDateString(),
+            'rental_amount' => 100,
+            'deposit_amount' => 0,
+            'status' => 'active',
+        ]);
+
+        $item = RentalItem::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'ordered_quantity' => 1,
+            'delivered_quantity' => 0,
+            'returned_quantity' => 0,
+            'unit_rental_amount' => 100,
+            'gst_rate' => 0,
+            'gst_mode' => 'exclusive',
+            'tax_type' => 'cgst_sgst',
+            'taxable_amount' => 100,
+            'cgst_amount' => 0,
+            'sgst_amount' => 0,
+            'igst_amount' => 0,
+            'line_total' => 100,
+        ]);
+
+        $delivery = Delivery::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'type' => 'delivery',
+            'status' => 'in_progress',
+            'assigned_user_id' => $deliveryUser->id,
+            'scheduled_at' => now(),
+            'notes' => 'Complete delivery quantity sync test',
+        ]);
+
+        $response = $this->from(route('deliveries.show', $delivery))
+            ->put(route('deliveries.complete', $delivery), [
+                'workflow_capture_form' => '1',
+                'confirm_partial' => '1',
+                'delivery_device_photos' => [
+                    $this->fakeImageUpload('device-complete.jpg', 45),
+                ],
+                'premises_photo' => $this->fakeImageUpload('premises-complete.jpg', 48),
+                'signature_data' => $this->signatureDataUrl(),
+                'proof_notes' => 'Completed in the field.',
+                'location_missing_reason' => 'GPS unavailable indoors.',
+                'completion_confirmed' => '1',
+            ]);
+
+        $response->assertRedirect(route('deliveries.show', $delivery));
+        $this->assertSame('completed', $delivery->fresh()->status);
+        $this->assertSame(1, $item->fresh()->delivered_quantity);
+        $this->assertSame(0, $item->fresh()->pending_delivery_quantity);
+
+        $this->get(route('deliveries.show', $delivery))
+            ->assertOk()
+            ->assertSeeText('Delivery completed')
+            ->assertDontSeeText('Delivery Pending');
+    }
+
     public function test_delivery_completion_requires_photos_signature_and_location_or_reason(): void
     {
         $organization = TestData::organization();

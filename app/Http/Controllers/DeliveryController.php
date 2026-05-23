@@ -169,6 +169,22 @@ class DeliveryController extends Controller
         return $this->hasRescheduledFromAtColumn ??= Schema::hasColumn('deliveries', 'rescheduled_from_at');
     }
 
+    private function isDeliveryFocusedUser(?User $user): bool
+    {
+        return in_array($user?->effective_role, [
+            User::ROLE_DELIVERY,
+            User::ROLE_DELIVERY_EXECUTIVE,
+            User::ROLE_VENDOR,
+            User::ROLE_THIRD_PARTY,
+        ], true);
+    }
+
+    private function shouldRestrictToAssignedDeliveryTasks(?User $user): bool
+    {
+        return $this->hasAssignedUserColumn()
+            && ($user?->hasScope('assigned', 'deliveries') || $this->isDeliveryFocusedUser($user));
+    }
+
     private function deliveryWorkflowService(): DeliveryWorkflowService
     {
         return app(DeliveryWorkflowService::class);
@@ -795,7 +811,7 @@ class DeliveryController extends Controller
     {
         $user = auth()->user();
 
-        if ($user && $user->hasScope('assigned', 'deliveries') && $this->hasAssignedUserColumn()) {
+        if ($user && $this->shouldRestrictToAssignedDeliveryTasks($user)) {
             $query->where('assigned_user_id', $user->id);
         }
 
@@ -1271,13 +1287,8 @@ class DeliveryController extends Controller
         $legacyDefault = $legacyBoardDefaults[$legacyBoard] ?? [];
 
         $currentUser = auth()->user();
-        $deliveryFocusedBoard = in_array($currentUser?->effective_role, [
-            User::ROLE_DELIVERY,
-            User::ROLE_DELIVERY_EXECUTIVE,
-            User::ROLE_VENDOR,
-            User::ROLE_THIRD_PARTY,
-        ], true);
-        $restrictedToAssignedTasks = (bool) (auth()->user()?->hasScope('assigned', 'deliveries') ?? false);
+        $deliveryFocusedBoard = $this->isDeliveryFocusedUser($currentUser);
+        $restrictedToAssignedTasks = $this->shouldRestrictToAssignedDeliveryTasks($currentUser);
         $defaultOwnershipFilter = $restrictedToAssignedTasks ? 'my' : 'all';
 
         $tab = strtolower((string) $request->query('tab', $legacyDefault['tab'] ?? 'all'));
@@ -1666,7 +1677,7 @@ class DeliveryController extends Controller
                 && optional($delivery->scheduled_at)?->isSameDay($todayStart))
             ->count();
 
-        if ($restrictedToAssignedTasks || $deliveryFocusedBoard) {
+        if ($restrictedToAssignedTasks) {
             $focusedTaskSummaryQuery = $this->applyDeliveryScope(clone $summaryBaseQuery);
 
             $activeTasksCount = (int) (clone $focusedTaskSummaryQuery)
@@ -2568,9 +2579,9 @@ class DeliveryController extends Controller
 
         $validated = $this->validateCompletionWorkflowRequest($request, $delivery);
 
-        $pickupRental = null;
-        if ($delivery->type === 'pickup' && $delivery->rental_id) {
-            $pickupRental = Rental::query()
+        $workflowRental = null;
+        if ($delivery->rental_id) {
+            $workflowRental = Rental::query()
                 ->where('organization_id', $this->orgId())
                 ->find($delivery->rental_id);
         }
@@ -2578,7 +2589,7 @@ class DeliveryController extends Controller
         $this->deliveryWorkflowService()->markCompleted(
             $this->orgId(),
             $delivery,
-            $pickupRental,
+            $workflowRental,
             fn (Delivery $completedDelivery) => $this->syncAssignedAssetStatuses($completedDelivery)
         );
 

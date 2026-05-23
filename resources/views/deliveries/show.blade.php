@@ -1392,7 +1392,7 @@
         .delivery-detail { padding:8px 0 16px; }
         .detail-actions { display:none; }
         body.workflow-mobile-open {
-            overflow:hidden;
+            overscroll-behavior:none;
         }
         .workflow-preview-shell { display:none; }
         .fieldops-task-shell {
@@ -1567,6 +1567,8 @@
         .workflow-mobile-shell {
             position:fixed;
             inset:0;
+            height:100dvh;
+            max-height:100dvh;
             z-index:1095;
             display:none;
             grid-template-rows:auto minmax(0, 1fr);
@@ -1576,6 +1578,7 @@
             border-radius:0;
             box-shadow:none;
             background:#f8fbff;
+            overflow:hidden;
         }
         .workflow-mobile-shell[data-mobile-shell-state="open"] {
             display:grid;
@@ -1619,16 +1622,18 @@
         }
         .workflow-mobile-shell-body {
             min-height:0;
+            min-width:0;
             overflow-y:auto;
-            padding:12px 12px calc(98px + env(safe-area-inset-bottom, 0px));
+            padding:12px 12px calc(150px + env(safe-area-inset-bottom, 0px));
             -webkit-overflow-scrolling:touch;
+            overscroll-behavior:contain;
         }
         .workflow-mobile-shell .workflow-proof-badges,
         .workflow-mobile-shell [data-workflow-desktop-actions] {
             display:none;
         }
         .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] [data-workflow-step-panel] {
-            padding-bottom:132px;
+            padding-bottom:164px;
         }
         .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] [data-workflow-step-panel].is-current .workflow-step-actions {
             position:fixed;
@@ -1841,8 +1846,26 @@
                 @php
                     $orderedQty = (int) ($item->ordered_quantity ?? $item->quantity ?? 0);
                     $deliveredQty = (int) ($item->delivered_quantity_value ?? min(max((int) ($item->delivered_quantity ?? 0), 0), $orderedQty));
+                    $deliveryCompletionFallback = $delivery->type === 'delivery'
+                        && in_array($displayStatus, ['delivered', 'completed'], true)
+                        && $orderedQty > 0
+                        && $deliveredQty <= 0;
+
+                    if ($deliveryCompletionFallback) {
+                        $deliveredQty = $orderedQty;
+                    }
+
                     $pendingDeliveryQty = max($orderedQty - $deliveredQty, 0);
                     $returnedQty = (int) ($item->returned_quantity_value ?? min(max((int) ($item->returned_quantity ?? 0), 0), $deliveredQty));
+                    $pickupCompletionFallback = $delivery->type === 'pickup'
+                        && in_array($displayStatus, ['picked_up', 'completed'], true)
+                        && $deliveredQty > 0
+                        && $returnedQty <= 0;
+
+                    if ($pickupCompletionFallback) {
+                        $returnedQty = $deliveredQty;
+                    }
+
                     $pendingPickupQty = max($deliveredQty - $returnedQty, 0);
                     $linkedAssetIds = collect($item->asset_ids ?? [])
                         ->filter(fn ($assetId) => filled($assetId))
@@ -2913,6 +2936,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const workflowErrorSummary = document.querySelector('[data-workflow-error-summary]');
     const mobileWorkflowMedia = window.matchMedia('(max-width: 767px)');
     const mobileWorkflowShell = document.querySelector('[data-mobile-workflow-shell]');
+    const mobileWorkflowShellBody = mobileWorkflowShell?.querySelector('.workflow-mobile-shell-body');
     const mobileWorkflowCloseButtons = Array.from(document.querySelectorAll('[data-close-mobile-workflow]'));
 
     const closeMobileWorkflowShell = ({ preserveHash = false } = {}) => {
@@ -2935,6 +2959,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
         mobileWorkflowShell.dataset.mobileShellState = 'open';
         document.body.classList.add('workflow-mobile-open');
+    };
+
+    const scrollWithinWorkflowShell = (target, { behavior = 'smooth' } = {}) => {
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        if (mobileWorkflowMedia.matches && mobileWorkflowShellBody instanceof HTMLElement && mobileWorkflowShell instanceof HTMLElement) {
+            const bodyRect = mobileWorkflowShellBody.getBoundingClientRect();
+            const targetRect = target.getBoundingClientRect();
+            const offsetTop = targetRect.top - bodyRect.top + mobileWorkflowShellBody.scrollTop - 12;
+
+            mobileWorkflowShellBody.scrollTo({
+                top: Math.max(offsetTop, 0),
+                behavior,
+            });
+
+            return;
+        }
+
+        target.scrollIntoView({ behavior, block: 'start' });
     };
 
     document.querySelectorAll('a[href]').forEach((anchor) => {
@@ -2984,7 +3029,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         proofHistorySection.open = true;
-        proofHistorySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        window.requestAnimationFrame(() => {
+            scrollWithinWorkflowShell(proofHistorySection);
+        });
     };
 
     const openProofHistoryPanel = (updateHash = true) => {
@@ -3001,7 +3048,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (workflowSection && (window.location.hash === '#{{ $workflowProofSectionId }}' || {{ $hasWorkflowErrors ? 'true' : 'false' }})) {
         openMobileWorkflowShell();
-        workflowSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        window.requestAnimationFrame(() => {
+            scrollWithinWorkflowShell(workflowSection);
+        });
 
         if (workflowErrorSummary instanceof HTMLElement) {
             window.setTimeout(() => workflowErrorSummary.focus(), 160);
@@ -3012,7 +3061,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (cancellationSection instanceof HTMLDetailsElement) {
             cancellationSection.open = true;
         }
-        cancellationSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        window.requestAnimationFrame(() => {
+            scrollWithinWorkflowShell(cancellationSection);
+        });
     }
 
     openProofHistoryFromHash();
