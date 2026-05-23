@@ -428,6 +428,63 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
         $this->assertSame(1, (int) $failedBoard->viewData('taskResultsCount'));
     }
 
+    public function test_delivery_taskboard_keeps_multiple_assigned_rows_for_the_same_rental_visible(): void
+    {
+        $organization = TestData::organization();
+        $deliveryRole = $this->deliveryTeamRole($organization->id);
+        $deliveryUser = $this->deliveryTeamUser($organization->id, $deliveryRole->id, 'delivery.same-rental@example.com');
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Same Rental Customer',
+            'phone' => '9000000789',
+            'city' => 'Bengaluru',
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Same Rental Product',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'available_quantity' => 20,
+            'total_quantity' => 20,
+            'rental_price' => 500,
+            'price_per_day' => 500,
+            'sale_price' => 0,
+        ]);
+
+        $rental = $this->makeRental($organization->id, $customer->id, $product->id, [
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'quantity' => 12,
+            'start_date' => now()->subDay()->toDateString(),
+            'end_date' => now()->addDays(3)->toDateString(),
+        ]);
+
+        foreach (range(1, 12) as $offset) {
+            Delivery::create([
+                'organization_id' => $organization->id,
+                'rental_id' => $rental->id,
+                'assigned_user_id' => $deliveryUser->id,
+                'type' => 'delivery',
+                'status' => 'pending',
+                'scheduled_at' => now()->copy()->addMinutes($offset),
+            ]);
+        }
+
+        $response = $this->actingAs($deliveryUser)->get(route('deliveries.index'));
+        $response->assertOk();
+
+        $tasks = $response->viewData('tasks');
+
+        $this->assertSame('my', (string) $response->viewData('ownershipFilter'));
+        $this->assertSame(12, (int) $response->viewData('activeTasksCount'));
+        $this->assertSame(12, (int) $response->viewData('taskResultsCount'));
+        $this->assertSame(12, $tasks->count());
+        $this->assertSame(12, collect($tasks->items())->pluck('id')->unique()->count());
+        $this->assertSame(12, collect($tasks->items())->where('rental_id', $rental->id)->count());
+    }
+
     public function test_superadmin_and_sales_user_share_org_level_rental_sales_and_invoice_lists(): void
     {
         $organization = TestData::organization();

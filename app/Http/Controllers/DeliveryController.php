@@ -1539,9 +1539,7 @@ class DeliveryController extends Controller
 
         $today = now()->toDateString();
         $todayStart = now()->startOfDay();
-        $boardBaseTaskIds = $this->dedupeDeliveryCollection(
-            $orderedMinimalDeliveryQuery(clone $summaryBaseQuery)->get()
-        )
+        $boardBaseTaskIds = $orderedMinimalDeliveryQuery(clone $summaryBaseQuery)
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
             ->values();
@@ -2702,7 +2700,7 @@ class DeliveryController extends Controller
             $query->where('assigned_user_id', $user->id);
         }
 
-        $deliveries = $this->dedupeDeliveryCollection($query->latest()->get());
+        $deliveries = $query->latest()->get();
 
         return view('deliveries.assigned', compact('deliveries'));
     }
@@ -2740,7 +2738,7 @@ class DeliveryController extends Controller
             $query->where('assigned_user_id', $user->id);
         }
 
-        $deliveries = $this->dedupeDeliveryCollection($query->latest()->get());
+        $deliveries = $query->latest()->get();
 
         return view('deliveries.pickups', compact('deliveries'));
     }
