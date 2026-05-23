@@ -4127,35 +4127,31 @@ class RentalController extends Controller
         $deliveryRoleTaskScope = $canReadDeliveries
             && $this->hasDeliveryAssignedUserColumn()
             && (((bool) ($dashboardVisibility['delivery_focused'] ?? false)) || ($currentUser?->hasScope('assigned', 'deliveries') ?? false));
-        $deliveryRoleTaskQuery = $deliveryRoleTaskScope
+        $deliveryRoleTaskRecords = $deliveryRoleTaskScope
             ? Delivery::query()
                 ->where('organization_id', $this->orgId())
                 ->where('assigned_user_id', $currentUser->id)
-            : null;
-        $assignedTaskRecords = $deliveryRoleTaskScope
-            ? $visibleDeliveryRecords
-            : $dedupedDeliveryRecords;
+                ->with(['rental.customer', 'rental.product', 'assignedStaff'])
+                ->when($this->hasRentalItemsTable(), fn ($query) => $query->with(['rental.rentalItems.product']))
+                ->get()
+                ->values()
+            : collect();
+        $deliveryRoleTaskSnapshot = $deliveryRoleTaskScope
+            ? $this->logisticsMetrics()->deliveryFocusedTaskboardSnapshot($deliveryRoleTaskRecords, $today)
+            : [];
         $assignedOpenTasksCount = $deliveryRoleTaskScope
-            ? (int) (clone $deliveryRoleTaskQuery)->whereIn('status', ['pending', 'in_progress'])->count()
+            ? (int) ($deliveryRoleTaskSnapshot['assignedVisibleTasksCount'] ?? 0)
             : $deliveryTasksCount + $pickupTasksCount;
         $myDeliveriesTodayCount = $deliveryRoleTaskScope
-            ? (int) (clone $deliveryRoleTaskQuery)
-                ->where('type', 'delivery')
-                ->whereIn('status', ['pending', 'in_progress'])
-                ->whereDate('scheduled_at', $today)
-                ->count()
-            : (int) $assignedTaskRecords
+            ? (int) ($deliveryRoleTaskSnapshot['todayOpenDeliveryCount'] ?? 0)
+            : (int) $dedupedDeliveryRecords
                 ->filter(fn ($delivery) => $delivery->type === 'delivery'
                     && in_array($delivery->status, ['pending', 'in_progress'], true)
                     && optional($delivery->scheduled_at)?->isSameDay($today))
                 ->count();
         $myPickupsTodayCount = $deliveryRoleTaskScope
-            ? (int) (clone $deliveryRoleTaskQuery)
-                ->where('type', 'pickup')
-                ->whereIn('status', ['pending', 'in_progress'])
-                ->whereDate('scheduled_at', $today)
-                ->count()
-            : (int) $assignedTaskRecords
+            ? (int) ($deliveryRoleTaskSnapshot['todayOpenPickupCount'] ?? 0)
+            : (int) $dedupedDeliveryRecords
                 ->filter(fn ($delivery) => $delivery->type === 'pickup'
                     && in_array($delivery->status, ['pending', 'in_progress'], true)
                     && optional($delivery->scheduled_at)?->isSameDay($today))
@@ -4203,25 +4199,18 @@ class RentalController extends Controller
             ->where('status', 'cancelled')
             ->count();
         $failedTasksCount = $deliveryRoleTaskScope
-            ? (int) (clone $deliveryRoleTaskQuery)
-                ->where(function ($query) {
-                    $query->where('status', 'cancelled')
-                        ->orWhere('pickup_status', 'failed_attempt')
-                        ->orWhereNotNull('failed_attempt_reason');
-                })
-                ->count()
+            ? (int) ($deliveryRoleTaskSnapshot['failedTasksCount'] ?? 0)
             : $failedPickupsCount + $failedDeliveriesCount;
 
         if ($deliveryRoleTaskScope) {
-            $overdueDeliveryCount = (int) (clone $deliveryRoleTaskQuery)
+            $overdueTaskCollection = $this->logisticsMetrics()
+                ->applyWorkflowFilter($deliveryRoleTaskRecords, 'overdue', $today)
+                ->values();
+            $overdueDeliveryCount = (int) $overdueTaskCollection
                 ->where('type', 'delivery')
-                ->whereIn('status', ['pending', 'in_progress'])
-                ->whereDate('scheduled_at', '<', $today)
                 ->count();
-            $overduePickupCount = (int) (clone $deliveryRoleTaskQuery)
+            $overduePickupCount = (int) $overdueTaskCollection
                 ->where('type', 'pickup')
-                ->whereIn('status', ['pending', 'in_progress'])
-                ->whereDate('scheduled_at', '<', $today)
                 ->count();
         }
 

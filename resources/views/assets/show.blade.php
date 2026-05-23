@@ -45,12 +45,20 @@
         .asset-detail-page {
             display: grid;
             gap: 18px;
+            min-width: 0;
+            width: 100%;
+            max-width: 100%;
+            overflow-x: clip;
+            padding-bottom: calc(136px + env(safe-area-inset-bottom, 0px));
         }
+        .asset-detail-page > * { min-width: 0; max-width: 100%; }
         .asset-detail-card {
             background: #ffffff;
             border: 1px solid #e2e8f0;
             border-radius: 22px;
             padding: 22px;
+            min-width: 0;
+            max-width: 100%;
         }
         .asset-detail-header {
             display: flex;
@@ -58,22 +66,36 @@
             align-items: flex-start;
             gap: 16px;
             flex-wrap: wrap;
+            min-width: 0;
         }
+        .asset-detail-header > div { min-width: 0; max-width: 100%; }
         .asset-detail-actions {
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
+            min-width: 0;
+            max-width: 100%;
+        }
+        .asset-detail-actions a,
+        .asset-detail-actions button {
+            min-width: 0;
+            max-width: 100%;
+            white-space: normal;
+            text-align: center;
+            line-height: 1.35;
         }
         .asset-detail-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 18px;
+            min-width: 0;
         }
         .asset-detail-info-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 12px;
             margin-top: 18px;
+            min-width: 0;
         }
         .asset-detail-info-item {
             padding: 14px 16px;
@@ -111,14 +133,24 @@
             font-weight: 800;
             cursor: pointer;
         }
+        .asset-detail-wrap-safe,
+        .asset-detail-card table,
+        .asset-detail-card tbody,
+        .asset-detail-card tr,
+        .asset-detail-card td,
+        .asset-detail-card th {
+            min-width: 0;
+            max-width: 100%;
+        }
         @media (max-width: 767px) {
             .asset-detail-page {
                 gap: 12px;
-                padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+                padding-bottom: calc(188px + env(safe-area-inset-bottom, 0px));
             }
             .asset-detail-card {
                 padding: 16px;
                 border-radius: 18px;
+                overflow: hidden;
             }
             .asset-detail-header h1 {
                 font-size: 24px !important;
@@ -142,6 +174,9 @@
                 grid-template-columns: 1fr !important;
                 gap: 10px !important;
             }
+            .asset-detail-info-item {
+                padding: 12px 13px;
+            }
             .asset-copy-row {
                 align-items:flex-start;
                 flex-wrap:wrap;
@@ -158,9 +193,49 @@
             .asset-detail-card span,
             .asset-detail-card p,
             .asset-detail-card strong,
-            .asset-detail-card a {
+            .asset-detail-card a,
+            .asset-detail-card td,
+            .asset-detail-card th {
                 overflow-wrap:anywhere;
                 word-break:break-word;
+            }
+            .asset-detail-card table,
+            .asset-detail-card thead,
+            .asset-detail-card tbody,
+            .asset-detail-card tr,
+            .asset-detail-card td {
+                display:block;
+                width:100%;
+            }
+            .asset-detail-card thead {
+                display:none;
+            }
+            .asset-detail-card tbody {
+                display:grid;
+                gap:10px;
+            }
+            .asset-detail-card tr {
+                border:1px solid #e2e8f0;
+                border-radius:14px;
+                background:#f8fafc;
+                padding:10px 12px;
+            }
+            .asset-detail-card td {
+                padding:0 !important;
+                border:none !important;
+            }
+            .asset-detail-card td + td {
+                margin-top:8px;
+            }
+            .asset-detail-card td::before {
+                content:attr(data-label);
+                display:block;
+                margin-bottom:4px;
+                color:#64748b;
+                font-size:10px;
+                font-weight:800;
+                letter-spacing:.08em;
+                text-transform:uppercase;
             }
         }
     </style>
@@ -377,11 +452,11 @@
                         <tbody>
                         @forelse($asset->movements as $movement)
                             <tr style="border-top:1px solid #e2e8f0;">
-                                <td style="padding:16px 18px;">{{ $movement->created_at->format('d M Y, h:i A') }}</td>
-                                <td style="padding:16px 18px; text-transform:capitalize;">{{ $movement->movement_type }}</td>
-                                <td style="padding:16px 18px;">{{ optional($movement->fromWarehouse)->name ?: 'N/A' }}</td>
-                                <td style="padding:16px 18px;">{{ optional($movement->toWarehouse)->name ?: 'N/A' }}</td>
-                                <td style="padding:16px 18px;">{{ $movement->remarks ?: 'N/A' }}</td>
+                                <td data-label="Date" style="padding:16px 18px;">{{ $movement->created_at->format('d M Y, h:i A') }}</td>
+                                <td data-label="Type" style="padding:16px 18px; text-transform:capitalize;">{{ $movement->movement_type }}</td>
+                                <td data-label="From" style="padding:16px 18px;">{{ optional($movement->fromWarehouse)->name ?: 'N/A' }}</td>
+                                <td data-label="To" style="padding:16px 18px;">{{ optional($movement->toWarehouse)->name ?: 'N/A' }}</td>
+                                <td data-label="Remarks" style="padding:16px 18px;">{{ $movement->remarks ?: 'N/A' }}</td>
                             </tr>
                         @empty
                             <tr>

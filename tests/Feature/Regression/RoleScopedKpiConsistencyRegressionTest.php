@@ -314,6 +314,8 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
 
     public function test_delivery_taskboard_kpis_and_list_share_same_assigned_base_dataset(): void
     {
+        $this->travelTo(now()->startOfDay()->addHours(9));
+
         $organization = TestData::organization();
         $deliveryRole = $this->deliveryTeamRole($organization->id);
         $deliveryUser = $this->deliveryTeamUser($organization->id, $deliveryRole->id, 'delivery.kpi12@example.com');
@@ -428,6 +430,8 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
         ]));
         $failedBoard->assertOk();
         $this->assertSame(1, (int) $failedBoard->viewData('taskResultsCount'));
+
+        $this->travelBack();
     }
 
     public function test_delivery_taskboard_keeps_multiple_assigned_rows_for_the_same_rental_visible(): void

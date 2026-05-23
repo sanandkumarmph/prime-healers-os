@@ -177,7 +177,9 @@ class MobileActionBarRegressionTest extends TestCase
         $assetPage->assertOk()
             ->assertSee('.asset-detail-info-grid', false)
             ->assertSee('white-space:normal;', false)
-            ->assertSee('padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));', false);
+            ->assertSee('padding-bottom: calc(188px + env(safe-area-inset-bottom, 0px));', false)
+            ->assertSee('content:attr(data-label);', false)
+            ->assertSee('overflow-x: clip;', false);
 
         $verifyReturnPage = $this->get(route('assets.verify-return', $asset));
         $verifyReturnPage->assertOk()

@@ -290,6 +290,27 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
             ->assertDontSeeText('Completion Checklist');
     }
 
+    public function test_delivery_workflow_review_step_includes_mobile_safe_single_column_layout_hooks(): void
+    {
+        $organization = TestData::organization();
+        $deliveryUser = TestData::user($organization, [
+            'role' => User::ROLE_DELIVERY,
+        ]);
+
+        $this->actingAs($deliveryUser);
+
+        $delivery = $this->makeDeliveryTask($organization->id, $deliveryUser->id, 'delivery', 'in_progress');
+
+        $this->get(route('deliveries.show', $delivery))
+            ->assertOk()
+            ->assertSee('class="workflow-review-summary-grid"', false)
+            ->assertSee('grid-template-columns:minmax(0, 1fr) !important;', false)
+            ->assertSee('overflow-wrap:anywhere;', false)
+            ->assertSee('word-break:break-word;', false)
+            ->assertSee('Review &amp; Complete', false)
+            ->assertSeeText('I confirm the above details are correct and proof has been captured.');
+    }
+
     public function test_delivery_proof_history_renders_all_expected_proof_items_and_mobile_more_action_hook(): void
     {
         $organization = TestData::organization();

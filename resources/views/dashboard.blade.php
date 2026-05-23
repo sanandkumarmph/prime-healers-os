@@ -80,7 +80,7 @@
     $productsIndexUrl = $safeRoute('products.index');
     $customersIndexUrl = $safeRoute('customers.index');
     $deliveriesIndexUrl = $safeRoute('deliveries.index');
-    $myAssignedTasksUrl = $deliveriesIndexUrl ? route('deliveries.index', ['ownership' => 'my', 'workflow' => 'live']) : null;
+    $myAssignedTasksUrl = $deliveriesIndexUrl ? route('deliveries.index', ['ownership' => 'my']) : null;
     $myDeliveriesTodayUrl = $deliveriesIndexUrl ? route('deliveries.index', ['ownership' => 'my', 'tab' => 'today', 'task_type' => 'delivery']) : null;
     $myPickupsTodayUrl = $deliveriesIndexUrl ? route('deliveries.index', ['ownership' => 'my', 'tab' => 'today', 'task_type' => 'pickup']) : null;
     $myOverdueTasksUrl = $deliveriesIndexUrl ? route('deliveries.index', ['ownership' => 'my', 'tab' => 'overdue']) : null;

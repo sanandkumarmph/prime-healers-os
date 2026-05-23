@@ -1207,7 +1207,11 @@
         display:flex;
         align-items:flex-start;
         gap:10px;
+        min-width:0;
     }
+    .workflow-step-head > div,
+    .workflow-step-copy,
+    .workflow-step-hero-copy { min-width:0; max-width:100%; }
     .workflow-step-index {
         width:26px;
         height:26px;
@@ -1261,15 +1265,21 @@
         display:grid;
         grid-template-columns:repeat(2, minmax(0, 1fr));
         gap:8px;
+        min-width:0;
+        width:100%;
+        max-width:100%;
     }
     .workflow-review-summary-card {
         display:grid;
         gap:3px;
         min-width:0;
+        width:100%;
+        max-width:100%;
         padding:10px 11px;
         border:1px solid #dbe3ef;
         border-radius:14px;
         background:#fff;
+        overflow:hidden;
     }
     .workflow-review-summary-card span {
         color:#64748b;
@@ -1296,6 +1306,9 @@
         color:#334155;
         font-size:12px;
         min-width:0;
+        width:100%;
+        max-width:100%;
+        overflow:hidden;
     }
     .workflow-review-item strong {
         color:#0f172a;
@@ -1324,6 +1337,7 @@
         font-weight:800;
         letter-spacing:.04em;
         text-transform:uppercase;
+        white-space:nowrap;
     }
     .workflow-proof-history {
         display:grid;
@@ -1517,11 +1531,17 @@
             font-size:10px;
         }
         .workflow-review-summary-grid {
-            grid-template-columns:1fr;
+            display:grid !important;
+            grid-template-columns:minmax(0, 1fr) !important;
+            gap:8px;
         }
         .workflow-step {
             padding:11px;
             gap:9px;
+            min-width:0;
+            width:100%;
+            max-width:100%;
+            overflow:hidden;
         }
         .workflow-step-head strong { font-size:12px; }
         .workflow-step-head span,
@@ -1549,11 +1569,43 @@
             width:100%;
         }
         .workflow-review-item {
-            grid-template-columns:minmax(0, 1fr);
+            grid-template-columns:minmax(0, 1fr) !important;
             gap:6px;
+            padding:11px 12px;
         }
         .workflow-review-status {
             justify-self:start;
+            white-space:normal;
+        }
+        .workflow-review-summary-card {
+            display:grid;
+            grid-template-columns:minmax(0, 1fr);
+            gap:4px;
+            padding:11px 12px;
+        }
+        .workflow-review-summary-card span,
+        .workflow-review-summary-card strong,
+        .workflow-review-item strong,
+        .workflow-review-item span,
+        .workflow-step-head strong,
+        .workflow-step-head span,
+        .workflow-step-hero-copy strong,
+        .workflow-step-hero-copy span {
+            max-width:100%;
+            min-width:0;
+            white-space:normal;
+            overflow-wrap:anywhere;
+            word-break:break-word;
+        }
+        .workflow-proof-field > label[style*="display:flex"] {
+            width:100%;
+            min-width:0;
+            flex-wrap:nowrap;
+        }
+        .workflow-proof-field > label[style*="display:flex"] span {
+            min-width:0;
+            overflow-wrap:anywhere;
+            word-break:break-word;
         }
         .workflow-mobile-stepper[data-mobile-workflow-active="true"] [data-workflow-step-panel] {
             display:none;

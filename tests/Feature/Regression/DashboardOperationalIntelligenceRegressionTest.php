@@ -321,6 +321,113 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
         $this->travelBack();
     }
 
+    public function test_delivery_dashboard_kpis_match_default_taskboard_counts_without_mutating_rows(): void
+    {
+        $this->travelTo(now()->startOfDay()->addHours(9));
+
+        $organization = TestData::organization();
+        $deliveryRole = Role::create([
+            'organization_id' => $organization->id,
+            'name' => 'Delivery Team',
+            'slug' => User::ROLE_DELIVERY,
+            'permissions' => [
+                'deliveries' => ['read', 'update'],
+                'rentals' => ['read'],
+            ],
+        ]);
+
+        $deliveryUser = User::factory()->create([
+            'organization_id' => $organization->id,
+            'role' => User::ROLE_DELIVERY,
+            'role_id' => $deliveryRole->id,
+            'is_internal' => true,
+            'is_active' => true,
+            'email_verified_at' => now(),
+        ]);
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Parity Customer',
+            'phone' => '9000000012',
+            'address' => 'Koramangala',
+            'city' => 'Bengaluru',
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Parity Product',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'available_quantity' => 30,
+            'total_quantity' => 30,
+            'price_per_day' => 200,
+            'rental_price' => 1200,
+            'sale_price' => 0,
+        ]);
+
+        $rental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'start_date' => now()->subDays(3)->toDateString(),
+            'end_date' => now()->addDays(5)->toDateString(),
+            'status' => 'active',
+            'rental_amount' => 1200,
+        ]);
+
+        $taskBlueprints = [
+            ['type' => 'delivery', 'status' => 'pending', 'scheduled_at' => now()->copy()->addHour()],
+            ['type' => 'delivery', 'status' => 'in_progress', 'scheduled_at' => now()->copy()->addHours(2)],
+            ['type' => 'delivery', 'status' => 'pending', 'scheduled_at' => now()->copy()->addHours(3)],
+            ['type' => 'delivery', 'status' => 'pending', 'scheduled_at' => now()->copy()->subDay()],
+            ['type' => 'delivery', 'status' => 'completed', 'scheduled_at' => now()->copy()->subHours(5), 'completed_at' => now()->copy()->subHours(2)],
+            ['type' => 'delivery', 'status' => 'cancelled', 'scheduled_at' => now()->copy()->subHours(4)],
+            ['type' => 'pickup', 'status' => 'pending', 'scheduled_at' => now()->copy()->addHour()],
+            ['type' => 'pickup', 'status' => 'in_progress', 'scheduled_at' => now()->copy()->addHours(4)],
+            ['type' => 'pickup', 'status' => 'pending', 'scheduled_at' => now()->copy()->subDay()],
+            ['type' => 'pickup', 'status' => 'completed', 'scheduled_at' => now()->copy()->subHours(6), 'completed_at' => now()->copy()->subHour()],
+            ['type' => 'pickup', 'status' => 'pending', 'scheduled_at' => now()->copy()->addDays(1)],
+            ['type' => 'pickup', 'status' => 'cancelled', 'scheduled_at' => now()->copy()->subHours(3), 'pickup_status' => 'failed_attempt', 'failed_attempt_reason' => 'customer_not_available'],
+        ];
+
+        foreach ($taskBlueprints as $task) {
+            Delivery::create(array_merge([
+                'organization_id' => $organization->id,
+                'rental_id' => $rental->id,
+                'assigned_user_id' => $deliveryUser->id,
+            ], $task));
+        }
+
+        $beforeIds = Delivery::query()->orderBy('id')->pluck('id')->all();
+        $beforeStatuses = Delivery::query()->orderBy('id')->pluck('status', 'id')->all();
+
+        $dashboard = $this->actingAs($deliveryUser)->get(route('dashboard'));
+        $taskboard = $this->actingAs($deliveryUser)->get(route('deliveries.index'));
+
+        $dashboard->assertOk()
+            ->assertViewHas('dashboardTaskMetricsScope', 'assigned')
+            ->assertSee(route('deliveries.index', ['ownership' => 'my']), false)
+            ->assertDontSee(route('deliveries.index', ['ownership' => 'my', 'workflow' => 'live']), false);
+        $taskboard->assertOk();
+
+        $this->assertSame((int) $taskboard->viewData('activeTasksCount'), (int) $dashboard->viewData('assignedOpenTasksCount'));
+        $this->assertSame((int) $taskboard->viewData('todayOpenDeliveryCount'), (int) $dashboard->viewData('myDeliveriesTodayCount'));
+        $this->assertSame((int) $taskboard->viewData('todayOpenPickupCount'), (int) $dashboard->viewData('myPickupsTodayCount'));
+        $this->assertSame((int) $taskboard->viewData('overdueTasksCount'), (int) ($dashboard->viewData('overdueDeliveryCount') + $dashboard->viewData('overduePickupCount')));
+        $this->assertSame((int) $taskboard->viewData('failedTasksCount'), (int) $dashboard->viewData('failedTasksCount'));
+
+        $afterIds = Delivery::query()->orderBy('id')->pluck('id')->all();
+        $afterStatuses = Delivery::query()->orderBy('id')->pluck('status', 'id')->all();
+
+        $this->assertSame($beforeIds, $afterIds);
+        $this->assertSame($beforeStatuses, $afterStatuses);
+
+        $this->travelBack();
+    }
+
     public function test_sales_dashboard_is_accessible_without_dashboard_main_and_hides_sensitive_management_widgets(): void
     {
         $organization = TestData::organization();

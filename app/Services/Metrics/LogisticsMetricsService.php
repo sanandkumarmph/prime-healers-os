@@ -108,6 +108,35 @@ class LogisticsMetricsService
         ];
     }
 
+    public function deliveryFocusedTaskboardSnapshot(Collection $deliveries, ?Carbon $today = null): array
+    {
+        $today = ($today ?? Carbon::today())->copy()->startOfDay();
+
+        $assignedBoardTasks = $deliveries
+            ->reject(fn (Delivery $delivery) => $delivery->status === 'cancelled')
+            ->values();
+
+        $todayOpenDeliveryTasks = $deliveries
+            ->filter(fn (Delivery $delivery) => $delivery->type === 'delivery'
+                && in_array($delivery->status, ['pending', 'in_progress'], true)
+                && optional($delivery->scheduled_at)?->isSameDay($today))
+            ->values();
+
+        $todayOpenPickupTasks = $deliveries
+            ->filter(fn (Delivery $delivery) => $delivery->type === 'pickup'
+                && in_array($delivery->status, ['pending', 'in_progress'], true)
+                && optional($delivery->scheduled_at)?->isSameDay($today))
+            ->values();
+
+        return [
+            'assignedVisibleTasksCount' => (int) $assignedBoardTasks->count(),
+            'todayOpenDeliveryCount' => (int) $todayOpenDeliveryTasks->count(),
+            'todayOpenPickupCount' => (int) $todayOpenPickupTasks->count(),
+            'overdueTasksCount' => (int) $this->applyWorkflowFilter($deliveries, 'overdue', $today)->count(),
+            'failedTasksCount' => (int) $this->applyWorkflowFilter($deliveries, 'failed', $today)->count(),
+        ];
+    }
+
     public function applyWorkflowFilter(Collection $deliveries, string $workflow, ?Carbon $today = null): Collection
     {
         $today = ($today ?? Carbon::today())->copy()->startOfDay();
