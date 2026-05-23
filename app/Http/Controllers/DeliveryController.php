@@ -1545,24 +1545,15 @@ class DeliveryController extends Controller
             ->values();
         $boardBaseDeliveries = $hydrateDeliveries($boardBaseTaskIds);
 
-        $applyTaskboardCollectionFilters = function (Collection $deliveries) use ($taskType, $statusFilter, $workflowFilter, $tab, $today, $todayStart, $deliveryFocusedBoard) {
+        $applyTaskboardCollectionFilters = function (Collection $deliveries) use ($taskType, $statusFilter, $workflowFilter, $tab, $today, $todayStart) {
             $filtered = $deliveries->values();
 
             if (in_array($taskType, ['delivery', 'pickup'], true)) {
                 $filtered = $filtered->where('type', $taskType)->values();
             }
 
-            $usesImplicitOpenOnly = $deliveryFocusedBoard
-                && $statusFilter === ''
-                && $workflowFilter === ''
-                && in_array($tab, ['all', 'deliveries', 'pickups', 'today', 'overdue', 'in_progress'], true);
-
             if (in_array($statusFilter, ['pending', 'in_progress', 'completed', 'cancelled'], true)) {
                 $filtered = $filtered->where('status', $statusFilter)->values();
-            } elseif ($usesImplicitOpenOnly) {
-                $filtered = $filtered
-                    ->filter(fn (Delivery $delivery) => in_array($delivery->status, ['pending', 'in_progress'], true))
-                    ->values();
             } elseif ($workflowFilter !== 'failed') {
                 $filtered = $filtered
                     ->reject(fn (Delivery $delivery) => $delivery->status === 'cancelled')

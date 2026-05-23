@@ -181,16 +181,16 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
         $myTaskboard->assertOk();
 
         $this->assertSame(4, (int) $superadminTaskboard->viewData('totalTasksCount'));
-        $this->assertSame(0, (int) $deliveryTaskboard->viewData('totalTasksCount'));
+        $this->assertSame(2, (int) $deliveryTaskboard->viewData('totalTasksCount'));
         $this->assertSame(0, (int) $deliveryTaskboard->viewData('deliveryTasksCount'));
         $this->assertSame(0, (int) $deliveryTaskboard->viewData('pickupTasksCount'));
-        $this->assertSame(0, (int) $deliveryTaskboard->viewData('completedDeliveryCount'));
-        $this->assertSame(0, (int) $deliveryTaskboard->viewData('completedPickupCount'));
-        $this->assertSame(0, (int) $deliveryTaskboard->viewData('completedTodayCount'));
+        $this->assertSame(1, (int) $deliveryTaskboard->viewData('completedDeliveryCount'));
+        $this->assertSame(1, (int) $deliveryTaskboard->viewData('completedPickupCount'));
+        $this->assertSame(2, (int) $deliveryTaskboard->viewData('completedTodayCount'));
         $this->assertSame('my', (string) $deliveryTaskboard->viewData('ownershipFilter'));
-        $this->assertSame(0, (int) $deliveryTaskboard->viewData('taskResultsCount'));
-        $this->assertSame(0, (int) $myTaskboard->viewData('taskResultsCount'));
-        $this->assertSame(0, (int) $deliveryTaskboard->viewData('activeTasksCount'));
+        $this->assertSame(2, (int) $deliveryTaskboard->viewData('taskResultsCount'));
+        $this->assertSame(2, (int) $myTaskboard->viewData('taskResultsCount'));
+        $this->assertSame(2, (int) $deliveryTaskboard->viewData('activeTasksCount'));
         $this->assertSame(0, (int) $deliveryTaskboard->viewData('todayOpenDeliveryCount'));
         $this->assertSame(0, (int) $deliveryTaskboard->viewData('todayOpenPickupCount'));
 
@@ -389,8 +389,8 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
         $defaultBoard = $this->actingAs($deliveryUser)->get(route('deliveries.index'));
         $defaultBoard->assertOk();
         $this->assertSame('my', (string) $defaultBoard->viewData('ownershipFilter'));
-        $this->assertSame(12, (int) $defaultBoard->viewData('activeTasksCount'));
-        $this->assertSame(12, (int) $defaultBoard->viewData('taskResultsCount'));
+        $this->assertSame(13, (int) $defaultBoard->viewData('activeTasksCount'));
+        $this->assertSame(13, (int) $defaultBoard->viewData('taskResultsCount'));
         $this->assertSame(5, (int) $defaultBoard->viewData('todayOpenDeliveryCount'));
         $this->assertSame(4, (int) $defaultBoard->viewData('todayOpenPickupCount'));
         $this->assertSame(3, (int) $defaultBoard->viewData('overdueTasksCount'));
@@ -400,6 +400,7 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
             'ownership' => 'my',
             'tab' => 'today',
             'task_type' => 'delivery',
+            'workflow' => 'live',
         ]));
         $deliveriesTodayBoard->assertOk();
         $this->assertSame(5, (int) $deliveriesTodayBoard->viewData('taskResultsCount'));
@@ -408,6 +409,7 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
             'ownership' => 'my',
             'tab' => 'today',
             'task_type' => 'pickup',
+            'workflow' => 'live',
         ]));
         $pickupsTodayBoard->assertOk();
         $this->assertSame(4, (int) $pickupsTodayBoard->viewData('taskResultsCount'));
