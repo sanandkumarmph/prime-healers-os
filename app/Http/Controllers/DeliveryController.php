@@ -2353,6 +2353,10 @@ class DeliveryController extends Controller
 
         $delivery->update($data);
 
+        if ($rental && $delivery->type === 'delivery' && $wasCompleted && $delivery->status !== 'completed') {
+            $this->deliveryWorkflowService()->reopenDeliveryForRental($this->orgId(), $rental);
+        }
+
         if ($delivery->type === 'pickup' && !$wasCompleted && $delivery->status === 'completed' && $rental) {
             $this->finalizePickupCompletionForRental($delivery, $rental, optional($delivery->completed_at)->toDateTimeString());
         }

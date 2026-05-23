@@ -366,6 +366,26 @@ class DeliveryWorkflowService
         $rental->unsetRelation('rentalItems');
     }
 
+    public function reopenDeliveryForRental(int $organizationId, Rental $rental): void
+    {
+        if (!Rental::hasRentalItemsTable()) {
+            return;
+        }
+
+        foreach ($this->loadRentalProgressItems($organizationId, $rental) as $item) {
+            if ((int) $item->delivered_quantity_value <= 0 && (int) $item->returned_quantity_value <= 0) {
+                continue;
+            }
+
+            $item->update([
+                'delivered_quantity' => 0,
+                'returned_quantity' => 0,
+            ]);
+        }
+
+        $rental->unsetRelation('rentalItems');
+    }
+
     public function recordPartialDelivery(
         int $organizationId,
         Delivery $delivery,

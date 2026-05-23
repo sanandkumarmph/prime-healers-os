@@ -205,6 +205,12 @@ class MobileActionBarRegressionTest extends TestCase
             ->assertSee('Mobile task controls', false)
             ->assertSeeText('Task Type')
             ->assertSee('data-task-card', false)
+            ->assertSee('ops-mobile-meta-grid', false)
+            ->assertSee('Delivery Date', false)
+            ->assertSeeText('Warehouse')
+            ->assertSeeText('Staff')
+            ->assertSeeText('Area')
+            ->assertSee('style="--ops-mobile-action-columns:', false)
             ->assertSee(route('deliveries.show', $delivery), false)
             ->assertSeeText('Start Delivery');
     }

@@ -602,38 +602,9 @@
     }
     .ops-mobile-main {
         display:grid;
-        grid-template-columns:minmax(0, 1fr) minmax(84px, auto);
         gap:8px;
         align-items:start;
         min-width:0;
-    }
-    .ops-mobile-side {
-        display:grid;
-        gap:6px;
-        min-width:0;
-        text-align:right;
-    }
-    .ops-mobile-side-row {
-        display:grid;
-        gap:1px;
-        min-width:0;
-    }
-    .ops-mobile-side-row span:first-child {
-        color:#64748b;
-        font-size:9.5px;
-        font-weight:800;
-        letter-spacing:.05em;
-        text-transform:uppercase;
-    }
-    .ops-mobile-side-row span:last-child {
-        color:#0f172a;
-        font-size:11.5px;
-        line-height:1.3;
-        font-weight:700;
-        min-width:0;
-        overflow:hidden;
-        text-overflow:ellipsis;
-        white-space:nowrap;
     }
     .ops-mobile-address {
         display:-webkit-box;
@@ -651,7 +622,7 @@
         color:#2563eb;
         text-decoration:none;
     }
-    .ops-mobile-meta-row {
+    .ops-mobile-meta-grid {
         display:grid;
         grid-template-columns:repeat(2, minmax(0, 1fr));
         gap:6px;
@@ -664,6 +635,7 @@
         border-radius:10px;
         border:1px solid #eef2f7;
         background:#f8fafc;
+        max-width:100%;
     }
     .ops-mobile-meta span:first-child {
         color:#64748b;
@@ -674,9 +646,11 @@
     }
     .ops-mobile-meta span:last-child {
         color:#0f172a;
-        font-size:13px;
-        line-height:1.4;
+        font-size:12.5px;
+        line-height:1.35;
+        font-weight:700;
         overflow-wrap:anywhere;
+        word-break:break-word;
     }
     .ops-mobile-actions {
         display:grid;
@@ -684,7 +658,7 @@
     }
     .ops-mobile-icon-row {
         display:grid;
-        grid-template-columns:repeat(4, minmax(0, 1fr));
+        grid-template-columns:repeat(var(--ops-mobile-action-columns, 3), minmax(0, 1fr));
         gap:6px;
         align-items:stretch;
     }
@@ -694,6 +668,33 @@
         width:100%;
         min-height:38px;
         white-space:nowrap;
+    }
+    .ops-mobile-icon-row .mobile-utility-btn {
+        min-width:0;
+        min-height:44px;
+        padding:7px 6px;
+        border-radius:12px;
+        display:grid;
+        justify-items:center;
+        align-content:center;
+        gap:4px;
+        text-align:center;
+    }
+    .ops-mobile-icon-row .mobile-utility-btn span {
+        display:block;
+        min-width:0;
+        max-width:100%;
+        color:inherit;
+        font-size:10.5px;
+        font-weight:800;
+        line-height:1.15;
+        white-space:nowrap;
+        overflow:hidden;
+        text-overflow:ellipsis;
+    }
+    .ops-mobile-icon-row .mobile-utility-btn svg {
+        width:15px;
+        height:15px;
     }
     .ops-mobile-more summary {
         min-height:36px;
@@ -880,14 +881,10 @@
             background:#eff6ff;
             color:#1d4ed8;
         }
-        .ops-filter-grid,
-        .ops-mobile-main {
-            grid-template-columns:minmax(0, 1fr) 86px;
-            gap:8px;
-        }
-        .ops-mobile-meta-row { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+        .ops-filter-grid { grid-template-columns:minmax(0, 1fr) 86px; gap:8px; }
+        .ops-mobile-meta-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
         .ops-mobile-actions { gap:8px; }
-        .ops-mobile-icon-row { grid-template-columns:repeat(4, minmax(0, 1fr)); align-items:stretch; }
+        .ops-mobile-icon-row { align-items:stretch; }
         .ops-mobile-actions .ops-action-btn,
         .ops-mobile-actions .ops-action-btn-primary {
             width:100%;
@@ -895,18 +892,6 @@
             padding:0 8px;
             border-radius:10px;
             justify-content:center;
-        }
-        .ops-mobile-icon-row .mobile-utility-btn {
-            padding:0;
-            min-height:34px;
-            aspect-ratio:1 / 1;
-        }
-        .ops-mobile-icon-row .mobile-utility-btn span {
-            display:none;
-        }
-        .ops-mobile-icon-row .mobile-utility-btn svg {
-            width:16px;
-            height:16px;
         }
         .ops-board-actions { width:100%; }
         .ops-board-actions .rn-btn,
@@ -944,9 +929,6 @@
         .ops-mobile-phone,
         .ops-mobile-product,
         .ops-mobile-address {
-            font-size:11px;
-        }
-        .ops-mobile-side-row span:last-child {
             font-size:11px;
         }
         .ops-mobile-meta span:last-child {
@@ -1748,28 +1730,26 @@
                             </div>
 
                             <div class="ops-mobile-main">
-                                <div class="ops-mobile-meta-row">
+                                <div class="ops-mobile-meta-grid">
                                     <div class="ops-mobile-meta">
-                                        <span>{{ $delivery->type === 'pickup' ? 'Pickup' : 'Delivery' }}</span>
-                                        <span>{{ $delivery->scheduled_at ? $delivery->scheduled_at->format('d M') : 'Not scheduled' }}</span>
+                                        <span>{{ $delivery->type === 'pickup' ? 'Pickup Date' : 'Delivery Date' }}</span>
+                                        <span>{{ $delivery->scheduled_at ? $delivery->scheduled_at->format('d M Y') : 'Not scheduled' }}</span>
                                     </div>
                                     <div class="ops-mobile-meta">
                                         <span>Warehouse</span>
-                                        <span>{{ \Illuminate\Support\Str::limit($delivery->rental?->dispatchWarehouse?->name ?? $delivery->sale?->asset?->warehouse?->name ?? 'Any warehouse', 18) }}</span>
+                                        <span>{{ $delivery->rental?->dispatchWarehouse?->name ?? $delivery->sale?->asset?->warehouse?->name ?? 'Any warehouse' }}</span>
                                     </div>
-                                </div>
-                                <div class="ops-mobile-side">
-                                    <div class="ops-mobile-side-row">
+                                    <div class="ops-mobile-meta">
                                         <span>Time</span>
                                         <span>{{ $scheduleLabel }}</span>
                                     </div>
-                                    <div class="ops-mobile-side-row">
+                                    <div class="ops-mobile-meta">
                                         <span>Staff</span>
-                                        <span>{{ \Illuminate\Support\Str::limit($assignedName, 16) }}</span>
+                                        <span>{{ $assignedName }}</span>
                                     </div>
-                                    <div class="ops-mobile-side-row">
+                                    <div class="ops-mobile-meta">
                                         <span>Area</span>
-                                        <span>{{ \Illuminate\Support\Str::limit($customerCity ?: 'No city saved', 16) }}</span>
+                                        <span>{{ $customerCity ?: 'No city saved' }}</span>
                                     </div>
                                 </div>
                             </div>
@@ -1789,7 +1769,7 @@
                             @endif
 
                             <div class="ops-mobile-actions">
-                                <div class="ops-mobile-icon-row">
+                                <div class="ops-mobile-icon-row" style="--ops-mobile-action-columns: {{ $mapUrl ? 4 : 3 }};">
                                     @if($callHref)
                                         <a href="{{ $callHref }}" class="ops-action-btn mobile-utility-btn" title="Call customer" aria-label="Call customer">
                                             {!! $navIcon('call') !!}
