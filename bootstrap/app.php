@@ -7,6 +7,12 @@ use Illuminate\Session\TokenMismatchException;
 use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
+if (($processAppEnv = ($_ENV['APP_ENV'] ?? $_SERVER['APP_ENV'] ?? getenv('APP_ENV'))) !== false && is_string($processAppEnv) && $processAppEnv !== '') {
+    putenv('APP_ENV='.$processAppEnv);
+    $_ENV['APP_ENV'] = $processAppEnv;
+    $_SERVER['APP_ENV'] = $processAppEnv;
+}
+
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',

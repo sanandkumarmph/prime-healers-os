@@ -365,6 +365,7 @@
 
 <style>
     .sale-show-page { display:grid; gap:10px; width:100%; max-width:1080px; min-width:0; margin:0 auto; padding:8px 0 16px; overflow-x:clip; }
+    .sale-show-page > * { min-width:0; max-width:100%; }
     .sale-show-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; min-width:0; }
     .sale-show-header h1 { margin:0; font-size:24px; color:#0f172a; line-height:1.08; }
     .sale-show-header p { margin:4px 0 0; color:#64748b; font-size:11.5px; max-width:760px; }
@@ -527,6 +528,23 @@
 
     @media (max-width: 720px) {
         .sale-show-page { padding:8px 0 calc(112px + env(safe-area-inset-bottom, 0px)); }
+        .sale-show-header {
+            gap: 10px;
+        }
+        .sale-show-header > div:first-child {
+            width: 100%;
+            min-width: 0;
+        }
+        .sale-show-header h1 {
+            font-size: 20px;
+            line-height: 1.08;
+            letter-spacing: -.03em;
+        }
+        .sale-show-header p {
+            font-size: 11.5px;
+            line-height: 1.45;
+            max-width: 100%;
+        }
         .summary-grid,
         .detail-grid { grid-template-columns:1fr; }
         .sale-show-actions { display:none; }
@@ -562,6 +580,33 @@
         .sale-payment-history-item .ops-btn-light {
             width:100%;
             min-height:40px;
+        }
+        .ph-sale-section-nav {
+            position: static;
+            top: auto;
+            margin: -2px 0 8px;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            box-shadow: none;
+            backdrop-filter: none;
+            overflow: hidden;
+        }
+        .ph-sale-section-nav .ph-section-nav {
+            width: 100%;
+            max-width: 100%;
+            padding: 4px;
+            gap: 6px;
+            border-radius: 16px;
+            justify-content: flex-start;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scroll-padding-inline: 4px;
+        }
+        .ph-sale-section-nav .ph-section-nav-link {
+            min-height: 30px;
+            padding: 6px 10px;
+            font-size: 10.5px;
         }
     }
 </style>
@@ -640,6 +685,7 @@
     ])
 
     <x-section-nav
+        class="ph-sale-section-nav"
         label="Sale page sections"
         :items="[
             ['id' => 'sale-overview-section', 'label' => 'Overview'],

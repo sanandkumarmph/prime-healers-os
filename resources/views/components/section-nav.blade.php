@@ -10,7 +10,7 @@
 @endphp
 
 @if($navItems->isNotEmpty())
-    <div class="ph-section-nav-shell" data-section-nav>
+    <div {{ $attributes->class(['ph-section-nav-shell']) }} data-section-nav>
         <nav class="ph-section-nav" aria-label="{{ $label }}">
             @foreach($navItems as $item)
                 <a

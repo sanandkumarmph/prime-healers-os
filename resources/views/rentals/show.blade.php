@@ -540,6 +540,12 @@
     .ph-rental-reference-shell {
         display: grid;
         gap: 12px;
+        min-width: 0;
+        max-width: 100%;
+    }
+    .ph-rental-reference-shell > * {
+        min-width: 0;
+        max-width: 100%;
     }
     .ph-rental-hero-tools {
         display: flex;
@@ -1217,6 +1223,63 @@
             text-align: left;
         }
         .detail-page { padding:14px; }
+        .ph-rental-reference-shell {
+            gap: 10px;
+        }
+        .ph-rental-reference-shell .ph-operational-header {
+            gap: 10px;
+            padding-bottom: 2px;
+        }
+        .ph-rental-reference-shell .ph-operational-header__main {
+            width: 100%;
+            gap: 6px;
+        }
+        .ph-rental-reference-shell .ph-operational-header__back {
+            font-size: 12px;
+        }
+        .ph-rental-reference-shell .ph-operational-header h1 {
+            font-size: 20px;
+            line-height: 1.08;
+            letter-spacing: -.03em;
+        }
+        .ph-rental-reference-shell .ph-operational-header p {
+            font-size: 11.5px;
+            line-height: 1.45;
+        }
+        .ph-rental-reference-shell .ph-operational-header__meta {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px 10px;
+        }
+        .ph-rental-reference-shell .ph-operational-header__meta-item strong {
+            font-size: 12px;
+            line-height: 1.35;
+        }
+        .ph-rental-reference-shell .ph-operational-header__chips,
+        .ph-rental-reference-shell .ph-operational-header__slot {
+            width: 100%;
+        }
+        .ph-rental-hero-tools {
+            width: 100%;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 6px;
+        }
+        .ph-rental-hero-tools > *,
+        .ph-rental-hero-tools form {
+            min-width: 0;
+            width: 100%;
+            margin: 0;
+        }
+        .ph-rental-hero-tools .detail-btn-secondary,
+        .ph-rental-hero-tools .detail-btn-danger {
+            width: 100%;
+            min-height: 36px;
+            padding: 7px 10px;
+            font-size: 11.5px;
+            justify-content: center;
+            text-align: center;
+            white-space: nowrap;
+        }
         .metric-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
         .detail-actions { display:none; }
         .mobile-inline-actions { display:none; }
@@ -1371,6 +1434,33 @@
             bottom:calc(100% + 8px);
             width:min(280px, calc(100vw - 24px));
         }
+        .ph-rental-section-nav {
+            position: static;
+            top: auto;
+            margin: -2px 0 8px;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            box-shadow: none;
+            backdrop-filter: none;
+            overflow: hidden;
+        }
+        .ph-rental-section-nav .ph-section-nav {
+            width: 100%;
+            max-width: 100%;
+            padding: 4px;
+            gap: 6px;
+            border-radius: 16px;
+            justify-content: flex-start;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            scroll-padding-inline: 4px;
+        }
+        .ph-rental-section-nav .ph-section-nav-link {
+            min-height: 30px;
+            padding: 6px 10px;
+            font-size: 10.5px;
+        }
     }
 </style>
 
@@ -1416,6 +1506,7 @@
         />
 
         <x-section-nav
+            class="ph-rental-section-nav"
             label="Rental page sections"
             :items="[
                 ['id' => 'rental-overview-section', 'label' => 'Overview'],

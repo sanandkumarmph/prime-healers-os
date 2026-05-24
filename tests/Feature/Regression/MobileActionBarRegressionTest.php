@@ -88,6 +88,8 @@ class MobileActionBarRegressionTest extends TestCase
         $rentalPage = $this->get(route('rentals.show', $rental));
         $rentalPage->assertOk()
             ->assertSee('ph-mobile-action-bar', false)
+            ->assertSee('ph-rental-section-nav', false)
+            ->assertSee('grid-template-columns: repeat(2, minmax(0, 1fr));', false)
             ->assertSeeText('Invoice')
             ->assertSeeText('More')
             ->assertDontSee('aria-label="Rental bottom actions"', false);
@@ -122,6 +124,7 @@ class MobileActionBarRegressionTest extends TestCase
         $salePage = $this->get(route('sales.show', $sale));
         $salePage->assertOk()
             ->assertSee('ph-mobile-action-bar', false)
+            ->assertSee('ph-sale-section-nav', false)
             ->assertSeeText('Invoice')
             ->assertSeeText('Paid')
             ->assertSeeText('More')
