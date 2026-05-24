@@ -33,7 +33,7 @@
             @media (max-width: 767px) {
                 .ph-mobile-action-spacer {
                     display:block;
-                    height:112px;
+                    height:102px;
                     pointer-events:none;
                 }
 
@@ -45,7 +45,7 @@
                     z-index:906;
                     display:flex;
                     align-items:center;
-                    gap:8px;
+                    gap:6px;
                     padding:6px;
                     border:1px solid #dbe3ef;
                     border-radius:18px;
@@ -53,7 +53,7 @@
                     box-shadow:0 16px 40px rgba(15,23,42,.18);
                     backdrop-filter:blur(14px);
                     max-width:calc(100vw - 24px);
-                    padding-bottom:calc(6px + env(safe-area-inset-bottom, 0px));
+                    padding-bottom:calc(4px + env(safe-area-inset-bottom, 0px));
                 }
 
                 .ph-mobile-action-bar > a,
@@ -71,13 +71,13 @@
 
                 .ph-mobile-action-button {
                     width:100%;
-                    min-height:44px;
+                    min-height:40px;
                     display:inline-flex;
                     align-items:center;
                     justify-content:center;
                     gap:6px;
-                    padding:10px 12px;
-                    border-radius:12px;
+                    padding:8px 10px;
+                    border-radius:11px;
                     border:1px solid #cbd5e1;
                     background:#fff;
                     color:#0f172a;
@@ -117,12 +117,12 @@
                     position:absolute;
                     right:0;
                     bottom:calc(100% + 8px);
-                    width:min(280px, calc(100vw - 24px));
+                    width:min(260px, calc(100vw - 24px));
                     max-height:min(60vh, 420px);
                     overflow:auto;
                     display:grid;
                     gap:6px;
-                    padding:10px;
+                    padding:8px;
                     border:1px solid #dbe3ef;
                     border-radius:16px;
                     background:#fff;
@@ -132,13 +132,13 @@
                 .ph-mobile-action-sheet a,
                 .ph-mobile-action-sheet button {
                     width:100%;
-                    min-height:40px;
+                    min-height:36px;
                     display:flex;
                     align-items:center;
                     justify-content:flex-start;
                     gap:6px;
-                    padding:10px 12px;
-                    border-radius:12px;
+                    padding:8px 10px;
+                    border-radius:11px;
                     border:1px solid #e2e8f0;
                     background:#fff;
                     color:#0f172a;

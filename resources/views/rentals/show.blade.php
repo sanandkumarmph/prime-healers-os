@@ -565,6 +565,7 @@
         display: flex;
         gap: 8px;
         flex-wrap: wrap;
+        min-width:0;
     }
     .ph-rental-detail-list {
         display: grid;
@@ -646,6 +647,7 @@
         display: flex;
         gap: 6px;
         flex-wrap: wrap;
+        min-width:0;
     }
     .ph-rental-notes-shell {
         display: grid;
@@ -654,9 +656,9 @@
     .rental-mobile-actions {
         display:grid;
         grid-template-columns:repeat(2, minmax(0, 1fr));
-        gap:8px;
+        gap:6px;
         align-items:stretch;
-        grid-auto-rows:minmax(44px, auto);
+        grid-auto-rows:minmax(40px, auto);
     }
     .rental-mobile-actions > *,
     .rental-mobile-actions form,
@@ -672,10 +674,14 @@
     .rental-mobile-actions > button,
     .rental-mobile-actions > form > button {
         width:100%;
-        min-height:44px;
+        min-height:40px;
         justify-content:center;
-        font-size:12px;
+        font-size:11.5px;
         font-weight:800;
+        line-height:1.2;
+        padding:8px 10px;
+        text-align:center;
+        white-space:normal;
     }
     .mobile-actions-menu summary {
         list-style:none;
@@ -774,7 +780,7 @@
         display:flex;
         align-items:center;
         justify-content:flex-end;
-        gap:8px;
+        gap:6px;
         flex-wrap:wrap;
         flex:1 1 520px;
     }
@@ -790,14 +796,14 @@
         align-items:center;
         justify-content:center;
         gap:6px;
-        min-height:42px;
-        padding:10px 15px;
+        min-height:38px;
+        padding:8px 12px;
         border-radius:14px;
         background:#0f172a;
         border:1px solid #0f172a;
         color:#fff;
         text-decoration:none;
-        font-size:13px;
+        font-size:12px;
         font-weight:800;
         line-height:1.2;
         box-shadow:0 12px 26px rgba(15,23,42,.18);
@@ -1284,9 +1290,9 @@
         }
         #rental-billing-actions .detail-btn,
         #rental-billing-actions .detail-btn-secondary {
-            min-height:38px;
-            padding:7px 10px;
-            font-size:12px;
+            min-height:36px;
+            padding:6px 9px;
+            font-size:11.5px;
         }
         .rental-cta-shell {
             position:fixed;
@@ -1310,6 +1316,7 @@
         .rental-cta-actions {
             width:100%;
             justify-content:flex-start;
+            gap:6px;
         }
         .rental-cta-actions > form,
         .rental-cta-actions > a,
@@ -1325,8 +1332,38 @@
         .rental-cta-actions .detail-btn,
         .rental-cta-actions .detail-btn-secondary {
             width:100%;
-            min-height:42px;
+            min-height:38px;
             justify-content:center;
+            padding:7px 9px;
+            font-size:11.5px;
+            line-height:1.2;
+        }
+        .ph-rental-action-links,
+        .ph-rental-inline-toolbar {
+            display:grid;
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+            gap:6px;
+            width:100%;
+        }
+        .ph-rental-action-links > *,
+        .ph-rental-inline-toolbar > *,
+        .ph-rental-action-links form,
+        .ph-rental-inline-toolbar form {
+            min-width:0;
+            width:100%;
+        }
+        .ph-rental-action-links .detail-btn,
+        .ph-rental-action-links .detail-btn-secondary,
+        .ph-rental-inline-toolbar .detail-btn,
+        .ph-rental-inline-toolbar .detail-btn-secondary {
+            width:100%;
+            min-height:36px;
+            padding:6px 8px;
+            font-size:11.5px;
+            line-height:1.2;
+            justify-content:center;
+            text-align:center;
+            white-space:normal;
         }
         .rental-cta-panel {
             right:0;
