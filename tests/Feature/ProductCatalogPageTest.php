@@ -536,6 +536,53 @@ class ProductCatalogPageTest extends TestCase
             ->assertSeeInOrder(['Sale Units', '>1<'], false);
     }
 
+    public function test_product_show_get_does_not_mutate_tracked_stock_or_product_type(): void
+    {
+        $warehouse = Warehouse::create([
+            'organization_id' => $this->organizationId,
+            'name' => 'Read Only Warehouse',
+            'code' => 'ROW',
+            'is_active' => true,
+        ]);
+
+        $product = $this->makeProduct([
+            'name' => 'Tracked Oxygen Unit',
+            'product_type' => Product::TYPE_SELLABLE,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_RENTAL,
+            'total_quantity' => 0,
+            'available_quantity' => 0,
+            'is_sellable' => true,
+            'is_rentable' => false,
+        ]);
+
+        Asset::create([
+            'organization_id' => $this->organizationId,
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'asset_name' => 'Tracked Oxygen Unit Asset',
+            'serial_number' => 'ROW-001',
+            'asset_stage' => Asset::STAGE_RENTAL_STOCK,
+            'condition_status' => 'good',
+            'asset_status' => Asset::STATUS_AVAILABLE,
+        ]);
+
+        $before = $product->fresh(['saleUnits', 'rentalUnits']);
+
+        $this->get(route('products.show', $product))
+            ->assertOk()
+            ->assertSee('Stock Summary')
+            ->assertSee('Rental Assets');
+
+        $after = $product->fresh();
+
+        $this->assertSame($before->product_type, $after->product_type);
+        $this->assertSame($before->stock_mode, $after->stock_mode);
+        $this->assertSame((int) $before->total_quantity, (int) $after->total_quantity);
+        $this->assertSame((int) $before->available_quantity, (int) $after->available_quantity);
+        $this->assertSame((bool) $before->is_sellable, (bool) $after->is_sellable);
+        $this->assertSame((bool) $before->is_rentable, (bool) $after->is_rentable);
+    }
+
     public function test_product_master_gst_fields_can_be_saved_and_updated(): void
     {
         $storeResponse = $this->post(route('products.store'), [

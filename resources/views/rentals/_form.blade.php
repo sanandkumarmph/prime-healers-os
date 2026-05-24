@@ -139,15 +139,15 @@
 @include('partials.business-partner-flow-styles')
 
 <style>
-    .rental-shell { display:grid; gap:18px; }
+    .rental-shell { display:grid; gap:18px; width:100%; max-width:100%; min-width:0; overflow-x:clip; }
     .rental-toolbar { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:4px; }
     .rental-title h1 { margin:0; font-size:26px; color:#0f172a; }
     .rental-title p { margin:6px 0 0; color:#64748b; font-size:13px; }
     .rental-actions { display:flex; gap:8px; flex-wrap:wrap; }
-    .rental-card { background:#fff; border:1px solid #dbe3ef; border-radius:14px; padding:16px; box-shadow:0 8px 24px rgba(15, 23, 42, 0.04); }
+    .rental-card { background:#fff; border:1px solid #dbe3ef; border-radius:14px; padding:16px; box-shadow:0 8px 24px rgba(15, 23, 42, 0.04); min-width:0; max-width:100%; }
     .rental-card h2 { margin:0 0 4px; font-size:16px; color:#0f172a; }
     .rental-card p.section-copy { margin:0 0 10px; font-size:11px; color:#64748b; }
-    .rental-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:12px; }
+    .rental-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:12px; min-width:0; }
     .rental-col-3 { grid-column:span 3; }
     .rental-col-4 { grid-column:span 4; }
     .rental-col-5 { grid-column:span 5; }
@@ -893,6 +893,9 @@
         .rental-inline-stack { flex-wrap:wrap; }
     }
     @media (max-width: 640px) {
+        .rental-shell {
+            padding-bottom:calc(112px + env(safe-area-inset-bottom, 0px));
+        }
         .rental-toolbar {
             flex-direction:column;
             margin-bottom:0;
@@ -917,11 +920,19 @@
         .rental-snapshot-card { display:none; }
         .rental-card { border-radius:14px !important; }
         .rental-card h2 { font-size:18px !important; }
+        .sale-item-summary,
+        .asset-toolbar,
+        .asset-toolbar-actions {
+            flex-direction:column;
+            align-items:stretch;
+        }
         .rental-inline-stack { flex-direction:column; align-items:stretch; }
         .rental-inline-stack > * { width:100%; }
         .ops-button,
         .ops-button-secondary {
             min-height:44px;
+            white-space:normal;
+            text-align:center;
         }
     }
 </style>

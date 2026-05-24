@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
-<div class="container" style="padding:20px 24px 32px;">
+<div class="container ph-mobile-form-page" style="padding:20px 24px 32px;">
     <form action="{{ route('rentals.store') }}" method="POST">
         @csrf
         @include('rentals._form')

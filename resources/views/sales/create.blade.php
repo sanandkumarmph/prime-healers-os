@@ -1,10 +1,12 @@
 @extends('layouts.app')
 
 @section('content')
-<form action="{{ route('sales.store') }}" method="POST">
-    @csrf
-    @include('sales.partials.form', ['sale' => null])
-</form>
+<div class="ph-mobile-form-page">
+    <form action="{{ route('sales.store') }}" method="POST">
+        @csrf
+        @include('sales.partials.form', ['sale' => null])
+    </form>
+</div>
 
 @include('customers.partials.quick-create-modal', [
     'quickModalId' => 'saleQuickCustomerModal',

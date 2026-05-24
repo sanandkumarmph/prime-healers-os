@@ -335,15 +335,15 @@ class ProductController extends Controller
         }
     }
 
-    private function rebuildProductStock(Product $product): void
+    private function rebuildProductStock(Product $product, bool $persist = true): void
     {
         $product->refresh();
-        $product->syncLegacyStockFields();
+        $product->syncLegacyStockFields($persist);
 
-        $this->syncProductTypeFromInventory($product);
+        $this->syncProductTypeFromInventory($product, null, $persist);
     }
 
-    private function syncProductTypeFromInventory(Product $product, ?string $preferredType = null): void
+    private function syncProductTypeFromInventory(Product $product, ?string $preferredType = null, bool $persist = true): void
     {
         $saleStock = (int) $product->saleUnits()->where('asset_status', 'available_for_sale')->count();
         $rentalAssets = (int) Asset::query()
@@ -362,7 +362,11 @@ class ProductController extends Controller
             'product_type' => $resolvedType,
             'is_sellable' => $resolvedType === Product::TYPE_SELLABLE,
             'is_rentable' => $resolvedType === Product::TYPE_RENTABLE,
-        ])->saveQuietly();
+        ]);
+
+        if ($persist) {
+            $product->saveQuietly();
+        }
     }
 
     public function index(Request $request)
@@ -574,7 +578,7 @@ class ProductController extends Controller
     public function show(Product $product)
     {
         $product = $this->scopedProduct($product);
-        $this->rebuildProductStock($product);
+        $this->rebuildProductStock($product, false);
         $product->load([
             'saleInventories.warehouse',
             'saleUnits.warehouse',

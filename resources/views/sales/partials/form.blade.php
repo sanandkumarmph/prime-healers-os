@@ -106,7 +106,7 @@
 @include('partials.business-partner-flow-styles')
 
 <style>
-    .sales-shell { display:grid; gap:16px; padding:18px 22px 28px; }
+    .sales-shell { display:grid; gap:16px; padding:18px 22px 28px; width:100%; max-width:100%; min-width:0; overflow-x:clip; }
     .sales-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
     .sales-header h1 { margin:0; font-size:28px; color:#0f172a; }
     .sales-header p { margin:6px 0 0; color:#64748b; font-size:13px; max-width:760px; }
@@ -122,10 +122,12 @@
     .sales-card {
         background:#fff; border:1px solid #dbe3ef; border-radius:18px; padding:18px;
         box-shadow:0 8px 24px rgba(15, 23, 42, 0.04);
+        min-width:0;
+        max-width:100%;
     }
     .sales-card h2 { margin:0 0 4px; font-size:17px; color:#0f172a; }
     .sales-card > p { margin:0 0 14px; color:#64748b; font-size:12px; }
-    .sales-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:12px 14px; }
+    .sales-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:12px 14px; min-width:0; }
     .sales-col-3 { grid-column:span 3; }
     .sales-col-4 { grid-column:span 4; }
     .sales-col-6 { grid-column:span 6; }
@@ -209,6 +211,8 @@
     .sales-order-total {
         display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;
         padding:14px 16px; border:1px solid #dbe3ef; border-radius:16px; background:#f8fbff;
+        min-width:0;
+        max-width:100%;
     }
     .sales-order-total strong { color:#0f172a; font-size:22px; }
     .searchable-select-native {
@@ -252,12 +256,63 @@
         .sales-summary { grid-template-columns:repeat(2, minmax(0, 1fr)); }
     }
     @media (max-width: 720px) {
-        .sales-shell { padding:14px; }
+        .sales-shell { padding:14px 14px calc(112px + env(safe-area-inset-bottom, 0px)); }
         .sales-summary { grid-template-columns:1fr; }
         .sales-card { padding:14px; border-radius:16px; }
         .sales-header h1 { font-size:24px; }
         .sales-item-head { align-items:flex-start; }
-        .sales-order-total { align-items:flex-start; }
+        .sales-header,
+        .sales-actions,
+        .sales-header > div,
+        .sales-card > div,
+        .sales-order-total > div {
+            min-width:0;
+            max-width:100%;
+        }
+        .sales-header {
+            flex-direction:column;
+            align-items:stretch;
+        }
+        .sales-actions {
+            width:100%;
+            justify-content:stretch;
+        }
+        .sales-actions .sales-btn,
+        .sales-actions .sales-btn-light,
+        .sales-actions .sales-quick-btn {
+            flex:1 1 140px;
+            white-space:normal;
+            text-align:center;
+        }
+        .sales-order-total {
+            flex-direction:column;
+            align-items:stretch;
+        }
+        .sales-order-total > div:last-child {
+            width:100%;
+            display:grid !important;
+            grid-template-columns:1fr;
+            gap:10px;
+        }
+        .sales-order-total > div:last-child > * {
+            min-width:0 !important;
+            width:100%;
+            max-width:100%;
+        }
+        #sale-save-section {
+            flex-direction:column;
+            align-items:stretch !important;
+        }
+        #sale-save-section .sales-btn,
+        #sale-save-section .sales-btn-light,
+        #sale-save-section button {
+            width:100%;
+            white-space:normal;
+            text-align:center;
+        }
+        .searchable-select-trigger {
+            white-space:normal;
+        }
     }
 </style>
 

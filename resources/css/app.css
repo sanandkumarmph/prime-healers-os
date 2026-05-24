@@ -3086,3 +3086,16 @@ body {
         font-size: 20px;
     }
 }
+
+.ph-mobile-form-page {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+}
+
+@media (max-width: 768px) {
+    .ph-mobile-form-page {
+        padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+        overflow-x: clip;
+    }
+}

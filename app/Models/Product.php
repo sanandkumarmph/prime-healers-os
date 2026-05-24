@@ -279,7 +279,7 @@ class Product extends Model
         return self::STOCK_MODE_UNTRACKED;
     }
 
-    public function syncLegacyStockFields(): void
+    public function syncLegacyStockFields(bool $persist = true): void
     {
         SaleInventory::syncFromSaleUnits($this->organization_id, $this->id);
 
@@ -316,7 +316,11 @@ class Product extends Model
             'stock_mode' => $resolvedStockMode,
             'total_quantity' => $resolvedTotal,
             'available_quantity' => $resolvedAvailable,
-        ])->saveQuietly();
+        ]);
+
+        if ($persist) {
+            $this->saveQuietly();
+        }
     }
 
     public function saleStockSummary(): array
