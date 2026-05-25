@@ -963,6 +963,12 @@
         font-weight:800;
     }
     .workflow-proof-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .workflow-proof-signature-wrap .workflow-proof-actions {
+        justify-content:space-between;
+    }
+    .workflow-proof-signature-wrap .workflow-proof-actions .workflow-proof-trigger {
+        min-width:132px;
+    }
     .workflow-proof-trigger {
         display:inline-flex;
         align-items:center;
@@ -1092,11 +1098,12 @@
         min-height:34px;
         padding:0 12px;
         border-radius:999px;
-        background:#2563eb;
+        background:#1d4ed8;
         color:#fff;
         font-size:11px;
         font-weight:800;
         white-space:nowrap;
+        box-shadow:0 6px 16px rgba(37, 99, 235, 0.18);
     }
     .workflow-camera-status {
         display:none;
@@ -1105,6 +1112,7 @@
         font-size:11px;
         font-weight:700;
         line-height:1.4;
+        margin-top:-2px;
     }
     .workflow-camera-status.is-visible {
         display:block;
@@ -1184,6 +1192,10 @@
         background:#fff;
         touch-action:none;
         cursor:crosshair;
+    }
+    .workflow-proof-signature-actions {
+        display:flex;
+        justify-content:flex-start;
     }
     .workflow-proof-signature-preview {
         display:none;
@@ -1283,8 +1295,10 @@
         max-width:100%;
     }
     .workflow-review-summary-card {
-        display:grid;
-        gap:3px;
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        gap:10px;
         min-width:0;
         width:100%;
         max-width:100%;
@@ -1300,12 +1314,15 @@
         font-weight:800;
         letter-spacing:.05em;
         text-transform:uppercase;
+        flex:0 0 auto;
     }
     .workflow-review-summary-card strong {
         color:#0f172a;
         font-size:12.5px;
         line-height:1.4;
         overflow-wrap:anywhere;
+        text-align:right;
+        flex:1 1 auto;
     }
     .workflow-review-item {
         display:grid;
@@ -1582,6 +1599,7 @@
         }
         .workflow-camera-trigger {
             width:100%;
+            min-height:36px;
         }
         .workflow-camera-preview {
             grid-template-columns:repeat(2, minmax(0, 1fr));
@@ -1590,6 +1608,9 @@
             height:112px;
         }
         .workflow-proof-signature-pad { height:168px; }
+        .workflow-proof-signature-actions .workflow-proof-trigger {
+            width:100%;
+        }
         .workflow-step-actions {
             padding-top:8px;
             background:linear-gradient(180deg, rgba(255,255,255,0) 0%, #fbfdff 28%, #fbfdff 100%);
@@ -1638,6 +1659,9 @@
             overflow-wrap:anywhere;
             word-break:break-word;
         }
+        .workflow-review-summary-card strong {
+            text-align:left;
+        }
         .workflow-proof-field > label[style*="display:flex"] {
             width:100%;
             min-width:0;
@@ -1647,6 +1671,22 @@
             min-width:0;
             overflow-wrap:anywhere;
             word-break:break-word;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-summary-grid,
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-list {
+            grid-template-columns:minmax(0, 1fr) !important;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-summary-card,
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-item {
+            width:100%;
+            max-width:100%;
+            overflow:hidden;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-item strong,
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-item span,
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-summary-card strong,
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-summary-card span {
+            writing-mode:horizontal-tb;
         }
         .workflow-mobile-stepper[data-mobile-workflow-active="true"] [data-workflow-step-panel] {
             display:none;
@@ -3790,6 +3830,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let drawing = false;
         let hasSignature = false;
         let currentSignatureData = hiddenInput?.value || '';
+        let pixelRatio = 1;
         const refreshWorkflowState = () => {
             if (form?.hasAttribute('data-workflow-review-form')) {
                 syncWorkflowReview(form);
@@ -3812,8 +3853,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         const applyCanvasStyles = () => {
-            context.setTransform(1, 0, 0, 1, 0, 0);
-            context.lineWidth = 2;
+            context.lineWidth = 2.4;
             context.lineCap = 'round';
             context.lineJoin = 'round';
             context.strokeStyle = '#0f172a';
@@ -3828,24 +3868,24 @@ document.addEventListener('DOMContentLoaded', () => {
             const image = new Image();
             image.onload = () => {
                 context.clearRect(0, 0, canvas.width, canvas.height);
-                context.drawImage(image, 0, 0, canvas.clientWidth, canvas.clientHeight);
+                context.drawImage(image, 0, 0, canvas.width / pixelRatio, canvas.height / pixelRatio);
             };
             image.src = dataUrl;
         };
 
         const resizeCanvas = () => {
-            const ratio = window.devicePixelRatio || 1;
+            pixelRatio = window.devicePixelRatio || 1;
             const bounds = canvas.getBoundingClientRect();
             const width = Math.max(Math.floor(bounds.width), 280);
             const height = Math.max(Math.floor(bounds.height), 160);
             const preservedSignature = currentSignatureData || hiddenInput?.value || '';
 
-            canvas.width = Math.max(Math.floor(width * ratio), 1);
-            canvas.height = Math.max(Math.floor(height * ratio), 1);
+            canvas.width = Math.max(Math.floor(width * pixelRatio), 1);
+            canvas.height = Math.max(Math.floor(height * pixelRatio), 1);
             canvas.style.width = `${width}px`;
             canvas.style.height = `${height}px`;
 
-            context.setTransform(ratio, 0, 0, ratio, 0, 0);
+            context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
             applyCanvasStyles();
             redrawSignature(preservedSignature);
         };
@@ -3906,6 +3946,7 @@ document.addEventListener('DOMContentLoaded', () => {
         canvas.addEventListener('touchstart', startStroke, { passive: false });
         canvas.addEventListener('touchmove', continueStroke, { passive: false });
         canvas.addEventListener('touchend', stopStroke);
+        canvas.addEventListener('touchcancel', stopStroke);
 
         clearButton?.addEventListener('click', () => {
             context.clearRect(0, 0, canvas.width, canvas.height);
