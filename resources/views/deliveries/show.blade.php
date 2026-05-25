@@ -1247,6 +1247,10 @@
         flex-wrap:nowrap;
         min-width:0;
     }
+    .workflow-step-actions--stacked {
+        flex-direction:column;
+        align-items:stretch;
+    }
     .workflow-step-actions .detail-btn,
     .workflow-step-actions .detail-btn-secondary {
         min-height:40px;
@@ -1258,6 +1262,8 @@
         color:#64748b;
         font-size:11.5px;
         line-height:1.4;
+        min-width:0;
+        flex:1 1 auto;
     }
     .workflow-review-list {
         display:grid;
@@ -1563,12 +1569,21 @@
         .workflow-step-actions {
             padding-top:8px;
             background:linear-gradient(180deg, rgba(255,255,255,0) 0%, #fbfdff 28%, #fbfdff 100%);
+            display:grid;
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+            align-items:stretch;
         }
         .workflow-step-actions .detail-btn,
         .workflow-step-actions .detail-btn-secondary {
             flex:1 1 0;
             min-width:0;
             width:100%;
+        }
+        .workflow-step-actions--stacked {
+            grid-template-columns:minmax(0, 1fr);
+        }
+        .workflow-step-actions .workflow-step-helper {
+            grid-column:1 / -1;
         }
         .workflow-review-item {
             grid-template-columns:minmax(0, 1fr) !important;
@@ -2104,9 +2119,9 @@
                                     <strong>{{ $delivery->scheduled_at ? $delivery->scheduled_at->format('d M h:i A') : 'Not scheduled' }}</strong>
                                 </div>
                             </div>
-                            <div class="workflow-step-actions">
+                            <div class="workflow-step-actions workflow-step-actions--stacked">
                                 <span class="workflow-step-helper">Start first, then capture GPS.</span>
-                                <button type="button" class="detail-btn" data-workflow-next>Next</button>
+                                <button type="button" class="detail-btn" data-workflow-next>{{ $delivery->type === 'pickup' ? 'Start Pickup' : 'Start Delivery' }}</button>
                             </div>
                         </section>
 
