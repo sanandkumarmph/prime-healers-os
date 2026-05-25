@@ -5,6 +5,8 @@
     $selectedStatusValue = old('status', $isEdit ? $delivery->status : 'pending');
     $selectedCancellationReason = old('cancellation_reason', $isEdit ? $delivery->cancellation_reason : '');
     $selectedCancellationNotes = old('cancellation_notes', $isEdit ? $delivery->cancellation_notes : '');
+    $selectedReopenConfirmation = old('reopen_confirmation');
+    $selectedReopenReason = old('reopen_reason', '');
     $selectedRentalValue = old('rental_id', $isEdit ? $delivery->rental_id : ($selectedRentalId ?? null));
     $selectedSaleValue = old('sale_id', $isEdit ? ($delivery->sale_id ?? null) : ($selectedSaleId ?? null));
     $selectedSaleAssetValue = old('sale_asset_id', $isEdit ? ($delivery->sale?->asset_id ?? null) : null);
@@ -33,6 +35,7 @@
     };
     $thirdPartyPhoneParts = \App\Support\PhoneNumber::split(old('third_party_phone', $isEdit ? $delivery->third_party_phone : ''));
     $countryCodeOptions = \App\Support\PhoneNumber::countryCodeOptions();
+    $requiresDeliveryReopenConsent = $isEdit && $delivery->type === 'delivery' && $delivery->status === 'completed';
 @endphp
 
 <style>
@@ -397,6 +400,31 @@
         </div>
     </div>
 
+    @if($requiresDeliveryReopenConsent)
+    <div class="ops-card" id="reopen_delivery_block" style="{{ $selectedStatusValue !== 'completed' ? '' : 'display:none;' }}">
+        <h2>Reopen Delivery Consent</h2>
+        <p class="section-copy">Use this only when the delivery was marked delivered by mistake or the task must be reopened for a real operational change.</p>
+        <div class="ops-grid">
+            <div class="ops-field span-12 {{ $hasFieldError('reopen_confirmation') ? 'is-error' : '' }}">
+                <label for="reopen_confirmation" style="text-transform:none; letter-spacing:0; font-size:13px; display:flex; align-items:flex-start; gap:10px;">
+                    <input type="checkbox" name="reopen_confirmation" id="reopen_confirmation" value="1" {{ $selectedReopenConfirmation ? 'checked' : '' }} style="width:auto; margin-top:2px;">
+                    <span style="font-weight:700; color:#0f172a;">I confirm this delivered task must be reopened and the delivery status should be changed.</span>
+                </label>
+                @if($fieldError('reopen_confirmation'))
+                    <div class="ops-field-error">{{ $fieldError('reopen_confirmation') }}</div>
+                @endif
+            </div>
+            <div class="ops-field span-12 {{ $hasFieldError('reopen_reason') ? 'is-error' : '' }}">
+                <label for="reopen_reason">Reason for Reopening</label>
+                <textarea name="reopen_reason" id="reopen_reason" placeholder="Explain why this delivered task is being reopened.">{{ $selectedReopenReason }}</textarea>
+                @if($fieldError('reopen_reason'))
+                    <div class="ops-field-error">{{ $fieldError('reopen_reason') }}</div>
+                @endif
+            </div>
+        </div>
+    </div>
+    @endif
+
     <div class="ops-header" style="margin-top:-4px;">
         <div class="ops-note">Keep the assignment small and practical. Use the rental detail screen for broader workflow context.</div>
         <div class="ops-actions">
@@ -425,6 +453,9 @@
         const saleAssetBlock = document.getElementById('sale_asset_block');
         const saleAssetSelect = document.getElementById('sale_asset_id');
         const cancellationFieldsBlock = document.getElementById('cancellation_fields_block');
+        const reopenDeliveryBlock = document.getElementById('reopen_delivery_block');
+        const reopenConfirmationField = document.getElementById('reopen_confirmation');
+        const reopenReasonField = document.getElementById('reopen_reason');
         const cancellationReasonSelect = document.getElementById('cancellation_reason');
         const cancellationNotesField = document.getElementById('cancellation_notes');
         const saleAssetOptions = @json($saleAssetOptions);
@@ -469,6 +500,25 @@
 
                 if (cancellationNotesField) {
                     cancellationNotesField.value = '';
+                }
+            }
+        }
+
+        function updateReopenFields() {
+            if (!reopenDeliveryBlock) {
+                return;
+            }
+
+            const shouldShow = statusSelect.value !== 'completed';
+            reopenDeliveryBlock.style.display = shouldShow ? 'block' : 'none';
+
+            if (!shouldShow) {
+                if (reopenConfirmationField) {
+                    reopenConfirmationField.checked = false;
+                }
+
+                if (reopenReasonField) {
+                    reopenReasonField.value = '';
                 }
             }
         }
@@ -558,6 +608,7 @@
         typeSelect.addEventListener('change', updateSummary);
         statusSelect.addEventListener('change', updateSummary);
         statusSelect.addEventListener('change', updateCancellationFields);
+        statusSelect.addEventListener('change', updateReopenFields);
         assignmentTypeSelect.addEventListener('change', updateAssignmentFields);
 
         updateWarehouse();
@@ -565,5 +616,6 @@
         updateSaleAssetOptions();
         updateSummary();
         updateCancellationFields();
+        updateReopenFields();
     })();
 </script>

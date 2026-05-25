@@ -2184,6 +2184,11 @@ class DeliveryController extends Controller
             $validationRules['cancellation_notes'] = ['nullable', 'string', 'max:1000'];
         }
 
+        if ($wasCompleted && $delivery->type === 'delivery') {
+            $validationRules['reopen_confirmation'] = ['nullable'];
+            $validationRules['reopen_reason'] = ['nullable', 'string', 'max:1000'];
+        }
+
         if ($this->hasAssignmentTypeColumn()) {
             $validationRules['assignment_type'] = 'required|in:delivery_team,vendor,third_party';
         }
@@ -2243,6 +2248,22 @@ class DeliveryController extends Controller
 
         if ($sale && $request->type !== 'delivery') {
             return back()->withErrors(['type' => 'Sales orders can only be assigned for delivery.'])->withInput();
+        }
+
+        if ($wasCompleted && $delivery->type === 'delivery' && $request->input('status') !== 'completed') {
+            $reopenErrors = [];
+
+            if (!$request->boolean('reopen_confirmation')) {
+                $reopenErrors['reopen_confirmation'] = 'Confirm before reopening a delivered task.';
+            }
+
+            if (!filled($request->input('reopen_reason'))) {
+                $reopenErrors['reopen_reason'] = 'A reason is required before reopening a delivered task.';
+            }
+
+            if ($reopenErrors !== []) {
+                return back()->withErrors($reopenErrors)->withInput();
+            }
         }
 
         if ($delivery->status === 'completed' && $request->status === 'cancelled') {
@@ -2366,6 +2387,9 @@ class DeliveryController extends Controller
         ActivityLogger::log('delivery.updated', $delivery->refresh(), [
             'type' => $delivery->type,
             'status' => $delivery->status,
+            'reopen_reason' => $wasCompleted && $delivery->type === 'delivery' && $delivery->status !== 'completed'
+                ? $request->input('reopen_reason')
+                : null,
             'cancellation_reason' => $delivery->cancellation_reason ?? null,
             'assignment_type' => $delivery->assignment_type ?? null,
             'assigned_user_id' => $delivery->assigned_user_id ?? null,

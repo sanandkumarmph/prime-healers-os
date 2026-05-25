@@ -65,6 +65,95 @@ class Role extends Model
         return self::SPECIAL_PERMISSIONS;
     }
 
+    public static function defaultSystemRoleTemplates(): array
+    {
+        $modulePermissions = [
+            'users' => ['read', 'create', 'update', 'delete'],
+            'roles' => ['read', 'create', 'update', 'delete'],
+            'cities' => ['read', 'create', 'update', 'delete'],
+            'warehouses' => ['read', 'create', 'update', 'delete'],
+            'vendors' => ['read', 'create', 'update', 'delete'],
+            'customers' => ['read', 'create', 'update', 'delete'],
+            'products' => ['read', 'create', 'update', 'delete'],
+            'assets' => ['read', 'create', 'update', 'delete'],
+            'rentals' => ['read', 'create', 'update', 'delete'],
+            'sales' => ['read', 'create', 'update', 'delete'],
+            'invoices' => ['read', 'create', 'update', 'delete'],
+            'payments' => ['read', 'create', 'update', 'delete'],
+            'deliveries' => ['read', 'create', 'update', 'delete'],
+            'reports' => ['read'],
+            'settings' => ['read', 'update'],
+        ];
+
+        return [
+            'super_admin' => [
+                'name' => 'Super Admin',
+                'description' => 'Super Admin role',
+                'permissions' => $modulePermissions,
+            ],
+            'admin_operations' => [
+                'name' => 'Operations Admin',
+                'description' => 'Operations Admin role',
+                'permissions' => array_merge($modulePermissions, [
+                    'roles' => ['read'],
+                    'users' => ['read', 'update'],
+                    'settings' => ['read'],
+                ]),
+            ],
+            'sales' => [
+                'name' => 'Sales',
+                'description' => 'Sales role',
+                'permissions' => [
+                    'customers' => ['read', 'create', 'update'],
+                    'products' => ['read'],
+                    'rentals' => ['read', 'create', 'update'],
+                    'sales' => ['read', 'create', 'update'],
+                    'invoices' => ['read', 'create', 'update'],
+                    'payments' => ['read', 'create'],
+                    'deliveries' => ['read'],
+                    'reports' => ['read'],
+                ],
+            ],
+            'sales_renewals' => [
+                'name' => 'Sales Renewals',
+                'description' => 'Sales Renewals role',
+                'permissions' => [
+                    'customers' => ['read', 'update'],
+                    'products' => ['read'],
+                    'rentals' => ['read', 'update'],
+                    'sales' => ['read'],
+                    'invoices' => ['read', 'create'],
+                    'payments' => ['read'],
+                    'deliveries' => ['read'],
+                    'reports' => ['read'],
+                ],
+            ],
+            'delivery' => [
+                'name' => 'Delivery Staff',
+                'description' => 'Delivery Staff role',
+                'permissions' => [
+                    'deliveries' => ['read', 'update'],
+                    'rentals' => ['read'],
+                ],
+            ],
+            'vendor' => [
+                'name' => 'Vendor',
+                'description' => 'Vendor role',
+                'permissions' => [
+                    'deliveries' => ['read', 'update'],
+                    'rentals' => ['read'],
+                ],
+            ],
+            'staff' => [
+                'name' => 'Staff',
+                'description' => 'Staff role',
+                'permissions' => [
+                    'dashboard' => ['read'],
+                ],
+            ],
+        ];
+    }
+
     public static function normalizePermissions(array $permissions): array
     {
         $normalized = [];

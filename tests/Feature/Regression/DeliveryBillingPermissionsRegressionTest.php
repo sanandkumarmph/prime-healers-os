@@ -1064,6 +1064,8 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
                 'notes' => 'Reopened after field correction.',
                 'assignment_type' => 'delivery_team',
                 'assigned_user_id' => $deliveryUser->id,
+                'reopen_confirmation' => '1',
+                'reopen_reason' => 'Delivered status was added by mistake.',
             ]);
 
         $response->assertRedirect(route('deliveries.show', $delivery));
@@ -1165,6 +1167,8 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
             'assignment_type' => 'delivery_team',
             'assigned_user_id' => '',
             'notes' => 'Reopened to pending.',
+            'reopen_confirmation' => '1',
+            'reopen_reason' => 'Marked delivered by mistake.',
         ]);
 
         $response->assertRedirect(route('rentals.show', $rental));
@@ -1185,6 +1189,75 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
         $showResponse->assertSee('>Pending<', false);
         $showResponse->assertDontSeeText('Delivery completed');
         $showResponse->assertSeeInOrder(['Delivered', '>0<', 'Pending', '>1<'], false);
+    }
+
+    public function test_reopening_completed_delivery_requires_explicit_confirmation_and_reason(): void
+    {
+        $organization = TestData::organization();
+        $this->actingAs(TestData::user($organization));
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Delivery Reopen Consent Customer',
+            'phone' => '9999991112',
+        ]);
+
+        $warehouse = Warehouse::create([
+            'organization_id' => $organization->id,
+            'name' => 'Delivery Reopen Consent Warehouse',
+            'code' => 'DRC',
+            'is_active' => true,
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Delivery Reopen Consent Product',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_RENTAL,
+            'price_per_day' => 1200,
+            'sale_price' => 0,
+            'rental_price' => 1200,
+            'available_quantity' => 0,
+            'total_quantity' => 0,
+        ]);
+
+        $rental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'dispatch_warehouse_id' => $warehouse->id,
+            'quantity' => 1,
+            'start_date' => now()->toDateString(),
+            'end_date' => now()->addDays(4)->toDateString(),
+            'rental_amount' => 1200,
+            'status' => 'active',
+        ]);
+
+        $delivery = Delivery::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'type' => 'delivery',
+            'scheduled_at' => now(),
+            'status' => 'completed',
+            'completed_at' => now(),
+            'notes' => 'Completed before reopen.',
+        ]);
+
+        $response = $this->from(route('deliveries.edit', $delivery))->put(route('deliveries.update', $delivery), [
+            'rental_id' => $rental->id,
+            'type' => 'delivery',
+            'scheduled_at' => now()->addHour()->format('Y-m-d\TH:i'),
+            'status' => 'pending',
+            'assignment_type' => 'delivery_team',
+            'assigned_user_id' => '',
+            'notes' => 'Reopened to pending.',
+        ]);
+
+        $response->assertRedirect(route('deliveries.edit', $delivery));
+        $response->assertSessionHasErrors(['reopen_confirmation', 'reopen_reason']);
+        $this->assertSame('completed', $delivery->fresh()->status);
     }
 
     public function test_cancellation_without_reason_fails_validation(): void
@@ -1228,6 +1301,8 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
             'scheduled_at' => now()->addHour(),
             'status' => 'pending',
             'assigned_user_id' => $deliveryUser->id,
+            'reopen_confirmation' => '1',
+            'reopen_reason' => 'Delivered status was added by mistake.',
         ]);
 
         Delivery::create([

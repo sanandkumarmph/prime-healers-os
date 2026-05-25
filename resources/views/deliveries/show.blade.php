@@ -42,9 +42,11 @@
 
     if (!$isSaleTask && $delivery->rental) {
         if ($delivery->type === 'delivery') {
-            $displayStatus = match ($delivery->rental->deliveryStatus()) {
-                'completed', 'delivered' => 'delivered',
-                'partially_delivered' => 'in_progress',
+            $rentalDeliveryStatus = $delivery->rental->deliveryStatus();
+            $displayStatus = match (true) {
+                in_array($delivery->status, ['pending', 'in_progress', 'cancelled'], true) => $delivery->status,
+                in_array($rentalDeliveryStatus, ['completed', 'delivered'], true) => 'delivered',
+                $rentalDeliveryStatus === 'partially_delivered' => 'in_progress',
                 default => $delivery->status,
             };
         } elseif ($delivery->type === 'pickup') {
