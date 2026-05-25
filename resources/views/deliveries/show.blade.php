@@ -1073,7 +1073,7 @@
         gap:8px;
         min-width:0;
     }
-    .workflow-camera-chip {
+    .workflow-camera-card .workflow-camera-chip {
         display:inline-flex;
         align-items:center;
         justify-content:center;
@@ -1087,11 +1087,11 @@
         text-transform:uppercase;
         letter-spacing:.04em;
     }
-    .workflow-camera-chip.is-optional {
+    .workflow-camera-card .workflow-camera-chip.is-optional {
         background:#f1f5f9;
         color:#475569;
     }
-    .workflow-camera-trigger {
+    .workflow-camera-card .workflow-camera-trigger {
         display:inline-flex;
         align-items:center;
         justify-content:center;
@@ -1674,10 +1674,16 @@
         }
         .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-summary-grid,
         .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-list {
-            grid-template-columns:minmax(0, 1fr) !important;
+            display:flex !important;
+            flex-direction:column !important;
+            gap:8px;
         }
         .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-summary-card,
         .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-item {
+            display:flex !important;
+            flex-direction:column !important;
+            align-items:flex-start !important;
+            justify-content:flex-start !important;
             width:100%;
             max-width:100%;
             overflow:hidden;
