@@ -1013,10 +1013,11 @@
     .workflow-camera-card {
         position:relative;
         display:grid;
+        grid-template-columns:48px minmax(0, 1fr);
+        align-items:start;
         align-content:start;
-        justify-items:stretch;
-        gap:10px;
-        min-height:150px;
+        gap:12px;
+        min-height:0;
         padding:14px;
         border:1px solid #dbe3ef;
         border-radius:16px;
@@ -1059,11 +1060,12 @@
         min-width:0;
     }
     .workflow-camera-footer {
-        display:flex;
+        grid-column:1 / -1;
+        display:grid;
+        grid-template-columns:minmax(0, 1fr) auto;
         align-items:center;
-        justify-content:space-between;
         gap:8px;
-        flex-wrap:wrap;
+        min-width:0;
     }
     .workflow-camera-chip {
         display:inline-flex;
@@ -1087,8 +1089,8 @@
         display:inline-flex;
         align-items:center;
         justify-content:center;
-        min-height:28px;
-        padding:0 10px;
+        min-height:34px;
+        padding:0 12px;
         border-radius:999px;
         background:#2563eb;
         color:#fff;
@@ -1098,16 +1100,19 @@
     }
     .workflow-camera-status {
         display:none;
+        grid-column:1 / -1;
         color:#166534;
         font-size:11px;
         font-weight:700;
+        line-height:1.4;
     }
     .workflow-camera-status.is-visible {
         display:block;
     }
     .workflow-camera-preview {
         display:none;
-        grid-template-columns:repeat(auto-fit, minmax(96px, 1fr));
+        grid-column:1 / -1;
+        grid-template-columns:repeat(auto-fit, minmax(112px, 1fr));
         gap:8px;
         min-width:0;
     }
@@ -1117,7 +1122,7 @@
     .workflow-camera-preview img {
         width:100%;
         min-width:0;
-        height:96px;
+        height:124px;
         object-fit:cover;
         border-radius:10px;
         border:1px solid #dbe3ef;
@@ -1565,6 +1570,25 @@
             padding:9px 10px;
             font-size:11.5px;
         }
+        .workflow-camera-grid {
+            grid-template-columns:minmax(0, 1fr);
+            gap:12px;
+        }
+        .workflow-camera-card {
+            padding:13px;
+        }
+        .workflow-camera-footer {
+            grid-template-columns:minmax(0, 1fr);
+        }
+        .workflow-camera-trigger {
+            width:100%;
+        }
+        .workflow-camera-preview {
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+        }
+        .workflow-camera-preview img {
+            height:112px;
+        }
         .workflow-proof-signature-pad { height:168px; }
         .workflow-step-actions {
             padding-top:8px;
@@ -1702,7 +1726,7 @@
             display:none;
         }
         .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] [data-workflow-step-panel] {
-            padding-bottom:164px;
+            padding-bottom:184px;
         }
         .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] [data-workflow-step-panel].is-current .workflow-step-actions {
             position:fixed;
