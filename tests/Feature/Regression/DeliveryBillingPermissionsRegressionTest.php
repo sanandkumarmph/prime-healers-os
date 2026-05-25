@@ -1370,6 +1370,79 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
         $this->assertSame('reserved', $asset->asset_status);
     }
 
+    public function test_pending_delivery_detail_hides_stale_completed_item_progress_counts(): void
+    {
+        $organization = TestData::organization();
+        $this->actingAs(TestData::user($organization));
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Pending Delivery Display Customer',
+            'phone' => '9999991114',
+        ]);
+
+        $warehouse = Warehouse::create([
+            'organization_id' => $organization->id,
+            'name' => 'Pending Delivery Display Warehouse',
+            'code' => 'PDW',
+            'is_active' => true,
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Pending Delivery Display Product',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_RENTAL,
+            'price_per_day' => 1200,
+            'sale_price' => 0,
+            'rental_price' => 1200,
+            'available_quantity' => 0,
+            'total_quantity' => 0,
+        ]);
+
+        $rental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'dispatch_warehouse_id' => $warehouse->id,
+            'quantity' => 1,
+            'start_date' => now()->toDateString(),
+            'end_date' => now()->addDays(4)->toDateString(),
+            'rental_amount' => 1200,
+            'status' => 'active',
+        ]);
+
+        RentalItem::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'delivered_quantity' => 1,
+            'returned_quantity' => 0,
+            'unit_rental_amount' => 1200,
+            'line_total' => 1200,
+        ]);
+
+        $delivery = Delivery::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'type' => 'delivery',
+            'scheduled_at' => now(),
+            'status' => 'pending',
+            'completed_at' => null,
+            'notes' => 'Pending delivery with stale progress quantities.',
+        ]);
+
+        $response = $this->get(route('deliveries.show', $delivery));
+
+        $response->assertOk();
+        $response->assertSee('>Pending<', false);
+        $response->assertDontSeeText('Delivery completed');
+        $response->assertSeeInOrder(['Delivered', '>0<', 'Pending', '>1<'], false);
+    }
+
     public function test_cancellation_without_reason_fails_validation(): void
     {
         $organization = TestData::organization();

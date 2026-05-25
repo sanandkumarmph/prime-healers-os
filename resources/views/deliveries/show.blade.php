@@ -1900,6 +1900,17 @@
                 @php
                     $orderedQty = (int) ($item->ordered_quantity ?? $item->quantity ?? 0);
                     $deliveredQty = (int) ($item->delivered_quantity_value ?? min(max((int) ($item->delivered_quantity ?? 0), 0), $orderedQty));
+                    $deliveryReopenedDisplayFallback = $delivery->type === 'delivery'
+                        && $delivery->status === 'pending'
+                        && is_null($delivery->completed_at)
+                        && in_array($delivery->rental?->deliveryStatus(), ['completed', 'delivered'], true)
+                        && $orderedQty > 0
+                        && $deliveredQty >= $orderedQty;
+
+                    if ($deliveryReopenedDisplayFallback) {
+                        $deliveredQty = 0;
+                    }
+
                     $deliveryCompletionFallback = $delivery->type === 'delivery'
                         && in_array($displayStatus, ['delivered', 'completed'], true)
                         && $orderedQty > 0
@@ -1918,6 +1929,10 @@
 
                     if ($pickupCompletionFallback) {
                         $returnedQty = $deliveredQty;
+                    }
+
+                    if ($deliveryReopenedDisplayFallback) {
+                        $returnedQty = 0;
                     }
 
                     $pendingPickupQty = max($deliveredQty - $returnedQty, 0);
