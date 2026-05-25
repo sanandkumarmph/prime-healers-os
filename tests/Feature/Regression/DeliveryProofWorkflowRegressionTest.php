@@ -303,7 +303,7 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
 
         $this->get(route('deliveries.show', $delivery))
             ->assertOk()
-            ->assertSee('class="workflow-review-summary-grid"', false)
+            ->assertSee('class="workflow-review-summary-grid workflow-review-summary-grid--stacked"', false)
             ->assertSee('grid-template-columns:minmax(0, 1fr) !important;', false)
             ->assertSee('overflow-wrap:anywhere;', false)
             ->assertSee('word-break:break-word;', false)
