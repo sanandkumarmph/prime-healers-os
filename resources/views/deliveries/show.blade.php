@@ -1098,8 +1098,8 @@
         min-height:34px;
         padding:0 12px;
         border-radius:999px;
-        background:#1d4ed8;
-        color:#fff;
+        background:#1d4ed8 !important;
+        color:#fff !important;
         font-size:11px;
         font-weight:800;
         white-space:nowrap;
@@ -1368,6 +1368,36 @@
         letter-spacing:.04em;
         text-transform:uppercase;
         white-space:nowrap;
+    }
+    .workflow-review-step {
+        min-width:0;
+        width:100%;
+        max-width:100%;
+        overflow:hidden;
+    }
+    .workflow-review-step .workflow-review-summary-grid,
+    .workflow-review-step .workflow-review-list {
+        min-width:0;
+        width:100%;
+        max-width:100%;
+    }
+    .workflow-review-step .workflow-review-summary-card,
+    .workflow-review-step .workflow-review-item {
+        min-width:0;
+        width:100%;
+        max-width:100%;
+        overflow:hidden;
+    }
+    .workflow-review-step .workflow-review-summary-card strong,
+    .workflow-review-step .workflow-review-summary-card span,
+    .workflow-review-step .workflow-review-item strong,
+    .workflow-review-step .workflow-review-item span {
+        max-width:100%;
+        min-width:0;
+        white-space:normal;
+        overflow-wrap:anywhere;
+        word-break:break-word;
+        writing-mode:horizontal-tb;
     }
     .workflow-proof-history {
         display:grid;
@@ -1676,6 +1706,20 @@
         .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-list {
             display:flex !important;
             flex-direction:column !important;
+            gap:8px;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-step {
+            display:grid;
+            grid-template-columns:minmax(0, 1fr);
+            align-content:start;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-step .workflow-review-summary-grid,
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-step .workflow-review-list {
+            display:flex !important;
+            flex-direction:column !important;
+            width:100% !important;
+            max-width:100% !important;
+            min-width:0 !important;
             gap:8px;
         }
         .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-summary-card,
@@ -2705,7 +2749,7 @@
                     </section>
                     @endif
 
-                    <section class="workflow-step" data-workflow-step-panel data-workflow-step-index="{{ $delivery->type === 'pickup' ? ($supportsCollectionStep ? 7 : 6) : ($supportsCollectionStep ? 6 : 5) }}">
+                    <section class="workflow-step workflow-review-step" data-workflow-step-panel data-workflow-step-index="{{ $delivery->type === 'pickup' ? ($supportsCollectionStep ? 7 : 6) : ($supportsCollectionStep ? 6 : 5) }}">
                         <div class="workflow-step-head">
                             <span class="workflow-step-index">{{ ($delivery->type === 'pickup' ? ($supportsCollectionStep ? 7 : 6) : ($supportsCollectionStep ? 6 : 5)) + $workflowDisplayOffset }}</span>
                             <div>
