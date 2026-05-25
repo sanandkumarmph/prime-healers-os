@@ -1260,6 +1260,116 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
         $this->assertSame('completed', $delivery->fresh()->status);
     }
 
+    public function test_reopening_effectively_closed_delivery_resets_stale_item_progress(): void
+    {
+        $organization = TestData::organization();
+        $this->actingAs(TestData::user($organization));
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Stale Delivery Customer',
+            'phone' => '9999991113',
+        ]);
+
+        $warehouse = Warehouse::create([
+            'organization_id' => $organization->id,
+            'name' => 'Stale Delivery Warehouse',
+            'code' => 'SDW',
+            'is_active' => true,
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Stale Delivery Product',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_RENTAL,
+            'price_per_day' => 1200,
+            'sale_price' => 0,
+            'rental_price' => 1200,
+            'available_quantity' => 0,
+            'total_quantity' => 0,
+        ]);
+
+        $asset = Asset::create([
+            'organization_id' => $organization->id,
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'asset_name' => 'Stale Delivery Asset',
+            'serial_number' => 'STALE-001',
+            'asset_stage' => Asset::STAGE_RENTAL_STOCK,
+            'condition_status' => 'good',
+            'asset_status' => 'rented',
+        ]);
+
+        $rental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'dispatch_warehouse_id' => $warehouse->id,
+            'quantity' => 1,
+            'start_date' => now()->toDateString(),
+            'end_date' => now()->addDays(4)->toDateString(),
+            'rental_amount' => 1200,
+            'status' => 'active',
+        ]);
+
+        $item = RentalItem::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'product_id' => $product->id,
+            'asset_ids' => [$asset->id],
+            'quantity' => 1,
+            'delivered_quantity' => 1,
+            'returned_quantity' => 0,
+            'unit_rental_amount' => 1200,
+            'line_total' => 1200,
+        ]);
+
+        RentalAsset::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'asset_id' => $asset->id,
+            'assigned_at' => now()->subHour(),
+        ]);
+
+        $delivery = Delivery::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'type' => 'delivery',
+            'scheduled_at' => now(),
+            'status' => 'pending',
+            'completed_at' => now(),
+            'notes' => 'Stale closed delivery state.',
+        ]);
+
+        $response = $this->put(route('deliveries.update', $delivery), [
+            'rental_id' => $rental->id,
+            'type' => 'delivery',
+            'scheduled_at' => now()->addHour()->format('Y-m-d\TH:i'),
+            'status' => 'pending',
+            'assignment_type' => 'delivery_team',
+            'assigned_user_id' => '',
+            'notes' => 'Reopened stale delivered task.',
+            'reopen_confirmation' => '1',
+            'reopen_reason' => 'Correcting stale delivered state.',
+        ]);
+
+        $response->assertRedirect(route('rentals.show', $rental));
+
+        $delivery->refresh();
+        $item->refresh();
+        $asset->refresh();
+
+        $this->assertSame('pending', $delivery->status);
+        $this->assertNull($delivery->completed_at);
+        $this->assertSame(0, $item->delivered_quantity_value);
+        $this->assertSame(0, $item->pending_pickup_quantity);
+        $this->assertSame(1, $item->pending_delivery_quantity);
+        $this->assertSame('reserved', $asset->asset_status);
+    }
+
     public function test_cancellation_without_reason_fails_validation(): void
     {
         $organization = TestData::organization();

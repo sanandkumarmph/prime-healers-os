@@ -2154,7 +2154,14 @@ class DeliveryController extends Controller
     {
         $delivery = $this->scopedDelivery($delivery);
         $this->authorize('update', $delivery);
+        $rental = $delivery->rental()->first();
         $wasCompleted = $delivery->status === 'completed';
+        $wasEffectivelyClosedDelivery = $delivery->type === 'delivery'
+            && (
+                $wasCompleted
+                || !is_null($delivery->completed_at)
+                || ($rental && in_array($rental->deliveryStatus(), ['completed', 'delivered'], true))
+            );
         $previousAssignedUserId = (int) ($delivery->assigned_user_id ?? 0);
 
         $validationRules = [
@@ -2184,7 +2191,7 @@ class DeliveryController extends Controller
             $validationRules['cancellation_notes'] = ['nullable', 'string', 'max:1000'];
         }
 
-        if ($wasCompleted && $delivery->type === 'delivery') {
+        if ($wasEffectivelyClosedDelivery) {
             $validationRules['reopen_confirmation'] = ['nullable'];
             $validationRules['reopen_reason'] = ['nullable', 'string', 'max:1000'];
         }
@@ -2250,7 +2257,7 @@ class DeliveryController extends Controller
             return back()->withErrors(['type' => 'Sales orders can only be assigned for delivery.'])->withInput();
         }
 
-        if ($wasCompleted && $delivery->type === 'delivery' && $request->input('status') !== 'completed') {
+        if ($wasEffectivelyClosedDelivery && $request->input('status') !== 'completed') {
             $reopenErrors = [];
 
             if (!$request->boolean('reopen_confirmation')) {
@@ -2374,7 +2381,7 @@ class DeliveryController extends Controller
 
         $delivery->update($data);
 
-        if ($rental && $delivery->type === 'delivery' && $wasCompleted && $delivery->status !== 'completed') {
+        if ($rental && $delivery->type === 'delivery' && $wasEffectivelyClosedDelivery && $delivery->status !== 'completed') {
             $this->deliveryWorkflowService()->reopenDeliveryForRental($this->orgId(), $rental);
         }
 
@@ -2387,7 +2394,7 @@ class DeliveryController extends Controller
         ActivityLogger::log('delivery.updated', $delivery->refresh(), [
             'type' => $delivery->type,
             'status' => $delivery->status,
-            'reopen_reason' => $wasCompleted && $delivery->type === 'delivery' && $delivery->status !== 'completed'
+            'reopen_reason' => $wasEffectivelyClosedDelivery && $delivery->type === 'delivery' && $delivery->status !== 'completed'
                 ? $request->input('reopen_reason')
                 : null,
             'cancellation_reason' => $delivery->cancellation_reason ?? null,
