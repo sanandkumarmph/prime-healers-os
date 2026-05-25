@@ -37,6 +37,11 @@
             margin: 0 0 14px;
             pointer-events: none;
         }
+        .ph-section-nav-shell.ph-section-nav-static {
+            position: static;
+            top: auto;
+            z-index: auto;
+        }
         .ph-section-nav {
             display: flex;
             align-items: center;
@@ -104,6 +109,11 @@
             .ph-section-nav-shell {
                 --ph-section-nav-top: 74px;
                 margin-bottom: 14px;
+            }
+            .ph-section-nav-shell.ph-section-nav-static-mobile {
+                position: static;
+                top: auto;
+                z-index: auto;
             }
         }
     </style>

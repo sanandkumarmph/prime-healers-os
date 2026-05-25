@@ -1506,7 +1506,7 @@
         />
 
         <x-section-nav
-            class="ph-rental-section-nav"
+            class="ph-rental-section-nav ph-section-nav-static-mobile"
             label="Rental page sections"
             :items="[
                 ['id' => 'rental-overview-section', 'label' => 'Overview'],

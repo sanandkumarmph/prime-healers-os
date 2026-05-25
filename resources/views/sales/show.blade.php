@@ -685,7 +685,7 @@
     ])
 
     <x-section-nav
-        class="ph-sale-section-nav"
+        class="ph-sale-section-nav ph-section-nav-static-mobile"
         label="Sale page sections"
         :items="[
             ['id' => 'sale-overview-section', 'label' => 'Overview'],
