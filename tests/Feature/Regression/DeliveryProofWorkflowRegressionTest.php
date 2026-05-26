@@ -465,9 +465,11 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
             ->assertSee('data-signature-preview-image', false)
             ->assertSee('data-preview-target="delivery-device-preview"', false)
             ->assertSee('data-preview-target="premises-preview"', false)
-            ->assertSee('data-review-summary="location"', false)
-            ->assertSee('data-review-summary="photos"', false)
-            ->assertSee('data-review-summary="signature"', false)
+            ->assertSeeText('Customer')
+            ->assertSeeText('Product')
+            ->assertSee('data-review-item="location"', false)
+            ->assertSee('data-review-item="photos"', false)
+            ->assertSee('data-review-item="signature"', false)
             ->assertSeeText('Review and finish');
     }
 

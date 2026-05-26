@@ -2801,32 +2801,18 @@
                                 <span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Product</span>
                                 <strong style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;text-align:left;">{{ $taskProductLabel }}</strong>
                             </div>
-                            <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;">
-                                <span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">GPS</span>
-                                <strong data-review-summary="location" style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;text-align:left;">Pending</strong>
-                            </div>
-                            <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;">
-                                <span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Photos</span>
-                                <strong data-review-summary="photos" style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;text-align:left;">Pending</strong>
-                            </div>
-                            <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;">
-                                <span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Signature</span>
-                                <strong data-review-summary="signature" style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;text-align:left;">Pending</strong>
-                            </div>
-                            <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;">
-                                <span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">{{ $supportsCollectionStep ? 'Collection' : 'Task Status' }}</span>
-                                <strong data-review-summary="{{ $supportsCollectionStep ? 'collection' : 'complete' }}" style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;text-align:left;">{{ $supportsCollectionStep ? 'Pending' : 'Ready to complete after proof review' }}</strong>
-                            </div>
                             @if($delivery->type === 'pickup')
                                 <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;">
                                     <span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Condition</span>
                                     <strong data-review-summary="condition" style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;text-align:left;">Pending</strong>
                                 </div>
                             @endif
-                            <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;">
-                                <span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Notes</span>
-                                <strong data-review-summary="notes" style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;text-align:left;">Optional</strong>
-                            </div>
+                            @if($supportsCollectionStep)
+                                <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;">
+                                    <span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Collection</span>
+                                    <strong data-review-summary="collection" style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;text-align:left;">Pending</strong>
+                                </div>
+                            @endif
                         </div>
                         <div class="workflow-review-list workflow-review-list--stacked" style="display:block;width:100%;max-width:100%;min-width:0;">
                             <div class="workflow-review-item workflow-review-item--stacked" data-review-item="location" data-review-ready="false" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;"><strong style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Location</strong><span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">GPS captured or reason added.</span><span class="workflow-review-status" style="display:block;writing-mode:horizontal-tb;white-space:normal;">Missing</span></div>
@@ -3318,10 +3304,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (!mobileActive) {
                     panel.style.display = '';
+                    panel.style.flexDirection = '';
+                    panel.style.alignItems = '';
                     return;
                 }
 
-                panel.style.display = stepIndex === currentStep ? 'grid' : 'none';
+                if (stepIndex === currentStep) {
+                    panel.style.display = 'flex';
+                    panel.style.flexDirection = 'column';
+                    panel.style.alignItems = 'stretch';
+                } else {
+                    panel.style.display = 'none';
+                    panel.style.flexDirection = '';
+                    panel.style.alignItems = '';
+                }
             });
 
             stepTabs.forEach((tab, index) => {
