@@ -108,9 +108,13 @@
     $latestLocationProof = $locationProofs
         ->sortByDesc(fn ($proof) => optional($proof->captured_at ?? $proof->created_at)?->timestamp ?? 0)
         ->first();
+    $proofHistoryItems = $fileProofs
+        ->when($latestLocationProof, fn ($collection) => $collection->push($latestLocationProof))
+        ->sortByDesc(fn ($proof) => optional($proof->captured_at ?? $proof->created_at)?->timestamp ?? 0)
+        ->values();
     $hasPendingWorkflowCapture = $canUpdateTask && in_array($delivery->status, ['pending', 'in_progress'], true);
     $canCancelTask = $canUpdateTask && !in_array($delivery->status, ['completed', 'cancelled'], true);
-    $hasProofHistory = $deliveryProofs->isNotEmpty();
+    $hasProofHistory = $proofHistoryItems->isNotEmpty();
     $workflowCompleted = in_array($displayStatus, ['delivered', 'picked_up', 'completed'], true) || $delivery->status === 'completed';
     $primaryWorkflowCtaLabel = $workflowCompleted
         ? null
@@ -237,8 +241,8 @@
     $taskWarehouseLabel = $isSaleTask ? ($delivery->sale?->asset?->warehouse?->name ?? 'Sale dispatch') : ($delivery->rental?->dispatchWarehouse?->name ?? 'Any warehouse');
     $referencePartnerName = $delivery->rental?->businessPartner?->business_name
         ?? $delivery->sale?->businessPartner?->business_name;
-    $latestProofPreview = $deliveryProofs->first()
-        ? \App\Models\DeliveryProof::labelForType($deliveryProofs->first()->proof_type)
+    $latestProofPreview = $proofHistoryItems->first()
+        ? \App\Models\DeliveryProof::labelForType($proofHistoryItems->first()->proof_type)
         : 'No proof yet';
     $workflowIllustration = function (string $key): string {
         return match ($key) {
@@ -1791,6 +1795,33 @@
         .workflow-mobile-shell[data-mobile-shell-state="open"] {
             display:grid;
         }
+        .workflow-mobile-shell[data-mobile-shell-mode="proof-history"] .workflow-mobile-stepper {
+            display:none !important;
+        }
+        .workflow-mobile-shell[data-mobile-shell-mode="proof-history"] [data-workflow-shell-intro],
+        .workflow-mobile-shell[data-mobile-shell-mode="proof-history"] [data-workflow-error-summary] {
+            display:none !important;
+        }
+        .workflow-mobile-shell[data-mobile-shell-mode="proof-history"] form[data-workflow-form],
+        .workflow-mobile-shell[data-mobile-shell-mode="proof-history"] details[id="{{ $cancellationSectionId }}"],
+        .workflow-mobile-shell[data-mobile-shell-mode="proof-history"] .workflow-proof-divider {
+            display:none !important;
+        }
+        .workflow-mobile-shell[data-mobile-shell-mode="proof-history"] .proof-history-shell {
+            display:block !important;
+            margin-top:0;
+            overflow:visible;
+        }
+        .workflow-mobile-shell[data-mobile-shell-mode="proof-history"] .workflow-mobile-shell-body {
+            overflow-y:auto !important;
+            -webkit-overflow-scrolling:touch;
+            overscroll-behavior:contain;
+            touch-action:pan-y;
+        }
+        .workflow-mobile-shell[data-mobile-shell-mode="proof-history"] .proof-history-body {
+            padding:0 14px calc(118px + env(safe-area-inset-bottom, 0px));
+            overflow:visible;
+        }
         .workflow-mobile-shell-head {
             display:flex;
             align-items:center;
@@ -2043,7 +2074,7 @@
 
     @if(!$isSaleTask)
     <div class="detail-card">
-        <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
+        <div data-workflow-shell-intro style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
             <div>
                 <h2 style="margin:0;">Item Progress</h2>
                 <div style="margin-top:6px; color:#64748b; font-size:12px;">Clear counts for each rental item.</div>
@@ -2920,15 +2951,15 @@
                 <div class="proof-history-summary">
                     <div>
                         <strong style="display:block; color:#0f172a; font-size:16px;">Proof History</strong>
-                        <span class="workflow-proof-help">Latest: {{ $deliveryProofs->first() ? \App\Models\DeliveryProof::labelForType($deliveryProofs->first()->proof_type) : 'No proof yet' }}</span>
+                        <span class="workflow-proof-help">Latest: {{ $latestProofPreview }}</span>
                     </div>
-                    <span class="workflow-proof-badge">{{ $deliveryProofs->count() }} item{{ $deliveryProofs->count() === 1 ? '' : 's' }}</span>
+                    <span class="workflow-proof-badge">{{ $proofHistoryItems->count() }} item{{ $proofHistoryItems->count() === 1 ? '' : 's' }}</span>
                 </div>
             </summary>
             <div class="proof-history-body">
             <div class="workflow-proof-history">
 
-            @forelse($deliveryProofs as $proof)
+            @forelse($proofHistoryItems as $proof)
                 @php
                     $proofLabel = \App\Models\DeliveryProof::historyLabelFor($proof);
                     $proofWhen = $proof->captured_at ?: $proof->created_at;
@@ -2959,14 +2990,7 @@
                             <div class="workflow-proof-help"><strong>Acknowledgement:</strong> {{ $proof->acknowledgement_text }}</div>
                         @endif
                         @if($hasCoordinates)
-                            <div class="workflow-proof-help"><strong>Coordinates:</strong> {{ number_format((float) $proof->latitude, 6) }}, {{ number_format((float) $proof->longitude, 6) }} @if(filled($proof->accuracy)) · Accuracy {{ number_format((float) $proof->accuracy, 1) }} m @endif</div>
-                        @elseif($proof->proof_type === \App\Models\DeliveryProof::TYPE_LOCATION)
-                            <div class="workflow-proof-help"><strong>Location missing reason:</strong> {{ $proof->notes ?: 'No reason provided' }}</div>
-                        @endif
-                        @if($hasCoordinates)
-                            @php($proofMapUrl = 'https://www.google.com/maps/search/?api=1&query=' . $proof->latitude . ',' . $proof->longitude)
-                            <div class="workflow-proof-help"><strong>Latitude:</strong> {{ number_format((float) $proof->latitude, 6) }}</div>
-                            <div class="workflow-proof-help"><strong>Longitude:</strong> {{ number_format((float) $proof->longitude, 6) }}</div>
+                            <div class="workflow-proof-help"><strong>Coordinates:</strong> {{ number_format((float) $proof->latitude, 6) }}, {{ number_format((float) $proof->longitude, 6) }}</div>
                             @if(filled($proof->accuracy))
                                 <div class="workflow-proof-help"><strong>Accuracy:</strong> {{ number_format((float) $proof->accuracy, 1) }} m</div>
                             @endif
@@ -2974,6 +2998,8 @@
                             <div class="workflow-proof-actions">
                                 <a href="{{ $proofMapUrl }}" target="_blank" rel="noopener" class="workflow-proof-trigger">Open Map</a>
                             </div>
+                        @elseif($proof->proof_type === \App\Models\DeliveryProof::TYPE_LOCATION)
+                            <div class="workflow-proof-help"><strong>Location missing reason:</strong> {{ $proof->notes ?: 'No reason provided' }}</div>
                         @endif
                         @if($proof->notes && $proof->proof_type !== \App\Models\DeliveryProof::TYPE_LOCATION)
                             <div class="workflow-proof-help"><strong>Notes:</strong> {{ $proof->notes }}</div>
@@ -3154,6 +3180,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         mobileWorkflowShell.dataset.mobileShellState = 'closed';
+        mobileWorkflowShell.dataset.mobileShellMode = 'workflow';
         document.body.classList.remove('workflow-mobile-open');
 
         if (!preserveHash && window.location.hash === '#{{ $workflowProofSectionId }}') {
@@ -3161,12 +3188,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    const openMobileWorkflowShell = () => {
+    const openMobileWorkflowShell = (mode = 'workflow') => {
         if (!(mobileWorkflowShell instanceof HTMLElement) || !mobileWorkflowMedia.matches) {
             return;
         }
 
         mobileWorkflowShell.dataset.mobileShellState = 'open';
+        mobileWorkflowShell.dataset.mobileShellMode = mode;
         document.body.classList.add('workflow-mobile-open');
     };
 
@@ -3206,7 +3234,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 event.preventDefault();
                 history.replaceState(null, '', '#{{ $workflowProofSectionId }}');
-                openMobileWorkflowShell();
+                openMobileWorkflowShell('workflow');
             });
         } catch (error) {
             // Ignore malformed or external links.
@@ -3233,8 +3261,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (mobileWorkflowMedia.matches && mobileWorkflowShell instanceof HTMLElement) {
-            mobileWorkflowShell.dataset.mobileShellState = 'open';
-            document.body.classList.add('workflow-mobile-open');
+            openMobileWorkflowShell('proof-history');
         }
 
         proofHistorySection.open = true;
@@ -3256,7 +3283,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     if (workflowSection && (window.location.hash === '#{{ $workflowProofSectionId }}' || {{ $hasWorkflowErrors ? 'true' : 'false' }})) {
-        openMobileWorkflowShell();
+        openMobileWorkflowShell('workflow');
         window.requestAnimationFrame(() => {
             scrollWithinWorkflowShell(workflowSection);
         });

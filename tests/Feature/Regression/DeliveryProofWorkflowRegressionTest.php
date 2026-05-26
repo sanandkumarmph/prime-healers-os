@@ -420,8 +420,7 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
             ->assertSeeText('Extra Photo')
             ->assertSeeText('Customer Signature')
             ->assertSeeText('Payment Proof')
-            ->assertSeeText('Latitude:')
-            ->assertSeeText('Longitude:')
+            ->assertSeeText('Coordinates:')
             ->assertSeeText('Accuracy:')
             ->assertSeeText('Open Map')
             ->assertSeeText('View Full Size');
