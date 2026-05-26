@@ -2792,53 +2792,53 @@
                                 <span>Complete only when every required proof is ready.</span>
                             </div>
                         </div>
-                        <div class="workflow-review-summary-grid workflow-review-summary-grid--stacked" style="display:grid;grid-template-columns:minmax(0,1fr);gap:8px;width:100%;max-width:100%;min-width:0;">
-                            <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:grid;grid-template-columns:minmax(0,1fr);gap:4px;width:100%;max-width:100%;min-width:0;overflow:hidden;">
-                                <span>Customer</span>
-                                <strong>{{ $linkedCustomerName ?: 'Customer' }}</strong>
+                        <div class="workflow-review-summary-grid workflow-review-summary-grid--stacked" style="display:block;width:100%;max-width:100%;min-width:0;">
+                            <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;">
+                                <span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Customer</span>
+                                <strong style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;text-align:left;">{{ $linkedCustomerName ?: 'Customer' }}</strong>
                             </div>
-                            <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:grid;grid-template-columns:minmax(0,1fr);gap:4px;width:100%;max-width:100%;min-width:0;overflow:hidden;">
-                                <span>Product</span>
-                                <strong>{{ $taskProductLabel }}</strong>
+                            <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;">
+                                <span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Product</span>
+                                <strong style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;text-align:left;">{{ $taskProductLabel }}</strong>
                             </div>
-                            <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:grid;grid-template-columns:minmax(0,1fr);gap:4px;width:100%;max-width:100%;min-width:0;overflow:hidden;">
-                                <span>GPS</span>
-                                <strong data-review-summary="location">Pending</strong>
+                            <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;">
+                                <span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">GPS</span>
+                                <strong data-review-summary="location" style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;text-align:left;">Pending</strong>
                             </div>
-                            <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:grid;grid-template-columns:minmax(0,1fr);gap:4px;width:100%;max-width:100%;min-width:0;overflow:hidden;">
-                                <span>Photos</span>
-                                <strong data-review-summary="photos">Pending</strong>
+                            <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;">
+                                <span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Photos</span>
+                                <strong data-review-summary="photos" style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;text-align:left;">Pending</strong>
                             </div>
-                            <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:grid;grid-template-columns:minmax(0,1fr);gap:4px;width:100%;max-width:100%;min-width:0;overflow:hidden;">
-                                <span>Signature</span>
-                                <strong data-review-summary="signature">Pending</strong>
+                            <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;">
+                                <span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Signature</span>
+                                <strong data-review-summary="signature" style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;text-align:left;">Pending</strong>
                             </div>
-                            <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:grid;grid-template-columns:minmax(0,1fr);gap:4px;width:100%;max-width:100%;min-width:0;overflow:hidden;">
-                                <span>{{ $supportsCollectionStep ? 'Collection' : 'Task Status' }}</span>
-                                <strong data-review-summary="{{ $supportsCollectionStep ? 'collection' : 'complete' }}">{{ $supportsCollectionStep ? 'Pending' : 'Ready to complete after proof review' }}</strong>
+                            <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;">
+                                <span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">{{ $supportsCollectionStep ? 'Collection' : 'Task Status' }}</span>
+                                <strong data-review-summary="{{ $supportsCollectionStep ? 'collection' : 'complete' }}" style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;text-align:left;">{{ $supportsCollectionStep ? 'Pending' : 'Ready to complete after proof review' }}</strong>
                             </div>
                             @if($delivery->type === 'pickup')
-                                <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:grid;grid-template-columns:minmax(0,1fr);gap:4px;width:100%;max-width:100%;min-width:0;overflow:hidden;">
-                                    <span>Condition</span>
-                                    <strong data-review-summary="condition">Pending</strong>
+                                <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;">
+                                    <span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Condition</span>
+                                    <strong data-review-summary="condition" style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;text-align:left;">Pending</strong>
                                 </div>
                             @endif
-                            <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:grid;grid-template-columns:minmax(0,1fr);gap:4px;width:100%;max-width:100%;min-width:0;overflow:hidden;">
-                                <span>Notes</span>
-                                <strong data-review-summary="notes">Optional</strong>
+                            <div class="workflow-review-summary-card workflow-review-summary-card--stacked" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;">
+                                <span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Notes</span>
+                                <strong data-review-summary="notes" style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;text-align:left;">Optional</strong>
                             </div>
                         </div>
-                        <div class="workflow-review-list workflow-review-list--stacked" style="display:grid;grid-template-columns:minmax(0,1fr);gap:8px;width:100%;max-width:100%;min-width:0;">
-                            <div class="workflow-review-item workflow-review-item--stacked" data-review-item="location" data-review-ready="false" style="display:grid;grid-template-columns:minmax(0,1fr);gap:6px;width:100%;max-width:100%;min-width:0;overflow:hidden;"><strong>Location</strong><span>GPS captured or reason added.</span><span class="workflow-review-status">Missing</span></div>
-                            <div class="workflow-review-item workflow-review-item--stacked" data-review-item="photos" data-review-ready="false" style="display:grid;grid-template-columns:minmax(0,1fr);gap:6px;width:100%;max-width:100%;min-width:0;overflow:hidden;"><strong>Photos</strong><span>{{ $delivery->type === 'pickup' ? 'Pickup photos ready.' : 'Delivery proof photos ready.' }}</span><span class="workflow-review-status">Missing</span></div>
+                        <div class="workflow-review-list workflow-review-list--stacked" style="display:block;width:100%;max-width:100%;min-width:0;">
+                            <div class="workflow-review-item workflow-review-item--stacked" data-review-item="location" data-review-ready="false" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;"><strong style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Location</strong><span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">GPS captured or reason added.</span><span class="workflow-review-status" style="display:block;writing-mode:horizontal-tb;white-space:normal;">Missing</span></div>
+                            <div class="workflow-review-item workflow-review-item--stacked" data-review-item="photos" data-review-ready="false" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;"><strong style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Photos</strong><span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">{{ $delivery->type === 'pickup' ? 'Pickup photos ready.' : 'Delivery proof photos ready.' }}</span><span class="workflow-review-status" style="display:block;writing-mode:horizontal-tb;white-space:normal;">Missing</span></div>
                             @if($delivery->type === 'pickup')
-                                <div class="workflow-review-item workflow-review-item--stacked" data-review-item="condition" data-review-ready="false" style="display:grid;grid-template-columns:minmax(0,1fr);gap:6px;width:100%;max-width:100%;min-width:0;overflow:hidden;"><strong>Condition</strong><span>Damage and accessories reviewed.</span><span class="workflow-review-status">Missing</span></div>
+                                <div class="workflow-review-item workflow-review-item--stacked" data-review-item="condition" data-review-ready="false" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;"><strong style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Condition</strong><span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Damage and accessories reviewed.</span><span class="workflow-review-status" style="display:block;writing-mode:horizontal-tb;white-space:normal;">Missing</span></div>
                             @endif
-                            <div class="workflow-review-item workflow-review-item--stacked" data-review-item="signature" data-review-ready="false" style="display:grid;grid-template-columns:minmax(0,1fr);gap:6px;width:100%;max-width:100%;min-width:0;overflow:hidden;"><strong>Signature</strong><span>Customer acknowledgement captured.</span><span class="workflow-review-status">Missing</span></div>
+                            <div class="workflow-review-item workflow-review-item--stacked" data-review-item="signature" data-review-ready="false" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;"><strong style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Signature</strong><span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Customer acknowledgement captured.</span><span class="workflow-review-status" style="display:block;writing-mode:horizontal-tb;white-space:normal;">Missing</span></div>
                             @if($supportsCollectionStep)
-                                <div class="workflow-review-item workflow-review-item--stacked" data-review-item="collection" data-review-ready="false" style="display:grid;grid-template-columns:minmax(0,1fr);gap:6px;width:100%;max-width:100%;min-width:0;overflow:hidden;"><strong>Collection</strong><span>Amount recorded or reason added.</span><span class="workflow-review-status">Missing</span></div>
+                                <div class="workflow-review-item workflow-review-item--stacked" data-review-item="collection" data-review-ready="false" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;"><strong style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Collection</strong><span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Amount recorded or reason added.</span><span class="workflow-review-status" style="display:block;writing-mode:horizontal-tb;white-space:normal;">Missing</span></div>
                             @endif
-                            <div class="workflow-review-item workflow-review-item--stacked" data-review-item="notes" data-review-ready="true" style="display:grid;grid-template-columns:minmax(0,1fr);gap:6px;width:100%;max-width:100%;min-width:0;overflow:hidden;"><strong>Notes</strong><span>Only operational notes, no extra narrative.</span><span class="workflow-review-status">Optional</span></div>
+                            <div class="workflow-review-item workflow-review-item--stacked" data-review-item="notes" data-review-ready="true" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;"><strong style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Notes</strong><span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Only operational notes, no extra narrative.</span><span class="workflow-review-status" style="display:block;writing-mode:horizontal-tb;white-space:normal;">Optional</span></div>
                         </div>
                         <div class="workflow-proof-field span-12">
                             <label style="display:flex; align-items:flex-start; gap:10px; text-transform:none; letter-spacing:0; font-size:12px; color:#0f172a;">
@@ -3737,7 +3737,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             completeButton.disabled = !canComplete;
             completeButton.setAttribute('aria-disabled', canComplete ? 'false' : 'true');
-            completeButton.style.opacity = canComplete ? '1' : '.55';
+            completeButton.style.opacity = '1';
             completeButton.style.pointerEvents = canComplete ? 'auto' : 'none';
         }
     };
