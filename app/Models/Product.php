@@ -146,6 +146,11 @@ class Product extends Model
         return $this->hasMany(InventoryConversion::class);
     }
 
+    public function stockMovements(): HasMany
+    {
+        return $this->hasMany(StockMovement::class)->latest('movement_at');
+    }
+
     public function isSellableProduct(): bool
     {
         return $this->product_type === self::TYPE_SELLABLE;

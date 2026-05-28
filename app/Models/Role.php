@@ -32,6 +32,10 @@ class Role extends Model
         'invoices.export' => 'Export invoices',
         'invoices.print' => 'Print invoices',
         'payments.export' => 'Export payments',
+        'stock_history.view' => 'View stock history',
+        'stock_history.export' => 'Export stock history',
+        'stock_history.product' => 'View product stock movements',
+        'stock_history.asset' => 'View asset stock movements',
     ];
 
     protected $fillable = [

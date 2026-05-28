@@ -8,6 +8,8 @@ use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleInventory;
 use App\Models\Warehouse;
+use App\Models\StockMovement;
+use App\Services\Inventory\StockMovementRecorder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -140,7 +142,15 @@ class AssetController extends Controller
         ];
     }
 
-    private function recordMovement(Asset $asset, ?int $fromWarehouseId, ?int $toWarehouseId, string $movementType, ?string $remarks = null): void
+    private function recordMovement(
+        Asset $asset,
+        ?int $fromWarehouseId,
+        ?int $toWarehouseId,
+        string $movementType,
+        ?string $remarks = null,
+        ?string $fromStatus = null,
+        ?string $toStatus = null
+    ): void
     {
         AssetMovement::create([
             'organization_id' => $asset->organization_id,
@@ -151,6 +161,19 @@ class AssetController extends Controller
             'remarks' => $remarks,
             'moved_by' => auth()->id(),
         ]);
+
+        app(StockMovementRecorder::class)->recordForAsset(
+            $asset,
+            $movementType,
+            1,
+            [
+                'from_status' => $fromStatus,
+                'to_status' => $toStatus ?? $asset->asset_status,
+                'from_warehouse_id' => $fromWarehouseId,
+                'to_warehouse_id' => $toWarehouseId,
+                'notes' => $remarks,
+            ]
+        );
     }
 
     private function verificationValidationRules(Asset $asset): array
@@ -539,8 +562,10 @@ class AssetController extends Controller
                 $asset,
                 null,
                 $asset->warehouse_id,
-                'inward',
-                'Asset created and added to warehouse.'
+                StockMovement::TYPE_ADD_STOCK,
+                'Asset created and added to warehouse.',
+                null,
+                $asset->asset_status
             );
 
             SaleInventory::syncFromSaleUnits($this->orgId(), $product->id);
@@ -592,6 +617,7 @@ class AssetController extends Controller
         $state = self::VERIFICATION_OUTCOME_TO_STATE[$validated['verification_outcome']];
 
         DB::transaction(function () use ($asset, $validated, $state) {
+            $previousStatus = $asset->asset_status;
             $asset->update([
                 'serial_number' => trim((string) $validated['serial_number']),
                 'barcode_value' => filled($validated['barcode_value'] ?? null) ? trim((string) $validated['barcode_value']) : null,
@@ -610,12 +636,18 @@ class AssetController extends Controller
                 $asset,
                 $asset->warehouse_id,
                 $asset->warehouse_id,
-                'verification',
+                match ((string) $validated['verification_outcome']) {
+                    'repair' => StockMovement::TYPE_REPAIR,
+                    'scrap' => StockMovement::TYPE_SCRAP,
+                    default => StockMovement::TYPE_RETURN_VERIFICATION,
+                },
                 trim(collect([
                     'Returned asset verified as ' . ucfirst((string) $validated['verification_outcome']) . '.',
                     filled($validated['manufacturing_year'] ?? null) ? 'Manufacturing year: ' . $validated['manufacturing_year'] . '.' : null,
                     filled($validated['remarks'] ?? null) ? 'Remarks: ' . trim((string) $validated['remarks']) : null,
-                ])->filter()->implode(' '))
+                ])->filter()->implode(' ')),
+                $previousStatus,
+                $state['asset_status']
             );
 
             SaleInventory::syncFromSaleUnits($this->orgId(), $asset->product_id);
@@ -641,6 +673,7 @@ class AssetController extends Controller
         );
         $this->validateWorkflowControlledAssetEdit($asset, $validated);
         $fromWarehouseId = $asset->warehouse_id;
+        $fromStatus = $asset->asset_status;
 
         $asset->update([
             ...$validated,
@@ -656,8 +689,10 @@ class AssetController extends Controller
                 $asset,
                 $fromWarehouseId,
                 $asset->warehouse_id,
-                'transfer',
-                'Warehouse updated from asset edit screen.'
+                StockMovement::TYPE_WAREHOUSE_TRANSFER,
+                'Warehouse updated from asset edit screen.',
+                $fromStatus,
+                $asset->asset_status
             );
         }
 
@@ -722,14 +757,17 @@ class AssetController extends Controller
         ]);
 
         $fromWarehouseId = $asset->warehouse_id;
+        $fromStatus = $asset->asset_status;
         $asset->update(['warehouse_id' => $validated['warehouse_id']]);
 
         $this->recordMovement(
             $asset,
             $fromWarehouseId,
             (int) $validated['warehouse_id'],
-            'transfer',
-            $validated['remarks'] ?? 'Asset transferred between warehouses.'
+            StockMovement::TYPE_WAREHOUSE_TRANSFER,
+            $validated['remarks'] ?? 'Asset transferred between warehouses.',
+            $fromStatus,
+            $asset->asset_status
         );
 
         SaleInventory::syncFromSaleUnits($this->orgId(), $asset->product_id);

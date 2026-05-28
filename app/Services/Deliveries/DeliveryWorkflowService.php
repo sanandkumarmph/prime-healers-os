@@ -7,10 +7,17 @@ use App\Models\Delivery;
 use App\Models\Product;
 use App\Models\Rental;
 use App\Models\RentalItem;
+use App\Models\StockMovement;
+use App\Services\Inventory\StockMovementRecorder;
 use Illuminate\Support\Facades\DB;
 
 class DeliveryWorkflowService
 {
+    private function recordMovement(array $attributes): void
+    {
+        app(StockMovementRecorder::class)->record($attributes);
+    }
+
     public function ensureRentalItemsExist(int $organizationId, Rental $rental): void
     {
         if (!Rental::hasRentalItemsTable()) {
@@ -128,6 +135,18 @@ class DeliveryWorkflowService
             ->where('organization_id', $organizationId)
             ->where('id', $item->product_id)
             ->increment('available_quantity', $quantity);
+
+        $this->recordMovement([
+            'organization_id' => $organizationId,
+            'product_id' => $item->product_id,
+            'movement_type' => StockMovement::TYPE_PICKUP_RETURN,
+            'quantity' => $quantity,
+            'from_status' => 'with_customer',
+            'to_status' => 'available',
+            'rental_id' => $item->rental_id ?? null,
+            'performed_by_user_id' => auth()->id(),
+            'notes' => 'Pickup return restored legacy untracked rental stock.',
+        ]);
     }
 
     public function syncRentalProgressAssetStatuses(int $organizationId, Rental $rental): void
@@ -287,12 +306,75 @@ class DeliveryWorkflowService
         }
     }
 
-    public function finalizePickupCompletionForRental(int $organizationId, Rental $rental, ?string $returnedAt = null): void
+    public function completePickupReturn(int $organizationId, Rental $rental, ?Delivery $pickup = null, ?string $returnedAt = null): Delivery
     {
         $timestamp = $returnedAt ?: now()->toDateTimeString();
+        $pickup ??= $rental->pickupRecord()->first();
+
+        if ($pickup) {
+            $pickup->forceFill([
+                'status' => 'completed',
+                'completed_at' => $timestamp,
+                'scheduled_at' => $pickup->scheduled_at ?: $timestamp,
+            ])->save();
+        } else {
+            $pickup = Delivery::create([
+                'organization_id' => $organizationId,
+                'rental_id' => $rental->id,
+                'type' => 'pickup',
+                'scheduled_at' => $timestamp,
+                'status' => 'completed',
+                'completed_at' => $timestamp,
+                'notes' => 'Auto-completed when rental was marked returned.',
+            ]);
+        }
+
+        $this->finalizePickupCompletionForRental($organizationId, $rental->fresh(), $timestamp, $pickup->id);
+
+        return $pickup->fresh();
+    }
+
+    public function finalizePickupCompletionForRental(int $organizationId, Rental $rental, ?string $returnedAt = null, ?int $deliveryId = null): void
+    {
+        $timestamp = $returnedAt ?: now()->toDateTimeString();
+        $processedAssetIds = [];
 
         if (!Rental::hasRentalItemsTable()) {
-            $this->releaseRentalAssetsForReturn($organizationId, $rental, $timestamp);
+            $activeAssignments = \App\Models\RentalAsset::hasTable()
+                ? $rental->activeRentalAssets()->with('asset')->get()
+                : collect();
+
+            foreach ($activeAssignments as $assignment) {
+                $asset = $assignment->asset;
+
+                if (!$asset) {
+                    continue;
+                }
+
+                $assignment->update([
+                    'returned_at' => $timestamp,
+                    'return_condition' => $asset->condition_status,
+                    'notes' => trim(($assignment->notes ? $assignment->notes . ' | ' : '') . 'Released on pickup completion and awaiting verification.'),
+                ]);
+
+                $asset->update(['asset_status' => Asset::STATUS_AWAITING_VERIFICATION]);
+
+                $this->recordMovement([
+                    'organization_id' => $organizationId,
+                    'product_id' => $asset->product_id ?: $rental->product_id,
+                    'asset_id' => $asset->id,
+                    'movement_type' => StockMovement::TYPE_PICKUP_RETURN,
+                    'quantity' => 1,
+                    'from_status' => 'rented',
+                    'to_status' => Asset::STATUS_AWAITING_VERIFICATION,
+                    'from_warehouse_id' => $rental->dispatch_warehouse_id,
+                    'to_warehouse_id' => $rental->dispatch_warehouse_id,
+                    'rental_id' => $rental->id,
+                    'delivery_id' => $deliveryId,
+                    'performed_by_user_id' => auth()->id(),
+                    'notes' => 'Rental asset picked up and awaiting verification on workflow completion.',
+                ]);
+            }
 
             if ($rental->status !== 'returned') {
                 $rental->update([
@@ -326,6 +408,25 @@ class DeliveryWorkflowService
 
             if ($assetIds !== []) {
                 $this->releaseSpecificRentalAssets($organizationId, $rental, $assetIds, $timestamp);
+                $processedAssetIds = array_values(array_unique(array_merge($processedAssetIds, $assetIds)));
+
+                foreach ($assetIds as $assetId) {
+                    $this->recordMovement([
+                        'organization_id' => $organizationId,
+                        'product_id' => $item->product_id,
+                        'asset_id' => $assetId,
+                        'movement_type' => StockMovement::TYPE_PICKUP_RETURN,
+                        'quantity' => 1,
+                        'from_status' => 'rented',
+                        'to_status' => Asset::STATUS_AWAITING_VERIFICATION,
+                        'from_warehouse_id' => $rental->dispatch_warehouse_id,
+                        'to_warehouse_id' => $rental->dispatch_warehouse_id,
+                        'rental_id' => $rental->id,
+                        'delivery_id' => $deliveryId,
+                        'performed_by_user_id' => auth()->id(),
+                        'notes' => 'Rental asset picked up and awaiting verification on workflow completion.',
+                    ]);
+                }
             } elseif ($product?->usesUntrackedStock()) {
                 $this->restoreLegacyRentalItemStock($organizationId, $item, $outstandingQuantity);
             }
@@ -334,7 +435,42 @@ class DeliveryWorkflowService
         $rental->unsetRelation('rentalItems');
 
         if (\App\Models\RentalAsset::hasTable() && $rental->activeRentalAssets()->exists()) {
-            $this->releaseRentalAssetsForReturn($organizationId, $rental, $timestamp);
+            $remainingAssignments = $rental->activeRentalAssets()
+                ->with('asset')
+                ->when($processedAssetIds !== [], fn ($query) => $query->whereNotIn('asset_id', $processedAssetIds))
+                ->get();
+
+            foreach ($remainingAssignments as $assignment) {
+                $asset = $assignment->asset;
+
+                if (!$asset) {
+                    continue;
+                }
+
+                $assignment->update([
+                    'returned_at' => $timestamp,
+                    'return_condition' => $asset->condition_status,
+                    'notes' => trim(($assignment->notes ? $assignment->notes . ' | ' : '') . 'Released on pickup completion and awaiting verification.'),
+                ]);
+
+                $asset->update(['asset_status' => Asset::STATUS_AWAITING_VERIFICATION]);
+
+                $this->recordMovement([
+                    'organization_id' => $organizationId,
+                    'product_id' => $asset->product_id ?: $rental->product_id,
+                    'asset_id' => $asset->id,
+                    'movement_type' => StockMovement::TYPE_PICKUP_RETURN,
+                    'quantity' => 1,
+                    'from_status' => 'rented',
+                    'to_status' => Asset::STATUS_AWAITING_VERIFICATION,
+                    'from_warehouse_id' => $rental->dispatch_warehouse_id,
+                    'to_warehouse_id' => $rental->dispatch_warehouse_id,
+                    'rental_id' => $rental->id,
+                    'delivery_id' => $deliveryId,
+                    'performed_by_user_id' => auth()->id(),
+                    'notes' => 'Rental asset picked up and awaiting verification on workflow completion.',
+                ]);
+            }
         }
 
         if ($rental->deliveredQuantityTotal() > 0 && $rental->pendingPickupQuantityTotal() === 0) {
@@ -358,9 +494,28 @@ class DeliveryWorkflowService
                 continue;
             }
 
+             $assetIds = $this->nextPendingAssetIdsForDelivery($item, $outstandingQuantity);
+
             $item->update([
                 'delivered_quantity' => min($item->ordered_quantity, $item->delivered_quantity_value + $outstandingQuantity),
             ]);
+
+            foreach ($assetIds as $assetId) {
+                $this->recordMovement([
+                    'organization_id' => $organizationId,
+                    'product_id' => $item->product_id,
+                    'asset_id' => $assetId,
+                    'movement_type' => StockMovement::TYPE_DELIVERY,
+                    'quantity' => 1,
+                    'from_status' => 'reserved',
+                    'to_status' => 'rented',
+                    'from_warehouse_id' => $rental->dispatch_warehouse_id,
+                    'to_warehouse_id' => $rental->dispatch_warehouse_id,
+                    'rental_id' => $rental->id,
+                    'performed_by_user_id' => auth()->id(),
+                    'notes' => 'Rental asset delivered on workflow completion.',
+                ]);
+            }
         }
 
         $rental->unsetRelation('rentalItems');
@@ -423,6 +578,24 @@ class DeliveryWorkflowService
                     ->where('organization_id', $organizationId)
                     ->whereIn('id', $assetIds)
                     ->update(['asset_status' => 'rented']);
+
+                foreach ($assetIds as $assetId) {
+                    $this->recordMovement([
+                        'organization_id' => $organizationId,
+                        'product_id' => $item->product_id,
+                        'asset_id' => $assetId,
+                        'movement_type' => StockMovement::TYPE_DELIVERY,
+                        'quantity' => 1,
+                        'from_status' => 'reserved',
+                        'to_status' => 'rented',
+                        'from_warehouse_id' => $rental->dispatch_warehouse_id,
+                        'to_warehouse_id' => $rental->dispatch_warehouse_id,
+                        'rental_id' => $rental->id,
+                        'delivery_id' => $delivery->id,
+                        'performed_by_user_id' => auth()->id(),
+                        'notes' => 'Rental asset delivered to customer.',
+                    ]);
+                }
             }
 
             $syncAssignedAssetStatuses($delivery->fresh());
@@ -468,6 +641,24 @@ class DeliveryWorkflowService
 
             if (!empty($assetIds)) {
                 $this->releaseSpecificRentalAssets($organizationId, $rental, $assetIds, now()->toDateTimeString());
+
+                foreach ($assetIds as $assetId) {
+                    $this->recordMovement([
+                        'organization_id' => $organizationId,
+                        'product_id' => $item->product_id,
+                        'asset_id' => $assetId,
+                        'movement_type' => StockMovement::TYPE_PICKUP_RETURN,
+                        'quantity' => 1,
+                        'from_status' => 'rented',
+                        'to_status' => Asset::STATUS_AWAITING_VERIFICATION,
+                        'from_warehouse_id' => $rental->dispatch_warehouse_id,
+                        'to_warehouse_id' => $rental->dispatch_warehouse_id,
+                        'rental_id' => $rental->id,
+                        'delivery_id' => $delivery->id,
+                        'performed_by_user_id' => auth()->id(),
+                        'notes' => 'Rental asset picked up and awaiting verification.',
+                    ]);
+                }
             } else {
                 $this->restoreLegacyRentalItemStock($organizationId, $item, $quantity);
             }

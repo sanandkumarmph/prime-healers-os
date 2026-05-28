@@ -5,6 +5,7 @@
     $canUpdateProducts = $currentUser?->canAccessModule('products', 'update') ?? false;
     $canDeleteProducts = $currentUser?->canAccessModule('products', 'delete') ?? false;
     $canCreateAssets = $currentUser?->canAccessModule('assets', 'create') ?? false;
+    $canViewProductStockHistory = $currentUser?->hasAnyPermission(['stock_history.view', 'stock_history.product']) ?? false;
     $rupee = html_entity_decode('&#8377;');
 
     $statusBadge = fn ($status) => match($status) {
@@ -453,6 +454,9 @@
                         <a href="{{ $addStockUrl }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; background:#0f172a; color:#ffffff; text-decoration:none; font-weight:700;">Add Stock</a>
                     @endif
                     <a href="{{ $assetRegisterUrl }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border:1px solid #cbd5e1; border-radius:12px; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:700;">Asset Register</a>
+                    @if($canViewProductStockHistory)
+                        <a href="{{ route('stock-history.index', ['product_id' => $product->id]) }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border:1px solid #bfdbfe; border-radius:12px; background:#eff6ff; color:#1d4ed8; text-decoration:none; font-weight:700;">Stock History</a>
+                    @endif
                     <details class="product-action-menu">
                         <summary>More / Convert</summary>
                         <div class="product-action-panel">

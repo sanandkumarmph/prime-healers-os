@@ -22,6 +22,7 @@ use App\Models\RentalSaleItem;
 use App\Models\Role;
 use App\Models\SaleInventory;
 use App\Models\Sale;
+use App\Models\StockMovement;
 use App\Services\Finance\InvoiceLinkResolver;
 use App\Services\Finance\InvoiceSyncService;
 use App\Services\Finance\AmountReductionGuardService;
@@ -30,6 +31,8 @@ use App\Services\Finance\RenewalFinanceService;
 use App\Services\Imports\ImportMatchSignatureService;
 use App\Services\Imports\RentalImportExecutor;
 use App\Services\DashboardVisibilityService;
+use App\Services\Deliveries\DeliveryWorkflowService;
+use App\Services\Inventory\StockMovementRecorder;
 use App\Services\Metrics\CollectionMetricsService;
 use App\Services\Metrics\DashboardMetricsService;
 use App\Services\Metrics\FinanceMetricsService;
@@ -293,6 +296,11 @@ class RentalController extends Controller
         return $this->hasDispatchWarehouseColumn ??= Schema::hasColumn('rentals', 'dispatch_warehouse_id');
     }
 
+    private function deliveryWorkflowService(): DeliveryWorkflowService
+    {
+        return app(DeliveryWorkflowService::class);
+    }
+
     private function rentalImportExecutor(): RentalImportExecutor
     {
         return app(RentalImportExecutor::class);
@@ -459,6 +467,24 @@ class RentalController extends Controller
         return (int) auth()->user()->organization_id;
     }
 
+    private function recordRentalStockMovement(
+        Product $product,
+        int $quantity,
+        string $movementType,
+        ?Rental $rental = null,
+        ?string $notes = null
+    ): void {
+        app(StockMovementRecorder::class)->recordForProduct($product, $movementType, $quantity, [
+            'from_status' => in_array($movementType, [StockMovement::TYPE_PICKUP_RETURN, StockMovement::TYPE_MANUAL_ADJUSTMENT], true) ? 'with_customer' : 'available',
+            'to_status' => in_array($movementType, [StockMovement::TYPE_PICKUP_RETURN, StockMovement::TYPE_MANUAL_ADJUSTMENT], true) ? 'available' : 'with_customer',
+            'from_warehouse_id' => $rental?->dispatch_warehouse_id,
+            'to_warehouse_id' => $rental?->dispatch_warehouse_id,
+            'rental_id' => $rental?->id,
+            'performed_by_user_id' => auth()->id(),
+            'notes' => $notes,
+        ]);
+    }
+
     private function normalizeCarbonDate(mixed $value): ?Carbon
     {
         if ($value instanceof Carbon) {
@@ -556,7 +582,7 @@ class RentalController extends Controller
 
     private function assignableUserRule(): Exists
     {
-        $allowedRoles = ['delivery', 'pickup'];
+        $allowedRoles = ['delivery', 'pickup', User::ROLE_VENDOR];
         $allowedRoleIds = collect();
 
         if (Schema::hasColumn('users', 'role_id')) {
@@ -650,11 +676,23 @@ class RentalController extends Controller
             $staffRole = Staff::normalizedRole($staffRole);
         }
 
+        $userRole = null;
+        if ($target['type'] === 'user') {
+            $userRole = User::query()
+                ->with('assignedRole')
+                ->where('organization_id', $this->orgId())
+                ->whereKey($target['id'])
+                ->get(['id', 'role', 'role_id'])
+                ->first()
+                ?->effective_role;
+        }
+
         return [
             'user_id' => $target['type'] === 'user' ? $target['id'] : null,
             'staff_id' => $target['type'] === 'staff' ? $target['id'] : null,
             'type' => $target['type'],
             'staff_role' => $staffRole,
+            'user_role' => $userRole,
         ];
     }
 
@@ -1467,7 +1505,11 @@ class RentalController extends Controller
             ->values();
     }
 
-    private function restoreRentalItemStock(Rental $rental): void
+    private function restoreRentalItemStock(
+        Rental $rental,
+        string $movementType = StockMovement::TYPE_MANUAL_ADJUSTMENT,
+        ?string $notes = null
+    ): void
     {
         if ($this->hasRentalItemsTable()) {
             $rental->loadMissing('rentalItems');
@@ -1497,6 +1539,13 @@ class RentalController extends Controller
                         ->where('organization_id', $this->orgId())
                         ->where('id', $item->product_id)
                         ->increment('available_quantity', $quantityToRestore);
+                    $this->recordRentalStockMovement(
+                        $product,
+                        $quantityToRestore,
+                        $movementType,
+                        $rental,
+                        $notes ?: 'Rental stock restored.'
+                    );
                 }
 
                 $rental->rentalItems()->delete();
@@ -1514,10 +1563,22 @@ class RentalController extends Controller
                 ->where('organization_id', $this->orgId())
                 ->where('id', $rental->product_id)
                 ->increment('available_quantity', (int) $rental->quantity);
+            $this->recordRentalStockMovement(
+                $product,
+                (int) $rental->quantity,
+                $movementType,
+                $rental,
+                $notes ?: 'Rental stock restored.'
+            );
         }
     }
 
-    private function consumeRentalItemStock(array $items): void
+    private function consumeRentalItemStock(
+        array $items,
+        ?Rental $rental = null,
+        string $movementType = StockMovement::TYPE_RENTAL_OUT,
+        ?string $notes = null
+    ): void
     {
         $products = Product::query()
             ->where('organization_id', $this->orgId())
@@ -1537,6 +1598,13 @@ class RentalController extends Controller
                 ->where('organization_id', $this->orgId())
                 ->where('id', $item['product_id'])
                 ->decrement('available_quantity', (int) $item['quantity']);
+            $this->recordRentalStockMovement(
+                $product,
+                (int) $item['quantity'],
+                $movementType,
+                $rental,
+                $notes ?: 'Rental stock allocated.'
+            );
         }
     }
 
@@ -2435,90 +2503,7 @@ class RentalController extends Controller
         }
 
         $timestamp = optional($pickupRecord->completed_at)->toDateTimeString() ?: now()->toDateTimeString();
-
-        $products = Product::query()
-            ->where('organization_id', $this->orgId())
-            ->whereIn('id', $rental->rentalItems()->pluck('product_id')->filter()->unique()->values())
-            ->get()
-            ->keyBy('id');
-
-        foreach ($this->loadRentalProgressItems($rental) as $item) {
-            $outstandingQuantity = max((int) $item->delivered_quantity_value - (int) $item->returned_quantity_value, 0);
-
-            if ($outstandingQuantity <= 0) {
-                continue;
-            }
-
-            /** @var Product|null $product */
-            $product = $products->get((int) $item->product_id);
-            $assetIds = $this->normalizeAssetIds($item->asset_ids ?? []);
-
-            $item->update([
-                'returned_quantity' => min($item->delivered_quantity_value, $item->returned_quantity_value + $outstandingQuantity),
-            ]);
-
-            if ($this->hasRentalAssetsTable() && !empty($assetIds)) {
-                $assignments = $rental->activeRentalAssets()
-                    ->with('asset')
-                    ->whereIn('asset_id', $assetIds)
-                    ->get();
-
-                foreach ($assignments as $assignment) {
-                    $asset = $assignment->asset;
-
-                    if (!$asset) {
-                        continue;
-                    }
-
-                    $assignment->update([
-                        'returned_at' => $timestamp,
-                        'return_condition' => $asset->condition_status,
-                        'notes' => trim(($assignment->notes ? $assignment->notes . ' | ' : '') . 'Reconciled after completed pickup and awaiting verification.'),
-                    ]);
-
-                    $asset->update(['asset_status' => Asset::STATUS_AWAITING_VERIFICATION]);
-                }
-            } elseif ($product?->usesUntrackedStock()) {
-                Product::query()
-                    ->where('organization_id', $this->orgId())
-                    ->where('id', $item->product_id)
-                    ->increment('available_quantity', $outstandingQuantity);
-            }
-        }
-
-        $rental->unsetRelation('rentalItems');
-
-        // Imported/legacy rentals may have active tracked assignments without
-        // item-level asset_ids. Completed pickup should still move them to
-        // awaiting verification instead of directly back to available stock.
-        if ($this->hasRentalAssetsTable() && $rental->activeRentalAssets()->exists()) {
-            $activeAssignments = $rental->activeRentalAssets()
-                ->with('asset')
-                ->get();
-
-            foreach ($activeAssignments as $assignment) {
-                $asset = $assignment->asset;
-
-                if (!$asset) {
-                    continue;
-                }
-
-                $assignment->update([
-                    'returned_at' => $timestamp,
-                    'return_condition' => $asset->condition_status,
-                    'notes' => trim(($assignment->notes ? $assignment->notes . ' | ' : '') . 'Reconciled after completed pickup and awaiting verification.'),
-                ]);
-
-                $asset->update(['asset_status' => Asset::STATUS_AWAITING_VERIFICATION]);
-            }
-        }
-
-        if ($rental->deliveredQuantityTotal() > 0 && $rental->pendingPickupQuantityTotal() === 0 && $rental->status !== 'returned') {
-            $rental->update([
-                'status' => 'returned',
-                'returned_at' => $timestamp,
-            ]);
-        }
+        $this->deliveryWorkflowService()->finalizePickupCompletionForRental($this->orgId(), $rental, $timestamp, $pickupRecord->id);
     }
 
     private function reconcileCompletedDeliveryProgress(Rental $rental): void
@@ -5077,7 +5062,9 @@ class RentalController extends Controller
 
         $organization = Organization::find($this->orgId());
 
-        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses', 'organization', 'selectedCustomer'));
+        $vendors = $this->vendorOptions();
+
+        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'vendors', 'warehouses', 'organization', 'selectedCustomer'));
     }
 
     public function businessPartnerActualClients(BusinessPartner $businessPartner)
@@ -5236,7 +5223,12 @@ class RentalController extends Controller
                 ])->save();
             }
 
-            $this->consumeRentalItemStock($rentalItems);
+            $this->consumeRentalItemStock(
+                $rentalItems,
+                $rental,
+                StockMovement::TYPE_RENTAL_OUT,
+                'Rental created and stock allocated.'
+            );
 
             $deliveryData = [
                 'organization_id' => $this->orgId(),
@@ -5250,7 +5242,7 @@ class RentalController extends Controller
 
             if ($this->hasDeliveryAssignmentTypeColumn()) {
                 $deliveryData['assignment_type'] = $deliveryAssignment['user_id']
-                    ? 'delivery_team'
+                    ? (($deliveryAssignment['user_role'] ?? null) === User::ROLE_VENDOR ? 'vendor' : 'delivery_team')
                     : (($deliveryAssignment['type'] ?? null) === 'third_party'
                         ? 'third_party'
                         : (($deliveryAssignment['staff_role'] ?? null) === 'third_party' ? 'third_party' : ($deliveryAssignment['staff_id'] ? 'vendor' : 'delivery_team')));
@@ -5877,7 +5869,9 @@ class RentalController extends Controller
 
         $organization = Organization::find($this->orgId());
 
-        return view('rentals.edit', compact('rental', 'products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'warehouses', 'organization'));
+        $vendors = $this->vendorOptions();
+
+        return view('rentals.edit', compact('rental', 'products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'vendors', 'warehouses', 'organization'));
     }
 
     public function update(Request $request, Rental $rental)
@@ -5987,8 +5981,17 @@ class RentalController extends Controller
         }
 
         DB::transaction(function () use ($request, $rental, $customerContext, $selectedAssets, $saleItems, $rentalItems, $deliveryAssignment) {
-            $this->restoreRentalItemStock($rental);
-            $this->consumeRentalItemStock($rentalItems);
+            $this->restoreRentalItemStock(
+                $rental,
+                StockMovement::TYPE_MANUAL_ADJUSTMENT,
+                'Rental updated and prior untracked stock released.'
+            );
+            $this->consumeRentalItemStock(
+                $rentalItems,
+                $rental,
+                StockMovement::TYPE_RENTAL_OUT,
+                'Rental updated and untracked stock reallocated.'
+            );
 
             $rental->update([
                 'customer_id' => $customerContext['customer_id'],
@@ -6019,7 +6022,7 @@ class RentalController extends Controller
 
             if ($this->hasDeliveryAssignmentTypeColumn()) {
                 $deliveryAssignmentUpdates['assignment_type'] = $deliveryAssignment['user_id']
-                    ? 'delivery_team'
+                    ? (($deliveryAssignment['user_role'] ?? null) === User::ROLE_VENDOR ? 'vendor' : 'delivery_team')
                     : (($deliveryAssignment['type'] ?? null) === 'third_party'
                         ? 'third_party'
                         : (($deliveryAssignment['staff_role'] ?? null) === 'third_party' ? 'third_party' : ($deliveryAssignment['staff_id'] ? 'vendor' : 'delivery_team')));
@@ -6099,95 +6102,25 @@ class RentalController extends Controller
         }
 
         DB::transaction(function () use ($rental) {
-            $this->releaseRentalAssets($rental);
-
-            $this->restoreRentalItemStock($rental);
-
-            $rental->update([
-                'status' => 'returned',
-                'returned_at' => now(),
-            ]);
-
             $existingPickup = Delivery::where('organization_id', $this->orgId())
                 ->where('rental_id', $rental->id)
                 ->where('type', 'pickup')
+                ->latest('id')
                 ->first();
 
-            if (!$existingPickup) {
-                $latestDelivery = Delivery::where('organization_id', $this->orgId())
-                    ->where('rental_id', $rental->id)
-                    ->where('type', 'delivery')
-                    ->latest()
-                    ->first();
-
-                $assignmentType = 'delivery_team';
-                $assignedUserId = null;
-                $thirdPartyName = null;
-                $thirdPartyContact = null;
-                $thirdPartyPhone = null;
-
-                if ($latestDelivery && $this->hasDeliveryAssignmentTypeColumn()) {
-                    if ($latestDelivery->assignment_type === 'vendor') {
-                        $assignmentType = 'vendor';
-                        if ($this->hasDeliveryAssignedUserColumn()) {
-                            $assignedUserId = $latestDelivery->assigned_user_id;
-                        }
-                    } elseif ($latestDelivery->assignment_type === 'third_party') {
-                        $assignmentType = 'third_party';
-                        if ($this->hasDeliveryThirdPartyNameColumn()) {
-                            $thirdPartyName = $latestDelivery->third_party_name;
-                        }
-                        if ($this->hasDeliveryThirdPartyContactColumn()) {
-                            $thirdPartyContact = $latestDelivery->third_party_contact;
-                        }
-                        if ($this->hasDeliveryThirdPartyPhoneColumn()) {
-                            $thirdPartyPhone = $latestDelivery->third_party_phone;
-                        }
-                    }
-                }
-
-                $pickupData = [
-                    'organization_id' => $this->orgId(),
-                    'rental_id' => $rental->id,
-                    'type' => 'pickup',
-                    'scheduled_at' => now(),
-                    'status' => 'pending',
-                    'notes' => 'Auto-created when rental was returned.',
-                ];
-
-                if ($this->hasDeliveryAssignmentTypeColumn()) {
-                    $pickupData['assignment_type'] = $assignmentType;
-                }
-
-                if ($this->hasDeliveryAssignedUserColumn()) {
-                    $pickupData['assigned_user_id'] = $assignedUserId;
-                }
-
-                if ($this->hasDeliveryAssignedStaffColumn()) {
-                    $pickupData['assigned_staff_id'] = $rental->pickup_staff_id;
-                }
-
-                if ($this->hasDeliveryThirdPartyNameColumn()) {
-                    $pickupData['third_party_name'] = $thirdPartyName;
-                }
-
-                if ($this->hasDeliveryThirdPartyContactColumn()) {
-                    $pickupData['third_party_contact'] = $thirdPartyContact;
-                }
-
-                if ($this->hasDeliveryThirdPartyPhoneColumn()) {
-                    $pickupData['third_party_phone'] = $thirdPartyPhone;
-                }
-
-                Delivery::create($pickupData);
-            }
+            $this->deliveryWorkflowService()->completePickupReturn(
+                $this->orgId(),
+                $rental,
+                $existingPickup,
+                now()->toDateTimeString()
+            );
         });
 
         ActivityLogger::log('rental.returned', $rental->refresh(), [
             'returned_at' => optional($rental->returned_at)->toDateTimeString(),
-        ], 'Rental marked as returned.');
+        ], 'Rental marked as returned and moved to return verification.');
 
-        return redirect('/rentals')->with('success', 'Rental returned successfully and pickup created automatically.');
+        return redirect('/rentals')->with('success', 'Rental returned successfully and assets moved to return verification.');
     }
 
     public function cancel(Rental $rental)
@@ -6201,7 +6134,11 @@ class RentalController extends Controller
         DB::transaction(function () use ($rental) {
             $this->releaseRentalAssets($rental);
 
-            $this->restoreRentalItemStock($rental);
+            $this->restoreRentalItemStock(
+                $rental,
+                StockMovement::TYPE_MANUAL_ADJUSTMENT,
+                'Rental cancelled and stock restored.'
+            );
 
             Delivery::where('organization_id', $this->orgId())
                 ->where('rental_id', $rental->id)
@@ -6335,7 +6272,11 @@ class RentalController extends Controller
             $this->releaseRentalAssets($rental);
 
             if (!in_array($rental->status, ['cancelled', 'returned'], true)) {
-                $this->restoreRentalItemStock($rental);
+                $this->restoreRentalItemStock(
+                    $rental,
+                    StockMovement::TYPE_MANUAL_ADJUSTMENT,
+                    'Rental deleted and stock restored.'
+                );
             } elseif ($this->hasRentalItemsTable()) {
                 $rental->rentalItems()->delete();
             }

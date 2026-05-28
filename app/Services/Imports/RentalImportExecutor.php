@@ -91,10 +91,18 @@ class RentalImportExecutor
                 $rental->load('pickupRecord');
                 $callbacks['reconcile_completed_pickup_progress']($rental);
             } elseif (($attributes['status'] ?? 'active') === 'returned') {
-                $rental->forceFill([
-                    'status' => 'returned',
-                    'returned_at' => $attributes['returned_at'] ?? now()->toDateTimeString(),
-                ])->save();
+                $pickup = $this->applyImportedRentalPickupState(
+                    $rental,
+                    [
+                        'pickup_status' => 'completed',
+                        'pickup_date' => $attributes['returned_at'] ?? $attributes['pickup_date'] ?? $attributes['end_date'] ?? now()->toDateString(),
+                    ],
+                    false,
+                    $callbacks['organization_id'],
+                    $callbacks['has_delivery_assignment_type_column']
+                );
+                $rental->load('pickupRecord');
+                $callbacks['reconcile_completed_pickup_progress']($rental);
             }
 
             $invoice = $this->shouldCreateImportedRentalInvoice($attributes)
@@ -192,10 +200,18 @@ class RentalImportExecutor
                 $rental->load('pickupRecord');
                 $callbacks['reconcile_completed_pickup_progress']($rental);
             } elseif (($attributes['status'] ?? null) === 'returned') {
-                $rental->forceFill([
-                    'status' => 'returned',
-                    'returned_at' => $attributes['returned_at'] ?? now()->toDateTimeString(),
-                ])->save();
+                $pickup = $this->applyImportedRentalPickupState(
+                    $rental,
+                    [
+                        'pickup_status' => 'completed',
+                        'pickup_date' => $attributes['returned_at'] ?? $attributes['pickup_date'] ?? $attributes['end_date'] ?? now()->toDateString(),
+                    ],
+                    true,
+                    $callbacks['organization_id'],
+                    $callbacks['has_delivery_assignment_type_column']
+                );
+                $rental->load('pickupRecord');
+                $callbacks['reconcile_completed_pickup_progress']($rental);
             }
 
             $invoice = $callbacks['rental_invoice']($rental);

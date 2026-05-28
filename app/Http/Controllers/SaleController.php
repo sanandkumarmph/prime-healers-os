@@ -15,12 +15,14 @@ use App\Models\Product;
 use App\Models\Rental;
 use App\Models\SaleInventory;
 use App\Models\SaleItem;
+use App\Models\StockMovement;
 use App\Services\Finance\InvoiceLinkResolver;
 use App\Services\Finance\InvoiceSyncService;
 use App\Services\Finance\AmountReductionGuardService;
 use App\Services\Finance\PaymentSyncService;
 use App\Services\Imports\ImportMatchSignatureService;
 use App\Services\Imports\SaleImportExecutor;
+use App\Services\Inventory\StockMovementRecorder;
 use App\Services\Metrics\SalesMetricsService;
 use App\Support\ActivityLogger;
 use App\Support\ActivityTimelineService;
@@ -1311,6 +1313,33 @@ class SaleController extends Controller
         }
     }
 
+    private function recordSaleStockMovement(
+        Sale $sale,
+        Product $product,
+        int $quantity,
+        bool $restore = false,
+        ?int $warehouseId = null,
+        ?int $assetId = null
+    ): void {
+        app(StockMovementRecorder::class)->record([
+            'organization_id' => $this->orgId(),
+            'product_id' => $product->id,
+            'asset_id' => $assetId,
+            'movement_type' => StockMovement::TYPE_SALE,
+            'quantity' => $quantity,
+            'from_status' => $restore ? 'sold' : 'available',
+            'to_status' => $restore ? 'available' : 'sold',
+            'from_warehouse_id' => $warehouseId,
+            'to_warehouse_id' => $warehouseId,
+            'sale_id' => $sale->id,
+            'rental_id' => $sale->rental_id ? (int) $sale->rental_id : null,
+            'performed_by_user_id' => auth()->id(),
+            'notes' => $restore
+                ? 'Stock restored from sale update, void, or deletion.'
+                : 'Stock allocated to sale.',
+        ]);
+    }
+
     private function adjustSaleStock(Sale $sale, bool $restore = false): void
     {
         if ($this->hasSaleItemsTable()) {
@@ -1343,6 +1372,14 @@ class SaleController extends Controller
                     }
 
                     $allocatedAsset->update(['asset_status' => 'available_for_sale']);
+                    $this->recordSaleStockMovement(
+                        $sale,
+                        $product,
+                        1,
+                        true,
+                        $allocatedAsset->warehouse_id ? (int) $allocatedAsset->warehouse_id : null,
+                        $allocatedAsset->id
+                    );
                 }
 
                 $this->syncTrackedSaleSummary($product);
@@ -1364,6 +1401,14 @@ class SaleController extends Controller
 
             foreach ($allocatedAssets as $allocatedAsset) {
                 $allocatedAsset->update(['asset_status' => 'sold']);
+                $this->recordSaleStockMovement(
+                    $sale,
+                    $product,
+                    1,
+                    false,
+                    $allocatedAsset->warehouse_id ? (int) $allocatedAsset->warehouse_id : null,
+                    $allocatedAsset->id
+                );
             }
 
             $this->syncTrackedSaleUnitAssignments($sale, $allocatedAssets);
@@ -1413,6 +1458,15 @@ class SaleController extends Controller
 
                 $asset->update(['asset_status' => 'sold']);
             }
+
+            $this->recordSaleStockMovement(
+                $sale,
+                $product,
+                $quantity,
+                $restore,
+                $warehouseId ?: ($asset->warehouse_id ? (int) $asset->warehouse_id : null),
+                $asset->id
+            );
         }
 
         $inventory = $this->resolveSaleInventory($product, $quantity, $warehouseId ?: null, $restore);
@@ -1444,6 +1498,8 @@ class SaleController extends Controller
 
                 $product->decrement('available_quantity', $quantity);
             }
+
+            $this->recordSaleStockMovement($sale, $product, $quantity, $restore, $warehouseId ?: null);
         }
 
         $this->updateSaleStockState($sale, !$restore, $warehouseId ?: null);
@@ -1470,6 +1526,14 @@ class SaleController extends Controller
                     foreach ($allocatedAssets as $allocatedAsset) {
                         if ($allocatedAsset->asset_stage === Asset::STAGE_NEW_STOCK) {
                             $allocatedAsset->update(['asset_status' => 'available_for_sale']);
+                            $this->recordSaleStockMovement(
+                                $sale,
+                                $product,
+                                1,
+                                true,
+                                $allocatedAsset->warehouse_id ? (int) $allocatedAsset->warehouse_id : null,
+                                $allocatedAsset->id
+                            );
                         }
                     }
 
@@ -1486,6 +1550,14 @@ class SaleController extends Controller
 
                 foreach ($allocatedAssets as $allocatedAsset) {
                     $allocatedAsset->update(['asset_status' => 'sold']);
+                    $this->recordSaleStockMovement(
+                        $sale,
+                        $product,
+                        1,
+                        false,
+                        $allocatedAsset->warehouse_id ? (int) $allocatedAsset->warehouse_id : null,
+                        $allocatedAsset->id
+                    );
                 }
 
                 $saleItem->forceFill([
@@ -1535,6 +1607,15 @@ class SaleController extends Controller
                     $asset->update(['asset_status' => 'sold']);
                 }
 
+                $this->recordSaleStockMovement(
+                    $sale,
+                    $product,
+                    $quantity,
+                    $restore,
+                    $warehouseId ?: ($asset->warehouse_id ? (int) $asset->warehouse_id : null),
+                    $asset->id
+                );
+
                 $resolvedWarehouseId = (int) ($asset->warehouse_id ?: $warehouseId ?: $resolvedWarehouseId);
             }
 
@@ -1567,6 +1648,8 @@ class SaleController extends Controller
 
                     $product->decrement('available_quantity', $quantity);
                 }
+
+                $this->recordSaleStockMovement($sale, $product, $quantity, $restore, $warehouseId ?: null);
             }
         }
 

@@ -26,6 +26,8 @@ use App\Http\Controllers\RenewalCenterController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\StaffController;
+use App\Http\Controllers\StockHistoryController;
+use App\Http\Controllers\InventoryIntelligenceController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VendorController;
 use App\Http\Controllers\WarehouseController;
@@ -314,6 +316,27 @@ Route::middleware('auth')->group(function () {
     Route::get('/inventory', [InventoryDashboardController::class, 'index'])
         ->middleware('permission:dashboard.inventory')
         ->name('inventory.dashboard');
+    Route::get('/inventory/stock-history', [StockHistoryController::class, 'index'])
+        ->middleware('permission:stock_history.view|stock_history.product|stock_history.asset')
+        ->name('stock-history.index');
+    Route::get('/inventory/stock-history/export/csv', [StockHistoryController::class, 'exportCsv'])
+        ->middleware('permission:stock_history.export')
+        ->name('stock-history.export.csv');
+    Route::get('/inventory/intelligence', [InventoryIntelligenceController::class, 'index'])
+        ->middleware('permission:stock_history.view')
+        ->name('inventory-intelligence.index');
+    Route::get('/inventory/intelligence/export/matrix-csv', [InventoryIntelligenceController::class, 'exportMatrixCsv'])
+        ->middleware('permission:stock_history.export')
+        ->name('inventory-intelligence.export-matrix');
+    Route::get('/inventory/intelligence/export/movements-csv', [InventoryIntelligenceController::class, 'exportMovementBreakdownCsv'])
+        ->middleware('permission:stock_history.export')
+        ->name('inventory-intelligence.export-movements');
+    Route::get('/inventory/intelligence/export/reconciliation-csv', [InventoryIntelligenceController::class, 'exportReconciliationCsv'])
+        ->middleware('permission:stock_history.export')
+        ->name('inventory-intelligence.export-reconciliation');
+    Route::post('/inventory/intelligence/reconcile-assets', [InventoryIntelligenceController::class, 'bulkResolve'])
+        ->middleware('permission:stock_history.view')
+        ->name('inventory-intelligence.bulk-resolve');
     Route::get('/assets/scan-lookup', [AssetController::class, 'scanLookup'])
         ->middleware('module:assets,read')
         ->name('assets.scan-lookup');

@@ -130,6 +130,27 @@ class RentalImportExecutionRegressionTest extends TestCase
         $this->assertSame(Asset::STATUS_AWAITING_VERIFICATION, $asset->asset_status);
     }
 
+    public function test_imported_returned_rental_without_explicit_pickup_status_still_moves_asset_to_awaiting_verification(): void
+    {
+        [$organization, $warehouse, $product] = $this->bootRentalImportContext();
+
+        [$service, $preview] = $this->buildRentalPreview([
+            'Customer Name,Customer Phone,Product Name,Brand,Model Name,Dispatch Warehouse Code,Asset Serials,Quantity,Start Date,End Date,Rental Amount,Deposit Amount,Transport Amount,Status,Payment Status,Paid Amount,Invoice Status,Delivery Status,Delivery Date,Pickup Status,Pickup Date,Notes',
+            'Aarav Sharma,9876543210,Oxygen Concentrator 5 LPM,Philips,SimplyGo,MAIN,RENT-OC-001,1,2026-05-01,2026-05-15,4500,0,0,Returned,pending,,generated,completed,2026-05-01,,,Imported returned rental',
+        ]);
+
+        $service->executePreview('rentals', $preview['key'], $organization->id, auth()->id());
+
+        $rental = Rental::firstOrFail();
+        $pickup = Delivery::where('type', 'pickup')->firstOrFail();
+        $asset = Asset::where('serial_number', 'RENT-OC-001')->firstOrFail();
+
+        $this->assertSame('returned', $rental->status);
+        $this->assertNotNull($rental->returned_at);
+        $this->assertSame('completed', $pickup->status);
+        $this->assertSame(Asset::STATUS_AWAITING_VERIFICATION, $asset->asset_status);
+    }
+
     public function test_invalid_rental_import_status_values_are_rejected_in_preview(): void
     {
         [$organization, $warehouse, $product] = $this->bootRentalImportContext();

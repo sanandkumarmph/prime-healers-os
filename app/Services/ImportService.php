@@ -10,7 +10,9 @@ use App\Models\Product;
 use App\Models\Rental;
 use App\Models\RentalItem;
 use App\Models\SaleInventory;
+use App\Models\StockMovement;
 use App\Models\Warehouse;
+use App\Services\Inventory\StockMovementRecorder;
 use App\Services\Imports\ImportMatchSignatureService;
 use App\Support\PhoneNumber;
 use Carbon\Carbon;
@@ -780,18 +782,48 @@ class ImportService
     private function importProductRow(array $payload, int $organizationId, ?array $upsertWhitelistIds = null): string
     {
         $product = $this->findProductForImportUpsert($organizationId, $payload, $upsertWhitelistIds);
+        $previousQuantity = (int) ($product?->available_quantity ?? 0);
 
         if ($product) {
             $product->fill($payload)->save();
             if (($payload['stock_mode'] ?? null) !== Product::STOCK_MODE_UNTRACKED) {
                 $product->syncLegacyStockFields();
             }
+
+            $newQuantity = (int) ($product->available_quantity ?? 0);
+            $quantityDelta = abs($newQuantity - $previousQuantity);
+
+            if (($payload['stock_mode'] ?? null) === Product::STOCK_MODE_UNTRACKED && $quantityDelta > 0) {
+                app(StockMovementRecorder::class)->recordForProduct(
+                    $product,
+                    StockMovement::TYPE_IMPORT,
+                    $quantityDelta,
+                    [
+                        'from_status' => 'available',
+                        'to_status' => 'available',
+                        'notes' => 'Updated untracked stock quantity through product import.',
+                    ]
+                );
+            }
+
             return 'updated';
         }
 
         $product = Product::create($payload + ['organization_id' => $organizationId]);
         if (($payload['stock_mode'] ?? null) !== Product::STOCK_MODE_UNTRACKED) {
             $product->syncLegacyStockFields();
+        }
+
+        if (($payload['stock_mode'] ?? null) === Product::STOCK_MODE_UNTRACKED && (int) ($product->available_quantity ?? 0) > 0) {
+            app(StockMovementRecorder::class)->recordForProduct(
+                $product,
+                StockMovement::TYPE_IMPORT,
+                (int) $product->available_quantity,
+                [
+                    'to_status' => 'available',
+                    'notes' => 'Imported untracked stock quantity through product import.',
+                ]
+            );
         }
 
         return 'created';
@@ -825,6 +857,17 @@ class ImportService
                 'remarks' => 'Imported asset via data import.',
                 'moved_by' => $userId,
             ]);
+            app(StockMovementRecorder::class)->recordForAsset(
+                $asset,
+                StockMovement::TYPE_IMPORT,
+                1,
+                [
+                    'to_status' => $asset->asset_status,
+                    'to_warehouse_id' => $asset->warehouse_id,
+                    'performed_by_user_id' => $userId,
+                    'notes' => 'Imported asset via data import.',
+                ]
+            );
             $action = 'created';
         }
 

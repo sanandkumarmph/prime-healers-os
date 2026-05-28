@@ -14,8 +14,11 @@ use App\Models\RentalItem;
 use App\Models\Role;
 use App\Models\SaleInventory;
 use App\Models\Sale;
+use App\Models\StockMovement;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Services\Inventory\InventoryIntelligenceService;
+use App\Services\Metrics\InventoryMetricsService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -1990,6 +1993,145 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
 
             $this->assertNotSame(500, $response->getStatusCode(), 'Route failed on mobile smoke check: ' . $url);
         }
+    }
+
+    public function test_marking_rental_returned_moves_asset_to_awaiting_verification_and_records_pickup_return(): void
+    {
+        $organization = TestData::organization();
+        $this->actingAs(TestData::user($organization));
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Manual Return Customer',
+            'phone' => '8888888899',
+        ]);
+
+        $warehouse = Warehouse::create([
+            'organization_id' => $organization->id,
+            'name' => 'Manual Return Warehouse',
+            'code' => 'MRW',
+            'is_active' => true,
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Manual Return Concentrator',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_RENTAL,
+            'price_per_day' => 1500,
+            'sale_price' => 0,
+            'rental_price' => 1500,
+            'available_quantity' => 0,
+            'total_quantity' => 0,
+        ]);
+
+        $asset = Asset::create([
+            'organization_id' => $organization->id,
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'asset_name' => 'Manual Return Asset',
+            'serial_number' => 'RETURN-VERIFY-001',
+            'asset_stage' => Asset::STAGE_RENTAL_STOCK,
+            'condition_status' => 'good',
+            'asset_status' => Asset::STATUS_RENTED,
+        ]);
+
+        $rental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'dispatch_warehouse_id' => $warehouse->id,
+            'quantity' => 1,
+            'start_date' => now()->subDays(4)->toDateString(),
+            'end_date' => now()->addDay()->toDateString(),
+            'rental_amount' => 1500,
+            'status' => 'active',
+        ]);
+
+        $item = RentalItem::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'product_id' => $product->id,
+            'asset_ids' => [$asset->id],
+            'quantity' => 1,
+            'delivered_quantity' => 1,
+            'returned_quantity' => 0,
+            'unit_rental_amount' => 1500,
+            'line_total' => 1500,
+        ]);
+
+        RentalAsset::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'asset_id' => $asset->id,
+            'assigned_at' => now()->subDays(4),
+            'delivered_at' => now()->subDays(4),
+        ]);
+
+        Delivery::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'type' => 'delivery',
+            'scheduled_at' => now()->subDays(4),
+            'completed_at' => now()->subDays(4),
+            'status' => 'completed',
+            'notes' => 'Delivered before manual return.',
+        ]);
+
+        $response = $this->from(route('rentals.show', $rental))
+            ->put(route('rentals.return', $rental));
+
+        $response->assertRedirect('/rentals');
+
+        $rental->refresh();
+        $asset->refresh();
+        $item->refresh();
+
+        $this->assertSame('returned', $rental->status);
+        $this->assertNotNull($rental->returned_at);
+        $this->assertSame(1, $item->returned_quantity);
+        $this->assertSame(Asset::STATUS_AWAITING_VERIFICATION, $asset->asset_status);
+
+        $pickup = Delivery::where('organization_id', $organization->id)
+            ->where('rental_id', $rental->id)
+            ->where('type', 'pickup')
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($pickup);
+        $this->assertSame('completed', $pickup->status);
+
+        $pickupMovement = StockMovement::query()
+            ->where('organization_id', $organization->id)
+            ->where('asset_id', $asset->id)
+            ->where('movement_type', StockMovement::TYPE_PICKUP_RETURN)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($pickupMovement);
+        $this->assertSame('rented', $pickupMovement->from_status);
+        $this->assertSame(Asset::STATUS_AWAITING_VERIFICATION, $pickupMovement->to_status);
+        $this->assertSame($pickup->id, $pickupMovement->delivery_id);
+        $this->assertSame(auth()->id(), $pickupMovement->performed_by_user_id);
+
+        $metrics = app(InventoryMetricsService::class)->summary($organization->id);
+        $this->assertSame(0, $metrics['rentalAvailable']);
+
+        $report = app(InventoryIntelligenceService::class)->build($organization->id, [
+            'scope' => 'monthly',
+            'month' => now()->month,
+            'year' => now()->year,
+            'mode' => 'all',
+        ]);
+
+        $this->assertSame(1, $report['summary']['total_returns']);
+        $this->assertSame(1, $report['asset_reconciliation']['rental_reconciliation']['awaiting_verification']);
+
+        $this->get(route('assets.pending-verification'))
+            ->assertOk()
+            ->assertSeeText('RETURN-VERIFY-001');
     }
 
     private function startCapturePayload(): array

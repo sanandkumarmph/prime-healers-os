@@ -91,6 +91,11 @@
     $vendorDeliveryMembers = collect($staffMembers ?? collect())->filter(function ($staff) {
         return ($staff->effective_role ?? null) === 'vendor';
     })->values();
+    $vendorUsers = collect($vendors ?? collect())
+        ->reject(function ($vendor) use ($assignableUsers) {
+            return collect($assignableUsers ?? collect())->contains(fn ($user) => (int) $user->id === (int) $vendor->id);
+        })
+        ->values();
     $thirdPartyDeliveryMembers = collect($staffMembers ?? collect())->filter(function ($staff) {
         return ($staff->effective_role ?? null) === 'third_party';
     })->values();
@@ -1356,6 +1361,15 @@
                             @foreach($vendorDeliveryMembers as $staff)
                                 <option value="staff:{{ $staff->id }}" {{ $selectedDeliveryAssignment === 'staff:' . $staff->id ? 'selected' : '' }}>
                                     {{ $staff->name }} - {{ $staff->role_display }}
+                                </option>
+                            @endforeach
+                        </optgroup>
+                    @endif
+                    @if($vendorUsers->isNotEmpty())
+                        <optgroup label="Saved Vendors">
+                            @foreach($vendorUsers as $vendor)
+                                <option value="user:{{ $vendor->id }}" {{ $selectedDeliveryAssignment === 'user:' . $vendor->id ? 'selected' : '' }}>
+                                    {{ $vendor->name }} - Vendor
                                 </option>
                             @endforeach
                         </optgroup>

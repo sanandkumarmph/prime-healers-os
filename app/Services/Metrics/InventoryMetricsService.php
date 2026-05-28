@@ -4,9 +4,14 @@ namespace App\Services\Metrics;
 
 use App\Models\Asset;
 use App\Models\Product;
+use App\Services\Inventory\AssetStateService;
 
 class InventoryMetricsService
 {
+    public function __construct(private readonly AssetStateService $assetStateService)
+    {
+    }
+
     public function summary(int $organizationId): array
     {
         $products = Product::query()
@@ -26,6 +31,8 @@ class InventoryMetricsService
             return (int) ($product->serialized_sale_units_available_count ?? 0);
         });
 
+        $rentalSummary = $this->assetStateService->rentalSummary($organizationId);
+
         return [
             'saleStockAvailable' => $saleStockAvailable,
             'serializedSaleUnitsAvailable' => (int) Asset::query()
@@ -33,19 +40,9 @@ class InventoryMetricsService
                 ->where('asset_stage', Asset::STAGE_NEW_STOCK)
                 ->where('asset_status', Asset::STATUS_AVAILABLE_FOR_SALE)
                 ->count(),
-            'rentalAssets' => (int) Asset::query()
-                ->where('organization_id', $organizationId)
-                ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
-                ->count(),
-            'rentalAvailable' => (int) Asset::query()
-                ->where('organization_id', $organizationId)
-                ->rentalReady()
-                ->count(),
-            'maintenanceAlerts' => (int) Asset::query()
-                ->where('organization_id', $organizationId)
-                ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
-                ->where('asset_status', Asset::STATUS_MAINTENANCE)
-                ->count(),
+            'rentalAssets' => (int) ($rentalSummary['rentalAssets'] ?? 0),
+            'rentalAvailable' => (int) ($rentalSummary['rentalAvailable'] ?? 0),
+            'maintenanceAlerts' => (int) ($rentalSummary['maintenanceAlerts'] ?? 0),
         ];
     }
 }

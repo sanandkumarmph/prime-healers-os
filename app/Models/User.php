@@ -357,6 +357,11 @@ class User extends Authenticatable
         return $this->belongsTo(City::class, 'city_id');
     }
 
+    public function performedStockMovements()
+    {
+        return $this->hasMany(StockMovement::class, 'performed_by_user_id');
+    }
+
     public function organization()
     {
         return $this->belongsTo(Organization::class);

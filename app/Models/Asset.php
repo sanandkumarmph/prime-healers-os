@@ -143,6 +143,11 @@ class Asset extends Model
         return $this->hasMany(AssetMovement::class)->latest();
     }
 
+    public function stockMovements()
+    {
+        return $this->hasMany(StockMovement::class)->latest('movement_at');
+    }
+
     public function rentalAssignments()
     {
         return $this->hasMany(RentalAsset::class);

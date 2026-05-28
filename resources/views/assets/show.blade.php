@@ -4,6 +4,7 @@
     $currentUser = auth()->user();
     $canUpdateAssets = $currentUser?->canAccessModule('assets', 'update') ?? false;
     $canDeleteAssets = $currentUser?->canAccessModule('assets', 'delete') ?? false;
+    $canViewAssetStockHistory = $currentUser?->hasAnyPermission(['stock_history.view', 'stock_history.asset']) ?? false;
     $rupee = html_entity_decode('&#8377;');
     $statusBadge = fn ($status) => match($status) {
         'available' => ['#ecfdf5', '#166534'],
@@ -260,6 +261,9 @@
 
                 <div class="asset-detail-actions page-header-actions">
                     <a href="{{ route('assets.index') }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:600;">Back to Asset Register</a>
+                    @if($canViewAssetStockHistory)
+                        <a href="{{ route('stock-history.index', ['asset_id' => $asset->id]) }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; border:1px solid #bfdbfe; background:#eff6ff; color:#1d4ed8; text-decoration:none; font-weight:700;">Stock History</a>
+                    @endif
                     @if($canUpdateAssets)
                         @if(!empty($workflowControl['action_label']) && !empty($workflowControl['action_url']))
                             <a href="{{ $workflowControl['action_url'] }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; background:#fef3c7; color:#b45309; text-decoration:none; font-weight:800;">{{ $workflowControl['action_label'] }}</a>

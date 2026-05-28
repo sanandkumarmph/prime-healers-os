@@ -112,6 +112,8 @@
                 ['key' => 'assets', 'label' => 'Asset Register', 'icon' => 'assets', 'href' => $safeRoute('assets.index'), 'active' => request()->routeIs('assets.*') && !request()->routeIs('assets.pending-verification') && !request()->routeIs('assets.verify-return') && !request()->routeIs('assets.verify-return.store'), 'visible' => $currentUser?->canAccessModule('assets', 'read') ?? false],
                 ['key' => 'return_verification', 'label' => 'Return Verification', 'icon' => 'assets', 'href' => $safeRoute('assets.pending-verification'), 'active' => request()->routeIs('assets.pending-verification') || request()->routeIs('assets.verify-return') || request()->routeIs('assets.verify-return.store'), 'visible' => $currentUser?->canAccessModule('assets', 'read') ?? false],
                 ['key' => 'warehouses', 'label' => 'Warehouses', 'icon' => 'warehouses', 'href' => $safeRoute('warehouses.index'), 'active' => request()->routeIs('warehouses.*'), 'visible' => $currentUser?->canAccessModule('warehouses', 'read') ?? false],
+                ['key' => 'stock_history', 'label' => 'Stock History', 'icon' => 'inventory', 'href' => $safeRoute('stock-history.index'), 'active' => request()->routeIs('stock-history.*'), 'visible' => $currentUser?->hasPermission('stock_history.view') ?? false],
+                ['key' => 'inventory_intelligence', 'label' => 'Inventory Intelligence', 'icon' => 'inventory', 'href' => $safeRoute('inventory-intelligence.index'), 'active' => request()->routeIs('inventory-intelligence.*'), 'visible' => $currentUser?->hasPermission('stock_history.view') ?? false],
             ],
         ],
         [

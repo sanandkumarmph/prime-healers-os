@@ -1283,7 +1283,7 @@ class DeliveryController extends Controller
 
     private function finalizePickupCompletionForRental(Delivery $delivery, Rental $rental, ?string $returnedAt = null): void
     {
-        $this->deliveryWorkflowService()->finalizePickupCompletionForRental($this->orgId(), $rental, $returnedAt);
+        $this->deliveryWorkflowService()->finalizePickupCompletionForRental($this->orgId(), $rental, $returnedAt, $delivery->id);
     }
 
     public function index(Request $request)
