@@ -5,6 +5,7 @@
     $currentUser = auth()->user();
     $canUpdateVendors = $currentUser?->canAccessModule('vendors', 'update') ?? false;
     $canDeleteVendors = $currentUser?->canAccessModule('vendors', 'delete') ?? false;
+    $canExportVendors = $currentUser?->hasPermission('vendors.export') ?? false;
 @endphp
 <div style="max-width:1160px; margin:0 auto;">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:24px;">
@@ -14,14 +15,17 @@
             <p style="margin:0; color:#64748b;">Vendor profile for delivery and third-party assignment references.</p>
         </div>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            @if($canExportVendors)
+                <a href="{{ route('vendors.export.csv', ['search' => $vendor->name]) }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:600;">Export CSV</a>
+            @endif
             @if($canUpdateVendors)
                 <a href="{{ route('vendors.edit', $vendor) }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:600;">Edit</a>
             @endif
             @if($canDeleteVendors)
-                <form method="POST" action="{{ route('vendors.destroy', $vendor) }}" style="margin:0;" onsubmit="return confirm('Delete this vendor? This will be blocked if dependencies exist.');">
+                <form method="POST" action="{{ route('vendors.destroy', $vendor) }}" style="margin:0;" onsubmit="return confirm('Delete this vendor? Linked records will cause a safe deactivation instead of hard delete.');">
                     @csrf
                     @method('DELETE')
-                    <button type="submit" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border:none; border-radius:12px; background:#fff1f2; color:#be123c; font-weight:700; cursor:pointer;">Delete</button>
+                    <button type="submit" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border:none; border-radius:12px; background:#fff1f2; color:#be123c; font-weight:700; cursor:pointer;">Delete / Deactivate</button>
                 </form>
             @endif
             <a href="{{ route('vendors.index') }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; background:#1d4ed8; color:#ffffff; text-decoration:none; font-weight:700;">Back to Vendors</a>
@@ -40,9 +44,17 @@
         <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px;">
             <div><div style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">Contact Person</div><div style="margin-top:6px;">{{ $vendor->contact_person ?: 'Not added' }}</div></div>
             <div><div style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">Phone</div><div style="margin-top:6px;">{{ $vendor->phone ?: 'Not added' }}</div></div>
+            <div><div style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">WhatsApp</div><div style="margin-top:6px;">{{ $vendor->whatsapp ?: 'Not added' }}</div></div>
             <div><div style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">Email</div><div style="margin-top:6px;">{{ $vendor->email ?: 'Not added' }}</div></div>
+            <div><div style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">Vendor Type</div><div style="margin-top:6px;">{{ $vendor->vendor_type ?: 'Not added' }}</div></div>
+            <div><div style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">GST Number</div><div style="margin-top:6px;">{{ $vendor->gst_number ?: 'Not added' }}</div></div>
+            <div><div style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">GST Registration</div><div style="margin-top:6px;">{{ $vendor->gst_registration_type ?: 'Not added' }}</div></div>
             <div><div style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">City</div><div style="margin-top:6px;">{{ $vendor->cityRecord?->name ?? $vendor->city ?? 'Not mapped' }}</div></div>
+            <div><div style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">State</div><div style="margin-top:6px;">{{ $vendor->state ?: 'Not added' }}</div></div>
+            <div><div style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">Pincode</div><div style="margin-top:6px;">{{ $vendor->pincode ?: 'Not added' }}</div></div>
+            <div><div style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">Payment Terms</div><div style="margin-top:6px;">{{ $vendor->payment_terms ?: 'Not added' }}</div></div>
             <div><div style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">Status</div><div style="margin-top:6px;">{{ $vendor->is_active ? 'Active' : 'Inactive' }}</div></div>
+            <div><div style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">Linked Orders</div><div style="margin-top:6px;">{{ $vendor->vendorOrderDetails->count() }}</div></div>
             <div style="grid-column:1 / -1;"><div style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">Address</div><div style="margin-top:6px; color:#334155;">{{ $vendor->address ?: 'No address added.' }}</div></div>
             <div style="grid-column:1 / -1;"><div style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">Notes</div><div style="margin-top:6px; color:#334155;">{{ $vendor->notes ?: 'No notes added.' }}</div></div>
         </div>

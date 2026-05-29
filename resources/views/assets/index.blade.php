@@ -5,6 +5,9 @@
     $canCreateAssets = $currentUser?->canAccessModule('assets', 'create') ?? false;
     $canUpdateAssets = $currentUser?->canAccessModule('assets', 'update') ?? false;
     $canDeleteAssets = $currentUser?->canAccessModule('assets', 'delete') ?? false;
+    $canViewRentals = $currentUser?->canAccessModule('rentals', 'read') ?? false;
+    $canViewSales = $currentUser?->canAccessModule('sales', 'read') ?? false;
+    $canViewProducts = $currentUser?->canAccessModule('products', 'read') ?? false;
     $statusBadge = fn ($status) => match($status) {
         'available' => 'is-success',
         'awaiting_verification' => 'is-warning',
@@ -764,7 +767,7 @@
                                         $productIdentity = $assetProductIdentity($asset->product);
                                     @endphp
                                     <a href="{{ route('assets.show', $asset) }}" class="rn-record-link asset-product-title" style="font-size:15px;">{{ $productIdentity['primary'] }}</a>
-                                    @if($asset->product && \Illuminate\Support\Facades\Route::has('products.show'))
+                                    @if($asset->product && $canViewProducts && \Illuminate\Support\Facades\Route::has('products.show'))
                                         <a href="{{ route('products.show', $asset->product) }}" class="rn-record-link-subtle asset-product-subtitle" style="font-size:13px;">{{ $productIdentity['secondary'] }}</a>
                                     @else
                                         <div class="asset-product-subtitle">{{ $productIdentity['secondary'] }}</div>
@@ -804,14 +807,24 @@
                             </td>
                             <td class="asset-cell">{{ optional($asset->warehouse)->name ?: 'N/A' }}</td>
                             <td class="asset-cell">
-                                @if($activeRental && \Illuminate\Support\Facades\Route::has('rentals.show'))
+                                @if($activeRental && $canViewRentals && \Illuminate\Support\Facades\Route::has('rentals.show'))
                                     <div style="display:grid; gap:4px;">
                                         <a href="{{ route('rentals.show', $activeRental) }}" class="rn-record-link-subtle">Rental #{{ $activeRental->id }}</a>
                                         <span class="asset-meta-subtle" style="margin-top:0;">{{ $activeCustomer?->name ?: 'Customer linked' }}</span>
                                     </div>
-                                @elseif($latestSale && \Illuminate\Support\Facades\Route::has('sales.show'))
+                                @elseif($activeRental)
+                                    <div style="display:grid; gap:4px;">
+                                        <span class="rn-record-link-subtle">Rental #{{ $activeRental->id }}</span>
+                                        <span class="asset-meta-subtle" style="margin-top:0;">{{ $activeCustomer?->name ?: 'Customer linked' }}</span>
+                                    </div>
+                                @elseif($latestSale && $canViewSales && \Illuminate\Support\Facades\Route::has('sales.show'))
                                     <div style="display:grid; gap:4px;">
                                         <a href="{{ route('sales.show', $latestSale) }}" class="rn-record-link-subtle">Sale #{{ $latestSale->id }}</a>
+                                        <span class="asset-meta-subtle" style="margin-top:0;">{{ $latestSale->customer?->name ?: 'Customer linked' }}</span>
+                                    </div>
+                                @elseif($latestSale)
+                                    <div style="display:grid; gap:4px;">
+                                        <span class="rn-record-link-subtle">Sale #{{ $latestSale->id }}</span>
                                         <span class="asset-meta-subtle" style="margin-top:0;">{{ $latestSale->customer?->name ?: 'Customer linked' }}</span>
                                     </div>
                                 @else
@@ -928,10 +941,14 @@
                             <div class="asset-meta-card">
                                 <div class="asset-meta-label">Current Link</div>
                                 <div class="asset-meta-value">
-                                    @if($activeRental && \Illuminate\Support\Facades\Route::has('rentals.show'))
+                                    @if($activeRental && $canViewRentals && \Illuminate\Support\Facades\Route::has('rentals.show'))
                                         <a href="{{ route('rentals.show', $activeRental) }}" class="asset-link-soft">Rental #{{ $activeRental->id }}</a>
-                                    @elseif($latestSale && \Illuminate\Support\Facades\Route::has('sales.show'))
+                                    @elseif($activeRental)
+                                        <span class="asset-link-soft">Rental #{{ $activeRental->id }}</span>
+                                    @elseif($latestSale && $canViewSales && \Illuminate\Support\Facades\Route::has('sales.show'))
                                         <a href="{{ route('sales.show', $latestSale) }}" class="asset-link-soft">Sale #{{ $latestSale->id }}</a>
+                                    @elseif($latestSale)
+                                        <span class="asset-link-soft">Sale #{{ $latestSale->id }}</span>
                                     @else
                                         Standalone
                                     @endif

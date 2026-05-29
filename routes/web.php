@@ -30,6 +30,7 @@ use App\Http\Controllers\StockHistoryController;
 use App\Http\Controllers\InventoryIntelligenceController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VendorController;
+use App\Http\Controllers\VendorOrderReportController;
 use App\Http\Controllers\WarehouseController;
 use Illuminate\Support\Facades\Route;
 
@@ -177,6 +178,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard/export/csv', [RentalController::class, 'exportDashboardCsv'])
         ->middleware('permission:dashboard.main')
         ->name('dashboard.export.csv');
+    Route::get('/organization/vendors/export/csv', [VendorController::class, 'exportCsv'])
+        ->middleware('permission:vendors.export')
+        ->name('vendors.export.csv');
     Route::put('/rentals/{rental}/return', [RentalController::class, 'returnRental'])
         ->middleware('module:rentals,update')
         ->name('rentals.return');
@@ -246,6 +250,15 @@ Route::middleware('auth')->group(function () {
     Route::get('/reports/export/csv', [ReportController::class, 'exportCsv'])
         ->middleware('module:reports,read')
         ->name('reports.export.csv');
+    Route::get('/reports/vendor-orders', [VendorOrderReportController::class, 'index'])
+        ->middleware('permission:vendor_reports.view')
+        ->name('vendor-orders.index');
+    Route::get('/reports/vendor-orders/export/csv', [VendorOrderReportController::class, 'exportCsv'])
+        ->middleware('permission:vendor_reports.export')
+        ->name('vendor-orders.export.csv');
+    Route::patch('/reports/vendor-orders/{vendorOrderDetail}/costs', [VendorOrderReportController::class, 'updateCosts'])
+        ->middleware('permission:vendor_costs.update')
+        ->name('vendor-orders.costs.update');
 
     Route::middleware('data_import')->group(function () {
         Route::get('/imports', [ImportTemplateController::class, 'index'])

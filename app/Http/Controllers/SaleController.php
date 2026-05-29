@@ -16,6 +16,8 @@ use App\Models\Rental;
 use App\Models\SaleInventory;
 use App\Models\SaleItem;
 use App\Models\StockMovement;
+use App\Models\Vendor;
+use App\Models\VendorOrderDetail;
 use App\Services\Finance\InvoiceLinkResolver;
 use App\Services\Finance\InvoiceSyncService;
 use App\Services\Finance\AmountReductionGuardService;
@@ -24,6 +26,7 @@ use App\Services\Imports\ImportMatchSignatureService;
 use App\Services\Imports\SaleImportExecutor;
 use App\Services\Inventory\StockMovementRecorder;
 use App\Services\Metrics\SalesMetricsService;
+use App\Services\Vendors\VendorFulfilmentService;
 use App\Support\ActivityLogger;
 use App\Support\ActivityTimelineService;
 use Illuminate\Http\Request;
@@ -78,6 +81,39 @@ class SaleController extends Controller
             }])
             ->orderBy('business_name')
             ->get();
+    }
+
+    private function vendorMasterOptions()
+    {
+        return Vendor::query()
+            ->forOrganization($this->orgId())
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
+    }
+
+    private function vendorFulfilmentService(): VendorFulfilmentService
+    {
+        return app(VendorFulfilmentService::class);
+    }
+
+    private function normalizedSaleFulfilmentInput(Request $request): array
+    {
+        $source = $request->input('fulfilment_source', VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE);
+        $isVendorSupplied = $source === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED;
+
+        return [
+            'fulfilment_source' => $isVendorSupplied
+                ? VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED
+                : VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE,
+            'vendor_id' => $isVendorSupplied && $request->filled('vendor_id')
+                ? (int) $request->input('vendor_id')
+                : null,
+            'delivery_responsibility' => $isVendorSupplied
+                ? ($request->input('delivery_responsibility') ?: 'vendor_delivery')
+                : 'ph_internal_delivery',
+            'vendor_order_status' => $isVendorSupplied ? 'requested' : 'draft',
+        ];
     }
 
     private function partnerClientsForForm(?int $businessPartnerId)
@@ -715,6 +751,9 @@ class SaleController extends Controller
             'product_id' => $primaryLine['product_id'],
             'asset_id' => $primaryLine['asset_id'],
             'rental_id' => $request->filled('rental_id') ? $request->integer('rental_id') : null,
+            'vendor_id' => $request->filled('vendor_id') ? $request->integer('vendor_id') : null,
+            'fulfilment_source' => $request->input('fulfilment_source', VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE),
+            'delivery_responsibility' => $request->input('delivery_responsibility'),
             'quantity' => max((int) ($primaryLine['quantity'] ?? 1), 1),
             'unit_price' => $primaryLine['unit_price'],
             'discount_amount' => $commercials['discount_amount'],
@@ -1076,6 +1115,13 @@ class SaleController extends Controller
                 'nullable',
                 Rule::exists('rentals', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
             ],
+            'fulfilment_source' => ['nullable', Rule::in(VendorOrderDetail::FULFILMENT_SOURCES)],
+            'vendor_id' => [
+                'required_if:fulfilment_source,vendor_supplied',
+                'nullable',
+                Rule::exists('vendors', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+            ],
+            'delivery_responsibility' => ['nullable', Rule::in(VendorOrderDetail::DELIVERY_RESPONSIBILITIES)],
             'quantity' => 'nullable|integer|min:1',
             'unit_price' => 'nullable|numeric|min:0',
             'discount_amount' => 'nullable|numeric|min:0',
@@ -1984,8 +2030,9 @@ class SaleController extends Controller
             ->where('organization_id', $this->orgId())
             ->latest('id')
             ->get();
+        $fulfilmentVendors = $this->vendorMasterOptions();
 
-        return view('sales.create', compact('customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'rentals'));
+        return view('sales.create', compact('customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'rentals', 'fulfilmentVendors'));
     }
 
     public function businessPartnerActualClients(BusinessPartner $businessPartner)
@@ -2025,6 +2072,9 @@ class SaleController extends Controller
     public function store(Request $request)
     {
         $this->authorize('create', Sale::class);
+        $request->merge([
+            'fulfilment_source' => $request->input('fulfilment_source', VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE),
+        ]);
 
         if (!$request->filled('customer_type')) {
             $request->merge(['customer_type' => 'direct_customer']);
@@ -2032,6 +2082,8 @@ class SaleController extends Controller
         $this->synchronizeLinkedRentalContext($request);
         $this->hydrateSaleBusinessPartnerInputs($request);
         $request->validate($this->saleValidationRules());
+        $fulfilment = $this->normalizedSaleFulfilmentInput($request);
+        $vendorSupplied = $fulfilment['fulfilment_source'] === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED;
         $partyContext = $this->validatedSalePartyContext($request);
         $saleItems = $this->normalizedSaleItems($request, null, $partyContext['customer'], $partyContext['tax_state']);
         $this->validateLinkedSaleReferences($request, $partyContext, $saleItems);
@@ -2049,11 +2101,20 @@ class SaleController extends Controller
             $salePayload['created_by_user_id'] = auth()->id();
         }
 
-        [$sale, $invoice] = DB::transaction(function () use ($salePayload, $saleItems) {
+        if ($this->hasStockAppliedColumn()) {
+            $salePayload['stock_applied'] = !$vendorSupplied;
+        }
+
+        [$sale, $invoice] = DB::transaction(function () use ($salePayload, $saleItems, $vendorSupplied, $fulfilment, $request) {
             $sale = Sale::create($salePayload);
             $this->syncSaleItems($sale, $saleItems);
-            $this->applySaleStock($sale);
+            if (!$vendorSupplied) {
+                $this->applySaleStock($sale);
+            }
             $invoice = $this->createSaleInvoice($sale);
+            $this->vendorFulfilmentService()->syncSale($sale, $fulfilment + [
+                'notes' => $request->input('notes'),
+            ]);
 
             return [$sale, $invoice];
         });
@@ -2391,18 +2452,22 @@ class SaleController extends Controller
             ->where('organization_id', $this->orgId())
             ->latest('id')
             ->get();
+        $fulfilmentVendors = $this->vendorMasterOptions();
 
         if ($this->hasSaleItemsTable()) {
             $sale->loadMissing(['saleItems.product', 'saleItems.asset.warehouse', 'saleItems.warehouse']);
         }
 
-        return view('sales.edit', compact('sale', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'rentals'));
+        return view('sales.edit', compact('sale', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'rentals', 'fulfilmentVendors'));
     }
 
     public function update(Request $request, Sale $sale)
     {
         $sale = $this->scopedSale($sale);
         $this->authorize('update', $sale);
+        $request->merge([
+            'fulfilment_source' => $request->input('fulfilment_source', VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE),
+        ]);
 
         if ($this->isAutoGeneratedRentalSale($sale)) {
             return $this->managedRentalSaleRedirect($sale);
@@ -2414,6 +2479,19 @@ class SaleController extends Controller
         $this->synchronizeLinkedRentalContext($request, $sale);
         $this->hydrateSaleBusinessPartnerInputs($request);
         $request->validate($this->saleValidationRules($sale));
+        $fulfilment = $this->normalizedSaleFulfilmentInput($request);
+        $vendorSupplied = $fulfilment['fulfilment_source'] === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED;
+
+        if (
+            $sale->fulfilment_source !== $fulfilment['fulfilment_source']
+            && !$request->user()->isSuperAdmin()
+            && $this->saleFulfilmentAlreadyOperational($sale)
+        ) {
+            throw ValidationException::withMessages([
+                'fulfilment_source' => ['Only super admin can change fulfilment source after operational fulfilment has started.'],
+            ]);
+        }
+
         $partyContext = $this->validatedSalePartyContext($request);
         $saleItems = $this->normalizedSaleItems($request, $sale, $partyContext['customer'], $partyContext['tax_state']);
         $this->validateLinkedSaleReferences($request, $partyContext, $saleItems, $sale);
@@ -2431,24 +2509,28 @@ class SaleController extends Controller
             );
         }
 
-        DB::transaction(function () use ($sale, $partyContext, $request, $commercials, $saleItems) {
+        DB::transaction(function () use ($sale, $partyContext, $request, $commercials, $saleItems, $fulfilment, $vendorSupplied) {
             $originalSale = Sale::query()
                 ->with(['product', 'asset', 'saleItems.product', 'saleItems.asset'])
                 ->where('organization_id', $this->orgId())
                 ->findOrFail($sale->id);
 
-            if ($this->saleUsesAppliedStock($originalSale)) {
+            if (!$originalSale->isVendorSupplied() && $this->saleUsesAppliedStock($originalSale)) {
                 $this->restoreSaleStock($originalSale);
             }
 
             $sale->update($this->saleSummaryPayload($request, $partyContext, $saleItems, $commercials));
             $this->syncSaleItems($sale, $saleItems);
 
-            if ($sale->payment_status !== 'void') {
+            if (!$vendorSupplied && $sale->payment_status !== 'void') {
                 $this->applySaleStock($sale->fresh(['product', 'asset', 'saleItems.product', 'saleItems.asset']));
             } elseif ($this->hasStockAppliedColumn()) {
                 $sale->forceFill(['stock_applied' => false])->saveQuietly();
             }
+
+            $this->vendorFulfilmentService()->syncSale($sale, $fulfilment + [
+                'notes' => $request->input('notes'),
+            ]);
 
             if ($invoice = $this->saleInvoice($sale->refresh())) {
                 $this->syncSaleInvoiceFromSale($sale, $invoice);
@@ -2463,6 +2545,19 @@ class SaleController extends Controller
         ], 'Sale updated.');
 
         return redirect()->route('sales.index')->with('success', 'Sale updated successfully.');
+    }
+
+    private function saleFulfilmentAlreadyOperational(Sale $sale): bool
+    {
+        if (($sale->delivery_status ?? null) === 'completed') {
+            return true;
+        }
+
+        return VendorOrderDetail::query()
+            ->where('organization_id', $this->orgId())
+            ->where('sale_id', $sale->id)
+            ->whereIn('vendor_order_status', ['confirmed', 'in_progress', 'completed'])
+            ->exists();
     }
 
     public function generateInvoice(Sale $sale)

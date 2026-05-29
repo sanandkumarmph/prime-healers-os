@@ -7,6 +7,7 @@
     $phoneParts = \App\Support\PhoneNumber::split(old('phone', $vendor->phone));
     $phoneValue = $phoneParts['local'];
     $phoneCountryCode = old('phone_country_code', $phoneParts['code']);
+    $whatsappParts = \App\Support\PhoneNumber::split(old('whatsapp', $vendor->whatsapp));
     $countryCodeOptions = \App\Support\PhoneNumber::countryCodeOptions();
 @endphp
 
@@ -78,6 +79,44 @@
                     @endif
                 </div>
                 <div>
+                    <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">WhatsApp</label>
+                    <div style="{{ $fieldStyle('whatsapp', 'display:flex; align-items:center; border:1px solid #cbd5e1; border-radius:14px; overflow:visible;') }}">
+                        @include('partials.country-code-picker', [
+                            'name' => 'whatsapp_country_code',
+                            'pickerId' => 'whatsapp_country_code',
+                            'value' => old('whatsapp_country_code', $whatsappParts['code']),
+                            'options' => $countryCodeOptions,
+                            'dividerColor' => '#cbd5e1',
+                            'width' => '92px',
+                        ])
+                        <input type="text" name="whatsapp" value="{{ $whatsappParts['local'] }}" inputmode="numeric" maxlength="15" pattern="[0-9]{6,15}" data-phone-local style="width:100%; padding:12px 14px; border:none; outline:none; background:transparent;">
+                    </div>
+                    @if($fieldError('whatsapp'))
+                        <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('whatsapp') }}</div>
+                    @endif
+                </div>
+                <div>
+                    <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Vendor Type</label>
+                    <input type="text" name="vendor_type" value="{{ old('vendor_type', $vendor->vendor_type) }}" placeholder="Rental supplier, delivery partner, wholesaler" style="{{ $fieldStyle('vendor_type', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px;') }}">
+                    @if($fieldError('vendor_type'))
+                        <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('vendor_type') }}</div>
+                    @endif
+                </div>
+                <div>
+                    <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">GST Number</label>
+                    <input type="text" name="gst_number" value="{{ old('gst_number', $vendor->gst_number) }}" style="{{ $fieldStyle('gst_number', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px;') }}">
+                    @if($fieldError('gst_number'))
+                        <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('gst_number') }}</div>
+                    @endif
+                </div>
+                <div>
+                    <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">GST Registration</label>
+                    <input type="text" name="gst_registration_type" value="{{ old('gst_registration_type', $vendor->gst_registration_type) }}" placeholder="Regular, composition, unregistered" style="{{ $fieldStyle('gst_registration_type', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px;') }}">
+                    @if($fieldError('gst_registration_type'))
+                        <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('gst_registration_type') }}</div>
+                    @endif
+                </div>
+                <div>
                     <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">City</label>
                     <select name="city_id" style="{{ $fieldStyle('city_id', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
                         <option value="">Select city</option>
@@ -87,6 +126,27 @@
                     </select>
                     @if($fieldError('city_id'))
                         <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('city_id') }}</div>
+                    @endif
+                </div>
+                <div>
+                    <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">State</label>
+                    <input type="text" name="state" value="{{ old('state', $vendor->state) }}" style="{{ $fieldStyle('state', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px;') }}">
+                    @if($fieldError('state'))
+                        <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('state') }}</div>
+                    @endif
+                </div>
+                <div>
+                    <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Pincode</label>
+                    <input type="text" name="pincode" value="{{ old('pincode', $vendor->pincode) }}" style="{{ $fieldStyle('pincode', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px;') }}">
+                    @if($fieldError('pincode'))
+                        <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('pincode') }}</div>
+                    @endif
+                </div>
+                <div>
+                    <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Payment Terms</label>
+                    <input type="text" name="payment_terms" value="{{ old('payment_terms', $vendor->payment_terms) }}" placeholder="Immediate, 7 days, 30 days" style="{{ $fieldStyle('payment_terms', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px;') }}">
+                    @if($fieldError('payment_terms'))
+                        <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('payment_terms') }}</div>
                     @endif
                 </div>
                 <div style="display:flex; align-items:end;">

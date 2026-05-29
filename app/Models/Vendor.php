@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Vendor extends Model
 {
@@ -13,15 +14,24 @@ class Vendor extends Model
         'name',
         'contact_person',
         'phone',
+        'whatsapp',
         'email',
+        'vendor_type',
+        'gst_number',
+        'gst_registration_type',
+        'state',
+        'pincode',
+        'payment_terms',
         'address',
         'city',
         'is_active',
+        'deactivated_at',
         'notes',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'deactivated_at' => 'datetime',
     ];
 
     public function scopeForOrganization(Builder $query, int $organizationId): Builder
@@ -41,8 +51,11 @@ class Vendor extends Model
             $innerQuery->where('name', 'like', "%{$search}%")
                 ->orWhere('contact_person', 'like', "%{$search}%")
                 ->orWhere('phone', 'like', "%{$search}%")
+                ->orWhere('whatsapp', 'like', "%{$search}%")
                 ->orWhere('email', 'like', "%{$search}%")
-                ->orWhere('city', 'like', "%{$search}%");
+                ->orWhere('city', 'like', "%{$search}%")
+                ->orWhere('vendor_type', 'like', "%{$search}%")
+                ->orWhere('gst_number', 'like', "%{$search}%");
         });
     }
 
@@ -54,5 +67,10 @@ class Vendor extends Model
     public function cityRecord()
     {
         return $this->belongsTo(City::class, 'city_id');
+    }
+
+    public function vendorOrderDetails(): HasMany
+    {
+        return $this->hasMany(VendorOrderDetail::class);
     }
 }

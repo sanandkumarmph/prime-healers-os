@@ -489,7 +489,9 @@
                 The rental asset reconciliation above is the canonical state view. Warehouse reconciliation below uses the same logic, so this page no longer shows a second raw asset-status summary with conflicting rented counts.
             </div>
 
-            @if(($assetReconciliation['warehouse_breakdown'] ?? collect())->isNotEmpty())
+            @php($warehouseBreakdown = collect($assetReconciliation['warehouse_breakdown'] ?? []))
+            @php($showWarehouseReconciliation = $warehouseBreakdown->count() > 1 || (int) request('warehouse_id', 0) > 0 || filled(request('city')))
+            @if($showWarehouseReconciliation && $warehouseBreakdown->isNotEmpty())
                 <div style="display:grid; gap:8px;">
                     <strong style="font-size:14px;">Warehouse Reconciliation</strong>
                     <div style="overflow:auto;">
@@ -511,7 +513,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach($assetReconciliation['warehouse_breakdown'] as $warehouseRow)
+                                @foreach($warehouseBreakdown as $warehouseRow)
                                     <tr>
                                         <td style="padding:12px 14px; border-top:1px solid #e2e8f0;">{{ $warehouseRow['warehouse_name'] }}</td>
                                         <td style="padding:12px 14px; border-top:1px solid #e2e8f0;">{{ $warehouseRow['city'] ?: '—' }}</td>
@@ -530,6 +532,10 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
+            @elseif($warehouseBreakdown->count() === 1)
+                <div style="border:1px solid #dbe7f3; border-radius:18px; padding:14px 16px; background:#f8fafc; color:#475569; font-size:13px;">
+                    Warehouse Reconciliation is hidden here because the current scope contains only one warehouse. Use the Rental Asset Reconciliation above as the canonical state view.
                 </div>
             @endif
 

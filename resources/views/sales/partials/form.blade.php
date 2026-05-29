@@ -19,6 +19,10 @@
         ? (bool) ($selectedBusinessPartner || $selectedPartnerClient)
         : filled($selectedCustomerId);
     $organizationState = optional(auth()->user()->organization)->state;
+    $fulfilmentVendors = collect($fulfilmentVendors ?? collect())->values();
+    $selectedFulfilmentSource = old('fulfilment_source', $sale?->fulfilment_source ?? \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE);
+    $selectedFulfilmentVendorId = (int) old('vendor_id', $sale->vendor_id ?? 0);
+    $selectedDeliveryResponsibility = old('delivery_responsibility', $sale?->delivery_responsibility ?? 'ph_internal_delivery');
 
     $initialSaleItems = old('sale_items');
     $initialShippingCharges = old('shipping_charges');
@@ -416,6 +420,36 @@
                 @error('rental_id')<div class="sales-field-error">{{ $message }}</div>@enderror
                 <small>If linked, the selected customer will sync to the rental customer.</small>
             </div>
+            <div class="sales-field sales-col-4 {{ $errors->has('fulfilment_source') ? 'is-error' : '' }}">
+                <label for="sale_fulfilment_source">Fulfilment Source</label>
+                <select name="fulfilment_source" id="sale_fulfilment_source">
+                    <option value="in_house" {{ $selectedFulfilmentSource === 'in_house' ? 'selected' : '' }}>In-house Stock</option>
+                    <option value="vendor_supplied" {{ $selectedFulfilmentSource === 'vendor_supplied' ? 'selected' : '' }}>Vendor Supplied</option>
+                </select>
+                <small>Vendor supplied sales skip PH sale-unit reduction while keeping customer, invoice, and order records.</small>
+                @error('fulfilment_source')<div class="sales-field-error">{{ $message }}</div>@enderror
+            </div>
+            <div class="sales-field sales-col-4 {{ $errors->has('vendor_id') ? 'is-error' : '' }}">
+                <label for="sale_vendor_id">Vendor</label>
+                <select name="vendor_id" id="sale_vendor_id">
+                    <option value="">Select vendor when vendor supplied</option>
+                    @foreach($fulfilmentVendors as $vendor)
+                        <option value="{{ $vendor->id }}" {{ $selectedFulfilmentVendorId === (int) $vendor->id ? 'selected' : '' }}>
+                            {{ $vendor->name }}{{ $vendor->vendor_type ? ' - ' . $vendor->vendor_type : '' }}
+                        </option>
+                    @endforeach
+                </select>
+                @error('vendor_id')<div class="sales-field-error">{{ $message }}</div>@enderror
+            </div>
+            <div class="sales-field sales-col-4 {{ $errors->has('delivery_responsibility') ? 'is-error' : '' }}">
+                <label for="sale_delivery_responsibility">Delivery Responsibility</label>
+                <select name="delivery_responsibility" id="sale_delivery_responsibility">
+                    <option value="ph_internal_delivery" {{ $selectedDeliveryResponsibility === 'ph_internal_delivery' ? 'selected' : '' }}>PH Internal Delivery</option>
+                    <option value="vendor_delivery" {{ $selectedDeliveryResponsibility === 'vendor_delivery' ? 'selected' : '' }}>Vendor Delivery</option>
+                    <option value="customer_pickup" {{ $selectedDeliveryResponsibility === 'customer_pickup' ? 'selected' : '' }}>Customer Pickup</option>
+                </select>
+                @error('delivery_responsibility')<div class="sales-field-error">{{ $message }}</div>@enderror
+            </div>
             <div class="sales-field sales-col-12 {{ $errors->has('notes') ? 'is-error' : '' }}">
                 <label for="notes">Sale Notes</label>
                 <textarea name="notes" id="notes" rows="3" placeholder="Internal context, delivery note, or payment follow-up">{{ old('notes', $sale->notes ?? '') }}</textarea>
@@ -638,6 +672,9 @@
         const saleItemsCountMetric = document.getElementById('saleItemsCountMetric');
         const salesItemsToolbarSummary = document.getElementById('salesItemsToolbarSummary');
         const saleShippingInput = document.getElementById('shipping_charges');
+        const saleFulfilmentSource = document.getElementById('sale_fulfilment_source');
+        const saleVendorSelect = document.getElementById('sale_vendor_id');
+        const saleDeliveryResponsibilitySelect = document.getElementById('sale_delivery_responsibility');
         const saleCustomerSummaryCard = document.getElementById('saleCustomerSummaryCard');
         const saleCustomerFlowSummaryTitle = document.getElementById('saleCustomerFlowSummaryTitle');
         const saleCustomerFlowChip = document.getElementById('saleCustomerFlowChip');
@@ -676,6 +713,18 @@
                 tax_type_auto: true,
                 notes: ''
             };
+        }
+
+        function syncSaleFulfilmentControls() {
+            const vendorSupplied = saleFulfilmentSource?.value === 'vendor_supplied';
+
+            if (saleVendorSelect) {
+                saleVendorSelect.disabled = !vendorSupplied;
+            }
+
+            if (!vendorSupplied && saleDeliveryResponsibilitySelect) {
+                saleDeliveryResponsibilitySelect.value = 'ph_internal_delivery';
+            }
         }
 
         function normalizeItem(item) {
@@ -1590,6 +1639,7 @@
         businessPartnerSelect?.addEventListener('change', updateCustomerModeVisibility);
         partnerClientSelect?.addEventListener('change', updateCustomerPanel);
         rentalSelect.addEventListener('change', syncCustomerFromRental);
+        saleFulfilmentSource?.addEventListener('change', syncSaleFulfilmentControls);
         if (saleShippingInput) {
             saleShippingInput.addEventListener('input', updateSaleSummary);
         }
@@ -1662,6 +1712,7 @@
         updateCustomerModeVisibility();
         updateCustomerPanel();
         syncCustomerFromRental();
+        syncSaleFulfilmentControls();
         renderSaleItems();
     })();
 </script>

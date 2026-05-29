@@ -30,6 +30,9 @@ class Sale extends Model
         'rental_id',
         'auto_generated_from_rental',
         'warehouse_id',
+        'vendor_id',
+        'fulfilment_source',
+        'delivery_responsibility',
         'quantity',
         'unit_price',
         'discount_amount',
@@ -100,6 +103,16 @@ class Sale extends Model
         return $this->belongsTo(Rental::class);
     }
 
+    public function vendor()
+    {
+        return $this->belongsTo(Vendor::class);
+    }
+
+    public function vendorOrderDetail(): HasOne
+    {
+        return $this->hasOne(VendorOrderDetail::class);
+    }
+
     public function invoice(): HasOne
     {
         return $this->hasOne(Invoice::class);
@@ -137,6 +150,11 @@ class Sale extends Model
         return $this->customerTypeValue() === 'business_partner'
             && (int) ($this->business_partner_id ?? 0) > 0
             && (int) ($this->partner_client_id ?? 0) > 0;
+    }
+
+    public function isVendorSupplied(): bool
+    {
+        return ($this->fulfilment_source ?? VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE) === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED;
     }
 
     public function billingContactName(): string

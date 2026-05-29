@@ -27,6 +27,10 @@ class Rental extends Model
         'phone',
         'product_id',
         'dispatch_warehouse_id',
+        'vendor_id',
+        'fulfilment_source',
+        'delivery_responsibility',
+        'pickup_responsibility',
         'delivery_staff_id',
         'pickup_staff_id',
         'quantity',
@@ -110,6 +114,16 @@ class Rental extends Model
         return $this->belongsTo(Warehouse::class, 'dispatch_warehouse_id');
     }
 
+    public function vendor()
+    {
+        return $this->belongsTo(Vendor::class);
+    }
+
+    public function vendorOrderDetail()
+    {
+        return $this->hasOne(VendorOrderDetail::class);
+    }
+
     public function deliveryStaff()
     {
         return $this->belongsTo(Staff::class, 'delivery_staff_id');
@@ -142,6 +156,11 @@ class Rental extends Model
         return $this->customerTypeValue() === 'business_partner'
             && (int) ($this->business_partner_id ?? 0) > 0
             && (int) ($this->partner_client_id ?? 0) > 0;
+    }
+
+    public function isVendorSupplied(): bool
+    {
+        return ($this->fulfilment_source ?? VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE) === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED;
     }
 
     public function billingContactName(): string

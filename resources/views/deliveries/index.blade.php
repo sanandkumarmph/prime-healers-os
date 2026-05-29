@@ -1397,6 +1397,23 @@
                                         : ($delivery->assignedStaff
                                             ? ucwords(str_replace('_', ' ', $delivery->assignedStaff->assignment_role ?? 'vendor'))
                                             : ($delivery->assignment_type === 'third_party' ? 'Third party' : 'Unassigned'));
+                                    $fulfilmentResponsibility = !$isSaleTask
+                                        ? ($delivery->type === 'pickup'
+                                            ? match ($delivery->rental?->pickup_responsibility) {
+                                                'vendor_pickup' => 'Vendor Pickup',
+                                                'customer_return' => 'Customer Return',
+                                                default => 'PH Internal Pickup',
+                                            }
+                                            : match ($delivery->rental?->delivery_responsibility) {
+                                                'vendor_delivery' => 'Vendor Delivery',
+                                                'customer_pickup' => 'Customer Pickup',
+                                                default => 'PH Internal Delivery',
+                                            })
+                                        : match ($delivery->sale?->delivery_responsibility) {
+                                            'vendor_delivery' => 'Vendor Delivery',
+                                            'customer_pickup' => 'Customer Pickup',
+                                            default => 'PH Internal Delivery',
+                                        };
                                     $completePartial = !$isSaleTask
                                         && (
                                             ($delivery->type === 'delivery' && $delivery->rental && $delivery->rental->pendingDeliveryQuantityTotal() > 0)
@@ -1446,6 +1463,7 @@
                                                     <span class="ops-muted">+{{ $items->count() - 3 }} more items</span>
                                                 @endif
                                             </div>
+                                            <div class="ops-muted">Responsibility: {{ $fulfilmentResponsibility }}</div>
                                         </div>
                                     </td>
                                     <td class="ops-col-customer">
@@ -1750,6 +1768,10 @@
                                     <div class="ops-mobile-meta">
                                         <span>Area</span>
                                         <span>{{ $customerCity ?: 'No city saved' }}</span>
+                                    </div>
+                                    <div class="ops-mobile-meta">
+                                        <span>Responsibility</span>
+                                        <span>{{ $fulfilmentResponsibility }}</span>
                                     </div>
                                 </div>
                             </div>

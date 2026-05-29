@@ -6,6 +6,7 @@
     $canCreateVendors = $currentUser?->canAccessModule('vendors', 'create') ?? false;
     $canUpdateVendors = $currentUser?->canAccessModule('vendors', 'update') ?? false;
     $canDeleteVendors = $currentUser?->canAccessModule('vendors', 'delete') ?? false;
+    $canExportVendors = $currentUser?->hasPermission('vendors.export') ?? false;
 @endphp
 <div style="max-width:1260px; margin:0 auto;">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:24px;">
@@ -14,9 +15,14 @@
             <h1 style="margin:12px 0 8px; font-size:34px; letter-spacing:-0.03em;">Vendors</h1>
             <p style="margin:0; color:#64748b;">Manage delivery vendors and third-party partners from a clean master list.</p>
         </div>
-        @if($canCreateVendors)
-            <a href="{{ route('vendors.create') }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; background:#1d4ed8; color:#ffffff; text-decoration:none; font-weight:700;">+ Add Vendor</a>
-        @endif
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            @if($canExportVendors)
+                <a href="{{ route('vendors.export.csv', request()->query()) }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:700;">Export CSV</a>
+            @endif
+            @if($canCreateVendors)
+                <a href="{{ route('vendors.create') }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; background:#1d4ed8; color:#ffffff; text-decoration:none; font-weight:700;">+ Add Vendor</a>
+            @endif
+        </div>
     </div>
 
     @if(session('success'))
@@ -58,7 +64,9 @@
 
                 <div style="margin-top:16px; display:grid; gap:8px; color:#475569; font-size:14px;">
                     <div><strong>Phone:</strong> {{ $vendor->phone ?: '—' }}</div>
+                    <div><strong>WhatsApp:</strong> {{ $vendor->whatsapp ?: '—' }}</div>
                     <div><strong>Email:</strong> {{ $vendor->email ?: '—' }}</div>
+                    <div><strong>Type:</strong> {{ $vendor->vendor_type ?: 'General' }}</div>
                     <div><strong>City:</strong> {{ $vendor->cityRecord?->name ?? $vendor->city ?? 'Not mapped' }}</div>
                 </div>
 
@@ -68,10 +76,10 @@
                         <a href="{{ route('vendors.edit', $vendor) }}" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:600;">Edit</a>
                     @endif
                     @if($canDeleteVendors)
-                        <form method="POST" action="{{ route('vendors.destroy', $vendor) }}" style="margin:0;" onsubmit="return confirm('Delete this vendor? This will be blocked if dependencies exist.');">
+                        <form method="POST" action="{{ route('vendors.destroy', $vendor) }}" style="margin:0;" onsubmit="return confirm('Delete this vendor? Linked vendors will be safely deactivated instead of hard deleted.');">
                             @csrf
                             @method('DELETE')
-                            <button type="submit" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border:0; border-radius:12px; background:#fff1f2; color:#be123c; font-weight:700; cursor:pointer;">Delete</button>
+                            <button type="submit" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border:0; border-radius:12px; background:#fff1f2; color:#be123c; font-weight:700; cursor:pointer;">Delete / Deactivate</button>
                         </form>
                     @endif
                 </div>

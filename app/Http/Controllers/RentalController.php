@@ -23,6 +23,8 @@ use App\Models\Role;
 use App\Models\SaleInventory;
 use App\Models\Sale;
 use App\Models\StockMovement;
+use App\Models\Vendor;
+use App\Models\VendorOrderDetail;
 use App\Services\Finance\InvoiceLinkResolver;
 use App\Services\Finance\InvoiceSyncService;
 use App\Services\Finance\AmountReductionGuardService;
@@ -41,6 +43,7 @@ use App\Services\Metrics\InventoryMetricsService;
 use App\Services\Metrics\LogisticsMetricsService;
 use App\Services\Metrics\RentalMetricsService;
 use App\Services\Metrics\SalesMetricsService;
+use App\Services\Vendors\VendorFulfilmentService;
 use App\Models\Staff;
 use App\Models\User;
 use App\Models\Warehouse;
@@ -53,6 +56,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -430,6 +434,247 @@ class RentalController extends Controller
             ->get(['id', 'name', 'role', 'role_id']);
     }
 
+    private function vendorMasterOptions()
+    {
+        return Vendor::query()
+            ->forOrganization($this->orgId())
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
+    }
+
+    private function vendorFulfilmentService(): VendorFulfilmentService
+    {
+        return app(VendorFulfilmentService::class);
+    }
+
+    private function rentalFormCities()
+    {
+        return \App\Models\City::query()
+            ->forOrganization($this->orgId())
+            ->active()
+            ->orderBy('name')
+            ->get();
+    }
+
+    private function deriveRentalFormCityId(Request $request): ?int
+    {
+        if ($request->filled('city_id')) {
+            return (int) $request->input('city_id');
+        }
+
+        if ($request->filled('dispatch_warehouse_id')) {
+            $warehouseCityId = Warehouse::query()
+                ->where('organization_id', $this->orgId())
+                ->whereKey((int) $request->input('dispatch_warehouse_id'))
+                ->value('city_id');
+
+            if ($warehouseCityId) {
+                return (int) $warehouseCityId;
+            }
+        }
+
+        if ($request->filled('vendor_id')) {
+            $vendorCityId = Vendor::query()
+                ->where('organization_id', $this->orgId())
+                ->whereKey((int) $request->input('vendor_id'))
+                ->value('city_id');
+
+            if ($vendorCityId) {
+                return (int) $vendorCityId;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizedRentalDeliveryAssignmentType(Request $request, bool $isVendorSupplied): string
+    {
+        $requested = (string) $request->input('delivery_assignment_type', '');
+        if (in_array($requested, ['ph_internal', 'vendor', 'customer_pickup', 'third_party'], true)) {
+            if (!$isVendorSupplied && $requested === 'vendor') {
+                return 'ph_internal';
+            }
+
+            return $requested;
+        }
+
+        $legacyResponsibility = (string) $request->input('delivery_responsibility', '');
+
+        return match ($legacyResponsibility) {
+            'vendor_delivery' => 'vendor',
+            'customer_pickup' => 'customer_pickup',
+            default => $isVendorSupplied ? 'vendor' : 'ph_internal',
+        };
+    }
+
+    private function prepareRentalFormRequest(Request $request): void
+    {
+        $source = $request->input('fulfilment_source', VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE);
+        $isVendorSupplied = $source === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED;
+        $assignmentType = $this->normalizedRentalDeliveryAssignmentType($request, $isVendorSupplied);
+
+        $deliveryResponsibility = match ($assignmentType) {
+            'vendor' => 'vendor_delivery',
+            'customer_pickup' => 'customer_pickup',
+            default => 'ph_internal_delivery',
+        };
+
+        $pickupResponsibility = $request->input(
+            'pickup_responsibility',
+            $isVendorSupplied ? 'vendor_pickup' : 'ph_internal_pickup'
+        );
+
+        $merge = [
+            'city_id' => $this->deriveRentalFormCityId($request),
+            'delivery_assignment_type' => $assignmentType,
+            'delivery_responsibility' => $deliveryResponsibility,
+            'pickup_responsibility' => $pickupResponsibility,
+        ];
+
+        if ($isVendorSupplied) {
+            $merge['dispatch_warehouse_id'] = null;
+        } else {
+            $merge['vendor_id'] = null;
+        }
+
+        if (in_array($assignmentType, ['vendor', 'customer_pickup'], true)) {
+            $merge['delivery_staff_id'] = null;
+        }
+
+        if ($assignmentType === 'third_party' && !filled($request->input('delivery_staff_id'))) {
+            $merge['delivery_staff_id'] = 'third_party';
+        }
+
+        if ($assignmentType !== 'third_party') {
+            $merge['third_party_name'] = null;
+            $merge['third_party_contact'] = null;
+            $merge['third_party_phone'] = null;
+        }
+
+        $request->merge($merge);
+    }
+
+    private function ensureRentalFulfilmentMatchesCity(Request $request, array $fulfilment, array $deliveryAssignment): void
+    {
+        $cityId = (int) ($request->input('city_id') ?? 0);
+        if ($cityId <= 0) {
+            return;
+        }
+
+        $city = \App\Models\City::query()
+            ->forOrganization($this->orgId())
+            ->whereKey($cityId)
+            ->first();
+
+        if (!$city) {
+            return;
+        }
+
+        $normalizedCityName = \Illuminate\Support\Str::lower(trim((string) $city->name));
+
+        if ($request->filled('vendor_id')) {
+            $vendor = Vendor::query()
+                ->where('organization_id', $this->orgId())
+                ->whereKey((int) $request->input('vendor_id'))
+                ->first();
+
+            if (
+                $vendor
+                && (
+                    ((int) ($vendor->city_id ?? 0) > 0 && (int) $vendor->city_id !== $cityId)
+                    || (blank($vendor->city_id) && filled($vendor->city) && \Illuminate\Support\Str::lower(trim((string) $vendor->city)) !== $normalizedCityName)
+                )
+            ) {
+                throw ValidationException::withMessages([
+                    'vendor_id' => ['Selected vendor is not available for the chosen city.'],
+                ]);
+            }
+        }
+
+        if ($request->filled('dispatch_warehouse_id')) {
+            $warehouse = Warehouse::query()
+                ->where('organization_id', $this->orgId())
+                ->whereKey((int) $request->input('dispatch_warehouse_id'))
+                ->first();
+
+            if (
+                $warehouse
+                && (
+                    ((int) ($warehouse->city_id ?? 0) > 0 && (int) $warehouse->city_id !== $cityId)
+                    || (blank($warehouse->city_id) && filled($warehouse->city) && \Illuminate\Support\Str::lower(trim((string) $warehouse->city)) !== $normalizedCityName)
+                )
+            ) {
+                throw ValidationException::withMessages([
+                    'dispatch_warehouse_id' => ['Selected warehouse is not configured for the chosen city.'],
+                ]);
+            }
+        }
+
+        if (($deliveryAssignment['user_id'] ?? null) && $request->input('delivery_assignment_type') === 'ph_internal') {
+            $assignedUser = User::query()
+                ->where('organization_id', $this->orgId())
+                ->whereKey((int) $deliveryAssignment['user_id'])
+                ->first();
+
+            if ($assignedUser && (int) ($assignedUser->city_id ?? 0) !== $cityId) {
+                throw ValidationException::withMessages([
+                    'delivery_staff_id' => ['Selected delivery user is not assigned to the chosen city.'],
+                ]);
+            }
+        }
+
+        if (($deliveryAssignment['staff_id'] ?? null)) {
+            $assignedStaff = Staff::query()
+                ->where('organization_id', $this->orgId())
+                ->whereKey((int) $deliveryAssignment['staff_id'])
+                ->first();
+
+            if (
+                $assignedStaff
+                && (
+                    blank($assignedStaff->city)
+                    || \Illuminate\Support\Str::lower(trim((string) $assignedStaff->city)) !== $normalizedCityName
+                )
+            ) {
+                throw ValidationException::withMessages([
+                    'delivery_staff_id' => ['Selected delivery staff is not assigned to the chosen city.'],
+                ]);
+            }
+        }
+    }
+
+    private function normalizedRentalFulfilmentInput(Request $request): array
+    {
+        $source = $request->input('fulfilment_source', VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE);
+        $isVendorSupplied = $source === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED;
+
+        return [
+            'fulfilment_source' => $isVendorSupplied
+                ? VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED
+                : VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE,
+            'vendor_id' => $isVendorSupplied && $request->filled('vendor_id')
+                ? (int) $request->input('vendor_id')
+                : null,
+            'delivery_responsibility' => $isVendorSupplied
+                ? ($request->input('delivery_responsibility') ?: 'vendor_delivery')
+                : 'ph_internal_delivery',
+            'pickup_responsibility' => $isVendorSupplied
+                ? ($request->input('pickup_responsibility') ?: 'vendor_pickup')
+                : 'ph_internal_pickup',
+            'vendor_order_status' => $isVendorSupplied ? 'requested' : 'draft',
+        ];
+    }
+
+    private function sanitizedVendorSuppliedRentalItems(array $items): array
+    {
+        return array_map(function (array $item) {
+            $item['asset_ids'] = [];
+
+            return $item;
+        }, $items);
+    }
+
     private function applyVendorFilterToRentalQuery($query, int $vendorUserId)
     {
         if ($vendorUserId <= 0) {
@@ -538,28 +783,14 @@ class RentalController extends Controller
 
     private function assignableUsers()
     {
-        $allowedRoles = ['delivery', 'pickup'];
-        $allowedRoleIds = collect();
-
-        if (Schema::hasColumn('users', 'role_id')) {
-            $allowedRoleIds = Role::query()
-                ->whereIn('slug', $allowedRoles)
-                ->pluck('id');
-        }
-
         return User::query()
             ->with('assignedRole')
             ->where('organization_id', $this->orgId())
             ->when(Schema::hasColumn('users', 'is_active'), fn ($query) => $query->where('is_active', true))
-            ->where(function ($query) use ($allowedRoles, $allowedRoleIds) {
-                $query->whereIn('role', $allowedRoles);
-
-                if ($allowedRoleIds->isNotEmpty()) {
-                    $query->orWhereIn('role_id', $allowedRoleIds);
-                }
-            })
             ->orderBy('name')
-            ->get();
+            ->get()
+            ->filter(fn (User $user) => $this->userAssignableForRentalDelivery($user))
+            ->values();
     }
 
     private function activeRentalStaffExistsRule(): Exists
@@ -582,26 +813,62 @@ class RentalController extends Controller
 
     private function assignableUserRule(): Exists
     {
-        $allowedRoles = ['delivery', 'pickup', User::ROLE_VENDOR];
-        $allowedRoleIds = collect();
+        $allowedUserIds = User::query()
+            ->with('assignedRole')
+            ->where('organization_id', $this->orgId())
+            ->when(Schema::hasColumn('users', 'is_active'), fn ($query) => $query->where('is_active', true))
+            ->orderBy('id')
+            ->get(['id', 'role', 'role_id', 'organization_id', 'is_active'])
+            ->filter(fn (User $user) => $this->userAssignableForRentalDelivery($user))
+            ->pluck('id')
+            ->values();
 
-        if (Schema::hasColumn('users', 'role_id')) {
-            $allowedRoleIds = Role::query()
-                ->whereIn('slug', $allowedRoles)
-                ->pluck('id');
+        return Rule::exists('users', 'id')->where(function ($query) use ($allowedUserIds) {
+            $query->where('organization_id', $this->orgId());
+
+            if ($allowedUserIds->isNotEmpty()) {
+                $query->whereIn('id', $allowedUserIds->all());
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+        });
+    }
+
+    private function userAssignableForRentalDelivery(User $user): bool
+    {
+        if (!$user->organization_id || (int) $user->organization_id !== $this->orgId()) {
+            return false;
         }
 
-        return Rule::exists('users', 'id')->where(function ($query) use ($allowedRoles, $allowedRoleIds) {
-            $query->where('organization_id', $this->orgId())
-                ->when(Schema::hasColumn('users', 'is_active'), fn ($innerQuery) => $innerQuery->where('is_active', true))
-                ->where(function ($innerQuery) use ($allowedRoles, $allowedRoleIds) {
-                    $innerQuery->whereIn('role', $allowedRoles);
+        if (Schema::hasColumn('users', 'is_active') && !$user->is_active) {
+            return false;
+        }
 
-                    if ($allowedRoleIds->isNotEmpty()) {
-                        $innerQuery->orWhereIn('role_id', $allowedRoleIds);
-                    }
-                });
+        if ($user->effective_role === User::ROLE_VENDOR) {
+            return true;
+        }
+
+        $roleSignals = collect([
+            $user->effective_role,
+            $user->role,
+            $user->assignedRole?->slug,
+            $user->assignedRole?->name,
+        ])->filter()->map(function ($value) {
+            return Str::of((string) $value)
+                ->lower()
+                ->replace([' ', '-'], '_')
+                ->value();
         });
+
+        if ($roleSignals->contains(fn ($value) => Str::contains($value, 'delivery') || in_array($value, ['pickup', 'pickup_staff', 'delivery_staff'], true))) {
+            return true;
+        }
+
+        return in_array($user->effective_role, [
+            User::ROLE_DELIVERY,
+            User::ROLE_DELIVERY_EXECUTIVE,
+            User::ROLE_OPERATIONS_EXECUTIVE,
+        ], true) || $user->canAccessAssignedWork();
     }
 
     private function parseAssignmentTarget(mixed $value): array
@@ -5063,8 +5330,10 @@ class RentalController extends Controller
         $organization = Organization::find($this->orgId());
 
         $vendors = $this->vendorOptions();
+        $fulfilmentVendors = $this->vendorMasterOptions();
+        $cities = $this->rentalFormCities();
 
-        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'vendors', 'warehouses', 'organization', 'selectedCustomer'));
+        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'vendors', 'fulfilmentVendors', 'warehouses', 'organization', 'selectedCustomer', 'cities'));
     }
 
     public function businessPartnerActualClients(BusinessPartner $businessPartner)
@@ -5106,6 +5375,10 @@ class RentalController extends Controller
     public function store(Request $request)
     {
         $this->ensureRentalAccess();
+        $request->merge([
+            'fulfilment_source' => $request->input('fulfilment_source', VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE),
+        ]);
+        $this->prepareRentalFormRequest($request);
         $this->authorize('create', Rental::class);
         if (!$request->filled('customer_type')) {
             $request->merge(['customer_type' => 'direct_customer']);
@@ -5135,6 +5408,19 @@ class RentalController extends Controller
                 'required',
                 Rule::exists('products', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
             ],
+            'city_id' => [
+                'nullable',
+                Rule::exists('cities', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+            ],
+            'fulfilment_source' => ['nullable', Rule::in(VendorOrderDetail::FULFILMENT_SOURCES)],
+            'vendor_id' => [
+                'required_if:fulfilment_source,vendor_supplied',
+                'nullable',
+                Rule::exists('vendors', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+            ],
+            'delivery_assignment_type' => ['nullable', Rule::in(['ph_internal', 'vendor', 'customer_pickup', 'third_party'])],
+            'delivery_responsibility' => ['nullable', Rule::in(VendorOrderDetail::DELIVERY_RESPONSIBILITIES)],
+            'pickup_responsibility' => ['nullable', Rule::in(VendorOrderDetail::PICKUP_RESPONSIBILITIES)],
             'delivery_staff_id' => 'nullable|string',
             'third_party_name' => 'nullable|string|max:255',
             'third_party_contact' => 'nullable|string|max:255',
@@ -5166,7 +5452,10 @@ class RentalController extends Controller
         }
 
         $request->validate($validationRules);
+        $fulfilment = $this->normalizedRentalFulfilmentInput($request);
+        $vendorSupplied = $fulfilment['fulfilment_source'] === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED;
         $deliveryAssignment = $this->validatedAssignmentTarget($request->input('delivery_staff_id'), 'delivery_staff_id');
+        $this->ensureRentalFulfilmentMatchesCity($request, $fulfilment, $deliveryAssignment);
         if (($deliveryAssignment['type'] ?? null) === 'third_party' && !filled($request->input('third_party_name'))) {
             throw ValidationException::withMessages([
                 'third_party_name' => ['Enter the third-party delivery partner name.'],
@@ -5182,19 +5471,24 @@ class RentalController extends Controller
         $customerContext = $this->rentalValidatedCustomerContext($request);
         $saleItems = $this->normalizedSaleItems($request);
         $rentalItems = $this->combinedRentalItems($request);
-        $selectedAssets = $this->resolveCombinedRentalAssets(
-            $rentalItems,
-            $request->filled('dispatch_warehouse_id') ? (int) $request->input('dispatch_warehouse_id') : null
-        );
+        if ($vendorSupplied) {
+            $rentalItems = $this->sanitizedVendorSuppliedRentalItems($rentalItems);
+            $selectedAssets = collect();
+        } else {
+            $selectedAssets = $this->resolveCombinedRentalAssets(
+                $rentalItems,
+                $request->filled('dispatch_warehouse_id') ? (int) $request->input('dispatch_warehouse_id') : null
+            );
 
-        $this->validateCombinedRentalItemStock(
-            $rentalItems,
-            null,
-            $request->filled('dispatch_warehouse_id') ? (int) $request->input('dispatch_warehouse_id') : null
-        );
-        $this->validateTrackedRentalAssetAssignments($rentalItems);
+            $this->validateCombinedRentalItemStock(
+                $rentalItems,
+                null,
+                $request->filled('dispatch_warehouse_id') ? (int) $request->input('dispatch_warehouse_id') : null
+            );
+            $this->validateTrackedRentalAssetAssignments($rentalItems);
+        }
 
-        [$rental, $invoice] = DB::transaction(function () use ($request, $product, $customerContext, $selectedAssets, $saleItems, $rentalItems, $deliveryAssignment) {
+        [$rental, $invoice] = DB::transaction(function () use ($request, $product, $customerContext, $selectedAssets, $saleItems, $rentalItems, $deliveryAssignment, $fulfilment, $vendorSupplied) {
             $rental = Rental::create([
                 'organization_id' => $this->orgId(),
                 'customer_id' => $customerContext['customer_id'],
@@ -5205,6 +5499,10 @@ class RentalController extends Controller
                 'customer_name' => $customerContext['customer_name'],
                 'phone' => $customerContext['phone'],
                 'product_id' => $request->product_id,
+                'vendor_id' => $fulfilment['vendor_id'],
+                'fulfilment_source' => $fulfilment['fulfilment_source'],
+                'delivery_responsibility' => $fulfilment['delivery_responsibility'],
+                'pickup_responsibility' => $fulfilment['pickup_responsibility'],
                 'delivery_staff_id' => $deliveryAssignment['staff_id'],
                 'pickup_staff_id' => null,
                 'quantity' => $request->quantity,
@@ -5223,12 +5521,14 @@ class RentalController extends Controller
                 ])->save();
             }
 
-            $this->consumeRentalItemStock(
-                $rentalItems,
-                $rental,
-                StockMovement::TYPE_RENTAL_OUT,
-                'Rental created and stock allocated.'
-            );
+            if (!$vendorSupplied) {
+                $this->consumeRentalItemStock(
+                    $rentalItems,
+                    $rental,
+                    StockMovement::TYPE_RENTAL_OUT,
+                    'Rental created and stock allocated.'
+                );
+            }
 
             $deliveryData = [
                 'organization_id' => $this->orgId(),
@@ -5274,13 +5574,20 @@ class RentalController extends Controller
                     : null;
             }
 
-            Delivery::create($deliveryData);
+            if (($fulfilment['delivery_responsibility'] ?? 'ph_internal_delivery') === 'ph_internal_delivery') {
+                Delivery::create($deliveryData);
+            }
 
             $this->persistRentalItems($rental, $rentalItems);
-            $this->syncRentalAssets($rental, $selectedAssets);
+            if (!$vendorSupplied) {
+                $this->syncRentalAssets($rental, $selectedAssets);
+            }
             $this->syncRentalSaleItems($rental, $saleItems);
             $this->syncAutoGeneratedRentalSales($rental);
             $invoice = $this->createRentalInvoice($rental);
+            $this->vendorFulfilmentService()->syncRental($rental, $fulfilment + [
+                'notes' => $request->input('notes'),
+            ]);
 
             return [$rental, $invoice];
         });
@@ -5870,13 +6177,19 @@ class RentalController extends Controller
         $organization = Organization::find($this->orgId());
 
         $vendors = $this->vendorOptions();
+        $fulfilmentVendors = $this->vendorMasterOptions();
+        $cities = $this->rentalFormCities();
 
-        return view('rentals.edit', compact('rental', 'products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'vendors', 'warehouses', 'organization'));
+        return view('rentals.edit', compact('rental', 'products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'vendors', 'fulfilmentVendors', 'warehouses', 'organization', 'cities'));
     }
 
     public function update(Request $request, Rental $rental)
     {
         $this->ensureRentalAccess();
+        $request->merge([
+            'fulfilment_source' => $request->input('fulfilment_source', VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE),
+        ]);
+        $this->prepareRentalFormRequest($request);
         $rental = $this->scopedRental($rental);
         $this->authorize('update', $rental);
         if (!$request->filled('customer_type')) {
@@ -5907,6 +6220,19 @@ class RentalController extends Controller
                 'required',
                 Rule::exists('products', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
             ],
+            'city_id' => [
+                'nullable',
+                Rule::exists('cities', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+            ],
+            'fulfilment_source' => ['nullable', Rule::in(VendorOrderDetail::FULFILMENT_SOURCES)],
+            'vendor_id' => [
+                'required_if:fulfilment_source,vendor_supplied',
+                'nullable',
+                Rule::exists('vendors', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+            ],
+            'delivery_assignment_type' => ['nullable', Rule::in(['ph_internal', 'vendor', 'customer_pickup', 'third_party'])],
+            'delivery_responsibility' => ['nullable', Rule::in(VendorOrderDetail::DELIVERY_RESPONSIBILITIES)],
+            'pickup_responsibility' => ['nullable', Rule::in(VendorOrderDetail::PICKUP_RESPONSIBILITIES)],
             'delivery_staff_id' => 'nullable|string',
             'third_party_name' => 'nullable|string|max:255',
             'third_party_contact' => 'nullable|string|max:255',
@@ -5938,7 +6264,21 @@ class RentalController extends Controller
         }
 
         $request->validate($validationRules);
+        $fulfilment = $this->normalizedRentalFulfilmentInput($request);
+        $vendorSupplied = $fulfilment['fulfilment_source'] === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED;
+
+        if (
+            $rental->fulfilment_source !== $fulfilment['fulfilment_source']
+            && !$request->user()->isSuperAdmin()
+            && $this->rentalFulfilmentAlreadyOperational($rental)
+        ) {
+            throw ValidationException::withMessages([
+                'fulfilment_source' => ['Only super admin can change fulfilment source after operational fulfilment has started.'],
+            ]);
+        }
+
         $deliveryAssignment = $this->validatedAssignmentTarget($request->input('delivery_staff_id'), 'delivery_staff_id');
+        $this->ensureRentalFulfilmentMatchesCity($request, $fulfilment, $deliveryAssignment);
         if (($deliveryAssignment['type'] ?? null) === 'third_party' && !filled($request->input('third_party_name'))) {
             throw ValidationException::withMessages([
                 'third_party_name' => ['Enter the third-party delivery partner name.'],
@@ -5959,17 +6299,22 @@ class RentalController extends Controller
         $customerContext = $this->rentalValidatedCustomerContext($request);
         $saleItems = $this->normalizedSaleItems($request);
         $rentalItems = $this->combinedRentalItems($request);
-        $selectedAssets = $this->resolveCombinedRentalAssets(
-            $rentalItems,
-            $request->filled('dispatch_warehouse_id') ? (int) $request->input('dispatch_warehouse_id') : null,
-            $rental
-        );
-        $this->validateCombinedRentalItemStock(
-            $rentalItems,
-            $rental,
-            $request->filled('dispatch_warehouse_id') ? (int) $request->input('dispatch_warehouse_id') : null
-        );
-        $this->validateTrackedRentalAssetAssignments($rentalItems, $rental);
+        if ($vendorSupplied) {
+            $rentalItems = $this->sanitizedVendorSuppliedRentalItems($rentalItems);
+            $selectedAssets = collect();
+        } else {
+            $selectedAssets = $this->resolveCombinedRentalAssets(
+                $rentalItems,
+                $request->filled('dispatch_warehouse_id') ? (int) $request->input('dispatch_warehouse_id') : null,
+                $rental
+            );
+            $this->validateCombinedRentalItemStock(
+                $rentalItems,
+                $rental,
+                $request->filled('dispatch_warehouse_id') ? (int) $request->input('dispatch_warehouse_id') : null
+            );
+            $this->validateTrackedRentalAssetAssignments($rentalItems, $rental);
+        }
 
         $linkedInvoice = $this->rentalInvoice($rental->loadMissing('renewals'));
         if ($linkedInvoice) {
@@ -5980,18 +6325,23 @@ class RentalController extends Controller
             );
         }
 
-        DB::transaction(function () use ($request, $rental, $customerContext, $selectedAssets, $saleItems, $rentalItems, $deliveryAssignment) {
-            $this->restoreRentalItemStock(
-                $rental,
-                StockMovement::TYPE_MANUAL_ADJUSTMENT,
-                'Rental updated and prior untracked stock released.'
-            );
-            $this->consumeRentalItemStock(
-                $rentalItems,
-                $rental,
-                StockMovement::TYPE_RENTAL_OUT,
-                'Rental updated and untracked stock reallocated.'
-            );
+        DB::transaction(function () use ($request, $rental, $customerContext, $selectedAssets, $saleItems, $rentalItems, $deliveryAssignment, $fulfilment, $vendorSupplied) {
+            if (!$rental->isVendorSupplied()) {
+                $this->restoreRentalItemStock(
+                    $rental,
+                    StockMovement::TYPE_MANUAL_ADJUSTMENT,
+                    'Rental updated and prior untracked stock released.'
+                );
+            }
+
+            if (!$vendorSupplied) {
+                $this->consumeRentalItemStock(
+                    $rentalItems,
+                    $rental,
+                    StockMovement::TYPE_RENTAL_OUT,
+                    'Rental updated and untracked stock reallocated.'
+                );
+            }
 
             $rental->update([
                 'customer_id' => $customerContext['customer_id'],
@@ -6001,6 +6351,10 @@ class RentalController extends Controller
                 'customer_name' => $customerContext['customer_name'],
                 'phone' => $customerContext['phone'],
                 'product_id' => $request->product_id,
+                'vendor_id' => $fulfilment['vendor_id'],
+                'fulfilment_source' => $fulfilment['fulfilment_source'],
+                'delivery_responsibility' => $fulfilment['delivery_responsibility'],
+                'pickup_responsibility' => $fulfilment['pickup_responsibility'],
                 'delivery_staff_id' => $deliveryAssignment['staff_id'],
                 'pickup_staff_id' => $request->pickup_staff_id,
                 'quantity' => $request->quantity,
@@ -6054,11 +6408,53 @@ class RentalController extends Controller
                     : null;
             }
 
-            if (!empty($deliveryAssignmentUpdates)) {
-                $rental->deliveries()
-                    ->where('type', 'delivery')
-                    ->where('status', '!=', 'completed')
-                    ->update($deliveryAssignmentUpdates);
+            $openDeliveryTasks = $rental->deliveries()
+                ->where('type', 'delivery')
+                ->where('status', '!=', 'completed');
+
+            if (($fulfilment['delivery_responsibility'] ?? 'ph_internal_delivery') === 'ph_internal_delivery') {
+                if (!empty($deliveryAssignmentUpdates)) {
+                    $openDeliveryTasks->update($deliveryAssignmentUpdates);
+                }
+
+                if (!$openDeliveryTasks->exists()) {
+                    $deliveryData = [
+                        'organization_id' => $this->orgId(),
+                        'rental_id' => $rental->id,
+                        'type' => 'delivery',
+                        'scheduled_at' => $request->start_date . ' 10:00:00',
+                        'status' => 'pending',
+                        'notes' => 'Auto-created after rental fulfilment changed to PH internal delivery.',
+                    ];
+
+                    if ($this->hasDeliveryAssignmentTypeColumn()) {
+                        $deliveryData['assignment_type'] = $deliveryAssignmentUpdates['assignment_type'] ?? 'delivery_team';
+                    }
+
+                    if ($this->hasDeliveryAssignedUserColumn()) {
+                        $deliveryData['assigned_user_id'] = $deliveryAssignmentUpdates['assigned_user_id'] ?? null;
+                    }
+
+                    if ($this->hasDeliveryAssignedStaffColumn()) {
+                        $deliveryData['assigned_staff_id'] = $deliveryAssignmentUpdates['assigned_staff_id'] ?? null;
+                    }
+
+                    if ($this->hasDeliveryThirdPartyNameColumn()) {
+                        $deliveryData['third_party_name'] = $deliveryAssignmentUpdates['third_party_name'] ?? null;
+                    }
+
+                    if ($this->hasDeliveryThirdPartyContactColumn()) {
+                        $deliveryData['third_party_contact'] = $deliveryAssignmentUpdates['third_party_contact'] ?? null;
+                    }
+
+                    if ($this->hasDeliveryThirdPartyPhoneColumn()) {
+                        $deliveryData['third_party_phone'] = $deliveryAssignmentUpdates['third_party_phone'] ?? null;
+                    }
+
+                    Delivery::create($deliveryData);
+                }
+            } else {
+                $openDeliveryTasks->delete();
             }
 
             if ($this->hasDeliveryAssignedStaffColumn()) {
@@ -6069,10 +6465,13 @@ class RentalController extends Controller
             }
 
             $this->persistRentalItems($rental, $rentalItems);
-            $this->syncRentalAssets($rental, $selectedAssets);
+            $this->syncRentalAssets($rental, $vendorSupplied ? collect() : $selectedAssets);
             $this->restoreRentalSaleItemsStock($rental);
             $this->syncRentalSaleItems($rental, $saleItems);
             $this->syncAutoGeneratedRentalSales($rental);
+            $this->vendorFulfilmentService()->syncRental($rental, $fulfilment + [
+                'notes' => $request->input('notes'),
+            ]);
 
             $linkedInvoice = $this->rentalInvoice($rental->fresh());
             if ($linkedInvoice) {
@@ -6121,6 +6520,19 @@ class RentalController extends Controller
         ], 'Rental marked as returned and moved to return verification.');
 
         return redirect('/rentals')->with('success', 'Rental returned successfully and assets moved to return verification.');
+    }
+
+    private function rentalFulfilmentAlreadyOperational(Rental $rental): bool
+    {
+        if ($rental->deliveries()->whereIn('status', ['pending', 'assigned', 'in_progress', 'completed'])->exists()) {
+            return true;
+        }
+
+        return VendorOrderDetail::query()
+            ->where('organization_id', $this->orgId())
+            ->where('rental_id', $rental->id)
+            ->whereIn('vendor_order_status', ['confirmed', 'in_progress', 'completed'])
+            ->exists();
     }
 
     public function cancel(Rental $rental)

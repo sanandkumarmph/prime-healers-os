@@ -88,14 +88,42 @@
     $additionalRentalExpanded = count($additionalRentalRows) > 0;
     $newProductsExpanded = count($saleItemRows) > 0;
     $selectedDeliveryAssignment = old('delivery_staff_id');
+    $internalAssignableUsers = collect($assignableUsers ?? collect())->filter(function ($user) {
+        $signals = collect([
+            $user->effective_role ?? null,
+            $user->role ?? null,
+            $user->assignedRole->slug ?? null,
+            $user->assignedRole->name ?? null,
+        ])->filter()->map(function ($value) {
+            return \Illuminate\Support\Str::of((string) $value)
+                ->lower()
+                ->replace([' ', '-'], '_')
+                ->value();
+        });
+
+        return $signals->contains(fn ($value) => \Illuminate\Support\Str::contains($value, 'delivery'));
+    })->values();
     $vendorDeliveryMembers = collect($staffMembers ?? collect())->filter(function ($staff) {
         return ($staff->effective_role ?? null) === 'vendor';
     })->values();
     $vendorUsers = collect($vendors ?? collect())
-        ->reject(function ($vendor) use ($assignableUsers) {
-            return collect($assignableUsers ?? collect())->contains(fn ($user) => (int) $user->id === (int) $vendor->id);
+        ->reject(function ($vendor) use ($internalAssignableUsers) {
+            return collect($internalAssignableUsers ?? collect())->contains(fn ($user) => (int) $user->id === (int) $vendor->id);
         })
         ->values();
+    $fulfilmentVendors = collect($fulfilmentVendors ?? collect())->values();
+    $cities = collect($cities ?? collect())->values();
+    $selectedFulfilmentSource = old(
+        'fulfilment_source',
+        request()->input(
+            'fulfilment_source',
+            $isEdit ? ($rental->fulfilment_source ?? \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE) : \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE
+        )
+    );
+    $selectedFulfilmentVendorId = (int) old('vendor_id', $isEdit ? ($rental->vendor_id ?? 0) : 0);
+    $selectedDeliveryResponsibility = old('delivery_responsibility', $isEdit ? ($rental->delivery_responsibility ?? 'ph_internal_delivery') : 'ph_internal_delivery');
+    $selectedPickupResponsibility = old('pickup_responsibility', $isEdit ? ($rental->pickup_responsibility ?? 'ph_internal_pickup') : 'ph_internal_pickup');
+    $selectedCityId = (int) old('city_id', 0);
     $thirdPartyDeliveryMembers = collect($staffMembers ?? collect())->filter(function ($staff) {
         return ($staff->effective_role ?? null) === 'third_party';
     })->values();
@@ -111,6 +139,25 @@
                 : (($rental->deliveryRecord?->assigned_staff_id ?? $rental->delivery_staff_id)
                     ? 'staff:' . ($rental->deliveryRecord?->assigned_staff_id ?? $rental->delivery_staff_id)
                     : ''));
+    }
+    if ($selectedCityId <= 0) {
+        $selectedCityId = (int) old(
+            'city_id',
+            $isEdit
+                ? ($rental->dispatchWarehouse?->city_id
+                    ?? $rental->vendorOrderDetail?->vendor?->city_id
+                    ?? 0)
+                : 0
+        );
+    }
+    $selectedDeliveryAssignmentType = old('delivery_assignment_type');
+    if (!$selectedDeliveryAssignmentType) {
+        $selectedDeliveryAssignmentType = match (true) {
+            $selectedDeliveryResponsibility === 'customer_pickup' => 'customer_pickup',
+            $selectedDeliveryResponsibility === 'vendor_delivery' => 'vendor',
+            $selectedDeliveryAssignment === 'third_party' => 'third_party',
+            default => 'ph_internal',
+        };
     }
 
     $thirdPartyNameValue = old('third_party_name', $isEdit ? ($rental->deliveryRecord?->third_party_name ?? '') : '');
@@ -528,6 +575,9 @@
         border-radius:12px;
         background:#fcfdff;
         overflow:hidden;
+    }
+    .sale-item-panel.is-rental-items {
+        overflow:visible;
     }
     .sale-item-head,
     .sale-item-row {
@@ -972,6 +1022,7 @@
     <x-section-nav
         label="Rental form sections"
         :items="[
+            ['id' => 'rental-fulfilment-section', 'label' => 'Fulfilment'],
             ['id' => 'rental-customer-section', 'label' => 'Customer'],
             ['id' => 'rental-product-section', 'label' => 'Product'],
             ['id' => 'rental-dates-section', 'label' => 'Dates'],
@@ -984,7 +1035,8 @@
     />
 
     <div class="rental-card">
-        <h2>Rental Snapshot</h2>
+        <h2>Step 7 · Review & Create</h2>
+        <p class="section-copy">Check the fulfilment path, customer, and totals before saving.</p>
         <div class="rental-summary">
             <div class="rental-metric">
                 <span>Mode</span>
@@ -1006,8 +1058,39 @@
     </div>
 
     <div class="rental-card">
-        <h2>Customer & Rental Details</h2>
+        <h2>Fulfilment & Customer</h2>
+        <p class="section-copy">Pick fulfilment source and city first, then the rest of the rental flow narrows automatically.</p>
         <div class="rental-grid">
+            <div class="rental-col-12 section-nav-target" id="rental-fulfilment-section">
+                <div class="rental-grid" style="margin-bottom:10px;">
+                    <div class="rental-field rental-col-6{{ $hasFieldError('fulfilment_source') ? ' is-error' : '' }}">
+                        <label for="fulfilment_source">Step 1 · Fulfilment Source</label>
+                        <select name="fulfilment_source" id="fulfilment_source">
+                            <option value="in_house" {{ $selectedFulfilmentSource === 'in_house' ? 'selected' : '' }}>In-house Stock</option>
+                            <option value="vendor_supplied" {{ $selectedFulfilmentSource === 'vendor_supplied' ? 'selected' : '' }}>Vendor Supplied</option>
+                        </select>
+                        <span class="hint">In-house keeps PH stock checks. Vendor supplied skips PH stock reservation and PH asset assignment.</span>
+                        @if($hasFieldError('fulfilment_source'))
+                            <span class="field-error">{{ $fieldError('fulfilment_source') }}</span>
+                        @endif
+                    </div>
+                    <div class="rental-field rental-col-6{{ $hasFieldError('city_id') ? ' is-error' : '' }}">
+                        <label for="city_id">Step 2 · City</label>
+                        <select name="city_id" id="city_id">
+                            <option value="">Select city</option>
+                            @foreach($cities as $city)
+                                <option value="{{ $city->id }}" {{ $selectedCityId === (int) $city->id ? 'selected' : '' }}>
+                                    {{ $city->name }}{{ $city->state ? ' - ' . $city->state : '' }}
+                                </option>
+                            @endforeach
+                        </select>
+                        <span class="hint">Warehouses, vendors, and delivery assignment options will follow the selected city.</span>
+                        @if($hasFieldError('city_id'))
+                            <span class="field-error">{{ $fieldError('city_id') }}</span>
+                        @endif
+                    </div>
+                </div>
+            </div>
             <div class="rental-col-12 party-flow-shell section-nav-target" id="rental-customer-section">
                 <div class="party-flow-toggle-wrap">
                     <div class="rental-field{{ $hasFieldError('customer_type') ? ' is-error' : '' }}" style="gap:8px;">
@@ -1176,7 +1259,7 @@
             <input type="hidden" name="phone" id="phone" value="{{ $phoneParts['local'] }}">
 
             <div class="rental-field rental-col-4{{ $hasFieldError('product_id', 'rental_items') ? ' is-error' : '' }} section-nav-target" id="rental-product-section">
-                <label for="product_id">Product</label>
+                <label for="product_id">Step 4 · Product</label>
                 <select name="product_id" id="product_id" required data-searchable-select data-search-placeholder="Search product by name, brand, model, SKU, or code">
                     <option value="">Select product</option>
                     @foreach($rentalProducts as $product)
@@ -1186,6 +1269,8 @@
                             data-rental-available="{{ $product->rental_available_quantity ?? $product->display_available_quantity ?? $product->available_quantity }}"
                             data-rental-status="{{ $product->rental_availability_status }}"
                             data-rental-label="{{ $product->rental_dropdown_label }}"
+                            data-in-house-option-label="{{ $product->name }} • {{ $product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity)) }}"
+                            data-vendor-option-label="{{ $product->name }}"
                             data-rental-warehouse-quantities="{{ e(json_encode($product->rental_warehouse_quantities ?? [])) }}"
                             data-tracks-rental="{{ $product->tracksRentalStock() ? 1 : 0 }}"
                             data-product-name="{{ $product->name }}"
@@ -1198,7 +1283,9 @@
                             data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}"
                             data-search="{{ trim(implode(' ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code]))) }}"
                             {{ (int) old('product_id', $isEdit ? $rental->product_id : null) === $product->id ? 'selected' : '' }}>
-                            {{ $product->name }} • {{ $product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity)) }}
+                            {{ $selectedFulfilmentSource === 'vendor_supplied'
+                                ? $product->name
+                                : ($product->name . ' • ' . ($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity)))) }}
                         </option>
                     @endforeach
                 </select>
@@ -1208,25 +1295,50 @@
                 @endif
             </div>
 
-            <div class="rental-field rental-col-4{{ $hasFieldError('dispatch_warehouse_id') ? ' is-error' : '' }}">
+            <div class="rental-field rental-col-4{{ $hasFieldError('dispatch_warehouse_id') ? ' is-error' : '' }}" id="dispatchWarehouseField">
                 <label for="dispatch_warehouse_id">Warehouse</label>
                 <select name="dispatch_warehouse_id" id="dispatch_warehouse_id">
                     <option value="">Any warehouse</option>
                     @foreach($warehouses as $warehouse)
-                        <option value="{{ $warehouse->id }}" {{ (int) old('dispatch_warehouse_id', $isEdit ? $rental->dispatch_warehouse_id : null) === $warehouse->id ? 'selected' : '' }}>
+                        <option
+                            value="{{ $warehouse->id }}"
+                            data-city-id="{{ (int) ($warehouse->city_id ?? 0) }}"
+                            data-city-name="{{ trim((string) ($warehouse->cityRecord?->name ?? $warehouse->city ?? '')) }}"
+                            {{ (int) old('dispatch_warehouse_id', $isEdit ? $rental->dispatch_warehouse_id : null) === $warehouse->id ? 'selected' : '' }}>
                             {{ $warehouse->name }}
                         </option>
                     @endforeach
                 </select>
+                <span class="hint" id="warehouseCityHint">No warehouse configured for this city.</span>
                 @if($hasFieldError('dispatch_warehouse_id'))
                     <span class="field-error">{{ $fieldError('dispatch_warehouse_id') }}</span>
+                @endif
+            </div>
+
+            <div class="rental-field rental-col-4{{ $hasFieldError('vendor_id') ? ' is-error' : '' }}" id="vendorField">
+                <label for="vendor_id">Vendor</label>
+                <select name="vendor_id" id="vendor_id">
+                    <option value="">Select vendor when vendor supplied</option>
+                    @foreach($fulfilmentVendors as $vendor)
+                        <option
+                            value="{{ $vendor->id }}"
+                            data-city-id="{{ (int) ($vendor->city_id ?? 0) }}"
+                            data-city-name="{{ trim((string) ($vendor->cityRecord?->name ?? $vendor->city ?? '')) }}"
+                            {{ $selectedFulfilmentVendorId === (int) $vendor->id ? 'selected' : '' }}>
+                            {{ $vendor->name }}{{ $vendor->vendor_type ? ' - ' . $vendor->vendor_type : '' }}
+                        </option>
+                    @endforeach
+                </select>
+                <span class="hint" id="vendorCityHint">No active vendors available for this city.</span>
+                @if($hasFieldError('vendor_id'))
+                    <span class="field-error">{{ $fieldError('vendor_id') }}</span>
                 @endif
             </div>
 
             <div class="rental-field rental-col-4{{ $hasFieldError('quantity', 'asset_ids', 'rental_items') ? ' is-error' : '' }}">
                 <label for="quantity">Quantity</label>
                 <input type="number" name="quantity" id="quantity" min="1" value="{{ old('quantity', $isEdit ? $rental->quantity : 1) }}" required>
-                <span class="hint" id="productAvailabilityHint">Rental availability will show here.</span>
+                <span class="hint" id="productAvailabilityHint">{{ $selectedFulfilmentSource === 'vendor_supplied' ? 'Vendor supplied rentals use Product Master only as a catalogue. Vendor stock is not reserved in PHOS.' : 'Rental availability will show here.' }}</span>
                 @if($hasFieldError('quantity', 'asset_ids', 'rental_items'))
                     <span class="field-error">{{ $fieldError('quantity', 'asset_ids', 'rental_items') }}</span>
                 @endif
@@ -1329,14 +1441,34 @@
                 @endif
             </div>
 
-            <div class="rental-field {{ $isEdit ? 'rental-col-3' : 'rental-col-6' }}{{ $hasFieldError('delivery_staff_id') ? ' is-error' : '' }} section-nav-target" id="rental-delivery-section">
-                <label for="delivery_staff_id">Delivery Assignment</label>
+            <input type="hidden" name="delivery_responsibility" id="delivery_responsibility" value="{{ $selectedDeliveryResponsibility }}">
+            <input type="hidden" name="pickup_responsibility" id="pickup_responsibility" value="{{ $selectedPickupResponsibility }}">
+
+            <div class="rental-field rental-col-3{{ $hasFieldError('delivery_assignment_type') ? ' is-error' : '' }} section-nav-target" id="rental-delivery-section">
+                <label for="delivery_assignment_type">Step 6 · Delivery Assignment</label>
+                <select name="delivery_assignment_type" id="delivery_assignment_type">
+                    <option value="ph_internal" {{ $selectedDeliveryAssignmentType === 'ph_internal' ? 'selected' : '' }}>PH Internal Delivery Staff</option>
+                    <option value="customer_pickup" {{ $selectedDeliveryAssignmentType === 'customer_pickup' ? 'selected' : '' }}>Customer Pickup</option>
+                    <option value="third_party" {{ $selectedDeliveryAssignmentType === 'third_party' ? 'selected' : '' }}>Third Party Logistics</option>
+                    <option value="vendor" {{ $selectedDeliveryAssignmentType === 'vendor' ? 'selected' : '' }}>Vendor Delivery</option>
+                </select>
+                @if($hasFieldError('delivery_assignment_type'))
+                    <span class="field-error">{{ $fieldError('delivery_assignment_type') }}</span>
+                @endif
+            </div>
+
+            <div class="rental-field {{ $isEdit ? 'rental-col-3' : 'rental-col-6' }}{{ $hasFieldError('delivery_staff_id') ? ' is-error' : '' }}" id="deliveryPartnerField">
+                <label for="delivery_staff_id" id="deliveryPartnerLabel">Delivery Partner</label>
                 <select name="delivery_staff_id" id="delivery_staff_id">
                     <option value="">Select delivery partner</option>
-                    @if(($assignableUsers ?? collect())->isNotEmpty())
+                    @if(($internalAssignableUsers ?? collect())->isNotEmpty())
                         <optgroup label="Internal Delivery Staff">
-                            @foreach($assignableUsers as $user)
-                                <option value="user:{{ $user->id }}" {{ $selectedDeliveryAssignment === 'user:' . $user->id ? 'selected' : '' }}>
+                            @foreach($internalAssignableUsers as $user)
+                                <option
+                                    value="user:{{ $user->id }}"
+                                    data-assignment-kind="ph_internal"
+                                    data-city-id="{{ (int) ($user->city_id ?? 0) }}"
+                                    {{ $selectedDeliveryAssignment === 'user:' . $user->id ? 'selected' : '' }}>
                                     {{ $user->name }} - {{ ucwords(str_replace('_', ' ', $user->effective_role ?? $user->role ?? 'delivery')) }}
                                 </option>
                             @endforeach
@@ -1344,22 +1476,30 @@
                     @endif
                     @if($thirdPartyDeliveryMembers->isNotEmpty())
                         <optgroup label="Third-Party Delivery">
-                            <option value="third_party" {{ $selectedDeliveryAssignment === 'third_party' ? 'selected' : '' }}>One-time Third-Party Partner</option>
+                            <option value="third_party" data-assignment-kind="third_party" data-always-visible="1" {{ $selectedDeliveryAssignment === 'third_party' ? 'selected' : '' }}>One-time Third-Party Partner</option>
                             @foreach($thirdPartyDeliveryMembers as $staff)
-                                <option value="staff:{{ $staff->id }}" {{ $selectedDeliveryAssignment === 'staff:' . $staff->id ? 'selected' : '' }}>
+                                <option
+                                    value="staff:{{ $staff->id }}"
+                                    data-assignment-kind="third_party"
+                                    data-city-name="{{ trim((string) ($staff->city ?? '')) }}"
+                                    {{ $selectedDeliveryAssignment === 'staff:' . $staff->id ? 'selected' : '' }}>
                                     {{ $staff->name }} - {{ $staff->role_display }}
                                 </option>
                             @endforeach
                         </optgroup>
                     @else
                         <optgroup label="Third-Party Delivery">
-                            <option value="third_party" {{ $selectedDeliveryAssignment === 'third_party' ? 'selected' : '' }}>One-time Third-Party Partner</option>
+                            <option value="third_party" data-assignment-kind="third_party" data-always-visible="1" {{ $selectedDeliveryAssignment === 'third_party' ? 'selected' : '' }}>One-time Third-Party Partner</option>
                         </optgroup>
                     @endif
                     @if($vendorDeliveryMembers->isNotEmpty())
                         <optgroup label="Vendor Delivery">
                             @foreach($vendorDeliveryMembers as $staff)
-                                <option value="staff:{{ $staff->id }}" {{ $selectedDeliveryAssignment === 'staff:' . $staff->id ? 'selected' : '' }}>
+                                <option
+                                    value="staff:{{ $staff->id }}"
+                                    data-assignment-kind="vendor"
+                                    data-city-name="{{ trim((string) ($staff->city ?? '')) }}"
+                                    {{ $selectedDeliveryAssignment === 'staff:' . $staff->id ? 'selected' : '' }}>
                                     {{ $staff->name }} - {{ $staff->role_display }}
                                 </option>
                             @endforeach
@@ -1368,7 +1508,11 @@
                     @if($vendorUsers->isNotEmpty())
                         <optgroup label="Saved Vendors">
                             @foreach($vendorUsers as $vendor)
-                                <option value="user:{{ $vendor->id }}" {{ $selectedDeliveryAssignment === 'user:' . $vendor->id ? 'selected' : '' }}>
+                                <option
+                                    value="user:{{ $vendor->id }}"
+                                    data-assignment-kind="vendor"
+                                    data-city-id="{{ (int) ($vendor->city_id ?? 0) }}"
+                                    {{ $selectedDeliveryAssignment === 'user:' . $vendor->id ? 'selected' : '' }}>
                                     {{ $vendor->name }} - Vendor
                                 </option>
                             @endforeach
@@ -1377,14 +1521,18 @@
                     @if($otherAssignableStaffMembers->isNotEmpty())
                         <optgroup label="Other Assignment Records">
                             @foreach($otherAssignableStaffMembers as $staff)
-                                <option value="staff:{{ $staff->id }}" {{ $selectedDeliveryAssignment === 'staff:' . $staff->id ? 'selected' : '' }}>
+                                <option
+                                    value="staff:{{ $staff->id }}"
+                                    data-assignment-kind="ph_internal"
+                                    data-city-name="{{ trim((string) ($staff->city ?? '')) }}"
+                                    {{ $selectedDeliveryAssignment === 'staff:' . $staff->id ? 'selected' : '' }}>
                                     {{ $staff->name }} - {{ $staff->role_display }}
                                 </option>
                             @endforeach
                         </optgroup>
                     @endif
                 </select>
-                <div class="ops-muted" style="margin-top:6px;">Choose internal staff or a third-party/vendor delivery partner.</div>
+                <div class="ops-muted" id="deliveryPartnerHint" style="margin-top:6px;">Choose a city-filtered fulfilment partner when this assignment type needs one.</div>
                 @if($hasFieldError('delivery_staff_id'))
                     <span class="field-error">{{ $fieldError('delivery_staff_id') }}</span>
                 @endif
@@ -1514,7 +1662,7 @@
                 @if($hasRentalItemsError)
                     <div class="field-error" style="margin:0 0 10px;">{{ $fieldError('rental_items', 'rental_items.0.asset_ids', 'rental_items.0.product_id', 'rental_items.0.quantity') }}</div>
                 @endif
-                <div class="sale-item-panel">
+                <div class="sale-item-panel is-rental-items">
                     <div class="sale-item-head">
                         <div>Rental Product</div>
                         <div>Qty</div>
@@ -1682,7 +1830,7 @@
         const currentRentalId = @json($isEdit ? $rental->id : null);
         const organizationState = @json($organization?->state ?? null);
         const partnerClientEndpointTemplate = @json($businessPartnerFlowAvailable ? route('rentals.business-partners.actual-clients', ['business_partner' => '__PARTNER__']) : null);
-        const rentalProductOptionsHtml = `<option value="">Select rental product</option>@foreach($rentalProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->rental_price ?? $product->price_per_day ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-search="{{ e(trim(implode(' ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code, $product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))])))) }}">{{ e($product->name) }} | {{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}</option>@endforeach`;
+        const rentalProductOptionsHtml = `<option value="">Select rental product</option>@foreach($rentalProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->rental_price ?? $product->price_per_day ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-product-name="{{ e($product->name) }}" data-in-house-option-label="{{ e($product->name . ' | ' . ($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity)))) }}" data-vendor-option-label="{{ e($product->name) }}" data-search="{{ e(trim(implode(' ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code, $product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))])))) }}">{{ e($product->name) }} | {{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}</option>@endforeach`;
         const saleProductOptionsHtml = `<option value="">Select new product</option>@foreach($sellableProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->sale_price ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-search="{{ e(trim(implode(' ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code, 'Sale ' . number_format((float) ($product->sale_price ?? 0), 2)])))) }}">{{ e($product->name) }} | Sale {{ number_format((float) ($product->sale_price ?? 0), 2) }}</option>@endforeach`;
         const saleAssetOptions = @json($saleAssetRows);
         const warehouseOptionsHtml = `<option value="">Auto / best stock</option>@foreach($warehouses as $warehouse)<option value="{{ $warehouse->id }}">{{ e($warehouse->name) }}</option>@endforeach`;
@@ -1762,6 +1910,24 @@
             return `${escapeHtml(source.slice(0, start))}<mark>${escapeHtml(source.slice(start, end))}</mark>${escapeHtml(source.slice(end))}`;
         }
 
+        function optionDisplayLabel(select, option) {
+            if (!option) {
+                return '';
+            }
+
+            if (select?.id === 'product_id' || select?.hasAttribute('data-rental-product-index')) {
+                const source = document.getElementById('fulfilment_source')?.value;
+
+                if (source === 'vendor_supplied') {
+                    return (option.getAttribute('data-vendor-option-label') || option.getAttribute('data-product-name') || option.textContent || '').trim();
+                }
+
+                return (option.getAttribute('data-in-house-option-label') || option.textContent || '').trim();
+            }
+
+            return (option.getAttribute('data-display-label') || option.textContent || '').trim();
+        }
+
         function enhanceSearchableSelect(select) {
             if (!select || select.dataset.searchableEnhanced === 'true') {
                 return;
@@ -1806,7 +1972,9 @@
 
             function syncTriggerLabel() {
                 const selected = select.options[select.selectedIndex];
-                triggerLabel.textContent = selected ? selected.textContent.trim() : 'Select option';
+                triggerLabel.textContent = selected
+                    ? optionDisplayLabel(select, selected)
+                    : 'Select option';
             }
 
             function closePanel() {
@@ -1840,9 +2008,10 @@
 
                 visibleOptions.forEach(function (option) {
                     const button = document.createElement('button');
+                    const displayLabel = optionDisplayLabel(select, option);
                     button.type = 'button';
                     button.className = 'searchable-select-option' + (option.selected ? ' is-selected' : '');
-                    button.innerHTML = highlightMatch(option.textContent.trim(), searchInput.value);
+                    button.innerHTML = highlightMatch(displayLabel, searchInput.value);
                     button.dataset.value = option.value;
                     button.addEventListener('click', function () {
                         select.value = option.value;
@@ -2426,9 +2595,19 @@
 
         function selectedPrimaryRentalState() {
             const selected = productSelect.options[productSelect.selectedIndex];
+            const isVendorSupplied = fulfilmentSourceSelect && fulfilmentSourceSelect.value === 'vendor_supplied';
 
             if (!selected || !productSelect.value) {
                 return null;
+            }
+
+            if (isVendorSupplied) {
+                return {
+                    name: selected.getAttribute('data-product-name') || '',
+                    available: null,
+                    status: 'vendor_catalog',
+                    label: 'Vendor supplied rentals use Product Master only as a catalogue. Vendor stock is not reserved in PHOS.',
+                };
             }
 
             let available = parseInt(selected.getAttribute('data-rental-available') || selected.getAttribute('data-available') || '0', 10);
@@ -2470,6 +2649,11 @@
                 return;
             }
 
+            if (state.status === 'vendor_catalog') {
+                availabilityHint.textContent = 'Vendor supplied rentals use Product Master only as a catalogue. Vendor stock is not reserved in PHOS.';
+                return;
+            }
+
             availabilityHint.textContent = warehouseSelect.value
                 ? state.label + ' in selected warehouse.'
                 : state.label + '.';
@@ -2485,6 +2669,14 @@
                 productRentalWarning.style.display = 'none';
                 productRentalWarning.textContent = '';
                 rentalSaveGuidance.textContent = 'Match rental asset count with quantity.';
+                rentalSubmitButton.disabled = false;
+                return;
+            }
+
+            if (state.status === 'vendor_catalog') {
+                productRentalWarning.style.display = 'none';
+                productRentalWarning.textContent = '';
+                rentalSaveGuidance.textContent = 'Vendor supplied rentals do not reserve PH stock or rental assets.';
                 rentalSubmitButton.disabled = false;
                 return;
             }
@@ -3897,3 +4089,305 @@
     })();
 </script>
 
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const fulfilmentSourceSelect = document.getElementById('fulfilment_source');
+        const citySelect = document.getElementById('city_id');
+        const productSelect = document.getElementById('product_id');
+        const warehouseField = document.getElementById('dispatchWarehouseField');
+        const warehouseSelect = document.getElementById('dispatch_warehouse_id');
+        const vendorField = document.getElementById('vendorField');
+        const vendorSelect = document.getElementById('vendor_id');
+        const warehouseCityHint = document.getElementById('warehouseCityHint');
+        const vendorCityHint = document.getElementById('vendorCityHint');
+        const deliveryAssignmentTypeSelect = document.getElementById('delivery_assignment_type');
+        const deliveryPartnerField = document.getElementById('deliveryPartnerField');
+        const deliveryAssignmentSelect = document.getElementById('delivery_staff_id');
+        const deliveryPartnerLabel = document.getElementById('deliveryPartnerLabel');
+        const deliveryPartnerHint = document.getElementById('deliveryPartnerHint');
+        const deliveryResponsibilityInput = document.getElementById('delivery_responsibility');
+        const pickupResponsibilityInput = document.getElementById('pickup_responsibility');
+        const thirdPartyDeliveryFields = document.getElementById('thirdPartyDeliveryFields');
+        const assetSection = document.getElementById('rental-assets-section');
+        const productWarning = document.getElementById('productRentalWarning');
+        const availabilityHint = document.getElementById('productAvailabilityHint');
+
+        if (!fulfilmentSourceSelect || !citySelect || !deliveryAssignmentTypeSelect) {
+            return;
+        }
+
+        const originalWarehouseNodes = warehouseSelect ? Array.from(warehouseSelect.children).map((node) => node.cloneNode(true)) : [];
+        const originalVendorNodes = vendorSelect ? Array.from(vendorSelect.children).map((node) => node.cloneNode(true)) : [];
+        const originalAssignmentTypeNodes = Array.from(deliveryAssignmentTypeSelect.children).map((node) => node.cloneNode(true));
+        const originalDeliveryPartnerNodes = deliveryAssignmentSelect ? Array.from(deliveryAssignmentSelect.children).map((node) => node.cloneNode(true)) : [];
+
+        function syncProductOptionLabels() {
+            const isVendorSupplied = fulfilmentSourceSelect.value === 'vendor_supplied';
+
+            Array.from(productSelect?.options || []).forEach((option) => {
+                if (!option.value) {
+                    return;
+                }
+
+                const displayLabel = isVendorSupplied
+                    ? (option.getAttribute('data-vendor-option-label') || option.getAttribute('data-product-name') || option.textContent)
+                    : (option.getAttribute('data-in-house-option-label') || option.textContent);
+
+                option.setAttribute('data-display-label', displayLabel);
+                option.textContent = displayLabel;
+            });
+
+            productSelect?._searchableSelect?.refresh?.();
+        }
+
+        function selectedCityName() {
+            const selected = citySelect.options[citySelect.selectedIndex];
+            return (selected?.textContent || '').split('-')[0].trim().toLowerCase();
+        }
+
+        function selectedCityId() {
+            return parseInt(citySelect.value || '0', 10) || 0;
+        }
+
+        function matchesCity(option) {
+            const cityId = selectedCityId();
+            if (!cityId) {
+                return false;
+            }
+
+            const optionCityId = parseInt(option.getAttribute('data-city-id') || '0', 10) || 0;
+            if (optionCityId > 0) {
+                return optionCityId === cityId;
+            }
+
+            const optionCityName = (option.getAttribute('data-city-name') || '').trim().toLowerCase();
+            return optionCityName !== '' && optionCityName === selectedCityName();
+        }
+
+        function rebuildSelect(select, originalNodes, optionFilter, emptyText) {
+            if (!select) {
+                return 0;
+            }
+
+            const previousValue = select.value;
+            select.innerHTML = '';
+            let visibleCount = 0;
+
+            originalNodes.forEach((node) => {
+                const clone = node.cloneNode(true);
+                if (clone.tagName === 'OPTION') {
+                    if (!clone.value || optionFilter(clone)) {
+                        if (!clone.value && emptyText) {
+                            clone.textContent = emptyText;
+                        }
+                        select.appendChild(clone);
+                        if (clone.value) {
+                            visibleCount += 1;
+                        }
+                    }
+                    return;
+                }
+
+                if (clone.tagName === 'OPTGROUP') {
+                    const allowedOptions = Array.from(clone.querySelectorAll('option')).filter((option) => !option.value || optionFilter(option));
+                    if (!allowedOptions.length) {
+                        return;
+                    }
+
+                    clone.innerHTML = '';
+                    allowedOptions.forEach((option) => {
+                        if (!option.value && emptyText) {
+                            option.textContent = emptyText;
+                        }
+                        clone.appendChild(option);
+                        if (option.value) {
+                            visibleCount += 1;
+                        }
+                    });
+
+                    select.appendChild(clone);
+                }
+            });
+
+            if (previousValue && select.querySelector(`option[value="${previousValue}"]`)) {
+                select.value = previousValue;
+            } else {
+                select.value = '';
+            }
+
+            return visibleCount;
+        }
+
+        function updateAssignmentTypeOptions() {
+            const isVendorSupplied = fulfilmentSourceSelect.value === 'vendor_supplied';
+            const previousValue = deliveryAssignmentTypeSelect.value;
+            deliveryAssignmentTypeSelect.innerHTML = '';
+
+            originalAssignmentTypeNodes.forEach((node) => {
+                const clone = node.cloneNode(true);
+                if (clone.tagName !== 'OPTION') {
+                    return;
+                }
+
+                if (!isVendorSupplied && clone.value === 'vendor') {
+                    return;
+                }
+
+                deliveryAssignmentTypeSelect.appendChild(clone);
+            });
+
+            if (deliveryAssignmentTypeSelect.querySelector(`option[value="${previousValue}"]`)) {
+                deliveryAssignmentTypeSelect.value = previousValue;
+            } else if (!isVendorSupplied && previousValue === 'vendor') {
+                deliveryAssignmentTypeSelect.value = 'ph_internal';
+            } else if (isVendorSupplied && !deliveryAssignmentTypeSelect.value) {
+                deliveryAssignmentTypeSelect.value = 'vendor';
+            }
+        }
+
+        function updatePartnerField() {
+            const isVendorSupplied = fulfilmentSourceSelect.value === 'vendor_supplied';
+            const assignmentType = deliveryAssignmentTypeSelect.value;
+            const cityChosen = selectedCityId() > 0;
+
+            if (deliveryResponsibilityInput) {
+                deliveryResponsibilityInput.value = assignmentType === 'vendor'
+                    ? 'vendor_delivery'
+                    : (assignmentType === 'customer_pickup' ? 'customer_pickup' : 'ph_internal_delivery');
+            }
+
+            if (pickupResponsibilityInput) {
+                pickupResponsibilityInput.value = isVendorSupplied ? 'vendor_pickup' : 'ph_internal_pickup';
+            }
+
+            const showPartnerField = assignmentType === 'ph_internal' || assignmentType === 'third_party';
+            if (deliveryPartnerField) {
+                deliveryPartnerField.style.display = showPartnerField ? '' : 'none';
+            }
+
+            if (!deliveryAssignmentSelect) {
+                return;
+            }
+
+            if (!showPartnerField) {
+                deliveryAssignmentSelect.value = '';
+                deliveryAssignmentSelect.disabled = true;
+                if (thirdPartyDeliveryFields) {
+                    thirdPartyDeliveryFields.style.display = 'none';
+                }
+                return;
+            }
+
+            deliveryAssignmentSelect.disabled = !cityChosen;
+
+            const visiblePartners = rebuildSelect(
+                deliveryAssignmentSelect,
+                originalDeliveryPartnerNodes,
+                function (option) {
+                    const kind = option.getAttribute('data-assignment-kind') || '';
+                    const optionCityId = parseInt(option.getAttribute('data-city-id') || '0', 10) || 0;
+                    const optionCityName = (option.getAttribute('data-city-name') || '').trim();
+                    const hasCityMeta = optionCityId > 0 || optionCityName !== '';
+                    if (assignmentType === 'third_party') {
+                        return option.getAttribute('data-always-visible') === '1' || (kind === 'third_party' && matchesCity(option));
+                    }
+
+                    return kind === 'ph_internal' && (matchesCity(option) || !hasCityMeta);
+                },
+                assignmentType === 'third_party' ? 'Select logistics partner' : 'Select PH delivery staff'
+            );
+
+            if (assignmentType === 'third_party' && deliveryAssignmentSelect.querySelector('option[value="third_party"]') && !deliveryAssignmentSelect.value) {
+                deliveryAssignmentSelect.value = 'third_party';
+            }
+
+            if (deliveryPartnerLabel) {
+                deliveryPartnerLabel.textContent = assignmentType === 'third_party'
+                    ? 'Third-Party Logistics'
+                    : 'PH Internal Delivery Staff';
+            }
+
+            if (deliveryPartnerHint) {
+                deliveryPartnerHint.textContent = !cityChosen
+                    ? 'Select city first to load matching delivery partners.'
+                    : (visiblePartners > 0
+                        ? (assignmentType === 'third_party'
+                            ? 'Choose a saved logistics partner for this city or use the one-time partner option.'
+                            : 'Only delivery staff assigned to this city, plus any unassigned fallback staff, are shown.')
+                        : (assignmentType === 'third_party'
+                            ? 'No third-party logistics partners assigned for this city.'
+                            : 'No delivery staff assigned for this city.'));
+            }
+
+            if (thirdPartyDeliveryFields) {
+                thirdPartyDeliveryFields.style.display = assignmentType === 'third_party' && deliveryAssignmentSelect.value === 'third_party' ? '' : 'none';
+            }
+        }
+
+        function updateFulfilmentFields() {
+            const isVendorSupplied = fulfilmentSourceSelect.value === 'vendor_supplied';
+            const cityChosen = selectedCityId() > 0;
+
+            if (vendorField) {
+                vendorField.style.display = isVendorSupplied ? '' : 'none';
+            }
+            if (warehouseField) {
+                warehouseField.style.display = isVendorSupplied ? 'none' : '';
+            }
+            if (assetSection) {
+                assetSection.style.display = isVendorSupplied ? 'none' : '';
+            }
+
+            if (vendorSelect) {
+                vendorSelect.disabled = !isVendorSupplied || !cityChosen;
+                const visibleVendors = rebuildSelect(
+                    vendorSelect,
+                    originalVendorNodes,
+                    matchesCity,
+                    'Select vendor for this city'
+                );
+                if (vendorCityHint) {
+                    vendorCityHint.textContent = !cityChosen
+                        ? 'Select city first to load active vendors.'
+                        : (visibleVendors > 0 ? 'Only active vendors serving this city are shown.' : 'No active vendors available for this city.');
+                }
+            }
+
+            if (warehouseSelect) {
+                warehouseSelect.disabled = isVendorSupplied || !cityChosen;
+                const visibleWarehouses = rebuildSelect(
+                    warehouseSelect,
+                    originalWarehouseNodes,
+                    matchesCity,
+                    'Select warehouse for this city'
+                );
+                if (warehouseCityHint) {
+                    warehouseCityHint.textContent = !cityChosen
+                        ? 'Select city first to load matching warehouses.'
+                        : (visibleWarehouses > 0 ? 'Only warehouses configured for this city are shown.' : 'No warehouse configured for this city.');
+                }
+            }
+
+            if (availabilityHint && isVendorSupplied) {
+                availabilityHint.textContent = 'Vendor supplied rentals use Product Master only as a catalogue. Vendor stock is not reserved in PHOS.';
+            }
+
+            if (productWarning && isVendorSupplied) {
+                productWarning.textContent = '';
+                productWarning.style.display = 'none';
+            }
+
+            syncProductOptionLabels();
+
+            updateAssignmentTypeOptions();
+            updatePartnerField();
+        }
+
+        fulfilmentSourceSelect.addEventListener('change', updateFulfilmentFields);
+        citySelect.addEventListener('change', updateFulfilmentFields);
+        deliveryAssignmentTypeSelect.addEventListener('change', updatePartnerField);
+        deliveryAssignmentSelect?.addEventListener('change', updatePartnerField);
+
+        updateFulfilmentFields();
+    });
+</script>

@@ -136,6 +136,7 @@
             'label' => 'Analytics',
             'items' => [
                 ['label' => 'Reports', 'icon' => 'invoices', 'href' => $reportsIndexHref, 'active' => request()->routeIs('reports.*'), 'visible' => !empty($reportsIndexHref)],
+                ['label' => 'Vendor Orders', 'icon' => 'vendors', 'href' => $safeRoute('vendor-orders.index'), 'active' => request()->routeIs('vendor-orders.*'), 'visible' => $currentUser?->hasPermission('vendor_reports.view') ?? false],
             ],
         ],
         [
