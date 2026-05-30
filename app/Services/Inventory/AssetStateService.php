@@ -290,7 +290,7 @@ class AssetStateService
 
             $lastMovement = $asset->stockMovements->sortByDesc('movement_at')->first();
             $latestAssignment = $asset->rentalAssignments()
-                ->with(['rental:id,rental_number,status,delivery_status,pickup_status'])
+                ->with(['rental:id,status,customer_name'])
                 ->latest('assigned_at')
                 ->first();
 
@@ -313,7 +313,9 @@ class AssetStateService
                 'condition_status' => $condition ?: null,
                 'warehouse' => $asset->warehouse?->name ?: null,
                 'linked_rental_id' => $latestAssignment?->rental_id,
-                'linked_rental_number' => $latestAssignment?->rental?->rental_number,
+                'linked_rental_reference' => $latestAssignment?->rental
+                    ? ('Rental #' . $latestAssignment->rental->id)
+                    : ($latestAssignment?->rental_id ? ('Rental #' . $latestAssignment->rental_id) : null),
                 'linked_rental_status' => $latestAssignment?->rental?->status,
                 'linked_delivery_status' => $latestAssignment?->rental?->delivery_status,
                 'linked_pickup_status' => $latestAssignment?->rental?->pickup_status,

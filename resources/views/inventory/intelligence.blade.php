@@ -465,7 +465,7 @@
                                             <div><strong>Status:</strong> {{ $asset['asset_status'] ?: '—' }}</div>
                                             <div><strong>Condition:</strong> {{ $asset['condition_status'] ?: '—' }}</div>
                                             <div><strong>Warehouse:</strong> {{ $asset['warehouse'] ?: '—' }}</div>
-                                            <div><strong>Linked Rental:</strong> {{ $asset['linked_rental_number'] ?: ($asset['linked_rental_id'] ?: '—') }}</div>
+                                            <div><strong>Linked Rental:</strong> {{ $asset['linked_rental_reference'] ?: ($asset['linked_rental_id'] ? 'Rental #' . $asset['linked_rental_id'] : '—') }}</div>
                                             <div><strong>Rental / Delivery:</strong> {{ $asset['linked_rental_status'] ?: '—' }} / {{ $asset['linked_delivery_status'] ?: '—' }}</div>
                                             <div><strong>Pickup:</strong> {{ $asset['linked_pickup_status'] ?: '—' }}</div>
                                             <div><strong>Last Stock Movement:</strong> {{ $asset['last_stock_movement'] ?: '—' }} @if($asset['last_stock_movement_at'])· {{ $asset['last_stock_movement_at'] }}@endif</div>
@@ -646,7 +646,7 @@
                             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px; font-size:13px; color:#334155;">
                                 <div><strong>From → To:</strong> {{ $movement->from_status ?: '—' }} → {{ $movement->to_status ?: '—' }}</div>
                                 <div><strong>Warehouse:</strong> {{ $movement->fromWarehouse?->name ?: '—' }} → {{ $movement->toWarehouse?->name ?: '—' }}</div>
-                                <div><strong>Rental / Sale:</strong> {{ $movement->rental?->rental_number ?: $movement->rental_id ?: '—' }} / {{ $movement->sale?->sale_number ?: $movement->sale_id ?: '—' }}</div>
+                                <div><strong>Rental / Sale:</strong> {{ $movement->rental ? 'Rental #' . $movement->rental->id : ($movement->rental_id ? 'Rental #' . $movement->rental_id : '—') }} / {{ $movement->sale?->sale_number ?: ($movement->sale_id ? 'Sale #' . $movement->sale_id : '—') }}</div>
                                 <div><strong>Delivery:</strong> {{ $movement->delivery_id ?: '—' }}</div>
                                 <div><strong>Customer:</strong> {{ $movement->rental?->customer?->name ?: $movement->sale?->customer?->name ?: $movement->rental?->customer_name ?: '—' }}</div>
                                 <div><strong>Asset:</strong> {{ $movement->asset?->serial_number ?: $movement->asset?->barcode_value ?: '—' }}</div>

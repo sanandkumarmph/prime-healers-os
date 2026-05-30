@@ -402,7 +402,7 @@ class InventoryIntelligenceService
                 'fromWarehouse:id,name,city',
                 'toWarehouse:id,name,city',
                 'performedBy:id,name',
-                'rental:id,customer_id,customer_name,rental_number',
+                'rental:id,customer_id,customer_name',
                 'rental.customer:id,name,phone,city',
                 'sale:id,customer_id,sale_number',
                 'sale.customer:id,name,phone,city',
@@ -1477,7 +1477,7 @@ class InventoryIntelligenceService
             ->whereNotNull('completed_at')
             ->whereDate('completed_at', '<=', $endDate->toDateString())
             ->with([
-                'rental:id,product_id,dispatch_warehouse_id,quantity,customer_id,customer_name,rental_number',
+                'rental:id,product_id,dispatch_warehouse_id,quantity,customer_id,customer_name',
                 'rental.customer:id,name,phone,city',
                 'rental.dispatchWarehouse:id,name,city',
                 'rental.rentalItems:id,rental_id,product_id,quantity,ordered_quantity,delivered_quantity,returned_quantity',

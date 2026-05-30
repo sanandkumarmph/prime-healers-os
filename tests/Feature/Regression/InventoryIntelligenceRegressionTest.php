@@ -18,6 +18,7 @@ use App\Models\Warehouse;
 use App\Services\Inventory\InventoryIntelligenceService;
 use App\Services\Metrics\SalesMetricsService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\Support\TestData;
 use Tests\TestCase;
 
@@ -1218,6 +1219,93 @@ class InventoryIntelligenceRegressionTest extends TestCase
             ->assertOk();
 
         $this->assertSame($countBefore, StockMovement::query()->count());
+    }
+
+    public function test_inventory_intelligence_renders_linked_rental_reference_without_invalid_column_usage(): void
+    {
+        $organization = TestData::organization();
+        $viewer = $this->userWithRole($organization, 'Inventory Rental Link Exporter', [
+            'products' => ['read'],
+            'assets' => ['read'],
+            '__special' => ['stock_history.view', 'stock_history.export'],
+        ]);
+
+        $product = $this->makeProduct($organization->id);
+        $rental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_name' => 'Inventory Rental Customer',
+            'phone' => '9876543210',
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'start_date' => '2026-05-05',
+            'end_date' => '2026-05-10',
+            'status' => 'active',
+        ]);
+
+        $this->movement($organization->id, $product->id, [
+            'rental_id' => $rental->id,
+            'movement_type' => StockMovement::TYPE_RENTAL_OUT,
+            'quantity' => 1,
+            'movement_at' => '2026-05-05 10:00:00',
+            'from_status' => 'available',
+            'to_status' => 'rented',
+        ]);
+
+        $this->actingAs($viewer)
+            ->get(route('inventory-intelligence.index', [
+                'month' => 5,
+                'year' => 2026,
+                'product_id' => $product->id,
+                'drill_product_id' => $product->id,
+                'drill_date' => '2026-05-05',
+            ]))
+            ->assertOk()
+            ->assertSee('Rental #' . $rental->id);
+    }
+
+    public function test_inventory_intelligence_handles_missing_rental_relationship_without_crashing(): void
+    {
+        $organization = TestData::organization();
+        $viewer = $this->userWithRole($organization, 'Inventory Intelligence Viewer', [
+            'products' => ['read'],
+            'assets' => ['read'],
+            '__special' => ['stock_history.view'],
+        ]);
+
+        $product = $this->makeProduct($organization->id);
+        $rental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_name' => 'Deleted Rental Customer',
+            'phone' => '9876543210',
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'start_date' => '2026-05-05',
+            'end_date' => '2026-05-10',
+            'status' => 'active',
+        ]);
+
+        $this->movement($organization->id, $product->id, [
+            'rental_id' => $rental->id,
+            'movement_type' => StockMovement::TYPE_PICKUP_RETURN,
+            'quantity' => 1,
+            'movement_at' => '2026-05-05 11:00:00',
+            'from_status' => 'rented',
+            'to_status' => 'awaiting_verification',
+        ]);
+
+        DB::statement('PRAGMA foreign_keys = OFF');
+        DB::table('rentals')->where('id', $rental->id)->delete();
+        DB::statement('PRAGMA foreign_keys = ON');
+
+        $this->actingAs($viewer)
+            ->get(route('inventory-intelligence.index', [
+                'month' => 5,
+                'year' => 2026,
+                'product_id' => $product->id,
+                'drill_product_id' => $product->id,
+                'drill_date' => '2026-05-05',
+            ]))
+            ->assertOk();
     }
 
     public function test_inventory_intelligence_does_not_keep_awaiting_verification_asset_in_active_rented_bucket(): void
