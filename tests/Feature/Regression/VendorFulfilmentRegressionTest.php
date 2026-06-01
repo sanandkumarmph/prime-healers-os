@@ -507,6 +507,49 @@ class VendorFulfilmentRegressionTest extends TestCase
         $response->assertDontSee('Pickup Responsibility', false);
     }
 
+    public function test_in_house_rental_form_bridges_searchable_product_selection_into_asset_loading_and_available_assets_endpoint_supports_both_products(): void
+    {
+        $organization = TestData::organization();
+        $user = $this->userWithRole($organization, 'Rental Creator', [
+            'customers' => ['read'],
+            'rentals' => ['read', 'create'],
+            'products' => ['read'],
+            'assets' => ['read'],
+        ]);
+        $city = $this->makeCity($organization->id, 'Bengaluru');
+        $warehouse = $this->makeWarehouse($organization->id, $city->id, 'Bengaluru Main');
+        $product = $this->makeRentalProduct($organization->id, [
+            'name' => 'Dual Mode Oxygen Cylinder',
+            'product_type' => Product::TYPE_BOTH,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_BOTH,
+        ]);
+
+        $asset = \App\Models\Asset::create([
+            'organization_id' => $organization->id,
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'asset_name' => 'Oxygen Cylinder 10 LPM',
+            'serial_number' => 'O2-10L-001',
+            'asset_stage' => \App\Models\Asset::STAGE_RENTAL_STOCK,
+            'asset_status' => \App\Models\Asset::STATUS_AVAILABLE,
+            'condition_status' => 'good',
+        ]);
+
+        $response = $this->actingAs($user)->get(route('rentals.create'));
+
+        $response->assertOk();
+        $response->assertSee("productSelect.addEventListener('searchable-select:changed', handlePrimaryProductChange);", false);
+        $response->assertSee("source: 'fulfilment-refresh'", false);
+
+        $assetsResponse = $this->actingAs($user)->getJson(route('rentals.available-assets', [
+            'product_id' => $product->id,
+            'dispatch_warehouse_id' => $warehouse->id,
+        ]));
+
+        $assetsResponse->assertOk();
+        $this->assertSame([$asset->id], collect($assetsResponse->json('data'))->pluck('id')->all());
+    }
+
     public function test_ph_internal_delivery_dropdown_includes_effective_delivery_users(): void
     {
         $organization = TestData::organization();

@@ -2021,8 +2021,19 @@
                     button.innerHTML = highlightMatch(displayLabel, searchInput.value);
                     button.dataset.value = option.value;
                     button.addEventListener('click', function () {
+                        const previousValue = select.value;
                         select.value = option.value;
+                        if (previousValue !== option.value) {
+                            select.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
                         select.dispatchEvent(new Event('change', { bubbles: true }));
+                        select.dispatchEvent(new CustomEvent('searchable-select:changed', {
+                            bubbles: true,
+                            detail: {
+                                value: option.value,
+                                previousValue: previousValue,
+                            },
+                        }));
                         syncTriggerLabel();
                         closePanel();
                         trigger.focus();
@@ -2104,8 +2115,19 @@
                     }
 
                     event.preventDefault();
+                    const previousValue = select.value;
                     select.value = visibleOptions[activeIndex].value;
+                    if (previousValue !== visibleOptions[activeIndex].value) {
+                        select.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
                     select.dispatchEvent(new Event('change', { bubbles: true }));
+                    select.dispatchEvent(new CustomEvent('searchable-select:changed', {
+                        bubbles: true,
+                        detail: {
+                            value: visibleOptions[activeIndex].value,
+                            previousValue: previousValue,
+                        },
+                    }));
                     syncTriggerLabel();
                     closePanel();
                     trigger.focus();
@@ -3983,6 +4005,7 @@
         });
         productSelect.addEventListener('change', handlePrimaryProductChange);
         productSelect.addEventListener('input', handlePrimaryProductChange);
+        productSelect.addEventListener('searchable-select:changed', handlePrimaryProductChange);
         warehouseSelect.addEventListener('change', function () {
             updateWarehouseMetric();
             primaryAvailabilityLoadedFor = null;
@@ -4389,6 +4412,16 @@
 
             updateAssignmentTypeOptions();
             updatePartnerField();
+
+            if (!isVendorSupplied && productSelect?.value) {
+                productSelect.dispatchEvent(new CustomEvent('searchable-select:changed', {
+                    bubbles: true,
+                    detail: {
+                        value: productSelect.value,
+                        source: 'fulfilment-refresh',
+                    },
+                }));
+            }
         }
 
         fulfilmentSourceSelect.addEventListener('change', updateFulfilmentFields);
