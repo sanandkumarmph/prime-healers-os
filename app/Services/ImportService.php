@@ -978,8 +978,10 @@ class ImportService
 
         if (!$productType) {
             $productType = match (true) {
+                $sellable === true && $rentable === true => Product::TYPE_BOTH,
                 $rentable === true => Product::TYPE_RENTABLE,
                 $sellable === true => Product::TYPE_SELLABLE,
+                $stockMode === Product::STOCK_MODE_TRACKED_BOTH => Product::TYPE_BOTH,
                 $stockMode === Product::STOCK_MODE_TRACKED_RENTAL => Product::TYPE_RENTABLE,
                 $stockMode === Product::STOCK_MODE_TRACKED_SALE => Product::TYPE_SELLABLE,
                 default => null,
@@ -1018,7 +1020,7 @@ class ImportService
             $pricePerDay = 0.0;
         }
 
-        if ($productType === Product::TYPE_RENTABLE && $pricePerDay === null) {
+        if (in_array($productType, [Product::TYPE_RENTABLE, Product::TYPE_BOTH], true) && $pricePerDay === null) {
             $errors[] = 'Price per day or rental price is required for rentable products.';
         }
 
@@ -1717,6 +1719,7 @@ class ImportService
         return match (Str::lower(trim((string) $value))) {
             'sellable', 'sale', 'sales' => Product::TYPE_SELLABLE,
             'rentable', 'rental', 'rent' => Product::TYPE_RENTABLE,
+            'both', 'sellable+rentable', 'sellable_rentable', 'sale+rental', 'sale_rental', 'mixed' => Product::TYPE_BOTH,
             default => null,
         };
     }

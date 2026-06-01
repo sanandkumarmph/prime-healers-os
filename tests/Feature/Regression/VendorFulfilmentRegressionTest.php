@@ -58,6 +58,44 @@ class VendorFulfilmentRegressionTest extends TestCase
         $this->assertSame($vendor->id, $rental->vendorOrderDetail?->vendor_id);
     }
 
+    public function test_vendor_supplied_rental_accepts_dual_purpose_product_without_ph_asset_requirement(): void
+    {
+        $organization = TestData::organization();
+        $user = $this->userWithRole($organization, 'Rental Creator', [
+            'customers' => ['read'],
+            'rentals' => ['read', 'create'],
+            'invoices' => ['read', 'create'],
+            'products' => ['read'],
+        ]);
+        $customer = $this->makeCustomer($organization->id);
+        $vendor = $this->makeVendor($organization->id);
+        $product = $this->makeRentalProduct($organization->id, [
+            'name' => 'Dual Purpose Vendor Rental',
+            'product_type' => Product::TYPE_BOTH,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_BOTH,
+            'is_sellable' => true,
+            'is_rentable' => true,
+            'available_quantity' => 0,
+            'total_quantity' => 0,
+            'sale_price' => 1200,
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('rentals.store'), $this->rentalPayload($customer->id, $product->id, [
+                'fulfilment_source' => VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED,
+                'vendor_id' => $vendor->id,
+                'delivery_responsibility' => 'vendor_delivery',
+                'pickup_responsibility' => 'vendor_pickup',
+            ]))
+            ->assertRedirect(route('rentals.index'));
+
+        $this->assertDatabaseHas('rentals', [
+            'organization_id' => $organization->id,
+            'product_id' => $product->id,
+            'fulfilment_source' => VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED,
+        ]);
+    }
+
     public function test_vendor_supplied_flow_exposes_catalogue_only_helper_without_using_ph_asset_warning_copy(): void
     {
         $organization = TestData::organization();

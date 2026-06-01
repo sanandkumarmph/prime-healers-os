@@ -889,9 +889,9 @@
                                 $saleStock = (int) ($product->sale_stock_quantity ?? 0);
                                 $canSell = $product->canSell();
                                 $canRent = $product->canRent();
-                                $primaryType = $product->product_type === \App\Models\Product::TYPE_RENTABLE
-                                    ? \App\Models\Product::TYPE_RENTABLE
-                                    : \App\Models\Product::TYPE_SELLABLE;
+                                $primaryType = $canSell && $canRent
+                                    ? \App\Models\Product::TYPE_BOTH
+                                    : ($canRent ? \App\Models\Product::TYPE_RENTABLE : \App\Models\Product::TYPE_SELLABLE);
                                 $assetsCount = (int) ($product->assets_count ?? 0);
                                 $availableAssets = (int) ($product->available_assets_count ?? 0);
                                 $rentedAssets = (int) ($product->rented_assets_count ?? 0);
@@ -907,10 +907,8 @@
                                 $hasSaleStock = $saleStock > 0;
                                 $hasRentalAssets = $assetsCount > 0;
                                 $legacyMixed = $hasSaleStock && $hasRentalAssets;
-                                $lowStock = $primaryType === \App\Models\Product::TYPE_SELLABLE && $saleStock <= 2 && $saleStock > 0;
-                                $addStockUrl = $primaryType === \App\Models\Product::TYPE_SELLABLE
-                                    ? route('assets.create', ['product_id' => $product->id, 'asset_stage' => 'new_stock'])
-                                    : route('assets.create', ['product_id' => $product->id]);
+                                $lowStock = $canSell && $saleStock <= 2 && $saleStock > 0;
+                                $addStockUrl = route('assets.create', ['product_id' => $product->id, 'asset_stage' => 'new_stock']);
                                 $assetRegisterUrl = route('assets.index', ['search' => $product->name]);
                                 $convertUrl = route('products.show', $product) . ($hasSaleStock ? '#convert-stock' : '#convert-rental-stock');
                                 $brandModel = trim(collect([$product->brand, $product->model_name])->filter()->implode(' '));
@@ -1016,7 +1014,7 @@
                                 <td class="product-cell" data-label="Pricing">
                                     <div class="product-price-list">
                                         <div><strong>Sale:</strong> {{ $product->sale_price !== null ? $rupee . ' ' . number_format($product->sale_price, 2) : 'N/A' }}</div>
-                                        <div><strong>Per Day:</strong> {{ $primaryType === \App\Models\Product::TYPE_RENTABLE ? $rupee . ' ' . number_format((float) $product->price_per_day, 2) : 'N/A' }}</div>
+                                        <div><strong>Per Day:</strong> {{ $canRent && $product->price_per_day !== null ? $rupee . ' ' . number_format((float) $product->price_per_day, 2) : 'N/A' }}</div>
                                         <div><strong>15 Days:</strong> {{ $product->rental_price_15_days !== null ? $rupee . ' ' . number_format($product->rental_price_15_days, 2) : 'N/A' }}</div>
                                         <div><strong>30 Days:</strong> {{ $product->rental_price_30_days !== null ? $rupee . ' ' . number_format($product->rental_price_30_days, 2) : 'N/A' }}</div>
                                         <div><strong>3 Months:</strong> {{ $product->rental_price_3_months !== null ? $rupee . ' ' . number_format($product->rental_price_3_months, 2) : 'N/A' }}</div>
@@ -1026,7 +1024,7 @@
                                     <div class="product-actions">
                                         <a href="{{ route('products.show', $product) }}" class="ph-btn">View</a>
                                         @if($canCreateAssets)
-                                            <a href="{{ $addStockUrl }}" class="ph-btn-secondary">{{ $product->product_type === \App\Models\Product::TYPE_SELLABLE ? 'Add Sale Unit' : 'Add Rental Asset' }}</a>
+                                            <a href="{{ $addStockUrl }}" class="ph-btn-secondary">{{ $canRent && !$canSell ? 'Add Rental Asset' : 'Add Sale Unit' }}</a>
                                         @endif
                                         @if($canReadAssets)
                                             <a href="{{ $assetRegisterUrl }}" class="ph-btn-soft">Asset Register</a>
@@ -1040,8 +1038,11 @@
                                                 @if($canUpdateProducts)
                                                     <a href="{{ route('products.edit', $product) }}" class="product-action-link">Edit Product</a>
                                                 @endif
-                                                @if($canUpdateProducts && $primaryType === \App\Models\Product::TYPE_SELLABLE)
+                                                @if($canUpdateProducts && $canSell)
                                                     <a href="{{ route('assets.create', ['product_id' => $product->id, 'asset_stage' => 'new_stock']) }}" class="product-action-link">Add Sale Units</a>
+                                                @endif
+                                                @if($canCreateAssets && $canRent)
+                                                    <a href="{{ route('assets.create', ['product_id' => $product->id]) }}" class="product-action-link">Add Rental Asset</a>
                                                 @endif
                                                 @if($canReadAssets)
                                                     <a href="{{ route('products.show', $product) }}#rental-assets" class="product-action-link">Open Asset Register</a>

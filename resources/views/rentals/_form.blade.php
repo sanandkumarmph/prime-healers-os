@@ -127,9 +127,17 @@
     $thirdPartyDeliveryMembers = collect($staffMembers ?? collect())->filter(function ($staff) {
         return ($staff->effective_role ?? null) === 'third_party';
     })->values();
-    $otherAssignableStaffMembers = collect($staffMembers ?? collect())->reject(function ($staff) {
-        return in_array($staff->effective_role ?? null, ['vendor', 'third_party'], true);
-    })->values();
+    $selectedLegacyAssignableStaff = collect($staffMembers ?? collect())->first(function ($staff) use ($selectedDeliveryAssignment, $internalAssignableUsers, $thirdPartyDeliveryMembers, $vendorDeliveryMembers) {
+        if ($selectedDeliveryAssignment !== 'staff:' . $staff->id) {
+            return false;
+        }
+
+        $isInternalDelivery = $internalAssignableUsers->contains(fn ($user) => (int) $user->id === (int) $staff->id);
+        $isThirdParty = $thirdPartyDeliveryMembers->contains(fn ($member) => (int) $member->id === (int) $staff->id);
+        $isVendor = $vendorDeliveryMembers->contains(fn ($member) => (int) $member->id === (int) $staff->id);
+
+        return !$isInternalDelivery && !$isThirdParty && !$isVendor;
+    });
     $phoneParts = \App\Support\PhoneNumber::split(old('phone', $isEdit ? $rental->phone : ($selectedCustomer?->phone ?? '')));
     if ($selectedDeliveryAssignment === null && $isEdit) {
         $selectedDeliveryAssignment = ($rental->deliveryRecord?->assignment_type ?? null) === 'third_party'
@@ -1518,17 +1526,16 @@
                             @endforeach
                         </optgroup>
                     @endif
-                    @if($otherAssignableStaffMembers->isNotEmpty())
-                        <optgroup label="Other Assignment Records">
-                            @foreach($otherAssignableStaffMembers as $staff)
-                                <option
-                                    value="staff:{{ $staff->id }}"
-                                    data-assignment-kind="ph_internal"
-                                    data-city-name="{{ trim((string) ($staff->city ?? '')) }}"
-                                    {{ $selectedDeliveryAssignment === 'staff:' . $staff->id ? 'selected' : '' }}>
-                                    {{ $staff->name }} - {{ $staff->role_display }}
-                                </option>
-                            @endforeach
+                    @if($selectedLegacyAssignableStaff)
+                        <optgroup label="Current Saved Assignment">
+                            <option
+                                value="staff:{{ $selectedLegacyAssignableStaff->id }}"
+                                data-assignment-kind="legacy"
+                                data-always-visible="1"
+                                data-city-name="{{ trim((string) ($selectedLegacyAssignableStaff->city ?? '')) }}"
+                                selected>
+                                {{ $selectedLegacyAssignableStaff->name }} - {{ $selectedLegacyAssignableStaff->role_display }}
+                            </option>
                         </optgroup>
                     @endif
                 </select>
@@ -4292,7 +4299,8 @@
                         return option.getAttribute('data-always-visible') === '1' || (kind === 'third_party' && matchesCity(option));
                     }
 
-                    return kind === 'ph_internal' && (matchesCity(option) || !hasCityMeta);
+                    return option.getAttribute('data-always-visible') === '1'
+                        || (kind === 'ph_internal' && (matchesCity(option) || !hasCityMeta));
                 },
                 assignmentType === 'third_party' ? 'Select logistics partner' : 'Select PH delivery staff'
             );

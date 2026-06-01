@@ -53,7 +53,7 @@ class StockRulesRegressionTest extends TestCase
         $trackedBoth = Product::create([
             'organization_id' => $organization->id,
             'name' => 'Dual Mode Unit',
-            'product_type' => Product::TYPE_SELLABLE,
+            'product_type' => Product::TYPE_BOTH,
             'stock_mode' => Product::STOCK_MODE_TRACKED_BOTH,
             'price_per_day' => 300,
             'sale_price' => 1200,
@@ -141,8 +141,112 @@ class StockRulesRegressionTest extends TestCase
         $this->assertSame(2, $trackedRental->fresh()->total_quantity);
 
         $this->assertSame(Product::STOCK_MODE_TRACKED_BOTH, $trackedBoth->fresh()->stock_mode);
+        $this->assertTrue($trackedBoth->fresh()->canSell());
+        $this->assertTrue($trackedBoth->fresh()->canRent());
         $this->assertSame(1, $trackedBoth->fresh()->available_quantity);
         $this->assertSame(1, $trackedBoth->fresh()->total_quantity);
+    }
+
+    public function test_products_marked_both_accept_sale_units_and_rental_assets_while_single_purpose_products_do_not(): void
+    {
+        $organization = TestData::organization();
+        $this->actingAs(TestData::user($organization));
+
+        $warehouse = Warehouse::create([
+            'organization_id' => $organization->id,
+            'name' => 'Compatibility Warehouse',
+            'code' => 'CMP',
+            'is_active' => true,
+        ]);
+
+        $bothProduct = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Both Product',
+            'product_type' => Product::TYPE_BOTH,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'price_per_day' => 200,
+            'sale_price' => 1500,
+            'rental_price' => 200,
+            'available_quantity' => 0,
+            'total_quantity' => 0,
+        ]);
+
+        $sellableOnly = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Sellable Only Product',
+            'product_type' => Product::TYPE_SELLABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'price_per_day' => 0,
+            'sale_price' => 1200,
+            'rental_price' => 0,
+            'available_quantity' => 0,
+            'total_quantity' => 0,
+        ]);
+
+        $rentableOnly = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Rentable Only Product',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'price_per_day' => 300,
+            'sale_price' => 0,
+            'rental_price' => 300,
+            'available_quantity' => 0,
+            'total_quantity' => 0,
+        ]);
+
+        $this->post(route('assets.store'), [
+            'product_id' => $bothProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'asset_name' => 'Both Rental Unit',
+            'serial_number' => 'BOTH-RENT-COMPAT',
+            'asset_stage' => Asset::STAGE_RENTAL_STOCK,
+            'condition_status' => 'good',
+            'asset_status' => Asset::STATUS_AVAILABLE,
+        ])->assertRedirect();
+
+        $this->post(route('assets.store'), [
+            'product_id' => $bothProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'asset_name' => 'Both Sale Unit',
+            'serial_number' => 'BOTH-SALE-COMPAT',
+            'asset_stage' => Asset::STAGE_NEW_STOCK,
+            'condition_status' => 'good',
+            'asset_status' => Asset::STATUS_AVAILABLE_FOR_SALE,
+        ])->assertRedirect();
+
+        $this->from(route('assets.create'))->post(route('assets.store'), [
+            'product_id' => $sellableOnly->id,
+            'warehouse_id' => $warehouse->id,
+            'asset_name' => 'Blocked Rental Unit',
+            'serial_number' => 'SELL-RENT-BLOCK',
+            'asset_stage' => Asset::STAGE_RENTAL_STOCK,
+            'condition_status' => 'good',
+            'asset_status' => Asset::STATUS_AVAILABLE,
+        ])->assertRedirect(route('assets.create'))
+            ->assertSessionHasErrors('product_id');
+
+        $this->from(route('assets.create'))->post(route('assets.store'), [
+            'product_id' => $rentableOnly->id,
+            'warehouse_id' => $warehouse->id,
+            'asset_name' => 'Blocked Sale Unit',
+            'serial_number' => 'RENT-SALE-BLOCK',
+            'asset_stage' => Asset::STAGE_NEW_STOCK,
+            'condition_status' => 'good',
+            'asset_status' => Asset::STATUS_AVAILABLE_FOR_SALE,
+        ])->assertRedirect(route('assets.create'))
+            ->assertSessionHasErrors('product_id');
+
+        $this->assertDatabaseHas('assets', [
+            'product_id' => $bothProduct->id,
+            'serial_number' => 'BOTH-RENT-COMPAT',
+            'asset_stage' => Asset::STAGE_RENTAL_STOCK,
+        ]);
+        $this->assertDatabaseHas('assets', [
+            'product_id' => $bothProduct->id,
+            'serial_number' => 'BOTH-SALE-COMPAT',
+            'asset_stage' => Asset::STAGE_NEW_STOCK,
+        ]);
     }
 
     public function test_rental_available_assets_endpoint_returns_only_rental_stock_and_filters_by_warehouse(): void

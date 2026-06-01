@@ -4,7 +4,11 @@
     $canCreateAssets = $currentUser?->canAccessModule('assets', 'create') ?? false;
     $rupee = html_entity_decode('&#8377;');
 
-    $productType = old('product_type', $product->product_type ?? (($product->is_rentable ?? false) ? \App\Models\Product::TYPE_RENTABLE : \App\Models\Product::TYPE_SELLABLE));
+    $productType = old('product_type', $product->product_type ?? (
+        (($product->is_sellable ?? false) && ($product->is_rentable ?? false))
+            ? \App\Models\Product::TYPE_BOTH
+            : (($product->is_rentable ?? false) ? \App\Models\Product::TYPE_RENTABLE : \App\Models\Product::TYPE_SELLABLE)
+    ));
     $stockMode = old('stock_mode', $product->stock_mode ?? \App\Models\Product::STOCK_MODE_UNTRACKED);
     $pricePerDayValue = old('price_per_day', $product->price_per_day);
     $salePriceValue = old('sale_price', $product->sale_price);
@@ -299,7 +303,7 @@
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
                         <div>
                             <h2 style="margin:0; font-size:22px;">Inventory Structure</h2>
-                            <p class="product-form-copy">Choose one stock model per product.</p>
+                            <p class="product-form-copy">Choose whether this product can be sold, rented, or both.</p>
                         </div>
                         <span style="display:inline-flex; padding:7px 12px; border-radius:999px; background:{{ $usesManagedStock ? '#eff6ff' : '#f8fafc' }}; color:{{ $usesManagedStock ? '#1d4ed8' : '#475569' }}; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">
                             {{ $stockModeLabel }}
@@ -308,17 +312,18 @@
 
                     <div style="display:grid; gap:18px;">
                         <div>
-                            <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Product Type</label>
-                            <select name="product_type" id="product_type"
-                                   style="{{ $fieldStyle('product_type', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
-                                <option value="{{ \App\Models\Product::TYPE_SELLABLE }}" @selected($productType === \App\Models\Product::TYPE_SELLABLE)>Sellable</option>
-                                <option value="{{ \App\Models\Product::TYPE_RENTABLE }}" @selected($productType === \App\Models\Product::TYPE_RENTABLE)>Rentable</option>
-                            </select>
+                                <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Product Type</label>
+                                <select name="product_type" id="product_type"
+                                       style="{{ $fieldStyle('product_type', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
+                                <option value="{{ \App\Models\Product::TYPE_SELLABLE }}" @selected($productType === \App\Models\Product::TYPE_SELLABLE)>Sellable Only</option>
+                                <option value="{{ \App\Models\Product::TYPE_RENTABLE }}" @selected($productType === \App\Models\Product::TYPE_RENTABLE)>Rentable Only</option>
+                                <option value="{{ \App\Models\Product::TYPE_BOTH }}" @selected($productType === \App\Models\Product::TYPE_BOTH)>Sellable + Rentable</option>
+                                </select>
                             @if($fieldError('product_type'))
                                 <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('product_type') }}</div>
                             @endif
                             <div style="margin-top:6px; color:#64748b; font-size:12px;">
-                                Sellable products use sale units. Rentable products use rental assets.
+                                Choose whether this product can be sold, rented, or both. Sellable products use sale units. Rentable products use rental assets. Products marked both can maintain both sale stock and rental assets.
                             </div>
                         </div>
 
@@ -571,7 +576,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     const syncMode = function () {
-        const isRentable = productType.value === '{{ \App\Models\Product::TYPE_RENTABLE }}';
+        const isRentable = ['{{ \App\Models\Product::TYPE_RENTABLE }}', '{{ \App\Models\Product::TYPE_BOTH }}'].includes(productType.value);
 
         stockMessages.forEach(function (message) {
             if (message.dataset.stockMessage !== 'untracked') {

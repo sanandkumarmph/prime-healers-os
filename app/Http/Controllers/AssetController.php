@@ -114,6 +114,21 @@ class AssetController extends Controller
         return $validated;
     }
 
+    private function validateProductStageCompatibility(Product $product, string $assetStage): void
+    {
+        if ($assetStage === Asset::STAGE_RENTAL_STOCK && !$product->canRent()) {
+            throw ValidationException::withMessages([
+                'product_id' => ['Rental assets can only be added for rentable products.'],
+            ]);
+        }
+
+        if ($assetStage === Asset::STAGE_NEW_STOCK && !$product->canSell()) {
+            throw ValidationException::withMessages([
+                'product_id' => ['Sale units can only be added for sellable products.'],
+            ]);
+        }
+    }
+
     private function nextSaleUnitSerial(Product $product, int &$sequence): string
     {
         $serial = $product->nextSaleUnitCode($sequence);
@@ -545,6 +560,7 @@ class AssetController extends Controller
         $product = Product::query()
             ->where('organization_id', $this->orgId())
             ->findOrFail((int) $validated['product_id']);
+        $this->validateProductStageCompatibility($product, (string) $validated['asset_stage']);
 
         $createdAsset = DB::transaction(function () use ($validated, $product, $serialPending) {
             $resolvedSerial = $serialPending
@@ -672,6 +688,10 @@ class AssetController extends Controller
             $request->validate($this->assetValidationRules($asset))
         );
         $this->validateWorkflowControlledAssetEdit($asset, $validated);
+        $product = Product::query()
+            ->where('organization_id', $this->orgId())
+            ->findOrFail((int) $validated['product_id']);
+        $this->validateProductStageCompatibility($product, (string) $validated['asset_stage']);
         $fromWarehouseId = $asset->warehouse_id;
         $fromStatus = $asset->asset_status;
 

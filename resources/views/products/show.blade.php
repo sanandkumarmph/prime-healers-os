@@ -25,9 +25,9 @@
     $canSell = $product->canSell();
     $canRent = $product->canRent();
     $usesUntrackedStock = $product->usesUntrackedStock();
-    $productType = $product->product_type === \App\Models\Product::TYPE_RENTABLE
-        ? \App\Models\Product::TYPE_RENTABLE
-        : \App\Models\Product::TYPE_SELLABLE;
+    $productType = $canSell && $canRent
+        ? \App\Models\Product::TYPE_BOTH
+        : ($canRent ? \App\Models\Product::TYPE_RENTABLE : \App\Models\Product::TYPE_SELLABLE);
     $productTypeLabel = match (true) {
         $canSell && $canRent => 'Sellable + Rentable Product',
         $canRent => 'Rentable Product',
@@ -43,9 +43,9 @@
         default => ['#f8fafc', '#475569'],
     };
 
-    $addStockUrl = $productType === \App\Models\Product::TYPE_SELLABLE
-        ? route('assets.create', ['product_id' => $product->id, 'asset_stage' => 'new_stock'])
-        : route('assets.create', ['product_id' => $product->id]);
+    $addStockUrl = $canRent && !$canSell
+        ? route('assets.create', ['product_id' => $product->id])
+        : route('assets.create', ['product_id' => $product->id, 'asset_stage' => 'new_stock']);
     $addSaleUnitsUrl = route('assets.create', ['product_id' => $product->id, 'asset_stage' => 'new_stock']);
     $addRentalAssetsUrl = route('assets.create', ['product_id' => $product->id]);
     $assetRegisterUrl = route('assets.index', ['search' => $product->name]);
@@ -67,17 +67,17 @@
 
     $openingTotalQuantity = max((int) ($product->total_quantity ?? 0), 0);
     $openingAvailableQuantity = max((int) ($product->available_quantity ?? 0), 0);
-    $saleUnitCount = $usesUntrackedStock && $productType === \App\Models\Product::TYPE_SELLABLE
+    $saleUnitCount = $usesUntrackedStock && $canSell
         ? $openingTotalQuantity
         : (int) ($saleInventorySummary['total_new_stock'] ?? 0);
-    $saleAvailableCount = $usesUntrackedStock && $productType === \App\Models\Product::TYPE_SELLABLE
+    $saleAvailableCount = $usesUntrackedStock && $canSell
         ? $openingAvailableQuantity
         : (int) ($saleInventorySummary['available_new_stock'] ?? 0);
     $soldUnitCount = (int) ($saleInventorySummary['sold_new_stock'] ?? 0);
-    $rentalAssetCount = $usesUntrackedStock && $productType === \App\Models\Product::TYPE_RENTABLE
+    $rentalAssetCount = $usesUntrackedStock && $canRent
         ? $openingTotalQuantity
         : (int) ($assetStats['total_assets'] ?? 0);
-    $availableForRentCount = $usesUntrackedStock && $productType === \App\Models\Product::TYPE_RENTABLE
+    $availableForRentCount = $usesUntrackedStock && $canRent
         ? $openingAvailableQuantity
         : (int) ($assetStats['available_assets'] ?? 0);
     $rentedOutCount = (int) ($assetStats['rented_assets'] ?? 0);
@@ -120,7 +120,7 @@
         ['label' => 'Stock Mode', 'value' => $stockModeLabel],
         ['label' => 'Product Type', 'value' => $productTypeLabel],
         ['label' => 'Sale Price', 'value' => $product->sale_price !== null ? $rupee . ' ' . number_format($product->sale_price, 2) : null],
-        ['label' => 'Rental Price', 'value' => $productType === \App\Models\Product::TYPE_RENTABLE && $product->price_per_day !== null ? $rupee . ' ' . number_format((float) $product->price_per_day, 2) . ' / day' : null],
+        ['label' => 'Rental Price', 'value' => $canRent && $product->price_per_day !== null ? $rupee . ' ' . number_format((float) $product->price_per_day, 2) . ' / day' : null],
         ['label' => '15 Days', 'value' => $product->rental_price_15_days !== null ? $rupee . ' ' . number_format($product->rental_price_15_days, 2) : null],
         ['label' => '30 Days', 'value' => $product->rental_price_30_days !== null ? $rupee . ' ' . number_format($product->rental_price_30_days, 2) : null],
         ['label' => '3 Months', 'value' => $product->rental_price_3_months !== null ? $rupee . ' ' . number_format($product->rental_price_3_months, 2) : null],

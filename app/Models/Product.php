@@ -10,6 +10,7 @@ class Product extends Model
 {
     public const TYPE_SELLABLE = 'sellable';
     public const TYPE_RENTABLE = 'rentable';
+    public const TYPE_BOTH = 'both';
     public const STOCK_MODE_UNTRACKED = 'untracked';
     public const STOCK_MODE_TRACKED_SALE = 'tracked_sale';
     public const STOCK_MODE_TRACKED_RENTAL = 'tracked_rental';
@@ -18,6 +19,7 @@ class Product extends Model
     public const PRODUCT_TYPES = [
         self::TYPE_SELLABLE,
         self::TYPE_RENTABLE,
+        self::TYPE_BOTH,
     ];
 
     public const STOCK_MODES = [
@@ -94,10 +96,19 @@ class Product extends Model
     protected static function booted(): void
     {
         static::saving(function (Product $product) {
-            $type = $product->product_type ?: ($product->is_rentable ? self::TYPE_RENTABLE : self::TYPE_SELLABLE);
+            $type = $product->product_type;
+
+            if (!$type) {
+                $type = match (true) {
+                    (bool) ($product->is_sellable ?? false) && (bool) ($product->is_rentable ?? false) => self::TYPE_BOTH,
+                    (bool) ($product->is_rentable ?? false) => self::TYPE_RENTABLE,
+                    default => self::TYPE_SELLABLE,
+                };
+            }
+
             $product->product_type = in_array($type, self::PRODUCT_TYPES, true) ? $type : self::TYPE_SELLABLE;
-            $product->is_sellable = $product->product_type === self::TYPE_SELLABLE;
-            $product->is_rentable = $product->product_type === self::TYPE_RENTABLE;
+            $product->is_sellable = in_array($product->product_type, [self::TYPE_SELLABLE, self::TYPE_BOTH], true);
+            $product->is_rentable = in_array($product->product_type, [self::TYPE_RENTABLE, self::TYPE_BOTH], true);
             $stockMode = $product->stock_mode ?: self::STOCK_MODE_UNTRACKED;
             $product->stock_mode = in_array($stockMode, self::STOCK_MODES, true) ? $stockMode : self::STOCK_MODE_UNTRACKED;
             $product->gst_tax_type = in_array($product->gst_tax_type, self::GST_TAX_TYPES, true)
@@ -153,17 +164,22 @@ class Product extends Model
 
     public function isSellableProduct(): bool
     {
-        return $this->product_type === self::TYPE_SELLABLE;
+        return in_array((string) $this->product_type, [self::TYPE_SELLABLE, self::TYPE_BOTH], true);
     }
 
     public function isRentableProduct(): bool
     {
-        return $this->product_type === self::TYPE_RENTABLE;
+        return in_array((string) $this->product_type, [self::TYPE_RENTABLE, self::TYPE_BOTH], true);
+    }
+
+    public function isDualPurposeProduct(): bool
+    {
+        return (string) $this->product_type === self::TYPE_BOTH;
     }
 
     public function canSell(): bool
     {
-        if ((bool) ($this->is_sellable ?? false) || $this->product_type === self::TYPE_SELLABLE) {
+        if ((bool) ($this->is_sellable ?? false) || $this->isSellableProduct()) {
             return true;
         }
 
@@ -182,7 +198,7 @@ class Product extends Model
 
     public function canRent(): bool
     {
-        if ((bool) ($this->is_rentable ?? false) || $this->product_type === self::TYPE_RENTABLE) {
+        if ((bool) ($this->is_rentable ?? false) || $this->isRentableProduct()) {
             return true;
         }
 
@@ -205,7 +221,7 @@ class Product extends Model
 
     public function isRentalEligibleForSelection(): bool
     {
-        return $this->product_type === self::TYPE_RENTABLE || $this->tracksRentalStock();
+        return $this->isRentableProduct() || $this->tracksRentalStock();
     }
 
     public function usesUntrackedStock(): bool

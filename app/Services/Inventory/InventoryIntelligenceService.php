@@ -47,7 +47,7 @@ class InventoryIntelligenceService
         $mode = strtolower((string) ($filters['mode'] ?? 'all'));
         if ($mode === 'rent') {
             $productQuery->where(function (Builder $query) {
-                $query->where('product_type', Product::TYPE_RENTABLE)
+                $query->whereIn('product_type', [Product::TYPE_RENTABLE, Product::TYPE_BOTH])
                     ->orWhereIn('stock_mode', [
                         Product::STOCK_MODE_TRACKED_RENTAL,
                         Product::STOCK_MODE_TRACKED_BOTH,
@@ -55,7 +55,7 @@ class InventoryIntelligenceService
             });
         } elseif ($mode === 'sale') {
             $productQuery->where(function (Builder $query) {
-                $query->where('product_type', Product::TYPE_SELLABLE)
+                $query->whereIn('product_type', [Product::TYPE_SELLABLE, Product::TYPE_BOTH])
                     ->orWhereIn('stock_mode', [
                         Product::STOCK_MODE_TRACKED_SALE,
                         Product::STOCK_MODE_TRACKED_BOTH,
@@ -665,7 +665,7 @@ class InventoryIntelligenceService
             $rowSaleOut += (int) ($monthlySummary['sale_out'] ?? 0);
 
             $isRentalProduct = (method_exists($product, 'tracksRentalStock') && $product->tracksRentalStock())
-                || ((string) ($product->product_type ?? '') === Product::TYPE_RENTABLE);
+                || (method_exists($product, 'isRentableProduct') && $product->isRentableProduct());
             if ($isRentalProduct) {
                 $inUse = max($rentalOutTotal - $rentalReturnTotal, 0);
                 if ($currentRentalInUse > $inUse) {

@@ -66,11 +66,14 @@ class ProductController extends Controller
             ->when($brand !== '', fn ($query) => $query->where('brand', $brand))
             ->when($typeFilter !== '', function ($query) use ($typeFilter) {
                 match ($typeFilter) {
-                    'rentable' => $query->where('product_type', Product::TYPE_RENTABLE),
+                    'rentable' => $query->whereIn('product_type', [Product::TYPE_RENTABLE, Product::TYPE_BOTH]),
                     'sale_only' => $query
                         ->where('product_type', Product::TYPE_SELLABLE)
                         ->where('stock_mode', '!=', Product::STOCK_MODE_TRACKED_BOTH),
-                    'both' => $query->where('stock_mode', Product::STOCK_MODE_TRACKED_BOTH),
+                    'both' => $query->where(function ($inner) {
+                        $inner->where('product_type', Product::TYPE_BOTH)
+                            ->orWhere('stock_mode', Product::STOCK_MODE_TRACKED_BOTH);
+                    }),
                     'untracked' => $query->where('stock_mode', Product::STOCK_MODE_UNTRACKED),
                     default => null,
                 };
@@ -110,20 +113,14 @@ class ProductController extends Controller
         return [
             'products' => $products->count(),
             'sellable' => $products->sum(function (Product $product): int {
-                return (
-                    $product->product_type === Product::TYPE_SELLABLE
-                    || in_array($product->stock_mode, [Product::STOCK_MODE_TRACKED_SALE, Product::STOCK_MODE_TRACKED_BOTH], true)
-                ) ? 1 : 0;
+                return $product->canSell() ? 1 : 0;
             }),
             'rentable' => $products->sum(function (Product $product): int {
-                return (
-                    $product->product_type === Product::TYPE_RENTABLE
-                    || in_array($product->stock_mode, [Product::STOCK_MODE_TRACKED_RENTAL, Product::STOCK_MODE_TRACKED_BOTH], true)
-                ) ? 1 : 0;
+                return $product->canRent() ? 1 : 0;
             }),
             'sale_stock' => $products->sum(function (Product $product): int {
                 if ($product->usesUntrackedStock()) {
-                    return $product->product_type === Product::TYPE_SELLABLE
+                    return $product->canSell()
                         ? max((int) ($product->available_quantity ?? 0), 0)
                         : 0;
                 }
@@ -132,7 +129,7 @@ class ProductController extends Controller
             }),
             'rental_assets' => $products->sum(function (Product $product): int {
                 if ($product->usesUntrackedStock()) {
-                    return $product->product_type === Product::TYPE_RENTABLE
+                    return $product->canRent()
                         ? max((int) ($product->total_quantity ?? 0), 0)
                         : 0;
                 }
@@ -141,7 +138,7 @@ class ProductController extends Controller
             }),
             'rental_available' => $products->sum(function (Product $product): int {
                 if ($product->usesUntrackedStock()) {
-                    return $product->product_type === Product::TYPE_RENTABLE
+                    return $product->canRent()
                         ? max((int) ($product->available_quantity ?? 0), 0)
                         : 0;
                 }
@@ -217,7 +214,11 @@ class ProductController extends Controller
                 ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
                 ->count()
             : 0;
-        $currentType = $product?->product_type ?: ($product?->isRentableProduct() ? Product::TYPE_RENTABLE : Product::TYPE_SELLABLE);
+        $currentType = match (true) {
+            $product?->isSellableProduct() && $product?->isRentableProduct() => Product::TYPE_BOTH,
+            $product?->isRentableProduct() => Product::TYPE_RENTABLE,
+            default => Product::TYPE_SELLABLE,
+        };
         $manualQuantity = max((int) ($validated['quantity'] ?? ($product?->total_quantity ?? 0)), 0);
         $trackedStockExists = ($saleUnitCount + $rentalAssetCount) > 0 || $product?->hasTrackedStock();
         $validated['gst_tax_type'] = in_array(($validated['gst_tax_type'] ?? null), Product::GST_TAX_TYPES, true)
@@ -264,6 +265,12 @@ class ProductController extends Controller
                     'product_type' => 'Convert sellable stock to rental assets before switching this product to Rentable.',
                 ]);
             }
+        }
+
+        if ($productType === Product::TYPE_BOTH && filled($validated['price_per_day'] ?? null) === false) {
+            throw ValidationException::withMessages([
+                'price_per_day' => 'Price per day is required for products that can be rented.',
+            ]);
         }
 
         if (!$trackedStockExists) {
@@ -353,6 +360,7 @@ class ProductController extends Controller
             ->count();
 
         $resolvedType = match (true) {
+            $saleStock > 0 && $rentalAssets > 0 => Product::TYPE_BOTH,
             $saleStock > 0 && $rentalAssets === 0 => Product::TYPE_SELLABLE,
             $rentalAssets > 0 && $saleStock === 0 => Product::TYPE_RENTABLE,
             default => $preferredType ?: ($product->product_type ?: Product::TYPE_SELLABLE),
@@ -360,8 +368,8 @@ class ProductController extends Controller
 
         $product->forceFill([
             'product_type' => $resolvedType,
-            'is_sellable' => $resolvedType === Product::TYPE_SELLABLE,
-            'is_rentable' => $resolvedType === Product::TYPE_RENTABLE,
+            'is_sellable' => in_array($resolvedType, [Product::TYPE_SELLABLE, Product::TYPE_BOTH], true),
+            'is_rentable' => in_array($resolvedType, [Product::TYPE_RENTABLE, Product::TYPE_BOTH], true),
         ]);
 
         if ($persist) {
@@ -564,8 +572,8 @@ class ProductController extends Controller
             ...$validated,
             'organization_id' => $this->orgId(),
             'product_type' => $productType,
-            'is_sellable' => $productType === Product::TYPE_SELLABLE,
-            'is_rentable' => $productType === Product::TYPE_RENTABLE,
+            'is_sellable' => in_array($productType, [Product::TYPE_SELLABLE, Product::TYPE_BOTH], true),
+            'is_rentable' => in_array($productType, [Product::TYPE_RENTABLE, Product::TYPE_BOTH], true),
             'sale_price' => $validated['sale_price'] ?? null,
             'rental_price' => $this->resolvedRentalPrice($validated),
         ]);
@@ -645,8 +653,8 @@ class ProductController extends Controller
         $product->update([
             ...$validated,
             'product_type' => $productType,
-            'is_sellable' => $productType === Product::TYPE_SELLABLE,
-            'is_rentable' => $productType === Product::TYPE_RENTABLE,
+            'is_sellable' => in_array($productType, [Product::TYPE_SELLABLE, Product::TYPE_BOTH], true),
+            'is_rentable' => in_array($productType, [Product::TYPE_RENTABLE, Product::TYPE_BOTH], true),
             'sale_price' => $validated['sale_price'] ?? null,
             'rental_price' => $this->resolvedRentalPrice($validated),
         ]);

@@ -1620,7 +1620,7 @@ class RentalController extends Controller
 
                 if (
                     $product->stock_mode === Product::STOCK_MODE_TRACKED_BOTH
-                    && $product->product_type !== Product::TYPE_RENTABLE
+                    && !$product->isRentableProduct()
                 ) {
                     return (int) ($product->rental_asset_support_count ?? 0) > 0;
                 }
@@ -1659,7 +1659,7 @@ class RentalController extends Controller
             ];
         }
 
-        if ($product->product_type === Product::TYPE_RENTABLE) {
+        if ($product->isRentableProduct()) {
             $quantity = max((int) $product->available_quantity, 0);
 
             return [
@@ -4800,7 +4800,7 @@ class RentalController extends Controller
 
             $highUtilizationProducts = Product::query()
                 ->where('organization_id', $this->orgId())
-                ->where('product_type', Product::TYPE_RENTABLE)
+                ->whereIn('product_type', [Product::TYPE_RENTABLE, Product::TYPE_BOTH])
                 ->where('total_quantity', '>', 0)
                 ->get(['id', 'name', 'available_quantity', 'total_quantity'])
                 ->sortBy(fn (Product $product) => $product->total_quantity > 0 ? ($product->available_quantity / max(1, $product->total_quantity)) : 1)

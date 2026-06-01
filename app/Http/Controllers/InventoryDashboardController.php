@@ -36,8 +36,8 @@ class InventoryDashboardController extends Controller
 
         $dashboard = [
             'total_products' => Product::where('organization_id', $organizationId)->count(),
-            'sellable_products' => Product::where('organization_id', $organizationId)->where('product_type', Product::TYPE_SELLABLE)->count(),
-            'rentable_products' => Product::where('organization_id', $organizationId)->where('product_type', Product::TYPE_RENTABLE)->count(),
+            'sellable_products' => Product::where('organization_id', $organizationId)->whereIn('product_type', [Product::TYPE_SELLABLE, Product::TYPE_BOTH])->count(),
+            'rentable_products' => Product::where('organization_id', $organizationId)->whereIn('product_type', [Product::TYPE_RENTABLE, Product::TYPE_BOTH])->count(),
             'sale_stock' => (int) ($inventorySummary['saleStockAvailable'] ?? 0),
             'serialized_sale_units' => (int) ($inventorySummary['serializedSaleUnitsAvailable'] ?? 0),
             'total_assets' => (int) ($inventorySummary['rentalAssets'] ?? 0),
@@ -94,20 +94,20 @@ class InventoryDashboardController extends Controller
                 $openingTotalQuantity = max((int) ($product->total_quantity ?? 0), 0);
                 $openingAvailableQuantity = max((int) ($product->available_quantity ?? 0), 0);
 
-                $rentalTotal = $usesUntrackedStock && $product->product_type === Product::TYPE_RENTABLE
+                $rentalTotal = $usesUntrackedStock && $product->canRent()
                     ? $openingTotalQuantity
                     : (int) $product->rental_assets_total_count;
-                $rentalAvailable = $usesUntrackedStock && $product->product_type === Product::TYPE_RENTABLE
+                $rentalAvailable = $usesUntrackedStock && $product->canRent()
                     ? $openingAvailableQuantity
                     : (int) $product->rental_available_count;
                 $rentalOut = (int) $product->rental_out_count;
                 $awaitingVerification = (int) $product->awaiting_verification_count;
                 $underRepair = (int) $product->under_repair_count;
                 $retiredRental = (int) $product->retired_rental_count;
-                $saleTotal = $usesUntrackedStock && $product->product_type === Product::TYPE_SELLABLE
+                $saleTotal = $usesUntrackedStock && $product->canSell()
                     ? $openingTotalQuantity
                     : (int) $product->sale_units_total_count;
-                $saleAvailable = $usesUntrackedStock && $product->product_type === Product::TYPE_SELLABLE
+                $saleAvailable = $usesUntrackedStock && $product->canSell()
                     ? $openingAvailableQuantity
                     : (int) $product->sale_available_count;
                 $saleReserved = (int) $product->sale_reserved_count;

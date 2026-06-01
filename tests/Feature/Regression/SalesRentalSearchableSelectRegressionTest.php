@@ -88,10 +88,18 @@ class SalesRentalSearchableSelectRegressionTest extends TestCase
             'stock_mode' => Product::STOCK_MODE_TRACKED_RENTAL,
         ]);
 
-        $mixedRentalProduct = $this->makeProduct([
+        $dualPurposeProduct = $this->makeProduct([
             'name' => 'Hospital Bed',
-            'product_type' => Product::TYPE_SELLABLE,
+            'product_type' => Product::TYPE_BOTH,
             'stock_mode' => Product::STOCK_MODE_TRACKED_BOTH,
+        ]);
+
+        $rentableOnlyProduct = $this->makeProduct([
+            'name' => 'CPAP Rental Only',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'available_quantity' => 2,
+            'total_quantity' => 2,
         ]);
 
         Asset::create([
@@ -107,7 +115,7 @@ class SalesRentalSearchableSelectRegressionTest extends TestCase
 
         Asset::create([
             'organization_id' => $this->organizationId,
-            'product_id' => $mixedRentalProduct->id,
+            'product_id' => $dualPurposeProduct->id,
             'warehouse_id' => $warehouse->id,
             'asset_name' => 'Bed Unit 1',
             'serial_number' => 'BED-001',
@@ -123,12 +131,15 @@ class SalesRentalSearchableSelectRegressionTest extends TestCase
 
         $this->assertStringNotContainsString($saleOnlyProduct->name, $rentalProductOptions);
         $this->assertStringContainsString($rentableProduct->name, $rentalProductOptions);
-        $this->assertStringContainsString($mixedRentalProduct->name, $rentalProductOptions);
+        $this->assertStringContainsString($dualPurposeProduct->name, $rentalProductOptions);
+        $this->assertStringContainsString($rentableOnlyProduct->name, $rentalProductOptions);
 
         $salesResponse = $this->get(route('sales.create'));
 
         $salesResponse->assertOk()
-            ->assertSee($saleOnlyProduct->name);
+            ->assertSee($saleOnlyProduct->name)
+            ->assertSee($dualPurposeProduct->name)
+            ->assertDontSee($rentableOnlyProduct->name);
     }
 
     public function test_rental_creation_rejects_sale_only_product_submission(): void
@@ -167,6 +178,35 @@ class SalesRentalSearchableSelectRegressionTest extends TestCase
         $response->assertRedirect(route('rentals.create'));
         $response->assertSessionHasErrors(['product_id']);
         $this->assertDatabaseCount('rentals', 0);
+    }
+
+    public function test_inventory_dashboard_counts_both_products_under_sellable_and_rentable(): void
+    {
+        $this->makeProduct([
+            'name' => 'Sale Only',
+            'product_type' => Product::TYPE_SELLABLE,
+        ]);
+
+        $this->makeProduct([
+            'name' => 'Rental Only',
+            'product_type' => Product::TYPE_RENTABLE,
+        ]);
+
+        $bothProduct = $this->makeProduct([
+            'name' => 'Dual Purpose',
+            'product_type' => Product::TYPE_BOTH,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_BOTH,
+        ]);
+
+        $response = $this->get(route('inventory.dashboard'));
+
+        $response->assertOk()
+            ->assertViewHas('dashboard', function (array $dashboard) {
+                return ($dashboard['sellable_products'] ?? null) === 2
+                    && ($dashboard['rentable_products'] ?? null) === 2;
+            });
+
+        $this->assertSame(Product::TYPE_BOTH, $bothProduct->fresh()->product_type);
     }
 
     private function makeProduct(array $attributes = []): Product
