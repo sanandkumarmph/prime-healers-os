@@ -2034,6 +2034,9 @@
                                 previousValue: previousValue,
                             },
                         }));
+                        if (select.id === 'product_id' && typeof window.__phosHandlePrimaryRentalProductSelection === 'function') {
+                            window.__phosHandlePrimaryRentalProductSelection();
+                        }
                         syncTriggerLabel();
                         closePanel();
                         trigger.focus();
@@ -2128,6 +2131,9 @@
                             previousValue: previousValue,
                         },
                     }));
+                    if (select.id === 'product_id' && typeof window.__phosHandlePrimaryRentalProductSelection === 'function') {
+                        window.__phosHandlePrimaryRentalProductSelection();
+                    }
                     syncTriggerLabel();
                     closePanel();
                     trigger.focus();
@@ -2939,6 +2945,8 @@
                 syncPrimaryRentalAmount(true);
             });
         }
+
+        window.__phosHandlePrimaryRentalProductSelection = handlePrimaryProductChange;
 
         function getFilteredAssets() {
             const term = (assetSearch.value || '').trim().toLowerCase();
