@@ -62,19 +62,9 @@
     };
 
     $daysLabel = function (Rental $rental) use ($today) {
-        if (!$rental->end_date) {
-            return 'No renewal date';
-        }
-
-        if ($rental->end_date->lt($today)) {
-            return $rental->end_date->diffInDays($today) . ' day(s) overdue';
-        }
-
-        if ($rental->end_date->isSameDay($today)) {
-            return 'Due today';
-        }
-
-        return $today->diffInDays($rental->end_date) . ' day(s) remaining';
+        return $rental->end_date
+            ? $rental->customerFacingRemainingLabel($today)
+            : 'No renewal date';
     };
 
     $assigneeLabel = function (Rental $rental) {

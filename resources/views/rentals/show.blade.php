@@ -469,16 +469,8 @@
         $rentalInvoiceDue = 0.0;
     }
     $rentalTypeLabel = $rental->usesBusinessPartnerFlow() ? 'Business Partner' : 'Direct Customer';
-    $daysUntilEnd = $rental->end_date
-        ? now()->startOfDay()->diffInDays($rental->end_date->copy()->startOfDay(), false)
-        : null;
-    $daysRemainingLabel = $daysUntilEnd === null
-        ? 'Schedule pending'
-        : ($daysUntilEnd < 0
-            ? abs($daysUntilEnd) . ' day' . (abs($daysUntilEnd) === 1 ? '' : 's') . ' overdue'
-            : ($daysUntilEnd === 0
-                ? 'Due today'
-                : $daysUntilEnd . ' day' . ($daysUntilEnd === 1 ? '' : 's') . ' remaining'));
+    $daysUntilEnd = $rental->remainingDaysInclusive(now()->startOfDay());
+    $daysRemainingLabel = $rental->customerFacingRemainingLabel(now()->startOfDay());
     $daysRemainingTone = $daysUntilEnd === null
         ? 'neutral'
         : ($daysUntilEnd < 0 ? 'danger' : ($daysUntilEnd <= 2 ? 'warning' : 'success'));

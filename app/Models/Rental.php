@@ -483,6 +483,39 @@ class Rental extends Model
         return (int) $this->end_date->diffInDays($today);
     }
 
+    public function remainingDaysInclusive(?Carbon $today = null): ?int
+    {
+        if (!$this->end_date) {
+            return null;
+        }
+
+        $today = ($today ?? Carbon::today())->copy()->startOfDay();
+        $endDate = $this->end_date->copy()->startOfDay();
+
+        if ($endDate->lt($today)) {
+            return -1 * (int) $endDate->diffInDays($today);
+        }
+
+        return (int) $today->diffInDays($endDate) + 1;
+    }
+
+    public function customerFacingRemainingLabel(?Carbon $today = null): string
+    {
+        $remainingDays = $this->remainingDaysInclusive($today);
+
+        if ($remainingDays === null) {
+            return 'Schedule pending';
+        }
+
+        if ($remainingDays < 0) {
+            $overdueDays = abs($remainingDays);
+
+            return $overdueDays . ' day' . ($overdueDays === 1 ? '' : 's') . ' overdue';
+        }
+
+        return $remainingDays . ' day' . ($remainingDays === 1 ? '' : 's') . ' remaining';
+    }
+
     public function isRenewed(): bool
     {
         return $this->renewalCount() > 0;
