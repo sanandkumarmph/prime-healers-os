@@ -238,7 +238,9 @@
                     $itemHasIgst = ((float) ($item->igst_amount ?? 0) > 0 || ($item->tax_type ?? null) === 'igst');
                     $itemMeta = collect([
                         $item->unit ? 'Unit: ' . $item->unit : null,
-                        $item->days ? 'Days: ' . number_format((float) $item->days, 2) : null,
+                        ($item->source_type === 'rental' && $invoice->rental)
+                            ? 'Days: ' . number_format((float) $invoice->rental->baseDurationDays(), 2)
+                            : ($item->days ? 'Days: ' . number_format((float) $item->days, 2) : null),
                     ]);
 
                     if ($item->source_type === 'rental' && $displayRentalPeriod && !$invoice->rentalRenewal) {

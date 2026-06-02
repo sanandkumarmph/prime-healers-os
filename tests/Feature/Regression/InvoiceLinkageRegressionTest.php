@@ -287,6 +287,32 @@ class InvoiceLinkageRegressionTest extends TestCase
             ->assertSee('Unit: sale');
     }
 
+    public function test_rental_invoice_view_uses_inclusive_rental_day_display(): void
+    {
+        [$organization, $customer, $product] = $this->bootRentalContext();
+
+        $this->post(route('rentals.store'), [
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'start_date' => '2026-06-02',
+            'end_date' => '2026-07-01',
+            'rental_amount' => 3000,
+            'deposit_amount' => 0,
+            'transport_amount' => 0,
+            'other_amount' => 0,
+        ])->assertRedirect('/rentals');
+
+        $invoice = Invoice::query()->where('organization_id', $organization->id)->firstOrFail();
+
+        $this->get(route('invoices.show', $invoice))
+            ->assertOk()
+            ->assertSee('Days: 30.00', false)
+            ->assertSee('Duration: 30 days', false);
+    }
+
     public function test_removing_rental_sale_items_removes_stale_invoice_lines_on_resync(): void
     {
         [$organization, $customer, $product] = $this->bootRentalContext();

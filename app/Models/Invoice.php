@@ -322,7 +322,7 @@ class Invoice extends Model
 
         $startDate = $this->invoice_date->copy()->startOfDay();
         $billableDays = max((int) round((float) $rentalItem->days), 1);
-        $endDate = $startDate->copy()->addDays($billableDays);
+        $endDate = $startDate->copy()->addDays(max($billableDays - 1, 0));
 
         return [
             'start_date' => $startDate,
@@ -395,9 +395,7 @@ class Invoice extends Model
                 'description' => $rental->product?->name ?: ('Rental #' . $rental->id),
                 'quantity' => (float) ($rental->quantity ?: 1),
                 'unit' => 'rental',
-                'days' => $rental->start_date && $rental->end_date
-                    ? max($rental->start_date->diffInDays($rental->end_date), 1)
-                    : null,
+                'days' => $rental->baseDurationDays(),
                 'rate' => (float) ($rental->rental_amount ?: 0),
                 'discount_amount' => 0,
                 'tax_percentage' => 0,

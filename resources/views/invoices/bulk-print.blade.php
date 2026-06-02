@@ -612,7 +612,9 @@
                                             $itemMeta->push('Unit: ' . $item->unit);
                                         }
 
-                                        if ((float) $item->days > 0) {
+                                        if ($item->source_type === 'rental' && $invoice->rental) {
+                                            $itemMeta->push('Days: ' . number_format((float) $invoice->rental->baseDurationDays(), 2));
+                                        } elseif ((float) $item->days > 0) {
                                             $itemMeta->push('Days: ' . number_format((float) $item->days, 2));
                                         }
 
