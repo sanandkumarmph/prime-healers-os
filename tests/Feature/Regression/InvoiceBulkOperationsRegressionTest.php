@@ -200,7 +200,7 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertSame(2, substr_count($response->getContent(), 'class="bulk-invoice-page"'));
     }
 
-    public function test_individual_invoice_pdf_templates_remain_untouched_and_bulk_uses_separate_wrapper(): void
+    public function test_individual_invoice_pdf_templates_use_shared_invoice_document_and_bulk_uses_separate_wrapper(): void
     {
         $bulkTemplate = (string) file_get_contents(resource_path('views/invoices/bulk-print.blade.php'));
         $dompdfTemplate = (string) file_get_contents(resource_path('views/invoices/pdf-dompdf.blade.php'));
@@ -228,14 +228,10 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringNotContainsString('logo-rentnexis.png', $printTemplate);
         $this->assertStringNotContainsString('rentnexis-logo.png', $dompdfTemplate);
         $this->assertStringNotContainsString('logo-rentnexis.png', $dompdfTemplate);
-        $this->assertStringContainsString('Products Sold With Rental', $printTemplate);
-        $this->assertStringContainsString('Products Sold With Rental', $dompdfTemplate);
-        $this->assertStringNotContainsString("invoices.partials.invoice-document", $printTemplate);
-        $this->assertStringNotContainsString("invoices.partials.invoice-document", $dompdfTemplate);
-        $this->assertStringNotContainsString("invoices.partials.invoice-document-styles", $printTemplate);
-        $this->assertStringNotContainsString("invoices.partials.invoice-document-styles", $dompdfTemplate);
-        $this->assertStringContainsString('@page {', $printTemplate);
-        $this->assertStringContainsString('@page {', $dompdfTemplate);
+        $this->assertStringContainsString("invoices.partials.invoice-document", $printTemplate);
+        $this->assertStringContainsString("invoices.partials.invoice-document", $dompdfTemplate);
+        $this->assertStringContainsString("invoices.partials.invoice-document-styles", $printTemplate);
+        $this->assertStringContainsString("invoices.partials.invoice-document-styles", $dompdfTemplate);
         $this->assertStringContainsString('.bulk-invoice-page:not(:last-child)', $bulkTemplate);
         $this->assertStringContainsString('page-break-after: always;', $bulkTemplate);
         $this->assertStringContainsString('.bulk-items {', $bulkTemplate);

@@ -111,14 +111,15 @@
         return 'data:' . ($mime ?: 'image/png') . ';base64,' . base64_encode($contents);
     };
 
-    $tenantLogo = extension_loaded('gd')
+    $tenantLogo = $tenantLogo ?? (extension_loaded('gd')
         ? $toDataUri('images/prime-healers-logo.png', 'public')
-        : null;
-    $tenantQr = $toDataUri($organization?->payment_qr_code);
-    $tenantSignature = $toDataUri($organization?->digital_signature);
+        : null);
+    $tenantQr = $tenantQr ?? $toDataUri($organization?->payment_qr_code);
+    $tenantSignature = $tenantSignature ?? $toDataUri($organization?->digital_signature);
     $organizationInitials = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $organization?->name ?? 'OR'), 0, 2));
     $currency = trim((string) ($pdfCurrencySymbol ?? ($pdfCurrencyFallback ?? '₹')));
     $currencyHtml = $currency === '₹' ? '&#8377;' : e($currency);
+    $showPaymentsTable = $showPaymentsTable ?? true;
 @endphp
 
 <div class="{{ $documentRootClass ?? 'invoice-page' }}">
@@ -247,6 +248,11 @@
                             . ' to '
                             . (optional($displayRentalPeriod['end_date'] ?? null)?->format('d M Y') ?: '-')
                         );
+
+                        if ($invoice->rental?->start_date && $invoice->rental?->end_date) {
+                            $durationDays = $invoice->rental->baseDurationDays();
+                            $itemMeta->push('Duration: ' . $durationDays . ' day' . ($durationDays === 1 ? '' : 's'));
+                        }
                     }
 
                     if ($item->source_type === 'rental_sale') {
@@ -433,7 +439,7 @@
         </table>
     </div>
 
-    @if($invoice->payments->isNotEmpty())
+    @if($showPaymentsTable && $invoice->payments->isNotEmpty())
         <table class="payments-table">
             <thead>
                 <tr>

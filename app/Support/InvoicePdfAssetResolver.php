@@ -85,6 +85,17 @@ class InvoicePdfAssetResolver
         }
 
         $mime = function_exists('mime_content_type') ? mime_content_type($absolutePath) : 'image/png';
+
+        if (($mime === 'image/png' || $mime === 'image/x-png') && !extension_loaded('gd')) {
+            Log::warning('invoice_pdf_asset_skipped_missing_gd', [
+                'kind' => $kind,
+                'path' => $absolutePath,
+                'mime' => $mime,
+            ]);
+
+            return null;
+        }
+
         $contents = @file_get_contents($absolutePath);
 
         if ($contents === false) {

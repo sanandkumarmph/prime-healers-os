@@ -738,6 +738,11 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        @include('invoices.partials.invoice-document-styles', [
+            'invoiceBodyFontStack' => "'Inter', 'Segoe UI', Roboto, Arial, sans-serif",
+            'invoiceHeadingFontStack' => "'Manrope', 'Inter', 'Segoe UI', sans-serif",
+        ])
     </style>
 
     <div class="invoice-view-shell">
@@ -845,111 +850,18 @@
             'anchorId' => 'invoice-activity-timeline',
         ])
 
-        <div class="invoice-address-grid">
-            <div class="invoice-address-card">
-                <span class="invoice-section-tag">Bill To</span>
-                <h3 class="invoice-contact-name">{{ $invoice->bill_to_name ?: ($invoice->customer->name ?? 'Customer') }}</h3>
-
-                @if($invoice->bill_to_phone)
-                    <p class="invoice-contact-line">{{ $invoice->bill_to_phone }}</p>
-                @endif
-
-                @if($invoice->bill_to_email)
-                    <p class="invoice-contact-line">{{ $invoice->bill_to_email }}</p>
-                @endif
-
-                <p class="invoice-contact-line">{{ $billingAddress ?: 'Address not provided' }}</p>
-                <p class="invoice-contact-line">GSTIN: {{ $invoice->bill_to_gstin ?: 'N/A' }}</p>
-            </div>
-
-            <div class="invoice-address-card">
-                <span class="invoice-section-tag">Ship To</span>
-                <h3 class="invoice-contact-name">{{ $invoice->ship_to_name ?: ($invoice->bill_to_name ?: 'Delivery Address') }}</h3>
-
-                @if($shipMatchesBilling)
-                    <p class="invoice-contact-line">Same as billing address</p>
-                @else
-                    @if($invoice->ship_to_phone)
-                        <p class="invoice-contact-line">{{ $invoice->ship_to_phone }}</p>
-                    @endif
-
-                    <p class="invoice-contact-line">{{ $shippingAddress ?: 'Address not provided' }}</p>
-                @endif
-                <p class="invoice-contact-line">
-                    Place of Supply:
-                    {{ $invoice->place_of_supply_state ?: 'N/A' }}
-                </p>
-            </div>
+        <div class="invoice-table-card" style="padding:20px 22px;">
+            @include('invoices.partials.invoice-document', [
+                'invoice' => $invoice,
+                'amountInWords' => $amountInWords ?? null,
+                'pdfCurrencySymbol' => $pdfCurrencySymbol ?? null,
+                'pdfCurrencyFallback' => $pdfCurrencyFallback ?? null,
+                'documentRootClass' => 'invoice-page',
+                'showPaymentsTable' => false,
+            ])
         </div>
 
         <div class="invoice-table-card" id="invoice-payment-history">
-            <div class="invoice-table-wrap">
-                <table class="invoice-table">
-                    <thead>
-                        <tr>
-                            <th style="width:34%;">Item Description</th>
-                            <th style="width:11%;">HSN/SAC</th>
-                            <th style="width:10%;" class="text-right">Qty</th>
-                            <th style="width:11%;" class="text-right">Rate</th>
-                            <th style="width:11%;" class="text-right">Discount</th>
-                            <th style="width:10%;" class="text-right">Tax</th>
-                            <th style="width:13%;" class="text-right">Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach($invoice->items as $item)
-                            <tr>
-                                <td data-label="Item Description">
-                                    <span class="invoice-item-title">{{ $item->display_description }}</span>
-                                    <div class="invoice-item-subline">
-                                        @if($item->unit)
-                                            Unit: {{ $item->unit }}
-                                        @endif
-                                        @if($item->days)
-                                            @if($item->unit)
-                                                |
-                                            @endif
-                                            Days: {{ number_format($item->days, 2) }}
-                                        @endif
-                                        @if($item->source_type === 'rental' && $displayRentalPeriod && !$invoice->rentalRenewal)
-                                            @if($item->unit || $item->days)
-                                                |
-                                            @endif
-                                            Rental: {{ optional($displayRentalPeriod['start_date'] ?? null)?->format('d M Y') ?: '-' }} to {{ optional($displayRentalPeriod['end_date'] ?? null)?->format('d M Y') ?: '-' }}
-                                        @endif
-                                        @if($item->source_type === 'rental_sale')
-                                            @if($item->unit || $item->days || ($item->source_type === 'rental' && $displayRentalPeriod && !$invoice->rentalRenewal))
-                                                |
-                                            @endif
-                                            Products Sold With Rental
-                                        @endif
-                                        @if($invoice->rentalRenewal && ($item->unit === 'renewal' || ($item->product_id && $item->days)))
-                                            @if($item->unit || $item->days)
-                                                |
-                                            @endif
-                                            Renewal: {{ optional($invoice->rentalRenewal->previous_end_date)->format('d M Y') ?: '-' }} to {{ optional($invoice->rentalRenewal->renewed_end_date)->format('d M Y') ?: '-' }}
-                                        @endif
-                                    </div>
-                                </td>
-                                <td data-label="HSN/SAC">{{ $item->hsn_sac_code ?: 'N/A' }}</td>
-                                <td data-label="Qty" class="text-right">{{ number_format($item->quantity, 2) }}</td>
-                                <td data-label="Rate" class="text-right">&#8377;{{ number_format($item->rate, 2) }}</td>
-                                <td data-label="Discount" class="text-right">&#8377;{{ number_format($item->discount_amount, 2) }}</td>
-                                <td data-label="Tax" class="text-right">{{ number_format($item->tax_percentage, 2) }}%</td>
-                                <td data-label="Amount" class="text-right">
-                                    <strong>&#8377;{{ number_format($item->line_total, 2) }}</strong>
-                                    <div class="invoice-item-subline">
-                                        Taxable: &#8377;{{ number_format($item->taxable_amount, 2) }}
-                                    </div>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="invoice-table-card">
             <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; padding:16px 18px; border-bottom:1px solid #e2e8f0;">
                 <div>
                     <h3 style="margin:0; color:#0f172a; font-size:18px;">Payment History</h3>
@@ -999,89 +911,6 @@
                     </table>
                 </div>
             @endif
-        </div>
-
-        <div class="invoice-bottom-grid">
-            <div class="invoice-notes-stack">
-                @if($invoice->notes)
-                    <div class="invoice-note-card">
-                        <h4 class="invoice-note-title">Notes</h4>
-                        <p class="invoice-note-body">{{ $invoice->notes }}</p>
-                    </div>
-                @endif
-
-                @if($invoice->terms_conditions)
-                    <div class="invoice-note-card">
-                        <h4 class="invoice-note-title">Terms & Conditions</h4>
-                        <p class="invoice-note-body">{{ $invoice->terms_conditions }}</p>
-                    </div>
-                @endif
-            </div>
-
-            <div class="invoice-summary-card">
-                <h3>Invoice Summary</h3>
-
-                <div class="invoice-summary-row">
-                    <span>Subtotal</span>
-                    <strong>&#8377;{{ number_format($invoice->subtotal, 2) }}</strong>
-                </div>
-                <div class="invoice-summary-row">
-                    <span>Discount</span>
-                    <strong>&#8377;{{ number_format($invoice->discount_amount, 2) }}</strong>
-                </div>
-                <div class="invoice-summary-row">
-                    <span>Taxable Amount</span>
-                    <strong>&#8377;{{ number_format($invoice->taxable_amount, 2) }}</strong>
-                </div>
-                <div class="invoice-summary-row">
-                    <span>Deposit</span>
-                    <strong>&#8377;{{ number_format($invoice->deposit_amount, 2) }}</strong>
-                </div>
-                <div class="invoice-summary-row">
-                    <span>Shipping</span>
-                    <strong>&#8377;{{ number_format($invoice->shipping_charges, 2) }}</strong>
-                </div>
-
-                @if($invoice->cgst_amount > 0)
-                    <div class="invoice-summary-row">
-                        <span>CGST</span>
-                            <strong>&#8377;{{ number_format($invoice->cgst_amount, 2) }}</strong>
-                        </div>
-                        <div class="invoice-summary-row">
-                            <span>SGST</span>
-                            <strong>&#8377;{{ number_format($invoice->sgst_amount, 2) }}</strong>
-                        </div>
-                @endif
-
-                @if($invoice->igst_amount > 0)
-                    <div class="invoice-summary-row">
-                        <span>IGST</span>
-                            <strong>&#8377;{{ number_format($invoice->igst_amount, 2) }}</strong>
-                        </div>
-                @endif
-
-                <div class="invoice-summary-row">
-                    <span>Total Tax</span>
-                    <strong>&#8377;{{ number_format($invoice->total_tax_amount, 2) }}</strong>
-                </div>
-
-                <hr class="invoice-summary-divider">
-
-                <div class="invoice-grand-total">
-                    <div class="invoice-summary-row">
-                        <span>Total</span>
-                        <strong>&#8377;{{ number_format($invoice->total_amount, 2) }}</strong>
-                    </div>
-                    <div class="invoice-summary-row">
-                        <span>Paid</span>
-                        <strong>&#8377;{{ number_format($invoice->paid_amount, 2) }}</strong>
-                    </div>
-                    <div class="invoice-summary-row">
-                        <span>Balance Due</span>
-                        <strong>&#8377;{{ number_format($invoice->balance_amount, 2) }}</strong>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 </div>

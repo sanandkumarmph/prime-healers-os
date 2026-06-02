@@ -740,7 +740,10 @@ class InvoiceController extends Controller
         ];
         $activityLogs = ActivityLogger::recentFor($invoice);
 
-        return view('invoices.show', compact('invoice', 'whatsAppLinks', 'activityLogs'));
+        return view('invoices.show', array_merge(
+            compact('invoice', 'whatsAppLinks', 'activityLogs'),
+            $this->invoicePdfViewData($invoice)
+        ));
     }
 
     public function edit($id)

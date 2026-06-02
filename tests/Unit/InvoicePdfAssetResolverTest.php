@@ -15,7 +15,12 @@ class InvoicePdfAssetResolverTest extends TestCase
 
         $this->assertSame('images/invoice-logo.png', $resolver->logoRelativePath());
         $this->assertStringContainsString('invoice-logo.png', $resolver->logoBrowserUrl());
-        $this->assertStringStartsWith('data:image/', (string) $resolver->logoDataUri());
+
+        if (extension_loaded('gd')) {
+            $this->assertStringStartsWith('data:image/', (string) $resolver->logoDataUri());
+        } else {
+            $this->assertNull($resolver->logoDataUri());
+        }
     }
 
     public function test_bulk_qr_can_be_disabled_without_affecting_individual_invoice_qr(): void
@@ -35,7 +40,12 @@ class InvoicePdfAssetResolverTest extends TestCase
 
         $resolver = app(InvoicePdfAssetResolver::class);
 
-        $this->assertNotNull($resolver->qrDataUri($relativePath));
+        if (extension_loaded('gd')) {
+            $this->assertNotNull($resolver->qrDataUri($relativePath));
+        } else {
+            $this->assertNull($resolver->qrDataUri($relativePath));
+        }
+
         $this->assertNull($resolver->qrDataUri($relativePath, true));
     }
 

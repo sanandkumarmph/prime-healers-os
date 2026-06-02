@@ -16,7 +16,7 @@ body {
 
 body {
     color: #24384f;
-    font-family: 'Inter', 'Segoe UI', Roboto, Arial, sans-serif;
+    font-family: {!! $invoiceBodyFontStack ?? "'Inter', 'Segoe UI', Roboto, Arial, sans-serif" !!};
     font-size: 11px;
     line-height: 1.45;
     font-variant-numeric: tabular-nums;
@@ -103,7 +103,7 @@ body {
     font-size: 15px;
     font-weight: 700;
     line-height: 1.2;
-    font-family: 'Manrope', 'Inter', 'Segoe UI', sans-serif;
+    font-family: {!! $invoiceHeadingFontStack ?? "'Manrope', 'Inter', 'Segoe UI', sans-serif" !!};
 }
 
 .header-company-line {
@@ -127,7 +127,7 @@ body {
     font-weight: 700;
     line-height: 1;
     text-transform: uppercase;
-    font-family: 'Manrope', 'Inter', 'Segoe UI', sans-serif;
+    font-family: {!! $invoiceHeadingFontStack ?? "'Manrope', 'Inter', 'Segoe UI', sans-serif" !!};
 }
 
 .status-badge {
@@ -226,7 +226,7 @@ body {
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.3px;
-    font-family: 'Manrope', 'Inter', 'Segoe UI', sans-serif;
+    font-family: {!! $invoiceHeadingFontStack ?? "'Manrope', 'Inter', 'Segoe UI', sans-serif" !!};
 }
 
 .party-line {
@@ -252,6 +252,8 @@ body {
 
 .items-table {
     margin-bottom: 8px;
+    table-layout: fixed;
+    page-break-inside: auto;
 }
 
 .items-table thead {
@@ -277,6 +279,8 @@ body {
 .items-table td {
     color: #24384f;
     font-size: 9.7px;
+    word-break: break-word;
+    overflow-wrap: anywhere;
 }
 
 .num {
@@ -300,7 +304,11 @@ body {
 }
 
 .summary-table,
-.payment-card {
+.payment-card,
+.party-table,
+.subject-row,
+.totals-table,
+.signature-box {
     page-break-inside: avoid;
 }
 
@@ -456,9 +464,18 @@ body {
     font-size: 10px;
 }
 
+.totals-table {
+    table-layout: fixed;
+}
+
+.totals-table td:first-child {
+    width: 62%;
+}
+
 .totals-table td:last-child {
     text-align: right;
     white-space: nowrap;
+    width: 38%;
 }
 
 .grand-total td {
@@ -466,7 +483,7 @@ body {
     color: #12263F;
     font-size: 11.5px;
     font-weight: 800;
-    font-family: 'Manrope', 'Inter', 'Segoe UI', sans-serif;
+    font-family: {!! $invoiceHeadingFontStack ?? "'Manrope', 'Inter', 'Segoe UI', sans-serif" !!};
 }
 
 .balance-due td {
@@ -474,7 +491,7 @@ body {
     color: #12263F;
     font-size: 11.5px;
     font-weight: 800;
-    font-family: 'Manrope', 'Inter', 'Segoe UI', sans-serif;
+    font-family: {!! $invoiceHeadingFontStack ?? "'Manrope', 'Inter', 'Segoe UI', sans-serif" !!};
 }
 
 .signature-box {
