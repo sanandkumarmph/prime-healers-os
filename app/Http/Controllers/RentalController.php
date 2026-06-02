@@ -1630,6 +1630,83 @@ class RentalController extends Controller
             ->values();
     }
 
+    private function primaryRentalAssetIndex($products, ?Rental $rental = null): array
+    {
+        if (!$this->hasRentalAssetsTable()) {
+            return [];
+        }
+
+        $productIds = collect($products)
+            ->pluck('id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        if ($productIds->isEmpty()) {
+            return [];
+        }
+
+        $query = Asset::query()
+            ->with(['warehouse', 'product'])
+            ->where('organization_id', $this->orgId())
+            ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
+            ->whereIn('product_id', $productIds->all());
+
+        if ($this->hasRentalAssetsTable()) {
+            $query->where(function ($assetQuery) use ($rental) {
+                $assetQuery->rentalReady();
+
+                if ($rental) {
+                    $assetQuery->orWhereHas('activeRentalAssignments', function ($assignmentQuery) use ($rental) {
+                        $assignmentQuery
+                            ->where('rental_id', $rental->id)
+                            ->whereNull('returned_at');
+                    });
+                }
+            });
+        } else {
+            $query->rentalReady();
+        }
+
+        return $query
+            ->orderBy('product_id')
+            ->orderBy('serial_number')
+            ->get([
+                'id',
+                'product_id',
+                'serial_number',
+                'barcode_value',
+                'asset_status',
+                'condition_status',
+                'warehouse_id',
+            ])
+            ->groupBy('product_id')
+            ->map(function ($assets) {
+                $normalized = $assets->map(function (Asset $asset) {
+                    return [
+                        'id' => (int) $asset->id,
+                        'label' => (string) ($asset->product?->name ?? ('Asset #' . $asset->id)),
+                        'serial_number' => (string) ($asset->serial_number ?? ''),
+                        'barcode_value' => (string) ($asset->barcode_value ?? ''),
+                        'asset_status' => (string) ($asset->asset_status ?? ''),
+                        'condition_status' => (string) ($asset->condition_status ?? ''),
+                        'warehouse_id' => (int) ($asset->warehouse_id ?? 0),
+                        'warehouse' => (string) ($asset->warehouse?->name ?? ''),
+                    ];
+                })->values();
+
+                return [
+                    'all' => $normalized->all(),
+                    'warehouses' => $normalized
+                        ->groupBy(fn ($asset) => (string) ($asset['warehouse_id'] ?? 0))
+                        ->map(fn ($items) => $items->values()->all())
+                        ->all(),
+                ];
+            })
+            ->all();
+    }
+
     private function rentalAvailabilityForProduct(Product $product, ?int $warehouseId = null, ?int $preloadedTrackedQuantity = null): array
     {
         if (!$product->isRentalEligibleForSelection()) {
@@ -5332,8 +5409,9 @@ class RentalController extends Controller
         $vendors = $this->vendorOptions();
         $fulfilmentVendors = $this->vendorMasterOptions();
         $cities = $this->rentalFormCities();
+        $primaryRentalAssetIndex = $this->primaryRentalAssetIndex($rentalProducts);
 
-        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'vendors', 'fulfilmentVendors', 'warehouses', 'organization', 'selectedCustomer', 'cities'));
+        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'vendors', 'fulfilmentVendors', 'warehouses', 'organization', 'selectedCustomer', 'cities', 'primaryRentalAssetIndex'));
     }
 
     public function businessPartnerActualClients(BusinessPartner $businessPartner)
@@ -6179,8 +6257,9 @@ class RentalController extends Controller
         $vendors = $this->vendorOptions();
         $fulfilmentVendors = $this->vendorMasterOptions();
         $cities = $this->rentalFormCities();
+        $primaryRentalAssetIndex = $this->primaryRentalAssetIndex($rentalProducts, $rental);
 
-        return view('rentals.edit', compact('rental', 'products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'vendors', 'fulfilmentVendors', 'warehouses', 'organization', 'cities'));
+        return view('rentals.edit', compact('rental', 'products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'vendors', 'fulfilmentVendors', 'warehouses', 'organization', 'cities', 'primaryRentalAssetIndex'));
     }
 
     public function update(Request $request, Rental $rental)

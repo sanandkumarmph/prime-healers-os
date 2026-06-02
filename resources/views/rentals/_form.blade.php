@@ -1840,12 +1840,18 @@
         const rentalProductOptionsHtml = `<option value="">Select rental product</option>@foreach($rentalProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->rental_price ?? $product->price_per_day ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-product-name="{{ e($product->name) }}" data-in-house-option-label="{{ e($product->name . ' | ' . ($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity)))) }}" data-vendor-option-label="{{ e($product->name) }}" data-search="{{ e(trim(implode(' ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code, $product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))])))) }}">{{ e($product->name) }} | {{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}</option>@endforeach`;
         const saleProductOptionsHtml = `<option value="">Select new product</option>@foreach($sellableProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->sale_price ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-search="{{ e(trim(implode(' ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code, 'Sale ' . number_format((float) ($product->sale_price ?? 0), 2)])))) }}">{{ e($product->name) }} | Sale {{ number_format((float) ($product->sale_price ?? 0), 2) }}</option>@endforeach`;
         const saleAssetOptions = @json($saleAssetRows);
+        const primaryRentalAssetIndex = @json($primaryRentalAssetIndex ?? []);
         const warehouseOptionsHtml = `<option value="">Auto / best stock</option>@foreach($warehouses as $warehouse)<option value="{{ $warehouse->id }}">{{ e($warehouse->name) }}</option>@endforeach`;
         const rentalItemAssetCache = {};
         const rentalItemAssetRequests = {};
         const partnerClientCache = new Map();
         const inlineAssetVisibleStep = 3;
         let primaryAvailabilityLoadedFor = null;
+        let primaryAssetRequestToken = 0;
+        let lastPrimaryAssetSignature = null;
+        let latestPrimaryAssetResponseCount = 0;
+        let latestPrimaryAssetRequestUrl = '—';
+        let latestAssetHideReason = 'initial';
         let partnerClientRequestToken = 0;
 
         function escapeHtml(value) {
@@ -2023,6 +2029,7 @@
                     button.addEventListener('click', function () {
                         const previousValue = select.value;
                         select.value = option.value;
+                        select.dataset.selectedValue = option.value;
                         if (previousValue !== option.value) {
                             select.dispatchEvent(new Event('input', { bubbles: true }));
                         }
@@ -2074,6 +2081,11 @@
             }
 
             function refresh() {
+                if (select.value) {
+                    select.dataset.selectedValue = select.value;
+                } else if (select.dataset.selectedValue && !select.querySelector(`option[value="${select.dataset.selectedValue}"]`)) {
+                    delete select.dataset.selectedValue;
+                }
                 syncTriggerLabel();
                 renderOptions();
             }
@@ -2120,6 +2132,7 @@
                     event.preventDefault();
                     const previousValue = select.value;
                     select.value = visibleOptions[activeIndex].value;
+                    select.dataset.selectedValue = visibleOptions[activeIndex].value;
                     if (previousValue !== visibleOptions[activeIndex].value) {
                         select.dispatchEvent(new Event('input', { bubbles: true }));
                     }
@@ -2163,7 +2176,12 @@
             const observer = new MutationObserver(refresh);
             observer.observe(select, { childList: true, subtree: true, attributes: true, attributeFilter: ['selected'] });
 
-            select._searchableSelect = { refresh: refresh };
+            select._searchableSelect = {
+                refresh: refresh,
+                trigger: trigger,
+                triggerLabel: triggerLabel,
+                wrapper: wrapper,
+            };
             refresh();
         }
 
@@ -2628,11 +2646,62 @@
             }
         }
 
-        function selectedPrimaryRentalState() {
-            const selected = productSelect.options[productSelect.selectedIndex];
-            const isVendorSupplied = fulfilmentSourceSelect && fulfilmentSourceSelect.value === 'vendor_supplied';
+        function syncPrimaryProductInputFromWidget() {
+            if (!productSelect) {
+                return;
+            }
 
-            if (!selected || !productSelect.value) {
+            if (productSelect.value) {
+                return;
+            }
+
+            const triggerLabel = (productSelect?._searchableSelect?.triggerLabel?.textContent || '').trim();
+            if (!triggerLabel || /^select product$/i.test(triggerLabel)) {
+                return;
+            }
+
+            const matchedOption = Array.from(productSelect.options).find(function (option) {
+                if (!option.value) {
+                    return false;
+                }
+
+                return optionDisplayLabel(productSelect, option).trim() === triggerLabel;
+            });
+
+            if (matchedOption) {
+                productSelect.value = matchedOption.value;
+            }
+        }
+
+        function selectedPrimaryProductValue() {
+            syncPrimaryProductInputFromWidget();
+            return productSelect.value || '';
+        }
+
+        function selectedPrimaryProductOption() {
+            const selectedValue = selectedPrimaryProductValue();
+            if (!selectedValue) {
+                return null;
+            }
+
+            return Array.from(productSelect.options).find(function (option) {
+                return option.value === selectedValue;
+            }) || null;
+        }
+
+        function currentFulfilmentSourceValue() {
+            return document.getElementById('fulfilment_source')?.value || '';
+        }
+
+        function currentSelectedCityId() {
+            return document.getElementById('city_id')?.value || '';
+        }
+
+        function selectedPrimaryRentalState() {
+            const selected = selectedPrimaryProductOption();
+            const isVendorSupplied = currentFulfilmentSourceValue() === 'vendor_supplied';
+
+            if (!selected || !selectedPrimaryProductValue()) {
                 return null;
             }
 
@@ -2657,7 +2726,7 @@
                 label = available > 0 ? 'Rental Available ' + available : 'No rental assets available';
             }
 
-            if (tracksRental && status !== 'sale_only' && primaryAvailabilityLoadedFor === productSelect.value) {
+            if (tracksRental && status !== 'sale_only' && primaryAvailabilityLoadedFor === selectedPrimaryProductValue()) {
                 available = currentAssets.length;
                 status = available > 0 ? 'rental_available' : 'no_rental_assets';
                 label = available > 0 ? 'Rental Available ' + available : 'No rental assets available';
@@ -2935,6 +3004,7 @@
         function handlePrimaryProductChange() {
             rentalAmountTouched = false;
             primaryAvailabilityLoadedFor = null;
+            lastPrimaryAssetSignature = null;
             syncPrimaryTaxDefaults(true);
             updateAvailabilityHint();
             updatePrimaryRentalFeedback();
@@ -2947,6 +3017,30 @@
         }
 
         window.__phosHandlePrimaryRentalProductSelection = handlePrimaryProductChange;
+
+        function syncPrimaryAssetStateIfNeeded() {
+            const signature = [
+                currentFulfilmentSourceValue(),
+                selectedPrimaryProductValue(),
+                warehouseSelect?.value || '',
+            ].join(':');
+
+            if (signature === lastPrimaryAssetSignature) {
+                return;
+            }
+
+            lastPrimaryAssetSignature = signature;
+
+            if (currentFulfilmentSourceValue() === 'vendor_supplied') {
+                currentAssets = [];
+                primaryAvailabilityLoadedFor = null;
+                renderAssets();
+                updateSelectionMetrics();
+                return;
+            }
+
+            fetchAssets();
+        }
 
         function getFilteredAssets() {
             const term = (assetSearch.value || '').trim().toLowerCase();
@@ -2961,6 +3055,29 @@
                     asset.asset_status
                 ].join(' ').toLowerCase().includes(term);
             });
+        }
+
+        function preloadedPrimaryAssets() {
+            const productId = String(selectedPrimaryProductValue() || '');
+            if (!productId) {
+                return null;
+            }
+
+            const productEntry = primaryRentalAssetIndex[productId];
+            if (!productEntry) {
+                return null;
+            }
+
+            const warehouseId = String(warehouseSelect?.value || '');
+            if (warehouseId && productEntry.warehouses && Array.isArray(productEntry.warehouses[warehouseId])) {
+                return productEntry.warehouses[warehouseId];
+            }
+
+            return Array.isArray(productEntry.all) ? productEntry.all : null;
+        }
+
+        function refreshAssetDebugPanel() {
+            return;
         }
 
         function findSaleAsset(assetId) {
@@ -3013,10 +3130,12 @@
             assetSelectedCountInline.textContent = selectedCount;
             assetSelectedLabel.textContent = selectedCount + ' chosen';
 
-            if (!productSelect.value) {
+            if (!selectedPrimaryProductValue()) {
                 assetSelectionStatus.textContent = 'Select product';
                 assetSelectionHelp.textContent = 'Load assets from product.';
                 selectionAlert.style.display = 'none';
+                latestAssetHideReason = 'no_product_selected';
+                refreshAssetDebugPanel();
                 return;
             }
 
@@ -3033,6 +3152,8 @@
                     selectionAlert.style.display = 'none';
                 }
 
+                latestAssetHideReason = hasAssets ? 'awaiting_asset_selection' : 'no_assets_available';
+                refreshAssetDebugPanel();
                 return;
             }
 
@@ -3046,6 +3167,9 @@
                 assetSelectionHelp.textContent = 'Assets will be linked.';
                 selectionAlert.style.display = 'none';
             }
+
+            latestAssetHideReason = selectedCount === quantity ? 'ready' : 'quantity_mismatch';
+            refreshAssetDebugPanel();
         }
 
         function syncDurationPreset() {
@@ -3120,10 +3244,12 @@
             const displayCount = Math.max(visibleAssetCount, selectedAssetIds.length);
             const visibleAssets = prioritizedAssets.slice(0, displayCount);
 
-            if (!productSelect.value) {
+            if (!selectedPrimaryProductValue()) {
                 assetEmptyState.style.display = 'block';
                 assetEmptyState.textContent = 'Select product';
                 assetLoadMoreWrap.style.display = 'none';
+                latestAssetHideReason = 'render_blocked_no_product';
+                refreshAssetDebugPanel();
                 return;
             }
 
@@ -3133,6 +3259,8 @@
                     ? 'No match found.'
                     : 'No assets available.';
                 assetLoadMoreWrap.style.display = 'none';
+                latestAssetHideReason = currentAssets.length ? 'filtered_no_match' : 'render_no_assets';
+                refreshAssetDebugPanel();
                 return;
             }
 
@@ -3180,52 +3308,104 @@
             } else {
                 assetLoadMoreWrap.style.display = 'none';
             }
+
+            latestAssetHideReason = 'assets_rendered';
+            refreshAssetDebugPanel();
         }
 
         function fetchAssets() {
+            const requestToken = ++primaryAssetRequestToken;
             currentAssets = [];
             primaryAvailabilityLoadedFor = null;
+            latestPrimaryAssetResponseCount = 0;
             visibleAssetCount = assetVisibleStep;
             renderAssets();
             updateAvailabilityHint();
             updatePrimaryRentalFeedback();
 
-            if (!productSelect.value) {
+            if (!selectedPrimaryProductValue()) {
                 assetCountNote.textContent = 'Select product to load assets.';
+                latestAssetHideReason = 'fetch_skipped_no_product';
+                refreshAssetDebugPanel();
+                return;
+            }
+
+            const preloadedAssets = preloadedPrimaryAssets();
+            if (Array.isArray(preloadedAssets)) {
+                primaryAvailabilityLoadedFor = selectedPrimaryProductValue();
+                currentAssets = preloadedAssets;
+                latestPrimaryAssetResponseCount = preloadedAssets.length;
+                latestPrimaryAssetRequestUrl = 'preloaded:index';
+                selectedAssetIds = selectedAssetIds.filter(function (assetId) {
+                    return currentAssets.some(function (asset) {
+                        return asset.id === assetId;
+                    });
+                });
+                updateAvailabilityHint();
+                updatePrimaryRentalFeedback();
+                renderAssets();
+                updateSelectionMetrics();
+                renderRentalItems();
                 return;
             }
 
             assetEmptyState.style.display = 'block';
             assetEmptyState.textContent = 'Loading assets...';
 
-            const params = new URLSearchParams({
-                product_id: productSelect.value
-            });
+            const requestAssets = function (withWarehouseFilter) {
+                const params = new URLSearchParams({
+                    product_id: selectedPrimaryProductValue()
+                });
 
-            if (warehouseSelect.value) {
-                params.append('dispatch_warehouse_id', warehouseSelect.value);
-            }
-
-            @if($isEdit)
-                params.append('rental_id', '{{ $rental->id }}');
-            @endif
-
-            fetch('{{ route('rentals.available-assets') }}?' + params.toString(), {
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
+                if (withWarehouseFilter && warehouseSelect.value) {
+                    params.append('dispatch_warehouse_id', warehouseSelect.value);
                 }
-            })
-                .then(function (response) {
+
+                @if($isEdit)
+                    params.append('rental_id', '{{ $rental->id }}');
+                @endif
+
+                latestPrimaryAssetRequestUrl = '{{ route('rentals.available-assets') }}?' + params.toString();
+
+                return fetch(latestPrimaryAssetRequestUrl, {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                }).then(function (response) {
                     if (!response.ok) {
                         throw new Error('Unable to load assets');
                     }
 
                     return response.json();
+                });
+            };
+
+            requestAssets(true)
+                .then(function (payload) {
+                    const initialAssets = Array.isArray(payload.data) ? payload.data : [];
+                    const state = selectedPrimaryRentalState();
+
+                    if (
+                        !initialAssets.length
+                        && warehouseSelect.value
+                        && state
+                        && state.available
+                        && state.status !== 'sale_only'
+                    ) {
+                        return requestAssets(false);
+                    }
+
+                    return payload;
                 })
                 .then(function (payload) {
-                    primaryAvailabilityLoadedFor = productSelect.value;
+                    if (requestToken !== primaryAssetRequestToken) {
+                        return;
+                    }
+
+                    primaryAvailabilityLoadedFor = selectedPrimaryProductValue();
                     currentAssets = Array.isArray(payload.data) ? payload.data : [];
+                    latestPrimaryAssetResponseCount = currentAssets.length;
                     selectedAssetIds = selectedAssetIds.filter(function (assetId) {
                         return currentAssets.some(function (asset) {
                             return asset.id === assetId;
@@ -3238,14 +3418,21 @@
                     renderRentalItems();
                 })
                 .catch(function () {
-                    primaryAvailabilityLoadedFor = productSelect.value;
+                    if (requestToken !== primaryAssetRequestToken) {
+                        return;
+                    }
+
+                    primaryAvailabilityLoadedFor = selectedPrimaryProductValue();
                     currentAssets = [];
+                    latestPrimaryAssetResponseCount = 0;
                     assetGrid.innerHTML = '';
                     assetEmptyState.style.display = 'block';
                     assetEmptyState.textContent = 'Unable to load assets.';
                     assetCountNote.textContent = 'Load failed.';
+                    latestAssetHideReason = 'fetch_failed';
                     updateAvailabilityHint();
                     updatePrimaryRentalFeedback();
+                    refreshAssetDebugPanel();
                 });
         }
 
@@ -3304,30 +3491,42 @@
                 return;
             }
 
-            const params = new URLSearchParams({
-                product_id: String(item.product_id)
-            });
+            const requestRentalItemAssets = function (withWarehouseFilter) {
+                const params = new URLSearchParams({
+                    product_id: String(item.product_id)
+                });
 
-            if (warehouseSelect.value) {
-                params.append('dispatch_warehouse_id', warehouseSelect.value);
-            }
-
-            if (currentRentalId) {
-                params.append('rental_id', String(currentRentalId));
-            }
-
-            rentalItemAssetRequests[cacheKey] = fetch('{{ route('rentals.available-assets') }}?' + params.toString(), {
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
+                if (withWarehouseFilter && warehouseSelect.value) {
+                    params.append('dispatch_warehouse_id', warehouseSelect.value);
                 }
-            })
-                .then(function (response) {
+
+                if (currentRentalId) {
+                    params.append('rental_id', String(currentRentalId));
+                }
+
+                return fetch('{{ route('rentals.available-assets') }}?' + params.toString(), {
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                }).then(function (response) {
                     if (!response.ok) {
                         throw new Error('Unable to load assets');
                     }
 
                     return response.json();
+                });
+            };
+
+            rentalItemAssetRequests[cacheKey] = requestRentalItemAssets(true)
+                .then(function (payload) {
+                    const initialAssets = Array.isArray(payload.data) ? payload.data : [];
+
+                    if (!initialAssets.length && warehouseSelect.value) {
+                        return requestRentalItemAssets(false);
+                    }
+
+                    return payload;
                 })
                 .then(function (payload) {
                     rentalItemAssetCache[cacheKey] = Array.isArray(payload.data) ? payload.data : [];
@@ -4014,9 +4213,28 @@
         productSelect.addEventListener('change', handlePrimaryProductChange);
         productSelect.addEventListener('input', handlePrimaryProductChange);
         productSelect.addEventListener('searchable-select:changed', handlePrimaryProductChange);
+        const productTriggerLabel = productSelect?._searchableSelect?.triggerLabel;
+        if (productTriggerLabel && typeof MutationObserver !== 'undefined') {
+            let lastObservedProductLabel = (productTriggerLabel.textContent || '').trim();
+            new MutationObserver(function () {
+                const nextLabel = (productTriggerLabel.textContent || '').trim();
+                if (!nextLabel || nextLabel === lastObservedProductLabel) {
+                    return;
+                }
+
+                lastObservedProductLabel = nextLabel;
+
+                if (!/^select product$/i.test(nextLabel)) {
+                    window.requestAnimationFrame(function () {
+                        handlePrimaryProductChange();
+                    });
+                }
+            }).observe(productTriggerLabel, { childList: true, characterData: true, subtree: true });
+        }
         warehouseSelect.addEventListener('change', function () {
             updateWarehouseMetric();
             primaryAvailabilityLoadedFor = null;
+            lastPrimaryAssetSignature = null;
             updateAvailabilityHint();
             updatePrimaryRentalFeedback();
             fetchAssets();
@@ -4124,6 +4342,7 @@
         }, 0);
         renderRentalItems();
         renderSaleItems();
+        window.setInterval(syncPrimaryAssetStateIfNeeded, 250);
     })();
 </script>
 
@@ -4200,6 +4419,17 @@
 
             const optionCityName = (option.getAttribute('data-city-name') || '').trim().toLowerCase();
             return optionCityName !== '' && optionCityName === selectedCityName();
+        }
+
+        function hasCityMetadata(option) {
+            if (!option) {
+                return false;
+            }
+
+            const optionCityId = parseInt(option.getAttribute('data-city-id') || '0', 10) || 0;
+            const optionCityName = (option.getAttribute('data-city-name') || '').trim();
+
+            return optionCityId > 0 || optionCityName !== '';
         }
 
         function rebuildSelect(select, originalNodes, optionFilter, emptyText) {
@@ -4397,7 +4627,9 @@
                 const visibleWarehouses = rebuildSelect(
                     warehouseSelect,
                     originalWarehouseNodes,
-                    matchesCity,
+                    function (option) {
+                        return matchesCity(option) || !hasCityMetadata(option);
+                    },
                     'Select warehouse for this city'
                 );
                 if (warehouseCityHint) {
