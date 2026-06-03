@@ -83,6 +83,25 @@
 
         return $count > 99 ? '99+' : (string) $count;
     };
+    $iconSemanticClass = function (?string $icon = null, ?string $key = null, ?string $label = null): string {
+        $pool = strtolower(trim(implode(' ', array_filter([
+            (string) $icon,
+            (string) $key,
+            (string) $label,
+        ]))));
+
+        return match (true) {
+            str_contains($pool, 'rental') || str_contains($pool, 'renewal') => 'icon-rental',
+            str_contains($pool, 'deliver') || str_contains($pool, 'pickup') || str_contains($pool, 'task') || str_contains($pool, 'vendor') => 'icon-delivery',
+            str_contains($pool, 'invent') || str_contains($pool, 'asset') || str_contains($pool, 'stock') || str_contains($pool, 'warehouse') || str_contains($pool, 'product') || str_contains($pool, 'city') => 'icon-inventory',
+            str_contains($pool, 'invoice') || str_contains($pool, 'payment') || str_contains($pool, 'deposit') || str_contains($pool, 'sale') || str_contains($pool, 'report') => 'icon-finance',
+            str_contains($pool, 'customer') || str_contains($pool, 'crm') || str_contains($pool, 'communication') || str_contains($pool, 'business partner') => 'icon-customer',
+            str_contains($pool, 'user') || str_contains($pool, 'role') || str_contains($pool, 'staff') || str_contains($pool, 'team') => 'icon-team',
+            str_contains($pool, 'knowledge') || str_contains($pool, 'help') => 'icon-knowledge',
+            str_contains($pool, 'setting') || str_contains($pool, 'company') || str_contains($pool, 'dashboard') || str_contains($pool, 'profile') => 'icon-admin',
+            default => 'icon-admin',
+        };
+    };
 
     $sidebarSections = [
         [
@@ -157,11 +176,25 @@
         ['label' => 'Data Import', 'icon' => 'products', 'href' => $safeRoute('imports.index'), 'active' => request()->routeIs('imports.*'), 'visible' => $currentUser?->isSuperAdmin() ?? false],
     ];
 
+    $organizationItems = collect($organizationItems)->map(function ($item) use ($iconSemanticClass) {
+        $item['icon_class'] = $iconSemanticClass($item['icon'] ?? null, $item['key'] ?? null, $item['label'] ?? null);
+        return $item;
+    })->all();
+
     $organizationMenuOpen = collect($organizationItems)->contains(fn ($item) => !empty($item['active']));
     $visibleSidebarSections = collect($sidebarSections)->map(function ($section) {
         $section['items'] = collect($section['items'])->filter(fn ($item) => !empty($item['visible']) && !empty($item['href']))->values()->all();
         return $section;
     })->filter(fn ($section) => !empty($section['items']))->values();
+
+    $visibleSidebarSections = $visibleSidebarSections->map(function ($section) use ($iconSemanticClass) {
+        $section['items'] = collect($section['items'])->map(function ($item) use ($iconSemanticClass) {
+            $item['icon_class'] = $iconSemanticClass($item['icon'] ?? null, $item['key'] ?? null, $item['label'] ?? null);
+            return $item;
+        })->all();
+
+        return $section;
+    });
 
     $mobilePrimaryItems = $isDeliveryFacingMenuRole
         ? collect([
@@ -177,6 +210,10 @@
         ]);
 
     $mobilePrimaryItems = $mobilePrimaryItems
+        ->map(function ($item) use ($iconSemanticClass) {
+            $item['icon_class'] = $iconSemanticClass($item['icon'] ?? null, $item['key'] ?? null, $item['label'] ?? null);
+            return $item;
+        })
         ->filter(fn ($item) => !empty($item['href']))
         ->values();
 
@@ -186,11 +223,18 @@
         ['label' => 'New Sale', 'icon' => 'sales', 'href' => ($currentUser?->canAccessModule('sales', 'create') ?? false) ? $safeRoute('sales.create') : null],
         ['label' => 'New Invoice', 'icon' => 'invoices', 'href' => ($currentUser?->canAccessModule('invoices', 'create') ?? false) ? $safeRoute('invoices.create') : null],
         ['label' => 'New Product', 'icon' => 'products', 'href' => ($currentUser?->canAccessModule('products', 'create') ?? false) ? $safeRoute('products.create') : null],
-    ])->filter(fn ($item) => !empty($item['href']))->values();
+    ])->filter(fn ($item) => !empty($item['href']))->map(function ($item) use ($iconSemanticClass) {
+        $item['icon_class'] = $iconSemanticClass($item['icon'] ?? null, $item['key'] ?? null, $item['label'] ?? null);
+        return $item;
+    })->values();
 
     $mobileMoreItems = $visibleSidebarSections
         ->flatMap(fn ($section) => $section['items'])
         ->merge(collect($organizationItems)->filter(fn ($item) => !empty($item['visible']) && !empty($item['href'])))
+        ->map(function ($item) use ($iconSemanticClass) {
+            $item['icon_class'] = $item['icon_class'] ?? $iconSemanticClass($item['icon'] ?? null, $item['key'] ?? null, $item['label'] ?? null);
+            return $item;
+        })
         ->filter(fn ($item) => !empty($item['href']))
         ->reject(fn ($item) => in_array($item['label'], ['Dashboard', 'Rentals', 'Sales', 'Customers', 'Tasks', 'Pickups', 'Notifications'], true))
         ->values()
@@ -322,7 +366,7 @@
 
 <style>
     .app-shell {
-        --ph-sidebar-expanded-width:244px;
+        --ph-sidebar-expanded-width:280px;
         --ph-sidebar-collapsed-width:76px;
         --ph-sidebar-width:var(--ph-sidebar-expanded-width);
         display:flex; min-height:100vh; width:100%; max-width:100%; overflow-x:hidden;
@@ -333,7 +377,7 @@
     }
     .app-shell-sidebar {
         position:relative;
-        flex:0 0 var(--ph-sidebar-width); width:var(--ph-sidebar-width); max-width:var(--ph-sidebar-width); color:#334155; padding:10px 8px;
+        flex:0 0 var(--ph-sidebar-width); width:var(--ph-sidebar-width); max-width:var(--ph-sidebar-width); color:#334155; padding:10px 10px;
         display:flex; flex-direction:column; gap:8px; box-sizing:border-box; overflow:hidden;
         height:100vh;
         max-height:100vh;
@@ -457,15 +501,15 @@
         min-height:0;
         overflow-y:auto;
         overflow-x:hidden;
-        padding-right:2px;
+        padding-right:8px;
         scrollbar-width:thin;
-        scrollbar-color:#cbd5e1 transparent;
+        scrollbar-color:#c8d7ea transparent;
     }
     .sidebar-scroll::-webkit-scrollbar {
-        width:8px;
+        width:5px;
     }
     .sidebar-scroll::-webkit-scrollbar-thumb {
-        background:#cbd5e1;
+        background:#c8d7ea;
         border-radius:999px;
     }
     .sidebar-scroll::-webkit-scrollbar-track {
@@ -484,12 +528,12 @@
         gap:6px;
     }
     .sidebar-link {
-        position:relative; display:flex; align-items:center; gap:8px; padding:6px 9px 6px 11px; border-radius:10px;
+        position:relative; display:flex; align-items:center; gap:10px; padding:6px 10px 6px 10px; border-radius:10px;
         text-decoration:none; font-size:12px; font-weight:700; color:#475569;
-        border:1px solid transparent; transition:background .16s ease, color .16s ease, transform .16s ease, border-color .16s ease, padding .22s ease, gap .22s ease;
-        overflow:visible;
+        border:1px solid transparent; transition:background-color .16s ease, color .16s ease, border-color .16s ease, box-shadow .16s ease;
+        overflow:hidden;
     }
-    .sidebar-link:hover { background:#f8fafc; color:#0f172a; transform:translateX(1px); border-color:#e2e8f0; }
+    .sidebar-link:hover { background:#f8fafc; color:#0f172a; border-color:#e2e8f0; }
     .sidebar-link.is-active {
         color:#312e81; background:#eef2ff;
         border-color:#c7d2fe; box-shadow:none;
@@ -513,17 +557,24 @@
     }
     .sidebar-icon {
         width:22px; height:22px; border-radius:7px; display:grid; place-items:center; flex:0 0 22px;
-        color:#64748b; background:#f8fafc; border:1px solid #e2e8f0;
+        color:var(--ph-icon-tone, #64748b); background:var(--ph-icon-tone-soft, #f8fafc); border:1px solid var(--ph-icon-tone-border, #e2e8f0);
     }
     .sidebar-icon svg { width:14px; height:14px; }
     .sidebar-link.is-active .sidebar-icon,
     .sidebar-link.is-admin-active .sidebar-icon { color:#4f46e5; background:#ffffff; border-color:#c7d2fe; }
-    .sidebar-label { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; transition:opacity .16s ease, max-width .2s ease, width .2s ease; }
+    .sidebar-label {
+        flex:1 1 auto;
+        min-width:0;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+        transition:opacity .16s ease;
+    }
     .sidebar-link-badge {
         margin-left:auto;
-        min-width:18px;
+        min-width:20px;
         height:18px;
-        padding:0 5px;
+        padding:0 6px;
         border-radius:999px;
         display:inline-flex;
         align-items:center;
@@ -534,8 +585,9 @@
         font-weight:800;
         line-height:1;
         box-shadow:0 8px 16px rgba(179,13,35,.18);
-        transform:translateY(-6px);
+        transform:none;
         flex:0 0 auto;
+        align-self:center;
     }
     .sidebar-link.is-active .sidebar-link-badge,
     .sidebar-link.is-admin-active .sidebar-link-badge {
@@ -639,7 +691,7 @@
         overflow:hidden;
         max-height:none;
         opacity:1;
-        transition:max-height .22s ease, opacity .18s ease, margin-top .18s ease;
+        transition:opacity .12s ease;
     }
     .sidebar-panel[hidden] {
         display:none;
@@ -731,7 +783,7 @@
         padding:20px 22px;
         overflow-x:hidden;
         box-sizing:border-box;
-        transition:max-width .24s ease, padding .24s ease;
+        transition:none;
     }
     .app-shell-topbar {
         position:sticky;
@@ -897,9 +949,9 @@
         display:grid;
         place-items:center;
         border-radius:10px;
-        background:#eff6ff;
-        color:#1d4ed8;
-        border:1px solid #bfdbfe;
+        background:var(--ph-icon-tone-soft, #eff6ff);
+        color:var(--ph-icon-tone, #1d4ed8);
+        border:1px solid var(--ph-icon-tone-border, #bfdbfe);
     }
     .quick-add-icon svg {
         width:15px;
@@ -918,7 +970,7 @@
         place-items:center;
         border:1px solid #e2e8f0;
         background:#fff;
-        color:#334155;
+        color:var(--ph-icon-tone, #334155);
         text-decoration:none;
         box-shadow:0 6px 16px rgba(15,23,42,.03);
         transition:border-color .16s ease, color .16s ease, background .16s ease, transform .16s ease, box-shadow .16s ease;
@@ -953,7 +1005,7 @@
         place-items:center;
         border:1px solid #dbe3ef;
         background:#fff;
-        color:#334155;
+        color:var(--ph-icon-tone, #334155);
         cursor:pointer;
         list-style:none;
         position:relative;
@@ -2150,39 +2202,39 @@
         }
         .mobile-more-link.is-active {
             color:#fff;
-            background:linear-gradient(135deg, #2563eb, #38bdf8);
-            border-color:#2563eb;
+            background:linear-gradient(135deg, #4f46e5, #5b4ce0);
+            border-color:#4f46e5;
         }
         .mobile-more-link.is-disabled {
             color:#94a3b8;
             cursor:not-allowed;
         }
-        .mobile-more-icon {
-            width:30px;
-            height:30px;
-            display:grid;
-            place-items:center;
-            border-radius:12px;
-            background:#fff;
-            color:#0f766e;
-            border:1px solid #e2e8f0;
-            flex:0 0 30px;
-        }
+    .mobile-more-icon {
+        width:30px;
+        height:30px;
+        display:grid;
+        place-items:center;
+        border-radius:12px;
+        background:var(--ph-icon-tone-soft, #fff);
+        color:var(--ph-icon-tone, #0f766e);
+        border:1px solid var(--ph-icon-tone-border, #e2e8f0);
+        flex:0 0 30px;
+    }
         .mobile-more-icon svg {
             width:16px;
             height:16px;
             flex:0 0 16px;
         }
-        .mobile-more-action .mobile-more-icon {
-            color:#1d4ed8;
-            background:#dbeafe;
-            border-color:#93c5fd;
-        }
-        .mobile-more-logout .mobile-more-icon {
-            color:#b91c1c;
-            background:#fee2e2;
-            border-color:#fca5a5;
-        }
+    .mobile-more-action .mobile-more-icon {
+        color:var(--ph-icon-tone, #1d4ed8);
+        background:var(--ph-icon-tone-soft, #dbeafe);
+        border-color:var(--ph-icon-tone-border, #93c5fd);
+    }
+    .mobile-more-logout .mobile-more-icon {
+        color:var(--ph-icon-tone, #b91c1c);
+        background:var(--ph-icon-tone-soft, #fee2e2);
+        border-color:var(--ph-icon-tone-border, #fca5a5);
+    }
         .mobile-more-action .mobile-more-icon svg,
         .mobile-more-logout .mobile-more-icon svg {
             width:18px;
@@ -2583,88 +2635,130 @@
         display:none !important;
     }
     .app-shell-sidebar {
-        padding:8px 8px 10px;
+        padding:8px 10px 10px;
         height:calc(100vh - var(--ph-header-height));
         max-height:calc(100vh - var(--ph-header-height));
+        background:var(--ph-color-sidebar);
+        border-color:var(--ph-color-border-strong);
+        box-shadow:0 16px 36px rgba(15,23,42,.05);
+        overflow:visible;
     }
     .sidebar-scroll {
-        padding-right:6px;
+        padding-right:12px;
         padding-bottom:10px;
+        scrollbar-gutter:stable;
+    }
+    .sidebar-nav,
+    .sidebar-panel {
+        min-width:0;
     }
     .sidebar-section {
-        gap:4px;
-        margin-top:4px;
-        padding-top:6px;
-        border-top:1px solid #eef2f7;
+        gap:3px;
+        margin-top:3px;
+        padding-top:5px;
+        border-top:1px solid #dde7f4;
     }
     .sidebar-section-toggle {
-        min-height:28px;
-        padding:4px 6px;
+        min-height:24px;
+        padding:3px 6px;
         border:none;
         border-radius:8px;
         background:transparent;
-        color:#64748b;
+        color:#5b6f88;
         box-shadow:none;
     }
     .sidebar-section-toggle:hover {
-        background:#f8fafc;
+        background:#edf4ff;
         border-color:transparent;
         transform:none;
     }
     .sidebar-section-toggle span,
     .sidebar-section-title {
-        font-size:10px;
-        letter-spacing:.12em;
+        font-size:11px;
+        letter-spacing:.08em;
         text-transform:uppercase;
-        font-weight:800;
-        color:#64748b;
+        font-weight:600;
+        color:#6b7f98;
     }
     .sidebar-nav {
-        gap:2px;
+        gap:1px;
     }
     .sidebar-link {
-        min-height:33px;
-        padding:5px 36px 5px 10px;
-        font-weight:600;
-        color:#1e293b;
+        width:100%;
+        max-width:100%;
+        min-height:30px;
+        gap:10px;
+        padding:4px 10px;
+        font-weight:500;
+        color:#20324d;
+        overflow:visible;
+        box-sizing:border-box;
+        transition:background-color .16s ease, color .16s ease, border-color .16s ease, box-shadow .16s ease;
     }
     .sidebar-link:hover {
         color:#0f172a;
+        background:#edf4ff;
+        border-color:#d8e5f6;
+        transform:none;
     }
     .sidebar-link .sidebar-label {
         color:inherit;
+        flex:1 1 auto;
+        min-width:0;
+        max-width:100%;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+        transition:opacity .16s ease;
     }
     .sidebar-link.is-active,
     .sidebar-link.is-admin-active,
     .sidebar-link.is-secondary-active {
-        color:#312e81;
+        color:#ffffff;
+        background:linear-gradient(135deg, #4f46e5 0%, #5b4ce0 100%);
+        border-color:#4f46e5;
+        box-shadow:0 8px 16px rgba(79,70,229,.16);
     }
     .sidebar-icon {
         width:20px;
         height:20px;
         flex:0 0 20px;
-        color:#475569;
-        background:#f8fafc;
-        border-color:#e2e8f0;
+        color:var(--ph-icon-tone, #334155);
+        background:var(--ph-icon-tone-soft, #edf4ff);
+        border-color:var(--ph-icon-tone-border, #d8e5f6);
     }
     .sidebar-icon svg {
-        width:13px;
-        height:13px;
+        width:12px;
+        height:12px;
     }
     .sidebar-link.is-active .sidebar-icon,
     .sidebar-link.is-admin-active .sidebar-icon,
     .sidebar-link.is-secondary-active .sidebar-icon {
-        color:#4f46e5;
-        border-color:#c7d2fe;
-        background:#ffffff;
+        color:#ffffff;
+        border-color:rgba(255,255,255,.22);
+        background:rgba(255,255,255,.12);
     }
     .sidebar-link-badge {
-        position:absolute;
-        right:10px;
-        top:50%;
-        margin-left:0;
-        transform:translateY(-50%);
-        box-shadow:0 4px 10px rgba(79,70,229,.10);
+        position:static;
+        right:auto;
+        top:auto;
+        margin-left:auto;
+        transform:none;
+        box-shadow:0 2px 8px rgba(79,70,229,.10);
+        min-width:26px;
+        height:17px;
+        padding:0 6px;
+        flex:0 0 auto;
+        align-self:center;
+        text-align:center;
+        font-size:9.5px;
+    }
+    .sidebar-link.is-active .sidebar-link-badge,
+    .sidebar-link.is-admin-active .sidebar-link-badge,
+    .sidebar-link.is-secondary-active .sidebar-link-badge {
+        background:rgba(255,255,255,.18);
+        color:#ffffff;
+        box-shadow:none;
     }
     .app-shell-topbar {
         position:fixed;
@@ -2698,7 +2792,7 @@
     .desktop-header-brand {
         display:flex;
         align-items:center;
-        gap:9px;
+        gap:10px;
         min-width:0;
         text-decoration:none;
         color:#0f172a;
@@ -2725,8 +2819,8 @@
     .shell-brand-logo {
         width:auto;
         height:auto;
-        max-width:170px;
-        max-height:38px;
+        max-width:182px;
+        max-height:42px;
         object-fit:contain;
         display:block;
     }
@@ -2740,8 +2834,8 @@
         display:inline-flex;
         align-items:center;
         justify-content:center;
-        min-height:34px;
-        padding:0 12px;
+        min-height:32px;
+        padding:0 11px;
         border-radius:12px;
         border:1px solid #c7d2fe;
         background:#eef2ff;
@@ -2752,9 +2846,7 @@
         flex:0 0 auto;
     }
     .desktop-header-meta {
-        min-width:0;
-        display:grid;
-        gap:1px;
+        display:none;
     }
     .desktop-header-meta strong {
         display:block;
@@ -2774,28 +2866,28 @@
     }
     .desktop-header-sidebar-toggle {
         position:fixed;
-        top:88px;
-        left:calc(var(--ph-sidebar-width) - 14px);
+        top:82px;
+        left:calc(var(--ph-sidebar-width) - 12px);
         z-index:141;
-        width:28px;
-        min-height:28px;
+        width:24px;
+        min-height:24px;
         border-radius:999px;
-        background:#f8fafc;
+        background:#ffffff;
         border:1px solid #dbe3ef;
-        box-shadow:0 6px 18px rgba(15,23,42,.08);
+        box-shadow:0 6px 14px rgba(15,23,42,.08);
         padding:0;
     }
     .desktop-header-sidebar-toggle .sidebar-shell-toggle-label {
         display:none;
     }
     .app-shell.is-sidebar-collapsed .desktop-header-sidebar-toggle {
-        left:calc(var(--ph-sidebar-width) - 14px);
+        left:calc(var(--ph-sidebar-width) - 12px);
     }
     .app-shell-search {
-        flex:0 1 460px;
-        width:min(460px, 40vw);
-        min-width:320px;
-        max-width:520px;
+        flex:0 1 400px;
+        width:min(400px, 34vw);
+        min-width:300px;
+        max-width:430px;
         min-height:42px;
         padding:0 12px;
         border-radius:12px;
@@ -2903,6 +2995,9 @@
         max-width:calc(100vw - var(--ph-sidebar-width));
         padding:18px 22px 22px;
         overflow-y:auto;
+    }
+    .sidebar-panel {
+        transition:none;
     }
     @media (max-width: 1280px) {
         .desktop-header-sidebar-toggle {
@@ -3042,7 +3137,7 @@
                                    data-sidebar-link
                                    data-sidebar-tooltip="{{ $item['label'] }}"
                                    aria-label="{{ $item['label'] }}">
-                                    <span class="sidebar-icon">{!! $navIcon($item['icon'] ?? 'default') !!}</span>
+                                    <span class="sidebar-icon icon-chip {{ $item['icon_class'] ?? 'icon-admin' }}">{!! $navIcon($item['icon'] ?? 'default') !!}</span>
                                     <span class="sidebar-label">{{ $item['label'] }}</span>
                                     @if($sidebarBadge)
                                         <span class="sidebar-link-badge">{{ $sidebarBadge }}</span>
@@ -3084,7 +3179,7 @@
                                data-sidebar-link
                                data-sidebar-tooltip="{{ $item['label'] }}"
                                aria-label="{{ $item['label'] }}">
-                                <span class="sidebar-icon">{!! $navIcon($item['icon'] ?? 'default') !!}</span>
+                                <span class="sidebar-icon icon-chip {{ $item['icon_class'] ?? 'icon-admin' }}">{!! $navIcon($item['icon'] ?? 'default') !!}</span>
                                 <span class="sidebar-label">{{ $item['label'] }}</span>
                             </a>
                         @endforeach
@@ -3140,7 +3235,7 @@
                         <div class="quick-add-panel">
                             @foreach($quickAddItems as $item)
                                 <a href="{{ $item['href'] }}" class="quick-add-link">
-                                    <span class="quick-add-icon">{!! $navIcon($item['icon'] ?? 'default') !!}</span>
+                                    <span class="quick-add-icon icon-chip {{ $item['icon_class'] ?? 'icon-admin' }}">{!! $navIcon($item['icon'] ?? 'default') !!}</span>
                                     <span>{{ $item['label'] }}</span>
                                 </a>
                             @endforeach
@@ -3153,7 +3248,7 @@
                 @if(!empty($knowledgeHubHref))
                     <a
                         href="{{ $knowledgeHubHref }}"
-                        class="topbar-action-link {{ request()->routeIs('knowledge.index') ? 'is-active' : '' }}"
+                        class="topbar-action-link icon-ink icon-knowledge {{ request()->routeIs('knowledge.index') ? 'is-active' : '' }}"
                         title="Knowledge Hub"
                         aria-label="Knowledge Hub"
                     >
@@ -3179,7 +3274,7 @@
                     data-notification-sound-variant="{{ $notificationSoundVariant }}"
                     data-notification-sound-src="{{ $notificationSoundAsset }}"
                 >
-                    <summary class="topbar-bell-trigger" aria-label="Open notifications">
+                    <summary class="topbar-bell-trigger icon-ink {{ $topbarNotificationCount > 0 ? 'icon-alert' : 'icon-admin' }}" aria-label="Open notifications">
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>
                         @if($topbarNotificationCount > 0)
                             <span class="topbar-bell-badge" data-notification-badge>{{ $topbarNotificationCount > 99 ? '99+' : $topbarNotificationCount }}</span>
@@ -3335,15 +3430,15 @@
 
         <div class="rn-trust-strip" data-mobile-trust="{{ $isDashboardRoute ? 'dashboard' : 'standard' }}" aria-label="Workspace trust indicators">
             <span class="rn-trust-pill">
-                <svg class="rn-trust-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-5"/></svg>
+                <svg class="rn-trust-icon icon-chip icon-admin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-5"/></svg>
                 <strong>Secure cloud workspace</strong>
             </span>
             <span class="rn-trust-pill">
-                <svg class="rn-trust-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14.5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                <svg class="rn-trust-icon icon-chip icon-finance" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14.5a3.5 3.5 0 0 1 0 7H6"/></svg>
                 <strong>GST-ready invoicing</strong>
             </span>
             <span class="rn-trust-pill">
-                <svg class="rn-trust-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><path d="M9.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>
+                <svg class="rn-trust-icon icon-chip icon-team" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><path d="M9.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>
                 <strong>Role-based access</strong>
             </span>
         </div>
@@ -3669,6 +3764,19 @@
                 group.classList.toggle('is-collapsed', !expand);
                 toggle.setAttribute('aria-expanded', expand ? 'true' : 'false');
 
+                if (config.immediate) {
+                    panel.hidden = !expand;
+                    panel.style.opacity = expand ? '1' : '0';
+                    panel.style.maxHeight = expand ? 'none' : '0px';
+
+                    if (!config.skipSave) {
+                        savedSidebarState[groupKey] = expand;
+                        persistSidebarState();
+                    }
+
+                    return;
+                }
+
                 if (expand) {
                     panel.hidden = false;
                     panel.style.maxHeight = '0px';
@@ -3708,18 +3816,7 @@
                     return;
                 }
 
-                panel.style.maxHeight = '';
-                panel.style.opacity = shouldOpen ? '1' : '0';
-                panel.hidden = !shouldOpen;
-                group.classList.toggle('is-expanded', shouldOpen);
-                group.classList.toggle('is-collapsed', !shouldOpen);
-                toggle.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
-
-                if (shouldOpen) {
-                    panel.style.maxHeight = panel.scrollHeight + 'px';
-                } else {
-                    panel.style.maxHeight = '0px';
-                }
+                setSidebarGroupState(group, shouldOpen, { skipSave: true, immediate: true });
 
                 toggle.addEventListener('click', function (event) {
                     event.preventDefault();

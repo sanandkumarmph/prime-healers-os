@@ -18,7 +18,7 @@
                 @continue(empty($item['visible']) || empty($item['href']))
 
                 <a href="{{ $item['href'] }}" class="mobile-more-link {{ !empty($item['active']) ? 'is-active' : '' }}">
-                    <span class="mobile-more-icon">{!! $navIcon($item['icon'] ?? 'settings') !!}</span>
+                    <span class="mobile-more-icon icon-chip {{ $item['icon_class'] ?? 'icon-admin' }}">{!! $navIcon($item['icon'] ?? 'settings') !!}</span>
                     <span>{{ $item['label'] }}</span>
                 </a>
             @endforeach
@@ -36,7 +36,7 @@
             <div class="mobile-more-actions">
                 @if(!empty($profileHref))
                     <a href="{{ $profileHref }}" class="mobile-more-action">
-                        <span class="mobile-more-icon" aria-hidden="true" style="color:#1d4ed8; background:#dbeafe; border-color:#93c5fd;">
+                        <span class="mobile-more-icon icon-chip icon-team" aria-hidden="true">
                             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.35" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M20 21a8 8 0 0 0-16 0"></path>
                                 <circle cx="12" cy="8" r="4"></circle>
@@ -50,7 +50,7 @@
                     <form method="POST" action="{{ $logoutHref }}" id="mobileLogoutForm">
                         @csrf
                         <button type="button" class="mobile-more-logout" onclick="document.getElementById('mobileLogoutForm')?.requestSubmit();">
-                            <span class="mobile-more-icon" aria-hidden="true" style="color:#b91c1c; background:#fee2e2; border-color:#fca5a5;">
+                            <span class="mobile-more-icon icon-chip icon-alert" aria-hidden="true">
                                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.35" stroke-linecap="round" stroke-linejoin="round">
                                     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
                                     <path d="M16 17l5-5-5-5"></path>

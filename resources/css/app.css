@@ -6,8 +6,8 @@
     --ph-color-primary: #4f46e5;
     --ph-color-primary-strong: #3730a3;
     --ph-color-primary-soft: #eef2ff;
-    --ph-color-sidebar: #ffffff;
-    --ph-color-sidebar-strong: #f8fafc;
+    --ph-color-sidebar: #f5f9ff;
+    --ph-color-sidebar-strong: #eef5ff;
     --ph-color-sidebar-soft: rgba(79, 70, 229, 0.08);
     --ph-color-success: #0E9F4B;
     --ph-color-success-soft: #EAF8F0;
@@ -20,8 +20,8 @@
     --ph-color-bg: #f3f5f9;
     --ph-color-surface: #FFFFFF;
     --ph-color-surface-soft: #f8fafc;
-    --ph-color-border: #e2e8f0;
-    --ph-color-border-strong: #cbd5e1;
+    --ph-color-border: #dde7f4;
+    --ph-color-border-strong: #c4d3e5;
     --ph-color-text: #0f172a;
     --ph-color-text-soft: #64748b;
     --ph-color-text-faint: #94a3b8;
@@ -83,6 +83,36 @@
     --rn-icon-size-md: 16px;
     --rn-icon-size-lg: 18px;
     --rn-icon-size-xl: 20px;
+    --ph-icon-rental: #315efb;
+    --ph-icon-rental-soft: #eef4ff;
+    --ph-icon-rental-border: #cddafe;
+    --ph-icon-delivery: #c97a12;
+    --ph-icon-delivery-soft: #fff5e8;
+    --ph-icon-delivery-border: #f4d3a1;
+    --ph-icon-inventory: #0f8b8d;
+    --ph-icon-inventory-soft: #e9fbfb;
+    --ph-icon-inventory-border: #b7ecec;
+    --ph-icon-finance: #138a4b;
+    --ph-icon-finance-soft: #ebfbf2;
+    --ph-icon-finance-border: #bfe8cd;
+    --ph-icon-customer: #1777bd;
+    --ph-icon-customer-soft: #eef7ff;
+    --ph-icon-customer-border: #cfe4fb;
+    --ph-icon-team: #7c3aed;
+    --ph-icon-team-soft: #f4eeff;
+    --ph-icon-team-border: #ddd0ff;
+    --ph-icon-alert: #c2410c;
+    --ph-icon-alert-soft: #fff1e8;
+    --ph-icon-alert-border: #f6c7ae;
+    --ph-icon-success: #15803d;
+    --ph-icon-success-soft: #eaf9ef;
+    --ph-icon-success-border: #c7e9d1;
+    --ph-icon-admin: #475569;
+    --ph-icon-admin-soft: #f3f6f9;
+    --ph-icon-admin-border: #d7e0ea;
+    --ph-icon-knowledge: #5b4ce0;
+    --ph-icon-knowledge-soft: #f1efff;
+    --ph-icon-knowledge-border: #d7d2fb;
 }
 
 html {
@@ -143,6 +173,96 @@ h6,
 .rn-trust-icon {
     line-height: 0;
     overflow: hidden;
+}
+
+.icon-rental,
+.icon-delivery,
+.icon-inventory,
+.icon-finance,
+.icon-customer,
+.icon-team,
+.icon-alert,
+.icon-success,
+.icon-admin,
+.icon-knowledge {
+    --ph-icon-tone: var(--ph-color-text-soft);
+    --ph-icon-tone-soft: var(--ph-color-surface-soft);
+    --ph-icon-tone-border: var(--ph-color-border);
+}
+
+.icon-rental {
+    --ph-icon-tone: var(--ph-icon-rental);
+    --ph-icon-tone-soft: var(--ph-icon-rental-soft);
+    --ph-icon-tone-border: var(--ph-icon-rental-border);
+}
+
+.icon-delivery {
+    --ph-icon-tone: var(--ph-icon-delivery);
+    --ph-icon-tone-soft: var(--ph-icon-delivery-soft);
+    --ph-icon-tone-border: var(--ph-icon-delivery-border);
+}
+
+.icon-inventory {
+    --ph-icon-tone: var(--ph-icon-inventory);
+    --ph-icon-tone-soft: var(--ph-icon-inventory-soft);
+    --ph-icon-tone-border: var(--ph-icon-inventory-border);
+}
+
+.icon-finance {
+    --ph-icon-tone: var(--ph-icon-finance);
+    --ph-icon-tone-soft: var(--ph-icon-finance-soft);
+    --ph-icon-tone-border: var(--ph-icon-finance-border);
+}
+
+.icon-customer {
+    --ph-icon-tone: var(--ph-icon-customer);
+    --ph-icon-tone-soft: var(--ph-icon-customer-soft);
+    --ph-icon-tone-border: var(--ph-icon-customer-border);
+}
+
+.icon-team {
+    --ph-icon-tone: var(--ph-icon-team);
+    --ph-icon-tone-soft: var(--ph-icon-team-soft);
+    --ph-icon-tone-border: var(--ph-icon-team-border);
+}
+
+.icon-alert {
+    --ph-icon-tone: var(--ph-icon-alert);
+    --ph-icon-tone-soft: var(--ph-icon-alert-soft);
+    --ph-icon-tone-border: var(--ph-icon-alert-border);
+}
+
+.icon-success {
+    --ph-icon-tone: var(--ph-icon-success);
+    --ph-icon-tone-soft: var(--ph-icon-success-soft);
+    --ph-icon-tone-border: var(--ph-icon-success-border);
+}
+
+.icon-admin {
+    --ph-icon-tone: var(--ph-icon-admin);
+    --ph-icon-tone-soft: var(--ph-icon-admin-soft);
+    --ph-icon-tone-border: var(--ph-icon-admin-border);
+}
+
+.icon-knowledge {
+    --ph-icon-tone: var(--ph-icon-knowledge);
+    --ph-icon-tone-soft: var(--ph-icon-knowledge-soft);
+    --ph-icon-tone-border: var(--ph-icon-knowledge-border);
+}
+
+.icon-chip {
+    color: var(--ph-icon-tone);
+    background: var(--ph-icon-tone-soft);
+    border-color: var(--ph-icon-tone-border);
+}
+
+.icon-ink {
+    color: var(--ph-icon-tone);
+}
+
+.icon-chip svg,
+.icon-ink svg {
+    color: inherit;
 }
 
 .rn-sidebar svg,
@@ -487,6 +607,40 @@ a svg {
 .rn-summary-link .rn-summary-icon {
     overflow: hidden;
     flex: 0 0 auto;
+}
+
+.dashboard-kpi-icon,
+.dashboard-card-icon,
+.dashboard-snapshot-icon,
+.rn-empty-icon,
+.rn-trust-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ph-icon-tone, var(--ph-color-primary));
+}
+
+.dashboard-kpi-icon.icon-chip,
+.dashboard-card-icon.icon-chip,
+.dashboard-snapshot-icon.icon-chip,
+.rn-trust-icon.icon-chip {
+    background: var(--ph-icon-tone-soft, var(--ph-color-primary-soft));
+    border: 1px solid var(--ph-icon-tone-border, rgba(79, 70, 229, 0.16));
+}
+
+.mobile-nav-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+}
+
+.mobile-nav-item.is-active .mobile-nav-icon {
+    background: #ffffff;
+    border-color: rgba(99, 102, 241, 0.16);
 }
 
 @media (max-width: 640px) {
@@ -1543,7 +1697,7 @@ body {
 
 .rn-sidebar-item .sidebar-icon,
 .rn-sidebar-item .sidebar-icon svg {
-    color: #64748b;
+    color: inherit;
 }
 
 .rn-sidebar-item.is-active {
