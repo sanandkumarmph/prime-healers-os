@@ -3,12 +3,12 @@
 @tailwind utilities;
 
 :root {
-    --ph-color-primary: #1777BD;
-    --ph-color-primary-strong: #115f98;
-    --ph-color-primary-soft: #E9F4FB;
-    --ph-color-sidebar: #263A8C;
-    --ph-color-sidebar-strong: #17245F;
-    --ph-color-sidebar-soft: rgba(255, 255, 255, 0.14);
+    --ph-color-primary: #4f46e5;
+    --ph-color-primary-strong: #3730a3;
+    --ph-color-primary-soft: #eef2ff;
+    --ph-color-sidebar: #ffffff;
+    --ph-color-sidebar-strong: #f8fafc;
+    --ph-color-sidebar-soft: rgba(79, 70, 229, 0.08);
     --ph-color-success: #0E9F4B;
     --ph-color-success-soft: #EAF8F0;
     --ph-color-danger: #B30D23;
@@ -17,14 +17,14 @@
     --ph-color-warning-soft: #FFF7E8;
     --ph-color-info: #1777BD;
     --ph-color-info-soft: #E9F4FB;
-    --ph-color-bg: #F4F7FB;
+    --ph-color-bg: #f3f5f9;
     --ph-color-surface: #FFFFFF;
-    --ph-color-surface-soft: #F8FBFE;
-    --ph-color-border: #D7E1EC;
-    --ph-color-border-strong: #C2D0DE;
-    --ph-color-text: #12263F;
-    --ph-color-text-soft: #5B6E84;
-    --ph-color-text-faint: #8AA0B8;
+    --ph-color-surface-soft: #f8fafc;
+    --ph-color-border: #e2e8f0;
+    --ph-color-border-strong: #cbd5e1;
+    --ph-color-text: #0f172a;
+    --ph-color-text-soft: #64748b;
+    --ph-color-text-faint: #94a3b8;
     --ph-font-heading: "Manrope", "Segoe UI", Arial, sans-serif;
     --ph-font-body: "Inter", "Segoe UI", Arial, sans-serif;
     --ph-space-1: 4px;
@@ -52,13 +52,13 @@
     --ph-card-title-size: 1rem;
     --ph-body-text-size: 0.875rem;
     --ph-label-text-size: 0.72rem;
-    --ph-button-text-size: 0.82rem;
+    --ph-button-text-size: 0.78rem;
     --ph-chip-text-size: 0.72rem;
-    --ph-card-padding: 14px;
-    --ph-card-padding-sm: 12px;
-    --ph-card-padding-lg: 18px;
-    --ph-card-radius: 16px;
-    --ph-card-shadow: 0 12px 28px rgba(11, 35, 66, 0.06);
+    --ph-card-padding: 12px;
+    --ph-card-padding-sm: 10px;
+    --ph-card-padding-lg: 16px;
+    --ph-card-radius: 14px;
+    --ph-card-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
     --rx-bg: var(--ph-color-bg);
     --rx-surface: var(--ph-color-surface);
     --rx-surface-soft: var(--ph-color-surface-soft);
@@ -712,8 +712,8 @@ textarea::placeholder {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    min-height: 36px;
-    padding: 7px 12px;
+    min-height: 34px;
+    padding: 6px 11px;
     border-radius: var(--ph-radius-md);
     border: 1px solid transparent;
     font-size: var(--ph-button-text-size);
@@ -726,7 +726,7 @@ textarea::placeholder {
     background: var(--ph-color-primary);
     border-color: var(--ph-color-primary);
     color: #ffffff;
-    box-shadow: 0 12px 24px rgba(23, 119, 189, 0.18);
+    box-shadow: 0 8px 18px rgba(79, 70, 229, 0.16);
 }
 
 .ph-btn-secondary {
@@ -751,8 +751,8 @@ textarea::placeholder {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    min-height: 24px;
-    padding: 4px 9px;
+    min-height: 22px;
+    padding: 3px 8px;
     border-radius: 999px;
     background: var(--ph-color-info-soft);
     color: var(--ph-color-info);
@@ -772,8 +772,8 @@ textarea::placeholder {
 .ph-select,
 .ph-textarea {
     width: 100%;
-    min-height: 42px;
-    padding: 10px 12px;
+    min-height: 40px;
+    padding: 9px 11px;
     border: 1px solid var(--ph-color-border-strong);
     border-radius: var(--ph-radius-md);
     background: #ffffff;
@@ -796,7 +796,7 @@ textarea::placeholder {
 
 .ph-table th,
 .ph-table td {
-    padding: 11px 13px;
+    padding: 9px 12px;
     border-bottom: 1px solid var(--ph-color-border);
     text-align: left;
     vertical-align: top;
@@ -820,8 +820,8 @@ textarea::placeholder {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    min-height: 36px;
-    padding: 8px 12px;
+    min-height: 34px;
+    padding: 7px 11px;
     border-radius: var(--ph-radius-md);
     border: 1px solid transparent;
     font-size: 12px;
@@ -836,7 +836,7 @@ textarea::placeholder {
     background: var(--ph-color-primary);
     border-color: var(--ph-color-primary);
     color: #ffffff;
-    box-shadow: 0 12px 24px rgba(23, 119, 189, 0.18);
+    box-shadow: 0 8px 18px rgba(79, 70, 229, 0.16);
 }
 
 .rx-btn-secondary {
@@ -874,7 +874,7 @@ textarea::placeholder {
 }
 
 .rx-card-body {
-    padding: 12px 14px;
+    padding: 10px 12px;
 }
 
 .rx-card-title {
@@ -1049,7 +1049,7 @@ textarea::placeholder {
 
 .rx-table th,
 .rx-table td {
-    padding: 11px 13px;
+    padding: 9px 12px;
     border-bottom: 1px solid var(--rx-border);
     vertical-align: top;
     text-align: left;
@@ -1515,57 +1515,55 @@ body {
 }
 
 .rn-sidebar {
-    background:
-        radial-gradient(circle at 16% 6%, rgba(255, 255, 255, 0.10), transparent 26%),
-        linear-gradient(180deg, var(--rn-sidebar) 0%, #203178 52%, var(--rn-sidebar-strong) 100%);
-    color: rgba(255, 255, 255, 0.96);
-    border-right: 1px solid var(--rn-sidebar-border);
+    background: #ffffff;
+    color: var(--rn-text);
+    border-right: 1px solid var(--rn-border);
 }
 
 .rn-sidebar-item {
     position: relative;
     display: flex;
     align-items: center;
-    gap: 12px;
-    min-height: 48px;
-    padding: 10px 12px;
-    border-radius: 16px;
+    gap: 8px;
+    min-height: 36px;
+    padding: 6px 9px 6px 11px;
+    border-radius: 10px;
     text-decoration: none;
-    color: rgba(255, 255, 255, 0.84);
+    color: var(--rn-muted);
     border: 1px solid transparent;
     transition: transform .16s ease, background-color .16s ease, border-color .16s ease, color .16s ease, box-shadow .16s ease;
 }
 
 .rn-sidebar-item:hover {
-    transform: translateX(2px);
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.14);
-    border-color: rgba(255, 255, 255, 0.16);
+    transform: translateX(1px);
+    color: var(--rn-text);
+    background: #f8fafc;
+    border-color: var(--rn-border);
 }
 
 .rn-sidebar-item .sidebar-icon,
 .rn-sidebar-item .sidebar-icon svg {
-    color: rgba(255, 255, 255, 0.92);
+    color: #64748b;
 }
 
 .rn-sidebar-item.is-active {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.20);
-    border-color: rgba(255, 255, 255, 0.22);
-    box-shadow: 0 10px 18px rgba(18, 29, 74, 0.10);
+    color: #312e81;
+    background: #eef2ff;
+    border-color: #c7d2fe;
+    box-shadow: none;
 }
 
 .rn-sidebar-item.is-secondary-active {
-    color: #eff7ff;
-    background: rgba(255, 255, 255, 0.12);
-    border-color: rgba(255, 255, 255, 0.14);
+    color: #312e81;
+    background: #f5f3ff;
+    border-color: #ddd6fe;
 }
 
 .rn-card {
     background: var(--rn-surface);
     border: 1px solid var(--rn-border);
-    border-radius: var(--ph-radius-lg);
-    box-shadow: var(--rn-shadow-soft);
+    border-radius: 22px;
+    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.055);
 }
 
 .rn-btn {
@@ -1622,9 +1620,9 @@ body {
 .rn-table-shell {
     overflow: hidden;
     border: 1px solid var(--rn-border);
-    border-radius: var(--ph-radius-lg);
+    border-radius: 22px;
     background: var(--rn-surface);
-    box-shadow: var(--rn-shadow-soft);
+    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.055);
 }
 
 .rn-input {
@@ -1674,7 +1672,7 @@ body {
 
 .rn-sidebar-item.is-active,
 .rn-sidebar-item.is-secondary-active {
-    box-shadow: 0 8px 16px rgba(18, 29, 74, 0.08), 0 0 0 1px rgba(255,255,255,0.05) inset;
+    box-shadow: none;
 }
 
 .rn-table-shell tbody tr,
@@ -2642,28 +2640,29 @@ body {
 .rn-trust-strip {
     display:flex;
     align-items:center;
-    gap:8px;
+    gap:10px;
     flex-wrap:wrap;
     margin:0 0 12px;
-    padding:10px 12px;
+    padding:12px 16px;
     border:1px solid var(--rn-border);
-    border-radius:16px;
+    border-radius:22px;
     background:#ffffff;
-    box-shadow:var(--rn-shadow-soft);
+    box-shadow:0 14px 34px rgba(15, 23, 42, 0.05);
 }
 
 .rn-trust-pill {
     display:inline-flex;
     align-items:center;
     gap:8px;
-    min-height:32px;
-    padding:7px 10px;
+    min-height:36px;
+    padding:8px 12px;
     border-radius:999px;
-    background:var(--ph-color-surface-soft);
+    background:#ffffff;
     border:1px solid var(--rn-border);
     color:var(--rn-muted);
     font-size:12px;
     font-weight:700;
+    box-shadow:0 8px 18px rgba(15, 23, 42, 0.04);
 }
 
 .rn-trust-pill svg { color:var(--rn-accent); }
@@ -2813,18 +2812,18 @@ body {
 :root {
     --ph-page-title-size: clamp(1.5rem, 2.1vw, 1.82rem);
     --ph-section-title-size: clamp(1.02rem, 1.35vw, 1.16rem);
-    --ph-card-title-size: 0.96rem;
-    --ph-body-text-size: 0.845rem;
-    --ph-label-text-size: 0.69rem;
-    --ph-button-text-size: 0.79rem;
-    --ph-chip-text-size: 0.67rem;
-    --ph-card-padding: 12px;
-    --ph-card-padding-sm: 10px;
-    --ph-card-padding-lg: 16px;
+    --ph-card-title-size: 0.92rem;
+    --ph-body-text-size: 0.82rem;
+    --ph-label-text-size: 0.67rem;
+    --ph-button-text-size: 0.77rem;
+    --ph-chip-text-size: 0.65rem;
+    --ph-card-padding: 11px;
+    --ph-card-padding-sm: 9px;
+    --ph-card-padding-lg: 14px;
     --ph-card-radius: 14px;
-    --ph-card-shadow: 0 10px 24px rgba(11, 35, 66, 0.055);
-    --ph-shadow-soft: 0 8px 20px rgba(11, 35, 66, 0.05);
-    --ph-shadow-card: 0 12px 30px rgba(11, 35, 66, 0.065);
+    --ph-card-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
+    --ph-shadow-soft: 0 6px 18px rgba(15, 23, 42, 0.045);
+    --ph-shadow-card: 0 10px 26px rgba(15, 23, 42, 0.055);
 }
 
 .rx-page-header,
@@ -2860,7 +2859,7 @@ body {
 
 .ph-card-body,
 .rx-card-body {
-    padding: 11px 12px;
+    padding: 10px 11px;
 }
 
 .ph-card-header,
@@ -2909,10 +2908,10 @@ body {
 .rn-btn,
 .rn-btn-primary,
 .rn-btn-secondary {
-    min-height: 34px;
-    padding: 7px 11px;
-    border-radius: 11px;
-    font-size: 12px;
+    min-height: 32px;
+    padding: 6px 10px;
+    border-radius: 10px;
+    font-size: 11.5px;
 }
 
 .ph-badge,
@@ -2977,8 +2976,8 @@ body {
 }
 
 .mobile-nav-item {
-    gap: 4px;
-    font-size: 10px;
+    gap: 2px;
+    font-size: 9px;
 }
 
 .mobile-nav-item > svg {

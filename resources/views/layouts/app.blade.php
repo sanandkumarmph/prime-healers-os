@@ -322,8 +322,8 @@
 
 <style>
     .app-shell {
-        --ph-sidebar-expanded-width:254px;
-        --ph-sidebar-collapsed-width:88px;
+        --ph-sidebar-expanded-width:244px;
+        --ph-sidebar-collapsed-width:76px;
         --ph-sidebar-width:var(--ph-sidebar-expanded-width);
         display:flex; min-height:100vh; width:100%; max-width:100%; overflow-x:hidden;
         transition:background .18s ease;
@@ -333,25 +333,25 @@
     }
     .app-shell-sidebar {
         position:relative;
-        flex:0 0 var(--ph-sidebar-width); width:var(--ph-sidebar-width); max-width:var(--ph-sidebar-width); color:#334155; padding:18px 14px;
-        display:flex; flex-direction:column; gap:14px; box-sizing:border-box; overflow-x:visible; overflow-y:auto;
-        color:rgba(255,255,255,.96);
-        background:
-            radial-gradient(circle at 16% 6%, rgba(255,255,255,.10), transparent 26%),
-            linear-gradient(180deg, #263A8C 0%, #203178 52%, #17245F 100%);
-        border-right:1px solid rgba(255,255,255,.12);
-        box-shadow:8px 0 18px rgba(18,29,74,.08);
+        flex:0 0 var(--ph-sidebar-width); width:var(--ph-sidebar-width); max-width:var(--ph-sidebar-width); color:#334155; padding:10px 8px;
+        display:flex; flex-direction:column; gap:8px; box-sizing:border-box; overflow:hidden;
+        height:100vh;
+        max-height:100vh;
+        color:#0f172a;
+        background:#ffffff;
+        border-right:1px solid #e2e8f0;
+        box-shadow:none;
         transition:flex-basis .24s ease, width .24s ease, max-width .24s ease, padding .24s ease, box-shadow .24s ease;
     }
-    .brand-panel { padding:8px 8px 14px; border-bottom:1px solid rgba(255,255,255,.12); }
+    .brand-panel { flex:0 0 auto; padding:2px 4px 8px; border-bottom:1px solid #e2e8f0; }
     .brand-mark {
         display:flex;
-        flex-direction:column;
+        flex-direction:row;
         align-items:center;
-        justify-content:center;
-        gap:12px;
+        justify-content:flex-start;
+        gap:8px;
         min-width:0;
-        text-align:center;
+        text-align:left;
     }
     .brand-badge {
         display:inline-flex;
@@ -376,20 +376,20 @@
         flex:0 0 auto;
         filter:none;
     }
-    .brand-copy { min-width:0; display:grid; gap:7px; justify-items:center; }
+    .brand-copy { min-width:0; display:grid; gap:4px; justify-items:start; }
     .brand-title-lockup {
         display:flex;
         align-items:center;
-        justify-content:center;
-        gap:7px;
+        justify-content:flex-start;
+        gap:6px;
         flex-wrap:wrap;
     }
     .brand-title {
         font-family:var(--ph-font-heading);
-        font-size:20px;
+        font-size:15px;
         font-weight:800;
         letter-spacing:-.04em;
-        color:#ffffff;
+        color:#0f172a;
         line-height:1.02;
     }
     .brand-title-tag {
@@ -399,9 +399,9 @@
         min-height:21px;
         padding:0 8px;
         border-radius:999px;
-        border:1px solid rgba(255,255,255,.16);
-        background:rgba(255,255,255,.12);
-        color:rgba(255,255,255,.88);
+        border:1px solid #c7d2fe;
+        background:#eef2ff;
+        color:#4f46e5;
         font-family:var(--ph-font-heading);
         font-size:10px;
         font-weight:800;
@@ -409,21 +409,21 @@
         text-transform:uppercase;
         line-height:1;
     }
-    .brand-subtitle { max-width:196px; font-size:11.25px; line-height:1.48; color:rgba(255,255,255,.78); }
+    .brand-subtitle { max-width:156px; font-size:10px; line-height:1.3; color:#64748b; }
     .sidebar-shell-toggle {
         display:flex;
         align-items:center;
         justify-content:center;
         gap:8px;
         width:100%;
-        min-height:38px;
-        margin-top:14px;
-        padding:8px 12px;
-        border-radius:13px;
-        border:1px solid rgba(255,255,255,.14);
-        background:rgba(255,255,255,.11);
-        color:rgba(255,255,255,.92);
-        font-size:11px;
+        min-height:30px;
+        margin-top:10px;
+        padding:6px 9px;
+        border-radius:10px;
+        border:1px solid #e2e8f0;
+        background:#f8fafc;
+        color:#475569;
+        font-size:10.5px;
         font-weight:800;
         letter-spacing:.05em;
         text-transform:uppercase;
@@ -431,14 +431,14 @@
         transition:background .16s ease, border-color .16s ease, transform .16s ease, box-shadow .16s ease;
     }
     .sidebar-shell-toggle:hover {
-        background:rgba(255,255,255,.16);
-        border-color:rgba(255,255,255,.18);
+        background:#ffffff;
+        border-color:#cbd5e1;
         transform:translateY(-1px);
     }
     .sidebar-shell-toggle:focus-visible {
         outline:none;
-        border-color:rgba(191,219,254,.78);
-        box-shadow:0 0 0 4px rgba(191,219,254,.18);
+        border-color:#c7d2fe;
+        box-shadow:0 0 0 4px rgba(199,210,254,.28);
     }
     .sidebar-shell-toggle svg {
         width:16px;
@@ -452,10 +452,29 @@
     .sidebar-shell-toggle-label {
         white-space:nowrap;
     }
-    .sidebar-section-title {
-        font-size:10px; letter-spacing:.12em; text-transform:uppercase; font-weight:800;
+    .sidebar-scroll {
+        flex:1 1 auto;
+        min-height:0;
+        overflow-y:auto;
+        overflow-x:hidden;
+        padding-right:2px;
+        scrollbar-width:thin;
+        scrollbar-color:#cbd5e1 transparent;
     }
-    .sidebar-nav { display:flex; flex-direction:column; gap:4px; }
+    .sidebar-scroll::-webkit-scrollbar {
+        width:8px;
+    }
+    .sidebar-scroll::-webkit-scrollbar-thumb {
+        background:#cbd5e1;
+        border-radius:999px;
+    }
+    .sidebar-scroll::-webkit-scrollbar-track {
+        background:transparent;
+    }
+    .sidebar-section-title {
+        font-size:10px; letter-spacing:.14em; text-transform:uppercase; font-weight:800;
+    }
+    .sidebar-nav { display:flex; flex-direction:column; gap:3px; }
     .sidebar-group {
         display:grid;
         gap:6px;
@@ -465,27 +484,40 @@
         gap:6px;
     }
     .sidebar-link {
-        position:relative; display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:12px;
-        text-decoration:none; font-size:13px; font-weight:700; color:rgba(255,255,255,.84);
+        position:relative; display:flex; align-items:center; gap:8px; padding:6px 9px 6px 11px; border-radius:10px;
+        text-decoration:none; font-size:12px; font-weight:700; color:#475569;
         border:1px solid transparent; transition:background .16s ease, color .16s ease, transform .16s ease, border-color .16s ease, padding .22s ease, gap .22s ease;
         overflow:visible;
     }
-    .sidebar-link:hover { background:rgba(255,255,255,.14); color:#fff; transform:translateX(2px); border-color:rgba(255,255,255,.16); }
+    .sidebar-link:hover { background:#f8fafc; color:#0f172a; transform:translateX(1px); border-color:#e2e8f0; }
     .sidebar-link.is-active {
-        color:#fff; background:rgba(255,255,255,.20);
-        border-color:rgba(255,255,255,.22); box-shadow:0 10px 18px rgba(18,29,74,.10);
+        color:#312e81; background:#eef2ff;
+        border-color:#c7d2fe; box-shadow:none;
     }
     .sidebar-link.is-admin-active {
-        color:#eff7ff; background:rgba(255,255,255,.12);
-        border-color:rgba(255,255,255,.14);
+        color:#312e81; background:#f5f3ff;
+        border-color:#ddd6fe;
+    }
+    .sidebar-link.is-active::before,
+    .sidebar-link.is-admin-active::before {
+        content:"";
+        position:absolute;
+        left:0;
+        top:6px;
+        bottom:6px;
+        width:3px;
+        border-radius:999px;
+        background:#4f46e5;
+        opacity:1;
+        visibility:visible;
     }
     .sidebar-icon {
-        width:28px; height:28px; border-radius:10px; display:grid; place-items:center; flex:0 0 28px;
-        color:rgba(255,255,255,.92); background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.12);
+        width:22px; height:22px; border-radius:7px; display:grid; place-items:center; flex:0 0 22px;
+        color:#64748b; background:#f8fafc; border:1px solid #e2e8f0;
     }
-    .sidebar-icon svg { width:16px; height:16px; }
+    .sidebar-icon svg { width:14px; height:14px; }
     .sidebar-link.is-active .sidebar-icon,
-    .sidebar-link.is-admin-active .sidebar-icon { color:rgba(255,255,255,.96); background:rgba(255,255,255,.16); border-color:rgba(255,255,255,.16); }
+    .sidebar-link.is-admin-active .sidebar-icon { color:#4f46e5; background:#ffffff; border-color:#c7d2fe; }
     .sidebar-label { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; transition:opacity .16s ease, max-width .2s ease, width .2s ease; }
     .sidebar-link-badge {
         margin-left:auto;
@@ -496,8 +528,8 @@
         display:inline-flex;
         align-items:center;
         justify-content:center;
-        background:#B30D23;
-        color:#fff;
+        background:#fee2e2;
+        color:#b91c1c;
         font-size:10px;
         font-weight:800;
         line-height:1;
@@ -507,8 +539,8 @@
     }
     .sidebar-link.is-active .sidebar-link-badge,
     .sidebar-link.is-admin-active .sidebar-link-badge {
-        background:#fff;
-        color:#1777BD;
+        background:#ffffff;
+        color:#4f46e5;
         box-shadow:none;
     }
     .sidebar-link::after,
@@ -561,22 +593,22 @@
         transform:translateY(-50%) translateX(0);
     }
     .sidebar-section {
-        display:flex; flex-direction:column; gap:6px; margin-top:8px; padding-top:14px;
-        border-top:1px solid rgba(255,255,255,.12);
+        display:flex; flex-direction:column; gap:4px; margin-top:4px; padding-top:10px;
+        border-top:1px solid #eef2f7;
     }
-    .sidebar-section-title { padding:0 12px; color:rgba(255,255,255,.78); font-size:10px; }
+    .sidebar-section-title { padding:0 10px; color:#94a3b8; font-size:10px; }
     .sidebar-section-toggle {
         display:flex;
         align-items:center;
         justify-content:space-between;
-        gap:10px;
+        gap:8px;
         width:100%;
-        padding:9px 12px;
-        border-radius:13px;
-        color:rgba(255,255,255,.96);
-        background:rgba(255,255,255,.13);
-        border:1px solid rgba(255,255,255,.14);
-        font-size:11px;
+        padding:6px 9px;
+        border-radius:10px;
+        color:#1e293b;
+        background:#f8fafc;
+        border:1px solid #e2e8f0;
+        font-size:10.5px;
         font-weight:800;
         letter-spacing:.05em;
         text-transform:uppercase;
@@ -585,8 +617,8 @@
         transition:background .16s ease, border-color .16s ease, color .16s ease;
     }
     .sidebar-section-toggle:hover {
-        background:rgba(255,255,255,.14);
-        border-color:rgba(255,255,255,.16);
+        background:#ffffff;
+        border-color:#cbd5e1;
     }
     .sidebar-section-toggle::-webkit-details-marker { display:none; }
     .sidebar-section-toggle svg {
@@ -616,12 +648,12 @@
         opacity:.4;
     }
     .app-shell.is-sidebar-collapsed .app-shell-sidebar {
-        padding-inline:10px;
-        box-shadow:10px 0 28px rgba(18,29,74,.11);
+        padding-inline:8px;
+        box-shadow:none;
     }
     .app-shell.is-sidebar-collapsed .brand-panel {
         padding-inline:2px;
-        padding-bottom:12px;
+        padding-bottom:8px;
     }
     .app-shell.is-sidebar-collapsed .brand-mark {
         gap:8px;
@@ -641,19 +673,19 @@
         display:none;
     }
     .app-shell.is-sidebar-collapsed .sidebar-shell-toggle {
-        width:40px;
-        min-height:40px;
-        margin:12px auto 0;
+        width:36px;
+        min-height:36px;
+        margin:8px auto 0;
         padding:0;
-        border-radius:14px;
+        border-radius:12px;
     }
     .app-shell.is-sidebar-collapsed .sidebar-shell-toggle-label {
         display:none;
     }
     .app-shell.is-sidebar-collapsed .sidebar-section {
-        gap:8px;
+        gap:6px;
         margin-top:6px;
-        padding-top:12px;
+        padding-top:10px;
     }
     .app-shell.is-sidebar-collapsed .sidebar-group .sidebar-panel,
     .app-shell.is-sidebar-collapsed .sidebar-group .sidebar-panel[hidden] {
@@ -668,8 +700,8 @@
     .app-shell.is-sidebar-collapsed .sidebar-link {
         justify-content:center;
         gap:0;
-        min-height:48px;
-        padding:8px 0;
+        min-height:38px;
+        padding:7px 0;
     }
     .app-shell.is-sidebar-collapsed .sidebar-link:hover {
         transform:none;
@@ -708,14 +740,14 @@
         display:flex;
         align-items:center;
         justify-content:space-between;
-        gap:14px;
+        gap:12px;
         flex-wrap:nowrap;
-        margin-bottom:14px;
-        padding:12px 14px;
-        border:1px solid #dbe3ef;
-        border-radius:16px;
+        margin-bottom:12px;
+        padding:10px 12px;
+        border:1px solid #e2e8f0;
+        border-radius:14px;
         background:rgba(255,255,255,.96);
-        box-shadow:0 14px 34px rgba(15,23,42,.05);
+        box-shadow:0 8px 18px rgba(15,23,42,.04);
         backdrop-filter:blur(18px);
     }
     .app-shell-topbar-left {
@@ -791,22 +823,22 @@
         display:inline-flex;
         align-items:center;
         gap:8px;
-        min-height:36px;
-        padding:8px 11px;
-        border-radius:12px;
-        border:1px solid #dbe3ef;
+        min-height:34px;
+        padding:7px 10px;
+        border-radius:10px;
+        border:1px solid #e2e8f0;
         background:#fff;
         color:#334155;
-        font-size:11px;
+        font-size:10.5px;
         font-weight:800;
         line-height:1;
         flex:0 0 auto;
         white-space:nowrap;
     }
     .topbar-chip.is-role {
-        background:#ecfeff;
-        color:#0f766e;
-        border-color:#bae6fd;
+        background:#eef2ff;
+        color:#4338ca;
+        border-color:#c7d2fe;
         max-width:140px;
         overflow:hidden;
         text-overflow:ellipsis;
@@ -879,16 +911,16 @@
         flex:0 0 auto;
     }
     .topbar-action-link {
-        width:36px;
-        height:36px;
-        border-radius:12px;
+        width:34px;
+        height:34px;
+        border-radius:10px;
         display:grid;
         place-items:center;
-        border:1px solid #dbe3ef;
+        border:1px solid #e2e8f0;
         background:#fff;
         color:#334155;
         text-decoration:none;
-        box-shadow:0 10px 24px rgba(15,23,42,.04);
+        box-shadow:0 6px 16px rgba(15,23,42,.03);
         transition:border-color .16s ease, color .16s ease, background .16s ease, transform .16s ease, box-shadow .16s ease;
         flex:0 0 auto;
     }
@@ -1306,9 +1338,9 @@
         width:100%;
         min-width:0;
         max-width:220px;
-        padding:5px;
-        border-radius:13px;
-        border:1px solid #dbe3ef;
+        padding:4px;
+        border-radius:11px;
+        border:1px solid #e2e8f0;
         background:#fff;
         cursor:pointer;
         list-style:none;
@@ -1956,11 +1988,11 @@
             display:grid;
             grid-template-columns:repeat(5, minmax(0, 1fr));
             gap:4px;
-            padding:6px;
-            border-radius:20px;
+            padding:5px;
+            border-radius:18px;
             background:rgba(255,255,255,.96);
-            border:1px solid #dbe3ef;
-            box-shadow:0 18px 46px rgba(15,23,42,.20);
+            border:1px solid #e2e8f0;
+            box-shadow:0 14px 34px rgba(15,23,42,.16);
             backdrop-filter:blur(16px);
             pointer-events:auto;
             max-width:calc(100vw - 20px);
@@ -1974,10 +2006,10 @@
             text-decoration:none;
             display:grid;
             place-items:center;
-            gap:3px;
+            gap:2px;
             padding:6px 3px;
-            border-radius:14px;
-            font-size:9.5px;
+            border-radius:12px;
+            font-size:9px;
             font-weight:800;
             line-height:1.1;
             cursor:pointer;
@@ -1987,8 +2019,8 @@
             height:17px;
         }
         .mobile-nav-item.is-active {
-            background:linear-gradient(135deg, #2563eb, #38bdf8);
-            color:#fff;
+            background:#eef2ff;
+            color:#4338ca;
         }
         .mobile-nav-item.is-disabled {
             opacity:.45;
@@ -2541,6 +2573,400 @@
             right:12px;
         }
     }
+    .app-shell {
+        --ph-header-height:72px;
+        padding-top:var(--ph-header-height);
+        height:100vh;
+        overflow:hidden;
+    }
+    .brand-panel {
+        display:none !important;
+    }
+    .app-shell-sidebar {
+        padding:8px 8px 10px;
+        height:calc(100vh - var(--ph-header-height));
+        max-height:calc(100vh - var(--ph-header-height));
+    }
+    .sidebar-scroll {
+        padding-right:6px;
+        padding-bottom:10px;
+    }
+    .sidebar-section {
+        gap:4px;
+        margin-top:4px;
+        padding-top:6px;
+        border-top:1px solid #eef2f7;
+    }
+    .sidebar-section-toggle {
+        min-height:28px;
+        padding:4px 6px;
+        border:none;
+        border-radius:8px;
+        background:transparent;
+        color:#64748b;
+        box-shadow:none;
+    }
+    .sidebar-section-toggle:hover {
+        background:#f8fafc;
+        border-color:transparent;
+        transform:none;
+    }
+    .sidebar-section-toggle span,
+    .sidebar-section-title {
+        font-size:10px;
+        letter-spacing:.12em;
+        text-transform:uppercase;
+        font-weight:800;
+        color:#64748b;
+    }
+    .sidebar-nav {
+        gap:2px;
+    }
+    .sidebar-link {
+        min-height:33px;
+        padding:5px 36px 5px 10px;
+        font-weight:600;
+        color:#1e293b;
+    }
+    .sidebar-link:hover {
+        color:#0f172a;
+    }
+    .sidebar-link .sidebar-label {
+        color:inherit;
+    }
+    .sidebar-link.is-active,
+    .sidebar-link.is-admin-active,
+    .sidebar-link.is-secondary-active {
+        color:#312e81;
+    }
+    .sidebar-icon {
+        width:20px;
+        height:20px;
+        flex:0 0 20px;
+        color:#475569;
+        background:#f8fafc;
+        border-color:#e2e8f0;
+    }
+    .sidebar-icon svg {
+        width:13px;
+        height:13px;
+    }
+    .sidebar-link.is-active .sidebar-icon,
+    .sidebar-link.is-admin-active .sidebar-icon,
+    .sidebar-link.is-secondary-active .sidebar-icon {
+        color:#4f46e5;
+        border-color:#c7d2fe;
+        background:#ffffff;
+    }
+    .sidebar-link-badge {
+        position:absolute;
+        right:10px;
+        top:50%;
+        margin-left:0;
+        transform:translateY(-50%);
+        box-shadow:0 4px 10px rgba(79,70,229,.10);
+    }
+    .app-shell-topbar {
+        position:fixed;
+        top:0;
+        left:0;
+        right:0;
+        z-index:140;
+        min-height:var(--ph-header-height);
+        margin:0;
+        padding:12px 20px;
+        border-bottom:1px solid #e2e8f0;
+        border-radius:0;
+        background:#ffffff;
+        box-shadow:0 10px 28px rgba(15,23,42,.05);
+        backdrop-filter:none;
+    }
+    .app-shell-topbar-left {
+        gap:16px;
+    }
+    .app-shell-topbar-right {
+        gap:10px;
+        align-items:center;
+    }
+    .desktop-header-brand-wrap {
+        display:flex;
+        align-items:center;
+        gap:10px;
+        flex:0 0 auto;
+        min-width:0;
+    }
+    .desktop-header-brand {
+        display:flex;
+        align-items:center;
+        gap:9px;
+        min-width:0;
+        text-decoration:none;
+        color:#0f172a;
+    }
+    .shell-brand-badge {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        width:38px;
+        height:38px;
+        padding:5px;
+        border-radius:12px;
+        border:1px solid #dbe3ef;
+        background:#ffffff;
+        box-shadow:0 6px 16px rgba(15,23,42,.05);
+        flex:0 0 38px;
+    }
+    .shell-brand-logo-wrap {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        flex:0 0 auto;
+    }
+    .shell-brand-logo {
+        width:auto;
+        height:auto;
+        max-width:170px;
+        max-height:38px;
+        object-fit:contain;
+        display:block;
+    }
+    .shell-brand-divider {
+        width:1px;
+        height:30px;
+        background:#dbe3ef;
+        flex:0 0 1px;
+    }
+    .shell-brand-pill {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        min-height:34px;
+        padding:0 12px;
+        border-radius:12px;
+        border:1px solid #c7d2fe;
+        background:#eef2ff;
+        color:#4338ca;
+        font-size:12px;
+        font-weight:800;
+        letter-spacing:.08em;
+        flex:0 0 auto;
+    }
+    .desktop-header-meta {
+        min-width:0;
+        display:grid;
+        gap:1px;
+    }
+    .desktop-header-meta strong {
+        display:block;
+        font-size:14px;
+        line-height:1.05;
+        font-weight:900;
+        letter-spacing:.02em;
+        white-space:nowrap;
+        color:#111827;
+    }
+    .desktop-header-meta span {
+        display:block;
+        font-size:10px;
+        line-height:1.2;
+        color:#64748b;
+        white-space:nowrap;
+    }
+    .desktop-header-sidebar-toggle {
+        position:fixed;
+        top:88px;
+        left:calc(var(--ph-sidebar-width) - 14px);
+        z-index:141;
+        width:28px;
+        min-height:28px;
+        border-radius:999px;
+        background:#f8fafc;
+        border:1px solid #dbe3ef;
+        box-shadow:0 6px 18px rgba(15,23,42,.08);
+        padding:0;
+    }
+    .desktop-header-sidebar-toggle .sidebar-shell-toggle-label {
+        display:none;
+    }
+    .app-shell.is-sidebar-collapsed .desktop-header-sidebar-toggle {
+        left:calc(var(--ph-sidebar-width) - 14px);
+    }
+    .app-shell-search {
+        flex:0 1 460px;
+        width:min(460px, 40vw);
+        min-width:320px;
+        max-width:520px;
+        min-height:42px;
+        padding:0 12px;
+        border-radius:12px;
+        border-color:#e2e8f0;
+        background:#f8fafc;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.9);
+    }
+    .app-shell-search svg {
+        width:15px;
+        height:15px;
+        color:#94a3b8;
+        flex:0 0 15px;
+    }
+    .app-shell-search input {
+        font-size:12px;
+        line-height:1.35;
+    }
+    .app-shell-search input::placeholder {
+        color:#9ca3af;
+        font-size:11px;
+    }
+    .topbar-chip,
+    .topbar-action-link,
+    .topbar-bell-trigger,
+    .topbar-user-trigger {
+        min-height:42px;
+    }
+    .quick-add-trigger {
+        min-width:auto;
+        padding:8px 14px;
+        border-radius:12px;
+        font-size:12px;
+        font-weight:800;
+        box-shadow:none;
+    }
+    .quick-add-trigger span {
+        line-height:1;
+    }
+    .topbar-chip.is-role {
+        min-height:32px;
+        padding:6px 10px;
+        border-radius:999px;
+        font-size:10px;
+        font-weight:800;
+        letter-spacing:.08em;
+        background:#eef2ff;
+        color:#4338ca;
+        border:1px solid #c7d2fe;
+        box-shadow:none;
+    }
+    .topbar-action-link,
+    .topbar-bell-trigger {
+        width:40px;
+        min-width:40px;
+        padding:0;
+        border-radius:12px;
+        background:#ffffff;
+        border:1px solid #e2e8f0;
+        box-shadow:none;
+    }
+    .topbar-action-link:hover,
+    .topbar-bell-trigger:hover {
+        background:#f8fafc;
+        border-color:#cbd5e1;
+    }
+    .topbar-user-menu {
+        flex:0 1 188px;
+    }
+    .topbar-user-trigger {
+        max-width:188px;
+        padding:4px 6px 4px 4px;
+        gap:8px;
+        border-radius:12px;
+        border:1px solid #e2e8f0;
+        box-shadow:none;
+        background:#ffffff;
+    }
+    .topbar-user-trigger::after {
+        width:7px;
+        height:7px;
+        margin-right:2px;
+    }
+    .topbar-user-avatar {
+        width:30px;
+        height:30px;
+        border-radius:10px;
+        font-size:11px;
+    }
+    .topbar-user-meta strong {
+        font-size:11px;
+        line-height:1.1;
+        color:#0f172a;
+    }
+    .topbar-user-meta span {
+        margin-top:2px;
+        font-size:10px;
+        line-height:1.15;
+        color:#64748b;
+    }
+    .app-shell-topbar-right {
+        gap:10px;
+    }
+    .app-shell-main {
+        height:calc(100vh - var(--ph-header-height));
+        max-width:calc(100vw - var(--ph-sidebar-width));
+        padding:18px 22px 22px;
+        overflow-y:auto;
+    }
+    @media (max-width: 1280px) {
+        .desktop-header-sidebar-toggle {
+            top:84px;
+        }
+        .topbar-user-menu {
+            flex-basis:176px;
+        }
+        .topbar-user-trigger {
+            max-width:176px;
+        }
+        .app-shell-search {
+            flex-basis:400px;
+            width:min(400px, 34vw);
+            min-width:240px;
+        }
+        .desktop-header-meta span {
+            display:none;
+        }
+        .shell-brand-logo {
+            max-width:152px;
+            max-height:34px;
+        }
+    }
+    @media (max-width: 1180px) {
+        .desktop-header-sidebar-toggle {
+            position:static;
+            left:auto;
+            top:auto;
+            width:32px;
+            min-height:32px;
+            margin-left:8px;
+        }
+        .desktop-header-brand-wrap {
+            gap:8px;
+        }
+        .app-shell-search {
+            flex:1 1 220px;
+            width:auto;
+            max-width:340px;
+            min-width:0;
+        }
+        .topbar-chip.is-role {
+            padding-inline:8px;
+            font-size:9px;
+        }
+    }
+    @media (max-width: 1024px) {
+        .app-shell {
+            padding-top:0;
+            height:auto;
+        }
+        .app-shell-topbar,
+        .desktop-header-brand-wrap {
+            display:none;
+        }
+        .app-shell-sidebar {
+            display:none;
+        }
+        .app-shell-main {
+            height:auto;
+            max-width:100vw !important;
+        }
+    }
 </style>
 
 <div class="app-shell rn-shell" data-sidebar-shell>
@@ -2563,7 +2989,7 @@
             <button
                 type="button"
                 class="sidebar-shell-toggle"
-                data-sidebar-shell-toggle
+                data-sidebar-shell-toggle-legacy
                 aria-label="Collapse sidebar"
                 aria-pressed="false"
                 title="Collapse sidebar"
@@ -2575,58 +3001,58 @@
             </button>
         </div>
 
-        @foreach($visibleSidebarSections as $section)
-            @php
-                $groupKey = \Illuminate\Support\Str::slug($section['label']);
-                $groupHasActive = collect($section['items'])->contains(fn ($item) => !empty($item['active']));
-                $groupDefaultOpen = $section['label'] === 'Main' || $groupHasActive;
-            @endphp
-            <section
-                class="sidebar-section sidebar-group {{ $groupDefaultOpen ? 'is-expanded' : 'is-collapsed' }}"
-                data-sidebar-group="{{ $groupKey }}"
-                data-default-open="{{ $groupDefaultOpen ? 'true' : 'false' }}"
-                data-has-active="{{ $groupHasActive ? 'true' : 'false' }}"
-            >
-                <button
-                    type="button"
-                    class="sidebar-section-toggle"
-                    data-sidebar-toggle="{{ $groupKey }}"
-                    aria-expanded="{{ $groupDefaultOpen ? 'true' : 'false' }}"
-                    aria-controls="sidebar-panel-{{ $groupKey }}"
+        <div class="sidebar-scroll">
+            @foreach($visibleSidebarSections as $section)
+                @php
+                    $groupKey = \Illuminate\Support\Str::slug($section['label']);
+                    $groupHasActive = collect($section['items'])->contains(fn ($item) => !empty($item['active']));
+                    $groupDefaultOpen = $section['label'] === 'Main' || $groupHasActive;
+                @endphp
+                <section
+                    class="sidebar-section sidebar-group {{ $groupDefaultOpen ? 'is-expanded' : 'is-collapsed' }}"
+                    data-sidebar-group="{{ $groupKey }}"
+                    data-default-open="{{ $groupDefaultOpen ? 'true' : 'false' }}"
+                    data-has-active="{{ $groupHasActive ? 'true' : 'false' }}"
                 >
-                    <span>{{ $section['label'] }}</span>
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-                </button>
-                <div
-                    id="sidebar-panel-{{ $groupKey }}"
-                    class="sidebar-panel"
-                    data-sidebar-panel="{{ $groupKey }}"
-                    @if(!$groupDefaultOpen) hidden @endif
-                >
-                    <nav class="sidebar-nav">
-                        @foreach($section['items'] as $item)
-                            @php
-                                $sidebarBadge = isset($item['key'])
-                                    ? $formatSidebarBadge($sidebarPendingCounts[$item['key']] ?? 0)
-                                    : null;
-                            @endphp
-                            <a href="{{ $item['href'] }}"
-                               class="sidebar-link rn-sidebar-item {{ !empty($item['active']) ? 'is-active' : '' }}"
-                               data-sidebar-link
-                               data-sidebar-tooltip="{{ $item['label'] }}"
-                               aria-label="{{ $item['label'] }}">
-                                <span class="sidebar-icon">{!! $navIcon($item['icon'] ?? 'default') !!}</span>
-                                <span class="sidebar-label">{{ $item['label'] }}</span>
-                                @if($sidebarBadge)
-                                    <span class="sidebar-link-badge">{{ $sidebarBadge }}</span>
-                                @endif
-                            </a>
-                        @endforeach
-                    </nav>
-                </div>
-            </section>
-        @endforeach
-
+                    <button
+                        type="button"
+                        class="sidebar-section-toggle"
+                        data-sidebar-toggle="{{ $groupKey }}"
+                        aria-expanded="{{ $groupDefaultOpen ? 'true' : 'false' }}"
+                        aria-controls="sidebar-panel-{{ $groupKey }}"
+                    >
+                        <span>{{ $section['label'] }}</span>
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
+                    <div
+                        id="sidebar-panel-{{ $groupKey }}"
+                        class="sidebar-panel"
+                        data-sidebar-panel="{{ $groupKey }}"
+                        @if(!$groupDefaultOpen) hidden @endif
+                    >
+                        <nav class="sidebar-nav">
+                            @foreach($section['items'] as $item)
+                                @php
+                                    $sidebarBadge = isset($item['key'])
+                                        ? $formatSidebarBadge($sidebarPendingCounts[$item['key']] ?? 0)
+                                        : null;
+                                @endphp
+                                <a href="{{ $item['href'] }}"
+                                   class="sidebar-link rn-sidebar-item {{ !empty($item['active']) ? 'is-active' : '' }}"
+                                   data-sidebar-link
+                                   data-sidebar-tooltip="{{ $item['label'] }}"
+                                   aria-label="{{ $item['label'] }}">
+                                    <span class="sidebar-icon">{!! $navIcon($item['icon'] ?? 'default') !!}</span>
+                                    <span class="sidebar-label">{{ $item['label'] }}</span>
+                                    @if($sidebarBadge)
+                                        <span class="sidebar-link-badge">{{ $sidebarBadge }}</span>
+                                    @endif
+                                </a>
+                            @endforeach
+                        </nav>
+                    </div>
+                </section>
+            @endforeach
         @if(collect($organizationItems)->contains(fn ($item) => !empty($item['visible']) && !empty($item['href'])))
             <section
                 class="sidebar-section sidebar-group {{ $organizationMenuOpen ? 'is-expanded' : 'is-collapsed' }}"
@@ -2666,12 +3092,38 @@
                 </div>
             </section>
         @endif
+        </div>
 
     </aside>
 
     <main class="app-shell-main">
         <header class="app-shell-topbar">
             <div class="app-shell-topbar-left">
+                <div class="desktop-header-brand-wrap">
+                    <a href="{{ $safeRoute('dashboard') ?: url('/') }}" class="desktop-header-brand" aria-label="Prime Healers OS home">
+                        <span class="shell-brand-logo-wrap" aria-hidden="true">
+                            <x-application-logo class="shell-brand-logo" />
+                        </span>
+                        <span class="shell-brand-divider" aria-hidden="true"></span>
+                        <span class="shell-brand-pill">OS</span>
+                        <span class="desktop-header-meta">
+                            <span>Operations Suite</span>
+                        </span>
+                    </a>
+                    <button
+                        type="button"
+                        class="sidebar-shell-toggle desktop-header-sidebar-toggle"
+                        data-sidebar-shell-toggle
+                        aria-label="Collapse sidebar"
+                        aria-pressed="false"
+                        title="Collapse sidebar"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="m15 18-6-6 6-6"></path>
+                        </svg>
+                        <span class="sidebar-shell-toggle-label">Collapse</span>
+                    </button>
+                </div>
                 <form class="app-shell-search" role="search" aria-label="Universal search shell" method="GET" action="{{ $globalSearchHref ?: url('/search') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
                     <input type="text" name="q" value="{{ $globalSearchValue }}" placeholder="Search customers, rentals, invoices, serial no..." autocomplete="off" spellcheck="false" aria-label="Search customers, rentals, invoices, serial no" />
@@ -2899,7 +3351,7 @@
         @hasSection('breadcrumbs')
             @yield('breadcrumbs')
         @elseif(!empty($breadcrumbItems))
-            <nav class="desktop-breadcrumb" aria-label="Breadcrumb" style="display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin:0 0 12px; padding:8px 10px; border:1px solid #e2e8f0; border-radius:12px; background:rgba(255,255,255,0.78); box-shadow:0 8px 22px rgba(15,23,42,0.035); font-size:12px; color:#64748b;">
+            <nav class="desktop-breadcrumb" aria-label="Breadcrumb" style="display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin:0 0 14px; padding:10px 14px; border:1px solid #e2e8f0; border-radius:20px; background:#ffffff; box-shadow:0 14px 34px rgba(15,23,42,0.04); font-size:12px; color:#64748b;">
                 @foreach($breadcrumbItems as $index => $crumb)
                     @if($index > 0)
                         <span style="color:#94a3b8;">/</span>
