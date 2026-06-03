@@ -677,6 +677,21 @@
         margin-top:2px;
         flex:0 0 auto;
     }
+    .rental-line-asset-option-text {
+        display:flex;
+        flex-direction:column;
+        gap:2px;
+        min-width:0;
+    }
+    .rental-line-asset-option-title {
+        font-weight:600;
+        color:#1e293b;
+        word-break:break-word;
+    }
+    .rental-line-asset-option-meta {
+        color:#64748b;
+        word-break:break-word;
+    }
     .rental-line-asset-empty {
         font-size:12px;
         color:#64748b;
@@ -3737,7 +3752,10 @@
                                         ? `<div class="rental-line-asset-empty">Select warehouse to load assets.</div>`
                                         : (visibleAssets.length
                                     ? visibleAssets.map(function (asset) {
-                                        return `<label class="rental-line-asset-option"><input type="checkbox" name="rental_items[${index}][asset_ids][]" value="${asset.id}" data-rental-asset-input="${index}" ${selectedIds.includes(asset.id) ? 'checked' : ''}><span>${asset.label}</span></label>`;
+                                        const serial = asset.serial_number || '-';
+                                        const barcode = asset.barcode_value || '-';
+                                        const warehouse = asset.warehouse || '-';
+                                        return `<label class="rental-line-asset-option"><input type="checkbox" name="rental_items[${index}][asset_ids][]" value="${asset.id}" data-rental-asset-input="${index}" ${selectedIds.includes(asset.id) ? 'checked' : ''}><span class="rental-line-asset-option-text"><span class="rental-line-asset-option-title">${asset.label}</span><span class="rental-line-asset-option-meta">Serial: ${serial}</span><span class="rental-line-asset-option-meta">Barcode: ${barcode}</span><span class="rental-line-asset-option-meta">Warehouse: ${warehouse}</span></span></label>`;
                                     }).join('')
                                     : `<div class="rental-line-asset-empty">${item.product_id ? (isLoadingAssets ? 'Loading assets...' : 'No assets available') : 'Select product first'}</div>`))}
                             </div>
