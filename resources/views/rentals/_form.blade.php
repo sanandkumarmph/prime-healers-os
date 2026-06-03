@@ -1837,7 +1837,7 @@
         const currentRentalId = @json($isEdit ? $rental->id : null);
         const organizationState = @json($organization?->state ?? null);
         const partnerClientEndpointTemplate = @json($businessPartnerFlowAvailable ? route('rentals.business-partners.actual-clients', ['business_partner' => '__PARTNER__']) : null);
-        const rentalProductOptionsHtml = `<option value="">Select rental product</option>@foreach($rentalProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->rental_price ?? $product->price_per_day ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-product-name="{{ e($product->name) }}" data-in-house-option-label="{{ e($product->name . ' | ' . ($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity)))) }}" data-vendor-option-label="{{ e($product->name) }}" data-search="{{ e(trim(implode(' ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code, $product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))])))) }}">{{ e($product->name) }} | {{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}</option>@endforeach`;
+        const rentalProductOptionsHtml = `<option value="">Select rental product</option>@foreach($rentalProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->rental_price ?? $product->price_per_day ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-product-name="{{ e($product->name) }}" data-in-house-option-label="{{ e($product->name . ' | ' . ($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity)))) }}" data-vendor-option-label="{{ e($product->name) }}" data-rental-available="{{ $product->rental_available_quantity ?? $product->display_available_quantity ?? $product->available_quantity }}" data-rental-status="{{ $product->rental_availability_status }}" data-rental-label="{{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}" data-tracks-rental="{{ $product->tracksRentalStock() ? 1 : 0 }}" data-search="{{ e(trim(implode(' ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code, $product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))])))) }}">{{ e($product->name) }} | {{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}</option>@endforeach`;
         const saleProductOptionsHtml = `<option value="">Select new product</option>@foreach($sellableProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->sale_price ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-search="{{ e(trim(implode(' ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code, 'Sale ' . number_format((float) ($product->sale_price ?? 0), 2)])))) }}">{{ e($product->name) }} | Sale {{ number_format((float) ($product->sale_price ?? 0), 2) }}</option>@endforeach`;
         const saleAssetOptions = @json($saleAssetRows);
         const primaryRentalAssetIndex = @json($primaryRentalAssetIndex ?? []);
@@ -3448,6 +3448,53 @@
             return [parseInt(productId || '0', 10), parseInt(warehouseSelect.value || '0', 10), parseInt(currentRentalId || '0', 10)].join(':');
         }
 
+        function rentalCatalogOption(productId) {
+            const normalizedId = String(parseInt(productId || '0', 10) || '');
+
+            if (!normalizedId) {
+                return null;
+            }
+
+            return Array.from(productSelect?.options || []).find(function (option) {
+                return option.value === normalizedId;
+            }) || null;
+        }
+
+        function rentalItemUsesPhAssets(item) {
+            if (currentFulfilmentSourceValue() === 'vendor_supplied') {
+                return false;
+            }
+
+            const option = rentalCatalogOption(item?.product_id);
+
+            return option ? option.getAttribute('data-tracks-rental') === '1' : false;
+        }
+
+        function rentalItemNeedsWarehouseSelection(item) {
+            return rentalItemUsesPhAssets(item) && !warehouseSelect.value;
+        }
+
+        function autoSelectRentalItemAssets(index, availableAssets) {
+            const item = rentalItems[index];
+
+            if (!item || !rentalItemUsesPhAssets(item)) {
+                return false;
+            }
+
+            const quantity = Math.max(parseInt(item.quantity || '0', 10), 0);
+            const selectedIds = normalizeIdArray(item.asset_ids);
+
+            if (quantity <= 0 || selectedIds.length >= quantity || availableAssets.length < quantity) {
+                return false;
+            }
+
+            rentalItems[index].asset_ids = availableAssets.slice(0, quantity).map(function (asset) {
+                return asset.id;
+            });
+
+            return true;
+        }
+
         function selectedAdditionalRentalAssetIds(excludeIndex) {
             const selectedIds = [];
 
@@ -3482,6 +3529,14 @@
 
         function ensureRentalItemAssetsLoaded(item) {
             if (!item.product_id) {
+                return;
+            }
+
+            if (!rentalItemUsesPhAssets(item)) {
+                return;
+            }
+
+            if (rentalItemNeedsWarehouseSelection(item)) {
                 return;
             }
 
@@ -3530,6 +3585,14 @@
                 })
                 .then(function (payload) {
                     rentalItemAssetCache[cacheKey] = Array.isArray(payload.data) ? payload.data : [];
+                    const rentalItemIndex = rentalItems.findIndex(function (candidate) {
+                        return candidate === item;
+                    });
+
+                    if (rentalItemIndex >= 0) {
+                        autoSelectRentalItemAssets(rentalItemIndex, rentalItemAssetCache[cacheKey]);
+                    }
+
                     delete rentalItemAssetRequests[cacheKey];
                     renderRentalItems();
                 })
@@ -3577,6 +3640,8 @@
                 ensureRentalItemAssetsLoaded(item);
 
                 const selectedIds = normalizeIdArray(item.asset_ids);
+                const usesPhAssets = rentalItemUsesPhAssets(item);
+                const needsWarehouseSelection = rentalItemNeedsWarehouseSelection(item);
                 const cacheKey = rentalItemAssetCacheKey(item.product_id);
                 const hasCachedAssets = Object.prototype.hasOwnProperty.call(rentalItemAssetCache, cacheKey);
                 const cachedAssets = rentalItemAssetCache[cacheKey] || [];
@@ -3618,16 +3683,20 @@
                 const quantity = Math.max(parseInt(item.quantity || '0', 10), 0);
                 const toggleLabel = item.expanded
                     ? 'Hide Details'
-                    : (selectedIds.length ? 'Show Assets' : (item.notes ? 'Show Note' : 'Assets / Note'));
+                    : (selectedIds.length ? 'Show Assets' : (item.notes ? 'Show Note' : (usesPhAssets ? 'Assets / Note' : 'Add Note')));
                 const assetHelpText = !item.product_id
                     ? 'Select product first.'
-                    : (isLoadingAssets
+                    : (!usesPhAssets
+                        ? 'Vendor supplied additional rental lines use Product Master only as a catalogue. PH assets are not assigned.'
+                        : (needsWarehouseSelection
+                            ? 'Select warehouse to load assets.'
+                            : (isLoadingAssets
                         ? 'Loading assets...'
                         : (assetChoices.length
                             ? (selectedIds.length && selectedIds.length !== quantity
                                 ? 'Selected ' + selectedIds.length + ' of ' + quantity + '.'
                                 : assetChoices.length + ' asset(s) available.')
-                            : 'No matching assets.'));
+                            : 'No matching assets.'))));
                 const entry = document.createElement('div');
                 entry.className = 'sale-item-entry';
                 const row = document.createElement('div');
@@ -3659,15 +3728,20 @@
                     <div class="sale-item-detail-grid">
                         <div class="sale-item-detail-field">
                             <label>Assets</label>
-                            <input type="text" class="line-asset-search" placeholder="Search asset" value="${item.assetSearch || ''}" data-rental-asset-search="${index}">
+                            ${usesPhAssets ? `<div class="line-asset-load-more" style="justify-content:flex-start; margin-bottom:8px; gap:8px;"><button type="button" class="ops-button-secondary" data-rental-asset-autoselect="${index}">Auto Select</button><button type="button" class="ops-button-secondary" data-rental-asset-clear="${index}">Clear</button></div>` : ''}
+                            ${usesPhAssets ? `<input type="text" class="line-asset-search" placeholder="Search asset" value="${item.assetSearch || ''}" data-rental-asset-search="${index}">` : ''}
                             <div class="rental-line-asset-picker" data-rental-asset-picker="${index}">
-                                ${visibleAssets.length
+                                ${!usesPhAssets
+                                    ? `<div class="rental-line-asset-empty">PH asset selection is not required for vendor supplied lines.</div>`
+                                    : (needsWarehouseSelection
+                                        ? `<div class="rental-line-asset-empty">Select warehouse to load assets.</div>`
+                                        : (visibleAssets.length
                                     ? visibleAssets.map(function (asset) {
                                         return `<label class="rental-line-asset-option"><input type="checkbox" name="rental_items[${index}][asset_ids][]" value="${asset.id}" data-rental-asset-input="${index}" ${selectedIds.includes(asset.id) ? 'checked' : ''}><span>${asset.label}</span></label>`;
                                     }).join('')
-                                    : `<div class="rental-line-asset-empty">${item.product_id ? (isLoadingAssets ? 'Loading assets...' : 'No assets available') : 'Select product first'}</div>`}
+                                    : `<div class="rental-line-asset-empty">${item.product_id ? (isLoadingAssets ? 'Loading assets...' : 'No assets available') : 'Select product first'}</div>`))}
                             </div>
-                            ${filteredAssetChoices.length > visibleAssets.length
+                            ${usesPhAssets && filteredAssetChoices.length > visibleAssets.length
                                 ? `<div class="line-asset-load-more"><button type="button" class="ops-button-secondary" data-rental-asset-load-more="${index}">Load More</button></div>`
                                 : ''}
                             <div class="sale-item-subnote">${assetHelpText}</div>
@@ -3708,6 +3782,8 @@
                 const assetSearchEl = detail.querySelector(`[data-rental-asset-search="${index}"]`);
                 const assetCheckboxes = detail.querySelectorAll(`[data-rental-asset-input="${index}"]`);
                 const assetLoadMoreButton = detail.querySelector(`[data-rental-asset-load-more="${index}"]`);
+                const assetAutoSelectButton = detail.querySelector(`[data-rental-asset-autoselect="${index}"]`);
+                const assetClearButton = detail.querySelector(`[data-rental-asset-clear="${index}"]`);
                 const gstRateInputEl = detail.querySelector(`[data-rental-gst-rate="${index}"]`);
                 const gstModeSelectEl = detail.querySelector(`[data-rental-gst-mode="${index}"]`);
                 const taxTypeSelectEl = detail.querySelector(`[data-rental-tax-type="${index}"]`);
@@ -3718,9 +3794,12 @@
                 productSelectEl.value = item.product_id || '';
                 enhanceSearchableSelect(productSelectEl);
 
-                productSelectEl.addEventListener('change', function () {
+                const handleRentalItemProductChange = function () {
                     rentalItems[index].product_id = this.value ? parseInt(this.value, 10) : null;
                     rentalItems[index].asset_ids = [];
+                    rentalItems[index].assetSearch = '';
+                    rentalItems[index].assetVisibleCount = inlineAssetVisibleStep;
+                    rentalItems[index].expanded = Boolean(rentalItems[index].product_id);
                     const defaults = selectedProductTaxDefaults(this);
                     rentalItems[index].gst_rate = defaults.gstRate;
                     rentalItems[index].gst_mode = defaults.gstMode;
@@ -3733,7 +3812,10 @@
                     }
 
                     renderRentalItems();
-                });
+                };
+
+                productSelectEl.addEventListener('change', handleRentalItemProductChange);
+                productSelectEl.addEventListener('searchable-select:changed', handleRentalItemProductChange);
 
                 quantityInputEl.addEventListener('input', function () {
                     rentalItems[index].quantity = Math.max(parseInt(this.value || '0', 10), 0);
@@ -3760,7 +3842,7 @@
                     renderRentalItems();
                 });
 
-                assetSearchEl.addEventListener('input', function () {
+                assetSearchEl?.addEventListener('input', function () {
                     rentalItems[index].assetSearch = this.value || '';
                     rentalItems[index].assetVisibleCount = inlineAssetVisibleStep;
                     renderRentalItems();
@@ -3782,6 +3864,26 @@
                 if (assetLoadMoreButton) {
                     assetLoadMoreButton.addEventListener('click', function () {
                         rentalItems[index].assetVisibleCount += inlineAssetVisibleStep;
+                        renderRentalItems();
+                    });
+                }
+
+                if (assetAutoSelectButton) {
+                    assetAutoSelectButton.addEventListener('click', function () {
+                        const quantity = Math.max(parseInt(rentalItems[index].quantity || '0', 10), 0);
+                        const choices = rentalItemAssetChoices(rentalItems[index], index);
+
+                        rentalItems[index].asset_ids = choices.slice(0, quantity).map(function (asset) {
+                            return asset.id;
+                        });
+
+                        renderRentalItems();
+                    });
+                }
+
+                if (assetClearButton) {
+                    assetClearButton.addEventListener('click', function () {
+                        rentalItems[index].asset_ids = [];
                         renderRentalItems();
                     });
                 }

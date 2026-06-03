@@ -550,6 +550,175 @@ class VendorFulfilmentRegressionTest extends TestCase
         $this->assertSame([$asset->id], collect($assetsResponse->json('data'))->pluck('id')->all());
     }
 
+    public function test_additional_rental_product_assets_use_same_in_house_picker_flow(): void
+    {
+        $organization = TestData::organization();
+        $user = $this->userWithRole($organization, 'Rental Creator', [
+            'customers' => ['read'],
+            'rentals' => ['read', 'create'],
+            'products' => ['read'],
+            'assets' => ['read'],
+        ]);
+        $city = $this->makeCity($organization->id, 'Bengaluru');
+        $warehouse = $this->makeWarehouse($organization->id, $city->id, 'Bengaluru Main');
+        $customer = $this->makeCustomer($organization->id);
+        $primaryProduct = $this->makeRentalProduct($organization->id, [
+            'name' => 'Primary Rental Product',
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'available_quantity' => 5,
+            'total_quantity' => 5,
+        ]);
+        $additionalProduct = $this->makeRentalProduct($organization->id, [
+            'name' => 'Additional Tracked Rental Product',
+            'product_type' => Product::TYPE_BOTH,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_BOTH,
+        ]);
+
+        $asset = \App\Models\Asset::create([
+            'organization_id' => $organization->id,
+            'product_id' => $additionalProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'asset_name' => 'Additional Rental Asset',
+            'serial_number' => 'ADD-TRACKED-001',
+            'asset_stage' => \App\Models\Asset::STAGE_RENTAL_STOCK,
+            'asset_status' => \App\Models\Asset::STATUS_AVAILABLE,
+            'condition_status' => 'good',
+        ]);
+
+        $response = $this->actingAs($user)->get(route('rentals.create'));
+
+        $response->assertOk();
+        $response->assertSee('data-rental-asset-autoselect="${index}"', false);
+        $response->assertSee('productSelectEl.addEventListener(\'searchable-select:changed\', handleRentalItemProductChange);', false);
+
+        $this->actingAs($user)
+            ->post(route('rentals.store'), $this->rentalPayload($customer->id, $primaryProduct->id, [
+                'city_id' => $city->id,
+                'dispatch_warehouse_id' => $warehouse->id,
+                'quantity' => 1,
+                'rental_amount' => 1200,
+                'rental_items' => [
+                    [
+                        'product_id' => $additionalProduct->id,
+                        'quantity' => 1,
+                        'unit_rental_amount' => 450,
+                        'asset_ids' => [$asset->id],
+                    ],
+                ],
+            ]))
+            ->assertRedirect(route('rentals.index'));
+
+        $this->assertDatabaseHas('rental_items', [
+            'organization_id' => $organization->id,
+            'product_id' => $additionalProduct->id,
+        ]);
+    }
+
+    public function test_vendor_supplied_additional_rental_product_does_not_require_ph_assets(): void
+    {
+        $organization = TestData::organization();
+        $user = $this->userWithRole($organization, 'Rental Creator', [
+            'customers' => ['read'],
+            'rentals' => ['read', 'create'],
+            'invoices' => ['read', 'create'],
+            'products' => ['read'],
+        ]);
+        $city = $this->makeCity($organization->id, 'Bengaluru');
+        $customer = $this->makeCustomer($organization->id);
+        $vendor = $this->makeVendor($organization->id, [
+            'city_id' => $city->id,
+            'city' => 'Bengaluru',
+        ]);
+        $primaryProduct = $this->makeRentalProduct($organization->id, [
+            'name' => 'Vendor Supplied Primary Product',
+            'available_quantity' => 0,
+            'total_quantity' => 0,
+        ]);
+        $additionalProduct = $this->makeRentalProduct($organization->id, [
+            'name' => 'Vendor Supplied Additional Product',
+            'product_type' => Product::TYPE_BOTH,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_BOTH,
+            'available_quantity' => 0,
+            'total_quantity' => 0,
+        ]);
+
+        $response = $this->actingAs($user)->get(route('rentals.create'));
+
+        $response->assertOk();
+        $response->assertSee('PH asset selection is not required for vendor supplied lines.', false);
+
+        $this->actingAs($user)
+            ->post(route('rentals.store'), $this->rentalPayload($customer->id, $primaryProduct->id, [
+                'city_id' => $city->id,
+                'fulfilment_source' => VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED,
+                'vendor_id' => $vendor->id,
+                'delivery_assignment_type' => 'vendor',
+                'delivery_responsibility' => 'vendor_delivery',
+                'pickup_responsibility' => 'vendor_pickup',
+                'quantity' => 1,
+                'rental_items' => [
+                    [
+                        'product_id' => $additionalProduct->id,
+                        'quantity' => 1,
+                        'unit_rental_amount' => 300,
+                    ],
+                ],
+            ]))
+            ->assertRedirect(route('rentals.index'));
+    }
+
+    public function test_additional_tracked_rental_quantity_two_requires_two_assets(): void
+    {
+        $organization = TestData::organization();
+        $user = $this->userWithRole($organization, 'Rental Creator', [
+            'customers' => ['read'],
+            'rentals' => ['read', 'create'],
+            'products' => ['read'],
+            'assets' => ['read'],
+        ]);
+        $city = $this->makeCity($organization->id, 'Bengaluru');
+        $warehouse = $this->makeWarehouse($organization->id, $city->id, 'Bengaluru Main');
+        $customer = $this->makeCustomer($organization->id);
+        $primaryProduct = $this->makeRentalProduct($organization->id, [
+            'name' => 'Primary Rental Product Two',
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'available_quantity' => 5,
+            'total_quantity' => 5,
+        ]);
+        $additionalProduct = $this->makeRentalProduct($organization->id, [
+            'name' => 'Additional Qty Two Product',
+            'product_type' => Product::TYPE_BOTH,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_BOTH,
+        ]);
+
+        $asset = \App\Models\Asset::create([
+            'organization_id' => $organization->id,
+            'product_id' => $additionalProduct->id,
+            'warehouse_id' => $warehouse->id,
+            'asset_name' => 'Additional Qty Two Asset',
+            'serial_number' => 'ADD-TRACKED-ONLYONE',
+            'asset_stage' => \App\Models\Asset::STAGE_RENTAL_STOCK,
+            'asset_status' => \App\Models\Asset::STATUS_AVAILABLE,
+            'condition_status' => 'good',
+        ]);
+
+        $this->actingAs($user)
+            ->post(route('rentals.store'), $this->rentalPayload($customer->id, $primaryProduct->id, [
+                'city_id' => $city->id,
+                'dispatch_warehouse_id' => $warehouse->id,
+                'quantity' => 1,
+                'rental_items' => [
+                    [
+                        'product_id' => $additionalProduct->id,
+                        'quantity' => 2,
+                        'unit_rental_amount' => 900,
+                        'asset_ids' => [$asset->id],
+                    ],
+                ],
+            ]))
+            ->assertSessionHasErrors('rental_items.0.asset_ids');
+    }
+
     public function test_ph_internal_delivery_dropdown_includes_effective_delivery_users(): void
     {
         $organization = TestData::organization();
