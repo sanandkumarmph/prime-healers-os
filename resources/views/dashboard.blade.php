@@ -1,4 +1,4 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
 
 @section('content')
 @php
@@ -14,6 +14,8 @@
     $canCreateBusinessPartners = $currentUser?->canAccessModule('customers', 'create') ?? false;
     $canCreatePayments = $currentUser?->canAccessModule('payments', 'create') ?? false;
     $canUpdateRentals = $currentUser?->canAccessModule('rentals', 'update') ?? false;
+    $canReadCustomers = $currentUser?->canAccessModule('customers', 'read') ?? false;
+    $canReadProducts = $currentUser?->canAccessModule('products', 'read') ?? false;
     $canReadSales = $currentUser?->canAccessModule('sales', 'read') ?? false;
     $canReadDeliveries = $currentUser?->canAccessModule('deliveries', 'read') ?? false;
     $canReadInvoices = $currentUser?->canAccessModule('invoices', 'read') ?? false;
@@ -377,120 +379,246 @@
         ['label' => $followUpScopePrefix . 'Pending Pickups', 'value' => (int) ($pendingPickupFollowUpsCount ?? 0), 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'pickups']) : null, 'tone' => 'green', 'icon' => 'pickup'],
     ])->filter(fn ($tile) => !empty($tile['href']) && !$isDeliveryFacingMenuRole && $dashboardWidgetEnabled('widget_today_followups'))->values();
 
-    $kpiCards = collect([
+    $dashboardInsightCards = collect([
         [
-            'widget_key' => 'kpi_active_rentals',
-            'label' => $dashboardOrderScope === 'mine' ? 'My Active Rentals' : 'Active Rentals',
+            'row' => 'operations',
+            'sort' => 10,
+            'label' => 'Active Rentals',
             'value' => number_format($activeRentalsCount),
-            'note' => 'Live rental orders on field',
-            'subtitle' => $activePercent . '% of rental base',
+            'insight' => $endingSoonCount > 0 ? number_format($endingSoonCount) . ' ending soon' : 'No urgent action',
+            'insight_tone' => $endingSoonCount > 0 ? 'warning' : 'success',
+            'note' => $overdueReturnsCount > 0
+                ? number_format($overdueReturnsCount) . ' overdue · ' . number_format($returnsDueTodayCountValue) . ' due today'
+                : number_format($returnsDueTodayCountValue) . ' due today',
             'icon' => 'rental',
             'href' => $mergeDashboardQuery('rentals.index', ['status' => 'live']),
-            'tone' => 'green',
+            'tone' => $overdueReturnsCount > 0 ? 'danger' : 'success',
         ],
         [
-            'widget_key' => 'kpi_deliveries_today',
-            'label' => $dashboardTaskScope === 'assigned' ? 'My Deliveries Today' : 'Deliveries Today',
-            'value' => $dashboardTaskScope === 'assigned' ? number_format((int) ($myDeliveriesTodayCount ?? 0)) : number_format($deliveriesTodayCount),
-            'note' => $dashboardTaskScope === 'assigned' ? 'Scheduled for today and still open' : 'Completed deliveries today',
-            'subtitle' => $dashboardTaskScope === 'assigned' ? $pendingDeliveryCountValue . ' still pending overall' : $pendingDeliveryCountValue . ' still pending',
+            'row' => 'operations',
+            'sort' => 20,
+            'label' => 'Pending Deliveries',
+            'value' => number_format($deliveryTasksCountValue),
+            'insight' => $overdueDeliveryCountValue > 0 ? number_format($overdueDeliveryCountValue) . ' overdue' : 'On track',
+            'insight_tone' => $overdueDeliveryCountValue > 0 ? 'danger' : 'success',
+            'note' => number_format($scheduledDeliveryCountValue) . ' scheduled · ' . number_format($outForDeliveryCountValue) . ' out for delivery',
             'icon' => 'delivery',
-            'href' => $dashboardTaskScope === 'assigned'
-                ? $myDeliveriesTodayUrl
-                : ($deliveriesIndexUrl ? route('deliveries.index', ['board' => 'completed_delivery']) : null),
-            'tone' => 'blue',
+            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'delivery_workload']) : null,
+            'tone' => $overdueDeliveryCountValue > 0 ? 'danger' : 'warning',
             'visible' => $canReadDeliveries,
         ],
         [
-            'widget_key' => 'kpi_outstanding_invoices',
-            'label' => 'Outstanding Invoices (All)',
+            'row' => 'operations',
+            'sort' => 30,
+            'label' => 'Pending Pickups',
+            'value' => number_format($pickupTasksCountValue),
+            'insight' => $overduePickupCountValue > 0 ? number_format($overduePickupCountValue) . ' overdue' : 'No urgent action',
+            'insight_tone' => $overduePickupCountValue > 0 ? 'danger' : 'success',
+            'note' => number_format((int) ($pickupsScheduledTodayCount ?? 0)) . ' due today · ' . number_format((int) ($awaitingReturnVerificationCount ?? 0)) . ' awaiting verification',
+            'icon' => 'pickup',
+            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pickup_workload']) : null,
+            'tone' => $overduePickupCountValue > 0 ? 'danger' : 'warning',
+            'visible' => $canReadDeliveries,
+        ],
+        [
+            'row' => 'operations',
+            'sort' => 40,
+            'label' => 'Outstanding Invoices',
             'value' => number_format($outstandingInvoiceCountValue),
+            'insight' => $overdueInvoiceCountValue > 0 ? number_format($overdueInvoiceCountValue) . ' overdue now' : 'No urgent action',
+            'insight_tone' => $overdueInvoiceCountValue > 0 ? 'danger' : 'success',
             'note' => $canViewFinance ? $currency($outstandingInvoiceAmountValue) . ' unpaid balance' : 'Open invoices awaiting collection',
-            'subtitle' => $outstandingInvoiceOverdueCountValue . ' overdue now',
             'icon' => 'payment',
             'href' => $mergeDashboardQuery('invoices.index', ['status' => 'open']),
-            'tone' => 'amber',
+            'tone' => $overdueInvoiceCountValue > 0 ? 'danger' : 'warning',
             'visible' => $canReadInvoices,
         ],
         [
-            'widget_key' => 'kpi_unbilled_rentals',
-            'label' => 'Unbilled Rentals',
-            'value' => number_format($unbilledRentalReceivableCountValue),
-            'note' => $canViewFinance ? $currency($unbilledRentalReceivableAmountValue) . ' not yet invoiced' : 'Delivered rentals awaiting invoice',
-            'subtitle' => 'Delivered rentals without invoice',
-            'icon' => 'rental',
-            'href' => $mergeDashboardQuery('rentals.index', ['status' => 'live']),
-            'tone' => 'amber',
-            'visible' => $canReadInvoices,
-        ],
-        [
-            'widget_key' => 'kpi_unpaid_renewal_invoices',
-            'label' => 'Unpaid Renewal Invoices',
-            'value' => number_format((int) ($unpaidRenewalCount ?? 0)),
-            'note' => $canViewFinance ? $currency((float) ($unpaidRenewalAmount ?? 0)) . ' pending renewal collection' : 'Renewal invoices awaiting payment',
-            'subtitle' => number_format((int) ($unbilledRenewalCount ?? 0)) . ' renewal(s) still unbilled',
-            'icon' => 'payment',
-            'href' => $mergeDashboardQuery('invoices.index', ['status' => 'open']),
-            'tone' => 'red',
-            'visible' => $canReadInvoices,
-        ],
-        [
-            'widget_key' => 'kpi_unbilled_sales',
-            'label' => 'Unbilled Sales',
-            'value' => number_format($unbilledSaleReceivableCountValue),
-            'note' => $canViewFinance ? $currency($unbilledSaleReceivableAmountValue) . ' not yet invoiced' : 'Sales awaiting invoice',
-            'subtitle' => 'Sale orders without invoice',
-            'icon' => 'sales',
-            'href' => $salesIndexUrl,
-            'tone' => 'amber',
-            'visible' => $canReadInvoices,
-        ],
-        [
-            'widget_key' => 'kpi_overdue_rentals',
-            'label' => $orderScopePrefix . 'Overdue Rentals',
-            'value' => number_format($overdueReturnsCount),
-            'note' => number_format($returnsDueTodayCountValue) . ' due today',
-            'subtitle' => 'Past promised return date',
-            'icon' => 'overdue',
-            'href' => $mergeDashboardQuery('rentals.index', ['filter' => 'overdue', 'status' => null]),
-            'tone' => 'red',
-        ],
-        [
-            'widget_key' => 'kpi_collections_this_month',
+            'row' => 'operations',
+            'sort' => 50,
             'label' => 'Collections This Month',
             'value' => $currency($paymentsReceivedThisMonthAmount),
-            'note' => 'Payments collected this month',
-            'subtitle' => $currency($paymentsReceivedTodayAmount) . ' received today',
+            'insight' => $paymentsReceivedTodayAmount > 0 ? $currency($paymentsReceivedTodayAmount) . ' received today' : 'No collections recorded today',
+            'insight_tone' => $paymentsReceivedTodayAmount > 0 ? 'success' : 'info',
+            'note' => $outstandingDueAmountValue > 0 ? $currency($outstandingDueAmountValue) . ' still outstanding' : 'No outstanding balance',
             'icon' => 'revenue',
             'href' => $reportsIndexUrl ?: $invoiceIndexUrl,
-            'tone' => 'blue',
+            'tone' => 'success',
             'visible' => $canViewFinance && ($canReadReports || $canReadInvoices),
         ],
         [
-            'widget_key' => 'kpi_rental_available',
+            'row' => 'revenue_protection',
+            'sort' => 10,
+            'label' => 'Unbilled Rentals',
+            'value' => number_format($unbilledRentalReceivableCountValue),
+            'insight' => 'Delivered rentals without invoice',
+            'insight_tone' => $unbilledRentalReceivableCountValue > 0 ? 'warning' : 'success',
+            'note' => $canViewFinance ? $currency($unbilledRentalReceivableAmountValue) . ' not yet invoiced' : 'Delivered rentals awaiting invoice',
+            'icon' => 'rental',
+            'href' => $mergeDashboardQuery('rentals.index', ['status' => 'live']),
+            'tone' => $unbilledRentalReceivableCountValue > 0 ? 'warning' : 'success',
+            'visible' => $canReadInvoices,
+        ],
+        [
+            'row' => 'revenue_protection',
+            'sort' => 20,
+            'label' => 'Unbilled Sales',
+            'value' => number_format($unbilledSaleReceivableCountValue),
+            'insight' => 'Sale orders without invoice',
+            'insight_tone' => $unbilledSaleReceivableCountValue > 0 ? 'warning' : 'success',
+            'note' => $canViewFinance ? $currency($unbilledSaleReceivableAmountValue) . ' not yet invoiced' : 'Sales awaiting invoice',
+            'icon' => 'sales',
+            'href' => $salesIndexUrl,
+            'tone' => $unbilledSaleReceivableCountValue > 0 ? 'warning' : 'success',
+            'visible' => $canReadInvoices,
+        ],
+        [
+            'row' => 'revenue_protection',
+            'sort' => 30,
+            'label' => 'Unpaid Renewal Invoices',
+            'value' => number_format((int) ($unpaidRenewalCount ?? 0)),
+            'insight' => 'Pending renewal collection',
+            'insight_tone' => ((int) ($unpaidRenewalCount ?? 0)) > 0 ? 'danger' : 'success',
+            'note' => $canViewFinance ? $currency((float) ($unpaidRenewalAmount ?? 0)) . ' outstanding renewal amount' : 'Renewal invoices awaiting payment',
+            'icon' => 'payment',
+            'href' => $mergeDashboardQuery('invoices.index', ['status' => 'open']),
+            'tone' => ((int) ($unpaidRenewalCount ?? 0)) > 0 ? 'danger' : 'success',
+            'visible' => $canReadInvoices,
+        ],
+        [
+            'row' => 'revenue_protection',
+            'sort' => 40,
+            'label' => 'Open Invoices',
+            'value' => number_format($openInvoiceCountValue),
+            'insight' => $overdueInvoiceCountValue > 0 ? number_format($overdueInvoiceCountValue) . ' overdue' : 'Awaiting closure',
+            'insight_tone' => $overdueInvoiceCountValue > 0 ? 'warning' : 'info',
+            'note' => $canViewFinance ? $currency($outstandingDueAmountValue) . ' outstanding' : 'Invoices awaiting closure',
+            'icon' => 'payment',
+            'href' => $mergeDashboardQuery('invoices.index', ['status' => 'open']),
+            'tone' => 'warning',
+            'visible' => $canReadInvoices,
+        ],
+        [
+            'row' => 'revenue_protection',
+            'sort' => 50,
+            'label' => 'Collections Today',
+            'value' => $currency($paymentsReceivedTodayAmount),
+            'insight' => 'Cash received so far',
+            'insight_tone' => $paymentsReceivedTodayAmount > 0 ? 'success' : 'info',
+            'note' => $paymentsReceivedThisMonthAmount > 0 ? $currency($paymentsReceivedThisMonthAmount) . ' collected this month' : 'No collections recorded this month',
+            'icon' => 'revenue',
+            'href' => $reportsIndexUrl ?: $invoiceIndexUrl,
+            'tone' => 'success',
+            'visible' => $canViewFinance,
+        ],
+        [
+            'row' => 'inventory_readiness',
+            'sort' => 10,
             'label' => 'Rental Available',
             'value' => number_format($availableRentalAssetsCount),
+            'insight' => $maintenanceAlertCountValue > 0 ? number_format($maintenanceAlertCountValue) . ' maintenance alerts' : 'Assets ready for dispatch',
+            'insight_tone' => $maintenanceAlertCountValue > 0 ? 'warning' : 'success',
             'note' => 'Tracked rental assets ready to dispatch',
-            'subtitle' => $maintenanceAlertCountValue . ' maintenance alerts',
             'icon' => 'asset',
             'href' => $availableRentalAssetsUrl ?: $inventoryUrl,
-            'tone' => null,
+            'tone' => 'info',
             'visible' => $showInventorySection && !empty($inventoryUrl),
         ],
         [
-            'widget_key' => 'kpi_sale_stock_available',
+            'row' => 'inventory_readiness',
+            'sort' => 20,
             'label' => 'Sale Stock Available',
             'value' => number_format($availableSaleUnitsCount),
-            'note' => 'Quantity-based sellable stock',
-            'subtitle' => 'Product Master / warehouse stock',
+            'insight' => 'Warehouse stock',
+            'insight_tone' => 'info',
+            'note' => 'Sellable quantity in Product Master / warehouses',
             'icon' => 'sales',
             'href' => $productsIndexUrl ?: ($availableSaleUnitsUrl ?: $inventoryUrl),
-            'tone' => null,
+            'tone' => 'info',
             'visible' => $showInventorySection && (!empty($productsIndexUrl) || !empty($inventoryUrl)),
         ],
-    ])->filter(fn ($card) => ($card['visible'] ?? true) && $dashboardWidgetEnabled($card['widget_key']))->sortBy(fn ($card) => $dashboardWidgetSort($card['widget_key']))->values();
+        [
+            'row' => 'inventory_readiness',
+            'sort' => 30,
+            'label' => 'Asset Alerts',
+            'value' => number_format($maintenanceAlertCountValue),
+            'insight' => $maintenanceAlertCountValue > 0 ? 'Maintenance or unavailable' : 'No active alerts',
+            'insight_tone' => $maintenanceAlertCountValue > 0 ? 'danger' : 'success',
+            'note' => number_format((int) ($awaitingReturnVerificationCount ?? 0)) . ' awaiting verification',
+            'icon' => 'low-stock',
+            'href' => $inventoryUrl,
+            'tone' => $maintenanceAlertCountValue > 0 ? 'danger' : 'info',
+            'visible' => $showInventorySection && !empty($inventoryUrl),
+        ],
+        [
+            'row' => 'inventory_readiness',
+            'sort' => 40,
+            'label' => 'Returns Expected',
+            'value' => number_format($returnsDueTodayCountValue),
+            'insight' => $returnsDueTodayCountValue > 0 ? 'Due back today' : 'No returns due today',
+            'insight_tone' => $returnsDueTodayCountValue > 0 ? 'warning' : 'info',
+            'note' => $overdueReturnsCount > 0 ? number_format($overdueReturnsCount) . ' overdue return(s)' : 'Return desk is clear',
+            'icon' => 'pickup',
+            'href' => $mergeDashboardQuery('rentals.index', ['filter' => 'returns_due_today', 'status' => null]),
+            'tone' => 'warning',
+        ],
+        [
+            'row' => 'reference',
+            'sort' => 10,
+            'label' => 'Total Customers',
+            'value' => number_format((int) ($totalCustomers ?? 0)),
+            'insight' => ((int) ($activeRentalCustomerCount ?? 0)) > 0 ? number_format((int) ($activeRentalCustomerCount ?? 0)) . ' with live rentals' : 'No live rental customers yet',
+            'insight_tone' => ((int) ($activeRentalCustomerCount ?? 0)) > 0 ? 'info' : 'success',
+            'note' => ((int) ($newCustomersThisMonth ?? 0)) > 0 ? '+' . number_format((int) ($newCustomersThisMonth ?? 0)) . ' added this month' : 'No new customers added this month',
+            'icon' => 'customer',
+            'href' => $customersIndexUrl,
+            'tone' => 'info',
+            'visible' => $canReadCustomers && !empty($customersIndexUrl),
+        ],
+        [
+            'row' => 'reference',
+            'sort' => 20,
+            'label' => 'Products',
+            'value' => number_format((int) ($totalProductsCount ?? 0)),
+            'insight' => number_format((int) ($rentableProductsCount ?? 0)) . ' rentable · ' . number_format((int) ($sellableProductsCount ?? 0)) . ' sellable',
+            'insight_tone' => 'info',
+            'note' => number_format((int) ($bothProductsCount ?? 0)) . ' support both rental and sale',
+            'icon' => 'asset',
+            'href' => $productsIndexUrl,
+            'tone' => 'info',
+            'visible' => ($canReadProducts || $showInventorySection) && !empty($productsIndexUrl),
+        ],
+        [
+            'row' => 'reference',
+            'sort' => 30,
+            'label' => 'Vendors',
+            'value' => number_format((int) ($totalBusinessPartners ?? 0)),
+            'insight' => 'Business partner network',
+            'insight_tone' => 'info',
+            'note' => 'Delivery and referral partners in PHOS',
+            'icon' => 'vendor',
+            'href' => $safeRoute('business-partners.index'),
+            'tone' => 'info',
+            'visible' => $canReadCustomers && !empty($safeRoute('business-partners.index')),
+        ],
+        [
+            'row' => 'reference',
+            'sort' => 40,
+            'label' => 'Overdue Rentals',
+            'value' => number_format($overdueReturnsCount),
+            'insight' => $returnsDueTodayCountValue > 0 ? number_format($returnsDueTodayCountValue) . ' due today' : 'Past promised return date',
+            'insight_tone' => $overdueReturnsCount > 0 ? 'danger' : 'info',
+            'note' => $activePercent . '% of rental base active',
+            'icon' => 'overdue',
+            'href' => $mergeDashboardQuery('rentals.index', ['filter' => 'overdue', 'status' => null]),
+            'tone' => $overdueReturnsCount > 0 ? 'danger' : 'info',
+        ],
+    ])->filter(fn ($card) => ($card['visible'] ?? true))->values();
 
-    $actionItems = collect([
+    $operationalInsightCards = $dashboardInsightCards->where('row', 'operations')->sortBy('sort')->values();
+    $revenueProtectionCards = $dashboardInsightCards->where('row', 'revenue_protection')->sortBy('sort')->values();
+    $inventoryReadinessCards = $dashboardInsightCards->where('row', 'inventory_readiness')->sortBy('sort')->values();
+    $referenceInsightCards = $dashboardInsightCards->where('row', 'reference')->sortBy('sort')->values();    $actionItems = collect([
         [
             'widget_key' => 'primary_pending_deliveries',
             'label' => 'Deliveries Pending',
@@ -679,7 +807,7 @@
             'widget_key' => 'alert_large_unpaid_invoices',
             'label' => 'Large unpaid invoices',
             'count' => (int) ($largeOutstandingInvoiceCount ?? 0),
-            'copy' => 'High-value invoices above ₹10,000 still awaiting collection.',
+            'copy' => 'High-value invoices above â‚¹10,000 still awaiting collection.',
             'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'payments']) : $invoiceIndexUrl,
             'tone' => 'amber',
             'visible' => $canViewFinance,
@@ -781,8 +909,20 @@
         display: grid;
         gap: 10px;
     }
+    .dashboard-insight-row {
+        display: grid;
+        gap: 8px;
+    }
+    .dashboard-insight-row-heading {
+        color: var(--ph-color-text-soft);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        padding-inline: 2px;
+    }
     .dashboard-kpi-grid {
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     }
     .dashboard-priority-grid,
     .dashboard-sales-grid {
@@ -834,9 +974,9 @@
         color: inherit;
     }
     .dashboard-kpi-card {
-        gap: 4px;
-        min-height: 92px;
-        padding: 13px 14px;
+        gap: 6px;
+        min-height: 124px;
+        padding: 14px 15px;
         border-radius: 18px;
         background: #ffffff;
         box-shadow: 0 14px 28px rgba(11, 35, 66, 0.08);
@@ -879,14 +1019,35 @@
     .dashboard-kpi-subtitle {
         color: var(--ph-color-text-soft);
         font-size: 12px;
-        line-height: 1.35;
+        line-height: 1.4;
         font-weight: 700;
         overflow-wrap: anywhere;
     }
+    .dashboard-kpi-insight {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 1.35;
+        color: var(--ph-color-primary);
+    }
+    .dashboard-kpi-insight.is-success {
+        color: var(--ph-color-success);
+    }
+    .dashboard-kpi-insight.is-warning {
+        color: var(--ph-color-warning);
+    }
+    .dashboard-kpi-insight.is-danger {
+        color: var(--ph-color-danger);
+    }
+    .dashboard-kpi-insight.is-info {
+        color: var(--ph-color-primary);
+    }
     .dashboard-kpi-icon,
     .dashboard-card-icon {
-        width: 28px;
-        height: 28px;
+        width: 30px;
+        height: 30px;
         border-radius: 9px;
         display: grid;
         place-items: center;
@@ -904,7 +1065,7 @@
     .dashboard-card-value {
         color: var(--ph-color-text);
         max-width: 100%;
-        font-size: 24px;
+        font-size: 28px;
         font-weight: 800;
         line-height: 1.04;
         letter-spacing: -.04em;
@@ -961,6 +1122,18 @@
         color: var(--ph-color-primary);
         background: var(--ph-color-info-soft);
         border-color: rgba(23, 119, 189, 0.18);
+    }
+    .dashboard-kpi-card.is-success {
+        border-color: rgba(14, 159, 75, 0.16);
+    }
+    .dashboard-kpi-card.is-warning {
+        border-color: rgba(183, 121, 31, 0.18);
+    }
+    .dashboard-kpi-card.is-danger {
+        border-color: rgba(179, 13, 35, 0.18);
+    }
+    .dashboard-kpi-card.is-info {
+        border-color: rgba(23, 119, 189, 0.16);
     }
     .dashboard-finance-card {
         min-height: 78px;
@@ -1845,7 +2018,7 @@
                     <div class="fieldops-home-hero-ill">{!! $fieldOpsIll !!}</div>
                     <div class="fieldops-home-hero-copy">
                         <strong>Hi, Delivery Team</strong>
-                        <p>Here’s your field work today.</p>
+                        <p>Hereâ€™s your field work today.</p>
                     </div>
                 </div>
                 <div class="fieldops-home-kpis">
@@ -1874,7 +2047,7 @@
             <div class="fieldops-home-section">
                 <div class="fieldops-home-section-head">
                     <div>
-                        <h2>Today’s Task Flow</h2>
+                        <h2>Todayâ€™s Task Flow</h2>
                         <p>Open the next delivery or pickup without hunting through long cards.</p>
                     </div>
                     <a href="{{ $myAssignedTasksUrl ?? $deliveriesIndexUrl ?? '#' }}" class="rx-btn-secondary">View All</a>
@@ -1888,7 +2061,7 @@
                                     <span class="fieldops-home-item-chip">{{ ucfirst(str_replace('_', ' ', $task->status)) }}</span>
                                     <span>{{ optional($task->scheduled_at)?->format('h:i A') ?? 'No time' }}</span>
                                 </div>
-                                <p>{{ $task->linkedCustomerName() }} • {{ optional($task->scheduled_at)?->format('d M') ?? 'Today' }}</p>
+                                <p>{{ $task->linkedCustomerName() }} â€¢ {{ optional($task->scheduled_at)?->format('d M') ?? 'Today' }}</p>
                                 <small>{{ \Illuminate\Support\Str::limit(collect([$task->linkedCustomerAddress(), $task->linkedCustomerCity()])->filter()->implode(', '), 70) ?: 'Address pending' }}</small>
                                 <div class="fieldops-home-links">
                                     <a href="{{ route('deliveries.show', $task) }}">Open</a>
@@ -1936,35 +2109,32 @@
         </div>
     </section>
 
-    <section class="dashboard-kpi-grid">
-        @foreach($kpiCards as $card)
-            @php $tag = !empty($card['href']) ? 'a' : 'div'; @endphp
-            <{{ $tag }} @if(!empty($card['href'])) href="{{ $card['href'] }}" @endif class="dashboard-kpi-card {{ $toneCardClass($card['tone'] ?? null) }}">
-                <div class="dashboard-kpi-head">
-                    <span class="dashboard-kpi-label">{{ $card['label'] }}</span>
-                    <span class="dashboard-kpi-icon">{!! $dashboardIcon($card['icon']) !!}</span>
+    @foreach([
+        ['label' => 'Operational Priorities', 'cards' => $operationalInsightCards],
+        ['label' => 'Revenue Protection', 'cards' => $revenueProtectionCards],
+        ['label' => 'Inventory Readiness', 'cards' => $inventoryReadinessCards],
+        ['label' => 'Reference KPIs', 'cards' => $referenceInsightCards],
+    ] as $insightRow)
+        @if($insightRow['cards']->isNotEmpty())
+            <section class="dashboard-insight-row">
+                <div class="dashboard-insight-row-heading">{{ $insightRow['label'] }}</div>
+                <div class="dashboard-kpi-grid">
+                    @foreach($insightRow['cards'] as $card)
+                        @php $tag = !empty($card['href']) ? 'a' : 'div'; @endphp
+                        <{{ $tag }} @if(!empty($card['href'])) href="{{ $card['href'] }}" @endif class="dashboard-kpi-card {{ $toneCardClass($card['tone'] ?? null) }}">
+                            <div class="dashboard-kpi-head">
+                                <span class="dashboard-kpi-label">{{ $card['label'] }}</span>
+                                <span class="dashboard-kpi-icon">{!! $dashboardIcon($card['icon']) !!}</span>
+                            </div>
+                            <div class="dashboard-kpi-value">{{ $card['value'] }}</div>
+                            <div class="dashboard-kpi-insight {{ $toneCardClass($card['insight_tone'] ?? null) }}">{{ $card['insight'] ?? 'No urgent action' }}</div>
+                            <div class="dashboard-kpi-note">{{ $card['note'] }}</div>
+                        </{{ $tag }}>
+                    @endforeach
                 </div>
-                <div class="dashboard-kpi-value">{{ $card['value'] }}</div>
-                <div class="dashboard-kpi-subtitle">{{ $card['subtitle'] ?? '' }}</div>
-                <div class="dashboard-kpi-note">{{ $card['note'] }}</div>
-            </{{ $tag }}>
-        @endforeach
-    </section>
-
-    @if($snapshotItems->isNotEmpty())
-        <section class="dashboard-snapshot-grid">
-            @foreach($snapshotItems as $item)
-                <div class="dashboard-snapshot-item {{ $toneCardClass($item['tone'] ?? null) }}">
-                    <div>
-                        <span>{{ $item['label'] }}</span>
-                        <strong>{{ $item['value'] }}</strong>
-                        <small>{{ $item['copy'] }}</small>
-                    </div>
-                    <span class="dashboard-snapshot-icon">{!! $dashboardIcon($item['icon']) !!}</span>
-                </div>
-            @endforeach
-        </section>
-    @endif
+            </section>
+        @endif
+    @endforeach
 
     @if($operationalAlerts->isNotEmpty())
         <section class="rx-card">
@@ -2043,7 +2213,7 @@
                                             <em>{{ optional($rental->end_date)?->format('d M Y') ?? 'Today' }}</em>
                                         </div>
                                         <span>{{ $rental->customer_name ?? optional($rental->customer)->name ?? 'Customer' }}</span>
-                                        <small>{{ optional($rental->product)->name ?? 'Product N/A' }} • {{ $currency($rental->rental_amount ?? 0) }}</small>
+                                        <small>{{ optional($rental->product)->name ?? 'Product N/A' }} â€¢ {{ $currency($rental->rental_amount ?? 0) }}</small>
                                         <div class="dashboard-widget-actions">
                                             <a href="{{ route('rentals.show', $rental) }}">Open</a>
                                             @if($rental->customer?->phone)
@@ -2082,7 +2252,7 @@
                                             <strong>Pickup #{{ $task->id }}</strong>
                                             <em>{{ optional($task->scheduled_at)?->format('h:i A') ?? 'Today' }}</em>
                                         </div>
-                                        <span>{{ $task->linkedCustomerName() }} • {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
+                                        <span>{{ $task->linkedCustomerName() }} â€¢ {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
                                         <small>{{ $task->pickup_address ?: 'Address pending' }}</small>
                                         <div class="dashboard-widget-actions">
                                             <a href="{{ route('deliveries.show', $task) }}">Open</a>
@@ -2125,7 +2295,7 @@
                                             <strong>Delivery #{{ $task->id }}</strong>
                                             <em>{{ optional($task->scheduled_at)?->format('h:i A') ?? 'Today' }}</em>
                                         </div>
-                                        <span>{{ $task->linkedCustomerName() }} • {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
+                                        <span>{{ $task->linkedCustomerName() }} â€¢ {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
                                         <small>{{ $task->delivery_address ?: 'Address pending' }}</small>
                                         <div class="dashboard-widget-actions">
                                             <a href="{{ route('deliveries.show', $task) }}">Open</a>
@@ -2168,8 +2338,8 @@
                                             <strong>{{ $followUp->title }}</strong>
                                             <em>{{ optional($followUp->due_at)?->format('h:i A') ?? 'Today' }}</em>
                                         </div>
-                                        <span>{{ $followUp->callTargetName() ?: 'Contact pending' }} • {{ $followUp->callTargetPhone() ?: 'No phone' }}</span>
-                                        <small>{{ $followUp->typeLabel() }} • {{ $followUp->priorityLabel() }}</small>
+                                        <span>{{ $followUp->callTargetName() ?: 'Contact pending' }} â€¢ {{ $followUp->callTargetPhone() ?: 'No phone' }}</span>
+                                        <small>{{ $followUp->typeLabel() }} â€¢ {{ $followUp->priorityLabel() }}</small>
                                         <div class="dashboard-widget-actions">
                                             <a href="{{ route('communication-center.index', ['tab' => 'today']) }}">Open</a>
                                             @if($followUp->callTargetPhone())
@@ -2186,7 +2356,7 @@
                             <div class="rx-empty dashboard-empty">
                                 <div class="rx-empty-icon">{!! $dashboardIcon('tasks') !!}</div>
                                 <strong>No follow-ups due today</strong>
-                                <span>Today’s callback queue is clear.</span>
+                                <span>Todayâ€™s callback queue is clear.</span>
                             </div>
                         @endif
                     </div>
@@ -2211,7 +2381,7 @@
                                                 <strong>{{ $invoice->invoice_number }}</strong>
                                                 <em>{{ $currency($invoice->total_amount - $invoice->payments_sum_amount) }}</em>
                                             </div>
-                                            <span>{{ optional($invoice->customer)->name ?? 'Customer' }} • {{ optional($invoice->customer)->phone ?? 'No phone' }}</span>
+                                            <span>{{ optional($invoice->customer)->name ?? 'Customer' }} â€¢ {{ optional($invoice->customer)->phone ?? 'No phone' }}</span>
                                             <small>Due {{ optional($invoice->due_date)?->format('d M Y') ?? 'now' }}</small>
                                             <div class="dashboard-widget-actions">
                                                 <a href="{{ route('invoices.show', $invoice) }}">Open</a>
@@ -2522,8 +2692,8 @@
                                     <strong>{{ $row['name'] }}</strong>
                                     <span class="dashboard-role-chip">{{ $row['load_state'] }}</span>
                                 </div>
-                                <span>{{ $row['delivery_count'] }} deliveries • {{ $row['pickup_count'] }} pickups • {{ $row['followup_count'] }} follow-ups</span>
-                                <small>{{ $row['overdue_count'] }} overdue • {{ \Illuminate\Support\Str::headline((string) ($row['role'] ?? 'team')) }}</small>
+                                <span>{{ $row['delivery_count'] }} deliveries â€¢ {{ $row['pickup_count'] }} pickups â€¢ {{ $row['followup_count'] }} follow-ups</span>
+                                <small>{{ $row['overdue_count'] }} overdue â€¢ {{ \Illuminate\Support\Str::headline((string) ($row['role'] ?? 'team')) }}</small>
                             </div>
                         @endforeach
                     </div>
@@ -2558,8 +2728,8 @@
                                     <strong>{{ $partner['name'] }}</strong>
                                     <span class="dashboard-role-chip">{{ $partner['active_clients_count'] }} clients</span>
                                 </div>
-                                <span>{{ $partner['open_rentals_count'] }} open rentals • {{ $partner['active_sales_count'] }} sales</span>
-                                <small>{{ $partner['renewal_followups_count'] }} renewal follow-ups • {{ $partner['payment_followups_count'] }} payment follow-ups</small>
+                                <span>{{ $partner['open_rentals_count'] }} open rentals â€¢ {{ $partner['active_sales_count'] }} sales</span>
+                                <small>{{ $partner['renewal_followups_count'] }} renewal follow-ups â€¢ {{ $partner['payment_followups_count'] }} payment follow-ups</small>
                                 <div class="dashboard-feed-links">
                                     <a href="{{ route('business-partners.show', $partner['id']) }}">Open</a>
                                     @if(!empty($partner['phone']))
@@ -2692,8 +2862,8 @@
                                     <strong>{{ ucfirst((string) $task->type) }} #{{ $task->id }}</strong>
                                     <span class="rx-badge {{ $statusBadgeClass($task->pickupOperationalStatus()) }}">{{ $task->type === 'pickup' ? $task->pickupOperationalLabel() : \Illuminate\Support\Str::headline((string) $task->status) }}</span>
                                 </div>
-                                <span>{{ $task->linkedCustomerName() }} • {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
-                                <small>{{ optional($task->scheduled_at)?->format('d M, h:i A') ?? 'Schedule pending' }} • {{ $task->assignedUser?->name ?: $task->assignedStaff?->name ?: 'Unassigned' }}</small>
+                                <span>{{ $task->linkedCustomerName() }} â€¢ {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
+                                <small>{{ optional($task->scheduled_at)?->format('d M, h:i A') ?? 'Schedule pending' }} â€¢ {{ $task->assignedUser?->name ?: $task->assignedStaff?->name ?: 'Unassigned' }}</small>
                                 <div class="dashboard-feed-links">
                                     <a href="{{ route('deliveries.show', $task) }}">Open</a>
                                     @if($task->linkedCustomerPhone())
@@ -2737,8 +2907,8 @@
                                     <strong>{{ $followUp->title }}</strong>
                                     <span class="rx-badge {{ $statusBadgeClass($followUp->effectiveStatus()) }}">{{ $followUp->priorityLabel() }}</span>
                                 </div>
-                                <span>{{ $followUp->callTargetName() ?: 'Contact pending' }} • {{ $followUp->callTargetPhone() ?: 'No phone' }}</span>
-                                <small>{{ $followUp->typeLabel() }} • {{ optional($followUp->due_at)?->format('d M, h:i A') ?? 'Due now' }}</small>
+                                <span>{{ $followUp->callTargetName() ?: 'Contact pending' }} â€¢ {{ $followUp->callTargetPhone() ?: 'No phone' }}</span>
+                                <small>{{ $followUp->typeLabel() }} â€¢ {{ optional($followUp->due_at)?->format('d M, h:i A') ?? 'Due now' }}</small>
                                 <div class="dashboard-feed-links">
                                     <a href="{{ route('communication-center.index', ['priority' => 'high']) }}">Open</a>
                                     @if($followUp->callTargetPhone())
@@ -3284,3 +3454,4 @@
     });
 </script>
 @endsection
+

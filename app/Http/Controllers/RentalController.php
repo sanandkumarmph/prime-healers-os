@@ -4250,6 +4250,64 @@ class RentalController extends Controller
 
         $dashboardRentalCollection = $dashboardSummaryQuery->get();
 
+        $canReadCustomers = $currentUser?->canAccessModule('customers', 'read') ?? false;
+        $canReadProducts = $currentUser?->canAccessModule('products', 'read') ?? false;
+
+        $activeRentalCustomerCount = $dashboardRentalCollection
+            ->filter(fn ($rental) => !in_array((string) $rental->status, ['returned', 'cancelled'], true))
+            ->map(function ($rental) {
+                if (!empty($rental->customer_id)) {
+                    return 'customer:' . $rental->customer_id;
+                }
+
+                if (!empty($rental->partner_client_id)) {
+                    return 'partner-client:' . $rental->partner_client_id;
+                }
+
+                $name = trim((string) ($rental->customer_name ?? ''));
+
+                return $name !== '' ? 'name:' . mb_strtolower($name) : null;
+            })
+            ->filter()
+            ->unique()
+            ->count();
+
+        $totalCustomers = 0;
+        $newCustomersThisMonth = 0;
+        $totalBusinessPartners = 0;
+
+        if ($canReadCustomers) {
+            $customerSummaryQuery = Customer::query()->where('organization_id', $this->orgId());
+            $totalCustomers = (clone $customerSummaryQuery)->count();
+            $newCustomersThisMonth = (clone $customerSummaryQuery)
+                ->whereYear('created_at', $today->year)
+                ->whereMonth('created_at', $today->month)
+                ->count();
+
+            $totalBusinessPartners = BusinessPartner::query()
+                ->where('organization_id', $this->orgId())
+                ->count();
+        }
+
+        $totalProductsCount = 0;
+        $sellableProductsCount = 0;
+        $rentableProductsCount = 0;
+        $bothProductsCount = 0;
+
+        if ($canReadProducts || $canViewInventoryIntelligence) {
+            $productSummaryQuery = Product::query()->where('organization_id', $this->orgId());
+            $totalProductsCount = (clone $productSummaryQuery)->count();
+            $sellableProductsCount = (clone $productSummaryQuery)
+                ->whereIn('product_type', [Product::TYPE_SELLABLE, Product::TYPE_BOTH])
+                ->count();
+            $rentableProductsCount = (clone $productSummaryQuery)
+                ->whereIn('product_type', [Product::TYPE_RENTABLE, Product::TYPE_BOTH])
+                ->count();
+            $bothProductsCount = (clone $productSummaryQuery)
+                ->where('product_type', Product::TYPE_BOTH)
+                ->count();
+        }
+
         if (!$this->hasRentalAssetsTable()) {
             $recentRentals->each(fn ($rental) => $rental->setRelation('activeRentalAssets', collect()));
             $dashboardRentalCollection->each(fn ($rental) => $rental->setRelation('activeRentalAssets', collect()));
@@ -5093,6 +5151,10 @@ class RentalController extends Controller
             'financeSummary',
             'recentRentals',
             'recentCustomers',
+            'totalCustomers',
+            'newCustomersThisMonth',
+            'activeRentalCustomerCount',
+            'totalBusinessPartners',
             'recentPayments',
             'recentDeliveries',
             'recentFollowUps',
@@ -5112,6 +5174,10 @@ class RentalController extends Controller
             'highUtilizationProducts',
             'idleInventoryProducts',
             'maintenanceAlertCount',
+            'totalProductsCount',
+            'sellableProductsCount',
+            'rentableProductsCount',
+            'bothProductsCount',
             'citySummary',
             'vendorSummary',
             'warehouseSummary',

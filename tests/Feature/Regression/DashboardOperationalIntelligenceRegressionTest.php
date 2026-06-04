@@ -121,6 +121,117 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
             ->assertSeeText('Record Payment');
     }
 
+    public function test_dashboard_renders_compact_insight_cards_with_key_labels_and_links(): void
+    {
+        $organization = TestData::organization();
+        $user = TestData::user($organization);
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Insight Customer',
+            'phone' => '9556700001',
+            'city' => 'Bengaluru',
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Insight Product',
+            'product_type' => Product::TYPE_BOTH,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'available_quantity' => 4,
+            'total_quantity' => 6,
+            'price_per_day' => 450,
+            'rental_price' => 1200,
+            'sale_price' => 5000,
+        ]);
+
+        $rental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'start_date' => now()->subDays(2)->toDateString(),
+            'end_date' => now()->addDays(3)->toDateString(),
+            'status' => 'active',
+            'rental_amount' => 1200,
+        ]);
+
+        Delivery::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'type' => 'delivery',
+            'status' => 'pending',
+            'scheduled_at' => now()->addHour(),
+        ]);
+
+        Delivery::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'type' => 'pickup',
+            'status' => 'pending',
+            'scheduled_at' => now()->addHours(2),
+        ]);
+
+        Invoice::create([
+            'organization_id' => $organization->id,
+            'invoice_number' => 'INV-DASH-INSIGHT-001',
+            'invoice_date' => now()->toDateString(),
+            'due_date' => now()->addDays(2)->toDateString(),
+            'customer_id' => $customer->id,
+            'rental_id' => $rental->id,
+            'bill_to_name' => $customer->name,
+            'status' => 'unpaid',
+            'payment_status' => 'unpaid',
+            'subtotal' => 1200,
+            'taxable_amount' => 1200,
+            'total_amount' => 1200,
+            'paid_amount' => 0,
+            'balance_amount' => 1200,
+        ]);
+
+        $response = $this->actingAs($user)->get(route('dashboard'));
+
+        $response->assertOk()
+            ->assertSeeText('Operational Priorities')
+            ->assertSeeText('Revenue Protection')
+            ->assertSeeText('Inventory Readiness')
+            ->assertSeeText('Reference KPIs')
+            ->assertSeeText('Active Rentals')
+            ->assertSeeText('Pending Deliveries')
+            ->assertSeeText('Pending Pickups')
+            ->assertSeeText('Outstanding Invoices')
+            ->assertSeeText('Collections This Month')
+            ->assertSeeText('Unbilled Rentals')
+            ->assertSeeText('Unbilled Sales')
+            ->assertSeeText('Unpaid Renewal Invoices')
+            ->assertSeeText('Open Invoices')
+            ->assertSeeText('Collections Today')
+            ->assertSeeText('Rental Available')
+            ->assertSeeText('Sale Stock Available')
+            ->assertSeeText('Asset Alerts')
+            ->assertSeeText('Returns Expected')
+            ->assertSeeText('Total Customers')
+            ->assertSeeText('Products')
+            ->assertSee(route('customers.index'), false)
+            ->assertSee(route('rentals.index', ['status' => 'live']), false);
+    }
+
+    public function test_dashboard_empty_state_renders_compact_insight_cards_safely(): void
+    {
+        $organization = TestData::organization();
+        $user = TestData::user($organization);
+
+        $response = $this->actingAs($user)->get(route('dashboard'));
+
+        $response->assertOk()
+            ->assertSeeText('Active Rentals')
+            ->assertSeeText('No urgent action')
+            ->assertSeeText('Collections')
+            ->assertSeeText('Products');
+    }
+
     public function test_dashboard_exposes_follow_up_and_failed_pickup_counts_for_operational_alerts(): void
     {
         $organization = TestData::organization();
