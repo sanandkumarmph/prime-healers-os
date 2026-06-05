@@ -1043,6 +1043,7 @@
     @endif
 
     <x-section-nav
+        class="ph-section-nav-static ph-section-nav-static-mobile"
         label="Rental form sections"
         :items="[
             ['id' => 'rental-fulfilment-section', 'label' => 'Fulfilment'],
