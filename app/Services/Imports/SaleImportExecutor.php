@@ -45,6 +45,12 @@ class SaleImportExecutor
 
             $sale->forceFill([
                 'customer_id' => $salePayload['customer_id'],
+                'customer_type' => $salePayload['customer_type'] ?? $sale->customer_type,
+                'business_partner_id' => $salePayload['business_partner_id'] ?? $sale->business_partner_id,
+                'partner_client_id' => $salePayload['partner_client_id'] ?? $sale->partner_client_id,
+                'vendor_id' => $salePayload['vendor_id'] ?? $sale->vendor_id,
+                'fulfilment_source' => $salePayload['fulfilment_source'] ?? $sale->fulfilment_source,
+                'delivery_responsibility' => $salePayload['delivery_responsibility'] ?? $sale->delivery_responsibility,
                 'product_id' => $salePayload['product_id'],
                 'quantity' => $salePayload['quantity'],
                 'unit_price' => $salePayload['unit_price'],

@@ -60,12 +60,28 @@
 
     @include('imports.partials.required-banner', ['requiredFields' => $requiredFields ?? []])
 
+    @if($invalidRowsPreview->isNotEmpty() || $runtimeErrors->isNotEmpty())
+        <section class="ph-import-card">
+            <div class="ph-import-panel-head">
+                <div>
+                    <h2>Parsed Headers</h2>
+                    <p>Use these parsed headers to debug mapping issues when validation fails.</p>
+                </div>
+            </div>
+            <div class="ph-import-reason-chip-row">
+                @foreach(($headers ?? []) as $header)
+                    <span class="ph-import-reason-chip">{{ $header }}</span>
+                @endforeach
+            </div>
+        </section>
+    @endif
+
     <div class="ph-import-layout">
         <section class="ph-import-card">
             <div class="ph-import-panel-head">
                 <div>
-                    <h2>Valid Rows Preview</h2>
-                    <p>Showing up to the first 20 valid rows in a clean preview layout.</p>
+                    <h2>Imported Rows Preview</h2>
+                    <p>Showing up to the first 20 rows that are currently ready to import.</p>
                 </div>
             </div>
 
@@ -118,8 +134,8 @@
         <section class="ph-import-card">
             <div class="ph-import-panel-head">
                 <div>
-                    <h2>Invalid Rows</h2>
-                    <p>Each invalid row shows the row number and the exact validation issues.</p>
+                    <h2>Skipped Rows</h2>
+                    <p>Each skipped row shows the row number, field, and exact reason.</p>
                 </div>
             </div>
 
@@ -128,8 +144,8 @@
                     <article class="ph-import-invalid-card">
                         <strong>Row #{{ $row['row_number'] }}</strong>
                         <ul>
-                            @foreach(($row['errors'] ?? []) as $error)
-                                <li>{{ $error }}</li>
+                            @foreach(($row['error_details'] ?? []) as $detail)
+                                <li><strong>{{ \Illuminate\Support\Str::of($detail['field'] ?? 'general')->replace('_', ' ')->title() }}:</strong> {{ $detail['reason'] ?? '' }}</li>
                             @endforeach
                         </ul>
                     </article>
@@ -141,8 +157,12 @@
                     <article class="ph-import-invalid-card">
                         <strong>Row #{{ $row['row_number'] }}</strong>
                         <ul>
-                            @foreach(($row['errors'] ?? []) as $error)
-                                <li>{{ $error }}</li>
+                            @foreach(($row['error_details'] ?? $row['errors'] ?? []) as $detail)
+                                @if(is_array($detail))
+                                    <li><strong>{{ \Illuminate\Support\Str::of($detail['field'] ?? 'general')->replace('_', ' ')->title() }}:</strong> {{ $detail['reason'] ?? '' }}</li>
+                                @else
+                                    <li>{{ $detail }}</li>
+                                @endif
                             @endforeach
                         </ul>
                     </article>

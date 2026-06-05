@@ -3,11 +3,15 @@
 namespace Tests\Feature\Regression;
 
 use App\Models\Asset;
+use App\Models\BusinessPartner;
+use App\Models\City;
 use App\Models\Delivery;
 use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\PartnerClient;
 use App\Models\Product;
 use App\Models\Rental;
+use App\Models\Vendor;
 use App\Models\Warehouse;
 use App\Services\ImportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -170,6 +174,41 @@ class RentalImportExecutionRegressionTest extends TestCase
         $this->assertStringContainsString('Pickup status must be not_assigned, assigned, pending, or completed.', $errorText);
     }
 
+    public function test_rental_import_accepts_actual_client_name_header_as_customer_name_fallback(): void
+    {
+        [$organization] = $this->bootRentalImportContext();
+
+        [$service, $preview] = $this->buildRentalPreview([
+            'Actual Client Name*,Customer Phone,Product Name,Brand,Model Name,Dispatch Warehouse Code,Quantity,Start Date,End Date,Rental Amount,Status',
+            'Aarav Sharma,9876543210,Oxygen Concentrator 5 LPM,Philips,SimplyGo,MAIN,1,2026-05-01,2026-05-15,4500,Active',
+        ]);
+
+        $this->assertCount(1, $preview['valid_rows']);
+        $this->assertCount(0, $preview['invalid_rows']);
+        $this->assertSame('Aarav Sharma', $preview['valid_rows'][0]['payload']['customer']['name'] ?? null);
+
+        $service->executePreview('rentals', $preview['key'], $organization->id, auth()->id());
+
+        $this->assertDatabaseHas('rentals', [
+            'organization_id' => $organization->id,
+            'customer_name' => 'Aarav Sharma',
+        ]);
+    }
+
+    public function test_rental_import_uses_customer_name_when_actual_client_column_is_present_but_blank(): void
+    {
+        [$organization] = $this->bootRentalImportContext();
+
+        [$service, $preview] = $this->buildRentalPreview([
+            'Customer Type,Actual Client,Customer Name,Customer Phone,Product Name,Brand,Model Name,Dispatch Warehouse Code,Quantity,Start Date,End Date,Rental Amount,Status',
+            'direct_customer,,Bengaluru Care Partners,9876543210,Oxygen Concentrator 5 LPM,Philips,SimplyGo,MAIN,1,2026-05-01,2026-05-15,4500,Active',
+        ]);
+
+        $this->assertCount(1, $preview['valid_rows']);
+        $this->assertCount(0, $preview['invalid_rows']);
+        $this->assertSame('Bengaluru Care Partners', $preview['valid_rows'][0]['payload']['customer']['name'] ?? null);
+    }
+
     public function test_duplicate_rental_import_execution_does_not_create_duplicate_rows(): void
     {
         [$organization, $warehouse, $product] = $this->bootRentalImportContext();
@@ -233,6 +272,68 @@ class RentalImportExecutionRegressionTest extends TestCase
         $this->assertSame(1, $result['updated']);
         $this->assertDatabaseCount('rentals', 1);
         $this->assertDatabaseCount('invoices', 1);
+    }
+
+    public function test_vendor_supplied_rental_import_skips_ph_stock_and_persists_partner_vendor_context(): void
+    {
+        [$organization] = $this->bootRentalImportContext();
+
+        City::create([
+            'organization_id' => $organization->id,
+            'name' => 'Bengaluru',
+            'state' => 'Karnataka',
+            'country' => 'India',
+            'is_active' => true,
+        ]);
+
+        $partner = BusinessPartner::create([
+            'organization_id' => $organization->id,
+            'business_name' => 'Care Plus Clinic',
+            'contact_person' => 'Ananya Rao',
+            'phone' => '9810012345',
+            'city' => 'Bengaluru',
+            'state' => 'Karnataka',
+            'status' => 'active',
+        ]);
+
+        $client = PartnerClient::create([
+            'organization_id' => $organization->id,
+            'business_partner_id' => $partner->id,
+            'client_name' => 'Rahul Verma',
+            'phone' => '9810012345',
+            'city' => 'Bengaluru',
+            'state' => 'Karnataka',
+            'status' => 'active',
+        ]);
+
+        $vendor = Vendor::create([
+            'organization_id' => $organization->id,
+            'name' => 'KR Healthcare',
+            'phone' => '9000001111',
+            'city' => 'Bengaluru',
+            'state' => 'Karnataka',
+            'is_active' => true,
+        ]);
+
+        [$service, $preview] = $this->buildRentalPreview([
+            'Customer Type,Business Partner,Actual Client,Customer Name,Customer Phone,Product Name,Brand,Model Name,City,Fulfilment Source,Vendor,Delivery Responsibility,Pickup Responsibility,Dispatch Warehouse Code,Asset Serials,Quantity,Start Date,End Date,Rental Amount,Deposit Amount,Transport Amount,Other Amount,Status,Payment Status,Paid Amount,Invoice Status,Delivery Status,Delivery Date,Pickup Status,Pickup Date,Notes',
+            'business_partner,Care Plus Clinic,Rahul Verma,Rahul Verma,9810012345,Oxygen Concentrator 5 LPM,Philips,SimplyGo,Bengaluru,vendor_supplied,KR Healthcare,vendor_delivery,customer_return,,,1,2026-05-01,2026-05-30,12000,5000,0,0,Active,pending,,generated,assigned,2026-05-01,not_assigned,,Vendor fulfilled partner rental',
+        ]);
+
+        $this->assertCount(1, $preview['valid_rows']);
+
+        $result = $service->executePreview('rentals', $preview['key'], $organization->id, auth()->id());
+
+        $this->assertSame(1, $result['created']);
+        $this->assertDatabaseHas('rentals', [
+            'organization_id' => $organization->id,
+            'customer_type' => 'business_partner',
+            'business_partner_id' => $partner->id,
+            'partner_client_id' => $client->id,
+            'vendor_id' => $vendor->id,
+            'fulfilment_source' => 'vendor_supplied',
+            'delivery_responsibility' => 'vendor_delivery',
+        ]);
     }
 
     public function test_changing_rental_invoice_status_only_updates_existing_invoice(): void

@@ -11,6 +11,7 @@ class BusinessPartner extends Model
     protected $fillable = [
         'organization_id',
         'business_name',
+        'partner_code',
         'contact_person',
         'phone',
         'whatsapp',
@@ -26,6 +27,10 @@ class BusinessPartner extends Model
         'city',
         'state',
         'pincode',
+        'credit_terms',
+        'referral_percentage',
+        'account_manager',
+        'notes',
         'location',
         'latitude',
         'longitude',
@@ -34,6 +39,7 @@ class BusinessPartner extends Model
 
     protected $casts = [
         'gst_registered' => 'boolean',
+        'referral_percentage' => 'decimal:2',
         'latitude' => 'decimal:7',
         'longitude' => 'decimal:7',
     ];

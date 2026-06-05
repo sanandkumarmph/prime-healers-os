@@ -5754,6 +5754,8 @@ class RentalController extends Controller
         $product = Product::query()
             ->where('organization_id', $this->orgId())
             ->findOrFail((int) ($attributes['product_id'] ?? 0));
+        $fulfilmentSource = (string) ($attributes['fulfilment_source'] ?? VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE);
+        $vendorSupplied = $fulfilmentSource === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED;
 
         $quantity = max((int) ($attributes['quantity'] ?? 0), 1);
         $dispatchWarehouseId = filled($attributes['dispatch_warehouse_id'] ?? null)
@@ -5782,7 +5784,7 @@ class RentalController extends Controller
         $rentalItems = [[
             'product_id' => $product->id,
             'quantity' => $quantity,
-            'asset_ids' => $assetIds,
+            'asset_ids' => $vendorSupplied ? [] : $assetIds,
             'unit_rental_amount' => $quantity > 0
                 ? round(((float) ($attributes['rental_amount'] ?? 0)) / $quantity, 2)
                 : (float) ($attributes['rental_amount'] ?? 0),
@@ -5800,9 +5802,13 @@ class RentalController extends Controller
         ]];
 
         $existingRental = $match['rental'] ?? null;
-        $this->validateCombinedRentalItemStock($rentalItems, $existingRental, $dispatchWarehouseId);
+        if (!$vendorSupplied) {
+            $this->validateCombinedRentalItemStock($rentalItems, $existingRental, $dispatchWarehouseId);
+        }
 
-        $selectedAssets = $this->resolveCombinedRentalAssets($rentalItems, $dispatchWarehouseId, $existingRental);
+        $selectedAssets = $vendorSupplied
+            ? collect()
+            : $this->resolveCombinedRentalAssets($rentalItems, $dispatchWarehouseId, $existingRental);
 
         if ($existingRental) {
             [$rental, $invoice, $delivery, $pickup] = $this->updateImportedRentalFromPayload(
@@ -5831,6 +5837,14 @@ class RentalController extends Controller
         }
 
         try {
+            $this->vendorFulfilmentService()->syncRental($rental, [
+                'vendor_id' => $attributes['vendor_id'] ?? null,
+                'fulfilment_source' => $fulfilmentSource,
+                'delivery_responsibility' => $attributes['delivery_responsibility'] ?? null,
+                'pickup_responsibility' => $attributes['pickup_responsibility'] ?? null,
+                'notes' => $notes,
+            ]);
+
             ActivityLogger::log('rental.imported', $rental, [
                 'invoice_id' => $invoice?->id,
                 'invoice_number' => $invoice?->invoice_number,

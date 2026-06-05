@@ -21,6 +21,8 @@ class PartnerClient extends Model
         'latitude',
         'longitude',
         'delivery_notes',
+        'account_manager',
+        'notes',
         'status',
     ];
 

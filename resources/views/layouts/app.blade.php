@@ -2678,7 +2678,7 @@
         letter-spacing:.08em;
         text-transform:uppercase;
         font-weight:600;
-        color:#6b7f98;
+        color:#334a68;
     }
     .sidebar-nav {
         gap:1px;

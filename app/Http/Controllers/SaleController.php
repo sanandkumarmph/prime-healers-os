@@ -2136,6 +2136,8 @@ class SaleController extends Controller
     {
         $customer = Customer::where('organization_id', $this->orgId())->findOrFail((int) $attributes['customer_id']);
         $product = Product::where('organization_id', $this->orgId())->findOrFail((int) $attributes['product_id']);
+        $fulfilmentSource = (string) ($attributes['fulfilment_source'] ?? VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE);
+        $vendorSupplied = $fulfilmentSource === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED;
         $match = $this->describeImportedSaleMatch(
             $this->importMatchSignatureService()->sale(
                 $attributes,
@@ -2166,6 +2168,12 @@ class SaleController extends Controller
 
         $salePayload = [
             'customer_id' => $customer->id,
+            'customer_type' => $attributes['customer_type'] ?? 'direct_customer',
+            'business_partner_id' => $attributes['business_partner_id'] ?? null,
+            'partner_client_id' => $attributes['partner_client_id'] ?? null,
+            'vendor_id' => $attributes['vendor_id'] ?? null,
+            'fulfilment_source' => $fulfilmentSource,
+            'delivery_responsibility' => $attributes['delivery_responsibility'] ?? null,
             'product_id' => $product->id,
             'asset_id' => $attributes['asset_id'] ?? null,
             'rental_id' => $attributes['rental_id'] ?? null,
@@ -2182,6 +2190,7 @@ class SaleController extends Controller
                 : ($attributes['payment_status'] ?? 'pending'),
             'notes' => $attributes['notes'] ?? null,
             'organization_id' => $this->orgId(),
+            'stock_applied' => !$vendorSupplied,
         ];
 
         if ($this->hasWarehouseColumn() && !empty($attributes['warehouse_id'])) {
@@ -2205,6 +2214,13 @@ class SaleController extends Controller
         }
 
         try {
+            $this->vendorFulfilmentService()->syncSale($sale, [
+                'vendor_id' => $attributes['vendor_id'] ?? null,
+                'fulfilment_source' => $fulfilmentSource,
+                'delivery_responsibility' => $attributes['delivery_responsibility'] ?? null,
+                'notes' => $attributes['notes'] ?? null,
+            ]);
+
             ActivityLogger::log('sale.imported', $sale, [
                 'invoice_id' => $invoice?->id,
                 'invoice_number' => $invoice?->invoice_number,
@@ -2280,7 +2296,7 @@ class SaleController extends Controller
             'organization_id' => $this->orgId(),
             'has_delivery_sale_column' => $this->hasDeliverySaleColumn(),
             'has_delivery_assignment_type_column' => Schema::hasColumn('deliveries', 'assignment_type'),
-            'apply_sale_stock' => fn (Sale $sale) => $this->applySaleStock($sale),
+            'apply_sale_stock' => fn (Sale $sale) => (($salePayload['stock_applied'] ?? true) ? $this->applySaleStock($sale) : null),
             'create_sale_invoice' => fn (Sale $sale) => $this->createSaleInvoice($sale),
             'import_field_was_provided' => fn (array $row, string $field) => $this->importFieldWasProvided($row, $field),
             'managed_imported_payment_query' => fn (Invoice $invoice, int $saleId) => $this->managedImportedSalePaymentQuery($invoice, $saleId),

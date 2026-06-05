@@ -42,6 +42,13 @@ class RentalImportExecutor
                 'created_by_user_id' => $attributes['created_by_user_id'] ?? $callbacks['actor_user_id'],
                 'customer_name' => $customer->name,
                 'phone' => $callbacks['normalize_phone']($customer->phone),
+                'customer_type' => $attributes['customer_type'] ?? 'direct_customer',
+                'business_partner_id' => $attributes['business_partner_id'] ?? null,
+                'partner_client_id' => $attributes['partner_client_id'] ?? null,
+                'vendor_id' => $attributes['vendor_id'] ?? null,
+                'fulfilment_source' => $attributes['fulfilment_source'] ?? 'in_house',
+                'delivery_responsibility' => $attributes['delivery_responsibility'] ?? null,
+                'pickup_responsibility' => $attributes['pickup_responsibility'] ?? null,
                 'product_id' => $product->id,
                 'delivery_staff_id' => null,
                 'pickup_staff_id' => null,
@@ -62,7 +69,9 @@ class RentalImportExecutor
                 ])->save();
             }
 
-            $callbacks['consume_rental_item_stock']($rentalItems);
+            if (($attributes['stock_applied'] ?? true) === true) {
+                $callbacks['consume_rental_item_stock']($rentalItems);
+            }
             $callbacks['persist_rental_items']($rental, $rentalItems);
 
             $delivery = $this->applyImportedRentalDeliveryState(
@@ -77,7 +86,9 @@ class RentalImportExecutor
                 $callbacks['mark_imported_rental_delivered']($rental);
             }
 
-            $callbacks['sync_rental_assets']($rental, $selectedAssets);
+            if (($attributes['stock_applied'] ?? true) === true) {
+                $callbacks['sync_rental_assets']($rental, $selectedAssets);
+            }
 
             $pickup = $this->applyImportedRentalPickupState(
                 $rental,
@@ -145,6 +156,13 @@ class RentalImportExecutor
                 'customer_id' => $customer->id,
                 'customer_name' => $customer->name,
                 'phone' => $callbacks['normalize_phone']($customer->phone),
+                'customer_type' => $attributes['customer_type'] ?? $rental->customer_type,
+                'business_partner_id' => $attributes['business_partner_id'] ?? $rental->business_partner_id,
+                'partner_client_id' => $attributes['partner_client_id'] ?? $rental->partner_client_id,
+                'vendor_id' => $attributes['vendor_id'] ?? $rental->vendor_id,
+                'fulfilment_source' => $attributes['fulfilment_source'] ?? $rental->fulfilment_source,
+                'delivery_responsibility' => $attributes['delivery_responsibility'] ?? $rental->delivery_responsibility,
+                'pickup_responsibility' => $attributes['pickup_responsibility'] ?? $rental->pickup_responsibility,
                 'product_id' => $product->id,
                 'quantity' => max((int) ($attributes['quantity'] ?? $rental->quantity), 1),
                 'start_date' => $attributes['start_date'] ?? $rental->start_date,
@@ -174,7 +192,7 @@ class RentalImportExecutor
 
             $callbacks['persist_rental_items']($rental, $rentalItems);
 
-            if (!empty($attributes['asset_ids'])) {
+            if (($attributes['stock_applied'] ?? true) === true && !empty($attributes['asset_ids'])) {
                 $callbacks['sync_rental_assets']($rental, $selectedAssets);
             }
 
