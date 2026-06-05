@@ -64,10 +64,169 @@
         {{ $alreadyImported ? 'This preview has already been imported. Duplicate import is blocked.' : 'Only valid rows will be imported. Invalid rows will be skipped.' }}
     </div>
 
+    @if(!empty($preview['no_data_error']))
+        <div class="ph-import-warning-banner">
+            <strong>{{ $preview['no_data_error'] }}</strong>
+            <span>Parsed headers were detected, but no importable data rows were read from the uploaded file.</span>
+        </div>
+    @endif
+
     @include('imports.partials.summary-cards', ['validCount' => $validRows->count(), 'invalidCount' => $invalidRows->count(), 'totalRows' => $preview['row_count'] ?? 0])
+
+    <section class="ph-import-card">
+        <div class="ph-import-panel-head">
+            <div>
+                <h2>Import Read Summary</h2>
+                <p>Use this to verify the file was parsed before validation starts.</p>
+            </div>
+        </div>
+        <div class="ph-import-stats">
+            <div class="ph-import-stat">
+                <span>Detected Sheet</span>
+                <strong>{{ $preview['sheet_name'] ?? 'Unknown' }}</strong>
+            </div>
+            <div class="ph-import-stat">
+                <span>Header Row</span>
+                <strong>{{ $preview['header_row_number'] ?? 1 }}</strong>
+            </div>
+            <div class="ph-import-stat info">
+                <span>Raw Rows Read</span>
+                <strong>{{ $preview['raw_row_count'] ?? ($preview['row_count'] ?? 0) }}</strong>
+            </div>
+            <div class="ph-import-stat">
+                <span>Non-empty Rows Read</span>
+                <strong>{{ $preview['non_empty_row_count'] ?? ($preview['mapped_row_count'] ?? ($preview['row_count'] ?? 0)) }}</strong>
+            </div>
+            <div class="ph-import-stat">
+                <span>Mapped Rows</span>
+                <strong>{{ $preview['mapped_row_count'] ?? ($preview['row_count'] ?? 0) }}</strong>
+            </div>
+            <div class="ph-import-stat">
+                <span>Ignored Blank Rows</span>
+                <strong>{{ $preview['blank_row_count'] ?? 0 }}</strong>
+            </div>
+        </div>
+    </section>
+
+    @if($module === 'vendors')
+        <section class="ph-import-card">
+            <div class="ph-import-panel-head">
+                <div>
+                    <h2>Vendor Import Debug</h2>
+                    <p>Use this temporary debug block to confirm the active preview route, parser, and sheet/row detection.</p>
+                </div>
+            </div>
+            <div class="ph-import-stats">
+                <div class="ph-import-stat">
+                    <span>Current Route</span>
+                    <strong>{{ request()->route()?->getName() ?? 'unknown' }}</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Build Preview Route</span>
+                    <strong>imports.preview.build</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Preview Route</span>
+                    <strong>imports.preview</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Execute Route</span>
+                    <strong>imports.execute</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Template Route</span>
+                    <strong>imports.template</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Preview Builder</span>
+                    <strong>ImportController@buildPreview</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Preview Viewer</span>
+                    <strong>ImportController@preview</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Template Download</span>
+                    <strong>ImportController@template</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Import Executor</span>
+                    <strong>ImportController@execute</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Importer Class Used</span>
+                    <strong>{{ \App\Services\ImportService::class }}</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Uploaded Filename</span>
+                    <strong>{{ $preview['original_name'] ?? 'unknown' }}</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>File Extension</span>
+                    <strong>{{ $preview['file_extension'] ?? 'unknown' }}</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Detected Sheet Name</span>
+                    <strong>{{ $preview['sheet_name'] ?? 'unknown' }}</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Highest Row</span>
+                    <strong>{{ $preview['highest_row'] ?? 0 }}</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Highest Column</span>
+                    <strong>{{ $preview['highest_column'] ?? 'unknown' }}</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Header Row Number</span>
+                    <strong>{{ $preview['header_row_number'] ?? 1 }}</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Parsed Headers</span>
+                    <strong>{{ count($preview['headers'] ?? []) }}</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Raw Rows Read</span>
+                    <strong>{{ $preview['raw_row_count'] ?? 0 }}</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Non-empty Rows Read</span>
+                    <strong>{{ $preview['non_empty_row_count'] ?? 0 }}</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Mapped Rows</span>
+                    <strong>{{ $preview['mapped_row_count'] ?? 0 }}</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Valid Rows</span>
+                    <strong>{{ $validRows->count() }}</strong>
+                </div>
+                <div class="ph-import-stat">
+                    <span>Invalid Rows</span>
+                    <strong>{{ $invalidRows->count() }}</strong>
+                </div>
+            </div>
+        </section>
+    @endif
 
     @if(!empty($requiredFields))
         @include('imports.partials.required-banner', ['requiredFields' => $requiredFields])
+    @endif
+
+    @if($invalidRows->isNotEmpty() || $executionPreviewInvalidRows->isNotEmpty() || $executionSkippedRows->isNotEmpty() || $executionFailedRows->isNotEmpty() || !empty($preview['no_data_error']))
+        <section class="ph-import-card">
+            <div class="ph-import-panel-head">
+                <div>
+                    <h2>Parsed Headers</h2>
+                    <p>Use these normalized headers to debug mapping issues when validation fails.</p>
+                </div>
+            </div>
+            <div class="ph-import-reason-chip-row">
+                @foreach(($preview['headers'] ?? []) as $header)
+                    <span class="ph-import-reason-chip">{{ $header }}</span>
+                @endforeach
+            </div>
+        </section>
     @endif
 
     @if($lastResult)
@@ -136,10 +295,10 @@
                                 </div>
                                 <div class="ph-import-result-identifier">{{ $row['identifier'] ?: 'Row data' }}</div>
                                 <p>{{ $row['reason'] ?? '' }}</p>
-                                @if(!empty($row['errors']))
+                                @if(!empty($row['error_details']))
                                     <ul>
-                                        @foreach($row['errors'] as $error)
-                                            <li>{{ $error }}</li>
+                                        @foreach($row['error_details'] as $detail)
+                                            <li><strong>{{ \Illuminate\Support\Str::of($detail['field'] ?? 'general')->replace('_', ' ')->title() }}:</strong> {{ $detail['reason'] ?? '' }}</li>
                                         @endforeach
                                     </ul>
                                 @endif
@@ -161,10 +320,10 @@
                                 </div>
                                 <div class="ph-import-result-identifier">{{ $row['identifier'] ?: 'Row data' }}</div>
                                 <p>{{ $row['reason'] ?? '' }}</p>
-                                @if(!empty($row['errors']))
+                                @if(!empty($row['error_details']))
                                     <ul>
-                                        @foreach($row['errors'] as $error)
-                                            <li>{{ $error }}</li>
+                                        @foreach($row['error_details'] as $detail)
+                                            <li><strong>{{ \Illuminate\Support\Str::of($detail['field'] ?? 'general')->replace('_', ' ')->title() }}:</strong> {{ $detail['reason'] ?? '' }}</li>
                                         @endforeach
                                     </ul>
                                 @endif
@@ -186,10 +345,10 @@
                                 </div>
                                 <div class="ph-import-result-identifier">{{ $row['identifier'] ?: 'Row data' }}</div>
                                 <p>{{ $row['reason'] ?? '' }}</p>
-                                @if(!empty($row['errors']))
+                                @if(!empty($row['error_details']))
                                     <ul>
-                                        @foreach($row['errors'] as $error)
-                                            <li>{{ $error }}</li>
+                                        @foreach($row['error_details'] as $detail)
+                                            <li><strong>{{ \Illuminate\Support\Str::of($detail['field'] ?? 'general')->replace('_', ' ')->title() }}:</strong> {{ $detail['reason'] ?? '' }}</li>
                                         @endforeach
                                     </ul>
                                 @endif
@@ -214,8 +373,8 @@
         <section class="ph-import-card">
             <div class="ph-import-panel-head">
                 <div>
-                    <h2>Valid Rows Preview</h2>
-                    <p>Showing up to the first 20 valid rows with mapped import data and intended action.</p>
+                    <h2>Imported Rows Preview</h2>
+                    <p>Showing up to the first 20 rows that are currently ready to import.</p>
                 </div>
             </div>
 
@@ -268,8 +427,8 @@
         <section class="ph-import-card">
             <div class="ph-import-panel-head">
                 <div>
-                    <h2>Invalid Rows</h2>
-                    <p>Each invalid row shows the row number and the exact validation issues.</p>
+                    <h2>Skipped Rows</h2>
+                    <p>Each skipped row shows the row number, field, and exact reason.</p>
                 </div>
             </div>
 
@@ -278,8 +437,8 @@
                     <article class="ph-import-invalid-card">
                         <strong>Row #{{ $row['row_number'] }}</strong>
                         <ul>
-                            @foreach(($row['errors'] ?? []) as $error)
-                                <li>{{ $error }}</li>
+                            @foreach(($row['error_details'] ?? []) as $detail)
+                                <li><strong>{{ \Illuminate\Support\Str::of($detail['field'] ?? 'general')->replace('_', ' ')->title() }}:</strong> {{ $detail['reason'] ?? '' }}</li>
                             @endforeach
                         </ul>
                         @if(($row['guidance']['type'] ?? null) === 'untracked_product')

@@ -3,14 +3,21 @@
 namespace App\Services;
 
 use App\Http\Controllers\RentalController;
+use App\Http\Controllers\SaleController;
 use App\Models\Asset;
 use App\Models\AssetMovement;
+use App\Models\BusinessPartner;
+use App\Models\City;
 use App\Models\Customer;
+use App\Models\PartnerClient;
 use App\Models\Product;
 use App\Models\Rental;
 use App\Models\RentalItem;
 use App\Models\SaleInventory;
+use App\Models\Staff;
 use App\Models\StockMovement;
+use App\Models\Vendor;
+use App\Models\VendorOrderDetail;
 use App\Models\Warehouse;
 use App\Services\Inventory\StockMovementRecorder;
 use App\Services\Imports\ImportMatchSignatureService;
@@ -34,10 +41,15 @@ class ImportService
     private const PRODUCT = 'products';
     private const ASSET = 'assets';
     private const RENTAL = 'rentals';
+    private const VENDOR = 'vendors';
+    private const STAFF = 'staff';
 
     private array $productCache = [];
     private array $warehouseCache = [];
     private array $customerCache = [];
+    private array $cityCache = [];
+    private array $vendorCache = [];
+    private array $partnerCache = [];
 
     public function createSnapshot(array $payload): string
     {
@@ -70,35 +82,43 @@ class ImportService
             self::CUSTOMER => [
                 'label' => 'Customer Import',
                 'module_permission' => 'customers',
-                'description' => 'Import and dedupe customers by phone or email within the current organization.',
+                'description' => 'Import direct customers, business partners, and actual clients through one city-aware customer workbook.',
                 'priority' => 2,
                 'fields' => [
-                    'name' => ['label' => 'Customer Name', 'required' => true, 'aliases' => ['name', 'customer', 'customer_name', 'full_name']],
+                    'name' => ['label' => 'Customer Name', 'required' => true, 'aliases' => ['name', 'customer', 'customer_name', 'customer_name*', 'full_name', 'patient_name', 'patient_name*']],
                     'customer_type' => ['label' => 'Customer Type', 'aliases' => ['customer_type', 'type']],
+                    'contact_name' => ['label' => 'Contact Name', 'aliases' => ['contact_name', 'contact_person']],
                     'phone' => ['label' => 'Phone', 'aliases' => ['phone', 'mobile', 'contact_number']],
                     'whatsapp_number' => ['label' => 'WhatsApp Number', 'aliases' => ['whatsapp', 'whatsapp_number']],
                     'email' => ['label' => 'Email', 'aliases' => ['email', 'mail']],
                     'company_name' => ['label' => 'Company Name', 'aliases' => ['company', 'company_name']],
-                    'contact_name' => ['label' => 'Contact Name', 'aliases' => ['contact_name', 'contact_person']],
-                    'gst_number' => ['label' => 'GST Number', 'aliases' => ['gst', 'gst_number', 'gstin']],
-                    'address' => ['label' => 'Address', 'aliases' => ['address', 'street_address']],
-                    'city' => ['label' => 'City', 'aliases' => ['city']],
+                    'city_name' => ['label' => 'City', 'aliases' => ['city', 'city_name']],
                     'state' => ['label' => 'State', 'aliases' => ['state']],
                     'pincode' => ['label' => 'Pincode', 'aliases' => ['pincode', 'postal_code', 'zip']],
-                    'patient_name' => ['label' => 'Patient Name', 'aliases' => ['patient_name', 'patient']],
+                    'address' => ['label' => 'Address', 'aliases' => ['address', 'street_address']],
+                    'gst_number' => ['label' => 'GST Number', 'aliases' => ['gst', 'gst_number', 'gstin']],
+                    'gst_registered' => ['label' => 'GST Registered', 'aliases' => ['gst_registered', 'gst_flag']],
+                    'google_map_link' => ['label' => 'Google Map Link', 'aliases' => ['google_map_link', 'map_link', 'map_url', 'google_map_url']],
+                    'business_partner_name' => ['label' => 'Business Partner Name', 'aliases' => ['business_partner_name', 'business_partner']],
+                    'business_partner_code' => ['label' => 'Business Partner Code', 'aliases' => ['business_partner_code', 'partner_code']],
+                    'parent_business_partner' => ['label' => 'Parent Business Partner', 'aliases' => ['parent_business_partner', 'parent_partner', 'parent_business_partner_name']],
+                    'credit_terms' => ['label' => 'Credit Terms', 'aliases' => ['credit_terms', 'credit_days', 'payment_terms']],
+                    'referral_percentage' => ['label' => 'Referral Percentage', 'aliases' => ['referral_percentage', 'referral_percent']],
+                    'account_manager' => ['label' => 'Account Manager', 'aliases' => ['account_manager', 'relationship_manager']],
                     'notes' => ['label' => 'Notes', 'aliases' => ['notes', 'remarks']],
                 ],
                 'template' => [
-                    ['Customer Name', 'Customer Type', 'Phone', 'WhatsApp Number', 'Email', 'Company Name', 'Contact Name', 'GST Number', 'Address', 'City', 'State', 'Pincode', 'Patient Name', 'Notes'],
-                    ['Aarav Sharma', 'Individual', '9876543210', '9876543210', 'aarav@example.com', '', '', '', '221B MG Road', 'Delhi', 'Delhi', '110001', '', 'Existing oxygen customer'],
-                    ['Care Plus Clinic', 'Business', '9810012345', '9810012345', 'procurement@careplus.test', 'Care Plus Clinic', 'Ananya Rao', '29ABCDE1234F1Z5', '12, Sector 18', 'Noida', 'Uttar Pradesh', '201301', 'Rahul Verma', 'Corporate account'],
+                    ['Customer Name', 'Customer Type', 'Contact Name', 'Phone', 'WhatsApp Number', 'Email', 'Company Name', 'City', 'State', 'Pincode', 'Address', 'GST Number', 'GST Registered', 'Google Map Link', 'Business Partner Name', 'Business Partner Code', 'Parent Business Partner', 'Credit Terms', 'Referral Percentage', 'Account Manager', 'Notes'],
+                    ['Aarav Sharma', 'direct_customer', '', '9876543210', '9876543210', 'aarav@example.com', '', 'Bengaluru', 'Karnataka', '560001', '221B MG Road', '', 'No', 'https://maps.google.com/?q=221B+MG+Road+Bengaluru', '', '', '', '', '', 'Priya Shah', 'Existing oxygen customer'],
+                    ['Care Plus Clinic', 'business_partner', 'Ananya Rao', '9810012345', '9810012345', 'procurement@careplus.test', 'Care Plus Clinic', 'Noida', 'Uttar Pradesh', '201301', '12, Sector 18', '29ABCDE1234F1Z5', 'Yes', 'https://maps.google.com/?q=Care+Plus+Clinic+Noida', 'Care Plus Clinic', 'BP-CAREPLUS', '', '30 days', '7.50', 'Rahul S', 'Corporate account'],
+                    ['Rahul Verma', 'actual_client', 'Rahul Verma', '9810012346', '9810012346', 'rahul.verma@example.com', '', 'Noida', 'Uttar Pradesh', '201301', 'Tower 2, Sector 18', '', 'No', 'https://maps.google.com/?q=Tower+2+Sector+18+Noida', '', '', 'Care Plus Clinic', '', '', 'Rahul S', 'Client under Care Plus Clinic'],
                 ],
                 'chunk_size' => 100,
             ],
             self::PRODUCT => [
                 'label' => 'Product Master Import',
                 'module_permission' => 'products',
-                'description' => 'Import product master rows with untracked quantity or tracked stock modes.',
+                'description' => 'Import product master rows with sellable, rentable, or both product structures.',
                 'priority' => 3,
                 'fields' => [
                     'name' => ['label' => 'Product Name', 'required' => true, 'aliases' => ['name', 'product_name', 'product', 'product name']],
@@ -119,11 +139,16 @@ class ImportService
                     'sale_price' => ['label' => 'Sale Price', 'aliases' => ['sale_price', 'selling_price']],
                     'rental_price' => ['label' => 'Rental Price', 'aliases' => ['rental_price']],
                     'deposit' => ['label' => 'Deposit', 'aliases' => ['deposit', 'deposit_amount']],
+                    'gst_tax_type' => ['label' => 'GST Tax Type', 'aliases' => ['gst_tax_type', 'tax_type']],
+                    'gst_calculation_mode' => ['label' => 'GST Calculation Mode', 'aliases' => ['gst_calculation_mode', 'tax_calculation_mode']],
+                    'cgst_rate' => ['label' => 'CGST Rate', 'aliases' => ['cgst_rate']],
+                    'sgst_rate' => ['label' => 'SGST Rate', 'aliases' => ['sgst_rate']],
+                    'igst_rate' => ['label' => 'IGST Rate', 'aliases' => ['igst_rate']],
                 ],
                 'template' => [
-                    ['Product Name', 'Product Type', 'Stock Mode', 'Quantity', 'Price Per Day', 'Sale Price', 'Product Code', 'SKU'],
-                    ['Oxygen Concentrator 5 LPM', 'rentable', 'tracked_rental', '0', '450', '', 'OXY-5L', 'OXY5L'],
-                    ['BiPAP Disposable Filter', 'sellable', 'untracked', '150', '', '180', 'BIPAP-FLTR', 'BF-180'],
+                    ['Product Name', 'Product Type', 'Stock Mode', 'Quantity', 'Category', 'Brand', 'Model Name', 'Product Code', 'SKU', 'Price Per Day', 'Rental Price 30 Days', 'Sale Price', 'Deposit', 'GST Tax Type', 'GST Calculation Mode', 'CGST Rate', 'SGST Rate', 'IGST Rate'],
+                    ['Oxygen Concentrator 5 LPM', 'rentable', 'tracked_rental', '0', 'Respiratory', 'Philips', 'SimplyGo', 'OXY-5L', 'OXY5L', '450', '4500', '', '5000', 'cgst_sgst', 'exclusive', '9', '9', '0'],
+                    ['Hospital Bed Electric', 'both', 'tracked_both', '0', 'Furniture', 'Kraft', '2 Function', 'BED-E2', 'BED-E2', '550', '12000', '45000', '5000', 'cgst_sgst', 'exclusive', '9', '9', '0'],
                 ],
                 'chunk_size' => 100,
             ],
@@ -138,6 +163,7 @@ class ImportService
                     'product_name' => ['label' => 'Product Name', 'required' => true, 'aliases' => ['product_name', 'product', 'name']],
                     'brand' => ['label' => 'Brand', 'required' => true, 'aliases' => ['brand']],
                     'model_name' => ['label' => 'Model Name', 'required' => true, 'aliases' => ['model', 'model_name']],
+                    'city_name' => ['label' => 'City', 'aliases' => ['city', 'city_name']],
                     'warehouse_code' => ['label' => 'Warehouse Code', 'aliases' => ['warehouse_code', 'warehouse']],
                     'warehouse_name' => ['label' => 'Warehouse Name', 'aliases' => ['warehouse_name', 'warehouse_label']],
                     'asset_name' => ['label' => 'Asset Name', 'aliases' => ['asset_name', 'unit_name']],
@@ -154,26 +180,34 @@ class ImportService
                     'notes' => ['label' => 'Notes', 'aliases' => ['notes', 'remarks']],
                 ],
                 'template' => [
-                    ['Product Code', 'Product Name', 'Brand', 'Model Name', 'Warehouse Code', 'Asset Type / Stage', 'Serial Number', 'Barcode', 'Condition Status', 'Asset Status', 'Purchase Date', 'Purchase Cost', 'Notes'],
-                    ['OXY-5L', 'Oxygen Concentrator 5 LPM', 'Philips', 'SimplyGo', 'MAIN', 'rental_stock', 'OC5L-001', 'OC5L-001', 'good', 'available', '2025-01-10', '32000', 'Imported from legacy sheet'],
-                    ['BIPAP-MAIN', 'BiPAP Machine', 'ResMed', 'AirCurve 10', 'MAIN', 'new_stock', '', '', 'good', 'available_for_sale', '2025-02-01', '45000', 'Blank serial will generate PENDING serial'],
+                    ['Product Code', 'Product Name', 'Brand', 'Model Name', 'City', 'Warehouse Code', 'Asset Type / Stage', 'Serial Number', 'Barcode', 'Condition Status', 'Asset Status', 'Purchase Date', 'Purchase Cost', 'Notes'],
+                    ['OXY-5L', 'Oxygen Concentrator 5 LPM', 'Philips', 'SimplyGo', 'Bengaluru', 'MAIN', 'rental_stock', 'OC5L-001', 'OC5L-001', 'good', 'available', '2025-01-10', '32000', 'Imported from legacy sheet'],
+                    ['BED-E2', 'Hospital Bed Electric', 'Kraft', '2 Function', 'Bengaluru', 'MAIN', 'new_stock', '', '', 'good', 'available_for_sale', '2025-02-01', '45000', 'Blank serial will generate PENDING serial'],
                 ],
                 'chunk_size' => 100,
             ],
             self::RENTAL => [
                 'label' => 'Rental Import',
                 'module_permission' => 'rentals',
-                'description' => 'Basic rental migration with customer/product matching and serial-pending support.',
+                'description' => 'Import rentals with city-first fulfilment, direct customers or business partners, and vendor fulfilment.',
                 'priority' => 4,
                 'fields' => [
+                    'customer_type' => ['label' => 'Customer Type', 'aliases' => ['customer_type']],
+                    'business_partner_name' => ['label' => 'Business Partner', 'aliases' => ['business_partner', 'business_partner_name', 'partner_name']],
                     'customer_phone' => ['label' => 'Customer Phone', 'aliases' => ['customer_phone', 'phone']],
                     'customer_email' => ['label' => 'Customer Email', 'aliases' => ['customer_email', 'email']],
-                    'customer_name' => ['label' => 'Customer Name', 'required' => true, 'aliases' => ['customer_name', 'customer', 'name']],
+                    'customer_name' => ['label' => 'Customer Name', 'required' => true, 'aliases' => ['customer_name', 'customer_name*', 'customer', 'name', 'patient_name', 'patient_name*', 'actual_client', 'actual_client_name', 'actual_client_name*']],
+                    'actual_client_name' => ['label' => 'Actual Client', 'aliases' => ['actual_client', 'actual_client_name', 'actual_client_name*', 'partner_client_name']],
                     'product_code' => ['label' => 'Product Code', 'aliases' => ['product_code', 'code']],
                     'sku' => ['label' => 'SKU', 'aliases' => ['sku']],
                     'product_name' => ['label' => 'Product Name', 'required' => true, 'aliases' => ['product_name', 'product']],
                     'brand' => ['label' => 'Brand', 'required' => true, 'aliases' => ['brand']],
                     'model_name' => ['label' => 'Model Name', 'required' => true, 'aliases' => ['model', 'model_name']],
+                    'city_name' => ['label' => 'City', 'required' => true, 'aliases' => ['city', 'city_name']],
+                    'fulfilment_source' => ['label' => 'Fulfilment Source', 'aliases' => ['fulfilment_source']],
+                    'vendor_name' => ['label' => 'Vendor', 'aliases' => ['vendor', 'vendor_name']],
+                    'delivery_responsibility' => ['label' => 'Delivery Responsibility', 'aliases' => ['delivery_responsibility', 'delivery_assignment_type']],
+                    'pickup_responsibility' => ['label' => 'Pickup Responsibility', 'aliases' => ['pickup_responsibility']],
                     'warehouse_code' => ['label' => 'Dispatch Warehouse Code', 'aliases' => ['warehouse_code', 'dispatch_warehouse_code']],
                     'warehouse_name' => ['label' => 'Dispatch Warehouse Name', 'aliases' => ['warehouse_name', 'dispatch_warehouse']],
                     'asset_serials' => ['label' => 'Asset Serials', 'aliases' => ['asset_serials', 'serials', 'serial_number']],
@@ -197,9 +231,63 @@ class ImportService
                     'notes' => ['label' => 'Notes', 'aliases' => ['notes', 'remarks']],
                 ],
                 'template' => [
-                    ['Customer Name', 'Customer Phone', 'Product Name', 'Brand', 'Model Name', 'Dispatch Warehouse Code', 'Asset Serials', 'Quantity', 'Start Date', 'End Date', 'Rental Amount', 'Deposit Amount', 'Transport Amount', 'Status', 'Payment Status', 'Paid Amount', 'Invoice Status', 'Delivery Status', 'Delivery Date', 'Pickup Status', 'Pickup Date', 'Notes'],
-                    ['Aarav Sharma', '9876543210', 'Oxygen Concentrator 5 LPM', 'Philips', 'SimplyGo', 'MAIN', 'OC5L-001', '1', '2026-04-01', '2026-04-15', '4500', '5000', '350', 'Active', 'pending', '', 'generated', 'assigned', '2026-04-01', 'not_assigned', '', 'Migrated active rental'],
-                    ['Care Plus Clinic', '9810012345', 'BiPAP Machine', 'ResMed', 'AirCurve 10', 'MAIN', '', '1', '2026-03-01', '2026-03-10', '7000', '0', '0', 'Completed', 'paid', '7000', 'paid', 'completed', '2026-03-01', 'completed', '2026-03-10', 'Serial pending import'],
+                    ['Customer Type', 'Business Partner', 'Actual Client', 'Customer Name', 'Customer Phone', 'Product Name', 'Brand', 'Model Name', 'City', 'Fulfilment Source', 'Vendor', 'Delivery Responsibility', 'Pickup Responsibility', 'Dispatch Warehouse Code', 'Asset Serials', 'Quantity', 'Start Date', 'End Date', 'Rental Amount', 'Deposit Amount', 'Transport Amount', 'Other Amount', 'Status', 'Payment Status', 'Paid Amount', 'Invoice Status', 'Delivery Status', 'Delivery Date', 'Pickup Status', 'Pickup Date', 'Notes'],
+                    ['direct_customer', '', '', 'Aarav Sharma', '9876543210', 'Oxygen Concentrator 5 LPM', 'Philips', 'SimplyGo', 'Bengaluru', 'in_house', '', 'ph_internal_delivery', 'ph_internal_pickup', 'MAIN', 'OC5L-001', '1', '2026-04-01', '2026-04-15', '4500', '5000', '350', '0', 'Active', 'pending', '', 'generated', 'assigned', '2026-04-01', 'not_assigned', '', 'Migrated active rental'],
+                    ['business_partner', 'Care Plus Clinic', 'Rahul Verma', 'Rahul Verma', '9810012345', 'Hospital Bed Electric', 'Kraft', '2 Function', 'Bengaluru', 'vendor_supplied', 'KR Healthcare', 'vendor_delivery', 'customer_return', '', '', '1', '2026-05-01', '2026-05-30', '12000', '5000', '0', '0', 'Active', 'pending', '', 'generated', 'assigned', '2026-05-01', 'not_assigned', '', 'Vendor fulfilled partner rental'],
+                ],
+                'chunk_size' => 100,
+            ],
+            self::VENDOR => [
+                'label' => 'Vendor Import',
+                'module_permission' => 'vendors',
+                'description' => 'Import vendor master with city-first availability and fulfilment support.',
+                'priority' => 5,
+                'fields' => [
+                    'name' => ['label' => 'Vendor Name', 'required' => true, 'aliases' => ['name', 'vendor_name', 'vendor', 'supplier_name']],
+                    'contact_person' => ['label' => 'Contact Name', 'aliases' => ['contact_person', 'contact_name', 'primary_contact']],
+                    'phone' => ['label' => 'Phone', 'aliases' => ['phone', 'mobile', 'contact_number']],
+                    'whatsapp' => ['label' => 'WhatsApp Number', 'aliases' => ['whatsapp', 'whatsapp_number']],
+                    'email' => ['label' => 'Email', 'aliases' => ['email']],
+                    'vendor_type' => ['label' => 'Vendor Type', 'aliases' => ['vendor_type', 'type']],
+                    'city_name' => ['label' => 'City', 'aliases' => ['city', 'city_name']],
+                    'state' => ['label' => 'State', 'aliases' => ['state']],
+                    'pincode' => ['label' => 'Pincode', 'aliases' => ['pincode', 'pin_code']],
+                    'gst_number' => ['label' => 'GST Number', 'aliases' => ['gst_number', 'gstin']],
+                    'delivery_supported' => ['label' => 'Delivery Supported', 'aliases' => ['delivery_supported']],
+                    'pickup_supported' => ['label' => 'Pickup Supported', 'aliases' => ['pickup_supported']],
+                    'gst_registration_type' => ['label' => 'GST Registration Type', 'aliases' => ['gst_registration_type']],
+                    'payment_terms' => ['label' => 'Payment Terms', 'aliases' => ['payment_terms']],
+                    'address' => ['label' => 'Address', 'aliases' => ['address']],
+                    'is_active' => ['label' => 'Active', 'aliases' => ['is_active', 'active']],
+                    'notes' => ['label' => 'Notes', 'aliases' => ['notes', 'remarks']],
+                ],
+                'template' => [
+                    ['Vendor Name', 'Contact Name', 'Phone', 'WhatsApp Number', 'Email', 'City', 'Address', 'State', 'Pincode', 'GST Number', 'Delivery Supported', 'Pickup Supported', 'Vendor Type', 'GST Registration Type', 'Payment Terms', 'Active', 'Notes'],
+                    ['KR Healthcare', 'Kiran Rao', '9000001111', '9000001111', 'ops@krhealthcare.test', 'Bengaluru', 'Indiranagar, Bengaluru', 'Karnataka', '560001', '29ABCDE1234F1Z5', 'Yes', 'Yes', 'supplier', 'regular', '7 days', 'Yes', 'Supports vendor supplied rentals'],
+                ],
+                'chunk_size' => 100,
+            ],
+            self::STAFF => [
+                'label' => 'Staff Import',
+                'module_permission' => 'users',
+                'description' => 'Import staff directory with city, role, and assignment role support.',
+                'priority' => 6,
+                'fields' => [
+                    'name' => ['label' => 'Name', 'required' => true, 'aliases' => ['name', 'staff_name']],
+                    'email' => ['label' => 'Email', 'aliases' => ['email']],
+                    'phone' => ['label' => 'Phone', 'aliases' => ['phone', 'mobile']],
+                    'role' => ['label' => 'Role', 'aliases' => ['role']],
+                    'assignment_role' => ['label' => 'Assignment Role', 'aliases' => ['assignment_role']],
+                    'city_name' => ['label' => 'City', 'aliases' => ['city', 'city_name']],
+                    'status' => ['label' => 'Status', 'aliases' => ['status']],
+                    'joining_date' => ['label' => 'Joining Date', 'aliases' => ['joining_date']],
+                    'salary' => ['label' => 'Salary', 'aliases' => ['salary']],
+                    'address' => ['label' => 'Address', 'aliases' => ['address']],
+                    'notes' => ['label' => 'Notes', 'aliases' => ['notes']],
+                ],
+                'template' => [
+                    ['Name', 'Email', 'Phone', 'Role', 'Assignment Role', 'City', 'Status', 'Joining Date', 'Salary', 'Address', 'Notes'],
+                    ['Delivery Bengaluru', 'deliverybng@primehealers.com', '9000002222', 'delivery', 'delivery', 'Bengaluru', 'active', '2026-01-01', '22000', 'Bengaluru', 'Delivery staff for Bengaluru'],
                 ],
                 'chunk_size' => 100,
             ],
@@ -228,6 +316,130 @@ class ImportService
         return $this->module($module)['fields'];
     }
 
+    public function templateCatalog(): array
+    {
+        $cards = collect($this->modules())
+            ->map(function (array $config, string $key) {
+                return [
+                    'key' => $key,
+                    'label' => $config['label'],
+                    'download_label' => 'Download ' . Str::headline($config['label']) . ' Template',
+                    'fields' => array_values(array_map(fn ($field) => $field['label'] ?? '', $config['fields'] ?? [])),
+                    'note' => 'Includes template rows plus a guidance sheet with required fields, accepted values, and sample data.',
+                    'upload_available' => true,
+                    'filename' => Str::slug($config['label']) . '-template.xlsx',
+                ];
+            })
+            ->all();
+
+        $cards['sales'] = [
+            'key' => 'sales',
+            'label' => 'Sales Import',
+            'download_label' => 'Download Sales Import Template',
+            'fields' => ['Customer Type', 'Business Partner', 'Actual Client', 'City', 'Fulfilment Source', 'Vendor', 'Delivery Responsibility', 'Warehouse', 'Quantity', 'Sale Amount', 'Payment Status'],
+            'note' => 'Includes city-first fulfilment and business partner guidance.',
+            'upload_available' => true,
+            'filename' => 'sales-import-template.xlsx',
+        ];
+
+        $cards['opening-balances'] = [
+            'key' => 'opening-balances',
+            'label' => 'Opening Balance Import',
+            'download_label' => 'Download Opening Balance Template',
+            'fields' => ['Customer Phone', 'Opening Balance', 'Balance Type', 'Notes'],
+            'note' => 'Legacy opening balance import with guidance sheet.',
+            'upload_available' => true,
+            'filename' => 'opening-balance-import-template.xlsx',
+        ];
+
+        return $cards;
+    }
+
+    public function templateDefinition(string $module): array
+    {
+        $module = strtolower(trim($module));
+
+        if (isset($this->modules()[$module])) {
+            $config = $this->module($module);
+            $rows = $config['template'];
+            $headers = $rows[0] ?? [];
+            $fieldLookup = collect($config['fields'] ?? [])->mapWithKeys(fn ($field, $key) => [
+                Str::lower((string) ($field['label'] ?? $key)) => ['key' => $key] + $field,
+            ])->all();
+
+            $guidanceRows = [
+                ['Field', 'Required', 'Sample Values', 'Accepted Values', 'Description'],
+            ];
+
+            foreach ($headers as $header) {
+                $fieldMeta = $fieldLookup[Str::lower((string) $header)] ?? null;
+                $guidanceRows[] = [
+                    $header,
+                    !empty($fieldMeta['required']) ? 'Required' : 'Optional',
+                    $this->templateSampleValue($module, $fieldMeta['key'] ?? null),
+                    $this->templateAcceptedValues($module, $fieldMeta['key'] ?? null),
+                    $this->templateFieldDescription($module, $fieldMeta['key'] ?? null),
+                ];
+            }
+
+            return [
+                'filename' => Str::slug($config['label']) . '-template.xlsx',
+                'rows' => $rows,
+                'guidance_rows' => $guidanceRows,
+            ];
+        }
+
+        return match ($module) {
+            'sales' => [
+                'filename' => 'sales-import-template.xlsx',
+                'rows' => [
+                    ['Customer Type', 'Business Partner', 'Actual Client', 'Customer Name', 'Customer Phone', 'Product Name', 'Brand', 'Model', 'City', 'Fulfilment Source', 'Vendor', 'Delivery Responsibility', 'Warehouse', 'Quantity', 'Sale Amount', 'Tax Type', 'Payment Status', 'Paid Amount', 'Invoice Status', 'Delivery Status', 'Delivery Date', 'Sale Date', 'Notes'],
+                    ['direct_customer', '', '', 'Aarav Sharma', '9876543210', 'Oxygen Concentrator 5 LPM', 'Philips', 'SimplyGo', 'Bengaluru', 'in_house', '', 'ph_internal_delivery', 'Main Warehouse', '1', '45000', 'exclusive', 'paid', '45000', 'paid', 'completed', '2026-05-03', '2026-05-01', 'Paid import'],
+                    ['business_partner', 'Care Plus Clinic', 'Rahul Verma', 'Rahul Verma', '9810012345', 'Hospital Bed Electric', 'Kraft', '2 Function', 'Bengaluru', 'vendor_supplied', 'KR Healthcare', 'vendor_delivery', '', '1', '45000', 'exclusive', 'pending', '', 'generated', 'assigned', '2026-05-03', '2026-05-01', 'Vendor supplied partner sale'],
+                ],
+                'guidance_rows' => [
+                    ['Field', 'Required', 'Sample Values', 'Accepted Values', 'Description'],
+                    ['Customer Type', 'Optional', 'direct_customer', 'direct_customer, business_partner', 'Defaults to direct_customer when blank.'],
+                    ['Business Partner', 'Optional', 'Care Plus Clinic', 'Existing business partner name', 'Required when Customer Type is business_partner.'],
+                    ['Actual Client', 'Optional', 'Rahul Verma', 'Existing partner client name', 'Partner client / actual client under the business partner.'],
+                    ['City', 'Optional', 'Bengaluru', 'Existing PHOS city', 'Used for city-first warehouse and vendor fulfilment alignment.'],
+                    ['Fulfilment Source', 'Optional', 'vendor_supplied', 'in_house, vendor_supplied', 'Defaults to in_house.'],
+                    ['Vendor', 'Optional', 'KR Healthcare', 'Existing active vendor name', 'Required when Fulfilment Source is vendor_supplied.'],
+                    ['Delivery Responsibility', 'Optional', 'vendor_delivery', 'ph_internal_delivery, vendor_delivery, customer_pickup', 'Operational delivery assignment source.'],
+                    ['Warehouse', 'Optional', 'Main Warehouse', 'Existing active warehouse', 'Required for in_house stock validation.'],
+                ],
+            ],
+            'opening-balances' => [
+                'filename' => 'opening-balance-import-template.xlsx',
+                'rows' => [
+                    ['Customer Phone', 'Opening Balance', 'Balance Type', 'Notes'],
+                    ['9876543210', '3200', 'receivable', 'Legacy opening balance as of 2026-04-30'],
+                ],
+                'guidance_rows' => [
+                    ['Field', 'Required', 'Sample Values', 'Accepted Values', 'Description'],
+                    ['Customer Phone', 'Required', '9876543210', 'Existing customer phone', 'Used to match the customer.'],
+                    ['Opening Balance', 'Required', '3200', 'Numeric', 'Opening balance amount.'],
+                    ['Balance Type', 'Optional', 'receivable', 'receivable, payable', 'Defaults to receivable.'],
+                    ['Notes', 'Optional', 'Legacy opening balance as of 2026-04-30', '', 'Optional context for the imported balance.'],
+                ],
+            ],
+            default => throw new RuntimeException('Unsupported import module.'),
+        };
+    }
+
+    public function templateWorkbook(string $module): array
+    {
+        $definition = $this->templateDefinition($module);
+
+        return [
+            'filename' => $definition['filename'],
+            'content' => $this->buildXlsxWorkbook([
+                'Template' => $definition['rows'],
+                'Guidance' => $definition['guidance_rows'],
+            ]),
+        ];
+    }
+
     public function storeUpload(string $module, UploadedFile $file, int $organizationId, int $userId): array
     {
         $parsed = $this->parseSpreadsheet($file);
@@ -237,10 +449,18 @@ class ImportService
             'organization_id' => $organizationId,
             'user_id' => $userId,
             'original_name' => $file->getClientOriginalName(),
+            'file_extension' => strtolower((string) $file->getClientOriginalExtension()),
             'headers' => $parsed['headers'],
             'rows' => $parsed['rows'],
             'row_count' => count($parsed['rows']),
+            'raw_row_count' => (int) ($parsed['raw_row_count'] ?? count($parsed['rows'])),
+            'non_empty_row_count' => (int) ($parsed['non_empty_row_count'] ?? count($parsed['rows'])),
+            'mapped_row_count' => count($parsed['rows']),
             'blank_row_count' => (int) ($parsed['blank_row_count'] ?? 0),
+            'sheet_name' => $parsed['sheet_name'] ?? null,
+            'header_row_number' => (int) ($parsed['header_row_number'] ?? 1),
+            'highest_row' => (int) ($parsed['highest_row'] ?? 0),
+            'highest_column' => $parsed['highest_column'] ?? null,
             'created_at' => now()->toIso8601String(),
         ]);
 
@@ -275,25 +495,36 @@ class ImportService
         $fields = $this->fieldOptions($module);
         $validRows = [];
         $invalidRows = [];
+        $noDataError = null;
         $assetPrecheck = [
             'untracked_products' => [],
         ];
         $productIdentityRows = [];
+        $customerPreviewPartners = [];
+
+        if (empty($upload['rows'] ?? [])) {
+            $noDataError = 'No data rows found. Please check header row and file format.';
+        }
 
         foreach (($upload['rows'] ?? []) as $index => $row) {
             $rowNumber = $index + 2;
             $mapped = $this->applyMapping($row, $mapping);
-            [$normalized, $errors] = $this->normalizeRow($module, $mapped, $organizationId, $rowNumber, $mapping, $fields);
+            [$normalized, $errors] = $this->normalizeRow($module, $mapped, $organizationId, $rowNumber, $mapping, $fields, [
+                'pending_business_partners' => $customerPreviewPartners,
+            ]);
+            $errorDetails = $this->normalizeErrorDetails($errors);
+            $errorMessages = array_map(fn (array $detail) => $detail['reason'], $errorDetails);
             $guidance = $module === self::ASSET
                 ? $this->assetStockModeGuidance($mapped, $organizationId)
                 : null;
 
-            if (!empty($errors)) {
+            if (!empty($errorMessages)) {
                 $invalidRows[] = [
                     'row_number' => $rowNumber,
                     'source' => $row,
                     'mapped' => $mapped,
-                    'errors' => $errors,
+                    'errors' => $errorMessages,
+                    'error_details' => $errorDetails,
                     'guidance' => $guidance,
                 ];
 
@@ -324,6 +555,7 @@ class ImportService
                             'source' => $row,
                             'mapped' => $mapped,
                             'errors' => ['This file contains another row with the same Product Name, Brand, and Model (row '.$existingRowNumber.').'],
+                            'error_details' => [$this->errorDetail('product_name', 'This file contains another row with the same Product Name, Brand, and Model (row '.$existingRowNumber.').')],
                             'guidance' => $guidance,
                         ];
                         continue;
@@ -342,6 +574,19 @@ class ImportService
                 'payload' => $normalized,
                 'mapped' => $mapped,
             ];
+
+            if ($module === self::CUSTOMER && ($normalized['import_entity'] ?? null) === 'business_partner') {
+                $partnerName = Str::lower(trim((string) ($normalized['business_name'] ?? '')));
+                $partnerCode = Str::lower(trim((string) ($normalized['partner_code'] ?? '')));
+
+                if ($partnerName !== '') {
+                    $customerPreviewPartners[$partnerName] = true;
+                }
+
+                if ($partnerCode !== '') {
+                    $customerPreviewPartners[$partnerCode] = true;
+                }
+            }
         }
 
         $key = $this->saveSnapshot([
@@ -350,14 +595,24 @@ class ImportService
             'organization_id' => $organizationId,
             'upload_key' => $uploadKey,
             'mapping' => $mapping,
+            'original_name' => $upload['original_name'] ?? null,
+            'file_extension' => $upload['file_extension'] ?? null,
             'headers' => $upload['headers'] ?? [],
             'row_count' => count($upload['rows'] ?? []),
+            'raw_row_count' => (int) ($upload['raw_row_count'] ?? count($upload['rows'] ?? [])),
+            'non_empty_row_count' => (int) ($upload['non_empty_row_count'] ?? count($upload['rows'] ?? [])),
+            'mapped_row_count' => (int) ($upload['mapped_row_count'] ?? count($upload['rows'] ?? [])),
             'valid_rows' => $validRows,
             'invalid_rows' => $invalidRows,
             'asset_precheck' => [
                 'untracked_products' => array_values($assetPrecheck['untracked_products']),
             ],
             'blank_row_count' => (int) ($upload['blank_row_count'] ?? 0),
+            'sheet_name' => $upload['sheet_name'] ?? null,
+            'header_row_number' => (int) ($upload['header_row_number'] ?? 1),
+            'highest_row' => (int) ($upload['highest_row'] ?? 0),
+            'highest_column' => $upload['highest_column'] ?? null,
+            'no_data_error' => $noDataError,
             'created_at' => now()->toIso8601String(),
         ]);
 
@@ -367,6 +622,19 @@ class ImportService
             'invalid_count' => count($invalidRows),
             'valid_rows' => $validRows,
             'invalid_rows' => $invalidRows,
+            'original_name' => $upload['original_name'] ?? null,
+            'file_extension' => $upload['file_extension'] ?? null,
+            'headers' => $upload['headers'] ?? [],
+            'row_count' => count($upload['rows'] ?? []),
+            'raw_row_count' => (int) ($upload['raw_row_count'] ?? count($upload['rows'] ?? [])),
+            'non_empty_row_count' => (int) ($upload['non_empty_row_count'] ?? count($upload['rows'] ?? [])),
+            'mapped_row_count' => (int) ($upload['mapped_row_count'] ?? count($upload['rows'] ?? [])),
+            'blank_row_count' => (int) ($upload['blank_row_count'] ?? 0),
+            'sheet_name' => $upload['sheet_name'] ?? null,
+            'header_row_number' => (int) ($upload['header_row_number'] ?? 1),
+            'highest_row' => (int) ($upload['highest_row'] ?? 0),
+            'highest_column' => $upload['highest_column'] ?? null,
+            'no_data_error' => $noDataError,
         ];
     }
 
@@ -404,6 +672,8 @@ class ImportService
                             self::PRODUCT => $this->importProductRow($payload, $organizationId, $productUpsertWhitelistIds),
                             self::ASSET => $this->importAssetRow($payload, $organizationId, $userId, $touchedProductIds),
                             self::RENTAL => $this->importRentalRow($payload, $organizationId, $userId),
+                            self::VENDOR => $this->importVendorRow($payload, $organizationId),
+                            self::STAFF => $this->importStaffRow($payload, $organizationId),
                             default => throw new RuntimeException('Unsupported import module.'),
                         };
 
@@ -454,6 +724,7 @@ class ImportService
                 'identifier' => $issue['identifier'] ?? '',
                 'reason_category' => $issue['reason_category'] ?? '',
                 'errors' => $issue['errors'] ?? [],
+                'error_details' => $issue['error_details'] ?? [],
                 'mapped' => $issue['mapped'] ?? [],
             ];
         }, array_merge($result['skipped_rows'] ?? [], $result['failed_rows'] ?? []));
@@ -470,39 +741,51 @@ class ImportService
         $rows = [];
 
         foreach (($lastResult['preview_invalid_rows'] ?? []) as $row) {
-            $rows[] = [
-                'row_number' => $row['row_number'] ?? '',
-                'status' => $row['status'] ?? 'preview_invalid',
-                'identifier' => $row['identifier'] ?? '',
-                'reason_category' => $row['reason_category'] ?? '',
-                'errors' => implode(' | ', $row['errors'] ?? []),
-                'mapped_data' => json_encode($row['mapped'] ?? [], JSON_UNESCAPED_UNICODE),
-            ];
+            foreach (($row['error_details'] ?? []) as $detail) {
+                $rows[] = [
+                    'row_number' => $row['row_number'] ?? '',
+                    'status' => $row['status'] ?? 'preview_invalid',
+                    'identifier' => $row['identifier'] ?? '',
+                    'reason_category' => $row['reason_category'] ?? '',
+                    'field' => $detail['field'] ?? '',
+                    'reason' => $detail['reason'] ?? '',
+                    'errors' => implode(' | ', $row['errors'] ?? []),
+                    'mapped_data' => json_encode($row['mapped'] ?? [], JSON_UNESCAPED_UNICODE),
+                ];
+            }
         }
 
         if (empty($rows)) {
             foreach (($preview['invalid_rows'] ?? []) as $row) {
                 $issue = $this->buildPreviewInvalidIssue($row);
-                $rows[] = [
-                    'row_number' => $issue['row_number'] ?? '',
-                    'status' => $issue['status'] ?? 'preview_invalid',
-                    'identifier' => $issue['identifier'] ?? '',
-                    'reason_category' => $issue['reason_category'] ?? '',
-                    'errors' => implode(' | ', $issue['errors'] ?? []),
-                    'mapped_data' => json_encode($issue['mapped'] ?? [], JSON_UNESCAPED_UNICODE),
-                ];
+                foreach (($issue['error_details'] ?? []) as $detail) {
+                    $rows[] = [
+                        'row_number' => $issue['row_number'] ?? '',
+                        'status' => $issue['status'] ?? 'preview_invalid',
+                        'identifier' => $issue['identifier'] ?? '',
+                        'reason_category' => $issue['reason_category'] ?? '',
+                        'field' => $detail['field'] ?? '',
+                        'reason' => $detail['reason'] ?? '',
+                        'errors' => implode(' | ', $issue['errors'] ?? []),
+                        'mapped_data' => json_encode($issue['mapped'] ?? [], JSON_UNESCAPED_UNICODE),
+                    ];
+                }
             }
         }
 
         foreach (array_merge($lastResult['skipped_rows'] ?? [], $lastResult['failed_rows'] ?? []) as $row) {
-            $rows[] = [
-                'row_number' => $row['row_number'] ?? '',
-                'status' => $row['status'] ?? 'import_skipped',
-                'identifier' => $row['identifier'] ?? '',
-                'reason_category' => $row['reason_category'] ?? '',
-                'errors' => implode(' | ', $row['errors'] ?? []),
-                'mapped_data' => json_encode($row['mapped'] ?? [], JSON_UNESCAPED_UNICODE),
-            ];
+            foreach (($row['error_details'] ?? []) as $detail) {
+                $rows[] = [
+                    'row_number' => $row['row_number'] ?? '',
+                    'status' => $row['status'] ?? 'import_skipped',
+                    'identifier' => $row['identifier'] ?? '',
+                    'reason_category' => $row['reason_category'] ?? '',
+                    'field' => $detail['field'] ?? '',
+                    'reason' => $detail['reason'] ?? '',
+                    'errors' => implode(' | ', $row['errors'] ?? []),
+                    'mapped_data' => json_encode($row['mapped'] ?? [], JSON_UNESCAPED_UNICODE),
+                ];
+            }
         }
 
         return $rows;
@@ -552,6 +835,7 @@ class ImportService
             'reason_category' => $this->classifyIssueCategory($errors),
             'reason' => $errors[0] ?? 'Preview validation failed.',
             'errors' => $errors,
+            'error_details' => $row['error_details'] ?? $this->normalizeErrorDetails($errors),
             'mapped' => $row['mapped'] ?? [],
         ];
     }
@@ -570,6 +854,7 @@ class ImportService
             'reason_category' => $category,
             'reason' => $errors[0] ?? 'Import execution failed.',
             'errors' => $errors,
+            'error_details' => $this->normalizeErrorDetails($errors),
             'mapped' => $row['mapped'] ?? [],
         ];
     }
@@ -750,11 +1035,19 @@ class ImportService
         $usedHeaders = [];
 
         foreach ($fields as $fieldKey => $field) {
-            $aliases = collect($field['aliases'] ?? [])->prepend($fieldKey)->map(fn ($value) => $this->slugKey($value));
-            $matchedHeader = collect($headers)->first(function ($header) use ($aliases, $usedHeaders) {
-                return !in_array($header, $usedHeaders, true)
-                    && $aliases->contains($this->slugKey($header));
-            });
+            $aliases = collect($field['aliases'] ?? [])->prepend($fieldKey)->map(fn ($value) => $this->slugKey($value))->values();
+            $matchedHeader = null;
+
+            foreach ($aliases as $alias) {
+                $matchedHeader = collect($headers)->first(function ($header) use ($alias, $usedHeaders) {
+                    return !in_array($header, $usedHeaders, true)
+                        && $this->slugKey($header) === $alias;
+                });
+
+                if ($matchedHeader !== null) {
+                    break;
+                }
+            }
 
             $mapping[$fieldKey] = $matchedHeader;
 
@@ -768,6 +1061,16 @@ class ImportService
 
     private function importCustomerRow(array $payload, int $organizationId): string
     {
+        $entity = $payload['import_entity'] ?? 'direct_customer';
+
+        if ($entity === 'business_partner') {
+            return $this->importBusinessPartnerCustomerRow($payload, $organizationId);
+        }
+
+        if ($entity === 'actual_client') {
+            return $this->importActualClientCustomerRow($payload, $organizationId);
+        }
+
         $customer = $this->findCustomerForImport($payload, $organizationId);
 
         if ($customer) {
@@ -776,6 +1079,92 @@ class ImportService
         }
 
         Customer::create($payload + ['organization_id' => $organizationId]);
+        return 'created';
+    }
+
+    private function importBusinessPartnerCustomerRow(array $payload, int $organizationId): string
+    {
+        $query = BusinessPartner::query()->where('organization_id', $organizationId);
+        $partner = null;
+
+        if (!empty($payload['partner_code']) && Schema::hasColumn('business_partners', 'partner_code')) {
+            $partner = (clone $query)->where('partner_code', $payload['partner_code'])->first();
+        }
+
+        if (!$partner && !empty($payload['phone'])) {
+            $partner = (clone $query)->where('phone', $payload['phone'])->first();
+        }
+
+        if (!$partner && !empty($payload['email'])) {
+            $partner = (clone $query)->where('email', $payload['email'])->first();
+        }
+
+        if (!$partner) {
+            $partner = (clone $query)
+                ->whereRaw('LOWER(business_name) = ?', [Str::lower((string) $payload['business_name'])])
+                ->first();
+        }
+
+        if ($partner) {
+            $partner->fill($payload)->save();
+            unset($this->partnerCache[$organizationId]);
+
+            return 'updated';
+        }
+
+        BusinessPartner::create($payload + ['organization_id' => $organizationId]);
+        unset($this->partnerCache[$organizationId]);
+
+        return 'created';
+    }
+
+    private function importActualClientCustomerRow(array $payload, int $organizationId): string
+    {
+        $partnerId = (int) ($payload['business_partner_id'] ?? 0);
+
+        if ($partnerId <= 0) {
+            $partner = $this->resolveBusinessPartnerForCustomerImport($organizationId, [
+                'parent_business_partner' => $payload['parent_business_partner'] ?? null,
+                'business_partner_code' => $payload['business_partner_code'] ?? null,
+            ]);
+
+            if (!$partner) {
+                throw ValidationException::withMessages([
+                    'parent_business_partner' => 'Parent Business Partner was not found in PHOS.',
+                ]);
+            }
+
+            $partnerId = (int) $partner->id;
+            $payload['business_partner_id'] = $partnerId;
+        }
+
+        $query = PartnerClient::query()
+            ->where('organization_id', $organizationId)
+            ->where('business_partner_id', $partnerId);
+        $client = null;
+
+        if (!empty($payload['phone'])) {
+            $client = (clone $query)->where('phone', $payload['phone'])->first();
+        }
+
+        if (!$client && !empty($payload['alternate_phone'])) {
+            $client = (clone $query)->where('alternate_phone', $payload['alternate_phone'])->first();
+        }
+
+        if (!$client) {
+            $client = (clone $query)
+                ->whereRaw('LOWER(client_name) = ?', [Str::lower((string) $payload['client_name'])])
+                ->first();
+        }
+
+        if ($client) {
+            $client->fill($payload)->save();
+
+            return 'updated';
+        }
+
+        PartnerClient::create($payload + ['organization_id' => $organizationId]);
+
         return 'created';
     }
 
@@ -892,25 +1281,89 @@ class ImportService
         return $result['action'] ?? 'created';
     }
 
-    private function normalizeRow(string $module, array $mapped, int $organizationId, int $rowNumber, array $mapping = [], array $fields = []): array
+    private function importVendorRow(array $payload, int $organizationId): string
+    {
+        $query = Vendor::query()->where('organization_id', $organizationId);
+        $vendor = null;
+
+        if (!empty($payload['phone'])) {
+            $vendor = (clone $query)->where('phone', $payload['phone'])->first();
+        }
+
+        if (!$vendor && !empty($payload['email'])) {
+            $vendor = (clone $query)->where('email', $payload['email'])->first();
+        }
+
+        if (!$vendor) {
+            $vendor = (clone $query)->whereRaw('LOWER(name) = ?', [Str::lower((string) $payload['name'])])->first();
+        }
+
+        if ($vendor) {
+            $vendor->fill($payload)->save();
+
+            return 'updated';
+        }
+
+        Vendor::create($payload + ['organization_id' => $organizationId]);
+
+        return 'created';
+    }
+
+    private function importStaffRow(array $payload, int $organizationId): string
+    {
+        $query = Staff::query()->where('organization_id', $organizationId);
+        $staff = null;
+
+        if (!empty($payload['email'])) {
+            $staff = (clone $query)->where('email', $payload['email'])->first();
+        }
+
+        if (!$staff && !empty($payload['phone'])) {
+            $staff = (clone $query)->where('phone', $payload['phone'])->first();
+        }
+
+        if (!$staff) {
+            $staff = (clone $query)->whereRaw('LOWER(name) = ?', [Str::lower((string) $payload['name'])])->first();
+        }
+
+        if ($staff) {
+            $staff->fill($payload)->save();
+
+            return 'updated';
+        }
+
+        Staff::create($payload + ['organization_id' => $organizationId]);
+
+        return 'created';
+    }
+
+    private function normalizeRow(string $module, array $mapped, int $organizationId, int $rowNumber, array $mapping = [], array $fields = [], array $context = []): array
     {
         return match ($module) {
-            self::CUSTOMER => $this->normalizeCustomerRow($mapped, $organizationId),
+            self::CUSTOMER => $this->normalizeCustomerRow($mapped, $organizationId, $context),
             self::PRODUCT => $this->normalizeProductRow($mapped, $organizationId, $mapping, $fields),
             self::ASSET => $this->normalizeAssetRow($mapped, $organizationId),
             self::RENTAL => $this->normalizeRentalRow($mapped, $organizationId),
+            self::VENDOR => $this->normalizeVendorRow($mapped, $organizationId),
+            self::STAFF => $this->normalizeStaffRow($mapped, $organizationId),
             default => [[], ['Unsupported import module for row ' . $rowNumber . '.']],
         };
     }
 
-    private function normalizeCustomerRow(array $mapped, ?int $organizationId = null): array
+    private function normalizeCustomerRow(array $mapped, ?int $organizationId = null, array $context = []): array
     {
+        $customerType = $this->normalizeUnifiedCustomerImportType($mapped['customer_type'] ?? null, $mapped['company_name'] ?? null);
         $name = $this->cleanText($mapped['name'] ?? '')
             ?: $this->cleanText($mapped['company_name'] ?? '')
             ?: $this->cleanText($mapped['contact_name'] ?? '');
         $phone = $this->normalizePhone($mapped['phone'] ?? null);
         $whatsApp = $this->normalizePhone($mapped['whatsapp_number'] ?? null);
         $email = $this->normalizeEmail($mapped['email'] ?? null);
+        $city = $this->cleanText($mapped['city_name'] ?? $mapped['city'] ?? null);
+        $parentPartnerName = $this->cleanText($mapped['parent_business_partner'] ?? null)
+            ?: $this->cleanText($mapped['business_partner_name'] ?? $mapped['business_partner'] ?? null);
+        $businessPartnerCode = $this->cleanText($mapped['business_partner_code'] ?? $mapped['partner_code'] ?? null);
+        $referralPercentage = $this->normalizeDecimal($mapped['referral_percentage'] ?? null);
         $errors = [];
 
         if ($name === '') {
@@ -929,7 +1382,11 @@ class ImportService
             $errors[] = 'Email address is not valid.';
         }
 
-        if ($organizationId && $name !== '' && !$phone && !$email) {
+        if ($referralPercentage !== null && $referralPercentage < 0) {
+            $errors[] = 'Referral percentage cannot be negative.';
+        }
+
+        if ($organizationId && $name !== '' && !$phone && !$email && $customerType === 'direct_customer') {
             $existingNameMatches = Customer::query()
                 ->where('organization_id', $organizationId)
                 ->whereRaw('LOWER(name) = ?', [Str::lower($name)])
@@ -940,23 +1397,98 @@ class ImportService
             }
         }
 
-        $type = $this->normalizeCustomerType($mapped['customer_type'] ?? null, $mapped['company_name'] ?? null);
+        if ($customerType === 'actual_client' && $parentPartnerName === '' && $businessPartnerCode === '') {
+            $errors[] = 'Parent Business Partner is required when Customer Type is actual_client.';
+        }
+
+        $businessPartner = null;
+
+        if ($organizationId && $customerType === 'actual_client' && ($parentPartnerName !== '' || $businessPartnerCode !== '')) {
+            $businessPartner = $this->resolveBusinessPartnerForCustomerImport($organizationId, [
+                'parent_business_partner' => $parentPartnerName,
+                'business_partner_name' => $mapped['business_partner_name'] ?? null,
+                'business_partner_code' => $businessPartnerCode,
+            ]);
+
+            $pendingPartnerMatched = $businessPartner === null
+                && $this->matchesPendingCustomerImportPartner($context, $parentPartnerName, $businessPartnerCode);
+
+            if (!$businessPartner && !$pendingPartnerMatched) {
+                $errors[] = 'Parent Business Partner was not found in PHOS.';
+            }
+        }
+
+        $commonNotes = $this->cleanText($mapped['notes'] ?? null);
+
+        if ($customerType === 'business_partner') {
+            return [[
+                'import_entity' => 'business_partner',
+                'business_name' => $this->cleanText($mapped['company_name'] ?? null) ?: $name,
+                'partner_code' => $businessPartnerCode,
+                'contact_person' => $this->cleanText($mapped['contact_name'] ?? null),
+                'phone' => $phone,
+                'whatsapp' => $whatsApp,
+                'email' => $email,
+                'gst_registered' => $this->normalizeImportBoolean($mapped['gst_registered'] ?? null) ?? false,
+                'gstin' => $this->cleanText($mapped['gst_number'] ?? null),
+                'legal_name' => $this->cleanText($mapped['company_name'] ?? null) ?: $name,
+                'billing_address' => $this->cleanText($mapped['address'] ?? null),
+                'billing_city' => $city,
+                'billing_state' => $this->cleanText($mapped['state'] ?? null),
+                'billing_pincode' => $this->cleanText($mapped['pincode'] ?? null),
+                'address' => $this->cleanText($mapped['address'] ?? null),
+                'city' => $city,
+                'state' => $this->cleanText($mapped['state'] ?? null),
+                'pincode' => $this->cleanText($mapped['pincode'] ?? null),
+                'credit_terms' => $this->cleanText($mapped['credit_terms'] ?? null),
+                'referral_percentage' => $referralPercentage,
+                'account_manager' => $this->cleanText($mapped['account_manager'] ?? null),
+                'notes' => $commonNotes,
+                'location' => $this->cleanText($mapped['google_map_link'] ?? null),
+                'status' => 'active',
+            ], $errors];
+        }
+
+        if ($customerType === 'actual_client') {
+            return [[
+                'import_entity' => 'actual_client',
+                'business_partner_id' => $businessPartner?->id,
+                'parent_business_partner' => $parentPartnerName,
+                'business_partner_code' => $businessPartnerCode,
+                'client_name' => $name,
+                'phone' => $phone,
+                'alternate_phone' => $whatsApp && $whatsApp !== $phone ? $whatsApp : null,
+                'address' => $this->cleanText($mapped['address'] ?? null),
+                'city' => $city,
+                'state' => $this->cleanText($mapped['state'] ?? null),
+                'pincode' => $this->cleanText($mapped['pincode'] ?? null),
+                'location' => $this->cleanText($mapped['google_map_link'] ?? null),
+                'delivery_notes' => $commonNotes,
+                'account_manager' => $this->cleanText($mapped['account_manager'] ?? null),
+                'notes' => $commonNotes,
+                'status' => 'active',
+            ], $errors];
+        }
 
         return [[
+            'import_entity' => 'direct_customer',
             'name' => $name,
-            'customer_type' => $type,
+            'customer_type' => $this->normalizeCustomerType($mapped['customer_type'] ?? null, $mapped['company_name'] ?? null),
             'phone' => $phone,
             'whatsapp_number' => $whatsApp,
             'email' => $email,
             'company_name' => $this->cleanText($mapped['company_name'] ?? null),
             'contact_name' => $this->cleanText($mapped['contact_name'] ?? null),
             'gst_number' => $this->cleanText($mapped['gst_number'] ?? null),
+            'gst_registered' => $this->normalizeImportBoolean($mapped['gst_registered'] ?? null) ?? false,
+            'place_of_supply' => $this->cleanText($mapped['state'] ?? null),
             'address' => $this->cleanText($mapped['address'] ?? null),
-            'city' => $this->cleanText($mapped['city'] ?? null),
+            'city' => $city,
             'state' => $this->cleanText($mapped['state'] ?? null),
             'pincode' => $this->cleanText($mapped['pincode'] ?? null),
-            'patient_name' => $this->cleanText($mapped['patient_name'] ?? null),
-            'notes' => $this->cleanText($mapped['notes'] ?? null),
+            'map_location_text' => $city,
+            'map_location_url' => $this->cleanText($mapped['google_map_link'] ?? null),
+            'notes' => $commonNotes,
         ], $errors];
     }
 
@@ -1041,6 +1573,11 @@ class ImportService
             'rental_price_3_months' => $this->normalizeDecimal($mapped['rental_price_3_months'] ?? null),
             'sale_price' => $salePrice,
             'rental_price' => $rentalPrice,
+            'gst_tax_type' => $this->normalizeGstTaxType($mapped['gst_tax_type'] ?? null),
+            'gst_calculation_mode' => $this->normalizeGstCalculationMode($mapped['gst_calculation_mode'] ?? null),
+            'cgst_rate' => $this->normalizeDecimal($mapped['cgst_rate'] ?? null) ?? 0.0,
+            'sgst_rate' => $this->normalizeDecimal($mapped['sgst_rate'] ?? null) ?? 0.0,
+            'igst_rate' => $this->normalizeDecimal($mapped['igst_rate'] ?? null) ?? 0.0,
         ], $errors];
     }
 
@@ -1050,6 +1587,7 @@ class ImportService
         $product = $productMatch['product'];
         $warehouse = $this->resolveWarehouse($organizationId, $mapped);
         $errors = [];
+        $city = $this->resolveCity($organizationId, $mapped, false);
 
         if ($this->cleanText($mapped['product_name'] ?? null) === '') {
             $errors[] = 'Product name is required.';
@@ -1119,6 +1657,7 @@ class ImportService
         return [[
             'product_id' => $product?->id,
             'warehouse_id' => $warehouse?->id,
+            'city' => $city?->name,
             'asset_name' => $this->cleanText($mapped['asset_name'] ?? null) ?: ($product?->name ?? null),
             'serial_number' => $serial,
             'barcode_value' => $barcode ?: null,
@@ -1155,21 +1694,38 @@ class ImportService
 
     private function normalizeRentalRow(array $mapped, int $organizationId): array
     {
+        $customerType = $this->normalizeImportCustomerPartyType($mapped['customer_type'] ?? null);
+        $city = $this->resolveCity($organizationId, $mapped, false);
+        $businessPartner = $this->resolveBusinessPartner($organizationId, $mapped);
+        $partnerClient = $businessPartner
+            ? $this->resolvePartnerClient($organizationId, (int) $businessPartner->id, $mapped)
+            : null;
+        $vendor = $this->resolveVendor($organizationId, $mapped);
+        $fulfilmentSource = $this->normalizeFulfilmentSource($mapped['fulfilment_source'] ?? null, $vendor?->id);
+        $deliveryResponsibility = $this->normalizeDeliveryResponsibility($mapped['delivery_responsibility'] ?? null, $fulfilmentSource);
+        $pickupResponsibility = $this->normalizePickupResponsibility($mapped['pickup_responsibility'] ?? null, $fulfilmentSource);
         $customerPayload = [
-            'name' => $mapped['customer_name'] ?? null,
+            'name' => $this->cleanText($mapped['actual_client_name'] ?? null) !== ''
+                ? $mapped['actual_client_name']
+                : ($mapped['customer_name'] ?? null),
             'phone' => $mapped['customer_phone'] ?? null,
             'email' => $mapped['customer_email'] ?? null,
+            'city_name' => $mapped['city_name'] ?? $mapped['city'] ?? null,
         ];
         [$normalizedCustomer, $customerErrors] = $this->normalizeCustomerRow($customerPayload);
         $productMatch = $this->resolveProductMatch($organizationId, $mapped);
         $product = $productMatch['product'];
-        $warehouse = $this->resolveWarehouse($organizationId, $mapped, false);
+        $warehouse = $fulfilmentSource === VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE
+            ? $this->resolveWarehouse($organizationId, $mapped, false)
+            : null;
         $status = $this->normalizeRentalStatus($mapped['status'] ?? null);
         $startDate = $this->normalizeDate($mapped['start_date'] ?? null);
         $endDate = $this->normalizeDate($mapped['end_date'] ?? null);
         $quantity = $this->normalizeInteger($mapped['quantity'] ?? null);
         $serials = $this->splitSerials($mapped['asset_serials'] ?? null);
-        $resolvedAssets = $product ? $this->resolveAssetsBySerials($organizationId, $product->id, $serials) : collect();
+        $resolvedAssets = ($product && $fulfilmentSource === VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE)
+            ? $this->resolveAssetsBySerials($organizationId, $product->id, $serials)
+            : collect();
         $missingSerials = collect($serials)->reject(fn ($serial) => $resolvedAssets->pluck('serial_number')->contains($serial))->values();
         $paymentStatus = $this->normalizeImportedPaymentStatus($mapped['payment_status'] ?? null);
         $invoiceStatus = $this->normalizeImportedInvoiceStatus($mapped['invoice_status'] ?? null);
@@ -1196,6 +1752,34 @@ class ImportService
 
         if ($productMatch['error']) {
             $errors[] = $productMatch['error'];
+        }
+
+        if ($customerType === 'business_partner' && !$businessPartner) {
+            $errors[] = 'Business Partner could not be matched. Use an existing partner name.';
+        }
+
+        if ($customerType === 'business_partner' && $this->cleanText($mapped['actual_client_name'] ?? null) !== '' && !$partnerClient) {
+            $errors[] = 'Actual Client could not be matched under the selected Business Partner.';
+        }
+
+        if ($city === null && $this->cleanText($mapped['city_name'] ?? $mapped['city'] ?? null) !== '') {
+            $errors[] = 'City must match an existing active PHOS city.';
+        }
+
+        if ($fulfilmentSource === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED && !$vendor) {
+            $errors[] = 'Vendor is required when fulfilment source is vendor supplied.';
+        }
+
+        if ($vendor && $city) {
+            $vendorCityId = (int) ($vendor->city_id ?? 0);
+            $vendorCity = Str::lower(trim((string) ($vendor->city ?? '')));
+            if (($vendorCityId > 0 && $vendorCityId !== (int) $city->id) || ($vendorCity !== '' && $vendorCity !== Str::lower($city->name))) {
+                $errors[] = 'Vendor does not serve the selected city.';
+            }
+        }
+
+        if ($fulfilmentSource === VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE && !$warehouse) {
+            $errors[] = 'Dispatch warehouse is required for in-house rentals.';
         }
 
         if (!$status) {
@@ -1303,7 +1887,7 @@ class ImportService
         if ($product instanceof Product) {
             if (!$product->canRent()) {
                 $errors[] = $product->name . ' is not configured as a rentable product.';
-            } elseif ($matchAction !== 'update') {
+            } elseif ($fulfilmentSource === VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE && $matchAction !== 'update') {
                 if ($product->tracksRentalStock()) {
                     $availableAssets = Asset::query()
                         ->where('organization_id', $organizationId)
@@ -1332,6 +1916,15 @@ class ImportService
 
         $payload = [
             'customer' => $normalizedCustomer,
+            'customer_type' => $customerType,
+            'business_partner_id' => $businessPartner?->id,
+            'partner_client_id' => $partnerClient?->id,
+            'vendor_id' => $vendor?->id,
+            'fulfilment_source' => $fulfilmentSource,
+            'delivery_responsibility' => $deliveryResponsibility,
+            'pickup_responsibility' => $pickupResponsibility,
+            'city_id' => $city?->id,
+            'city_name' => $city?->name,
             'product_id' => $product?->id,
             'dispatch_warehouse_id' => $warehouse?->id,
             'quantity' => $quantity,
@@ -1344,6 +1937,7 @@ class ImportService
             'status' => $status,
             'returned_at' => $status === 'returned' ? ($endDate ? Carbon::parse($endDate)->endOfDay()->toDateTimeString() : now()->toDateTimeString()) : null,
             'asset_ids' => $resolvedAssets->pluck('id')->map(fn ($id) => (int) $id)->values()->all(),
+            'stock_applied' => $fulfilmentSource === VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE,
             'payment_status' => $paymentStatus ?? 'pending',
             'paid_amount' => $paidAmount ?? 0.0,
             'payment_date' => $paymentDate ? Carbon::parse($paymentDate)->toDateString() : null,
@@ -1373,6 +1967,94 @@ class ImportService
         }
 
         return [$payload, $errors];
+    }
+
+    private function normalizeVendorRow(array $mapped, int $organizationId): array
+    {
+        $name = $this->cleanText($mapped['name'] ?? null);
+        $phone = $this->normalizePhone($mapped['phone'] ?? null);
+        $email = $this->normalizeEmail($mapped['email'] ?? null);
+        $city = $this->resolveCity($organizationId, $mapped, false);
+        $deliverySupported = $this->normalizeImportBoolean($mapped['delivery_supported'] ?? null);
+        $pickupSupported = $this->normalizeImportBoolean($mapped['pickup_supported'] ?? null);
+        $errors = [];
+
+        if ($name === '') {
+            $errors[] = 'Vendor name is required.';
+        }
+
+        if (filled($mapped['phone'] ?? null) && !$phone) {
+            $errors[] = 'Vendor phone number is not valid.';
+        }
+
+        if (filled($mapped['email'] ?? null) && !$email) {
+            $errors[] = 'Vendor email address is not valid.';
+        }
+
+        $notes = collect([
+            $this->cleanText($mapped['notes'] ?? null),
+            $deliverySupported !== null ? 'Delivery Supported: ' . ($deliverySupported ? 'Yes' : 'No') : null,
+            $pickupSupported !== null ? 'Pickup Supported: ' . ($pickupSupported ? 'Yes' : 'No') : null,
+        ])->filter()->implode(' | ');
+
+        return [[
+            'name' => $name,
+            'contact_person' => $this->cleanText($mapped['contact_person'] ?? null),
+            'phone' => $phone,
+            'whatsapp' => $this->normalizePhone($mapped['whatsapp'] ?? null),
+            'email' => $email,
+            'vendor_type' => $this->cleanText($mapped['vendor_type'] ?? null) ?: 'supplier',
+            'city_id' => $city?->id,
+            'city' => $city?->name ?: $this->cleanText($mapped['city_name'] ?? $mapped['city'] ?? null),
+            'state' => $this->cleanText($mapped['state'] ?? null),
+            'pincode' => $this->cleanText($mapped['pincode'] ?? null),
+            'gst_number' => $this->cleanText($mapped['gst_number'] ?? null),
+            'gst_registration_type' => $this->cleanText($mapped['gst_registration_type'] ?? null),
+            'payment_terms' => $this->cleanText($mapped['payment_terms'] ?? null),
+            'address' => $this->cleanText($mapped['address'] ?? null),
+            'is_active' => $this->normalizeImportBoolean($mapped['is_active'] ?? null) ?? true,
+            'notes' => $notes !== '' ? $notes : null,
+        ], $errors];
+    }
+
+    private function normalizeStaffRow(array $mapped, int $organizationId): array
+    {
+        $name = $this->cleanText($mapped['name'] ?? null);
+        $email = $this->normalizeEmail($mapped['email'] ?? null);
+        $phone = $this->normalizePhone($mapped['phone'] ?? null);
+        $city = $this->resolveCity($organizationId, $mapped, false);
+        $errors = [];
+
+        if ($name === '') {
+            $errors[] = 'Staff name is required.';
+        }
+
+        if (filled($mapped['email'] ?? null) && !$email) {
+            $errors[] = 'Staff email address is not valid.';
+        }
+
+        if (filled($mapped['phone'] ?? null) && !$phone) {
+            $errors[] = 'Staff phone number is not valid.';
+        }
+
+        $role = Staff::normalizedRole($mapped['role'] ?? 'office');
+        $assignmentRole = $this->cleanText($mapped['assignment_role'] ?? null);
+        $assignmentRole = $assignmentRole !== '' ? Staff::normalizedRole($assignmentRole) : null;
+
+        return [[
+            'name' => $name,
+            'email' => $email,
+            'phone' => $phone,
+            'role' => $role,
+            'assignment_role' => $assignmentRole,
+            'is_assignment_enabled' => $assignmentRole !== null,
+            'city' => $city?->name ?: $this->cleanText($mapped['city_name'] ?? $mapped['city'] ?? null),
+            'status' => Str::lower($this->cleanText($mapped['status'] ?? null)) === 'inactive' ? 'inactive' : 'active',
+            'joining_date' => $this->normalizeDate($mapped['joining_date'] ?? null),
+            'salary' => $this->normalizeDecimal($mapped['salary'] ?? null),
+            'address' => $this->cleanText($mapped['address'] ?? null),
+            'notes' => $this->cleanText($mapped['notes'] ?? null),
+        ], $errors];
     }
 
     private function normalizeImportedPaymentStatus(?string $value): ?string
@@ -1437,24 +2119,49 @@ class ImportService
         $headers = [];
         $rows = [];
         $blankRowCount = 0;
+        $rawRowCount = 0;
+        $nonEmptyRowCount = 0;
+        $headerRowNumber = 0;
+        $lineNumber = 0;
+        $maxColumnCount = 0;
 
         while (($row = fgetcsv($handle)) !== false) {
+            $lineNumber++;
+            $maxColumnCount = max($maxColumnCount, count($row));
+
             if ($headers === []) {
+                if ($this->rowIsEmpty($row)) {
+                    continue;
+                }
                 $headers = $this->normalizeHeaders($row);
+                $headerRowNumber = $lineNumber;
                 continue;
             }
+
+            $rawRowCount++;
 
             if ($this->rowIsEmpty($row)) {
                 $blankRowCount++;
                 continue;
             }
 
+            $nonEmptyRowCount++;
             $rows[] = $this->associateRow($headers, $row);
         }
 
         fclose($handle);
 
-        return ['headers' => $headers, 'rows' => $rows, 'blank_row_count' => $blankRowCount];
+        return [
+            'headers' => $headers,
+            'rows' => $rows,
+            'blank_row_count' => $blankRowCount,
+            'raw_row_count' => $rawRowCount,
+            'non_empty_row_count' => $nonEmptyRowCount,
+            'sheet_name' => 'CSV',
+            'header_row_number' => $headerRowNumber > 0 ? $headerRowNumber : 1,
+            'highest_row' => $lineNumber,
+            'highest_column' => $maxColumnCount > 0 ? $this->columnReference(max($maxColumnCount - 1, 0)) : null,
+        ];
     }
 
     private function parseXlsx(string $path): array
@@ -1466,7 +2173,8 @@ class ImportService
         }
 
         $sharedStrings = $this->readSharedStrings($zip);
-        $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
+        $sheetInfo = $this->firstWorksheet($zip);
+        $sheetXml = $sheetInfo['xml'] ?? false;
 
         if ($sheetXml === false) {
             $zip->close();
@@ -1477,27 +2185,48 @@ class ImportService
         $headers = [];
         $rows = [];
         $blankRowCount = 0;
+        $rawRowCount = 0;
+        $nonEmptyRowCount = 0;
+        $headerRowNumber = 0;
+        $worksheetRowIndex = 0;
+        $highestRow = 0;
+        $highestColumnIndex = -1;
 
-        foreach ($worksheet->sheetData->row ?? [] as $row) {
+        foreach ($worksheet?->xpath('/*[local-name()="worksheet"]/*[local-name()="sheetData"]/*[local-name()="row"]') ?? [] as $row) {
+            $worksheetRowIndex++;
             $cells = [];
 
-            foreach ($row->c as $cell) {
+            foreach ($row->xpath('./*[local-name()="c"]') ?? [] as $cell) {
                 $reference = (string) $cell['r'];
                 $columnIndex = $this->columnIndexFromReference($reference);
                 $cells[$columnIndex] = $this->xlsxCellValue($cell, $sharedStrings);
+                $highestColumnIndex = max($highestColumnIndex, $columnIndex);
             }
 
+            $rowNumber = (int) ((string) ($row['r'] ?? ''));
+            if ($rowNumber <= 0) {
+                $rowNumber = $worksheetRowIndex;
+            }
+            $highestRow = max($highestRow, $rowNumber);
+
             if ($headers === []) {
+                if ($this->rowIsEmpty($cells)) {
+                    continue;
+                }
                 ksort($cells);
                 $headers = $this->normalizeHeaders(array_values($cells));
+                $headerRowNumber = $rowNumber;
                 continue;
             }
+
+            $rawRowCount++;
 
             if ($this->rowIsEmpty($cells)) {
                 $blankRowCount++;
                 continue;
             }
 
+            $nonEmptyRowCount++;
             $ordered = [];
             for ($index = 0; $index < count($headers); $index++) {
                 $ordered[$index] = $cells[$index] ?? null;
@@ -1508,7 +2237,70 @@ class ImportService
 
         $zip->close();
 
-        return ['headers' => $headers, 'rows' => $rows, 'blank_row_count' => $blankRowCount];
+        return [
+            'headers' => $headers,
+            'rows' => $rows,
+            'blank_row_count' => $blankRowCount,
+            'raw_row_count' => $rawRowCount,
+            'non_empty_row_count' => $nonEmptyRowCount,
+            'sheet_name' => $sheetInfo['name'] ?? 'Sheet 1',
+            'header_row_number' => $headerRowNumber > 0 ? $headerRowNumber : 1,
+            'highest_row' => $highestRow,
+            'highest_column' => $highestColumnIndex >= 0 ? $this->columnReference($highestColumnIndex) : null,
+        ];
+    }
+
+    private function firstWorksheet(ZipArchive $zip): array
+    {
+        $workbookXml = $zip->getFromName('xl/workbook.xml');
+        $relationshipsXml = $zip->getFromName('xl/_rels/workbook.xml.rels');
+
+        if ($workbookXml !== false && $relationshipsXml !== false) {
+            $workbook = simplexml_load_string($workbookXml);
+            $relationships = simplexml_load_string($relationshipsXml);
+
+            $firstSheet = ($workbook?->xpath('/*[local-name()="workbook"]/*[local-name()="sheets"]/*[local-name()="sheet"][1]') ?? [])[0] ?? null;
+            $sheetRelationshipId = '';
+            $sheetName = '';
+
+            if ($firstSheet) {
+                $sheetName = trim((string) ($firstSheet['name'] ?? ''));
+                $relationshipAttributes = $firstSheet->attributes('r', true);
+                $sheetRelationshipId = trim((string) ($relationshipAttributes?->id ?? $firstSheet['id'] ?? ''));
+            }
+
+            if ($sheetRelationshipId !== '') {
+                foreach ($relationships?->xpath('/*[local-name()="Relationships"]/*[local-name()="Relationship"]') ?? [] as $relationship) {
+                    if ((string) $relationship['Id'] !== $sheetRelationshipId) {
+                        continue;
+                    }
+
+                    $target = trim((string) $relationship['Target']);
+                    if ($target === '') {
+                        continue;
+                    }
+
+                    $normalizedTarget = str_starts_with($target, '/')
+                        ? ltrim($target, '/')
+                        : 'xl/' . ltrim(str_replace('\\', '/', $target), '/');
+
+                    $sheetXml = $zip->getFromName($normalizedTarget);
+                    if ($sheetXml !== false) {
+                        return [
+                            'xml' => $sheetXml,
+                            'name' => $sheetName !== '' ? $sheetName : 'Sheet 1',
+                        ];
+                    }
+                }
+            }
+        }
+
+        $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
+
+        return [
+            'xml' => $sheetXml,
+            'name' => 'Sheet 1',
+        ];
     }
 
     private function readSharedStrings(ZipArchive $zip): array
@@ -1521,14 +2313,19 @@ class ImportService
 
         $document = simplexml_load_string($xml);
 
-        return collect($document->si ?? [])
+        return collect($document?->xpath('/*[local-name()="sst"]/*[local-name()="si"]') ?? [])
             ->map(function ($stringItem) {
-                if (isset($stringItem->t)) {
-                    return (string) $stringItem->t;
+                $directText = $stringItem->xpath('./*[local-name()="t"]');
+                if (!empty($directText)) {
+                    return (string) ($directText[0] ?? '');
                 }
 
-                return collect($stringItem->r ?? [])
-                    ->map(fn ($run) => (string) ($run->t ?? ''))
+                return collect($stringItem->xpath('./*[local-name()="r"]') ?? [])
+                    ->map(function ($run) {
+                        $textNodes = $run->xpath('./*[local-name()="t"]');
+
+                        return (string) ($textNodes[0] ?? '');
+                    })
                     ->implode('');
             })
             ->all();
@@ -1539,10 +2336,13 @@ class ImportService
         $type = (string) ($cell['t'] ?? '');
 
         if ($type === 'inlineStr') {
-            return trim((string) ($cell->is->t ?? ''));
+            $textNodes = $cell->xpath('./*[local-name()="is"]/*[local-name()="t"]');
+
+            return trim((string) ($textNodes[0] ?? ''));
         }
 
-        $value = isset($cell->v) ? (string) $cell->v : '';
+        $valueNodes = $cell->xpath('./*[local-name()="v"]');
+        $value = isset($valueNodes[0]) ? (string) $valueNodes[0] : '';
 
         if ($type === 's') {
             return isset($sharedStrings[(int) $value]) ? trim((string) $sharedStrings[(int) $value]) : '';
@@ -1556,9 +2356,21 @@ class ImportService
         $mapped = [];
 
         foreach ($mapping as $field => $header) {
-            $mapped[$field] = $header && array_key_exists($header, $row)
-                ? $row[$header]
-                : null;
+            $value = null;
+
+            if ($header && array_key_exists($header, $row)) {
+                $value = $row[$header];
+            } elseif ($header) {
+                $headerSlug = $this->slugKey($header);
+                foreach ($row as $rowHeader => $rowValue) {
+                    if ($this->slugKey($rowHeader) === $headerSlug) {
+                        $value = $rowValue;
+                        break;
+                    }
+                }
+            }
+
+            $mapped[$field] = $value;
         }
 
         return $mapped;
@@ -1623,6 +2435,10 @@ class ImportService
     {
         $value = (string) $value;
         $value = preg_replace('/^\xEF\xBB\xBF/u', '', $value) ?? $value;
+        $value = preg_replace('/[\x{200B}-\x{200D}\x{FEFF}\r\n\t]+/u', ' ', $value) ?? $value;
+        $value = str_replace('*', '', $value);
+        $value = str_replace(['_', '-'], ' ', $value);
+        $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
 
         return trim($value);
     }
@@ -1714,6 +2530,19 @@ class ImportService
         };
     }
 
+    private function normalizeUnifiedCustomerImportType(?string $value, ?string $companyName = null): string
+    {
+        $normalized = Str::lower(trim((string) $value));
+
+        return match (true) {
+            in_array($normalized, ['business_partner', 'business partner', 'partner'], true) => 'business_partner',
+            in_array($normalized, ['actual_client', 'actual client', 'partner_client', 'client'], true) => 'actual_client',
+            in_array($normalized, ['direct_customer', 'direct customer', 'individual', 'customer', 'direct'], true) => 'direct_customer',
+            filled($companyName) => 'business_partner',
+            default => 'direct_customer',
+        };
+    }
+
     private function normalizeProductType(?string $value): ?string
     {
         return match (Str::lower(trim((string) $value))) {
@@ -1799,6 +2628,72 @@ class ImportService
         };
     }
 
+    private function normalizeImportCustomerPartyType(?string $value): string
+    {
+        $normalized = Str::lower(trim((string) $value));
+
+        return match ($normalized) {
+            'business_partner', 'business partner', 'partner' => 'business_partner',
+            'actual_client', 'actual client', 'partner_client', 'client' => 'business_partner',
+            default => 'direct_customer',
+        };
+    }
+
+    private function normalizeFulfilmentSource(?string $value, ?int $vendorId = null): string
+    {
+        $normalized = Str::lower(trim((string) $value));
+
+        return match ($normalized) {
+            VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED, 'vendor supplied', 'vendor' => VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED,
+            VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE, 'in house', 'in-house' => VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE,
+            default => $vendorId ? VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED : VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE,
+        };
+    }
+
+    private function normalizeDeliveryResponsibility(?string $value, string $fulfilmentSource): string
+    {
+        $normalized = Str::lower(trim((string) $value));
+
+        return match ($normalized) {
+            'vendor_delivery', 'vendor delivery', 'vendor' => 'vendor_delivery',
+            'customer_pickup', 'customer pickup' => 'customer_pickup',
+            'ph_internal_delivery', 'ph internal delivery', 'ph_internal', 'internal' => 'ph_internal_delivery',
+            default => $fulfilmentSource === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED ? 'vendor_delivery' : 'ph_internal_delivery',
+        };
+    }
+
+    private function normalizePickupResponsibility(?string $value, string $fulfilmentSource): string
+    {
+        $normalized = Str::lower(trim((string) $value));
+
+        return match ($normalized) {
+            'vendor_pickup', 'vendor pickup', 'vendor' => 'vendor_pickup',
+            'customer_return', 'customer return', 'customer_pickup', 'customer pickup' => 'customer_return',
+            'ph_internal_pickup', 'ph internal pickup', 'ph_internal', 'internal' => 'ph_internal_pickup',
+            default => $fulfilmentSource === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED ? 'customer_return' : 'ph_internal_pickup',
+        };
+    }
+
+    private function normalizeGstTaxType(?string $value): string
+    {
+        $normalized = Str::lower(trim((string) $value));
+
+        return match ($normalized) {
+            'igst' => Product::GST_TAX_TYPE_IGST,
+            default => Product::GST_TAX_TYPE_CGST_SGST,
+        };
+    }
+
+    private function normalizeGstCalculationMode(?string $value): string
+    {
+        $normalized = Str::lower(trim((string) $value));
+
+        return match ($normalized) {
+            'inclusive' => 'inclusive',
+            default => 'exclusive',
+        };
+    }
+
     private function normalizeRentalStatus(?string $value): ?string
     {
         return match (Str::lower(trim((string) $value))) {
@@ -1881,8 +2776,152 @@ class ImportService
         $cache = $this->warehouseCache[$organizationId];
         $code = Str::lower($this->cleanText($mapped['warehouse_code'] ?? null));
         $name = Str::lower($this->cleanText($mapped['warehouse_name'] ?? null));
+        $warehouse = $cache['code'][$code] ?? $cache['name'][$name] ?? null;
 
-        return $cache['code'][$code] ?? $cache['name'][$name] ?? null;
+        if (!$warehouse) {
+            return null;
+        }
+
+        $cityName = Str::lower($this->cleanText($mapped['city_name'] ?? $mapped['city'] ?? null));
+        if ($cityName !== '') {
+            $warehouseCity = Str::lower(trim((string) ($warehouse->city ?? '')));
+            $warehouseCityId = (int) ($warehouse->city_id ?? 0);
+            $city = $this->resolveCity($organizationId, $mapped, false);
+
+            if ($city && $warehouseCityId > 0 && $warehouseCityId !== (int) $city->id) {
+                return null;
+            }
+
+            if ($warehouseCity !== '' && $warehouseCity !== $cityName) {
+                return null;
+            }
+        }
+
+        return $warehouse;
+    }
+
+    private function resolveCity(int $organizationId, array $mapped, bool $required = false): ?City
+    {
+        $cityName = Str::lower($this->cleanText($mapped['city_name'] ?? $mapped['city'] ?? null));
+
+        if (!$required && $cityName === '') {
+            return null;
+        }
+
+        if (!isset($this->cityCache[$organizationId])) {
+            $this->cityCache[$organizationId] = City::query()
+                ->where('organization_id', $organizationId)
+                ->where('is_active', true)
+                ->get()
+                ->keyBy(fn (City $city) => Str::lower((string) $city->name));
+        }
+
+        return $this->cityCache[$organizationId][$cityName] ?? null;
+    }
+
+    private function resolveVendor(int $organizationId, array $mapped): ?Vendor
+    {
+        $name = Str::lower($this->cleanText($mapped['vendor_name'] ?? $mapped['vendor'] ?? null));
+
+        if ($name === '') {
+            return null;
+        }
+
+        if (!isset($this->vendorCache[$organizationId])) {
+            $this->vendorCache[$organizationId] = Vendor::query()
+                ->where('organization_id', $organizationId)
+                ->get()
+                ->keyBy(fn (Vendor $vendor) => Str::lower((string) $vendor->name));
+        }
+
+        return $this->vendorCache[$organizationId][$name] ?? null;
+    }
+
+    private function resolveBusinessPartner(int $organizationId, array $mapped): ?BusinessPartner
+    {
+        $name = Str::lower($this->cleanText($mapped['business_partner_name'] ?? $mapped['business_partner'] ?? null));
+
+        if ($name === '') {
+            return null;
+        }
+
+        if (!isset($this->partnerCache[$organizationId])) {
+            $this->partnerCache[$organizationId] = BusinessPartner::query()
+                ->where('organization_id', $organizationId)
+                ->get()
+                ->keyBy(fn (BusinessPartner $partner) => Str::lower((string) $partner->business_name));
+        }
+
+        return $this->partnerCache[$organizationId][$name] ?? null;
+    }
+
+    private function resolveBusinessPartnerForCustomerImport(int $organizationId, array $mapped): ?BusinessPartner
+    {
+        $partnerCode = $this->cleanText($mapped['business_partner_code'] ?? $mapped['partner_code'] ?? null);
+
+        if ($partnerCode !== '' && Schema::hasColumn('business_partners', 'partner_code')) {
+            $partner = BusinessPartner::query()
+                ->where('organization_id', $organizationId)
+                ->where('partner_code', $partnerCode)
+                ->first();
+
+            if ($partner) {
+                return $partner;
+            }
+        }
+
+        $name = Str::lower($this->cleanText(
+            $mapped['parent_business_partner']
+            ?? $mapped['business_partner_name']
+            ?? $mapped['business_partner']
+            ?? null
+        ));
+
+        if ($name === '') {
+            return null;
+        }
+
+        if (!isset($this->partnerCache[$organizationId])) {
+            $this->partnerCache[$organizationId] = BusinessPartner::query()
+                ->where('organization_id', $organizationId)
+                ->get()
+                ->keyBy(fn (BusinessPartner $partner) => Str::lower((string) $partner->business_name));
+        }
+
+        return $this->partnerCache[$organizationId][$name] ?? null;
+    }
+
+    private function matchesPendingCustomerImportPartner(array $context, string $parentPartnerName, string $partnerCode): bool
+    {
+        $pendingPartners = $context['pending_business_partners'] ?? [];
+
+        if (!is_array($pendingPartners)) {
+            return false;
+        }
+
+        $partnerCodeKey = Str::lower(trim($partnerCode));
+        if ($partnerCodeKey !== '' && !empty($pendingPartners[$partnerCodeKey])) {
+            return true;
+        }
+
+        $partnerNameKey = Str::lower(trim($parentPartnerName));
+
+        return $partnerNameKey !== '' && !empty($pendingPartners[$partnerNameKey]);
+    }
+
+    private function resolvePartnerClient(int $organizationId, int $partnerId, array $mapped): ?PartnerClient
+    {
+        $name = Str::lower($this->cleanText($mapped['actual_client_name'] ?? $mapped['actual_client'] ?? null));
+
+        if ($name === '') {
+            return null;
+        }
+
+        return PartnerClient::query()
+            ->where('organization_id', $organizationId)
+            ->where('business_partner_id', $partnerId)
+            ->whereRaw('LOWER(client_name) = ?', [$name])
+            ->first();
     }
 
     private function resolveAssetsBySerials(int $organizationId, int $productId, array $serials): Collection
@@ -2029,5 +3068,282 @@ class ImportService
         }
 
         return max($index - 1, 0);
+    }
+
+    private function normalizeErrorDetails(array $errors): array
+    {
+        if ($errors === []) {
+            return [];
+        }
+
+        $details = collect($errors)
+            ->map(function ($error) {
+                if (is_array($error)) {
+                    return [
+                        'field' => (string) ($error['field'] ?? 'general'),
+                        'reason' => (string) ($error['reason'] ?? ''),
+                    ];
+                }
+
+                $reason = trim((string) $error);
+
+                return [
+                    'field' => $this->inferErrorField($reason),
+                    'reason' => $reason,
+                ];
+            })
+            ->filter(fn (array $detail) => $detail['reason'] !== '')
+            ->values()
+            ->all();
+
+        return $details !== [] ? $details : [$this->errorDetail('general', 'Unknown import validation error.')];
+    }
+
+    private function errorDetail(?string $field, string $reason): array
+    {
+        return [
+            'field' => $field ?: 'general',
+            'reason' => $reason,
+        ];
+    }
+
+    private function inferErrorField(string $reason): string
+    {
+        $normalized = Str::lower($reason);
+
+        return match (true) {
+            str_contains($normalized, 'vendor phone') => 'phone',
+            str_contains($normalized, 'vendor email') => 'email',
+            str_contains($normalized, 'customer') => 'customer',
+            str_contains($normalized, 'parent business partner') => 'parent_business_partner',
+            str_contains($normalized, 'partner code') => 'business_partner_code',
+            str_contains($normalized, 'business partner') => 'business_partner_name',
+            str_contains($normalized, 'actual client') => 'actual_client_name',
+            str_contains($normalized, 'vendor') => 'vendor_name',
+            str_contains($normalized, 'warehouse') => 'warehouse_name',
+            str_contains($normalized, 'city') => 'city_name',
+            str_contains($normalized, 'delivery') => 'delivery_responsibility',
+            str_contains($normalized, 'pickup') => 'pickup_responsibility',
+            str_contains($normalized, 'product') => 'product_name',
+            str_contains($normalized, 'serial') || str_contains($normalized, 'asset') => 'asset_serials',
+            str_contains($normalized, 'phone') => 'phone',
+            str_contains($normalized, 'email') => 'email',
+            str_contains($normalized, 'payment') => 'payment_status',
+            str_contains($normalized, 'invoice') => 'invoice_status',
+            str_contains($normalized, 'date') => 'date',
+            default => 'general',
+        };
+    }
+
+    private function templateSampleValue(string $module, ?string $field): string
+    {
+        return match ($module . ':' . $field) {
+            'customers:city_name', 'rentals:city_name', 'assets:city_name', 'vendors:city_name', 'staff:city_name' => 'Bengaluru',
+            'customers:business_partner_name', 'customers:parent_business_partner', 'rentals:business_partner_name', 'sales:business_partner_name' => 'Care Plus Clinic',
+            'customers:business_partner_code' => 'BP-CAREPLUS',
+            'customers:google_map_link' => 'https://maps.google.com/?q=Care+Plus+Clinic+Noida',
+            'rentals:fulfilment_source', 'sales:fulfilment_source' => 'in_house',
+            'rentals:delivery_responsibility', 'sales:delivery_responsibility' => 'ph_internal_delivery',
+            'rentals:pickup_responsibility' => 'ph_internal_pickup',
+            'rentals:actual_client_name', 'sales:actual_client_name' => 'Rahul Verma',
+            'vendors:name' => 'KR Healthcare',
+            'staff:role' => 'delivery',
+            default => '',
+        };
+    }
+
+    private function templateAcceptedValues(string $module, ?string $field): string
+    {
+        return match ($field) {
+            'customer_type' => match ($module) {
+                self::CUSTOMER => 'direct_customer, business_partner, actual_client',
+                self::RENTAL => 'direct_customer, business_partner',
+                default => 'individual, business',
+            },
+            'product_type' => 'sellable, rentable, both',
+            'stock_mode' => 'untracked, tracked_sale, tracked_rental, tracked_both',
+            'asset_stage' => 'new_stock, rental_stock',
+            'status' => $module === self::RENTAL ? 'active, completed' : ($module === self::STAFF ? 'active, inactive' : ''),
+            'payment_status' => 'pending, partial, paid',
+            'invoice_status' => 'generated, not_generated, paid, unpaid, partial, pending',
+            'delivery_status', 'pickup_status' => 'not_assigned, assigned, pending, completed',
+            'fulfilment_source' => 'in_house, vendor_supplied',
+            'delivery_responsibility' => 'ph_internal_delivery, vendor_delivery, customer_pickup',
+            'pickup_responsibility' => 'ph_internal_pickup, vendor_pickup, customer_return',
+            'role' => implode(', ', Staff::ROLE_OPTIONS),
+            'assignment_role' => implode(', ', Staff::ASSIGNMENT_ROLES),
+            'gst_tax_type' => 'cgst_sgst, igst',
+            'gst_calculation_mode' => 'exclusive, inclusive',
+            default => '',
+        };
+    }
+
+    private function templateFieldDescription(string $module, ?string $field): string
+    {
+        return match ($field) {
+            'city_name' => 'Use an existing PHOS city name so warehouses, vendors, and assignments align to the city-first setup.',
+            'business_partner_name' => $module === self::CUSTOMER
+                ? 'For business_partner rows this can match the partner name. For actual_client rows it can help identify the parent partner.'
+                : 'Required when importing a partner-managed rental or sale.',
+            'business_partner_code' => 'Optional partner code for business partner creation and parent partner matching.',
+            'parent_business_partner' => 'Required when Customer Type is actual_client. Must match an existing imported or existing business partner.',
+            'google_map_link' => 'Customer or partner location link. Stored as map URL where supported.',
+            'credit_terms' => 'Accepted for business partner rows to store commercial terms.',
+            'referral_percentage' => 'Accepted for business partner rows as a numeric referral percentage.',
+            'account_manager' => 'Optional account owner / relationship manager for imported customer records.',
+            'actual_client_name' => 'Optional actual end-client under the selected Business Partner.',
+            'fulfilment_source' => 'Defaults to in_house. Set vendor_supplied to skip PH stock and asset reservation.',
+            'delivery_responsibility' => 'Controls delivery execution ownership for imported orders.',
+            'pickup_responsibility' => 'Controls pickup execution ownership for imported rental returns.',
+            'warehouse_name', 'warehouse_code' => 'Use an existing active warehouse. Required for in-house stock-backed imports.',
+            'role', 'assignment_role' => 'Role support for staff directory and assignment routing.',
+            default => 'Optional import field.',
+        };
+    }
+
+    private function buildXlsxWorkbook(array $sheets): string
+    {
+        $tmpPath = tempnam(sys_get_temp_dir(), 'phos-import-template-');
+        $zip = new ZipArchive();
+
+        if ($tmpPath === false || $zip->open($tmpPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+            throw new RuntimeException('Unable to create import template workbook.');
+        }
+
+        $zip->addFromString('[Content_Types].xml', $this->xlsxContentTypes(count($sheets)));
+        $zip->addFromString('_rels/.rels', $this->xlsxRootRelationships());
+        $zip->addFromString('xl/workbook.xml', $this->xlsxWorkbook($sheets));
+        $zip->addFromString('xl/_rels/workbook.xml.rels', $this->xlsxWorkbookRelationships(count($sheets)));
+        $zip->addFromString('docProps/core.xml', $this->xlsxCoreProperties());
+        $zip->addFromString('docProps/app.xml', $this->xlsxAppProperties($sheets));
+
+        $sheetIndex = 1;
+        foreach ($sheets as $title => $rows) {
+            $zip->addFromString('xl/worksheets/sheet' . $sheetIndex . '.xml', $this->xlsxWorksheet($rows));
+            $sheetIndex++;
+        }
+
+        $zip->close();
+        $content = (string) file_get_contents($tmpPath);
+        @unlink($tmpPath);
+
+        return $content;
+    }
+
+    private function xlsxContentTypes(int $sheetCount): string
+    {
+        $sheetOverrides = '';
+        for ($i = 1; $i <= $sheetCount; $i++) {
+            $sheetOverrides .= '<Override PartName="/xl/worksheets/sheet'.$i.'.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+        }
+
+        return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            . '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            . '<Default Extension="xml" ContentType="application/xml"/>'
+            . '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            . $sheetOverrides
+            . '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
+            . '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>'
+            . '</Types>';
+    }
+
+    private function xlsxRootRelationships(): string
+    {
+        return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            . '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+            . '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>'
+            . '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>'
+            . '</Relationships>';
+    }
+
+    private function xlsxWorkbook(array $sheets): string
+    {
+        $sheetNodes = '';
+        $sheetId = 1;
+        foreach (array_keys($sheets) as $title) {
+            $sheetNodes .= '<sheet name="' . e($title) . '" sheetId="' . $sheetId . '" r:id="rId' . $sheetId . '"/>';
+            $sheetId++;
+        }
+
+        return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            . '<sheets>' . $sheetNodes . '</sheets>'
+            . '</workbook>';
+    }
+
+    private function xlsxWorkbookRelationships(int $sheetCount): string
+    {
+        $rels = '';
+        for ($i = 1; $i <= $sheetCount; $i++) {
+            $rels .= '<Relationship Id="rId'.$i.'" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet'.$i.'.xml"/>';
+        }
+
+        return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            . $rels
+            . '</Relationships>';
+    }
+
+    private function xlsxCoreProperties(): string
+    {
+        $timestamp = now()->toAtomString();
+
+        return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
+            . '<dc:title>PHOS Import Template</dc:title>'
+            . '<dc:creator>Prime Healers OS</dc:creator>'
+            . '<cp:lastModifiedBy>Prime Healers OS</cp:lastModifiedBy>'
+            . '<dcterms:created xsi:type="dcterms:W3CDTF">'.$timestamp.'</dcterms:created>'
+            . '<dcterms:modified xsi:type="dcterms:W3CDTF">'.$timestamp.'</dcterms:modified>'
+            . '</cp:coreProperties>';
+    }
+
+    private function xlsxAppProperties(array $sheets): string
+    {
+        $titles = implode('', array_map(fn ($title) => '<vt:lpstr>'.e($title).'</vt:lpstr>', array_keys($sheets)));
+        $count = count($sheets);
+
+        return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">'
+            . '<Application>Prime Healers OS</Application>'
+            . '<TitlesOfParts><vt:vector size="'.$count.'" baseType="lpstr">'.$titles.'</vt:vector></TitlesOfParts>'
+            . '</Properties>';
+    }
+
+    private function xlsxWorksheet(array $rows): string
+    {
+        $xmlRows = '';
+        foreach ($rows as $rowIndex => $row) {
+            $cellXml = '';
+            foreach (array_values($row) as $columnIndex => $value) {
+                $ref = $this->columnReference($columnIndex) . ($rowIndex + 1);
+                $safeValue = htmlspecialchars((string) $value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+                $cellXml .= '<c r="'.$ref.'" t="inlineStr"><is><t>'.$safeValue.'</t></is></c>';
+            }
+            $xmlRows .= '<row r="'.($rowIndex + 1).'">'.$cellXml.'</row>';
+        }
+
+        return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+            . '<sheetViews><sheetView workbookViewId="0"/></sheetViews>'
+            . '<sheetFormatPr defaultRowHeight="18"/>'
+            . '<sheetData>'.$xmlRows.'</sheetData>'
+            . '</worksheet>';
+    }
+
+    private function columnReference(int $index): string
+    {
+        $index++;
+        $reference = '';
+
+        while ($index > 0) {
+            $mod = ($index - 1) % 26;
+            $reference = chr(65 + $mod) . $reference;
+            $index = intdiv($index - 1, 26);
+        }
+
+        return $reference;
     }
 }

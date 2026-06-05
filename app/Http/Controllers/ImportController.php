@@ -202,17 +202,25 @@ class ImportController extends Controller
     public function template(string $module, ImportService $service)
     {
         $this->authorize('access', self::class);
-        $moduleConfig = $this->authorizeModule($module, $service);
-        $rows = $service->templateRows($module);
+        abort_unless($this->canAccessDataImport(), 403);
 
-        return response()->streamDownload(function () use ($rows) {
-            $output = fopen('php://output', 'w');
-            foreach ($rows as $row) {
-                fputcsv($output, $row);
-            }
-            fclose($output);
-        }, Str::slug($moduleConfig['label']) . '-template.csv', [
-            'Content-Type' => 'text/csv; charset=UTF-8',
+        if (in_array($module, ['sales', 'opening-balances'], true)) {
+            $allowed = match ($module) {
+                'sales' => auth()->user()?->canAccessModule('sales', 'create') ?? false,
+                'opening-balances' => (auth()->user()?->canAccessModule('invoices', 'create') ?? false)
+                    || (auth()->user()?->canAccessModule('customers', 'create') ?? false),
+            };
+
+            abort_unless($allowed, 403);
+        } else {
+            $this->authorizeModule($module, $service);
+        }
+
+        $workbook = $service->templateWorkbook($module);
+
+        return response($workbook['content'], 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="' . $workbook['filename'] . '"',
         ]);
     }
 
@@ -228,13 +236,15 @@ class ImportController extends Controller
 
         return response()->streamDownload(function () use ($rows) {
             $output = fopen('php://output', 'w');
-            fputcsv($output, ['Row Number', 'Status', 'Identifier', 'Reason Type', 'Errors', 'Mapped Data']);
+            fputcsv($output, ['Row Number', 'Status', 'Identifier', 'Reason Type', 'Field', 'Reason', 'Errors', 'Mapped Data']);
             foreach ($rows as $row) {
                 fputcsv($output, [
                     $row['row_number'],
                     $row['status'],
                     $row['identifier'] ?? '',
                     $row['reason_category'] ?? '',
+                    $row['field'] ?? '',
+                    $row['reason'] ?? '',
                     $row['errors'],
                     $row['mapped_data'],
                 ]);
@@ -339,7 +349,13 @@ class ImportController extends Controller
                 $customer = $this->resolveSalesImportCustomer($payload);
                 $importResult = $saleController->importSaleFromPayload([
                     'customer_id' => $customer->id,
+                    'customer_type' => $payload['customer_type'] ?? 'direct_customer',
+                    'business_partner_id' => $payload['business_partner_id'] ?? null,
+                    'partner_client_id' => $payload['partner_client_id'] ?? null,
                     'product_id' => (int) $payload['product_id'],
+                    'vendor_id' => $payload['vendor_id'] ?? null,
+                    'fulfilment_source' => $payload['fulfilment_source'] ?? 'in_house',
+                    'delivery_responsibility' => $payload['delivery_responsibility'] ?? null,
                     'warehouse_id' => $payload['warehouse_id'] ?? null,
                     'quantity' => (int) $payload['quantity'],
                     'unit_price' => (float) $payload['unit_price'],
@@ -365,6 +381,7 @@ class ImportController extends Controller
                     'invoice_status_provided' => !empty($payload['invoice_status_provided']),
                     'delivery_status_provided' => !empty($payload['delivery_status_provided']),
                     'notes_provided' => !empty($payload['notes_provided']),
+                    'stock_applied' => !empty($payload['stock_applied']),
                 ]);
 
                 $result['processed']++;
@@ -464,11 +481,19 @@ class ImportController extends Controller
 
         foreach ($dataset['rows'] as $index => $row) {
             $errors = [];
+            $customerType = Str::lower(trim($this->mappedValue($row, $headerMap, ['customer_type'])));
+            $businessPartnerName = trim($this->mappedValue($row, $headerMap, ['business_partner', 'business_partner_name', 'partner_name']));
+            $actualClientName = trim($this->mappedValue($row, $headerMap, ['actual_client', 'actual_client_name', 'partner_client_name']));
             $customerPhone = $this->mappedValue($row, $headerMap, ['customer_phone', 'phone']);
             $customerName = $this->mappedValue($row, $headerMap, ['customer_name', 'customer', 'name']);
+            $customerName = $actualClientName !== '' ? $actualClientName : $customerName;
             $productName = $this->mappedValue($row, $headerMap, ['product_name', 'product']);
             $brand = $this->mappedValue($row, $headerMap, ['brand']);
             $model = $this->mappedValue($row, $headerMap, ['model', 'model_name']);
+            $cityName = trim($this->mappedValue($row, $headerMap, ['city', 'city_name']));
+            $fulfilmentSource = Str::lower(trim($this->mappedValue($row, $headerMap, ['fulfilment_source'])));
+            $vendorName = trim($this->mappedValue($row, $headerMap, ['vendor', 'vendor_name']));
+            $deliveryResponsibility = Str::lower(trim($this->mappedValue($row, $headerMap, ['delivery_responsibility', 'delivery_assignment_type'])));
             $quantity = $this->mappedValue($row, $headerMap, ['quantity', 'qty']);
             $saleAmount = $this->mappedValue($row, $headerMap, ['sale_amount', 'amount']);
             $saleDate = $this->mappedValue($row, $headerMap, ['sale_date', 'date']);
@@ -480,12 +505,19 @@ class ImportController extends Controller
             $deliveryDate = $this->mappedValue($row, $headerMap, ['delivery_date']);
             $notes = $this->mappedValue($row, $headerMap, ['notes']);
             $mapped = [
+                'customer_type' => $customerType,
+                'business_partner_name' => $businessPartnerName,
+                'actual_client_name' => $actualClientName,
                 'customer_phone' => $customerPhone,
                 'customer_name' => $customerName,
                 'product_name' => $productName,
                 'brand' => $brand,
                 'model' => $model,
                 'model_name' => $model,
+                'city_name' => $cityName,
+                'fulfilment_source' => $fulfilmentSource,
+                'vendor_name' => $vendorName,
+                'delivery_responsibility' => $deliveryResponsibility,
                 'quantity' => $quantity,
                 'sale_amount' => $saleAmount,
                 'tax_type' => $this->mappedValue($row, $headerMap, ['tax_type']),
@@ -506,6 +538,51 @@ class ImportController extends Controller
 
             if ($customerPhone === '') {
                 $errors[] = 'Customer Phone is required.';
+            }
+
+            $partyType = $customerType === 'business_partner' ? 'business_partner' : 'direct_customer';
+            $businessPartner = $partyType === 'business_partner' && $businessPartnerName !== ''
+                ? \App\Models\BusinessPartner::query()
+                    ->where('organization_id', $this->orgId())
+                    ->whereRaw('LOWER(business_name) = ?', [Str::lower($businessPartnerName)])
+                    ->first()
+                : null;
+            $partnerClient = $partyType === 'business_partner' && $actualClientName !== '' && $businessPartner
+                ? \App\Models\PartnerClient::query()
+                    ->where('organization_id', $this->orgId())
+                    ->where('business_partner_id', $businessPartner->id)
+                    ->whereRaw('LOWER(client_name) = ?', [Str::lower($actualClientName)])
+                    ->first()
+                : null;
+            $vendor = $vendorName !== ''
+                ? \App\Models\Vendor::query()
+                    ->where('organization_id', $this->orgId())
+                    ->whereRaw('LOWER(name) = ?', [Str::lower($vendorName)])
+                    ->first()
+                : null;
+            $vendorSupplied = in_array($fulfilmentSource, ['vendor_supplied', 'vendor supplied', 'vendor'], true);
+            $city = $cityName !== ''
+                ? \App\Models\City::query()->where('organization_id', $this->orgId())->whereRaw('LOWER(name) = ?', [Str::lower($cityName)])->first()
+                : null;
+
+            if ($partyType === 'business_partner' && !$businessPartner) {
+                $errors[] = 'Business Partner must match an existing partner.';
+            }
+
+            if ($partyType === 'business_partner' && $actualClientName !== '' && !$partnerClient) {
+                $errors[] = 'Actual Client must match an existing partner client.';
+            }
+
+            if ($vendorSupplied && !$vendor) {
+                $errors[] = 'Vendor is required when fulfilment source is vendor supplied.';
+            }
+
+            if ($vendor && $city) {
+                $vendorCityId = (int) ($vendor->city_id ?? 0);
+                $vendorCity = Str::lower(trim((string) ($vendor->city ?? '')));
+                if (($vendorCityId > 0 && $vendorCityId !== (int) $city->id) || ($vendorCity !== '' && $vendorCity !== Str::lower($city->name))) {
+                    $errors[] = 'Vendor does not serve the selected city.';
+                }
             }
 
             $existingCustomer = $customerPhone !== ''
@@ -587,10 +664,12 @@ class ImportController extends Controller
 
             $warehouse = null;
             if ($warehouseName !== '') {
-                $warehouse = $service->resolveWarehouseForImport($this->orgId(), ['warehouse_name' => $warehouseName], false);
+                $warehouse = $service->resolveWarehouseForImport($this->orgId(), ['warehouse_name' => $warehouseName, 'city_name' => $cityName], false);
                 if (!$warehouse) {
                     $errors[] = 'Warehouse lookup failed. Use an existing active warehouse name.';
                 }
+            } elseif (!$vendorSupplied) {
+                $errors[] = 'Warehouse is required for in-house sales import.';
             }
 
             $matchAction = 'create';
@@ -617,7 +696,7 @@ class ImportController extends Controller
                 if (!$product->canSell()) {
                     $errors[] = $product->name.' is not configured as a sellable product.';
                 } elseif ($matchAction !== 'update') {
-                    if ($product->tracksSaleStock()) {
+                    if (!$vendorSupplied && $product->tracksSaleStock()) {
                         $availableUnits = Asset::query()
                             ->where('organization_id', $this->orgId())
                             ->where('product_id', $product->id)
@@ -629,7 +708,7 @@ class ImportController extends Controller
                         if ($availableUnits < (int) $quantity) {
                             $errors[] = 'Tracked sale stock is not sufficient for this row.';
                         }
-                    } elseif ((int) $product->available_quantity < (int) $quantity) {
+                    } elseif (!$vendorSupplied && (int) $product->available_quantity < (int) $quantity) {
                         $errors[] = 'Untracked available quantity is not sufficient for this row.';
                     }
                 }
@@ -642,10 +721,17 @@ class ImportController extends Controller
             $normalizedPayload = [
                 'customer_phone' => $customerPhone,
                 'customer_name' => $customerName,
+                'customer_type' => $partyType,
+                'business_partner_id' => $businessPartner?->id,
+                'partner_client_id' => $partnerClient?->id,
                 'product_id' => $product?->id,
                 'product_name' => $productName,
                 'brand' => $brand,
                 'model_name' => $model,
+                'vendor_id' => $vendor?->id,
+                'fulfilment_source' => $vendorSupplied ? 'vendor_supplied' : 'in_house',
+                'delivery_responsibility' => $deliveryResponsibility !== '' ? $deliveryResponsibility : ($vendorSupplied ? 'vendor_delivery' : 'ph_internal_delivery'),
+                'city_name' => $cityName,
                 'warehouse_id' => $warehouse?->id,
                 'warehouse_name' => $warehouseName,
                 'quantity' => (int) $quantity,
@@ -674,6 +760,7 @@ class ImportController extends Controller
                 'delivery_status_provided' => $rawDeliveryStatus !== '',
                 'notes_provided' => trim((string) $notes) !== '',
                 'tax_calculation_mode_provided' => false,
+                'stock_applied' => !$vendorSupplied,
             ];
 
             if (empty($errors)) {
@@ -687,11 +774,14 @@ class ImportController extends Controller
                 $invalidCount++;
             }
 
+            $errorDetails = $this->normalizeImportErrorDetails($errors);
+
             $previewRows[] = [
                 'row_number' => $index + 2,
                 'values' => $mapped,
                 'payload' => $normalizedPayload,
                 'errors' => $errors,
+                'error_details' => $errorDetails,
                 'valid' => empty($errors),
             ];
         }
@@ -753,6 +843,57 @@ class ImportController extends Controller
         return Carbon::parse($value)->toDateString();
     }
 
+    private function normalizeImportErrorDetails(array $errors): array
+    {
+        if ($errors === []) {
+            return [];
+        }
+
+        return collect($errors)
+            ->map(function ($error) {
+                if (is_array($error)) {
+                    return [
+                        'field' => (string) ($error['field'] ?? 'general'),
+                        'reason' => (string) ($error['reason'] ?? ''),
+                    ];
+                }
+
+                $reason = trim((string) $error);
+
+                return [
+                    'field' => $this->inferImportErrorField($reason),
+                    'reason' => $reason,
+                ];
+            })
+            ->filter(fn (array $detail) => $detail['reason'] !== '')
+            ->values()
+            ->all();
+    }
+
+    private function inferImportErrorField(string $reason): string
+    {
+        $normalized = Str::lower($reason);
+
+        return match (true) {
+            str_contains($normalized, 'customer phone') => 'customer_phone',
+            str_contains($normalized, 'customer name') => 'customer_name',
+            str_contains($normalized, 'business partner') => 'business_partner_name',
+            str_contains($normalized, 'actual client') => 'actual_client_name',
+            str_contains($normalized, 'vendor') => 'vendor_name',
+            str_contains($normalized, 'warehouse') => 'warehouse',
+            str_contains($normalized, 'city') => 'city_name',
+            str_contains($normalized, 'delivery') => 'delivery_status',
+            str_contains($normalized, 'product') => 'product_name',
+            str_contains($normalized, 'quantity') => 'quantity',
+            str_contains($normalized, 'sale amount') => 'sale_amount',
+            str_contains($normalized, 'payment') => 'payment_status',
+            str_contains($normalized, 'invoice') => 'invoice_status',
+            str_contains($normalized, 'sale date') => 'sale_date',
+            str_contains($normalized, 'date') => 'delivery_date',
+            default => 'general',
+        };
+    }
+
     private function resolveSalesImportCustomer(array $payload): Customer
     {
         $phone = preg_replace('/[^0-9]+/', '', (string) ($payload['customer_phone'] ?? '')) ?: null;
@@ -802,11 +943,18 @@ class ImportController extends Controller
                 : 'Only valid rows will be imported. Invalid rows will be skipped.',
             'previewColumns' => [
                 'import_action',
+                'customer_type',
+                'business_partner_name',
+                'actual_client_name',
                 'customer_phone',
                 'customer_name',
                 'product_name',
                 'brand',
                 'model',
+                'city_name',
+                'fulfilment_source',
+                'vendor_name',
+                'delivery_responsibility',
                 'quantity',
                 'sale_amount',
                 'tax_type',
@@ -822,11 +970,18 @@ class ImportController extends Controller
             ],
             'fieldLabels' => [
                 'import_action' => 'Action',
+                'customer_type' => 'Customer Type',
+                'business_partner_name' => 'Business Partner',
+                'actual_client_name' => 'Actual Client',
                 'customer_phone' => 'Customer Phone',
                 'customer_name' => 'Customer Name',
                 'product_name' => 'Product',
                 'brand' => 'Brand',
                 'model' => 'Model',
+                'city_name' => 'City',
+                'fulfilment_source' => 'Fulfilment Source',
+                'vendor_name' => 'Vendor',
+                'delivery_responsibility' => 'Delivery Responsibility',
                 'quantity' => 'Quantity',
                 'sale_amount' => 'Sale Amount',
                 'tax_type' => 'Tax Type',
@@ -919,6 +1074,9 @@ class ImportController extends Controller
 
         while (($row = fgetcsv($handle)) !== false) {
             if ($headers === []) {
+                if ($this->rowIsEmpty($row)) {
+                    continue;
+                }
                 $headers = $this->normalizeHeaders($row);
                 continue;
             }
@@ -944,7 +1102,7 @@ class ImportController extends Controller
         }
 
         $sharedStrings = $this->readSharedStrings($zip);
-        $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
+        $sheetXml = $this->firstWorksheetXml($zip);
 
         if ($sheetXml === false) {
             $zip->close();
@@ -955,16 +1113,19 @@ class ImportController extends Controller
         $headers = [];
         $rows = [];
 
-        foreach ($worksheet->sheetData->row ?? [] as $row) {
+        foreach ($worksheet?->xpath('/*[local-name()="worksheet"]/*[local-name()="sheetData"]/*[local-name()="row"]') ?? [] as $row) {
             $cells = [];
 
-            foreach ($row->c as $cell) {
+            foreach ($row->xpath('./*[local-name()="c"]') ?? [] as $cell) {
                 $reference = (string) $cell['r'];
                 $columnIndex = $this->columnIndexFromReference($reference);
                 $cells[$columnIndex] = $this->xlsxCellValue($cell, $sharedStrings);
             }
 
             if ($headers === []) {
+                if ($this->rowIsEmpty($cells)) {
+                    continue;
+                }
                 ksort($cells);
                 $headers = $this->normalizeHeaders(array_values($cells));
                 continue;
@@ -987,6 +1148,49 @@ class ImportController extends Controller
         return ['headers' => $headers, 'rows' => $rows];
     }
 
+    private function firstWorksheetXml(ZipArchive $zip): string|false
+    {
+        $workbookXml = $zip->getFromName('xl/workbook.xml');
+        $relationshipsXml = $zip->getFromName('xl/_rels/workbook.xml.rels');
+
+        if ($workbookXml !== false && $relationshipsXml !== false) {
+            $workbook = simplexml_load_string($workbookXml);
+            $relationships = simplexml_load_string($relationshipsXml);
+
+            $firstSheet = ($workbook?->xpath('/*[local-name()="workbook"]/*[local-name()="sheets"]/*[local-name()="sheet"][1]') ?? [])[0] ?? null;
+            $sheetRelationshipId = '';
+
+            if ($firstSheet) {
+                $relationshipAttributes = $firstSheet->attributes('r', true);
+                $sheetRelationshipId = trim((string) ($relationshipAttributes?->id ?? $firstSheet['id'] ?? ''));
+            }
+
+            if ($sheetRelationshipId !== '') {
+                foreach ($relationships?->xpath('/*[local-name()="Relationships"]/*[local-name()="Relationship"]') ?? [] as $relationship) {
+                    if ((string) $relationship['Id'] !== $sheetRelationshipId) {
+                        continue;
+                    }
+
+                    $target = trim((string) $relationship['Target']);
+                    if ($target === '') {
+                        continue;
+                    }
+
+                    $normalizedTarget = str_starts_with($target, '/')
+                        ? ltrim($target, '/')
+                        : 'xl/' . ltrim(str_replace('\\', '/', $target), '/');
+
+                    $sheetXml = $zip->getFromName($normalizedTarget);
+                    if ($sheetXml !== false) {
+                        return $sheetXml;
+                    }
+                }
+            }
+        }
+
+        return $zip->getFromName('xl/worksheets/sheet1.xml');
+    }
+
     private function readSharedStrings(ZipArchive $zip): array
     {
         $xml = $zip->getFromName('xl/sharedStrings.xml');
@@ -997,14 +1201,19 @@ class ImportController extends Controller
 
         $document = simplexml_load_string($xml);
 
-        return collect($document->si ?? [])
+        return collect($document?->xpath('/*[local-name()="sst"]/*[local-name()="si"]') ?? [])
             ->map(function ($stringItem) {
-                if (isset($stringItem->t)) {
-                    return (string) $stringItem->t;
+                $directText = $stringItem->xpath('./*[local-name()="t"]');
+                if (!empty($directText)) {
+                    return (string) ($directText[0] ?? '');
                 }
 
-                return collect($stringItem->r ?? [])
-                    ->map(fn ($run) => (string) ($run->t ?? ''))
+                return collect($stringItem->xpath('./*[local-name()="r"]') ?? [])
+                    ->map(function ($run) {
+                        $textNodes = $run->xpath('./*[local-name()="t"]');
+
+                        return (string) ($textNodes[0] ?? '');
+                    })
                     ->implode('');
             })
             ->all();
@@ -1015,10 +1224,13 @@ class ImportController extends Controller
         $type = (string) ($cell['t'] ?? '');
 
         if ($type === 'inlineStr') {
-            return trim((string) ($cell->is->t ?? ''));
+            $textNodes = $cell->xpath('./*[local-name()="is"]/*[local-name()="t"]');
+
+            return trim((string) ($textNodes[0] ?? ''));
         }
 
-        $value = isset($cell->v) ? (string) $cell->v : '';
+        $valueNodes = $cell->xpath('./*[local-name()="v"]');
+        $value = isset($valueNodes[0]) ? (string) $valueNodes[0] : '';
 
         if ($type === 's') {
             return isset($sharedStrings[(int) $value]) ? trim((string) $sharedStrings[(int) $value]) : '';
@@ -1044,7 +1256,7 @@ class ImportController extends Controller
         return collect($headers)
             ->values()
             ->map(function ($header, int $index) {
-                $value = trim((string) $header);
+                $value = $this->cleanHeaderText($header);
                 return $value !== '' ? $value : 'Column ' . ($index + 1);
             })
             ->all();
@@ -1098,7 +1310,18 @@ class ImportController extends Controller
 
     private function slugKey(?string $value): string
     {
-        return Str::of((string) $value)->lower()->replaceMatches('/[^a-z0-9]+/', '_')->trim('_')->toString();
+        return Str::of($this->cleanHeaderText($value))->lower()->replaceMatches('/[^a-z0-9]+/', '_')->trim('_')->toString();
+    }
+
+    private function cleanHeaderText(?string $value): string
+    {
+        $value = (string) $value;
+        $value = preg_replace('/^\xEF\xBB\xBF/u', '', $value) ?? $value;
+        $value = preg_replace('/[\x{200B}-\x{200D}\x{FEFF}\r\n\t]+/u', ' ', $value) ?? $value;
+        $value = str_replace('*', '', $value);
+        $value = preg_replace('/\s+/u', ' ', $value) ?? $value;
+
+        return trim($value);
     }
 
     private function numericString(string $value): string
