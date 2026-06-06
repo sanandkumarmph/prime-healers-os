@@ -111,9 +111,13 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
         $response = $this->actingAs($user)->get(route('dashboard'));
 
         $response->assertOk()
-            ->assertSeeText('Operational Alerts')
-            ->assertSeeText('Operational Widgets')
-            ->assertSeeText('Staff Workload')
+            ->assertSeeText('PHOS Control Room')
+            ->assertSeeText('Cash & Collections Overview')
+            ->assertSeeText('Rental Operations Pipeline')
+            ->assertSeeText('Operational Risk Board')
+            ->assertSeeText('Staff Workload Overview')
+            ->assertSeeText('Inventory Availability')
+            ->assertSeeText('Business Performance')
             ->assertSeeText('Recent Activity')
             ->assertSeeText('Inventory Intelligence')
             ->assertSeeText('Add Business Partner')
@@ -194,6 +198,10 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
         $response = $this->actingAs($user)->get(route('dashboard'));
 
         $response->assertOk()
+            ->assertSeeText('Cash at Risk')
+            ->assertSeeText('Follow-ups Overdue')
+            ->assertSeeText('Renewals Overdue')
+            ->assertSeeText('Staff Overloaded')
             ->assertSeeText('Operational Priorities')
             ->assertSeeText('Revenue Protection')
             ->assertSeeText('Inventory Readiness')

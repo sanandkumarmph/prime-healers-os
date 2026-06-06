@@ -183,6 +183,7 @@
     $monthlyRevenueAmount = (float) ($paymentsReceivedThisMonth ?? 0);
     $outstandingDueAmountValue = (float) ($outstandingDueAmount ?? 0);
     $outstandingInvoiceAmountValue = (float) ($unpaidInvoiceAmount ?? 0);
+    $pendingReceivableAmountValue = (float) ($pendingReceivableAmount ?? 0);
     $unbilledRentalReceivableAmountValue = (float) ($unbilledRentalReceivableAmount ?? 0);
     $unbilledSaleReceivableAmountValue = (float) ($unbilledSaleReceivableAmount ?? 0);
     $pendingSalesAmountValue = (float) ($pendingSalesAmount ?? 0);
@@ -618,7 +619,8 @@
     $operationalInsightCards = $dashboardInsightCards->where('row', 'operations')->sortBy('sort')->values();
     $revenueProtectionCards = $dashboardInsightCards->where('row', 'revenue_protection')->sortBy('sort')->values();
     $inventoryReadinessCards = $dashboardInsightCards->where('row', 'inventory_readiness')->sortBy('sort')->values();
-    $referenceInsightCards = $dashboardInsightCards->where('row', 'reference')->sortBy('sort')->values();    $actionItems = collect([
+    $referenceInsightCards = $dashboardInsightCards->where('row', 'reference')->sortBy('sort')->values();
+    $actionItems = collect([
         [
             'widget_key' => 'primary_pending_deliveries',
             'label' => 'Deliveries Pending',
@@ -816,6 +818,194 @@
     $cities = $cities ?? collect();
     $vendors = $vendors ?? collect();
     $warehouses = $warehouses ?? collect();
+
+    $buildChartPolyline = function (array $values, int $width = 540, int $height = 180, int $padding = 18): string {
+        $values = array_values($values);
+        $count = count($values);
+
+        if ($count === 0) {
+            return '';
+        }
+
+        if ($count === 1) {
+            $x = $width / 2;
+            $y = $height - $padding;
+
+            return round($x, 2) . ',' . round($y, 2);
+        }
+
+        $maxValue = max(max($values), 1);
+        $usableWidth = max($width - ($padding * 2), 1);
+        $usableHeight = max($height - ($padding * 2), 1);
+
+        return collect($values)->map(function ($value, $index) use ($count, $padding, $usableWidth, $usableHeight, $height, $maxValue) {
+            $x = $padding + ($usableWidth * ($index / max($count - 1, 1)));
+            $y = ($height - $padding) - (($value / $maxValue) * $usableHeight);
+
+            return round($x, 2) . ',' . round($y, 2);
+        })->implode(' ');
+    };
+
+    $collectionsTrendRows = collect($collectionsTrend ?? [])->values();
+    $collectionsTrendValues = $collectionsTrendRows->pluck('amount')->map(fn ($value) => (float) $value)->all();
+    $collectionsTrendPoints = $buildChartPolyline($collectionsTrendValues, 560, 170, 18);
+    $collectionsTrendMax = max(array_merge([1], $collectionsTrendValues));
+
+    $invoiceAgingBuckets = collect(data_get($invoiceAging ?? [], 'buckets', []))->values();
+    $topDuesCustomers = collect($topCustomersWithDues ?? collect())->values();
+    $inventoryAvailabilitySummary = collect($inventoryAvailability ?? []);
+    $inventoryAvailabilityTotal = max((int) ($inventoryAvailabilitySummary->get('total_assets') ?? 0), 0);
+    $inventoryAvailabilitySegments = collect([
+        ['label' => 'Available', 'value' => (int) ($inventoryAvailabilitySummary->get('available') ?? 0), 'tone' => 'green'],
+        ['label' => 'On Rent', 'value' => (int) ($inventoryAvailabilitySummary->get('on_rent') ?? 0), 'tone' => 'blue'],
+        ['label' => 'Maintenance', 'value' => (int) ($inventoryAvailabilitySummary->get('maintenance') ?? 0), 'tone' => 'amber'],
+        ['label' => 'Blocked / Reserved', 'value' => (int) ($inventoryAvailabilitySummary->get('blocked_reserved') ?? 0), 'tone' => 'red'],
+    ])->map(function (array $segment) use ($inventoryAvailabilityTotal) {
+        $segment['percent'] = $inventoryAvailabilityTotal > 0
+            ? round(($segment['value'] / $inventoryAvailabilityTotal) * 100, 1)
+            : 0.0;
+
+        return $segment;
+    })->values();
+
+    $controlRoomCards = collect([
+        [
+            'label' => 'Cash at Risk',
+            'value' => $currency(max($pendingReceivableAmountValue, $outstandingDueAmountValue)),
+            'status' => $canViewFinance
+                ? ($pendingReceivableOverdueCount > 0 ? number_format($pendingReceivableOverdueCount) . ' overdue invoice(s)' : 'No major overdue spike')
+                : 'Finance access required',
+            'note' => $canViewFinance
+                ? number_format($openInvoiceCountValue) . ' open invoices · ' . $currency($outstandingDueAmountValue) . ' outstanding'
+                : 'Visible to finance-enabled roles',
+            'href' => $canViewFinance ? $mergeDashboardQuery('invoices.index', ['status' => 'open']) : null,
+            'action' => 'View Dues',
+            'icon' => 'payment',
+            'tone' => $pendingReceivableOverdueCount > 0 ? 'red' : 'amber',
+        ],
+        [
+            'label' => 'Follow-ups Overdue',
+            'value' => number_format((int) ($overdueFollowUpsCount ?? 0)),
+            'status' => $pendingPaymentFollowUpsCount > 0
+                ? number_format((int) $pendingPaymentFollowUpsCount) . ' payment follow-up(s) pending'
+                : 'Callbacks under control',
+            'note' => number_format((int) ($followUpsDueTodayCount ?? 0)) . ' due today · ' . number_format((int) ($highPriorityFollowUpsCount ?? 0)) . ' high priority',
+            'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'overdue']) : null,
+            'action' => 'Take Action',
+            'icon' => 'tasks',
+            'tone' => ((int) ($overdueFollowUpsCount ?? 0)) > 0 ? 'red' : 'blue',
+        ],
+        [
+            'label' => 'Renewals Overdue',
+            'value' => number_format((int) ($overdueRenewalsCount ?? 0)),
+            'status' => ((int) ($unpaidRenewalCount ?? 0)) > 0
+                ? number_format((int) ($unpaidRenewalCount ?? 0)) . ' renewal invoice(s) still unpaid'
+                : 'Renewal queue under watch',
+            'note' => number_format((int) ($renewalsDueTodayCount ?? 0)) . ' due today · ' . $currency((float) ($unpaidRenewalAmount ?? 0)) . ' pending',
+            'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'overdue']) : null,
+            'action' => 'View Renewals',
+            'icon' => 'rental',
+            'tone' => ((int) ($overdueRenewalsCount ?? 0)) > 0 ? 'red' : 'blue',
+        ],
+        [
+            'label' => 'Staff Overloaded',
+            'value' => number_format((int) ($staffOverloadedCount ?? 0)),
+            'status' => ((int) ($staffBusyCount ?? 0)) > 0
+                ? number_format((int) ($staffBusyCount ?? 0)) . ' additional teammate(s) running busy'
+                : 'Workload looks balanced',
+            'note' => number_format((int) ($unassignedTasksCount ?? 0)) . ' unassigned task(s) · ' . number_format((int) ($failedTasksCount ?? 0)) . ' failed field task(s)',
+            'href' => '#staff-workload-overview',
+            'action' => 'Manage Workload',
+            'icon' => 'customer',
+            'tone' => ((int) ($staffOverloadedCount ?? 0)) > 0 ? 'amber' : 'blue',
+        ],
+    ])->values();
+
+    $pipelineStages = collect([
+        ['label' => 'Created', 'value' => $totalRentalsValue, 'tone' => 'blue'],
+        ['label' => 'Assigned', 'value' => $scheduledDeliveryCountValue + $scheduledPickupCountValue, 'tone' => 'amber'],
+        ['label' => 'Out for Delivery', 'value' => $outForDeliveryCountValue, 'tone' => 'blue'],
+        ['label' => 'Active Rental', 'value' => $activeRentalsCount, 'tone' => 'green'],
+        ['label' => 'Return Due', 'value' => $returnsDueTodayCountValue + $overdueReturnsCount, 'tone' => 'amber'],
+        ['label' => 'Completed', 'value' => $returnedRentalsCount, 'tone' => 'green'],
+    ])->values();
+
+    $rentalPipelineSummary = collect([
+        ['label' => 'Active Rentals', 'value' => number_format($activeRentalsCount), 'note' => $endingSoonCount > 0 ? number_format($endingSoonCount) . ' ending soon' : 'No urgent action'],
+        ['label' => 'New Rentals Today', 'value' => number_format((int) data_get(collect($dateSummary ?? collect())->firstWhere('rental_date', now()->toDateString()), 'aggregate', 0)), 'note' => 'Orders created today'],
+        ['label' => 'Return Due (Next 7 Days)', 'value' => number_format((int) (($returnsDueTodayCountValue ?? 0) + ($endingSoonCount ?? 0))), 'note' => number_format($overdueReturnsCount) . ' overdue rental(s)'],
+        ['label' => 'Delivered Base', 'value' => number_format($deliveredRentalsCount), 'note' => $returnedPercent . '% already closed'],
+    ])->values();
+
+    $riskBoardRows = collect([
+        ['risk' => 'Renewals overdue', 'count' => (int) ($overdueRenewalsCount ?? 0), 'severity' => ((int) ($overdueRenewalsCount ?? 0)) > 0 ? 'High' : 'Normal', 'owner' => 'Rental Team', 'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'overdue']) : null, 'action' => 'View'],
+        ['risk' => 'Payment follow-ups', 'count' => (int) ($pendingPaymentFollowUpsCount ?? 0), 'severity' => ((int) ($pendingPaymentFollowUpsCount ?? 0)) > 10 ? 'High' : (((int) ($pendingPaymentFollowUpsCount ?? 0)) > 0 ? 'Medium' : 'Normal'), 'owner' => 'Finance', 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'payments']) : null, 'action' => 'Call'],
+        ['risk' => 'Pickup delayed', 'count' => (int) ($pickupCenterOverdueCount ?? 0), 'severity' => ((int) ($pickupCenterOverdueCount ?? 0)) > 0 ? 'Medium' : 'Normal', 'owner' => 'Dispatch', 'href' => $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'overdue']) : null, 'action' => 'Assign'],
+        ['risk' => 'Unassigned tasks', 'count' => (int) ($unassignedTasksCount ?? 0), 'severity' => ((int) ($unassignedTasksCount ?? 0)) > 0 ? 'Medium' : 'Normal', 'owner' => 'Admin', 'href' => $deliveriesIndexUrl ? route('deliveries.index', ['staff' => 'unassigned']) : null, 'action' => 'Assign'],
+        ['risk' => 'Large unpaid invoices', 'count' => (int) ($largeOutstandingInvoiceCount ?? 0), 'severity' => ((int) ($largeOutstandingInvoiceCount ?? 0)) > 0 ? 'High' : 'Normal', 'owner' => 'Finance', 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'payments']) : $invoiceIndexUrl, 'action' => 'View'],
+    ])->filter(fn ($row) => !empty($row['href']))->values();
+
+    $staffWorkloadBoard = $staffWorkloadSummary->map(function (array $row) {
+        $status = match ($row['load_state'] ?? null) {
+            'Overloaded' => 'Overloaded',
+            'Balanced' => 'Busy',
+            default => 'Normal',
+        };
+
+        return [
+            'name' => $row['name'],
+            'deliveries' => (int) ($row['delivery_count'] ?? 0),
+            'pickups' => (int) ($row['pickup_count'] ?? 0),
+            'followups' => (int) ($row['followup_count'] ?? 0),
+            'tasks' => (int) ($row['total'] ?? 0),
+            'status' => $status,
+        ];
+    })->values();
+
+    $recentActivityFeeds = [
+        'all' => $recentActivitiesSummary->map(fn ($activity) => [
+            'title' => \Illuminate\Support\Str::headline(str_replace('.', ' ', (string) $activity->action)),
+            'meta' => $activity->description ?: 'Activity recorded in the operational timeline.',
+            'time' => optional($activity->created_at)?->diffForHumans() ?? 'Recently',
+            'tone' => 'blue',
+            'href' => $dashboardUrl,
+        ])->values()->all(),
+        'rentals' => $recentRentalsSummary->map(fn ($rental) => [
+            'title' => 'Rental #' . $rental->id . ' · ' . ($rental->customer_name ?? optional($rental->customer)->name ?? 'Customer'),
+            'meta' => (optional($rental->product)->name ?? 'Product') . ' · ' . $currency((float) ($rental->rental_amount ?? 0)),
+            'time' => optional($rental->created_at)?->diffForHumans() ?? 'Recently',
+            'tone' => 'violet',
+            'href' => route('rentals.show', $rental),
+        ])->values()->all(),
+        'payments' => $recentPaymentsSummary->map(fn ($payment) => [
+            'title' => 'Payment received from ' . ($payment->customer->name ?? 'Customer'),
+            'meta' => ($payment->invoice->invoice_number ?? 'Invoice') . ' · ' . $currency((float) ($payment->amount ?? 0)),
+            'time' => optional($payment->payment_date)?->format('d M Y') ?? 'Recently',
+            'tone' => 'green',
+            'href' => $invoiceIndexUrl ? route('invoices.index', ['search' => $payment->invoice->invoice_number ?? null]) : $dashboardUrl,
+        ])->values()->all(),
+        'tasks' => $recentDeliveriesSummary->map(fn ($task) => [
+            'title' => ucfirst((string) $task->type) . ' #' . $task->id . ' · ' . ($task->linkedCustomerName() ?: 'Customer'),
+            'meta' => optional($task->scheduled_at)?->format('d M, h:i A') ?? 'Schedule pending',
+            'time' => optional($task->updated_at)?->diffForHumans() ?? 'Recently',
+            'tone' => 'amber',
+            'href' => route('deliveries.show', $task),
+        ])->values()->all(),
+        'alerts' => $highPriorityFollowUpSummary->map(fn ($followUp) => [
+            'title' => $followUp->title ?: 'High priority follow-up',
+            'meta' => $followUp->note ?: ($followUp->customer?->name ?? $followUp->businessPartner?->displayName() ?? 'Customer coordination'),
+            'time' => optional($followUp->due_at)?->diffForHumans() ?? 'Today',
+            'tone' => 'red',
+            'href' => $communicationCenterUrl ? route('communication-center.index', ['priority' => 'high']) : $dashboardUrl,
+        ])->values()->all(),
+    ];
+
+    $controlRoomReferenceCards = collect([
+        ['label' => 'Total Customers', 'value' => number_format((int) ($totalCustomers ?? 0)), 'href' => $customersIndexUrl],
+        ['label' => 'Products', 'value' => number_format((int) ($totalProductsCount ?? 0)), 'href' => $productsIndexUrl],
+        ['label' => 'Vendors', 'value' => number_format((int) ($totalBusinessPartners ?? 0)), 'href' => $safeRoute('business-partners.index')],
+        ['label' => 'Overdue Rentals', 'value' => number_format($overdueReturnsCount), 'href' => $mergeDashboardQuery('rentals.index', ['filter' => 'overdue', 'status' => null])],
+    ])->filter(fn ($card) => !empty($card['href']))->values();
 @endphp
 
 <style>
@@ -829,6 +1019,678 @@
         width: 100%;
         max-width: 1320px;
         margin: 0 auto;
+    }
+    .control-room-shell {
+        display: grid;
+        gap: 18px;
+    }
+    .control-room-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 18px;
+        flex-wrap: wrap;
+        padding: 18px 20px;
+        border: 1px solid var(--ph-color-border);
+        border-radius: var(--ph-radius-xl);
+        background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+        box-shadow: var(--ph-shadow-card);
+    }
+    .control-room-header-copy {
+        display: grid;
+        gap: 8px;
+        max-width: 760px;
+    }
+    .control-room-title-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    .control-room-title-row h1 {
+        margin: 0;
+        font-size: 31px;
+        line-height: 1.02;
+        letter-spacing: -0.04em;
+        color: var(--ph-color-text);
+    }
+    .control-room-title-row p,
+    .control-room-header-copy p {
+        margin: 0;
+        color: var(--ph-color-text-soft);
+        font-size: 13px;
+        line-height: 1.55;
+    }
+    .control-room-meta-strip {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        color: var(--ph-color-text-soft);
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .control-room-reference-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        width: 100%;
+        max-width: 440px;
+    }
+    .control-room-reference-card {
+        display: grid;
+        gap: 4px;
+        padding: 12px 14px;
+        border: 1px solid var(--ph-color-border);
+        border-radius: 18px;
+        background: #fff;
+        text-decoration: none;
+        transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
+    }
+    .control-room-reference-card:hover {
+        border-color: rgba(67, 56, 202, 0.22);
+        box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+        transform: translateY(-1px);
+    }
+    .control-room-reference-card span {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: #6f84a2;
+    }
+    .control-room-reference-card strong {
+        font-size: 20px;
+        line-height: 1;
+        color: var(--ph-color-text);
+    }
+    .control-room-priority-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+    }
+    .control-room-priority-card {
+        position: relative;
+        display: grid;
+        gap: 12px;
+        min-height: 182px;
+        padding: 18px;
+        border: 1px solid var(--ph-color-border);
+        border-radius: 22px;
+        background: #fff;
+        box-shadow: var(--ph-shadow-card);
+        text-decoration: none;
+        color: inherit;
+        overflow: hidden;
+    }
+    .control-room-priority-card::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, rgba(255,255,255,0.35), transparent 70%);
+        pointer-events: none;
+    }
+    .control-room-priority-card.is-danger {
+        background: linear-gradient(180deg, #fff9f8 0%, #ffffff 100%);
+        border-color: rgba(239, 68, 68, 0.16);
+    }
+    .control-room-priority-card.is-warning {
+        background: linear-gradient(180deg, #fffaf4 0%, #ffffff 100%);
+        border-color: rgba(245, 158, 11, 0.18);
+    }
+    .control-room-priority-card.is-info {
+        background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+        border-color: rgba(59, 130, 246, 0.16);
+    }
+    .control-room-priority-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+    }
+    .control-room-priority-label {
+        display: block;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: #6f84a2;
+    }
+    .control-room-priority-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 14px;
+        border: 1px solid rgba(59, 130, 246, 0.14);
+        background: rgba(255, 255, 255, 0.85);
+        color: var(--ph-color-primary);
+    }
+    .control-room-priority-card.is-danger .control-room-priority-icon {
+        color: #ef4444;
+        border-color: rgba(239, 68, 68, 0.16);
+    }
+    .control-room-priority-card.is-warning .control-room-priority-icon {
+        color: #d97706;
+        border-color: rgba(245, 158, 11, 0.18);
+    }
+    .control-room-priority-value {
+        margin: 0;
+        font-size: 40px;
+        line-height: 1;
+        letter-spacing: -.05em;
+        color: var(--ph-color-text);
+    }
+    .control-room-priority-status {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--ph-color-primary);
+    }
+    .control-room-priority-note {
+        margin: 0;
+        color: var(--ph-color-text-soft);
+        font-size: 13px;
+        line-height: 1.5;
+    }
+    .control-room-priority-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--ph-color-primary);
+        text-decoration: none;
+        margin-top: auto;
+    }
+    .control-room-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+        gap: 18px;
+    }
+    .control-room-card {
+        display: grid;
+        gap: 16px;
+        padding: 18px;
+        border: 1px solid var(--ph-color-border);
+        border-radius: 22px;
+        background: #fff;
+        box-shadow: var(--ph-shadow-card);
+    }
+    .control-room-card-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    .control-room-card-title {
+        margin: 0;
+        font-size: 18px;
+        line-height: 1.2;
+        color: var(--ph-color-text);
+    }
+    .control-room-card-copy {
+        margin: 4px 0 0;
+        color: var(--ph-color-text-soft);
+        font-size: 13px;
+        line-height: 1.5;
+    }
+    .control-room-card-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--ph-color-primary);
+        text-decoration: none;
+    }
+    .control-room-stat-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+    .control-room-stat {
+        display: grid;
+        gap: 4px;
+        padding: 14px 15px;
+        border-radius: 18px;
+        background: #f8fbff;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+    }
+    .control-room-stat-label {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: #6f84a2;
+    }
+    .control-room-stat-value {
+        font-size: 28px;
+        line-height: 1;
+        letter-spacing: -.04em;
+        color: var(--ph-color-text);
+        font-weight: 800;
+    }
+    .control-room-stat-note {
+        font-size: 13px;
+        line-height: 1.45;
+        color: var(--ph-color-text-soft);
+    }
+    .control-room-chart-shell {
+        display: grid;
+        gap: 12px;
+    }
+    .control-room-chart-svg {
+        width: 100%;
+        height: auto;
+        display: block;
+        overflow: visible;
+    }
+    .control-room-chart-axis {
+        fill: #7b8da7;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    .control-room-chart-grid {
+        stroke: rgba(148, 163, 184, 0.22);
+        stroke-width: 1;
+    }
+    .control-room-chart-bar {
+        fill: rgba(59, 130, 246, 0.18);
+    }
+    .control-room-chart-line-primary {
+        fill: none;
+        stroke: #4f46e5;
+        stroke-width: 3;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+    .control-room-chart-line-secondary {
+        fill: none;
+        stroke: #16a34a;
+        stroke-width: 3;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+    .control-room-chart-dot-primary {
+        fill: #4f46e5;
+    }
+    .control-room-chart-dot-secondary {
+        fill: #16a34a;
+    }
+    .control-room-aging {
+        display: grid;
+        gap: 10px;
+    }
+    .control-room-aging-bar {
+        display: flex;
+        min-height: 12px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #eef4fb;
+    }
+    .control-room-aging-segment {
+        min-width: 4px;
+    }
+    .control-room-aging-segment.is-blue { background: #93c5fd; }
+    .control-room-aging-segment.is-warning { background: #fbbf24; }
+    .control-room-aging-segment.is-danger { background: #f97316; }
+    .control-room-aging-segment.is-danger-strong { background: #ef4444; }
+    .control-room-aging-legend {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .control-room-aging-legend-item {
+        display: grid;
+        gap: 4px;
+    }
+    .control-room-aging-legend-item strong {
+        font-size: 12px;
+        color: var(--ph-color-text);
+    }
+    .control-room-aging-legend-item span,
+    .control-room-aging-legend-item small {
+        color: var(--ph-color-text-soft);
+        font-size: 12px;
+    }
+    .control-room-dues-list,
+    .control-room-upcoming-list,
+    .control-room-activity-list {
+        display: grid;
+        gap: 10px;
+    }
+    .control-room-list-item {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: #f9fbff;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+    }
+    .control-room-list-item strong {
+        display: block;
+        color: var(--ph-color-text);
+        font-size: 14px;
+        line-height: 1.35;
+    }
+    .control-room-list-item span,
+    .control-room-list-item small {
+        display: block;
+        color: var(--ph-color-text-soft);
+        font-size: 12px;
+        line-height: 1.45;
+    }
+    .control-room-list-amount {
+        text-align: right;
+        white-space: nowrap;
+    }
+    .control-room-pipeline {
+        display: grid;
+        gap: 14px;
+    }
+    .control-room-pipeline-track {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 12px;
+    }
+    .control-room-pipeline-stage {
+        position: relative;
+        display: grid;
+        gap: 8px;
+        padding: 14px 12px;
+        border-radius: 18px;
+        background: #f8fbff;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+    }
+    .control-room-pipeline-stage::after {
+        content: "";
+        position: absolute;
+        top: 24px;
+        right: -12px;
+        width: 12px;
+        height: 2px;
+        background: rgba(148, 163, 184, 0.32);
+    }
+    .control-room-pipeline-stage:last-child::after {
+        display: none;
+    }
+    .control-room-pipeline-stage.is-success { background: #f3fbf6; }
+    .control-room-pipeline-stage.is-warning { background: #fffaf3; }
+    .control-room-pipeline-stage.is-info { background: #f7faff; }
+    .control-room-pipeline-stage-label {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: #6f84a2;
+    }
+    .control-room-pipeline-stage-value {
+        font-size: 28px;
+        line-height: 1;
+        letter-spacing: -.04em;
+        color: var(--ph-color-text);
+        font-weight: 800;
+    }
+    .control-room-pipeline-bottom {
+        display: grid;
+        grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
+        gap: 14px;
+    }
+    .control-room-summary-grid {
+        display: grid;
+        gap: 10px;
+    }
+    .control-room-summary-tile {
+        display: grid;
+        gap: 4px;
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: #f8fbff;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+    }
+    .control-room-summary-tile strong {
+        font-size: 20px;
+        line-height: 1;
+        color: var(--ph-color-text);
+    }
+    .control-room-summary-tile span {
+        font-size: 12px;
+        color: var(--ph-color-text-soft);
+    }
+    .control-room-risk-table,
+    .control-room-workload-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0 10px;
+    }
+    .control-room-risk-table th,
+    .control-room-workload-table th {
+        padding: 0 12px 6px;
+        text-align: left;
+        color: #6f84a2;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+    }
+    .control-room-risk-table td,
+    .control-room-workload-table td {
+        padding: 12px;
+        font-size: 13px;
+        color: var(--ph-color-text);
+        background: #f9fbff;
+        border-top: 1px solid rgba(148, 163, 184, 0.16);
+        border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+    }
+    .control-room-risk-table td:first-child,
+    .control-room-workload-table td:first-child {
+        border-left: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 16px 0 0 16px;
+    }
+    .control-room-risk-table td:last-child,
+    .control-room-workload-table td:last-child {
+        border-right: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 0 16px 16px 0;
+    }
+    .control-room-risk-pill,
+    .control-room-status-pill,
+    .control-room-tab-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 28px;
+        padding: 5px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1;
+    }
+    .control-room-risk-pill.is-danger,
+    .control-room-status-pill.is-danger {
+        background: rgba(239, 68, 68, 0.12);
+        color: #dc2626;
+    }
+    .control-room-risk-pill.is-warning,
+    .control-room-status-pill.is-warning {
+        background: rgba(245, 158, 11, 0.14);
+        color: #b45309;
+    }
+    .control-room-risk-pill.is-success,
+    .control-room-status-pill.is-success {
+        background: rgba(34, 197, 94, 0.12);
+        color: #15803d;
+    }
+    .control-room-risk-pill.is-info,
+    .control-room-status-pill.is-info {
+        background: rgba(59, 130, 246, 0.12);
+        color: #2563eb;
+    }
+    .control-room-section-stack {
+        display: grid;
+        gap: 18px;
+    }
+    .control-room-donut-shell {
+        display: grid;
+        grid-template-columns: 168px minmax(0, 1fr);
+        gap: 18px;
+        align-items: center;
+    }
+    .control-room-donut {
+        --available-angle: 0deg;
+        --rent-angle: 0deg;
+        --maintenance-angle: 0deg;
+        width: 168px;
+        height: 168px;
+        border-radius: 50%;
+        background:
+            radial-gradient(circle at center, #ffffff 0 41%, transparent 42%),
+            conic-gradient(
+                #22c55e 0deg var(--available-angle),
+                #3b82f6 var(--available-angle) calc(var(--available-angle) + var(--rent-angle)),
+                #f59e0b calc(var(--available-angle) + var(--rent-angle)) calc(var(--available-angle) + var(--rent-angle) + var(--maintenance-angle)),
+                #ef4444 calc(var(--available-angle) + var(--rent-angle) + var(--maintenance-angle)) 360deg
+            );
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        box-shadow: inset 0 0 0 12px rgba(255,255,255,0.6);
+        position: relative;
+    }
+    .control-room-donut-center {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        pointer-events: none;
+    }
+    .control-room-donut-center strong {
+        display: block;
+        font-size: 34px;
+        line-height: 1;
+        color: var(--ph-color-text);
+    }
+    .control-room-donut-center span {
+        display: block;
+        color: var(--ph-color-text-soft);
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .control-room-segment-list {
+        display: grid;
+        gap: 10px;
+    }
+    .control-room-segment-row {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 10px;
+        align-items: center;
+        font-size: 13px;
+        color: var(--ph-color-text);
+    }
+    .control-room-segment-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+    }
+    .control-room-segment-dot.is-success { background: #22c55e; }
+    .control-room-segment-dot.is-info { background: #3b82f6; }
+    .control-room-segment-dot.is-warning { background: #f59e0b; }
+    .control-room-segment-dot.is-danger { background: #ef4444; }
+    .control-room-tab-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    .control-room-tab-pill {
+        border: 1px solid var(--ph-color-border);
+        background: #fff;
+        color: #5d7290;
+        cursor: pointer;
+        transition: background-color .2s ease, color .2s ease, border-color .2s ease;
+    }
+    .control-room-tab-pill.is-active {
+        background: rgba(79, 70, 229, 0.1);
+        color: #4338ca;
+        border-color: rgba(79, 70, 229, 0.2);
+    }
+    .control-room-activity-link {
+        text-decoration: none;
+        color: inherit;
+    }
+    .control-room-activity-item {
+        display: grid;
+        gap: 4px;
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: #f9fbff;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+    }
+    .control-room-activity-item strong {
+        color: var(--ph-color-text);
+        font-size: 14px;
+        line-height: 1.35;
+    }
+    .control-room-activity-item span,
+    .control-room-activity-item small {
+        color: var(--ph-color-text-soft);
+        font-size: 12px;
+        line-height: 1.45;
+    }
+    .control-room-metric-strips {
+        display: grid;
+        gap: 12px;
+    }
+    .control-room-metric-strips .dashboard-insight-row {
+        padding: 0;
+    }
+    @media (max-width: 1180px) {
+        .control-room-priority-grid,
+        .control-room-reference-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .control-room-grid,
+        .control-room-pipeline-bottom,
+        .control-room-donut-shell {
+            grid-template-columns: 1fr;
+        }
+    }
+    @media (max-width: 900px) {
+        .control-room-pipeline-track {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .control-room-aging-legend {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+    @media (max-width: 720px) {
+        .control-room-header,
+        .control-room-card,
+        .control-room-priority-card {
+            padding: 16px;
+        }
+        .control-room-priority-grid,
+        .control-room-reference-grid,
+        .control-room-stat-grid,
+        .control-room-pipeline-track {
+            grid-template-columns: 1fr;
+        }
+        .control-room-title-row h1 {
+            font-size: 26px;
+        }
+        .control-room-risk-table,
+        .control-room-workload-table {
+            display: block;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+        .control-room-donut {
+            margin: 0 auto;
+        }
     }
     .dashboard-hero {
         display: grid;
@@ -2085,18 +2947,17 @@
             </div>
         </section>
     @else
-    <section class="dashboard-hero">
-        <div class="dashboard-hero-header">
-            <div class="dashboard-hero-copy">
-                <div class="dashboard-hero-meta">
-                    <span class="rx-eyebrow">Prime Healers Control</span>
+    <section class="control-room-shell">
+        <div class="control-room-header">
+            <div class="control-room-header-copy">
+                <div class="control-room-meta-strip">
+                    <span class="rx-eyebrow">PHOS Control Room</span>
                     <span class="dashboard-hero-date">{{ $dashboardDateLabel }}</span>
                 </div>
-                <div>
-                    <h1 class="rx-page-title">Welcome back, {{ $welcomeName }}</h1>
-                    <p class="rx-page-subtitle">Today's rental operations snapshot</p>
+                <div class="control-room-title-row">
+                    <h1>PHOS Control Room</h1>
                 </div>
-                <p class="dashboard-hero-summary">Monitor field movement, collections, and return risk from one calm control surface without losing the operational details that matter.</p>
+                <p>Monitor cash pressure, rental movement, field workload, and inventory readiness from one decision-first dashboard without losing the operational detail behind each number.</p>
             </div>
 
             <div class="dashboard-hero-actions">
@@ -2106,63 +2967,494 @@
                     @endforeach
                 </div>
             </div>
-        </div>
-    </section>
 
-    @foreach([
-        ['label' => 'Operational Priorities', 'cards' => $operationalInsightCards],
-        ['label' => 'Revenue Protection', 'cards' => $revenueProtectionCards],
-        ['label' => 'Inventory Readiness', 'cards' => $inventoryReadinessCards],
-        ['label' => 'Reference KPIs', 'cards' => $referenceInsightCards],
-    ] as $insightRow)
-        @if($insightRow['cards']->isNotEmpty())
-            <section class="dashboard-insight-row">
-                <div class="dashboard-insight-row-heading">{{ $insightRow['label'] }}</div>
-                <div class="dashboard-kpi-grid">
-                    @foreach($insightRow['cards'] as $card)
-                        @php $tag = !empty($card['href']) ? 'a' : 'div'; @endphp
-                        <{{ $tag }} @if(!empty($card['href'])) href="{{ $card['href'] }}" @endif class="dashboard-kpi-card {{ $toneCardClass($card['tone'] ?? null) }}">
-                            <div class="dashboard-kpi-head">
-                                <span class="dashboard-kpi-label">{{ $card['label'] }}</span>
-                                <span class="dashboard-kpi-icon">{!! $dashboardIcon($card['icon']) !!}</span>
-                            </div>
-                            <div class="dashboard-kpi-value">{{ $card['value'] }}</div>
-                            <div class="dashboard-kpi-insight {{ $toneCardClass($card['insight_tone'] ?? null) }}">{{ $card['insight'] ?? 'No urgent action' }}</div>
-                            <div class="dashboard-kpi-note">{{ $card['note'] }}</div>
-                        </{{ $tag }}>
-                    @endforeach
-                </div>
-            </section>
-        @endif
-    @endforeach
-
-    @if($operationalAlerts->isNotEmpty())
-        <section class="rx-card">
-            <div class="rx-card-header dashboard-section-heading">
-                <div>
-                    <h2 class="rx-card-title">Operational Alerts</h2>
-                    <p class="rx-card-copy">The few items that can turn into missed renewals, lost collections, or field delays if nobody acts today.</p>
-                </div>
-                <span class="rx-badge is-danger">{{ $operationalAlerts->sum('count') }}</span>
-            </div>
-            <div class="rx-card-body">
-                <div class="dashboard-alert-grid">
-                    @foreach($operationalAlerts as $alert)
-                        <a href="{{ $alert['href'] }}" class="dashboard-alert-card {{ $toneCardClass($alert['tone'] ?? null) }}">
-                            <div class="dashboard-alert-top">
-                                <div>
-                                    <span class="dashboard-card-label">{{ $alert['label'] }}</span>
-                                    <div class="dashboard-alert-count">{{ number_format((int) $alert['count']) }}</div>
-                                </div>
-                                <span class="dashboard-card-icon">{!! $dashboardIcon('overdue') !!}</span>
-                            </div>
-                            <p class="dashboard-card-note">{{ $alert['copy'] }}</p>
+            @if($controlRoomReferenceCards->isNotEmpty())
+                <div class="control-room-reference-grid">
+                    @foreach($controlRoomReferenceCards as $card)
+                        <a href="{{ $card['href'] }}" class="control-room-reference-card">
+                            <span>{{ $card['label'] }}</span>
+                            <strong>{{ $card['value'] }}</strong>
                         </a>
                     @endforeach
                 </div>
+            @endif
+        </div>
+
+        <div class="control-room-priority-grid">
+            @foreach($controlRoomCards as $card)
+                @php $priorityTag = !empty($card['href']) ? 'a' : 'div'; @endphp
+                <{{ $priorityTag }} @if(!empty($card['href'])) href="{{ $card['href'] }}" @endif class="control-room-priority-card {{ $toneCardClass($card['tone'] ?? null) }}">
+                    <div class="control-room-priority-top">
+                        <div>
+                            <span class="control-room-priority-label">{{ $card['label'] }}</span>
+                        </div>
+                        <span class="control-room-priority-icon">{!! $dashboardIcon($card['icon']) !!}</span>
+                    </div>
+                    <strong class="control-room-priority-value">{{ $card['value'] }}</strong>
+                    <p class="control-room-priority-status">{{ $card['status'] }}</p>
+                    <p class="control-room-priority-note">{{ $card['note'] }}</p>
+                    @if(!empty($card['action']))
+                        <span class="control-room-priority-link">{{ $card['action'] }} <span aria-hidden="true">&rarr;</span></span>
+                    @endif
+                </{{ $priorityTag }}>
+            @endforeach
+        </div>
+
+        <div class="control-room-grid">
+            <section class="control-room-card">
+                <div class="control-room-card-header">
+                    <div>
+                        <h2 class="control-room-card-title">Cash &amp; Collections Overview</h2>
+                        <p class="control-room-card-copy">Live collection position, dues pressure, invoice aging, and who needs finance attention first.</p>
+                    </div>
+                    @if($canViewFinance && $invoiceIndexUrl)
+                        <a href="{{ $mergeDashboardQuery('invoices.index', ['status' => 'open']) }}" class="control-room-card-link">View all dues</a>
+                    @endif
+                </div>
+                @if($canViewFinance)
+                    <div class="control-room-stat-grid">
+                        <div class="control-room-stat">
+                            <span class="control-room-stat-label">Collections This Month</span>
+                            <strong class="control-room-stat-value">{{ $currency($paymentsReceivedThisMonthAmount) }}</strong>
+                            <span class="control-room-stat-note">{{ $currency($paymentsReceivedTodayAmount) }} received today</span>
+                        </div>
+                        <div class="control-room-stat">
+                            <span class="control-room-stat-label">Outstanding Dues</span>
+                            <strong class="control-room-stat-value">{{ $currency($outstandingDueAmountValue) }}</strong>
+                            <span class="control-room-stat-note">{{ number_format($overdueInvoiceCountValue) }} overdue invoice(s)</span>
+                        </div>
+                    </div>
+
+                    <div class="control-room-chart-shell">
+                        @if($collectionsTrendRows->isNotEmpty())
+                            <svg class="control-room-chart-svg" viewBox="0 0 560 170" role="img" aria-label="Collections trend">
+                                <line class="control-room-chart-grid" x1="18" y1="18" x2="542" y2="18"></line>
+                                <line class="control-room-chart-grid" x1="18" y1="84" x2="542" y2="84"></line>
+                                <line class="control-room-chart-grid" x1="18" y1="152" x2="542" y2="152"></line>
+                                <polyline class="control-room-chart-line-primary" points="{{ $collectionsTrendPoints }}"></polyline>
+                                @foreach($collectionsTrendRows as $index => $row)
+                                    @php
+                                        $x = 18 + ((560 - 36) * ($index / max($collectionsTrendRows->count() - 1, 1)));
+                                        $y = (170 - 18) - ((((float) $row['amount']) / max($collectionsTrendMax, 1)) * (170 - 36));
+                                    @endphp
+                                    <circle class="control-room-chart-dot-primary" cx="{{ round($x, 2) }}" cy="{{ round($y, 2) }}" r="3.5"></circle>
+                                @endforeach
+                                @foreach($collectionsTrendRows->only([0, (int) floor(max($collectionsTrendRows->count() - 1, 0) / 2), max($collectionsTrendRows->count() - 1, 0)]) as $index => $row)
+                                    @php
+                                        $x = 18 + ((560 - 36) * ($index / max($collectionsTrendRows->count() - 1, 1)));
+                                    @endphp
+                                    <text class="control-room-chart-axis" x="{{ round($x, 2) }}" y="168" text-anchor="middle">{{ $row['label'] }}</text>
+                                @endforeach
+                            </svg>
+                        @else
+                            <div class="rx-empty dashboard-empty">
+                                <div class="rx-empty-icon">{!! $dashboardIcon('revenue') !!}</div>
+                                <strong>No collection trend yet</strong>
+                                <span>Payments will appear here as soon as the selected period has activity.</span>
+                            </div>
+                        @endif
+                    </div>
+
+                    <div class="control-room-aging">
+                        <div class="control-room-card-header">
+                            <div>
+                                <h3 class="control-room-card-title">Overdue Invoice Aging</h3>
+                                <p class="control-room-card-copy">Open invoice balance grouped by due-date pressure.</p>
+                            </div>
+                        </div>
+                        @if($invoiceAgingBuckets->isNotEmpty())
+                            <div class="control-room-aging-bar">
+                                @foreach($invoiceAgingBuckets as $bucket)
+                                    @php
+                                        $segmentTone = match ($bucket['tone'] ?? null) {
+                                            'blue' => 'is-blue',
+                                            'amber' => 'is-warning',
+                                            'red' => ($bucket['label'] ?? '') === '30+ Days' ? 'is-danger-strong' : 'is-danger',
+                                            default => 'is-blue',
+                                        };
+                                    @endphp
+                                    <div class="control-room-aging-segment {{ $segmentTone }}" style="width: {{ max((float) ($bucket['percent'] ?? 0), 2) }}%;"></div>
+                                @endforeach
+                            </div>
+                            <div class="control-room-aging-legend">
+                                @foreach($invoiceAgingBuckets as $bucket)
+                                    <div class="control-room-aging-legend-item">
+                                        <strong>{{ $bucket['label'] }}</strong>
+                                        <span>{{ $currency((float) ($bucket['amount'] ?? 0)) }}</span>
+                                        <small>{{ number_format((int) ($bucket['count'] ?? 0)) }} invoice(s)</small>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endif
+                    </div>
+
+                    <div class="control-room-card-header">
+                        <div>
+                            <h3 class="control-room-card-title">Top Customers with Dues</h3>
+                            <p class="control-room-card-copy">Customers carrying the highest open balance right now.</p>
+                        </div>
+                    </div>
+                    @if($topDuesCustomers->isNotEmpty())
+                        <div class="control-room-dues-list">
+                            @foreach($topDuesCustomers as $customerRow)
+                                <div class="control-room-list-item">
+                                    <div>
+                                        <strong>{{ $customerRow['label'] }}</strong>
+                                        <span>{{ number_format((int) ($customerRow['invoice_count'] ?? 0)) }} invoice(s)</span>
+                                        <small>{{ (int) ($customerRow['days_overdue'] ?? 0) > 0 ? $customerRow['days_overdue'] . ' day(s) overdue' : 'Not yet overdue' }}</small>
+                                    </div>
+                                    <div class="control-room-list-amount">
+                                        <strong>{{ $currency((float) ($customerRow['amount'] ?? 0)) }}</strong>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="rx-empty dashboard-empty">
+                            <div class="rx-empty-icon">{!! $dashboardIcon('payment') !!}</div>
+                            <strong>No dues concentration yet</strong>
+                            <span>Open invoice balances will surface here automatically.</span>
+                        </div>
+                    @endif
+                @else
+                    <div class="rx-empty dashboard-empty">
+                        <div class="rx-empty-icon">{!! $dashboardIcon('payment') !!}</div>
+                        <strong>Finance view is role scoped</strong>
+                        <span>Collections, dues, and invoice aging appear here for roles with finance access.</span>
+                    </div>
+                @endif
+            </section>
+
+            <section class="control-room-card">
+                <div class="control-room-card-header">
+                    <div>
+                        <h2 class="control-room-card-title">Rental Operations Pipeline</h2>
+                        <p class="control-room-card-copy">See how rental orders move from creation through delivery, active lifecycle, and return closure.</p>
+                    </div>
+                    <a href="{{ $rentalIndexUrl ?? '#' }}" class="control-room-card-link">Open rentals</a>
+                </div>
+
+                <div class="control-room-pipeline">
+                    <div class="control-room-pipeline-track">
+                        @foreach($pipelineStages as $stage)
+                            <div class="control-room-pipeline-stage {{ $toneCardClass($stage['tone'] ?? null) }}">
+                                <span class="control-room-pipeline-stage-label">{{ $stage['label'] }}</span>
+                                <strong class="control-room-pipeline-stage-value">{{ number_format((int) $stage['value']) }}</strong>
+                            </div>
+                        @endforeach
+                    </div>
+
+                    <div class="control-room-pipeline-bottom">
+                        <div class="control-room-summary-grid">
+                            @foreach($rentalPipelineSummary as $summary)
+                                <div class="control-room-summary-tile">
+                                    <strong>{{ $summary['value'] }}</strong>
+                                    <span>{{ $summary['label'] }}</span>
+                                    <span>{{ $summary['note'] }}</span>
+                                </div>
+                            @endforeach
+                        </div>
+
+                        <div class="control-room-upcoming-list">
+                            <div class="control-room-card-header">
+                                <div>
+                                    <h3 class="control-room-card-title">Upcoming Returns</h3>
+                                    <p class="control-room-card-copy">Rentals due today or ending soon so the team can prepare pickup coordination early.</p>
+                                </div>
+                                <a href="{{ $mergeDashboardQuery('rentals.index', ['filter' => 'returns_due_today', 'status' => null]) }}" class="control-room-card-link">View all returns</a>
+                            </div>
+                            @php
+                                $upcomingReturns = collect($returnsDueToday ?? collect())
+                                    ->merge(collect($endingSoonRentals ?? collect()))
+                                    ->unique('id')
+                                    ->take(5)
+                                    ->values();
+                            @endphp
+                            @if($upcomingReturns->isNotEmpty())
+                                @foreach($upcomingReturns as $rental)
+                                    <a href="{{ route('rentals.show', $rental) }}" class="control-room-list-item">
+                                        <div>
+                                            <strong>{{ $rental->customer_name ?? optional($rental->customer)->name ?? 'Customer' }}</strong>
+                                            <span>Rental #{{ $rental->id }} · {{ optional($rental->product)->name ?? 'Product' }}</span>
+                                        </div>
+                                        <div class="control-room-list-amount">
+                                            <strong>{{ optional($rental->end_date)->format('d M Y') ?? '-' }}</strong>
+                                            <small>{{ $currency((float) ($rental->rental_amount ?? 0)) }}</small>
+                                        </div>
+                                    </a>
+                                @endforeach
+                            @else
+                                <div class="rx-empty dashboard-empty">
+                                    <div class="rx-empty-icon">{!! $dashboardIcon('pickup') !!}</div>
+                                    <strong>No immediate returns</strong>
+                                    <span>The return queue is calm right now.</span>
+                                </div>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <div class="control-room-grid">
+            <section class="control-room-card">
+                <div class="control-room-card-header">
+                    <div>
+                        <h2 class="control-room-card-title">Operational Risk Board</h2>
+                        <p class="control-room-card-copy">Escalations that can turn into lost revenue, delayed pickups, or unowned operational work.</p>
+                    </div>
+                    @if($operationalAlerts->isNotEmpty())
+                        <span class="rx-badge is-danger">{{ $operationalAlerts->sum('count') }}</span>
+                    @endif
+                </div>
+
+                <table class="control-room-risk-table">
+                    <thead>
+                        <tr>
+                            <th>Risk / Alert</th>
+                            <th>Count</th>
+                            <th>Severity</th>
+                            <th>Owner</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($riskBoardRows as $row)
+                            @php
+                                $severityTone = match ($row['severity']) {
+                                    'High' => 'is-danger',
+                                    'Medium' => 'is-warning',
+                                    default => 'is-success',
+                                };
+                            @endphp
+                            <tr>
+                                <td>{{ $row['risk'] }}</td>
+                                <td>{{ number_format((int) $row['count']) }}</td>
+                                <td><span class="control-room-risk-pill {{ $severityTone }}">{{ $row['severity'] }}</span></td>
+                                <td>{{ $row['owner'] }}</td>
+                                <td><a href="{{ $row['href'] }}" class="control-room-card-link">{{ $row['action'] }}</a></td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </section>
+
+            <div class="control-room-section-stack">
+                @if($showStaffWorkloadSection)
+                    <section class="control-room-card" id="staff-workload-overview">
+                        <div class="control-room-card-header">
+                            <div>
+                                <h2 class="control-room-card-title">Staff Workload Overview</h2>
+                                <p class="control-room-card-copy">Compact workload heatmap for deliveries, pickups, follow-ups, and open task pressure.</p>
+                            </div>
+                        </div>
+                        @if($staffWorkloadBoard->isNotEmpty())
+                            <table class="control-room-workload-table">
+                                <thead>
+                                    <tr>
+                                        <th>Staff / Team</th>
+                                        <th>Deliveries</th>
+                                        <th>Pickups</th>
+                                        <th>Follow-ups</th>
+                                        <th>Tasks</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach($staffWorkloadBoard as $row)
+                                        @php
+                                            $workloadTone = match ($row['status']) {
+                                                'Overloaded' => 'is-danger',
+                                                'Busy' => 'is-warning',
+                                                default => 'is-success',
+                                            };
+                                        @endphp
+                                        <tr>
+                                            <td>{{ $row['name'] }}</td>
+                                            <td>{{ $row['deliveries'] }}</td>
+                                            <td>{{ $row['pickups'] }}</td>
+                                            <td>{{ $row['followups'] }}</td>
+                                            <td>{{ $row['tasks'] }}</td>
+                                            <td><span class="control-room-status-pill {{ $workloadTone }}">{{ $row['status'] }}</span></td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        @else
+                            <div class="rx-empty dashboard-empty">
+                                <div class="rx-empty-icon">{!! $dashboardIcon('customer') !!}</div>
+                                <strong>No staff workload data</strong>
+                                <span>Assignment load will appear here as soon as work is distributed.</span>
+                            </div>
+                        @endif
+                    </section>
+                @endif
+
+                @if($showInventorySection)
+                    <section class="control-room-card">
+                        <div class="control-room-card-header">
+                            <div>
+                                <h2 class="control-room-card-title">Inventory Availability</h2>
+                                <p class="control-room-card-copy">Rental-stock readiness across available, on-rent, maintenance, and blocked assets.</p>
+                            </div>
+                            @if($inventoryUrl)
+                                <a href="{{ $inventoryUrl }}" class="control-room-card-link">View inventory</a>
+                            @endif
+                        </div>
+                        @php
+                            $inventoryAngles = $inventoryAvailabilitySegments->map(fn ($segment) => ((float) ($segment['percent'] ?? 0) / 100) * 360)->values();
+                        @endphp
+                        @if($inventoryAvailabilityTotal > 0)
+                            <div class="control-room-donut-shell">
+                                <div class="control-room-donut" style="
+                                    --available-angle: {{ round((float) ($inventoryAngles->get(0) ?? 0), 2) }}deg;
+                                    --rent-angle: {{ round((float) ($inventoryAngles->get(1) ?? 0), 2) }}deg;
+                                    --maintenance-angle: {{ round((float) ($inventoryAngles->get(2) ?? 0), 2) }}deg;
+                                ">
+                                    <div class="control-room-donut-center">
+                                        <div>
+                                            <strong>{{ number_format($inventoryAvailabilityTotal) }}</strong>
+                                            <span>Total Rental Assets</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="control-room-segment-list">
+                                    @foreach($inventoryAvailabilitySegments as $segment)
+                                        <div class="control-room-segment-row">
+                                            <span class="control-room-segment-dot {{ $toneCardClass($segment['tone'] ?? null) }}"></span>
+                                            <span>{{ $segment['label'] }}</span>
+                                            <strong>{{ number_format((int) $segment['value']) }} <small>({{ $segment['percent'] }}%)</small></strong>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
+                        @else
+                            <div class="rx-empty dashboard-empty">
+                                <div class="rx-empty-icon">{!! $dashboardIcon('asset') !!}</div>
+                                <strong>No rental asset data yet</strong>
+                                <span>Inventory readiness appears automatically when rental assets are created.</span>
+                            </div>
+                        @endif
+                    </section>
+                @endif
+
+                @if($showOrganizationAnalyticsSection)
+                    <section class="control-room-card">
+                        <div class="control-room-card-header">
+                            <div>
+                                <h2 class="control-room-card-title">Business Performance</h2>
+                                <p class="control-room-card-copy">Last 6 months of rental revenue, sales revenue, and total order volume.</p>
+                            </div>
+                            @if($reportsIndexUrl)
+                                <a href="{{ $reportsIndexUrl }}" class="control-room-card-link">Open analytics</a>
+                            @endif
+                        </div>
+                        @php
+                            $trendLabels = $monthlyTrendRows->pluck('label')->values();
+                            $rentalTrendValues = $monthlyTrendRows->pluck('rental_total')->map(fn ($value) => (float) $value)->all();
+                            $salesTrendValues = $monthlyTrendRows->pluck('sales_total')->map(fn ($value) => (float) $value)->all();
+                            $ordersTrendValues = $monthlyTrendRows->pluck('total_orders')->map(fn ($value) => (float) $value)->all();
+                            $rentalTrendPoints = $buildChartPolyline($rentalTrendValues, 560, 200, 20);
+                            $salesTrendPoints = $buildChartPolyline($salesTrendValues, 560, 200, 20);
+                            $ordersTrendMax = max(array_merge([1], $ordersTrendValues));
+                        @endphp
+                        @if($monthlyTrendRows->isNotEmpty())
+                            <svg class="control-room-chart-svg" viewBox="0 0 560 210" role="img" aria-label="Business performance">
+                                <line class="control-room-chart-grid" x1="20" y1="22" x2="540" y2="22"></line>
+                                <line class="control-room-chart-grid" x1="20" y1="100" x2="540" y2="100"></line>
+                                <line class="control-room-chart-grid" x1="20" y1="180" x2="540" y2="180"></line>
+                                @foreach($monthlyTrendRows as $index => $row)
+                                    @php
+                                        $x = 20 + ((560 - 40) * ($index / max($monthlyTrendRows->count() - 1, 1)));
+                                        $barHeight = ((float) ($row['total_orders'] ?? 0) / max($ordersTrendMax, 1)) * 95;
+                                    @endphp
+                                    <rect class="control-room-chart-bar" x="{{ round($x - 11, 2) }}" y="{{ round(180 - $barHeight, 2) }}" width="22" height="{{ round($barHeight, 2) }}" rx="8"></rect>
+                                @endforeach
+                                <polyline class="control-room-chart-line-primary" points="{{ $rentalTrendPoints }}"></polyline>
+                                <polyline class="control-room-chart-line-secondary" points="{{ $salesTrendPoints }}"></polyline>
+                                @foreach($monthlyTrendRows as $index => $row)
+                                    @php
+                                        $x = 20 + ((560 - 40) * ($index / max($monthlyTrendRows->count() - 1, 1)));
+                                        $rentalY = (200 - 20) - ((((float) ($row['rental_total'] ?? 0)) / max($trendMax, 1)) * (200 - 40));
+                                        $salesY = (200 - 20) - ((((float) ($row['sales_total'] ?? 0)) / max($trendMax, 1)) * (200 - 40));
+                                    @endphp
+                                    <circle class="control-room-chart-dot-primary" cx="{{ round($x, 2) }}" cy="{{ round($rentalY, 2) }}" r="3.5"></circle>
+                                    <circle class="control-room-chart-dot-secondary" cx="{{ round($x, 2) }}" cy="{{ round($salesY, 2) }}" r="3.5"></circle>
+                                    <text class="control-room-chart-axis" x="{{ round($x, 2) }}" y="204" text-anchor="middle">{{ \Illuminate\Support\Str::replace(' 2026', '', $row['label']) }}</text>
+                                @endforeach
+                            </svg>
+                        @else
+                            <div class="rx-empty dashboard-empty">
+                                <div class="rx-empty-icon">{!! $dashboardIcon('trend') !!}</div>
+                                <strong>No performance trend yet</strong>
+                                <span>Monthly revenue and orders will appear here as soon as transactions accumulate.</span>
+                            </div>
+                        @endif
+                    </section>
+                @endif
+            </div>
+        </div>
+
+        <section class="control-room-card" x-data="{ activityTab: 'all', feeds: @js($recentActivityFeeds) }" id="recent-ops">
+            <div class="control-room-card-header">
+                <div>
+                    <h2 class="control-room-card-title">Recent Activities</h2>
+                    <p class="control-room-card-copy">Filter recent operational movement across rentals, payments, field tasks, and high-priority alerts.</p>
+                </div>
+                <a href="{{ $dashboardUrl }}" class="control-room-card-link">Refresh view</a>
+            </div>
+            <div class="control-room-tab-row">
+                @foreach(['all' => 'All', 'rentals' => 'Rentals', 'payments' => 'Payments', 'tasks' => 'Tasks', 'alerts' => 'Alerts'] as $tabKey => $tabLabel)
+                    <button type="button" class="control-room-tab-pill" :class="{ 'is-active': activityTab === '{{ $tabKey }}' }" @click="activityTab = '{{ $tabKey }}'">{{ $tabLabel }}</button>
+                @endforeach
+            </div>
+            <div class="control-room-activity-list">
+                <template x-for="item in (feeds[activityTab] || [])" :key="item.title + item.time">
+                    <a class="control-room-activity-link" :href="item.href || '#'" target="_self">
+                        <div class="control-room-activity-item">
+                            <strong x-text="item.title"></strong>
+                            <span x-text="item.meta"></span>
+                            <small x-text="item.time"></small>
+                        </div>
+                    </a>
+                </template>
+                <div class="rx-empty dashboard-empty" x-show="!(feeds[activityTab] || []).length">
+                    <div class="rx-empty-icon">{!! $dashboardIcon('trend') !!}</div>
+                    <strong>No data yet</strong>
+                    <span>The selected activity stream will appear here as soon as new events arrive.</span>
+                </div>
             </div>
         </section>
-    @endif
+
+        <section class="control-room-metric-strips">
+            @foreach([
+                ['label' => 'Operational Priorities', 'cards' => $operationalInsightCards],
+                ['label' => 'Revenue Protection', 'cards' => $revenueProtectionCards],
+                ['label' => 'Inventory Readiness', 'cards' => $inventoryReadinessCards],
+                ['label' => 'Reference KPIs', 'cards' => $referenceInsightCards],
+            ] as $insightRow)
+                @if($insightRow['cards']->isNotEmpty())
+                    <section class="dashboard-insight-row">
+                        <div class="dashboard-insight-row-heading">{{ $insightRow['label'] }}</div>
+                        <div class="dashboard-kpi-grid">
+                            @foreach($insightRow['cards'] as $card)
+                                @php $tag = !empty($card['href']) ? 'a' : 'div'; @endphp
+                                <{{ $tag }} @if(!empty($card['href'])) href="{{ $card['href'] }}" @endif class="dashboard-kpi-card {{ $toneCardClass($card['tone'] ?? null) }}">
+                                    <div class="dashboard-kpi-head">
+                                        <span class="dashboard-kpi-label">{{ $card['label'] }}</span>
+                                        <span class="dashboard-kpi-icon">{!! $dashboardIcon($card['icon']) !!}</span>
+                                    </div>
+                                    <div class="dashboard-kpi-value">{{ $card['value'] }}</div>
+                                    <div class="dashboard-kpi-insight {{ $toneCardClass($card['insight_tone'] ?? null) }}">{{ $card['insight'] ?? 'No urgent action' }}</div>
+                                    <div class="dashboard-kpi-note">{{ $card['note'] }}</div>
+                                </{{ $tag }}>
+                            @endforeach
+                        </div>
+                    </section>
+                @endif
+            @endforeach
+        </section>
+    </section>
 
     <section class="rx-card">
         <div class="rx-card-header dashboard-section-heading">

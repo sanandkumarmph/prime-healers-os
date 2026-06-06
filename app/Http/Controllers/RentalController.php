@@ -4079,6 +4079,9 @@ class RentalController extends Controller
                     'label' => $month->format('M Y'),
                     'rental_total' => 0.0,
                     'sales_total' => 0.0,
+                    'rental_orders' => 0,
+                    'sales_orders' => 0,
+                    'total_orders' => 0,
                 ],
             ];
         });
@@ -4092,25 +4095,154 @@ class RentalController extends Controller
             ->whereDate('start_date', '>=', $startMonth->toDateString())
             ->selectRaw("
                 {$monthPeriodExpression} as period,
-                SUM(COALESCE(rental_amount, 0) + COALESCE(deposit_amount, 0) + COALESCE(transport_amount, 0) + COALESCE(other_amount, 0)) as total
+                SUM(COALESCE(rental_amount, 0) + COALESCE(deposit_amount, 0) + COALESCE(transport_amount, 0) + COALESCE(other_amount, 0)) as total,
+                COUNT(*) as orders_count
             ")
             ->groupBy('period')
-            ->pluck('total', 'period');
+            ->get()
+            ->keyBy('period');
 
         $salesRows = $this->filteredSalesQuery($request, false)
             ->whereDate('sale_date', '>=', $startMonth->toDateString())
-            ->selectRaw("{$salesPeriodExpression} as period, SUM(COALESCE(sale_amount, 0)) as total")
+            ->selectRaw("{$salesPeriodExpression} as period, SUM(COALESCE(sale_amount, 0)) as total, COUNT(*) as orders_count")
             ->groupBy('period')
-            ->pluck('total', 'period');
+            ->get()
+            ->keyBy('period');
 
         $trend = $trend->map(function (array $row, string $period) use ($rentalRows, $salesRows) {
-            $row['rental_total'] = isset($rentalRows[$period]) ? (float) $rentalRows[$period] : 0.0;
-            $row['sales_total'] = isset($salesRows[$period]) ? (float) $salesRows[$period] : 0.0;
+            $rentalRow = $rentalRows->get($period);
+            $salesRow = $salesRows->get($period);
+
+            $row['rental_total'] = $rentalRow ? (float) ($rentalRow->total ?? 0) : 0.0;
+            $row['sales_total'] = $salesRow ? (float) ($salesRow->total ?? 0) : 0.0;
+            $row['rental_orders'] = $rentalRow ? (int) ($rentalRow->orders_count ?? 0) : 0;
+            $row['sales_orders'] = $salesRow ? (int) ($salesRow->orders_count ?? 0) : 0;
+            $row['total_orders'] = $row['rental_orders'] + $row['sales_orders'];
 
             return $row;
         });
 
         return $trend->values()->all();
+    }
+
+    private function dashboardCollectionsTrend(\Illuminate\Database\Eloquent\Builder $paymentQuery, Carbon $today, int $days = 30): array
+    {
+        $startDate = $today->copy()->subDays(max($days - 1, 0))->startOfDay();
+
+        $rows = (clone $paymentQuery)
+            ->whereDate('payment_date', '>=', $startDate->toDateString())
+            ->selectRaw('DATE(payment_date) as payment_day, SUM(COALESCE(amount, 0)) as total')
+            ->groupBy(DB::raw('DATE(payment_date)'))
+            ->pluck('total', 'payment_day');
+
+        return collect(range(0, max($days - 1, 0)))
+            ->map(function (int $offset) use ($startDate, $rows) {
+                $date = $startDate->copy()->addDays($offset);
+                $key = $date->toDateString();
+
+                return [
+                    'date' => $key,
+                    'label' => $date->format('d M'),
+                    'amount' => isset($rows[$key]) ? round((float) $rows[$key], 2) : 0.0,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function dashboardInvoiceAging(\Illuminate\Database\Eloquent\Builder $invoiceQuery, Carbon $today): array
+    {
+        $buckets = [
+            ['key' => 'current', 'label' => 'Current', 'min' => null, 'max' => 0, 'tone' => 'blue'],
+            ['key' => 'overdue_1_7', 'label' => '1-7 Days', 'min' => 1, 'max' => 7, 'tone' => 'amber'],
+            ['key' => 'overdue_8_15', 'label' => '8-15 Days', 'min' => 8, 'max' => 15, 'tone' => 'amber'],
+            ['key' => 'overdue_16_30', 'label' => '16-30 Days', 'min' => 16, 'max' => 30, 'tone' => 'red'],
+            ['key' => 'overdue_30_plus', 'label' => '30+ Days', 'min' => 31, 'max' => null, 'tone' => 'red'],
+        ];
+
+        $rows = (clone $invoiceQuery)
+            ->whereIn('payment_status', ['unpaid', 'partial', 'overdue'])
+            ->where('balance_amount', '>', 0)
+            ->get(['due_date', 'balance_amount']);
+
+        $summary = collect($buckets)->map(function (array $bucket) use ($rows, $today) {
+            $filtered = $rows->filter(function ($invoice) use ($bucket, $today) {
+                $dueDate = $invoice->due_date ? Carbon::parse($invoice->due_date)->startOfDay() : null;
+                $daysPastDue = $dueDate ? $today->diffInDays($dueDate, false) * -1 : 0;
+
+                if ($bucket['key'] === 'current') {
+                    return $daysPastDue <= 0;
+                }
+
+                if ($bucket['min'] !== null && $daysPastDue < $bucket['min']) {
+                    return false;
+                }
+
+                if ($bucket['max'] !== null && $daysPastDue > $bucket['max']) {
+                    return false;
+                }
+
+                return true;
+            });
+
+            return [
+                'key' => $bucket['key'],
+                'label' => $bucket['label'],
+                'tone' => $bucket['tone'],
+                'count' => (int) $filtered->count(),
+                'amount' => round((float) $filtered->sum(fn ($invoice) => (float) ($invoice->balance_amount ?? 0)), 2),
+            ];
+        })->values();
+
+        $totalAmount = max((float) $summary->sum('amount'), 0.0);
+
+        return [
+            'total_amount' => $totalAmount,
+            'buckets' => $summary->map(function (array $bucket) use ($totalAmount) {
+                $bucket['percent'] = $totalAmount > 0 ? round(((float) $bucket['amount'] / $totalAmount) * 100, 1) : 0.0;
+
+                return $bucket;
+            })->all(),
+        ];
+    }
+
+    private function dashboardTopCustomersWithDues(\Illuminate\Database\Eloquent\Builder $invoiceQuery, Carbon $today, int $limit = 5): \Illuminate\Support\Collection
+    {
+        return (clone $invoiceQuery)
+            ->whereIn('payment_status', ['unpaid', 'partial', 'overdue'])
+            ->where('balance_amount', '>', 0)
+            ->with(['customer:id,name,phone'])
+            ->get(['id', 'customer_id', 'bill_to_name', 'due_date', 'balance_amount'])
+            ->groupBy(function ($invoice) {
+                if (!empty($invoice->customer_id)) {
+                    return 'customer:' . $invoice->customer_id;
+                }
+
+                return 'name:' . mb_strtolower(trim((string) ($invoice->bill_to_name ?? 'walk-in')));
+            })
+            ->map(function (\Illuminate\Support\Collection $items) use ($today) {
+                $first = $items->first();
+                $name = trim((string) (optional($first->customer)->name ?: $first->bill_to_name ?: 'Customer'));
+                $oldestDueDate = $items
+                    ->pluck('due_date')
+                    ->filter()
+                    ->map(fn ($date) => Carbon::parse($date)->startOfDay())
+                    ->sort()
+                    ->first();
+
+                return [
+                    'label' => $name !== '' ? $name : 'Customer',
+                    'customer_id' => $first->customer_id ? (int) $first->customer_id : null,
+                    'invoice_count' => (int) $items->count(),
+                    'amount' => round((float) $items->sum(fn ($invoice) => (float) ($invoice->balance_amount ?? 0)), 2),
+                    'days_overdue' => $oldestDueDate && $oldestDueDate->lt($today)
+                        ? (int) $oldestDueDate->diffInDays($today)
+                        : 0,
+                ];
+            })
+            ->sortByDesc('amount')
+            ->take($limit)
+            ->values();
     }
 
     private function filterOptionData(): array
@@ -5018,6 +5150,42 @@ class RentalController extends Controller
             $monthlyTrend = $this->monthlyDashboardTrend($baseFilterRequest);
         }
 
+        $collectionsTrend = $canViewFinance
+            ? $this->dashboardCollectionsTrend($paymentQuery, $today)
+            : [];
+        $invoiceAging = $canViewFinance
+            ? $this->dashboardInvoiceAging($invoiceQuery, $today)
+            : ['total_amount' => 0.0, 'buckets' => []];
+        $topCustomersWithDues = $canViewFinance
+            ? $this->dashboardTopCustomersWithDues($invoiceQuery, $today)
+            : collect();
+        $staffOverloadedCount = $staffWorkloadRows->where('load_state', 'Overloaded')->count();
+        $staffBusyCount = $staffWorkloadRows->where('load_state', 'Balanced')->count();
+        $inventoryAvailability = $canViewInventoryIntelligence
+            ? [
+                'total_assets' => (int) Asset::query()
+                    ->where('organization_id', $this->orgId())
+                    ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
+                    ->count(),
+                'available' => (int) ($inventorySummary['rentalAvailable'] ?? 0),
+                'on_rent' => (int) Asset::query()
+                    ->where('organization_id', $this->orgId())
+                    ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
+                    ->where('asset_status', Asset::STATUS_RENTED)
+                    ->count(),
+                'maintenance' => (int) Asset::query()
+                    ->where('organization_id', $this->orgId())
+                    ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
+                    ->where('asset_status', Asset::STATUS_MAINTENANCE)
+                    ->count(),
+                'blocked_reserved' => (int) Asset::query()
+                    ->where('organization_id', $this->orgId())
+                    ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
+                    ->whereIn('asset_status', [Asset::STATUS_RESERVED, Asset::STATUS_AWAITING_VERIFICATION])
+                    ->count(),
+            ]
+            : [];
+
         $filterOptions = $this->filterOptionData();
         $totalRentals = (int) ($rentalSummary['totalRentals'] ?? 0);
         $totalRentalValue = (clone $summaryQuery)->sum('rental_amount');
@@ -5182,7 +5350,13 @@ class RentalController extends Controller
             'vendorSummary',
             'warehouseSummary',
             'dateSummary',
-            'monthlyTrend'
+            'monthlyTrend',
+            'collectionsTrend',
+            'invoiceAging',
+            'topCustomersWithDues',
+            'staffOverloadedCount',
+            'staffBusyCount',
+            'inventoryAvailability'
         )));
     }
 
