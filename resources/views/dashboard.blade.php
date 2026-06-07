@@ -46,6 +46,24 @@
     $followUpScopePrefix = $dashboardFollowUpScope === 'assigned' ? 'My ' : 'All ';
 
     $currency = fn ($value) => "\u{20B9}" . number_format((float) $value, 2);
+    $compactCurrency = function ($value) {
+        $value = (float) $value;
+        $absolute = abs($value);
+
+        if ($absolute >= 10000000) {
+            return "\u{20B9}" . rtrim(rtrim(number_format($value / 10000000, 2), '0'), '.') . 'Cr';
+        }
+
+        if ($absolute >= 100000) {
+            return "\u{20B9}" . rtrim(rtrim(number_format($value / 100000, 2), '0'), '.') . 'L';
+        }
+
+        if ($absolute >= 1000) {
+            return "\u{20B9}" . rtrim(rtrim(number_format($value / 1000, 1), '0'), '.') . 'K';
+        }
+
+        return "\u{20B9}" . number_format($value, 0);
+    };
     $welcomeName = trim((string) ($currentUser?->name ?? 'Team'));
     $welcomeName = explode(' ', $welcomeName)[0] ?: 'Team';
 
@@ -850,6 +868,9 @@
     $collectionsTrendValues = $collectionsTrendRows->pluck('amount')->map(fn ($value) => (float) $value)->all();
     $collectionsTrendPoints = $buildChartPolyline($collectionsTrendValues, 560, 170, 18);
     $collectionsTrendMax = max(array_merge([1], $collectionsTrendValues));
+    $buildMiniSparkline = function (array $values) use ($buildChartPolyline) {
+        return $buildChartPolyline($values, 96, 26, 3);
+    };
 
     $invoiceAgingBuckets = collect(data_get($invoiceAging ?? [], 'buckets', []))->values();
     $topDuesCustomers = collect($topCustomersWithDues ?? collect())->values();
@@ -871,7 +892,7 @@
     $controlRoomCards = collect([
         [
             'label' => 'Cash at Risk',
-            'value' => $currency(max($pendingReceivableAmountValue, $outstandingDueAmountValue)),
+            'value' => $compactCurrency(max($pendingReceivableAmountValue, $outstandingDueAmountValue)),
             'status' => $canViewFinance
                 ? ($pendingReceivableOverdueCount > 0 ? number_format($pendingReceivableOverdueCount) . ' overdue invoice(s)' : 'No major overdue spike')
                 : 'Finance access required',
@@ -882,6 +903,13 @@
             'action' => 'View Dues',
             'icon' => 'payment',
             'tone' => $pendingReceivableOverdueCount > 0 ? 'red' : 'amber',
+            'meter' => $canViewFinance ? min(100, round(($outstandingDueAmountValue / max($paymentsReceivedThisMonthAmount + $outstandingDueAmountValue, 1)) * 100)) : 0,
+            'sparkline' => [
+                round($paymentsReceivedTodayAmount / 1000, 2),
+                round($outstandingDueAmountValue / 100000, 2),
+                round($pendingReceivableAmountValue / 100000, 2),
+                round(max($pendingReceivableAmountValue, $outstandingDueAmountValue) / 100000, 2),
+            ],
         ],
         [
             'label' => 'Follow-ups Overdue',
@@ -894,6 +922,13 @@
             'action' => 'Take Action',
             'icon' => 'tasks',
             'tone' => ((int) ($overdueFollowUpsCount ?? 0)) > 0 ? 'red' : 'blue',
+            'meter' => min(100, round((((int) ($overdueFollowUpsCount ?? 0)) / max(((int) ($followUpsDueTodayCount ?? 0)) + ((int) ($highPriorityFollowUpsCount ?? 0)) + ((int) ($overdueFollowUpsCount ?? 0)), 1)) * 100)),
+            'sparkline' => [
+                (int) ($followUpsDueTodayCount ?? 0),
+                (int) ($pendingPaymentFollowUpsCount ?? 0),
+                (int) ($highPriorityFollowUpsCount ?? 0),
+                (int) ($overdueFollowUpsCount ?? 0),
+            ],
         ],
         [
             'label' => 'Renewals Overdue',
@@ -906,6 +941,13 @@
             'action' => 'View Renewals',
             'icon' => 'rental',
             'tone' => ((int) ($overdueRenewalsCount ?? 0)) > 0 ? 'red' : 'blue',
+            'meter' => min(100, round((((int) ($overdueRenewalsCount ?? 0)) / max(((int) ($renewalsDueTodayCount ?? 0)) + ((int) ($overdueRenewalsCount ?? 0)) + ((int) ($unpaidRenewalCount ?? 0)), 1)) * 100)),
+            'sparkline' => [
+                (int) ($renewalsDueTodayCount ?? 0),
+                (int) ($unpaidRenewalCount ?? 0),
+                (int) ($overdueRenewalsCount ?? 0),
+                (int) ($endingSoonCount ?? 0),
+            ],
         ],
         [
             'label' => 'Staff Overloaded',
@@ -918,6 +960,13 @@
             'action' => 'Manage Workload',
             'icon' => 'customer',
             'tone' => ((int) ($staffOverloadedCount ?? 0)) > 0 ? 'amber' : 'blue',
+            'meter' => min(100, round((((int) ($staffOverloadedCount ?? 0)) / max(((int) ($staffOverloadedCount ?? 0)) + ((int) ($staffBusyCount ?? 0)) + 1, 1)) * 100)),
+            'sparkline' => [
+                (int) ($assignedOpenTasksCount ?? 0),
+                (int) ($unassignedTasksCount ?? 0),
+                (int) ($staffBusyCount ?? 0),
+                (int) ($staffOverloadedCount ?? 0),
+            ],
         ],
     ])->values();
 
@@ -1015,22 +1064,22 @@
     }
     .dashboard-shell {
         display: grid;
-        gap: 14px;
+        gap: 12px;
         width: 100%;
         max-width: 1320px;
         margin: 0 auto;
     }
     .control-room-shell {
         display: grid;
-        gap: 18px;
+        gap: 12px;
     }
     .control-room-header {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        gap: 18px;
+        gap: 12px;
         flex-wrap: wrap;
-        padding: 18px 20px;
+        padding: 14px 16px;
         border: 1px solid var(--ph-color-border);
         border-radius: var(--ph-radius-xl);
         background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
@@ -1049,8 +1098,8 @@
     }
     .control-room-title-row h1 {
         margin: 0;
-        font-size: 31px;
-        line-height: 1.02;
+        font-size: 24px;
+        line-height: 1;
         letter-spacing: -0.04em;
         color: var(--ph-color-text);
     }
@@ -1058,8 +1107,8 @@
     .control-room-header-copy p {
         margin: 0;
         color: var(--ph-color-text-soft);
-        font-size: 13px;
-        line-height: 1.55;
+        font-size: 12px;
+        line-height: 1.45;
     }
     .control-room-meta-strip {
         display: flex;
@@ -1073,16 +1122,16 @@
     .control-room-reference-grid {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 10px;
+        gap: 8px;
         width: 100%;
-        max-width: 440px;
+        max-width: 380px;
     }
     .control-room-reference-card {
         display: grid;
-        gap: 4px;
-        padding: 12px 14px;
+        gap: 3px;
+        padding: 9px 11px;
         border: 1px solid var(--ph-color-border);
-        border-radius: 18px;
+        border-radius: 14px;
         background: #fff;
         text-decoration: none;
         transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
@@ -1100,23 +1149,23 @@
         color: #6f84a2;
     }
     .control-room-reference-card strong {
-        font-size: 20px;
+        font-size: 17px;
         line-height: 1;
         color: var(--ph-color-text);
     }
     .control-room-priority-grid {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 16px;
+        gap: 10px;
     }
     .control-room-priority-card {
         position: relative;
         display: grid;
-        gap: 12px;
-        min-height: 182px;
-        padding: 18px;
+        gap: 8px;
+        min-height: 122px;
+        padding: 13px 14px 12px;
         border: 1px solid var(--ph-color-border);
-        border-radius: 22px;
+        border-radius: 18px;
         background: #fff;
         box-shadow: var(--ph-shadow-card);
         text-decoration: none;
@@ -1144,9 +1193,9 @@
     }
     .control-room-priority-top {
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         justify-content: space-between;
-        gap: 12px;
+        gap: 10px;
     }
     .control-room-priority-label {
         display: block;
@@ -1160,12 +1209,17 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 40px;
-        height: 40px;
-        border-radius: 14px;
+        width: 34px;
+        height: 34px;
+        border-radius: 12px;
         border: 1px solid rgba(59, 130, 246, 0.14);
         background: rgba(255, 255, 255, 0.85);
         color: var(--ph-color-primary);
+    }
+    .control-room-priority-copy {
+        display: grid;
+        gap: 2px;
+        min-width: 0;
     }
     .control-room-priority-card.is-danger .control-room-priority-icon {
         color: #ef4444;
@@ -1177,44 +1231,88 @@
     }
     .control-room-priority-value {
         margin: 0;
-        font-size: 40px;
+        font-size: 31px;
         line-height: 1;
         letter-spacing: -.05em;
         color: var(--ph-color-text);
     }
     .control-room-priority-status {
         margin: 0;
-        font-size: 14px;
+        font-size: 12px;
         font-weight: 700;
         color: var(--ph-color-primary);
     }
     .control-room-priority-note {
         margin: 0;
         color: var(--ph-color-text-soft);
-        font-size: 13px;
-        line-height: 1.5;
+        font-size: 11px;
+        line-height: 1.35;
+    }
+    .control-room-priority-visuals {
+        display: grid;
+        gap: 6px;
+        margin-top: auto;
+    }
+    .control-room-sparkline {
+        width: 100%;
+        height: auto;
+        display: block;
+    }
+    .control-room-sparkline-track {
+        fill: none;
+        stroke: rgba(148, 163, 184, 0.2);
+        stroke-width: 1.2;
+        stroke-dasharray: 2 4;
+    }
+    .control-room-sparkline-line {
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2.2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+    .control-room-priority-card.is-danger .control-room-sparkline-line { color: #ef4444; }
+    .control-room-priority-card.is-warning .control-room-sparkline-line { color: #d97706; }
+    .control-room-priority-card.is-info .control-room-sparkline-line { color: #2563eb; }
+    .control-room-priority-meter {
+        position: relative;
+        min-height: 6px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.16);
+    }
+    .control-room-priority-meter span {
+        display: block;
+        height: 6px;
+        border-radius: inherit;
+        background: linear-gradient(90deg, rgba(79, 70, 229, 0.85), rgba(59, 130, 246, 0.9));
+    }
+    .control-room-priority-card.is-danger .control-room-priority-meter span {
+        background: linear-gradient(90deg, #f97316, #ef4444);
+    }
+    .control-room-priority-card.is-warning .control-room-priority-meter span {
+        background: linear-gradient(90deg, #f59e0b, #f97316);
     }
     .control-room-priority-link {
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        font-size: 13px;
+        font-size: 11px;
         font-weight: 700;
         color: var(--ph-color-primary);
         text-decoration: none;
-        margin-top: auto;
     }
     .control-room-grid {
         display: grid;
         grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-        gap: 18px;
+        gap: 12px;
     }
     .control-room-card {
         display: grid;
-        gap: 16px;
-        padding: 18px;
+        gap: 10px;
+        padding: 14px;
         border: 1px solid var(--ph-color-border);
-        border-radius: 22px;
+        border-radius: 18px;
         background: #fff;
         box-shadow: var(--ph-shadow-card);
     }
@@ -1227,21 +1325,21 @@
     }
     .control-room-card-title {
         margin: 0;
-        font-size: 18px;
-        line-height: 1.2;
+        font-size: 15px;
+        line-height: 1.15;
         color: var(--ph-color-text);
     }
     .control-room-card-copy {
-        margin: 4px 0 0;
+        margin: 2px 0 0;
         color: var(--ph-color-text-soft);
-        font-size: 13px;
-        line-height: 1.5;
+        font-size: 11px;
+        line-height: 1.35;
     }
     .control-room-card-link {
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        font-size: 13px;
+        font-size: 11px;
         font-weight: 700;
         color: var(--ph-color-primary);
         text-decoration: none;
@@ -1249,13 +1347,13 @@
     .control-room-stat-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px;
+        gap: 8px;
     }
     .control-room-stat {
         display: grid;
-        gap: 4px;
-        padding: 14px 15px;
-        border-radius: 18px;
+        gap: 3px;
+        padding: 10px 12px;
+        border-radius: 14px;
         background: #f8fbff;
         border: 1px solid rgba(148, 163, 184, 0.18);
     }
@@ -1267,20 +1365,32 @@
         color: #6f84a2;
     }
     .control-room-stat-value {
-        font-size: 28px;
+        font-size: 22px;
         line-height: 1;
         letter-spacing: -.04em;
         color: var(--ph-color-text);
         font-weight: 800;
     }
     .control-room-stat-note {
-        font-size: 13px;
-        line-height: 1.45;
+        font-size: 11px;
+        line-height: 1.35;
         color: var(--ph-color-text-soft);
+    }
+    .control-room-stat-meter {
+        min-height: 5px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.16);
+    }
+    .control-room-stat-meter span {
+        display: block;
+        height: 5px;
+        border-radius: inherit;
+        background: linear-gradient(90deg, rgba(79, 70, 229, 0.8), rgba(34, 197, 94, 0.75));
     }
     .control-room-chart-shell {
         display: grid;
-        gap: 12px;
+        gap: 8px;
     }
     .control-room-chart-svg {
         width: 100%;
@@ -1322,11 +1432,11 @@
     }
     .control-room-aging {
         display: grid;
-        gap: 10px;
+        gap: 6px;
     }
     .control-room-aging-bar {
         display: flex;
-        min-height: 12px;
+        min-height: 10px;
         overflow: hidden;
         border-radius: 999px;
         background: #eef4fb;
@@ -1341,49 +1451,49 @@
     .control-room-aging-legend {
         display: grid;
         grid-template-columns: repeat(5, minmax(0, 1fr));
-        gap: 10px;
+        gap: 8px;
     }
     .control-room-aging-legend-item {
         display: grid;
         gap: 4px;
     }
     .control-room-aging-legend-item strong {
-        font-size: 12px;
+        font-size: 11px;
         color: var(--ph-color-text);
     }
     .control-room-aging-legend-item span,
     .control-room-aging-legend-item small {
         color: var(--ph-color-text-soft);
-        font-size: 12px;
+        font-size: 10px;
     }
     .control-room-dues-list,
     .control-room-upcoming-list,
     .control-room-activity-list {
         display: grid;
-        gap: 10px;
+        gap: 8px;
     }
     .control-room-list-item {
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
-        gap: 12px;
-        padding: 12px 14px;
-        border-radius: 16px;
+        gap: 10px;
+        padding: 9px 11px;
+        border-radius: 12px;
         background: #f9fbff;
         border: 1px solid rgba(148, 163, 184, 0.16);
     }
     .control-room-list-item strong {
         display: block;
         color: var(--ph-color-text);
-        font-size: 14px;
-        line-height: 1.35;
+        font-size: 12px;
+        line-height: 1.25;
     }
     .control-room-list-item span,
     .control-room-list-item small {
         display: block;
         color: var(--ph-color-text-soft);
-        font-size: 12px;
-        line-height: 1.45;
+        font-size: 10px;
+        line-height: 1.3;
     }
     .control-room-list-amount {
         text-align: right;
@@ -1391,28 +1501,28 @@
     }
     .control-room-pipeline {
         display: grid;
-        gap: 14px;
+        gap: 10px;
     }
     .control-room-pipeline-track {
         display: grid;
         grid-template-columns: repeat(6, minmax(0, 1fr));
-        gap: 12px;
+        gap: 8px;
     }
     .control-room-pipeline-stage {
         position: relative;
         display: grid;
-        gap: 8px;
-        padding: 14px 12px;
-        border-radius: 18px;
+        gap: 5px;
+        padding: 9px 10px;
+        border-radius: 14px;
         background: #f8fbff;
         border: 1px solid rgba(148, 163, 184, 0.18);
     }
     .control-room-pipeline-stage::after {
         content: "";
         position: absolute;
-        top: 24px;
-        right: -12px;
-        width: 12px;
+        top: 18px;
+        right: -8px;
+        width: 8px;
         height: 2px;
         background: rgba(148, 163, 184, 0.32);
     }
@@ -1430,58 +1540,82 @@
         color: #6f84a2;
     }
     .control-room-pipeline-stage-value {
-        font-size: 28px;
+        font-size: 22px;
         line-height: 1;
         letter-spacing: -.04em;
         color: var(--ph-color-text);
         font-weight: 800;
     }
+    .control-room-pipeline-stage-meter {
+        min-height: 4px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.16);
+    }
+    .control-room-pipeline-stage-meter span {
+        display: block;
+        height: 4px;
+        border-radius: inherit;
+        background: rgba(79, 70, 229, 0.8);
+    }
     .control-room-pipeline-bottom {
         display: grid;
         grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
-        gap: 14px;
+        gap: 10px;
     }
     .control-room-summary-grid {
         display: grid;
-        gap: 10px;
+        gap: 8px;
     }
     .control-room-summary-tile {
         display: grid;
-        gap: 4px;
-        padding: 12px 14px;
-        border-radius: 16px;
+        gap: 3px;
+        padding: 9px 11px;
+        border-radius: 12px;
         background: #f8fbff;
         border: 1px solid rgba(148, 163, 184, 0.16);
     }
     .control-room-summary-tile strong {
-        font-size: 20px;
+        font-size: 17px;
         line-height: 1;
         color: var(--ph-color-text);
     }
     .control-room-summary-tile span {
-        font-size: 12px;
+        font-size: 10px;
         color: var(--ph-color-text-soft);
+    }
+    .control-room-summary-meter {
+        min-height: 4px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.15);
+    }
+    .control-room-summary-meter span {
+        display: block;
+        height: 4px;
+        border-radius: inherit;
+        background: linear-gradient(90deg, rgba(79, 70, 229, 0.82), rgba(34, 197, 94, 0.72));
     }
     .control-room-risk-table,
     .control-room-workload-table {
         width: 100%;
         border-collapse: separate;
-        border-spacing: 0 10px;
+        border-spacing: 0 6px;
     }
     .control-room-risk-table th,
     .control-room-workload-table th {
-        padding: 0 12px 6px;
+        padding: 0 8px 4px;
         text-align: left;
         color: #6f84a2;
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 700;
         letter-spacing: .08em;
         text-transform: uppercase;
     }
     .control-room-risk-table td,
     .control-room-workload-table td {
-        padding: 12px;
-        font-size: 13px;
+        padding: 8px;
+        font-size: 12px;
         color: var(--ph-color-text);
         background: #f9fbff;
         border-top: 1px solid rgba(148, 163, 184, 0.16);
@@ -1490,12 +1624,12 @@
     .control-room-risk-table td:first-child,
     .control-room-workload-table td:first-child {
         border-left: 1px solid rgba(148, 163, 184, 0.16);
-        border-radius: 16px 0 0 16px;
+        border-radius: 12px 0 0 12px;
     }
     .control-room-risk-table td:last-child,
     .control-room-workload-table td:last-child {
         border-right: 1px solid rgba(148, 163, 184, 0.16);
-        border-radius: 0 16px 16px 0;
+        border-radius: 0 12px 12px 0;
     }
     .control-room-risk-pill,
     .control-room-status-pill,
@@ -1503,10 +1637,10 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-height: 28px;
-        padding: 5px 10px;
+        min-height: 22px;
+        padding: 4px 8px;
         border-radius: 999px;
-        font-size: 12px;
+        font-size: 10px;
         font-weight: 700;
         line-height: 1;
     }
@@ -1532,20 +1666,20 @@
     }
     .control-room-section-stack {
         display: grid;
-        gap: 18px;
+        gap: 12px;
     }
     .control-room-donut-shell {
         display: grid;
-        grid-template-columns: 168px minmax(0, 1fr);
-        gap: 18px;
+        grid-template-columns: 132px minmax(0, 1fr);
+        gap: 12px;
         align-items: center;
     }
     .control-room-donut {
         --available-angle: 0deg;
         --rent-angle: 0deg;
         --maintenance-angle: 0deg;
-        width: 168px;
-        height: 168px;
+        width: 132px;
+        height: 132px;
         border-radius: 50%;
         background:
             radial-gradient(circle at center, #ffffff 0 41%, transparent 42%),
@@ -1556,7 +1690,7 @@
                 #ef4444 calc(var(--available-angle) + var(--rent-angle) + var(--maintenance-angle)) 360deg
             );
         border: 1px solid rgba(148, 163, 184, 0.14);
-        box-shadow: inset 0 0 0 12px rgba(255,255,255,0.6);
+        box-shadow: inset 0 0 0 10px rgba(255,255,255,0.6);
         position: relative;
     }
     .control-room-donut-center {
@@ -1569,7 +1703,7 @@
     }
     .control-room-donut-center strong {
         display: block;
-        font-size: 34px;
+        font-size: 28px;
         line-height: 1;
         color: var(--ph-color-text);
     }
@@ -1581,14 +1715,14 @@
     }
     .control-room-segment-list {
         display: grid;
-        gap: 10px;
+        gap: 8px;
     }
     .control-room-segment-row {
         display: grid;
         grid-template-columns: auto 1fr auto;
-        gap: 10px;
+        gap: 8px;
         align-items: center;
-        font-size: 13px;
+        font-size: 12px;
         color: var(--ph-color-text);
     }
     .control-room-segment-dot {
@@ -1603,7 +1737,7 @@
     .control-room-tab-row {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
         flex-wrap: wrap;
     }
     .control-room-tab-pill {
@@ -1624,26 +1758,55 @@
     }
     .control-room-activity-item {
         display: grid;
-        gap: 4px;
-        padding: 12px 14px;
-        border-radius: 16px;
+        gap: 3px;
+        padding: 9px 11px;
+        border-radius: 12px;
         background: #f9fbff;
         border: 1px solid rgba(148, 163, 184, 0.16);
     }
     .control-room-activity-item strong {
         color: var(--ph-color-text);
-        font-size: 14px;
-        line-height: 1.35;
+        font-size: 12px;
+        line-height: 1.25;
     }
     .control-room-activity-item span,
     .control-room-activity-item small {
         color: var(--ph-color-text-soft);
-        font-size: 12px;
-        line-height: 1.45;
+        font-size: 10px;
+        line-height: 1.3;
     }
     .control-room-metric-strips {
         display: grid;
-        gap: 12px;
+        gap: 10px;
+    }
+    .control-room-stack-compact {
+        display: grid;
+        gap: 4px;
+    }
+    .control-room-table-meter {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-width: 96px;
+    }
+    .control-room-table-meter strong {
+        font-size: 11px;
+        color: var(--ph-color-text);
+        min-width: 18px;
+    }
+    .control-room-table-meter-bar {
+        position: relative;
+        flex: 1 1 auto;
+        min-height: 4px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.16);
+    }
+    .control-room-table-meter-bar span {
+        display: block;
+        height: 4px;
+        border-radius: inherit;
+        background: linear-gradient(90deg, rgba(79, 70, 229, 0.78), rgba(59, 130, 246, 0.84));
     }
     .control-room-metric-strips .dashboard-insight-row {
         padding: 0;
@@ -2985,17 +3148,28 @@
                 @php $priorityTag = !empty($card['href']) ? 'a' : 'div'; @endphp
                 <{{ $priorityTag }} @if(!empty($card['href'])) href="{{ $card['href'] }}" @endif class="control-room-priority-card {{ $toneCardClass($card['tone'] ?? null) }}">
                     <div class="control-room-priority-top">
-                        <div>
+                        <div class="control-room-priority-copy">
                             <span class="control-room-priority-label">{{ $card['label'] }}</span>
+                            <p class="control-room-priority-status">{{ $card['status'] }}</p>
                         </div>
                         <span class="control-room-priority-icon">{!! $dashboardIcon($card['icon']) !!}</span>
                     </div>
                     <strong class="control-room-priority-value">{{ $card['value'] }}</strong>
-                    <p class="control-room-priority-status">{{ $card['status'] }}</p>
                     <p class="control-room-priority-note">{{ $card['note'] }}</p>
-                    @if(!empty($card['action']))
-                        <span class="control-room-priority-link">{{ $card['action'] }} <span aria-hidden="true">&rarr;</span></span>
-                    @endif
+                    <div class="control-room-priority-visuals">
+                        @if(!empty($card['sparkline']))
+                            <svg class="control-room-sparkline" viewBox="0 0 96 26" role="img" aria-label="{{ $card['label'] }} trend">
+                                <line class="control-room-sparkline-track" x1="0" y1="22" x2="96" y2="22"></line>
+                                <polyline class="control-room-sparkline-line" points="{{ $buildMiniSparkline($card['sparkline']) }}"></polyline>
+                            </svg>
+                        @endif
+                        <div class="control-room-priority-meter">
+                            <span style="width: {{ max((int) ($card['meter'] ?? 0), 6) }}%;"></span>
+                        </div>
+                        @if(!empty($card['action']))
+                            <span class="control-room-priority-link">{{ $card['action'] }} <span aria-hidden="true">&rarr;</span></span>
+                        @endif
+                    </div>
                 </{{ $priorityTag }}>
             @endforeach
         </div>
@@ -3015,13 +3189,19 @@
                     <div class="control-room-stat-grid">
                         <div class="control-room-stat">
                             <span class="control-room-stat-label">Collections This Month</span>
-                            <strong class="control-room-stat-value">{{ $currency($paymentsReceivedThisMonthAmount) }}</strong>
+                            <strong class="control-room-stat-value">{{ $compactCurrency($paymentsReceivedThisMonthAmount) }}</strong>
                             <span class="control-room-stat-note">{{ $currency($paymentsReceivedTodayAmount) }} received today</span>
+                            <div class="control-room-stat-meter">
+                                <span style="width: {{ max(min((int) round(($paymentsReceivedTodayAmount / max($paymentsReceivedThisMonthAmount, 1)) * 100), 100), 6) }}%;"></span>
+                            </div>
                         </div>
                         <div class="control-room-stat">
                             <span class="control-room-stat-label">Outstanding Dues</span>
-                            <strong class="control-room-stat-value">{{ $currency($outstandingDueAmountValue) }}</strong>
+                            <strong class="control-room-stat-value">{{ $compactCurrency($outstandingDueAmountValue) }}</strong>
                             <span class="control-room-stat-note">{{ number_format($overdueInvoiceCountValue) }} overdue invoice(s)</span>
+                            <div class="control-room-stat-meter">
+                                <span style="width: {{ max(min((int) round(($outstandingDueAmountValue / max($outstandingDueAmountValue + $paymentsReceivedThisMonthAmount, 1)) * 100), 100), 6) }}%;"></span>
+                            </div>
                         </div>
                     </div>
 
@@ -3140,6 +3320,9 @@
                             <div class="control-room-pipeline-stage {{ $toneCardClass($stage['tone'] ?? null) }}">
                                 <span class="control-room-pipeline-stage-label">{{ $stage['label'] }}</span>
                                 <strong class="control-room-pipeline-stage-value">{{ number_format((int) $stage['value']) }}</strong>
+                                <div class="control-room-pipeline-stage-meter">
+                                    <span style="width: {{ max(min((int) round((((int) $stage['value']) / max($pipelineStages->max('value'), 1)) * 100), 100), 8) }}%;"></span>
+                                </div>
                             </div>
                         @endforeach
                     </div>
@@ -3147,10 +3330,18 @@
                     <div class="control-room-pipeline-bottom">
                         <div class="control-room-summary-grid">
                             @foreach($rentalPipelineSummary as $summary)
+                                @php
+                                    $summaryNumericValue = (int) preg_replace('/[^0-9]/', '', (string) $summary['value']);
+                                    $summaryMeterMax = max(1, $activeRentalsCount, $deliveredRentalsCount, $overdueReturnsCount, $endingSoonCount);
+                                    $summaryMeterWidth = max(min((int) round(($summaryNumericValue / $summaryMeterMax) * 100), 100), 6);
+                                @endphp
                                 <div class="control-room-summary-tile">
                                     <strong>{{ $summary['value'] }}</strong>
                                     <span>{{ $summary['label'] }}</span>
                                     <span>{{ $summary['note'] }}</span>
+                                    <div class="control-room-summary-meter">
+                                        <span style="width: {{ $summaryMeterWidth }}%;"></span>
+                                    </div>
                                 </div>
                             @endforeach
                         </div>
@@ -3228,8 +3419,20 @@
                                 };
                             @endphp
                             <tr>
-                                <td>{{ $row['risk'] }}</td>
-                                <td>{{ number_format((int) $row['count']) }}</td>
+                                <td>
+                                    <div class="control-room-stack-compact">
+                                        <strong>{{ $row['risk'] }}</strong>
+                                        <small>{{ strtolower($row['severity']) }} attention</small>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="control-room-table-meter">
+                                        <strong>{{ number_format((int) $row['count']) }}</strong>
+                                        <div class="control-room-table-meter-bar">
+                                            <span style="width: {{ max(min((int) round((((int) $row['count']) / max($riskBoardRows->max('count'), 1)) * 100), 100), 8) }}%;"></span>
+                                        </div>
+                                    </div>
+                                </td>
                                 <td><span class="control-room-risk-pill {{ $severityTone }}">{{ $row['severity'] }}</span></td>
                                 <td>{{ $row['owner'] }}</td>
                                 <td><a href="{{ $row['href'] }}" class="control-room-card-link">{{ $row['action'] }}</a></td>
@@ -3239,57 +3442,87 @@
                 </table>
             </section>
 
-            <div class="control-room-section-stack">
-                @if($showStaffWorkloadSection)
-                    <section class="control-room-card" id="staff-workload-overview">
-                        <div class="control-room-card-header">
-                            <div>
-                                <h2 class="control-room-card-title">Staff Workload Overview</h2>
-                                <p class="control-room-card-copy">Compact workload heatmap for deliveries, pickups, follow-ups, and open task pressure.</p>
-                            </div>
+            @if($showStaffWorkloadSection)
+                <section class="control-room-card" id="staff-workload-overview">
+                    <div class="control-room-card-header">
+                        <div>
+                            <h2 class="control-room-card-title">Staff Workload Overview</h2>
+                            <p class="control-room-card-copy">Compact workload heatmap for deliveries, pickups, follow-ups, and open task pressure.</p>
                         </div>
-                        @if($staffWorkloadBoard->isNotEmpty())
-                            <table class="control-room-workload-table">
-                                <thead>
+                    </div>
+                    @if($staffWorkloadBoard->isNotEmpty())
+                        <table class="control-room-workload-table">
+                            <thead>
+                                <tr>
+                                    <th>Staff / Team</th>
+                                    <th>Deliveries</th>
+                                    <th>Pickups</th>
+                                    <th>Follow-ups</th>
+                                    <th>Tasks</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($staffWorkloadBoard as $row)
+                                    @php
+                                        $workloadTone = match ($row['status']) {
+                                            'Overloaded' => 'is-danger',
+                                            'Busy' => 'is-warning',
+                                            default => 'is-success',
+                                        };
+                                    @endphp
                                     <tr>
-                                        <th>Staff / Team</th>
-                                        <th>Deliveries</th>
-                                        <th>Pickups</th>
-                                        <th>Follow-ups</th>
-                                        <th>Tasks</th>
-                                        <th>Status</th>
+                                        <td>{{ $row['name'] }}</td>
+                                        <td>
+                                            <div class="control-room-table-meter">
+                                                <strong>{{ $row['deliveries'] }}</strong>
+                                                <div class="control-room-table-meter-bar">
+                                                    <span style="width: {{ max(min((int) round(($row['deliveries'] / max($staffWorkloadBoard->max('deliveries'), 1)) * 100), 100), 6) }}%;"></span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="control-room-table-meter">
+                                                <strong>{{ $row['pickups'] }}</strong>
+                                                <div class="control-room-table-meter-bar">
+                                                    <span style="width: {{ max(min((int) round(($row['pickups'] / max($staffWorkloadBoard->max('pickups'), 1)) * 100), 100), 6) }}%;"></span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="control-room-table-meter">
+                                                <strong>{{ $row['followups'] }}</strong>
+                                                <div class="control-room-table-meter-bar">
+                                                    <span style="width: {{ max(min((int) round(($row['followups'] / max($staffWorkloadBoard->max('followups'), 1)) * 100), 100), 6) }}%;"></span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="control-room-table-meter">
+                                                <strong>{{ $row['tasks'] }}</strong>
+                                                <div class="control-room-table-meter-bar">
+                                                    <span style="width: {{ max(min((int) round(($row['tasks'] / max($staffWorkloadBoard->max('tasks'), 1)) * 100), 100), 6) }}%;"></span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td><span class="control-room-status-pill {{ $workloadTone }}">{{ $row['status'] }}</span></td>
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach($staffWorkloadBoard as $row)
-                                        @php
-                                            $workloadTone = match ($row['status']) {
-                                                'Overloaded' => 'is-danger',
-                                                'Busy' => 'is-warning',
-                                                default => 'is-success',
-                                            };
-                                        @endphp
-                                        <tr>
-                                            <td>{{ $row['name'] }}</td>
-                                            <td>{{ $row['deliveries'] }}</td>
-                                            <td>{{ $row['pickups'] }}</td>
-                                            <td>{{ $row['followups'] }}</td>
-                                            <td>{{ $row['tasks'] }}</td>
-                                            <td><span class="control-room-status-pill {{ $workloadTone }}">{{ $row['status'] }}</span></td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
-                        @else
-                            <div class="rx-empty dashboard-empty">
-                                <div class="rx-empty-icon">{!! $dashboardIcon('customer') !!}</div>
-                                <strong>No staff workload data</strong>
-                                <span>Assignment load will appear here as soon as work is distributed.</span>
-                            </div>
-                        @endif
-                    </section>
-                @endif
+                                @endforeach
+                            </tbody>
+                        </table>
+                    @else
+                        <div class="rx-empty dashboard-empty">
+                            <div class="rx-empty-icon">{!! $dashboardIcon('customer') !!}</div>
+                            <strong>No staff workload data</strong>
+                            <span>Assignment load will appear here as soon as work is distributed.</span>
+                        </div>
+                    @endif
+                </section>
+            @endif
+        </div>
 
+        @if($showInventorySection || $showOrganizationAnalyticsSection)
+            <div class="control-room-grid">
                 @if($showInventorySection)
                     <section class="control-room-card">
                         <div class="control-room-card-header">
@@ -3393,7 +3626,7 @@
                     </section>
                 @endif
             </div>
-        </div>
+        @endif
 
         <section class="control-room-card" x-data="{ activityTab: 'all', feeds: @js($recentActivityFeeds) }" id="recent-ops">
             <div class="control-room-card-header">

@@ -530,7 +530,7 @@ class ReportController extends Controller
             ->get(['id', 'name', 'rentals_count']);
 
         $repeatCustomers = (clone $customerQuery)
-            ->having('rentals_count', '>', 1)
+            ->has('rentals', '>', 1)
             ->orderByDesc('rentals_count')
             ->limit(10)
             ->get(['id', 'name', 'rentals_count']);
