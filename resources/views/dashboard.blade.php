@@ -726,24 +726,55 @@
         ],
     ])->filter(fn ($item) => ($item['visible'] ?? true) && $dashboardWidgetEnabled($item['widget_key']))->sortBy(fn ($item) => $dashboardWidgetSort($item['widget_key']))->values();
 
+    $compactListLimit = 2;
     $recentSalesSummary = $dashboardWidgetEnabled('section_sales_overview') ? collect($recentSales ?? collect())->take(5) : collect();
     $recentRentalsSummary = $dashboardWidgetEnabled('section_recent_rentals') ? collect($recentRentals ?? collect())->take(6) : collect();
     $recentCustomersSummary = $dashboardWidgetEnabled('section_recent_customers') ? collect($recentCustomers ?? collect())->take(5) : collect();
     $recentPaymentsSummary = $dashboardWidgetEnabled('section_recent_payments') ? collect($recentPayments ?? collect())->take(5) : collect();
     $recentDeliveriesSummary = $dashboardWidgetEnabled('section_recent_deliveries') ? collect($recentDeliveries ?? collect())->take(5) : collect();
     $recentFollowUpsSummary = $dashboardWidgetEnabled('section_high_priority_followups') ? collect($recentFollowUps ?? collect())->take(5) : collect();
-    $recentActivitiesSummary = $dashboardWidgetEnabled('section_recent_activity') ? collect($recentActivities ?? collect())->take(8) : collect();
+    $recentActivitiesSummary = $dashboardWidgetEnabled('section_recent_activity') ? collect($recentActivities ?? collect())->take(6) : collect();
     $todayRenewalSummary = $dashboardWidgetEnabled('widget_today_renewals') ? collect($todayRenewalItems ?? collect())->take(5) : collect();
     $todayPickupSummary = $dashboardWidgetEnabled('widget_today_pickups') ? collect($todayPickupItems ?? collect())->take(5) : collect();
     $todayDeliverySummary = $dashboardWidgetEnabled('widget_today_deliveries') ? collect($todayDeliveryItems ?? collect())->take(5) : collect();
     $todayFollowUpSummary = $dashboardWidgetEnabled('widget_today_followups') ? collect($todayFollowUps ?? collect())->take(5) : collect();
     $pendingPaymentSummary = $dashboardWidgetEnabled('widget_pending_payments') ? collect($pendingPaymentItems ?? collect())->take(5) : collect();
     $highPriorityFollowUpSummary = $dashboardWidgetEnabled('section_high_priority_followups') ? collect($highPriorityFollowUps ?? collect())->take(5) : collect();
+    $todayRenewalSummaryVisible = $todayRenewalSummary->take($compactListLimit);
+    $todayRenewalSummaryHidden = $todayRenewalSummary->slice($compactListLimit)->values();
+    $todayPickupSummaryVisible = $todayPickupSummary->take($compactListLimit);
+    $todayPickupSummaryHidden = $todayPickupSummary->slice($compactListLimit)->values();
+    $todayDeliverySummaryVisible = $todayDeliverySummary->take($compactListLimit);
+    $todayDeliverySummaryHidden = $todayDeliverySummary->slice($compactListLimit)->values();
+    $todayFollowUpSummaryVisible = $todayFollowUpSummary->take($compactListLimit);
+    $todayFollowUpSummaryHidden = $todayFollowUpSummary->slice($compactListLimit)->values();
+    $pendingPaymentSummaryVisible = $pendingPaymentSummary->take($compactListLimit);
+    $pendingPaymentSummaryHidden = $pendingPaymentSummary->slice($compactListLimit)->values();
+    $recentDeliveriesSummaryVisible = $recentDeliveriesSummary->take($compactListLimit);
+    $recentDeliveriesSummaryHidden = $recentDeliveriesSummary->slice($compactListLimit)->values();
+    $highPriorityFollowUpSummaryVisible = $highPriorityFollowUpSummary->take($compactListLimit);
+    $highPriorityFollowUpSummaryHidden = $highPriorityFollowUpSummary->slice($compactListLimit)->values();
+    $recentActivitiesSummaryVisible = $recentActivitiesSummary->take(3);
+    $recentActivitiesSummaryHidden = $recentActivitiesSummary->slice(3)->values();
+    $recentRentalsSummaryVisible = $recentRentalsSummary->take($compactListLimit);
+    $recentRentalsSummaryHidden = $recentRentalsSummary->slice($compactListLimit)->values();
+    $recentCustomersSummaryVisible = $recentCustomersSummary->take($compactListLimit);
+    $recentCustomersSummaryHidden = $recentCustomersSummary->slice($compactListLimit)->values();
+    $recentPaymentsSummaryVisible = $recentPaymentsSummary->take($compactListLimit);
+    $recentPaymentsSummaryHidden = $recentPaymentsSummary->slice($compactListLimit)->values();
     $staffWorkloadSummary = collect($staffWorkloadRows ?? collect())->take(6);
     $partnerOperationalSummary = collect($partnerOperationalRows ?? collect())->take(5);
     $lowStockSummary = collect($lowStockProducts ?? collect())->take(5);
     $highUtilizationSummary = collect($highUtilizationProducts ?? collect())->take(5);
     $idleInventorySummary = collect($idleInventoryProducts ?? collect())->take(5);
+    $partnerOperationalSummaryVisible = $partnerOperationalSummary->take(3);
+    $partnerOperationalSummaryHidden = $partnerOperationalSummary->slice(3)->values();
+    $lowStockSummaryVisible = $lowStockSummary->take($compactListLimit);
+    $lowStockSummaryHidden = $lowStockSummary->slice($compactListLimit)->values();
+    $highUtilizationSummaryVisible = $highUtilizationSummary->take($compactListLimit);
+    $highUtilizationSummaryHidden = $highUtilizationSummary->slice($compactListLimit)->values();
+    $idleInventorySummaryVisible = $idleInventorySummary->take($compactListLimit);
+    $idleInventorySummaryHidden = $idleInventorySummary->slice($compactListLimit)->values();
     $dashboardQuickActions = collect(
         $isDeliveryFacingMenuRole
             ? [
@@ -1181,6 +1212,13 @@
         line-height: 1;
         color: var(--ph-color-text);
     }
+    .control-room-filter-dock {
+        display: flex;
+        justify-content: flex-end;
+    }
+    .control-room-filter-dock .dashboard-filters-card {
+        width: min(100%, 420px);
+    }
     .control-room-priority-grid {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1270,45 +1308,30 @@
     }
     .control-room-priority-status {
         margin: 0;
-        font-size: 10px;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 9px;
         font-weight: 700;
         color: var(--ph-color-primary);
     }
     .control-room-priority-note {
         margin: 0;
         color: var(--ph-color-text-soft);
-        font-size: 10px;
+        font-size: 9px;
         line-height: 1.25;
     }
     .control-room-priority-visuals {
-        display: grid;
-        gap: 4px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
         margin-top: auto;
     }
-    .control-room-sparkline {
-        width: 100%;
-        height: auto;
-        display: block;
-    }
-    .control-room-sparkline-track {
-        fill: none;
-        stroke: rgba(148, 163, 184, 0.2);
-        stroke-width: 1.2;
-        stroke-dasharray: 2 4;
-    }
-    .control-room-sparkline-line {
-        fill: none;
-        stroke: currentColor;
-        stroke-width: 2.2;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-    }
-    .control-room-priority-card.is-danger .control-room-sparkline-line { color: #ef4444; }
-    .control-room-priority-card.is-warning .control-room-sparkline-line { color: #d97706; }
-    .control-room-priority-card.is-info .control-room-sparkline-line { color: #2563eb; }
     .control-room-priority-meter {
         position: relative;
         min-height: 4px;
+        flex: 1 1 88px;
         overflow: hidden;
         border-radius: 999px;
         background: rgba(148, 163, 184, 0.16);
@@ -1329,10 +1352,31 @@
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        font-size: 10px;
+        font-size: 9px;
         font-weight: 700;
         color: var(--ph-color-primary);
         text-decoration: none;
+    }
+    .control-room-priority-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 18px;
+        padding: 3px 7px;
+        border-radius: 999px;
+        background: rgba(59, 130, 246, 0.1);
+        color: #2563eb;
+        font-size: 9px;
+        font-weight: 700;
+        line-height: 1;
+    }
+    .control-room-priority-card.is-danger .control-room-priority-badge {
+        background: rgba(239, 68, 68, 0.12);
+        color: #dc2626;
+    }
+    .control-room-priority-card.is-warning .control-room-priority-badge {
+        background: rgba(245, 158, 11, 0.14);
+        color: #b45309;
     }
     .control-room-executive-grid {
         display: grid;
@@ -1514,6 +1558,7 @@
     .control-room-upcoming-list,
     .control-room-activity-list {
         display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
     }
     .control-room-list-item {
@@ -1819,6 +1864,87 @@
         font-size: 9px;
         line-height: 1.2;
     }
+    .control-room-expandable {
+        display: grid;
+        gap: 6px;
+    }
+    .control-room-expandable summary {
+        list-style: none;
+        cursor: pointer;
+    }
+    .control-room-expandable summary::-webkit-details-marker {
+        display: none;
+    }
+    .control-room-expandable-trigger {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--ph-color-primary);
+        font-size: 10px;
+        font-weight: 700;
+    }
+    .control-room-finance-visual {
+        display: grid;
+        gap: 8px;
+    }
+    .control-room-finance-hero {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+    }
+    .control-room-finance-chip {
+        display: grid;
+        gap: 3px;
+        padding: 8px 9px;
+        border-radius: 12px;
+        background: #f8fbff;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+    }
+    .control-room-finance-chip span {
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: #6f84a2;
+    }
+    .control-room-finance-chip strong {
+        font-size: 15px;
+        line-height: 1;
+        color: var(--ph-color-text);
+    }
+    .control-room-finance-bars {
+        display: grid;
+        gap: 6px;
+    }
+    .control-room-finance-bar-row {
+        display: grid;
+        gap: 4px;
+    }
+    .control-room-finance-bar-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        color: var(--ph-color-text-soft);
+        font-size: 10px;
+    }
+    .control-room-finance-bar-track {
+        min-height: 8px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #eef4fb;
+    }
+    .control-room-finance-bar-track span {
+        display: block;
+        height: 8px;
+        border-radius: inherit;
+        background: linear-gradient(90deg, rgba(79, 70, 229, 0.84), rgba(59, 130, 246, 0.92));
+    }
+    .control-room-finance-bar-track.is-danger span {
+        background: linear-gradient(90deg, #f97316, #ef4444);
+    }
+    .control-room-finance-bar-track.is-success span {
+        background: linear-gradient(90deg, #22c55e, #16a34a);
+    }
     .control-room-metric-strips {
         display: grid;
         gap: 10px;
@@ -1891,6 +2017,13 @@
         .control-room-aging-legend {
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
+        .control-room-activity-list,
+        .control-room-finance-hero {
+            grid-template-columns: 1fr;
+        }
+        .dashboard-trend-vertical {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
     }
     @media (max-width: 720px) {
         .control-room-header,
@@ -1915,6 +2048,9 @@
         }
         .control-room-donut {
             margin: 0 auto;
+        }
+        .dashboard-trend-vertical {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
     }
     .dashboard-hero {
@@ -2095,9 +2231,9 @@
         color: var(--ph-color-text-soft);
         display: block;
         max-width: calc(100% - 46px);
-        font-size: 10px;
-        font-weight: 800;
-        letter-spacing: .08em;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: .07em;
         text-transform: uppercase;
         line-height: 1.25;
         overflow-wrap: anywhere;
@@ -2152,9 +2288,9 @@
     .dashboard-card-value {
         color: var(--ph-color-text);
         max-width: 100%;
-        font-size: 28px;
-        font-weight: 800;
-        line-height: 1.04;
+        font-size: 22px;
+        font-weight: 780;
+        line-height: 1.02;
         letter-spacing: -.04em;
         overflow-wrap: anywhere;
     }
@@ -2167,9 +2303,18 @@
     .dashboard-queue-copy,
     .dashboard-trend-copy {
         color: var(--ph-color-text-soft);
-        font-size: 11px;
-        line-height: 1.4;
+        font-size: 10px;
+        line-height: 1.32;
         overflow-wrap: anywhere;
+    }
+    .dashboard-kpi-card {
+        min-height: 122px;
+        padding: 13px 13px 12px;
+    }
+    .dashboard-priority-card,
+    .dashboard-sales-card {
+        min-height: 138px;
+        padding: 13px 13px 12px;
     }
     .dashboard-kpi-card.is-success .dashboard-kpi-icon,
     .dashboard-priority-card.is-success .dashboard-card-icon,
@@ -2452,14 +2597,14 @@
     .dashboard-widget-list,
     .dashboard-feed-list {
         display: grid;
-        gap: 10px;
+        gap: 6px;
     }
     .dashboard-widget-item,
     .dashboard-feed-item {
         display: grid;
-        gap: 6px;
+        gap: 3px;
         min-width: 0;
-        padding: 10px 0;
+        padding: 7px 0;
         border-top: 1px solid #e2e8f0;
     }
     .dashboard-widget-item:first-child,
@@ -2471,8 +2616,8 @@
     .dashboard-feed-item strong {
         display: block;
         color: #0f172a;
-        font-size: 12px;
-        line-height: 1.4;
+        font-size: 11px;
+        line-height: 1.32;
         overflow-wrap: anywhere;
     }
     .dashboard-widget-item span,
@@ -2481,8 +2626,8 @@
     .dashboard-feed-item small {
         display: block;
         color: #64748b;
-        font-size: 11px;
-        line-height: 1.45;
+        font-size: 10px;
+        line-height: 1.32;
         overflow-wrap: anywhere;
     }
     .dashboard-widget-eyebrow,
@@ -2534,7 +2679,7 @@
     .dashboard-trend-list,
     .dashboard-queue-list {
         display: grid;
-        gap: 10px;
+        gap: 8px;
     }
     .dashboard-overview-item,
     .dashboard-inline-item,
@@ -2543,7 +2688,7 @@
         justify-content: space-between;
         align-items: flex-start;
         gap: 12px;
-        padding: 12px 0;
+        padding: 9px 0;
         border-top: 1px solid #e2e8f0;
     }
     .dashboard-overview-item:first-child,
@@ -2570,9 +2715,105 @@
     .dashboard-rank-item span {
         display: block;
         color: #64748b;
-        font-size: 11px;
-        line-height: 1.45;
+        font-size: 10px;
+        line-height: 1.32;
         overflow-wrap: anywhere;
+    }
+    .dashboard-expandable {
+        margin-top: 4px;
+    }
+    .dashboard-expandable-summary {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        color: var(--ph-color-primary);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        list-style: none;
+    }
+    .dashboard-expandable-summary::-webkit-details-marker {
+        display: none;
+    }
+    .dashboard-expandable-content {
+        margin-top: 6px;
+        display: grid;
+        gap: 0;
+    }
+    .dashboard-feed-card .rx-card-copy,
+    .dashboard-widget-card .rx-card-copy,
+    .dashboard-trend-card .rx-card-copy {
+        font-size: 11px;
+        line-height: 1.35;
+    }
+    .dashboard-trend-vertical {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 10px;
+        align-items: end;
+    }
+    .dashboard-trend-column {
+        display: grid;
+        gap: 8px;
+        min-width: 0;
+    }
+    .dashboard-trend-column-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    .dashboard-trend-column-head strong {
+        color: #0f172a;
+        font-size: 12px;
+        line-height: 1.25;
+    }
+    .dashboard-trend-column-head span {
+        color: #64748b;
+        font-size: 9px;
+        line-height: 1.3;
+        text-align: right;
+    }
+    .dashboard-trend-bars {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+        align-items: end;
+        min-height: 118px;
+    }
+    .dashboard-trend-bar-wrap {
+        display: grid;
+        gap: 5px;
+        justify-items: center;
+    }
+    .dashboard-trend-bar {
+        width: 100%;
+        min-height: 8px;
+        border-radius: 12px 12px 4px 4px;
+    }
+    .dashboard-trend-bar.is-rental {
+        background: linear-gradient(180deg, rgba(79, 70, 229, 0.9), rgba(79, 70, 229, 0.48));
+    }
+    .dashboard-trend-bar.is-sales {
+        background: linear-gradient(180deg, rgba(14, 159, 75, 0.88), rgba(14, 159, 75, 0.44));
+    }
+    .dashboard-trend-bar.is-orders {
+        background: linear-gradient(180deg, rgba(148, 163, 184, 0.92), rgba(191, 219, 254, 0.54));
+    }
+    .dashboard-trend-bar-label {
+        font-size: 8px;
+        font-weight: 700;
+        color: #64748b;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+    }
+    .dashboard-trend-bar-value {
+        font-size: 9px;
+        color: #0f172a;
+        line-height: 1.3;
+        text-align: center;
     }
     .dashboard-rank-link {
         display: grid;
@@ -3075,6 +3316,9 @@
         .dashboard-logistics-label {
             font-size: 8.5px;
         }
+        .dashboard-trend-vertical {
+            grid-template-columns: 1fr;
+        }
     }
 </style>
 
@@ -3208,6 +3452,67 @@
             </div>
         </div>
 
+        <div class="control-room-filter-dock">
+            <details class="rx-card dashboard-filters-card">
+                <summary class="rx-card-header">
+                    <div>
+                        <h2 class="rx-card-title">Filters</h2>
+                        <p class="rx-card-copy">Date, city, fulfilment, and payment view.</p>
+                    </div>
+                    <span class="dashboard-filter-toggle" aria-hidden="true"></span>
+                </summary>
+                <div class="rx-card-body">
+                    <form method="GET" action="{{ $dashboardUrl }}" class="rx-form-grid">
+                        <div class="dashboard-filter-grid">
+                            <label class="rx-field">
+                                <span class="rx-label">From Date</span>
+                                <input type="date" name="from_date" value="{{ $fromDate ?? '' }}" class="rn-input" />
+                            </label>
+                            <label class="rx-field">
+                                <span class="rx-label">To Date</span>
+                                <input type="date" name="to_date" value="{{ $toDate ?? '' }}" class="rn-input" />
+                            </label>
+                            <label class="rx-field">
+                                <span class="rx-label">City</span>
+                                <select name="city" class="rn-input">
+                                    <option value="">All Cities</option>
+                                    @foreach($cities as $cityOption)
+                                        <option value="{{ $cityOption }}" @selected(($city ?? null) === $cityOption)>{{ $cityOption }}</option>
+                                    @endforeach
+                                </select>
+                            </label>
+                            <label class="rx-field">
+                                <span class="rx-label">Fulfilment</span>
+                                <select name="fulfilment_source" class="rn-input">
+                                    <option value="">All</option>
+                                    <option value="in_house" @selected(request('fulfilment_source') === 'in_house')>In-house</option>
+                                    <option value="vendor_supplied" @selected(request('fulfilment_source') === 'vendor_supplied')>Vendor supplied</option>
+                                </select>
+                            </label>
+                            <label class="rx-field">
+                                <span class="rx-label">Payment Status</span>
+                                <select name="payment_status" class="rn-input">
+                                    <option value="">All</option>
+                                    <option value="paid" @selected(request('payment_status') === 'paid')>Paid</option>
+                                    <option value="partial" @selected(request('payment_status') === 'partial')>Partial</option>
+                                    <option value="unpaid" @selected(request('payment_status') === 'unpaid')>Unpaid</option>
+                                </select>
+                            </label>
+                            <label class="rx-field">
+                                <span class="rx-label">Search</span>
+                                <input type="text" name="search" value="{{ $search ?? '' }}" placeholder="Customer, rental, phone" class="rn-input" />
+                            </label>
+                        </div>
+
+                        <div class="rx-actions">
+                            <button type="submit" class="rx-btn">Apply</button>
+                            <a href="{{ $safeRoute('dashboard') ?? $dashboardUrl }}" class="rx-btn-secondary">Reset</a>
+                        </div>
+                    </form>
+                </div>
+            </details>
+        </div>
+
         <div class="control-room-priority-grid">
             @foreach($controlRoomCards as $card)
                 @php $priorityTag = !empty($card['href']) ? 'a' : 'div'; @endphp
@@ -3215,19 +3520,16 @@
                     <div class="control-room-priority-top">
                         <div class="control-room-priority-copy">
                             <span class="control-room-priority-label">{{ $card['label'] }}</span>
-                            <p class="control-room-priority-status">{{ $card['status'] }}</p>
+                            <p class="control-room-priority-status">
+                                <span class="control-room-priority-badge">{{ ($card['tone'] ?? 'info') === 'red' ? 'Critical' : (($card['tone'] ?? 'info') === 'amber' ? 'Watch' : 'Stable') }}</span>
+                                <span>{{ $card['status'] }}</span>
+                            </p>
                         </div>
                         <span class="control-room-priority-icon">{!! $dashboardIcon($card['icon']) !!}</span>
                     </div>
                     <strong class="control-room-priority-value">{{ $card['value'] }}</strong>
                     <p class="control-room-priority-note">{{ $card['note'] }}</p>
                     <div class="control-room-priority-visuals">
-                        @if(!empty($card['sparkline']))
-                            <svg class="control-room-sparkline" viewBox="0 0 96 26" role="img" aria-label="{{ $card['label'] }} trend">
-                                <line class="control-room-sparkline-track" x1="0" y1="22" x2="96" y2="22"></line>
-                                <polyline class="control-room-sparkline-line" points="{{ $buildMiniSparkline($card['sparkline']) }}"></polyline>
-                            </svg>
-                        @endif
                         <div class="control-room-priority-meter">
                             <span style="width: {{ max((int) ($card['meter'] ?? 0), 6) }}%;"></span>
                         </div>
@@ -3333,34 +3635,31 @@
                         @endif
                     </div>
 
-                    <div class="control-room-card-header">
-                        <div>
-                            <h3 class="control-room-card-title">Top Customers with Dues</h3>
-                            <p class="control-room-card-copy">Customers carrying the highest open balance right now.</p>
-                        </div>
-                    </div>
-                    @if($topDuesCustomers->isNotEmpty())
-                        <div class="control-room-dues-list">
-                            @foreach($topDuesCustomers as $customerRow)
-                                <div class="control-room-list-item">
-                                    <div>
-                                        <strong>{{ $customerRow['label'] }}</strong>
-                                        <span>{{ number_format((int) ($customerRow['invoice_count'] ?? 0)) }} invoice(s)</span>
-                                        <small>{{ (int) ($customerRow['days_overdue'] ?? 0) > 0 ? $customerRow['days_overdue'] . ' day(s) overdue' : 'Not yet overdue' }}</small>
+                    <details class="control-room-expandable">
+                        <summary class="control-room-expandable-trigger">View Dues Breakdown <span aria-hidden="true">&rarr;</span></summary>
+                        @if($topDuesCustomers->isNotEmpty())
+                            <div class="control-room-dues-list">
+                                @foreach($topDuesCustomers as $customerRow)
+                                    <div class="control-room-list-item">
+                                        <div>
+                                            <strong>{{ $customerRow['label'] }}</strong>
+                                            <span>{{ number_format((int) ($customerRow['invoice_count'] ?? 0)) }} invoice(s)</span>
+                                            <small>{{ (int) ($customerRow['days_overdue'] ?? 0) > 0 ? $customerRow['days_overdue'] . ' day(s) overdue' : 'Not yet overdue' }}</small>
+                                        </div>
+                                        <div class="control-room-list-amount">
+                                            <strong>{{ $currency((float) ($customerRow['amount'] ?? 0)) }}</strong>
+                                        </div>
                                     </div>
-                                    <div class="control-room-list-amount">
-                                        <strong>{{ $currency((float) ($customerRow['amount'] ?? 0)) }}</strong>
-                                    </div>
-                                </div>
-                            @endforeach
-                        </div>
-                    @else
-                        <div class="rx-empty dashboard-empty">
-                            <div class="rx-empty-icon">{!! $dashboardIcon('payment') !!}</div>
-                            <strong>No dues concentration yet</strong>
-                            <span>Open invoice balances will surface here automatically.</span>
-                        </div>
-                    @endif
+                                @endforeach
+                            </div>
+                        @else
+                            <div class="rx-empty dashboard-empty">
+                                <div class="rx-empty-icon">{!! $dashboardIcon('payment') !!}</div>
+                                <strong>No dues concentration yet</strong>
+                                <span>Open invoice balances will surface here automatically.</span>
+                            </div>
+                        @endif
+                    </details>
                 @else
                     <div class="rx-empty dashboard-empty">
                         <div class="rx-empty-icon">{!! $dashboardIcon('payment') !!}</div>
@@ -3722,6 +4021,9 @@
                     <span>The selected activity stream will appear here as soon as new events arrive.</span>
                 </div>
             </div>
+            <div style="display:flex;justify-content:flex-end;">
+                <a href="{{ $dashboardUrl }}" class="control-room-card-link">View All Activities</a>
+            </div>
         </section>
 
         <section class="control-room-metric-strips">
@@ -3796,7 +4098,7 @@
                     <div class="rx-card-body">
                         @if($todayRenewalSummary->isNotEmpty())
                             <div class="dashboard-widget-list">
-                                @foreach($todayRenewalSummary as $rental)
+                                @foreach($todayRenewalSummaryVisible as $rental)
                                     <div class="dashboard-widget-item">
                                         <div class="dashboard-widget-eyebrow">
                                             <strong>Rental #{{ $rental->id }}</strong>
@@ -3812,6 +4114,29 @@
                                         </div>
                                     </div>
                                 @endforeach
+                                @if($todayRenewalSummaryHidden->isNotEmpty())
+                                    <details class="dashboard-expandable">
+                                        <summary class="dashboard-expandable-summary">Show {{ $todayRenewalSummaryHidden->count() }} more</summary>
+                                        <div class="dashboard-expandable-content">
+                                            @foreach($todayRenewalSummaryHidden as $rental)
+                                                <div class="dashboard-widget-item">
+                                                    <div class="dashboard-widget-eyebrow">
+                                                        <strong>Rental #{{ $rental->id }}</strong>
+                                                        <em>{{ optional($rental->end_date)?->format('d M Y') ?? 'Due soon' }}</em>
+                                                    </div>
+                                                    <span>{{ $rental->customer_name ?? optional($rental->customer)->name ?? 'Customer' }} • {{ $rental->phone ?? 'No phone' }}</span>
+                                                    <small>{{ optional($rental->product)->name ?? 'Product N/A' }} • {{ $currency((float) ($rental->rental_amount ?? 0)) }}</small>
+                                                    <div class="dashboard-widget-actions">
+                                                        <a href="{{ route('rentals.show', $rental) }}">Open</a>
+                                                        @if($rental->phone)
+                                                            <a href="tel:{{ preg_replace('/\s+/', '', (string) $rental->phone) }}">Call</a>
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </details>
+                                @endif
                             </div>
                         @else
                             <div class="rx-empty dashboard-empty">
@@ -3836,7 +4161,7 @@
                     <div class="rx-card-body">
                         @if($todayPickupSummary->isNotEmpty())
                             <div class="dashboard-widget-list">
-                                @foreach($todayPickupSummary as $task)
+                                @foreach($todayPickupSummaryVisible as $task)
                                     <div class="dashboard-widget-item">
                                         <div class="dashboard-widget-eyebrow">
                                             <strong>Pickup #{{ $task->id }}</strong>
@@ -3855,6 +4180,29 @@
                                         </div>
                                     </div>
                                 @endforeach
+                                @if($todayPickupSummaryHidden->isNotEmpty())
+                                    <details class="dashboard-expandable">
+                                        <summary class="dashboard-expandable-summary">Show {{ $todayPickupSummaryHidden->count() }} more</summary>
+                                        <div class="dashboard-expandable-content">
+                                            @foreach($todayPickupSummaryHidden as $task)
+                                                <div class="dashboard-widget-item">
+                                                    <div class="dashboard-widget-eyebrow">
+                                                        <strong>Pickup #{{ $task->id }}</strong>
+                                                        <em>{{ optional($task->scheduled_at)?->format('h:i A') ?? 'Today' }}</em>
+                                                    </div>
+                                                    <span>{{ $task->linkedCustomerName() ?: 'Customer pending' }} • {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
+                                                    <small>{{ $task->pickupOperationalLabel() }} • {{ $task->assignedUser?->name ?: $task->assignedStaff?->name ?: 'Unassigned' }}</small>
+                                                    <div class="dashboard-widget-actions">
+                                                        <a href="{{ route('deliveries.show', $task) }}">Open</a>
+                                                        @if($task->linkedCustomerPhone())
+                                                            <a href="tel:{{ preg_replace('/\s+/', '', (string) $task->linkedCustomerPhone()) }}">Call</a>
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </details>
+                                @endif
                             </div>
                         @else
                             <div class="rx-empty dashboard-empty">
@@ -3879,7 +4227,7 @@
                     <div class="rx-card-body">
                         @if($todayDeliverySummary->isNotEmpty())
                             <div class="dashboard-widget-list">
-                                @foreach($todayDeliverySummary as $task)
+                                @foreach($todayDeliverySummaryVisible as $task)
                                     <div class="dashboard-widget-item">
                                         <div class="dashboard-widget-eyebrow">
                                             <strong>Delivery #{{ $task->id }}</strong>
@@ -3898,6 +4246,32 @@
                                         </div>
                                     </div>
                                 @endforeach
+                                @if($todayDeliverySummaryHidden->isNotEmpty())
+                                    <details class="dashboard-expandable">
+                                        <summary class="dashboard-expandable-summary">Show {{ $todayDeliverySummaryHidden->count() }} more</summary>
+                                        <div class="dashboard-expandable-content">
+                                            @foreach($todayDeliverySummaryHidden as $task)
+                                                <div class="dashboard-widget-item">
+                                                    <div class="dashboard-widget-eyebrow">
+                                                        <strong>Delivery #{{ $task->id }}</strong>
+                                                        <em>{{ optional($task->scheduled_at)?->format('h:i A') ?? 'Today' }}</em>
+                                                    </div>
+                                                    <span>{{ $task->linkedCustomerName() ?: 'Customer pending' }} • {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
+                                                    <small>{{ $task->deliveryOperationalLabel() }} • {{ $task->assignedUser?->name ?: $task->assignedStaff?->name ?: 'Unassigned' }}</small>
+                                                    <div class="dashboard-widget-actions">
+                                                        <a href="{{ route('deliveries.show', $task) }}">Open</a>
+                                                        @if($task->linkedCustomerPhone())
+                                                            <a href="tel:{{ preg_replace('/\s+/', '', (string) $task->linkedCustomerPhone()) }}">Call</a>
+                                                        @endif
+                                                        @if($task->linkedCustomerMapUrl())
+                                                            <a href="{{ $task->linkedCustomerMapUrl() }}" target="_blank" rel="noopener">Open Map</a>
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </details>
+                                @endif
                             </div>
                         @else
                             <div class="rx-empty dashboard-empty">
@@ -3922,7 +4296,7 @@
                     <div class="rx-card-body">
                         @if($todayFollowUpSummary->isNotEmpty())
                             <div class="dashboard-widget-list">
-                                @foreach($todayFollowUpSummary as $followUp)
+                                @foreach($todayFollowUpSummaryVisible as $followUp)
                                     <div class="dashboard-widget-item">
                                         <div class="dashboard-widget-eyebrow">
                                             <strong>{{ $followUp->title }}</strong>
@@ -3941,6 +4315,32 @@
                                         </div>
                                     </div>
                                 @endforeach
+                                @if($todayFollowUpSummaryHidden->isNotEmpty())
+                                    <details class="dashboard-expandable">
+                                        <summary class="dashboard-expandable-summary">Show {{ $todayFollowUpSummaryHidden->count() }} more</summary>
+                                        <div class="dashboard-expandable-content">
+                                            @foreach($todayFollowUpSummaryHidden as $followUp)
+                                                <div class="dashboard-widget-item">
+                                                    <div class="dashboard-widget-eyebrow">
+                                                        <strong>{{ $followUp->title }}</strong>
+                                                        <em>{{ optional($followUp->due_at)?->format('h:i A') ?? 'Today' }}</em>
+                                                    </div>
+                                                    <span>{{ $followUp->callTargetName() ?: 'Contact pending' }} • {{ $followUp->callTargetPhone() ?: 'No phone' }}</span>
+                                                    <small>{{ $followUp->typeLabel() }} • {{ $followUp->priorityLabel() }}</small>
+                                                    <div class="dashboard-widget-actions">
+                                                        <a href="{{ route('communication-center.index', ['tab' => 'today']) }}">Open</a>
+                                                        @if($followUp->callTargetPhone())
+                                                            <a href="tel:{{ preg_replace('/\s+/', '', (string) $followUp->callTargetPhone()) }}">Call</a>
+                                                        @endif
+                                                        @if($followUp->whatsappUrl())
+                                                            <a href="{{ $followUp->whatsappUrl() }}" target="_blank" rel="noopener">WhatsApp</a>
+                                                        @endif
+                                                    </div>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </details>
+                                @endif
                             </div>
                         @else
                             <div class="rx-empty dashboard-empty">
@@ -3965,7 +4365,7 @@
                         <div class="rx-card-body">
                             @if($pendingPaymentSummary->isNotEmpty())
                                 <div class="dashboard-widget-list">
-                                    @foreach($pendingPaymentSummary as $invoice)
+                                    @foreach($pendingPaymentSummaryVisible as $invoice)
                                         <div class="dashboard-widget-item">
                                             <div class="dashboard-widget-eyebrow">
                                                 <strong>{{ $invoice->invoice_number }}</strong>
@@ -3984,6 +4384,32 @@
                                             </div>
                                         </div>
                                     @endforeach
+                                    @if($pendingPaymentSummaryHidden->isNotEmpty())
+                                        <details class="dashboard-expandable">
+                                            <summary class="dashboard-expandable-summary">Show {{ $pendingPaymentSummaryHidden->count() }} more</summary>
+                                            <div class="dashboard-expandable-content">
+                                                @foreach($pendingPaymentSummaryHidden as $invoice)
+                                                    <div class="dashboard-widget-item">
+                                                        <div class="dashboard-widget-eyebrow">
+                                                            <strong>{{ $invoice->invoice_number }}</strong>
+                                                            <em>{{ $currency($invoice->total_amount - $invoice->payments_sum_amount) }}</em>
+                                                        </div>
+                                                        <span>{{ optional($invoice->customer)->name ?? 'Customer' }} • {{ optional($invoice->customer)->phone ?? 'No phone' }}</span>
+                                                        <small>Due {{ optional($invoice->due_date)?->format('d M Y') ?? 'now' }}</small>
+                                                        <div class="dashboard-widget-actions">
+                                                            <a href="{{ route('invoices.show', $invoice) }}">Open</a>
+                                                            @if(optional($invoice->customer)->phone)
+                                                                <a href="tel:{{ preg_replace('/\s+/', '', (string) $invoice->customer->phone) }}">Call</a>
+                                                            @endif
+                                                            @if(method_exists($invoice, 'whatsappReminderUrl') && $invoice->whatsappReminderUrl())
+                                                                <a href="{{ $invoice->whatsappReminderUrl() }}" target="_blank" rel="noopener">WhatsApp</a>
+                                                            @endif
+                                                        </div>
+                                                    </div>
+                                                @endforeach
+                                            </div>
+                                        </details>
+                                    @endif
                                 </div>
                             @else
                                 <div class="rx-empty dashboard-empty">
@@ -3998,76 +4424,6 @@
             </div>
         </div>
     </section>
-
-    <details class="rx-card dashboard-filters-card" open>
-        <summary class="rx-card-header">
-            <div>
-                <h2 class="rx-card-title">Filters</h2>
-                <p class="rx-card-copy">Keep dashboard links and drilldowns aligned to one operational view.</p>
-            </div>
-            <span class="dashboard-filter-toggle" aria-hidden="true"></span>
-        </summary>
-        <div class="rx-card-body">
-            <form method="GET" action="{{ $dashboardUrl }}" class="rx-form-grid">
-                <div class="dashboard-filter-grid">
-                    <label class="rx-field">
-                        <span class="rx-label">Search</span>
-                        <input type="text" name="search" value="{{ $search ?? '' }}" placeholder="Customer, rental, phone" class="rn-input" />
-                    </label>
-                    <label class="rx-field">
-                        <span class="rx-label">City</span>
-                        <select name="city" class="rn-input">
-                            <option value="">All Cities</option>
-                            @foreach($cities as $cityOption)
-                                <option value="{{ $cityOption }}" @selected(($city ?? null) === $cityOption)>{{ $cityOption }}</option>
-                            @endforeach
-                        </select>
-                    </label>
-                    <label class="rx-field">
-                        <span class="rx-label">Vendor</span>
-                        <select name="vendor_id" class="rn-input">
-                            <option value="">All Vendors</option>
-                            @foreach($vendors as $vendor)
-                                <option value="{{ $vendor->id }}" @selected((string) ($vendorId ?? '') === (string) $vendor->id)>{{ $vendor->name }}</option>
-                            @endforeach
-                        </select>
-                    </label>
-                    <label class="rx-field">
-                        <span class="rx-label">Warehouse</span>
-                        <select name="warehouse_id" class="rn-input">
-                            <option value="">All Warehouses</option>
-                            @foreach($warehouses as $warehouse)
-                                <option value="{{ $warehouse->id }}" @selected((string) ($warehouseId ?? '') === (string) $warehouse->id)>{{ $warehouse->name }}</option>
-                            @endforeach
-                        </select>
-                    </label>
-                    <label class="rx-field">
-                        <span class="rx-label">From Date</span>
-                        <input type="date" name="from_date" value="{{ $fromDate ?? '' }}" class="rn-input" />
-                    </label>
-                    <label class="rx-field">
-                        <span class="rx-label">To Date</span>
-                        <input type="date" name="to_date" value="{{ $toDate ?? '' }}" class="rn-input" />
-                    </label>
-                    <label class="rx-field">
-                        <span class="rx-label">Sort</span>
-                        <select name="sort_by" class="rn-input">
-                            <option value="priority" @selected(($sortBy ?? 'priority') === 'priority')>Priority</option>
-                            <option value="latest" @selected(($sortBy ?? '') === 'latest')>Newest First</option>
-                            <option value="oldest" @selected(($sortBy ?? '') === 'oldest')>Oldest First</option>
-                            <option value="amount_desc" @selected(($sortBy ?? '') === 'amount_desc')>Amount High-Low</option>
-                            <option value="amount_asc" @selected(($sortBy ?? '') === 'amount_asc')>Amount Low-High</option>
-                        </select>
-                    </label>
-                </div>
-
-                <div class="rx-actions">
-                    <button type="submit" class="rx-btn">Apply Filters</button>
-                    <a href="{{ $safeRoute('dashboard') ?? $dashboardUrl }}" class="rx-btn-secondary">Reset</a>
-                </div>
-            </form>
-        </div>
-    </details>
 
     @if($primaryPriorityCards->isNotEmpty() || ($showSalesOperationsSection && $salesCards->isNotEmpty()))
     <section class="dashboard-main-grid">
@@ -4312,7 +4668,7 @@
             <div class="rx-card-body">
                 @if($partnerOperationalSummary->isNotEmpty())
                     <div class="dashboard-feed-list">
-                        @foreach($partnerOperationalSummary as $partner)
+                        @foreach($partnerOperationalSummaryVisible as $partner)
                             <div class="dashboard-feed-item">
                                 <div class="dashboard-feed-title">
                                     <strong>{{ $partner['name'] }}</strong>
@@ -4328,6 +4684,29 @@
                                 </div>
                             </div>
                         @endforeach
+                        @if($partnerOperationalSummaryHidden->isNotEmpty())
+                            <details class="dashboard-expandable">
+                                <summary class="dashboard-expandable-summary">Show {{ $partnerOperationalSummaryHidden->count() }} more</summary>
+                                <div class="dashboard-expandable-content">
+                                    @foreach($partnerOperationalSummaryHidden as $partner)
+                                        <div class="dashboard-feed-item">
+                                            <div class="dashboard-feed-title">
+                                                <strong>{{ $partner['name'] }}</strong>
+                                                <span class="dashboard-role-chip">{{ $partner['active_clients_count'] }} clients</span>
+                                            </div>
+                                            <span>{{ $partner['open_rentals_count'] }} open rentals • {{ $partner['active_sales_count'] }} sales</span>
+                                            <small>{{ $partner['renewal_followups_count'] }} renewal follow-ups • {{ $partner['payment_followups_count'] }} payment follow-ups</small>
+                                            <div class="dashboard-feed-links">
+                                                <a href="{{ route('business-partners.show', $partner['id']) }}">Open</a>
+                                                @if(!empty($partner['phone']))
+                                                    <a href="tel:{{ preg_replace('/\s+/', '', (string) $partner['phone']) }}">Call</a>
+                                                @endif
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </details>
+                        @endif
                     </div>
                 @else
                     <div class="rx-empty dashboard-empty">
@@ -4358,8 +4737,16 @@
                             <strong>Low stock alerts</strong>
                             <em>{{ $lowStockSummary->count() }}</em>
                         </div>
-                        @if($lowStockSummary->isNotEmpty())
-                            <small>{{ $lowStockSummary->map(fn ($product) => $product->name . ' (' . $product->available_quantity . '/' . $product->total_quantity . ')')->implode(', ') }}</small>
+                        @if($lowStockSummaryVisible->isNotEmpty())
+                            <small>{{ $lowStockSummaryVisible->map(fn ($product) => $product->name . ' (' . $product->available_quantity . '/' . $product->total_quantity . ')')->implode(', ') }}</small>
+                            @if($lowStockSummaryHidden->isNotEmpty())
+                                <details class="dashboard-expandable">
+                                    <summary class="dashboard-expandable-summary">Show {{ $lowStockSummaryHidden->count() }} more</summary>
+                                    <div class="dashboard-expandable-content">
+                                        <small>{{ $lowStockSummaryHidden->map(fn ($product) => $product->name . ' (' . $product->available_quantity . '/' . $product->total_quantity . ')')->implode(', ') }}</small>
+                                    </div>
+                                </details>
+                            @endif
                         @else
                             <small>No immediate low-stock pressure.</small>
                         @endif
@@ -4369,8 +4756,16 @@
                             <strong>High utilization</strong>
                             <em>{{ $highUtilizationSummary->count() }}</em>
                         </div>
-                        @if($highUtilizationSummary->isNotEmpty())
-                            <small>{{ $highUtilizationSummary->map(fn ($product) => $product->name . ' (' . max(0, (int) $product->total_quantity - (int) $product->available_quantity) . '/' . $product->total_quantity . ' out)')->implode(', ') }}</small>
+                        @if($highUtilizationSummaryVisible->isNotEmpty())
+                            <small>{{ $highUtilizationSummaryVisible->map(fn ($product) => $product->name . ' (' . max(0, (int) $product->total_quantity - (int) $product->available_quantity) . '/' . $product->total_quantity . ' out)')->implode(', ') }}</small>
+                            @if($highUtilizationSummaryHidden->isNotEmpty())
+                                <details class="dashboard-expandable">
+                                    <summary class="dashboard-expandable-summary">Show {{ $highUtilizationSummaryHidden->count() }} more</summary>
+                                    <div class="dashboard-expandable-content">
+                                        <small>{{ $highUtilizationSummaryHidden->map(fn ($product) => $product->name . ' (' . max(0, (int) $product->total_quantity - (int) $product->available_quantity) . '/' . $product->total_quantity . ' out)')->implode(', ') }}</small>
+                                    </div>
+                                </details>
+                            @endif
                         @else
                             <small>No high-utilization products flagged right now.</small>
                         @endif
@@ -4380,8 +4775,16 @@
                             <strong>Idle inventory</strong>
                             <em>{{ $idleInventorySummary->count() }}</em>
                         </div>
-                        @if($idleInventorySummary->isNotEmpty())
-                            <small>{{ $idleInventorySummary->map(fn ($product) => $product->name . ' (' . $product->available_quantity . ' available)')->implode(', ') }}</small>
+                        @if($idleInventorySummaryVisible->isNotEmpty())
+                            <small>{{ $idleInventorySummaryVisible->map(fn ($product) => $product->name . ' (' . $product->available_quantity . ' available)')->implode(', ') }}</small>
+                            @if($idleInventorySummaryHidden->isNotEmpty())
+                                <details class="dashboard-expandable">
+                                    <summary class="dashboard-expandable-summary">Show {{ $idleInventorySummaryHidden->count() }} more</summary>
+                                    <div class="dashboard-expandable-content">
+                                        <small>{{ $idleInventorySummaryHidden->map(fn ($product) => $product->name . ' (' . $product->available_quantity . ' available)')->implode(', ') }}</small>
+                                    </div>
+                                </details>
+                            @endif
                         @else
                             <small>No idle stock signals at the moment.</small>
                         @endif
@@ -4410,7 +4813,7 @@
             <div class="rx-card-body">
                 @if($recentActivitiesSummary->isNotEmpty())
                     <div class="dashboard-feed-list">
-                        @foreach($recentActivitiesSummary as $activity)
+                        @foreach($recentActivitiesSummaryVisible as $activity)
                             <div class="dashboard-feed-item">
                                 <div class="dashboard-feed-meta">
                                     <strong>{{ \Illuminate\Support\Str::headline(str_replace('.', ' ', (string) $activity->action)) }}</strong>
@@ -4420,6 +4823,23 @@
                                 <small>{{ $activity->user?->name ?: 'System' }}</small>
                             </div>
                         @endforeach
+                        @if($recentActivitiesSummaryHidden->isNotEmpty())
+                            <details class="dashboard-expandable">
+                                <summary class="dashboard-expandable-summary">Show {{ $recentActivitiesSummaryHidden->count() }} more</summary>
+                                <div class="dashboard-expandable-content">
+                                    @foreach($recentActivitiesSummaryHidden as $activity)
+                                        <div class="dashboard-feed-item">
+                                            <div class="dashboard-feed-meta">
+                                                <strong>{{ \Illuminate\Support\Str::headline(str_replace('.', ' ', (string) $activity->action)) }}</strong>
+                                                <em>{{ optional($activity->created_at)?->diffForHumans() }}</em>
+                                            </div>
+                                            <span>{{ $activity->description ?: 'Activity recorded in the operational timeline.' }}</span>
+                                            <small>{{ $activity->user?->name ?: 'System' }}</small>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </details>
+                        @endif
                     </div>
                 @else
                     <div class="rx-empty dashboard-empty">
@@ -4446,7 +4866,7 @@
             <div class="rx-card-body">
                 @if($recentDeliveriesSummary->isNotEmpty())
                     <div class="dashboard-feed-list">
-                        @foreach($recentDeliveriesSummary as $task)
+                        @foreach($recentDeliveriesSummaryVisible as $task)
                             <div class="dashboard-feed-item">
                                 <div class="dashboard-feed-title">
                                     <strong>{{ ucfirst((string) $task->type) }} #{{ $task->id }}</strong>
@@ -4465,6 +4885,32 @@
                                 </div>
                             </div>
                         @endforeach
+                        @if($recentDeliveriesSummaryHidden->isNotEmpty())
+                            <details class="dashboard-expandable">
+                                <summary class="dashboard-expandable-summary">Show {{ $recentDeliveriesSummaryHidden->count() }} more</summary>
+                                <div class="dashboard-expandable-content">
+                                    @foreach($recentDeliveriesSummaryHidden as $task)
+                                        <div class="dashboard-feed-item">
+                                            <div class="dashboard-feed-title">
+                                                <strong>{{ ucfirst((string) $task->type) }} #{{ $task->id }}</strong>
+                                                <span class="rx-badge {{ $statusBadgeClass($task->pickupOperationalStatus()) }}">{{ $task->type === 'pickup' ? $task->pickupOperationalLabel() : \Illuminate\Support\Str::headline((string) $task->status) }}</span>
+                                            </div>
+                                            <span>{{ $task->linkedCustomerName() }} • {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
+                                            <small>{{ optional($task->scheduled_at)?->format('d M, h:i A') ?? 'Schedule pending' }} • {{ $task->assignedUser?->name ?: $task->assignedStaff?->name ?: 'Unassigned' }}</small>
+                                            <div class="dashboard-feed-links">
+                                                <a href="{{ route('deliveries.show', $task) }}">Open</a>
+                                                @if($task->linkedCustomerPhone())
+                                                    <a href="tel:{{ preg_replace('/\s+/', '', (string) $task->linkedCustomerPhone()) }}">Call</a>
+                                                @endif
+                                                @if($task->linkedCustomerMapUrl())
+                                                    <a href="{{ $task->linkedCustomerMapUrl() }}" target="_blank" rel="noopener">Open Map</a>
+                                                @endif
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </details>
+                        @endif
                     </div>
                 @else
                     <div class="rx-empty dashboard-empty">
@@ -4491,7 +4937,7 @@
             <div class="rx-card-body">
                 @if($highPriorityFollowUpSummary->isNotEmpty())
                     <div class="dashboard-feed-list">
-                        @foreach($highPriorityFollowUpSummary as $followUp)
+                        @foreach($highPriorityFollowUpSummaryVisible as $followUp)
                             <div class="dashboard-feed-item">
                                 <div class="dashboard-feed-title">
                                     <strong>{{ $followUp->title }}</strong>
@@ -4510,6 +4956,32 @@
                                 </div>
                             </div>
                         @endforeach
+                        @if($highPriorityFollowUpSummaryHidden->isNotEmpty())
+                            <details class="dashboard-expandable">
+                                <summary class="dashboard-expandable-summary">Show {{ $highPriorityFollowUpSummaryHidden->count() }} more</summary>
+                                <div class="dashboard-expandable-content">
+                                    @foreach($highPriorityFollowUpSummaryHidden as $followUp)
+                                        <div class="dashboard-feed-item">
+                                            <div class="dashboard-feed-title">
+                                                <strong>{{ $followUp->title }}</strong>
+                                                <span class="rx-badge {{ $statusBadgeClass($followUp->effectiveStatus()) }}">{{ $followUp->priorityLabel() }}</span>
+                                            </div>
+                                            <span>{{ $followUp->callTargetName() ?: 'Contact pending' }} • {{ $followUp->callTargetPhone() ?: 'No phone' }}</span>
+                                            <small>{{ $followUp->typeLabel() }} • {{ optional($followUp->due_at)?->format('d M, h:i A') ?? 'Due now' }}</small>
+                                            <div class="dashboard-feed-links">
+                                                <a href="{{ route('communication-center.index', ['priority' => 'high']) }}">Open</a>
+                                                @if($followUp->callTargetPhone())
+                                                    <a href="tel:{{ preg_replace('/\s+/', '', (string) $followUp->callTargetPhone()) }}">Call</a>
+                                                @endif
+                                                @if($followUp->whatsappUrl())
+                                                    <a href="{{ $followUp->whatsappUrl() }}" target="_blank" rel="noopener">WhatsApp</a>
+                                                @endif
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </details>
+                        @endif
                     </div>
                 @else
                     <div class="rx-empty dashboard-empty">
@@ -4533,20 +5005,65 @@
                 </div>
             </div>
             <div class="rx-card-body">
-                <div class="dashboard-finance-grid">
-                    @foreach($financeCards as $card)
-                        @php $tag = !empty($card['href']) ? 'a' : 'div'; @endphp
-                        <{{ $tag }} @if(!empty($card['href'])) href="{{ $card['href'] }}" @endif class="dashboard-finance-card {{ $toneCardClass($card['tone'] ?? null) }}">
-                            <div class="dashboard-card-head">
-                                <span class="dashboard-card-label">{{ $card['label'] }}</span>
-                                <span class="dashboard-card-icon">{!! $dashboardIcon($card['icon']) !!}</span>
+                <div class="control-room-finance-visual">
+                    <div class="control-room-finance-hero">
+                        <div class="control-room-finance-chip">
+                            <span>Collections</span>
+                            <strong>{{ $compactCurrency($paymentsReceivedThisMonthAmount) }}</strong>
+                        </div>
+                        <div class="control-room-finance-chip">
+                            <span>Dues</span>
+                            <strong>{{ $compactCurrency($outstandingDueAmountValue) }}</strong>
+                        </div>
+                        <div class="control-room-finance-chip">
+                            <span>Paid / Unpaid</span>
+                            <strong>{{ $totalBilledAmountValue > 0 ? round((($totalBilledAmountValue - $outstandingDueAmountValue) / max($totalBilledAmountValue, 1)) * 100) : 0 }}%</strong>
+                        </div>
+                    </div>
+                    <div class="control-room-finance-bars">
+                        <div class="control-room-finance-bar-row">
+                            <div class="control-room-finance-bar-head">
+                                <span>Collections vs Dues</span>
+                                <span>{{ $currency($paymentsReceivedThisMonthAmount) }} vs {{ $currency($outstandingDueAmountValue) }}</span>
                             </div>
-                            <div class="dashboard-card-value">{{ $card['value'] }}</div>
-                            @if(!empty($card['note']))
-                                <div class="dashboard-card-subcopy">{{ $card['note'] }}</div>
-                            @endif
-                        </{{ $tag }}>
-                    @endforeach
+                            <div class="control-room-finance-bar-track">
+                                <span style="width: {{ max(min((int) round(($paymentsReceivedThisMonthAmount / max($paymentsReceivedThisMonthAmount + $outstandingDueAmountValue, 1)) * 100), 100), 6) }}%;"></span>
+                            </div>
+                        </div>
+                        <div class="control-room-finance-bar-row">
+                            <div class="control-room-finance-bar-head">
+                                <span>Paid Invoice Mix</span>
+                                <span>{{ $currency(max($totalBilledAmountValue - $outstandingDueAmountValue, 0)) }} collected</span>
+                            </div>
+                            <div class="control-room-finance-bar-track is-success">
+                                <span style="width: {{ $totalBilledAmountValue > 0 ? max(min((int) round(((max($totalBilledAmountValue - $outstandingDueAmountValue, 0)) / max($totalBilledAmountValue, 1)) * 100), 100), 6) : 6 }}%;"></span>
+                            </div>
+                        </div>
+                        <div class="control-room-finance-bar-row">
+                            <div class="control-room-finance-bar-head">
+                                <span>Overdue Exposure</span>
+                                <span>{{ number_format($overdueInvoiceCountValue) }} overdue invoices</span>
+                            </div>
+                            <div class="control-room-finance-bar-track is-danger">
+                                <span style="width: {{ $openInvoiceCountValue > 0 ? max(min((int) round(($overdueInvoiceCountValue / max($openInvoiceCountValue, 1)) * 100), 100), 6) : 6 }}%;"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="dashboard-finance-grid">
+                        @foreach($financeCards as $card)
+                            @php $tag = !empty($card['href']) ? 'a' : 'div'; @endphp
+                            <{{ $tag }} @if(!empty($card['href'])) href="{{ $card['href'] }}" @endif class="dashboard-finance-card {{ $toneCardClass($card['tone'] ?? null) }}">
+                                <div class="dashboard-card-head">
+                                    <span class="dashboard-card-label">{{ $card['label'] }}</span>
+                                    <span class="dashboard-card-icon">{!! $dashboardIcon($card['icon']) !!}</span>
+                                </div>
+                                <div class="dashboard-card-value">{{ $card['value'] }}</div>
+                                @if(!empty($card['note']))
+                                    <div class="dashboard-card-subcopy">{{ $card['note'] }}</div>
+                                @endif
+                            </{{ $tag }}>
+                        @endforeach
+                    </div>
                 </div>
             </div>
         </section>
@@ -4567,7 +5084,7 @@
             <div class="rx-card-body">
                 @if($recentRentalsSummary->isNotEmpty())
                     <div class="dashboard-overview-list">
-                        @foreach($recentRentalsSummary as $rental)
+                        @foreach($recentRentalsSummaryVisible as $rental)
                             <div class="dashboard-overview-item">
                                 <div>
                                     <strong>Rental #{{ $rental->id }}</strong>
@@ -4580,6 +5097,26 @@
                                 </div>
                             </div>
                         @endforeach
+                        @if($recentRentalsSummaryHidden->isNotEmpty())
+                            <details class="dashboard-expandable">
+                                <summary class="dashboard-expandable-summary">Show {{ $recentRentalsSummaryHidden->count() }} more</summary>
+                                <div class="dashboard-expandable-content">
+                                    @foreach($recentRentalsSummaryHidden as $rental)
+                                        <div class="dashboard-overview-item">
+                                            <div>
+                                                <strong>Rental #{{ $rental->id }}</strong>
+                                                <span>{{ $rental->customer_name ?? optional($rental->customer)->name ?? 'Customer' }}</span>
+                                                <small>{{ optional($rental->product)->name ?? 'Product N/A' }} | {{ optional($rental->start_date)->format('d M Y') ?? 'Date N/A' }}</small>
+                                            </div>
+                                            <div style="text-align:right;">
+                                                <span class="rx-badge {{ $statusBadgeClass($rental->status ?? null) }}">{{ \Illuminate\Support\Str::headline((string) ($rental->status ?? 'open')) }}</span>
+                                                <small>{{ $currency($rental->rental_amount ?? 0) }}</small>
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </details>
+                        @endif
                     </div>
                 @else
                     <div class="rx-empty dashboard-empty">
@@ -4604,7 +5141,7 @@
             <div class="rx-card-body">
                 @if($recentCustomersSummary->isNotEmpty())
                     <div class="dashboard-overview-list">
-                        @foreach($recentCustomersSummary as $customer)
+                        @foreach($recentCustomersSummaryVisible as $customer)
                             <div class="dashboard-overview-item">
                                 <div>
                                     <strong>{{ $customer->name }}</strong>
@@ -4614,6 +5151,23 @@
                                 <span class="rx-badge">Customer</span>
                             </div>
                         @endforeach
+                        @if($recentCustomersSummaryHidden->isNotEmpty())
+                            <details class="dashboard-expandable">
+                                <summary class="dashboard-expandable-summary">Show {{ $recentCustomersSummaryHidden->count() }} more</summary>
+                                <div class="dashboard-expandable-content">
+                                    @foreach($recentCustomersSummaryHidden as $customer)
+                                        <div class="dashboard-overview-item">
+                                            <div>
+                                                <strong>{{ $customer->name }}</strong>
+                                                <span>{{ $customer->phone ?? 'No phone' }}</span>
+                                                <small>{{ $customer->city ?? 'No city' }}</small>
+                                            </div>
+                                            <span class="rx-badge">Customer</span>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </details>
+                        @endif
                     </div>
                 @else
                     <div class="rx-empty dashboard-empty">
@@ -4639,7 +5193,7 @@
             <div class="rx-card-body">
                 @if($recentPaymentsSummary->isNotEmpty())
                     <div class="dashboard-overview-list">
-                        @foreach($recentPaymentsSummary as $payment)
+                        @foreach($recentPaymentsSummaryVisible as $payment)
                             <div class="dashboard-overview-item">
                                 <div>
                                     <strong>{{ optional($payment->customer)->name ?? 'Customer' }}</strong>
@@ -4649,6 +5203,23 @@
                                 <small>{{ $currency($payment->amount ?? 0) }}</small>
                             </div>
                         @endforeach
+                        @if($recentPaymentsSummaryHidden->isNotEmpty())
+                            <details class="dashboard-expandable">
+                                <summary class="dashboard-expandable-summary">Show {{ $recentPaymentsSummaryHidden->count() }} more</summary>
+                                <div class="dashboard-expandable-content">
+                                    @foreach($recentPaymentsSummaryHidden as $payment)
+                                        <div class="dashboard-overview-item">
+                                            <div>
+                                                <strong>{{ optional($payment->customer)->name ?? 'Customer' }}</strong>
+                                                <span>{{ optional($payment->invoice)->invoice_number ?? 'Payment entry' }}</span>
+                                                <small>{{ optional($payment->payment_date)->format('d M Y') ?? 'Date N/A' }}</small>
+                                            </div>
+                                            <small>{{ $currency($payment->amount ?? 0) }}</small>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </details>
+                        @endif
                     </div>
                 @elseif($recentSalesSummary->isNotEmpty())
                     <div class="dashboard-overview-list">
@@ -4904,18 +5475,32 @@
             </div>
             <div class="rx-card-body">
                 @if($monthlyTrendRows->isNotEmpty())
-                    <div class="dashboard-trend-list">
+                    @php
+                        $ordersTrendMax = max(array_merge([1], $monthlyTrendRows->pluck('total_orders')->map(fn ($value) => (float) $value)->all()));
+                    @endphp
+                    <div class="dashboard-trend-vertical">
                         @foreach($monthlyTrendRows as $row)
-                            <div class="dashboard-trend-row">
-                                <div class="dashboard-trend-head">
-                                    <span>{{ $row['label'] ?? '-' }}</span>
-                                    <span>{{ $currency($row['rental_total'] ?? 0) }} rental | {{ $currency($row['sales_total'] ?? 0) }} sales</span>
+                            <div class="dashboard-trend-column">
+                                <div class="dashboard-trend-column-head">
+                                    <strong>{{ \Illuminate\Support\Str::replace(' 2026', '', $row['label'] ?? '-') }}</strong>
+                                    <span>{{ $currency($row['rental_total'] ?? 0) }} • {{ $currency($row['sales_total'] ?? 0) }}</span>
                                 </div>
-                                <div class="dashboard-trend-pair">
-                                    <small class="dashboard-trend-copy">Rentals</small>
-                                    <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['rental_total'] ?? 0)) / $trendMax) * 100, 1) }}%;background:var(--ph-color-primary);"></div></div>
-                                    <small class="dashboard-trend-copy">Sales</small>
-                                    <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['sales_total'] ?? 0)) / $trendMax) * 100, 1) }}%;background:var(--ph-color-success);"></div></div>
+                                <div class="dashboard-trend-bars">
+                                    <div class="dashboard-trend-bar-wrap">
+                                        <div class="dashboard-trend-bar is-rental" style="height:{{ max(8, round((((float) ($row['rental_total'] ?? 0)) / max($trendMax, 1)) * 104, 1)) }}px;"></div>
+                                        <span class="dashboard-trend-bar-label">R</span>
+                                        <span class="dashboard-trend-bar-value">{{ $compactCurrency($row['rental_total'] ?? 0) }}</span>
+                                    </div>
+                                    <div class="dashboard-trend-bar-wrap">
+                                        <div class="dashboard-trend-bar is-sales" style="height:{{ max(8, round((((float) ($row['sales_total'] ?? 0)) / max($trendMax, 1)) * 104, 1)) }}px;"></div>
+                                        <span class="dashboard-trend-bar-label">S</span>
+                                        <span class="dashboard-trend-bar-value">{{ $compactCurrency($row['sales_total'] ?? 0) }}</span>
+                                    </div>
+                                    <div class="dashboard-trend-bar-wrap">
+                                        <div class="dashboard-trend-bar is-orders" style="height:{{ max(8, round((((float) ($row['total_orders'] ?? 0)) / max($ordersTrendMax, 1)) * 104, 1)) }}px;"></div>
+                                        <span class="dashboard-trend-bar-label">O</span>
+                                        <span class="dashboard-trend-bar-value">{{ number_format((int) ($row['total_orders'] ?? 0)) }}</span>
+                                    </div>
                                 </div>
                             </div>
                         @endforeach
@@ -4939,48 +5524,6 @@
             </div>
             <div class="rx-card-body">
                 <div class="dashboard-overview-list">
-                    <div class="dashboard-inline-item">
-                        <div>
-                            <strong>Rental Available</strong>
-                            <small>Tracked rental assets ready to dispatch</small>
-                        </div>
-                        <div style="text-align:right;">
-                            <strong>{{ $availableRentalAssetsCount }}</strong>
-                            @if($availableRentalAssetsUrl)
-                                <small><a href="{{ $availableRentalAssetsUrl }}" style="color:var(--ph-color-primary);text-decoration:none;">Open rental assets</a></small>
-                            @elseif($inventoryUrl)
-                                <small><a href="{{ $inventoryUrl }}" style="color:var(--ph-color-primary);text-decoration:none;">Inventory dashboard</a></small>
-                            @endif
-                        </div>
-                    </div>
-                    <div class="dashboard-inline-item">
-                        <div>
-                            <strong>Sale Stock Available</strong>
-                            <small>Quantity-based sellable stock</small>
-                        </div>
-                        <div style="text-align:right;">
-                            <strong>{{ $availableSaleUnitsCount }}</strong>
-                            @if($productsIndexUrl)
-                                <small><a href="{{ $productsIndexUrl }}" style="color:var(--ph-color-primary);text-decoration:none;">Open Product Master</a></small>
-                            @elseif($availableSaleUnitsUrl)
-                                <small><a href="{{ $availableSaleUnitsUrl }}" style="color:var(--ph-color-primary);text-decoration:none;">Open serialized sale units</a></small>
-                            @elseif($inventoryUrl)
-                                <small><a href="{{ $inventoryUrl }}" style="color:var(--ph-color-primary);text-decoration:none;">Inventory dashboard</a></small>
-                            @endif
-                        </div>
-                    </div>
-                    <div class="dashboard-inline-item">
-                        <div>
-                            <strong>Maintenance Assets</strong>
-                            <small>Assets needing service attention</small>
-                        </div>
-                        <div style="text-align:right;">
-                            <strong>{{ $maintenanceAlertCountValue }}</strong>
-                            @if($inventoryUrl)
-                                <small><a href="{{ $inventoryUrl }}" style="color:var(--ph-color-primary);text-decoration:none;">Inventory dashboard</a></small>
-                            @endif
-                        </div>
-                    </div>
                     <div class="dashboard-inline-item">
                         <div>
                             <strong>Payments Today</strong>
