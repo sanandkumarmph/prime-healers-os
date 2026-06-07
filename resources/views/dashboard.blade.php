@@ -1071,15 +1071,14 @@
     }
     .control-room-shell {
         display: grid;
-        gap: 12px;
+        gap: 10px;
     }
     .control-room-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 12px;
-        flex-wrap: wrap;
-        padding: 14px 16px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px 14px;
+        padding: 10px 12px;
         border: 1px solid var(--ph-color-border);
         border-radius: var(--ph-radius-xl);
         background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
@@ -1087,51 +1086,80 @@
     }
     .control-room-header-copy {
         display: grid;
-        gap: 8px;
-        max-width: 760px;
+        gap: 5px;
+        min-width: 0;
     }
     .control-room-title-row {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 8px 10px;
         flex-wrap: wrap;
     }
     .control-room-title-row h1 {
         margin: 0;
-        font-size: 24px;
+        font-size: 18px;
         line-height: 1;
         letter-spacing: -0.04em;
         color: var(--ph-color-text);
     }
     .control-room-title-row p,
-    .control-room-header-copy p {
+    .control-room-header-copy p,
+    .control-room-status-line {
         margin: 0;
         color: var(--ph-color-text-soft);
-        font-size: 12px;
-        line-height: 1.45;
+        font-size: 11px;
+        line-height: 1.35;
     }
     .control-room-meta-strip {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 8px;
         flex-wrap: wrap;
         color: var(--ph-color-text-soft);
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 600;
+    }
+    .control-room-status-line {
+        display: inline-flex;
+        align-items: center;
+        min-height: 22px;
+        padding: 0 8px;
+        border-radius: 999px;
+        background: #f8fbff;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+    }
+    .control-room-header-side {
+        display: grid;
+        gap: 8px;
+        min-width: 0;
+        justify-items: end;
+    }
+    .control-room-header-side .dashboard-hero-actions {
+        justify-content: flex-end;
+    }
+    .control-room-header-side .dashboard-quick-actions-grid {
+        gap: 6px;
+        justify-content: flex-end;
+    }
+    .control-room-header-side .rx-btn,
+    .control-room-header-side .rx-btn-secondary {
+        min-height: 34px;
+        padding: 8px 12px;
+        font-size: 11px;
     }
     .control-room-reference-grid {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(84px, 1fr));
         gap: 8px;
         width: 100%;
-        max-width: 380px;
+        max-width: 420px;
     }
     .control-room-reference-card {
         display: grid;
-        gap: 3px;
-        padding: 9px 11px;
-        border: 1px solid var(--ph-color-border);
-        border-radius: 14px;
+        gap: 2px;
+        padding: 7px 9px;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        border-radius: 12px;
         background: #fff;
         text-decoration: none;
         transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
@@ -1142,30 +1170,30 @@
         transform: translateY(-1px);
     }
     .control-room-reference-card span {
-        font-size: 11px;
+        font-size: 9px;
         font-weight: 700;
         letter-spacing: .08em;
         text-transform: uppercase;
         color: #6f84a2;
     }
     .control-room-reference-card strong {
-        font-size: 17px;
+        font-size: 14px;
         line-height: 1;
         color: var(--ph-color-text);
     }
     .control-room-priority-grid {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 10px;
+        gap: 8px;
     }
     .control-room-priority-card {
         position: relative;
         display: grid;
-        gap: 8px;
-        min-height: 122px;
-        padding: 13px 14px 12px;
-        border: 1px solid var(--ph-color-border);
-        border-radius: 18px;
+        gap: 5px;
+        min-height: 74px;
+        padding: 10px 11px 9px;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 15px;
         background: #fff;
         box-shadow: var(--ph-shadow-card);
         text-decoration: none;
@@ -1193,13 +1221,13 @@
     }
     .control-room-priority-top {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: space-between;
-        gap: 10px;
+        gap: 8px;
     }
     .control-room-priority-label {
         display: block;
-        font-size: 11px;
+        font-size: 9px;
         font-weight: 700;
         letter-spacing: .08em;
         text-transform: uppercase;
@@ -1209,12 +1237,16 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 34px;
-        height: 34px;
-        border-radius: 12px;
+        width: 28px;
+        height: 28px;
+        border-radius: 10px;
         border: 1px solid rgba(59, 130, 246, 0.14);
         background: rgba(255, 255, 255, 0.85);
         color: var(--ph-color-primary);
+    }
+    .control-room-priority-icon svg {
+        width: 13px;
+        height: 13px;
     }
     .control-room-priority-copy {
         display: grid;
@@ -1231,26 +1263,26 @@
     }
     .control-room-priority-value {
         margin: 0;
-        font-size: 31px;
+        font-size: 21px;
         line-height: 1;
         letter-spacing: -.05em;
         color: var(--ph-color-text);
     }
     .control-room-priority-status {
         margin: 0;
-        font-size: 12px;
+        font-size: 10px;
         font-weight: 700;
         color: var(--ph-color-primary);
     }
     .control-room-priority-note {
         margin: 0;
         color: var(--ph-color-text-soft);
-        font-size: 11px;
-        line-height: 1.35;
+        font-size: 10px;
+        line-height: 1.25;
     }
     .control-room-priority-visuals {
         display: grid;
-        gap: 6px;
+        gap: 4px;
         margin-top: auto;
     }
     .control-room-sparkline {
@@ -1276,14 +1308,14 @@
     .control-room-priority-card.is-info .control-room-sparkline-line { color: #2563eb; }
     .control-room-priority-meter {
         position: relative;
-        min-height: 6px;
+        min-height: 4px;
         overflow: hidden;
         border-radius: 999px;
         background: rgba(148, 163, 184, 0.16);
     }
     .control-room-priority-meter span {
         display: block;
-        height: 6px;
+        height: 4px;
         border-radius: inherit;
         background: linear-gradient(90deg, rgba(79, 70, 229, 0.85), rgba(59, 130, 246, 0.9));
     }
@@ -1297,22 +1329,34 @@
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 700;
         color: var(--ph-color-primary);
         text-decoration: none;
     }
+    .control-room-executive-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.28fr) minmax(320px, .96fr) minmax(300px, .9fr);
+        gap: 10px;
+        align-items: start;
+    }
+    .control-room-stack-column {
+        display: grid;
+        gap: 10px;
+        min-width: 0;
+        align-content: start;
+    }
     .control-room-grid {
         display: grid;
-        grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-        gap: 12px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
     }
     .control-room-card {
         display: grid;
-        gap: 10px;
-        padding: 14px;
-        border: 1px solid var(--ph-color-border);
-        border-radius: 18px;
+        gap: 8px;
+        padding: 11px 12px;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 16px;
         background: #fff;
         box-shadow: var(--ph-shadow-card);
     }
@@ -1325,21 +1369,21 @@
     }
     .control-room-card-title {
         margin: 0;
-        font-size: 15px;
+        font-size: 14px;
         line-height: 1.15;
         color: var(--ph-color-text);
     }
     .control-room-card-copy {
         margin: 2px 0 0;
         color: var(--ph-color-text-soft);
-        font-size: 11px;
-        line-height: 1.35;
+        font-size: 10px;
+        line-height: 1.3;
     }
     .control-room-card-link {
         display: inline-flex;
         align-items: center;
         gap: 6px;
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 700;
         color: var(--ph-color-primary);
         text-decoration: none;
@@ -1347,33 +1391,33 @@
     .control-room-stat-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 8px;
+        gap: 6px;
     }
     .control-room-stat {
         display: grid;
-        gap: 3px;
-        padding: 10px 12px;
-        border-radius: 14px;
+        gap: 2px;
+        padding: 8px 9px;
+        border-radius: 12px;
         background: #f8fbff;
         border: 1px solid rgba(148, 163, 184, 0.18);
     }
     .control-room-stat-label {
-        font-size: 11px;
+        font-size: 9px;
         font-weight: 700;
         letter-spacing: .08em;
         text-transform: uppercase;
         color: #6f84a2;
     }
     .control-room-stat-value {
-        font-size: 22px;
+        font-size: 18px;
         line-height: 1;
         letter-spacing: -.04em;
         color: var(--ph-color-text);
         font-weight: 800;
     }
     .control-room-stat-note {
-        font-size: 11px;
-        line-height: 1.35;
+        font-size: 10px;
+        line-height: 1.25;
         color: var(--ph-color-text-soft);
     }
     .control-room-stat-meter {
@@ -1390,7 +1434,7 @@
     }
     .control-room-chart-shell {
         display: grid;
-        gap: 8px;
+        gap: 6px;
     }
     .control-room-chart-svg {
         width: 100%;
@@ -1400,7 +1444,7 @@
     }
     .control-room-chart-axis {
         fill: #7b8da7;
-        font-size: 11px;
+        font-size: 9px;
         font-weight: 600;
     }
     .control-room-chart-grid {
@@ -1432,7 +1476,7 @@
     }
     .control-room-aging {
         display: grid;
-        gap: 6px;
+        gap: 4px;
     }
     .control-room-aging-bar {
         display: flex;
@@ -1451,20 +1495,20 @@
     .control-room-aging-legend {
         display: grid;
         grid-template-columns: repeat(5, minmax(0, 1fr));
-        gap: 8px;
+        gap: 6px;
     }
     .control-room-aging-legend-item {
         display: grid;
         gap: 4px;
     }
     .control-room-aging-legend-item strong {
-        font-size: 11px;
+        font-size: 10px;
         color: var(--ph-color-text);
     }
     .control-room-aging-legend-item span,
     .control-room-aging-legend-item small {
         color: var(--ph-color-text-soft);
-        font-size: 10px;
+        font-size: 9px;
     }
     .control-room-dues-list,
     .control-room-upcoming-list,
@@ -1477,7 +1521,7 @@
         align-items: flex-start;
         justify-content: space-between;
         gap: 10px;
-        padding: 9px 11px;
+        padding: 7px 9px;
         border-radius: 12px;
         background: #f9fbff;
         border: 1px solid rgba(148, 163, 184, 0.16);
@@ -1485,15 +1529,15 @@
     .control-room-list-item strong {
         display: block;
         color: var(--ph-color-text);
-        font-size: 12px;
+        font-size: 11px;
         line-height: 1.25;
     }
     .control-room-list-item span,
     .control-room-list-item small {
         display: block;
         color: var(--ph-color-text-soft);
-        font-size: 10px;
-        line-height: 1.3;
+        font-size: 9px;
+        line-height: 1.2;
     }
     .control-room-list-amount {
         text-align: right;
@@ -1501,19 +1545,19 @@
     }
     .control-room-pipeline {
         display: grid;
-        gap: 10px;
+        gap: 8px;
     }
     .control-room-pipeline-track {
         display: grid;
         grid-template-columns: repeat(6, minmax(0, 1fr));
-        gap: 8px;
+        gap: 6px;
     }
     .control-room-pipeline-stage {
         position: relative;
         display: grid;
-        gap: 5px;
-        padding: 9px 10px;
-        border-radius: 14px;
+        gap: 4px;
+        padding: 7px 8px;
+        border-radius: 12px;
         background: #f8fbff;
         border: 1px solid rgba(148, 163, 184, 0.18);
     }
@@ -1533,14 +1577,14 @@
     .control-room-pipeline-stage.is-warning { background: #fffaf3; }
     .control-room-pipeline-stage.is-info { background: #f7faff; }
     .control-room-pipeline-stage-label {
-        font-size: 11px;
+        font-size: 9px;
         font-weight: 700;
         letter-spacing: .08em;
         text-transform: uppercase;
         color: #6f84a2;
     }
     .control-room-pipeline-stage-value {
-        font-size: 22px;
+        font-size: 17px;
         line-height: 1;
         letter-spacing: -.04em;
         color: var(--ph-color-text);
@@ -1561,7 +1605,7 @@
     .control-room-pipeline-bottom {
         display: grid;
         grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
-        gap: 10px;
+        gap: 8px;
     }
     .control-room-summary-grid {
         display: grid;
@@ -1569,19 +1613,19 @@
     }
     .control-room-summary-tile {
         display: grid;
-        gap: 3px;
-        padding: 9px 11px;
+        gap: 2px;
+        padding: 7px 9px;
         border-radius: 12px;
         background: #f8fbff;
         border: 1px solid rgba(148, 163, 184, 0.16);
     }
     .control-room-summary-tile strong {
-        font-size: 17px;
+        font-size: 14px;
         line-height: 1;
         color: var(--ph-color-text);
     }
     .control-room-summary-tile span {
-        font-size: 10px;
+        font-size: 9px;
         color: var(--ph-color-text-soft);
     }
     .control-room-summary-meter {
@@ -1600,22 +1644,22 @@
     .control-room-workload-table {
         width: 100%;
         border-collapse: separate;
-        border-spacing: 0 6px;
+        border-spacing: 0 4px;
     }
     .control-room-risk-table th,
     .control-room-workload-table th {
-        padding: 0 8px 4px;
+        padding: 0 6px 3px;
         text-align: left;
         color: #6f84a2;
-        font-size: 10px;
+        font-size: 9px;
         font-weight: 700;
         letter-spacing: .08em;
         text-transform: uppercase;
     }
     .control-room-risk-table td,
     .control-room-workload-table td {
-        padding: 8px;
-        font-size: 12px;
+        padding: 6px;
+        font-size: 11px;
         color: var(--ph-color-text);
         background: #f9fbff;
         border-top: 1px solid rgba(148, 163, 184, 0.16);
@@ -1637,10 +1681,10 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-height: 22px;
-        padding: 4px 8px;
+        min-height: 18px;
+        padding: 3px 7px;
         border-radius: 999px;
-        font-size: 10px;
+        font-size: 9px;
         font-weight: 700;
         line-height: 1;
     }
@@ -1670,16 +1714,16 @@
     }
     .control-room-donut-shell {
         display: grid;
-        grid-template-columns: 132px minmax(0, 1fr);
-        gap: 12px;
+        grid-template-columns: 110px minmax(0, 1fr);
+        gap: 10px;
         align-items: center;
     }
     .control-room-donut {
         --available-angle: 0deg;
         --rent-angle: 0deg;
         --maintenance-angle: 0deg;
-        width: 132px;
-        height: 132px;
+        width: 110px;
+        height: 110px;
         border-radius: 50%;
         background:
             radial-gradient(circle at center, #ffffff 0 41%, transparent 42%),
@@ -1703,14 +1747,14 @@
     }
     .control-room-donut-center strong {
         display: block;
-        font-size: 28px;
+        font-size: 22px;
         line-height: 1;
         color: var(--ph-color-text);
     }
     .control-room-donut-center span {
         display: block;
         color: var(--ph-color-text-soft);
-        font-size: 12px;
+        font-size: 10px;
         font-weight: 600;
     }
     .control-room-segment-list {
@@ -1720,9 +1764,9 @@
     .control-room-segment-row {
         display: grid;
         grid-template-columns: auto 1fr auto;
-        gap: 8px;
+        gap: 6px;
         align-items: center;
-        font-size: 12px;
+        font-size: 11px;
         color: var(--ph-color-text);
     }
     .control-room-segment-dot {
@@ -1737,7 +1781,7 @@
     .control-room-tab-row {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 5px;
         flex-wrap: wrap;
     }
     .control-room-tab-pill {
@@ -1758,22 +1802,22 @@
     }
     .control-room-activity-item {
         display: grid;
-        gap: 3px;
-        padding: 9px 11px;
+        gap: 2px;
+        padding: 7px 9px;
         border-radius: 12px;
         background: #f9fbff;
         border: 1px solid rgba(148, 163, 184, 0.16);
     }
     .control-room-activity-item strong {
         color: var(--ph-color-text);
-        font-size: 12px;
+        font-size: 11px;
         line-height: 1.25;
     }
     .control-room-activity-item span,
     .control-room-activity-item small {
         color: var(--ph-color-text-soft);
-        font-size: 10px;
-        line-height: 1.3;
+        font-size: 9px;
+        line-height: 1.2;
     }
     .control-room-metric-strips {
         display: grid;
@@ -1786,11 +1830,11 @@
     .control-room-table-meter {
         display: inline-flex;
         align-items: center;
-        gap: 7px;
-        min-width: 96px;
+        gap: 6px;
+        min-width: 84px;
     }
     .control-room-table-meter strong {
-        font-size: 11px;
+        font-size: 10px;
         color: var(--ph-color-text);
         min-width: 18px;
     }
@@ -1811,11 +1855,29 @@
     .control-room-metric-strips .dashboard-insight-row {
         padding: 0;
     }
+    @media (max-width: 1280px) {
+        .control-room-header {
+            grid-template-columns: 1fr;
+        }
+        .control-room-header-side,
+        .control-room-header-side .dashboard-hero-actions,
+        .control-room-header-side .dashboard-quick-actions-grid {
+            justify-items: start;
+            justify-content: flex-start;
+        }
+        .control-room-executive-grid {
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        }
+        .control-room-executive-grid > :first-child {
+            grid-column: 1 / -1;
+        }
+    }
     @media (max-width: 1180px) {
         .control-room-priority-grid,
         .control-room-reference-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
+        .control-room-executive-grid,
         .control-room-grid,
         .control-room-pipeline-bottom,
         .control-room-donut-shell {
@@ -1834,7 +1896,7 @@
         .control-room-header,
         .control-room-card,
         .control-room-priority-card {
-            padding: 16px;
+            padding: 12px;
         }
         .control-room-priority-grid,
         .control-room-reference-grid,
@@ -1843,7 +1905,7 @@
             grid-template-columns: 1fr;
         }
         .control-room-title-row h1 {
-            font-size: 26px;
+            font-size: 20px;
         }
         .control-room-risk-table,
         .control-room-workload-table {
@@ -3116,31 +3178,34 @@
                 <div class="control-room-meta-strip">
                     <span class="rx-eyebrow">PHOS Control Room</span>
                     <span class="dashboard-hero-date">{{ $dashboardDateLabel }}</span>
+                    <span class="control-room-status-line">Cash pressure, rental flow, staffing, and inventory in one live command view.</span>
                 </div>
                 <div class="control-room-title-row">
                     <h1>PHOS Control Room</h1>
-                </div>
-                <p>Monitor cash pressure, rental movement, field workload, and inventory readiness from one decision-first dashboard without losing the operational detail behind each number.</p>
-            </div>
-
-            <div class="dashboard-hero-actions">
-                <div class="dashboard-quick-actions-grid">
-                    @foreach($dashboardQuickActions as $action)
-                        <a href="{{ $action['href'] }}" class="{{ ($action['tone'] ?? 'secondary') === 'primary' ? 'rx-btn' : 'rx-btn-secondary' }}">{{ $action['label'] }}</a>
-                    @endforeach
+                    <p>Compact CEO control room for rentals, collections, risk, and team workload.</p>
                 </div>
             </div>
 
-            @if($controlRoomReferenceCards->isNotEmpty())
-                <div class="control-room-reference-grid">
-                    @foreach($controlRoomReferenceCards as $card)
-                        <a href="{{ $card['href'] }}" class="control-room-reference-card">
-                            <span>{{ $card['label'] }}</span>
-                            <strong>{{ $card['value'] }}</strong>
-                        </a>
-                    @endforeach
+            <div class="control-room-header-side">
+                <div class="dashboard-hero-actions">
+                    <div class="dashboard-quick-actions-grid">
+                        @foreach($dashboardQuickActions as $action)
+                            <a href="{{ $action['href'] }}" class="{{ ($action['tone'] ?? 'secondary') === 'primary' ? 'rx-btn' : 'rx-btn-secondary' }}">{{ $action['label'] }}</a>
+                        @endforeach
+                    </div>
                 </div>
-            @endif
+
+                @if($controlRoomReferenceCards->isNotEmpty())
+                    <div class="control-room-reference-grid">
+                        @foreach($controlRoomReferenceCards as $card)
+                            <a href="{{ $card['href'] }}" class="control-room-reference-card">
+                                <span>{{ $card['label'] }}</span>
+                                <strong>{{ $card['value'] }}</strong>
+                            </a>
+                        @endforeach
+                    </div>
+                @endif
+            </div>
         </div>
 
         <div class="control-room-priority-grid">
@@ -3642,7 +3707,7 @@
                 @endforeach
             </div>
             <div class="control-room-activity-list">
-                <template x-for="item in (feeds[activityTab] || [])" :key="item.title + item.time">
+                <template x-for="item in (feeds[activityTab] || []).slice(0, 5)" :key="item.title + item.time">
                     <a class="control-room-activity-link" :href="item.href || '#'" target="_self">
                         <div class="control-room-activity-item">
                             <strong x-text="item.title"></strong>
