@@ -3428,20 +3428,22 @@
             </div>
         </header>
 
-        <div class="rn-trust-strip" data-mobile-trust="{{ $isDashboardRoute ? 'dashboard' : 'standard' }}" aria-label="Workspace trust indicators">
-            <span class="rn-trust-pill">
-                <svg class="rn-trust-icon icon-chip icon-admin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-5"/></svg>
-                <strong>Secure cloud workspace</strong>
-            </span>
-            <span class="rn-trust-pill">
-                <svg class="rn-trust-icon icon-chip icon-finance" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14.5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                <strong>GST-ready invoicing</strong>
-            </span>
-            <span class="rn-trust-pill">
-                <svg class="rn-trust-icon icon-chip icon-team" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><path d="M9.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>
-                <strong>Role-based access</strong>
-            </span>
-        </div>
+        @unless($isDashboardRoute)
+            <div class="rn-trust-strip" data-mobile-trust="standard" aria-label="Workspace trust indicators">
+                <span class="rn-trust-pill">
+                    <svg class="rn-trust-icon icon-chip icon-admin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-5"/></svg>
+                    <strong>Secure cloud workspace</strong>
+                </span>
+                <span class="rn-trust-pill">
+                    <svg class="rn-trust-icon icon-chip icon-finance" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14.5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    <strong>GST-ready invoicing</strong>
+                </span>
+                <span class="rn-trust-pill">
+                    <svg class="rn-trust-icon icon-chip icon-team" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><path d="M9.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>
+                    <strong>Role-based access</strong>
+                </span>
+            </div>
+        @endunless
 
         @hasSection('breadcrumbs')
             @yield('breadcrumbs')

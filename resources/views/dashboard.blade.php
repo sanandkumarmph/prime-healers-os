@@ -45,8 +45,23 @@
     $taskScopePrefix = $dashboardTaskScope === 'assigned' ? 'My ' : 'Total ';
     $followUpScopePrefix = $dashboardFollowUpScope === 'assigned' ? 'My ' : 'All ';
 
-    $currency = fn ($value) => "\u{20B9}" . number_format((float) $value, 2);
-    $compactCurrency = function ($value) {
+    $formatIndianNumber = function ($value, int $decimals = 2) {
+        $number = abs((float) $value);
+        $negative = (float) $value < 0 ? '-' : '';
+        $formatted = number_format($number, $decimals, '.', '');
+        [$integer, $fraction] = array_pad(explode('.', $formatted, 2), 2, '');
+
+        if (strlen($integer) > 3) {
+            $lastThree = substr($integer, -3);
+            $leading = substr($integer, 0, -3);
+            $leading = preg_replace('/\B(?=(\d{2})+(?!\d))/', ',', $leading);
+            $integer = ($leading !== '' ? $leading . ',' : '') . $lastThree;
+        }
+
+        return $negative . $integer . ($decimals > 0 ? '.' . $fraction : '');
+    };
+    $currency = fn ($value) => "\u{20B9}" . $formatIndianNumber($value, 2);
+    $compactCurrency = function ($value) use ($formatIndianNumber) {
         $value = (float) $value;
         $absolute = abs($value);
 
@@ -62,7 +77,7 @@
             return "\u{20B9}" . rtrim(rtrim(number_format($value / 1000, 1), '0'), '.') . 'K';
         }
 
-        return "\u{20B9}" . number_format($value, 0);
+        return "\u{20B9}" . $formatIndianNumber($value, 0);
     };
     $welcomeName = trim((string) ($currentUser?->name ?? 'Team'));
     $welcomeName = explode(' ', $welcomeName)[0] ?: 'Team';
@@ -905,6 +920,23 @@
 
     $invoiceAgingBuckets = collect(data_get($invoiceAging ?? [], 'buckets', []))->values();
     $topDuesCustomers = collect($topCustomersWithDues ?? collect())->values();
+    $salesPulseTopCustomers = $topDuesCustomers->take(5)->values();
+    $salesPulseRecentOrders = $recentSalesSummary->take(4)->values();
+    $salesPulseCollectionTotal = max($paidSalesAmountValue + $salesOutstandingInvoiceAmountValue + $salesUnbilledAmountValue, 0);
+    $salesPulseCollectionSegments = collect([
+        ['label' => 'Collected', 'value' => $paidSalesAmountValue, 'tone' => 'green'],
+        ['label' => 'Outstanding', 'value' => $salesOutstandingInvoiceAmountValue, 'tone' => 'amber'],
+        ['label' => 'Unbilled', 'value' => $salesUnbilledAmountValue, 'tone' => 'red'],
+    ])->map(function (array $segment) use ($salesPulseCollectionTotal) {
+        $segment['percent'] = $salesPulseCollectionTotal > 0
+            ? round(($segment['value'] / $salesPulseCollectionTotal) * 100)
+            : 0;
+
+        return $segment;
+    })->values();
+    $salesPulseCollectionEfficiency = $salesPulseCollectionTotal > 0
+        ? round(($paidSalesAmountValue / max($salesPulseCollectionTotal, 1)) * 100)
+        : 0;
     $inventoryAvailabilitySummary = collect($inventoryAvailability ?? []);
     $inventoryAvailabilityTotal = max((int) ($inventoryAvailabilitySummary->get('total_assets') ?? 0), 0);
     $inventoryAvailabilitySegments = collect([
@@ -1137,7 +1169,7 @@
     .control-room-header-copy p,
     .control-room-status-line {
         margin: 0;
-        color: var(--ph-color-text-soft);
+        color: #3f5878;
         font-size: 11px;
         line-height: 1.35;
     }
@@ -1419,7 +1451,7 @@
     }
     .control-room-card-copy {
         margin: 2px 0 0;
-        color: var(--ph-color-text-soft);
+        color: #3f5878;
         font-size: 10px;
         line-height: 1.3;
     }
@@ -1789,29 +1821,34 @@
         place-items: center;
         text-align: center;
         pointer-events: none;
+        padding: 0 10px;
     }
     .control-room-donut-center strong {
         display: block;
-        font-size: 22px;
+        font-size: 18px;
         line-height: 1;
         color: var(--ph-color-text);
     }
     .control-room-donut-center span {
         display: block;
         color: var(--ph-color-text-soft);
-        font-size: 10px;
+        max-width: 78px;
+        margin: 0 auto;
+        font-size: 11px;
         font-weight: 600;
+        line-height: 1.15;
+        text-align: center;
     }
     .control-room-segment-list {
         display: grid;
-        gap: 8px;
+        gap: 6px;
     }
     .control-room-segment-row {
         display: grid;
         grid-template-columns: auto 1fr auto;
         gap: 6px;
         align-items: center;
-        font-size: 11px;
+        font-size: 10px;
         color: var(--ph-color-text);
     }
     .control-room-segment-dot {
@@ -2009,6 +2046,16 @@
         .control-room-donut-shell {
             grid-template-columns: 1fr;
         }
+        .sales-pulse-metrics {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .sales-pulse-breakdown-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .sales-pulse-analytics,
+        .sales-pulse-bottom-grid {
+            grid-template-columns: 1fr;
+        }
     }
     @media (max-width: 900px) {
         .control-room-pipeline-track {
@@ -2020,6 +2067,21 @@
         .control-room-activity-list,
         .control-room-finance-hero {
             grid-template-columns: 1fr;
+        }
+        .sales-pulse-header,
+        .sales-pulse-card-head {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .sales-pulse-actions {
+            justify-content: flex-start;
+        }
+        .sales-pulse-donut-layout {
+            grid-template-columns: 1fr;
+            justify-items: center;
+        }
+        .sales-pulse-status-list {
+            width: 100%;
         }
         .dashboard-trend-vertical {
             grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2048,6 +2110,23 @@
         }
         .control-room-donut {
             margin: 0 auto;
+        }
+        .sales-pulse-metrics,
+        .sales-pulse-breakdown-grid {
+            grid-template-columns: 1fr;
+        }
+        .sales-pulse-table-head,
+        .sales-pulse-table-row {
+            grid-template-columns: minmax(0, 1fr) 92px 56px;
+        }
+        .sales-pulse-invoice-table {
+            display: block;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+        .sales-pulse-invoice-head,
+        .sales-pulse-invoice-row {
+            min-width: 560px;
         }
         .dashboard-trend-vertical {
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2096,7 +2175,7 @@
     .dashboard-hero-summary {
         margin: 0;
         max-width: 760px;
-        color: var(--ph-color-text-soft);
+        color: #3f5878;
         font-size: 13px;
         line-height: 1.5;
     }
@@ -2137,7 +2216,7 @@
         gap: 8px;
     }
     .dashboard-insight-row-heading {
-        color: var(--ph-color-text-soft);
+        color: #3f5878;
         font-size: 11px;
         font-weight: 800;
         letter-spacing: .08em;
@@ -2154,6 +2233,561 @@
     .dashboard-sales-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         align-items: stretch;
+    }
+    .sales-pulse-shell {
+        gap: 14px;
+    }
+    .sales-pulse-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+    }
+    .sales-pulse-heading {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    .sales-pulse-heading-icon {
+        width: 30px;
+        height: 30px;
+        border-radius: 11px;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(135deg, rgba(79, 70, 229, 0.12), rgba(14, 165, 233, 0.14));
+        color: #4f46e5;
+        border: 1px solid rgba(79, 70, 229, 0.15);
+        flex: 0 0 30px;
+    }
+    .sales-pulse-heading-icon svg {
+        width: 15px;
+        height: 15px;
+    }
+    .sales-pulse-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+    .sales-pulse-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-height: 30px;
+        padding: 0 11px;
+        border-radius: 10px;
+        border: 1px solid var(--ph-color-border);
+        background: #fff;
+        color: var(--ph-color-text);
+        font-size: 11px;
+        font-weight: 700;
+        text-decoration: none;
+    }
+    .sales-pulse-chip svg {
+        width: 13px;
+        height: 13px;
+    }
+    .sales-pulse-metrics {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .sales-pulse-metric-card {
+        display: grid;
+        gap: 8px;
+        min-height: 112px;
+        padding: 12px 13px;
+        border-radius: 18px;
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(247,250,252,0.92));
+        box-shadow: 0 14px 28px rgba(11, 35, 66, 0.06);
+        text-decoration: none;
+        color: inherit;
+    }
+    .sales-pulse-metric-card:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 16px 30px rgba(11, 35, 66, 0.08);
+    }
+    .sales-pulse-metric-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+    }
+    .sales-pulse-metric-label {
+        display: block;
+        color: #425c7f;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        line-height: 1.25;
+    }
+    .sales-pulse-metric-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
+        background: var(--ph-color-surface-soft);
+        border: 1px solid var(--ph-color-border);
+        color: var(--ph-color-primary);
+        flex: 0 0 28px;
+    }
+    .sales-pulse-metric-icon svg {
+        width: 13px;
+        height: 13px;
+    }
+    .sales-pulse-metric-card.is-success .sales-pulse-metric-icon {
+        color: var(--ph-color-success);
+        background: var(--ph-color-success-soft);
+        border-color: rgba(14, 159, 75, 0.18);
+    }
+    .sales-pulse-metric-card.is-warning .sales-pulse-metric-icon {
+        color: var(--ph-color-warning);
+        background: var(--ph-color-warning-soft);
+        border-color: rgba(183, 121, 31, 0.18);
+    }
+    .sales-pulse-metric-card.is-danger .sales-pulse-metric-icon {
+        color: var(--ph-color-danger);
+        background: var(--ph-color-danger-soft);
+        border-color: rgba(179, 13, 35, 0.18);
+    }
+    .sales-pulse-metric-card.is-info .sales-pulse-metric-icon {
+        color: var(--ph-color-primary);
+        background: var(--ph-color-info-soft);
+        border-color: rgba(23, 119, 189, 0.18);
+    }
+    .sales-pulse-metric-value {
+        color: var(--ph-color-text);
+        font-size: 17px;
+        font-weight: 780;
+        line-height: 1.03;
+        letter-spacing: -.03em;
+    }
+    .sales-pulse-metric-subtitle {
+        color: #425c7f;
+        font-size: 10px;
+        line-height: 1.35;
+    }
+    .sales-pulse-metric-note {
+        color: var(--ph-color-primary);
+        font-size: 10px;
+        line-height: 1.35;
+        font-weight: 700;
+    }
+    .sales-pulse-analytics {
+        display: grid;
+        grid-template-columns: minmax(0, 1.55fr) minmax(0, .85fr);
+        gap: 12px;
+    }
+    .sales-pulse-chart-card,
+    .sales-pulse-side-card,
+    .sales-pulse-bottom-card {
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        border-radius: 18px;
+        background: #fff;
+        box-shadow: 0 12px 24px rgba(11, 35, 66, 0.05);
+        padding: 12px 14px;
+    }
+    .sales-pulse-card-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+    .sales-pulse-card-title {
+        color: var(--ph-color-text);
+        font-size: 13px;
+        font-weight: 800;
+        line-height: 1.25;
+    }
+    .sales-pulse-card-copy {
+        color: #425c7f;
+        font-size: 10px;
+        line-height: 1.35;
+        margin-top: 3px;
+    }
+    .sales-pulse-card-link {
+        color: var(--ph-color-primary);
+        font-size: 10px;
+        font-weight: 700;
+        text-decoration: none;
+        white-space: nowrap;
+    }
+    .sales-pulse-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 10px;
+    }
+    .sales-pulse-legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: #425c7f;
+        font-size: 10px;
+        font-weight: 700;
+    }
+    .sales-pulse-legend-swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        display: inline-block;
+    }
+    .sales-pulse-legend-swatch.is-sales {
+        background: #4f46e5;
+    }
+    .sales-pulse-legend-swatch.is-rental {
+        background: #16a34a;
+    }
+    .sales-pulse-legend-swatch.is-orders {
+        background: #fca5a5;
+        border-radius: 3px;
+    }
+    .sales-pulse-chart-shell {
+        border-radius: 16px;
+        background: linear-gradient(180deg, rgba(248,250,252,0.78), rgba(255,255,255,0.96));
+        padding: 10px 12px 8px;
+        border: 1px solid rgba(226, 232, 240, 0.8);
+    }
+    .sales-pulse-chart-svg {
+        display: block;
+        width: 100%;
+        height: auto;
+    }
+    .sales-pulse-chart-grid {
+        stroke: rgba(148, 163, 184, 0.18);
+        stroke-width: 1;
+    }
+    .sales-pulse-chart-axis {
+        fill: #64748b;
+        font-size: 10px;
+        font-weight: 700;
+    }
+    .sales-pulse-chart-axis.is-value {
+        fill: #425c7f;
+        font-size: 9px;
+    }
+    .sales-pulse-chart-bar {
+        fill: rgba(248, 113, 113, 0.65);
+    }
+    .sales-pulse-chart-line-sales {
+        fill: none;
+        stroke: #4f46e5;
+        stroke-width: 2.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+    .sales-pulse-chart-line-rental {
+        fill: none;
+        stroke: #16a34a;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+    .sales-pulse-chart-dot-sales {
+        fill: #4f46e5;
+    }
+    .sales-pulse-chart-dot-rental {
+        fill: #16a34a;
+    }
+    .sales-pulse-chart-value {
+        fill: #425c7f;
+        font-size: 9px;
+        font-weight: 700;
+    }
+    .sales-pulse-summary-strip {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 10px;
+    }
+    .sales-pulse-summary-item {
+        display: grid;
+        gap: 5px;
+        padding: 10px 11px;
+        border-radius: 14px;
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        background: #fff;
+    }
+    .sales-pulse-summary-item strong {
+        font-size: 10px;
+        color: #425c7f;
+        text-transform: uppercase;
+        letter-spacing: .07em;
+    }
+    .sales-pulse-summary-item span {
+        font-size: 18px;
+        font-weight: 780;
+        line-height: 1.05;
+        color: var(--ph-color-text);
+    }
+    .sales-pulse-summary-item small {
+        color: #425c7f;
+        font-size: 10px;
+        line-height: 1.35;
+    }
+    .sales-pulse-side-stack {
+        display: grid;
+        gap: 12px;
+    }
+    .sales-pulse-donut-layout {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 12px;
+        align-items: center;
+    }
+    .sales-pulse-donut {
+        --collected-angle: calc(var(--collected-percent, 0) * 3.6deg);
+        --outstanding-angle: calc(var(--outstanding-percent, 0) * 3.6deg);
+        width: 118px;
+        height: 118px;
+        border-radius: 999px;
+        background:
+            radial-gradient(circle at center, #ffffff 0 57%, transparent 58%),
+            conic-gradient(
+                #16a34a 0 var(--collected-angle),
+                #fb923c var(--collected-angle) calc(var(--collected-angle) + var(--outstanding-angle)),
+                #ef4444 calc(var(--collected-angle) + var(--outstanding-angle)) 360deg
+            );
+        position: relative;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+    }
+    .sales-pulse-donut-center {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        padding: 0 14px;
+    }
+    .sales-pulse-donut-center strong {
+        display: block;
+        font-size: 11px;
+        color: #425c7f;
+        line-height: 1.15;
+    }
+    .sales-pulse-donut-center span {
+        display: block;
+        margin-top: 4px;
+        font-size: 20px;
+        font-weight: 780;
+        color: var(--ph-color-text);
+        line-height: 1;
+    }
+    .sales-pulse-status-list {
+        display: grid;
+        gap: 8px;
+    }
+    .sales-pulse-status-row {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 8px;
+        align-items: center;
+        font-size: 10px;
+        color: var(--ph-color-text);
+    }
+    .sales-pulse-status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        display: inline-block;
+    }
+    .sales-pulse-status-dot.is-success {
+        background: #16a34a;
+    }
+    .sales-pulse-status-dot.is-warning {
+        background: #fb923c;
+    }
+    .sales-pulse-status-dot.is-danger {
+        background: #ef4444;
+    }
+    .sales-pulse-efficiency {
+        margin-top: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: linear-gradient(90deg, rgba(22,163,74,0.08), rgba(255,255,255,0.95));
+        color: var(--ph-color-text);
+        font-size: 11px;
+        font-weight: 700;
+    }
+    .sales-pulse-table {
+        display: grid;
+        gap: 8px;
+    }
+    .sales-pulse-table-head,
+    .sales-pulse-table-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(78px, .9fr) 68px;
+        gap: 10px;
+        align-items: center;
+    }
+    .sales-pulse-table-head {
+        color: #64748b;
+        font-size: 10px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        padding-bottom: 6px;
+        border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+    }
+    .sales-pulse-table-row {
+        padding-top: 8px;
+        border-top: 1px solid rgba(241, 245, 249, 0.95);
+    }
+    .sales-pulse-table-row:first-of-type {
+        border-top: 0;
+        padding-top: 0;
+    }
+    .sales-pulse-table-row strong {
+        display: block;
+        color: var(--ph-color-text);
+        font-size: 11px;
+        line-height: 1.3;
+    }
+    .sales-pulse-table-row span,
+    .sales-pulse-table-row small {
+        display: block;
+        color: #425c7f;
+        font-size: 10px;
+        line-height: 1.35;
+    }
+    .sales-pulse-table-amount {
+        display: grid;
+        gap: 4px;
+    }
+    .sales-pulse-table-track {
+        width: 100%;
+        height: 6px;
+        border-radius: 999px;
+        background: #eef2f7;
+        overflow: hidden;
+    }
+    .sales-pulse-table-fill {
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, rgba(248,113,113,0.6), rgba(251,146,60,0.78));
+    }
+    .sales-pulse-bottom-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr);
+        gap: 12px;
+    }
+    .sales-pulse-breakdown-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .sales-pulse-breakdown-item {
+        display: grid;
+        gap: 6px;
+        padding: 11px 12px;
+        border-radius: 14px;
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.9));
+    }
+    .sales-pulse-breakdown-top {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .sales-pulse-breakdown-icon {
+        width: 24px;
+        height: 24px;
+        border-radius: 9px;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--ph-color-border);
+        background: var(--ph-color-surface-soft);
+        color: var(--ph-color-primary);
+        flex: 0 0 24px;
+    }
+    .sales-pulse-breakdown-icon svg {
+        width: 12px;
+        height: 12px;
+    }
+    .sales-pulse-breakdown-item.is-success .sales-pulse-breakdown-icon {
+        color: var(--ph-color-success);
+        background: var(--ph-color-success-soft);
+    }
+    .sales-pulse-breakdown-item.is-warning .sales-pulse-breakdown-icon {
+        color: var(--ph-color-warning);
+        background: var(--ph-color-warning-soft);
+    }
+    .sales-pulse-breakdown-item.is-danger .sales-pulse-breakdown-icon {
+        color: var(--ph-color-danger);
+        background: var(--ph-color-danger-soft);
+    }
+    .sales-pulse-breakdown-item.is-info .sales-pulse-breakdown-icon {
+        color: var(--ph-color-primary);
+        background: var(--ph-color-info-soft);
+    }
+    .sales-pulse-breakdown-item strong {
+        display: block;
+        color: #425c7f;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: .07em;
+        text-transform: uppercase;
+    }
+    .sales-pulse-breakdown-item span {
+        color: var(--ph-color-text);
+        font-size: 17px;
+        font-weight: 780;
+        line-height: 1.05;
+    }
+    .sales-pulse-breakdown-item small {
+        color: #425c7f;
+        font-size: 10px;
+        line-height: 1.35;
+    }
+    .sales-pulse-invoice-table {
+        display: grid;
+        gap: 8px;
+    }
+    .sales-pulse-invoice-head,
+    .sales-pulse-invoice-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr 84px 78px 78px;
+        gap: 8px;
+        align-items: center;
+    }
+    .sales-pulse-invoice-head {
+        color: #64748b;
+        font-size: 10px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        padding-bottom: 6px;
+        border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+    }
+    .sales-pulse-invoice-row {
+        padding-top: 8px;
+        border-top: 1px solid rgba(241, 245, 249, 0.95);
+    }
+    .sales-pulse-invoice-row:first-of-type {
+        border-top: 0;
+        padding-top: 0;
+    }
+    .sales-pulse-invoice-row strong,
+    .sales-pulse-invoice-row span,
+    .sales-pulse-invoice-row small {
+        font-size: 10px;
+        line-height: 1.35;
+    }
+    .sales-pulse-invoice-row strong {
+        color: var(--ph-color-text);
+    }
+    .sales-pulse-invoice-row span,
+    .sales-pulse-invoice-row small {
+        color: #425c7f;
     }
     .dashboard-finance-grid {
         grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
@@ -2198,8 +2832,8 @@
     }
     .dashboard-kpi-card {
         gap: 6px;
-        min-height: 124px;
-        padding: 14px 15px;
+        min-height: 112px;
+        padding: 12px 13px;
         border-radius: 18px;
         background: #ffffff;
         box-shadow: 0 14px 28px rgba(11, 35, 66, 0.08);
@@ -2223,12 +2857,12 @@
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
-        gap: 12px;
+        gap: 10px;
     }
     .dashboard-kpi-label,
     .dashboard-card-label,
     .dashboard-logistics-label {
-        color: var(--ph-color-text-soft);
+        color: #425c7f;
         display: block;
         max-width: calc(100% - 46px);
         font-size: 9px;
@@ -2240,7 +2874,7 @@
         text-wrap: balance;
     }
     .dashboard-kpi-subtitle {
-        color: var(--ph-color-text-soft);
+        color: #3f5878;
         font-size: 12px;
         line-height: 1.4;
         font-weight: 700;
@@ -2269,27 +2903,27 @@
     }
     .dashboard-kpi-icon,
     .dashboard-card-icon {
-        width: 30px;
-        height: 30px;
-        border-radius: 9px;
+        width: 24px;
+        height: 24px;
+        border-radius: 8px;
         display: grid;
         place-items: center;
         background: var(--ph-color-surface-soft);
         color: var(--ph-color-primary);
         border: 1px solid var(--ph-color-border);
-        flex: 0 0 28px;
+        flex: 0 0 24px;
     }
     .dashboard-kpi-icon svg,
     .dashboard-card-icon svg {
-        width: 14px;
-        height: 14px;
+        width: 11px;
+        height: 11px;
     }
     .dashboard-kpi-value,
     .dashboard-card-value {
         color: var(--ph-color-text);
         max-width: 100%;
-        font-size: 22px;
-        font-weight: 780;
+        font-size: 16px;
+        font-weight: 760;
         line-height: 1.02;
         letter-spacing: -.04em;
         overflow-wrap: anywhere;
@@ -2302,19 +2936,19 @@
     .dashboard-rank-copy,
     .dashboard-queue-copy,
     .dashboard-trend-copy {
-        color: var(--ph-color-text-soft);
+        color: #425c7f;
         font-size: 10px;
         line-height: 1.32;
         overflow-wrap: anywhere;
     }
     .dashboard-kpi-card {
-        min-height: 122px;
-        padding: 13px 13px 12px;
+        min-height: 102px;
+        padding: 10px 11px;
     }
     .dashboard-priority-card,
     .dashboard-sales-card {
-        min-height: 138px;
-        padding: 13px 13px 12px;
+        min-height: 118px;
+        padding: 10px 11px;
     }
     .dashboard-kpi-card.is-success .dashboard-kpi-icon,
     .dashboard-priority-card.is-success .dashboard-card-icon,
@@ -2368,20 +3002,20 @@
         border-color: rgba(23, 119, 189, 0.16);
     }
     .dashboard-finance-card {
-        min-height: 78px;
-        padding: 9px 10px;
+        min-height: 68px;
+        padding: 7px 8px;
     }
     .dashboard-finance-card .dashboard-card-icon {
-        width: 24px;
-        height: 24px;
-        border-radius: 9px;
+        width: 20px;
+        height: 20px;
+        border-radius: 8px;
     }
     .dashboard-finance-card .dashboard-card-icon svg {
-        width: 12px;
-        height: 12px;
+        width: 10px;
+        height: 10px;
     }
     .dashboard-finance-card .dashboard-card-value {
-        font-size: 14px;
+        font-size: 12px;
         line-height: 1.06;
     }
     .dashboard-finance-card .dashboard-card-label {
@@ -2399,14 +3033,14 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-width: 32px;
-        height: 28px;
-        padding: 0 9px;
-        border-radius: 9px;
+        min-width: 28px;
+        height: 24px;
+        padding: 0 8px;
+        border-radius: 8px;
         background: var(--ph-color-surface-soft);
         border: 1px solid var(--ph-color-border);
         color: var(--ph-color-text);
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 800;
     }
     .dashboard-filter-grid {
@@ -2434,7 +3068,7 @@
         display: none;
         align-items: center;
         gap: 6px;
-        color: var(--ph-color-text-soft);
+        color: #425c7f;
         font-size: 11px;
         font-weight: 800;
         text-transform: uppercase;
@@ -2450,7 +3084,7 @@
     .dashboard-action-layout,
     .dashboard-trend-layout {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: 1fr;
         gap: 14px;
     }
     .dashboard-widget-grid,
@@ -2530,8 +3164,8 @@
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        min-height: 68px;
-        padding: 12px 14px;
+        min-height: 56px;
+        padding: 8px 10px;
         border-radius: 16px;
         border: 1px solid var(--ph-color-border);
         background: #ffffff;
@@ -2540,13 +3174,13 @@
     .dashboard-snapshot-item strong {
         display: block;
         color: var(--ph-color-text);
-        font-size: 18px;
+        font-size: 14px;
         line-height: 1.05;
         letter-spacing: -0.03em;
     }
     .dashboard-snapshot-item span {
         display: block;
-        color: var(--ph-color-text-soft);
+        color: #425c7f;
         font-size: 10px;
         font-weight: 800;
         letter-spacing: .08em;
@@ -2561,10 +3195,10 @@
         line-height: 1.35;
     }
     .dashboard-snapshot-icon {
-        width: 34px;
-        height: 34px;
-        flex: 0 0 34px;
-        border-radius: 12px;
+        width: 24px;
+        height: 24px;
+        flex: 0 0 24px;
+        border-radius: 10px;
         display: grid;
         place-items: center;
         border: 1px solid var(--ph-color-border);
@@ -2592,7 +3226,9 @@
         border-color: rgba(23, 119, 189, 0.18);
     }
     .dashboard-action-card {
-        min-height: 108px;
+        min-height: 86px;
+        padding: 8px 10px;
+        gap: 4px;
     }
     .dashboard-widget-list,
     .dashboard-feed-list {
@@ -2642,7 +3278,7 @@
     .dashboard-widget-eyebrow em,
     .dashboard-feed-meta em {
         font-style: normal;
-        color: var(--ph-color-text-soft);
+        color: #425c7f;
         font-size: 10px;
         font-weight: 800;
         letter-spacing: .08em;
@@ -2655,7 +3291,7 @@
         border-radius: 999px;
         background: var(--ph-color-surface-soft);
         border: 1px solid var(--ph-color-border);
-        color: var(--ph-color-text-soft);
+        color: #425c7f;
         font-size: 10px;
         font-weight: 800;
         text-transform: uppercase;
@@ -2747,11 +3383,42 @@
     .dashboard-trend-card .rx-card-copy {
         font-size: 11px;
         line-height: 1.35;
+        color: #3f5878;
+    }
+    .dashboard-trend-legend {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+    }
+    .dashboard-trend-legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: #3f5878;
+        font-size: 10px;
+        font-weight: 700;
+    }
+    .dashboard-trend-legend-swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        display: inline-block;
+    }
+    .dashboard-trend-legend-swatch.is-rental {
+        background: #4f46e5;
+    }
+    .dashboard-trend-legend-swatch.is-sales {
+        background: #16a34a;
+    }
+    .dashboard-trend-legend-swatch.is-orders {
+        background: #94a3b8;
     }
     .dashboard-trend-vertical {
         display: grid;
         grid-template-columns: repeat(6, minmax(0, 1fr));
-        gap: 10px;
+        gap: 12px;
         align-items: end;
     }
     .dashboard-trend-column {
@@ -2759,34 +3426,29 @@
         gap: 8px;
         min-width: 0;
     }
-    .dashboard-trend-column-head {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 8px;
-    }
-    .dashboard-trend-column-head strong {
-        color: #0f172a;
-        font-size: 12px;
-        line-height: 1.25;
-    }
-    .dashboard-trend-column-head span {
-        color: #64748b;
-        font-size: 9px;
-        line-height: 1.3;
-        text-align: right;
-    }
     .dashboard-trend-bars {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 6px;
         align-items: end;
-        min-height: 118px;
+        min-height: 148px;
     }
     .dashboard-trend-bar-wrap {
         display: grid;
-        gap: 5px;
+        gap: 6px;
         justify-items: center;
+    }
+    .dashboard-trend-bar-head {
+        min-height: 40px;
+        display: grid;
+        justify-items: center;
+        align-content: end;
+        gap: 2px;
+    }
+    .dashboard-trend-bar-topline {
+        width: 1px;
+        min-height: 14px;
+        background: rgba(148, 163, 184, 0.45);
     }
     .dashboard-trend-bar {
         width: 100%;
@@ -2810,10 +3472,27 @@
         text-transform: uppercase;
     }
     .dashboard-trend-bar-value {
-        font-size: 9px;
+        font-size: 10px;
         color: #0f172a;
         line-height: 1.3;
         text-align: center;
+        font-weight: 700;
+    }
+    .dashboard-trend-bar-meta {
+        font-size: 8px;
+        line-height: 1.15;
+        text-align: center;
+        color: #64748b;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .05em;
+    }
+    .dashboard-trend-month {
+        text-align: center;
+        color: #0f172a;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.2;
     }
     .dashboard-rank-link {
         display: grid;
@@ -4257,7 +4936,7 @@
                                                         <em>{{ optional($task->scheduled_at)?->format('h:i A') ?? 'Today' }}</em>
                                                     </div>
                                                     <span>{{ $task->linkedCustomerName() ?: 'Customer pending' }} • {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
-                                                    <small>{{ $task->deliveryOperationalLabel() }} • {{ $task->assignedUser?->name ?: $task->assignedStaff?->name ?: 'Unassigned' }}</small>
+                                                    <small>{{ \Illuminate\Support\Str::headline((string) $task->status) }} • {{ $task->assignedUser?->name ?: $task->assignedStaff?->name ?: 'Unassigned' }}</small>
                                                     <div class="dashboard-widget-actions">
                                                         <a href="{{ route('deliveries.show', $task) }}">Open</a>
                                                         @if($task->linkedCustomerPhone())
@@ -4425,9 +5104,294 @@
         </div>
     </section>
 
-    @if($primaryPriorityCards->isNotEmpty() || ($showSalesOperationsSection && $salesCards->isNotEmpty()))
+    @if($showSalesOperationsSection && $salesCards->isNotEmpty())
+        <section class="rx-card">
+            <div class="rx-card sales-pulse-shell">
+                <div class="rx-card-header sales-pulse-header">
+                    <div class="sales-pulse-heading">
+                        <span class="sales-pulse-heading-icon">{!! $dashboardIcon('trend') !!}</span>
+                        <div>
+                            <h2 class="rx-card-title">Sales Pulse</h2>
+                            <p class="rx-card-copy">{{ $canViewFinance ? 'Revenue, paid value, collection status, and pending commercial exposure.' : 'Order volume, invoice actions, and sales follow-through without finance amounts.' }}</p>
+                        </div>
+                    </div>
+                    <div class="sales-pulse-actions">
+                        <span class="sales-pulse-chip">{{ now()->startOfMonth()->format('d M Y') }} - {{ now()->format('d M Y') }}</span>
+                        @if($salesIndexUrl)
+                            <a href="{{ $salesIndexUrl }}" class="sales-pulse-chip">Open Sales</a>
+                        @endif
+                        @if($reportsIndexUrl)
+                            <a href="{{ $reportsIndexUrl }}" class="sales-pulse-chip">Export</a>
+                        @endif
+                    </div>
+                </div>
+                <div class="rx-card-body">
+                    <div class="sales-pulse-metrics">
+                        @foreach($salesCards as $card)
+                            @php $tag = !empty($card['href']) ? 'a' : 'div'; @endphp
+                            <{{ $tag }} @if(!empty($card['href'])) href="{{ $card['href'] }}" @endif class="sales-pulse-metric-card {{ $toneCardClass($card['tone'] ?? null) }}">
+                                <div class="sales-pulse-metric-head">
+                                    <span class="sales-pulse-metric-label">{{ $card['label'] }}</span>
+                                    <span class="sales-pulse-metric-icon">{!! $dashboardIcon($card['icon']) !!}</span>
+                                </div>
+                                <div class="sales-pulse-metric-value">{{ $card['value'] }}</div>
+                                <div class="sales-pulse-metric-subtitle">{{ $card['subtitle'] }}</div>
+                                <div class="sales-pulse-metric-note">{{ $card['note'] }}</div>
+                            </{{ $tag }}>
+                        @endforeach
+                    </div>
+
+                    @php
+                        $salesPulseOrdersMax = max(array_merge([1], $monthlyTrendRows->pluck('total_orders')->map(fn ($value) => (float) $value)->all()));
+                        $salesPulseChartHeight = 168;
+                        $salesPulseChartWidth = 540;
+                    @endphp
+
+                    <div class="sales-pulse-analytics">
+                        <div class="sales-pulse-chart-card">
+                            <div class="sales-pulse-card-head">
+                                <div>
+                                    <div class="sales-pulse-card-title">Sales vs Rentals Trend</div>
+                                    <div class="sales-pulse-card-copy">Monthly sales value, rental comparison, and order pressure in one compact view.</div>
+                                </div>
+                                @if($reportsIndexUrl)
+                                    <a href="{{ $reportsIndexUrl }}" class="sales-pulse-card-link">View Business Analytics</a>
+                                @endif
+                            </div>
+                            <div class="sales-pulse-legend">
+                                <span class="sales-pulse-legend-item"><span class="sales-pulse-legend-swatch is-sales"></span>Sales Value</span>
+                                <span class="sales-pulse-legend-item"><span class="sales-pulse-legend-swatch is-rental"></span>Rental Value</span>
+                                <span class="sales-pulse-legend-item"><span class="sales-pulse-legend-swatch is-orders"></span>Total Orders</span>
+                            </div>
+                            <div class="sales-pulse-chart-shell">
+                                @if($monthlyTrendRows->isNotEmpty())
+                                    @php
+                                        $salesPulseSalesPoints = $buildChartPolyline($monthlyTrendRows->pluck('sales_total')->map(fn ($value) => (float) $value)->all(), $salesPulseChartWidth, $salesPulseChartHeight, 22);
+                                        $salesPulseRentalPoints = $buildChartPolyline($monthlyTrendRows->pluck('rental_total')->map(fn ($value) => (float) $value)->all(), $salesPulseChartWidth, $salesPulseChartHeight, 22);
+                                    @endphp
+                                    <svg class="sales-pulse-chart-svg" viewBox="0 0 540 184" role="img" aria-label="Sales pulse trend">
+                                        <line class="sales-pulse-chart-grid" x1="22" y1="20" x2="518" y2="20"></line>
+                                        <line class="sales-pulse-chart-grid" x1="22" y1="88" x2="518" y2="88"></line>
+                                        <line class="sales-pulse-chart-grid" x1="22" y1="156" x2="518" y2="156"></line>
+                                        @foreach($monthlyTrendRows as $index => $row)
+                                            @php
+                                                $x = 22 + (($salesPulseChartWidth - 44) * ($index / max($monthlyTrendRows->count() - 1, 1)));
+                                                $barHeight = ((float) ($row['total_orders'] ?? 0) / max($salesPulseOrdersMax, 1)) * 72;
+                                                $salesY = ($salesPulseChartHeight - 22) - ((((float) ($row['sales_total'] ?? 0)) / max($trendMax, 1)) * ($salesPulseChartHeight - 44));
+                                                $rentalY = ($salesPulseChartHeight - 22) - ((((float) ($row['rental_total'] ?? 0)) / max($trendMax, 1)) * ($salesPulseChartHeight - 44));
+                                            @endphp
+                                            <rect class="sales-pulse-chart-bar" x="{{ round($x - 13, 2) }}" y="{{ round(156 - $barHeight, 2) }}" width="26" height="{{ round($barHeight, 2) }}" rx="8"></rect>
+                                            <text class="sales-pulse-chart-value" x="{{ round($x, 2) }}" y="{{ round(max($salesY - 10, 14), 2) }}" text-anchor="middle">{{ $compactCurrency($row['sales_total'] ?? 0) }}</text>
+                                            <text class="sales-pulse-chart-axis is-value" x="{{ round($x, 2) }}" y="{{ round(max($rentalY - 8, 24), 2) }}" text-anchor="middle">{{ $compactCurrency($row['rental_total'] ?? 0) }}</text>
+                                            <text class="sales-pulse-chart-axis" x="{{ round($x, 2) }}" y="174" text-anchor="middle">{{ \Illuminate\Support\Str::replace(' 2026', '', $row['label'] ?? '-') }}</text>
+                                        @endforeach
+                                        <polyline class="sales-pulse-chart-line-sales" points="{{ $salesPulseSalesPoints }}"></polyline>
+                                        <polyline class="sales-pulse-chart-line-rental" points="{{ $salesPulseRentalPoints }}"></polyline>
+                                        @foreach($monthlyTrendRows as $index => $row)
+                                            @php
+                                                $x = 22 + (($salesPulseChartWidth - 44) * ($index / max($monthlyTrendRows->count() - 1, 1)));
+                                                $salesY = ($salesPulseChartHeight - 22) - ((((float) ($row['sales_total'] ?? 0)) / max($trendMax, 1)) * ($salesPulseChartHeight - 44));
+                                                $rentalY = ($salesPulseChartHeight - 22) - ((((float) ($row['rental_total'] ?? 0)) / max($trendMax, 1)) * ($salesPulseChartHeight - 44));
+                                            @endphp
+                                            <circle class="sales-pulse-chart-dot-sales" cx="{{ round($x, 2) }}" cy="{{ round($salesY, 2) }}" r="3.6"></circle>
+                                            <circle class="sales-pulse-chart-dot-rental" cx="{{ round($x, 2) }}" cy="{{ round($rentalY, 2) }}" r="3.1"></circle>
+                                        @endforeach
+                                    </svg>
+                                @else
+                                    <div class="rx-empty dashboard-empty">
+                                        <div class="rx-empty-icon">{!! $dashboardIcon('trend') !!}</div>
+                                        <strong>No sales trend data</strong>
+                                        <span>The dashboard will render this chart automatically once monthly sales and rentals exist.</span>
+                                    </div>
+                                @endif
+                            </div>
+                            <div class="sales-pulse-summary-strip">
+                                <div class="sales-pulse-summary-item">
+                                    <strong>Total Sales (MTD)</strong>
+                                    <span>{{ $currency($salesThisMonthAmountValue) }}</span>
+                                    <small>{{ number_format($salesThisMonthCountValue) }} orders this month</small>
+                                </div>
+                                <div class="sales-pulse-summary-item">
+                                    <strong>Total Collected</strong>
+                                    <span>{{ $currency($paidSalesAmountValue) }}</span>
+                                    <small>{{ $salesPulseCollectionEfficiency }}% collection efficiency</small>
+                                </div>
+                                <div class="sales-pulse-summary-item">
+                                    <strong>Total Outstanding</strong>
+                                    <span>{{ $currency($salesOutstandingInvoiceAmountValue) }}</span>
+                                    <small>{{ number_format($salesOutstandingInvoiceCountValue) }} open sales invoices</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="sales-pulse-side-stack">
+                            <div class="sales-pulse-side-card">
+                                <div class="sales-pulse-card-head">
+                                    <div>
+                                        <div class="sales-pulse-card-title">Collection Status (Current)</div>
+                                        <div class="sales-pulse-card-copy">Collected, outstanding, and unbilled sales exposure at a glance.</div>
+                                    </div>
+                                </div>
+                                <div class="sales-pulse-donut-layout">
+                                    <div class="sales-pulse-donut" style="--collected-percent: {{ (int) ($salesPulseCollectionSegments[0]['percent'] ?? 0) }}; --outstanding-percent: {{ (int) ($salesPulseCollectionSegments[1]['percent'] ?? 0) }};">
+                                        <div class="sales-pulse-donut-center">
+                                            <strong>Total Sales</strong>
+                                            <span>{{ $compactCurrency($salesPulseCollectionTotal) }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="sales-pulse-status-list">
+                                        @foreach($salesPulseCollectionSegments as $segment)
+                                            <div class="sales-pulse-status-row">
+                                                <span class="sales-pulse-status-dot {{ $toneCardClass($segment['tone'] ?? null) }}"></span>
+                                                <span>{{ $segment['label'] }}</span>
+                                                <strong>{{ $currency($segment['value'] ?? 0) }} ({{ $segment['percent'] }}%)</strong>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                                <div class="sales-pulse-efficiency">
+                                    <span>Collection Efficiency</span>
+                                    <strong>{{ $salesPulseCollectionEfficiency }}%</strong>
+                                </div>
+                            </div>
+
+                            <div class="sales-pulse-side-card">
+                                <div class="sales-pulse-card-head">
+                                    <div>
+                                        <div class="sales-pulse-card-title">Top Customers With Outstanding</div>
+                                        <div class="sales-pulse-card-copy">Highest current dues requiring invoice or collection follow-through.</div>
+                                    </div>
+                                    @if($invoiceIndexUrl)
+                                        <a href="{{ $mergeDashboardQuery('invoices.index', ['status' => 'open']) }}" class="sales-pulse-card-link">View All</a>
+                                    @endif
+                                </div>
+                                @if($salesPulseTopCustomers->isNotEmpty())
+                                    @php
+                                        $salesPulseTopDuesMax = max(array_merge([1], $salesPulseTopCustomers->pluck('amount')->map(fn ($value) => (float) $value)->all()));
+                                    @endphp
+                                    <div class="sales-pulse-table">
+                                        <div class="sales-pulse-table-head">
+                                            <span>Customer</span>
+                                            <span>Outstanding</span>
+                                            <span>Invoices</span>
+                                        </div>
+                                        @foreach($salesPulseTopCustomers as $customerRow)
+                                            <div class="sales-pulse-table-row">
+                                                <div>
+                                                    <strong>{{ $customerRow['label'] ?? 'Customer' }}</strong>
+                                                    <small>{{ (int) ($customerRow['days_overdue'] ?? 0) > 0 ? $customerRow['days_overdue'] . ' day(s) overdue' : 'Not yet overdue' }}</small>
+                                                </div>
+                                                <div class="sales-pulse-table-amount">
+                                                    <strong>{{ $currency((float) ($customerRow['amount'] ?? 0)) }}</strong>
+                                                    <div class="sales-pulse-table-track"><div class="sales-pulse-table-fill" style="width: {{ round((((float) ($customerRow['amount'] ?? 0)) / max($salesPulseTopDuesMax, 1)) * 100, 1) }}%;"></div></div>
+                                                </div>
+                                                <span>{{ number_format((int) ($customerRow['invoice_count'] ?? 0)) }}</span>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @else
+                                    <div class="rx-empty dashboard-empty">
+                                        <div class="rx-empty-icon">{!! $dashboardIcon('payment') !!}</div>
+                                        <strong>No outstanding customers</strong>
+                                        <span>Open dues will appear here once invoices remain unpaid.</span>
+                                    </div>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="sales-pulse-bottom-grid">
+                        <div class="sales-pulse-bottom-card">
+                            <div class="sales-pulse-card-head">
+                                <div>
+                                    <div class="sales-pulse-card-title">Sales Breakdown</div>
+                                    <div class="sales-pulse-card-copy">Orders, invoice pressure, collections, and pending exposure in a compact strip.</div>
+                                </div>
+                            </div>
+                            <div class="sales-pulse-breakdown-grid">
+                                <div class="sales-pulse-breakdown-item is-info">
+                                    <div class="sales-pulse-breakdown-top">
+                                        <span class="sales-pulse-breakdown-icon">{!! $dashboardIcon('sales') !!}</span>
+                                        <strong>Orders Created</strong>
+                                    </div>
+                                    <span>{{ number_format($salesThisMonthCountValue) }}</span>
+                                    <small>{{ number_format($todaySalesCount) }} created today</small>
+                                </div>
+                                <div class="sales-pulse-breakdown-item is-success">
+                                    <div class="sales-pulse-breakdown-top">
+                                        <span class="sales-pulse-breakdown-icon">{!! $dashboardIcon('revenue') !!}</span>
+                                        <strong>Collected Value</strong>
+                                    </div>
+                                    <span>{{ $currency($paidSalesAmountValue) }}</span>
+                                    <small>{{ $salesPulseCollectionEfficiency }}% of sales value</small>
+                                </div>
+                                <div class="sales-pulse-breakdown-item is-warning">
+                                    <div class="sales-pulse-breakdown-top">
+                                        <span class="sales-pulse-breakdown-icon">{!! $dashboardIcon('payment') !!}</span>
+                                        <strong>Outstanding</strong>
+                                    </div>
+                                    <span>{{ $currency($salesOutstandingInvoiceAmountValue) }}</span>
+                                    <small>{{ number_format($salesOutstandingInvoiceCountValue) }} invoice(s) open</small>
+                                </div>
+                                <div class="sales-pulse-breakdown-item is-danger">
+                                    <div class="sales-pulse-breakdown-top">
+                                        <span class="sales-pulse-breakdown-icon">{!! $dashboardIcon('trend') !!}</span>
+                                        <strong>Unbilled</strong>
+                                    </div>
+                                    <span>{{ $currency($salesUnbilledAmountValue) }}</span>
+                                    <small>{{ number_format($salesUnbilledCountValue) }} sales not invoiced</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="sales-pulse-bottom-card">
+                            <div class="sales-pulse-card-head">
+                                <div>
+                                    <div class="sales-pulse-card-title">Recent Sales Orders</div>
+                                    <div class="sales-pulse-card-copy">Latest customer-facing sales rows with value and payment status.</div>
+                                </div>
+                                @if($salesIndexUrl)
+                                    <a href="{{ $salesIndexUrl }}" class="sales-pulse-card-link">View All Sales</a>
+                                @endif
+                            </div>
+                            @if($salesPulseRecentOrders->isNotEmpty())
+                                <div class="sales-pulse-invoice-table">
+                                    <div class="sales-pulse-invoice-head">
+                                        <span>Sale No.</span>
+                                        <span>Customer</span>
+                                        <span>Date</span>
+                                        <span>Amount</span>
+                                        <span>Status</span>
+                                    </div>
+                                    @foreach($salesPulseRecentOrders as $sale)
+                                        <div class="sales-pulse-invoice-row">
+                                            <div>
+                                                <strong>SALE-{{ $sale->id }}</strong>
+                                                <small>{{ optional($sale->product)->name ?? 'Product N/A' }}</small>
+                                            </div>
+                                            <span>{{ optional($sale->customer)->name ?? 'Customer' }}</span>
+                                            <span>{{ optional($sale->sale_date)->format('d M Y') ?? 'Date N/A' }}</span>
+                                            <span>{{ $currency($sale->sale_amount ?? 0) }}</span>
+                                            <span class="rx-badge {{ $statusBadgeClass($sale->payment_status ?? null) }}">{{ \Illuminate\Support\Str::headline((string) ($sale->payment_status ?? 'pending')) }}</span>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @else
+                                <div class="rx-empty dashboard-empty">
+                                    <div class="rx-empty-icon">{!! $dashboardIcon('sales') !!}</div>
+                                    <strong>No recent sales orders</strong>
+                                    <span>Recent commercial activity will appear here once sales are recorded.</span>
+                                </div>
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    @endif
+
+    @if($primaryPriorityCards->isNotEmpty())
     <section class="dashboard-main-grid">
-        @if($primaryPriorityCards->isNotEmpty())
         <div class="rx-card">
             <div class="rx-card-header">
                 <div>
@@ -4452,34 +5416,6 @@
                 </div>
             </div>
         </div>
-        @endif
-
-        @if($showSalesOperationsSection && $salesCards->isNotEmpty())
-            <div class="rx-card">
-                <div class="rx-card-header">
-                    <div>
-                        <h2 class="rx-card-title">Sales Pulse</h2>
-                        <p class="rx-card-copy">{{ $canViewFinance ? 'Revenue, paid value, and pending collections.' : 'Order volume, invoice actions, and sales follow-through without finance amounts.' }}</p>
-                    </div>
-                </div>
-                <div class="rx-card-body">
-                    <div class="dashboard-sales-grid">
-                        @foreach($salesCards as $card)
-                            @php $tag = !empty($card['href']) ? 'a' : 'div'; @endphp
-                            <{{ $tag }} @if(!empty($card['href'])) href="{{ $card['href'] }}" @endif class="dashboard-sales-card {{ $toneCardClass($card['tone'] ?? null) }}">
-                                <div class="dashboard-card-head">
-                                    <span class="dashboard-card-label">{{ $card['label'] }}</span>
-                                    <span class="dashboard-card-icon">{!! $dashboardIcon($card['icon']) !!}</span>
-                                </div>
-                                <div class="dashboard-card-value">{{ $card['value'] }}</div>
-                                <div class="dashboard-card-subtitle">{{ $card['subtitle'] }}</div>
-                                <div class="dashboard-card-note">{{ $card['note'] }}</div>
-                            </{{ $tag }}>
-                        @endforeach
-                    </div>
-                </div>
-            </div>
-        @endif
     </section>
     @endif
 
@@ -5478,30 +6414,42 @@
                     @php
                         $ordersTrendMax = max(array_merge([1], $monthlyTrendRows->pluck('total_orders')->map(fn ($value) => (float) $value)->all()));
                     @endphp
+                    <div class="dashboard-trend-legend" aria-label="Sales vs rentals legend">
+                        <span class="dashboard-trend-legend-item"><span class="dashboard-trend-legend-swatch is-rental"></span>Rental Revenue</span>
+                        <span class="dashboard-trend-legend-item"><span class="dashboard-trend-legend-swatch is-sales"></span>Sales Revenue</span>
+                        <span class="dashboard-trend-legend-item"><span class="dashboard-trend-legend-swatch is-orders"></span>Total Orders</span>
+                    </div>
                     <div class="dashboard-trend-vertical">
                         @foreach($monthlyTrendRows as $row)
                             <div class="dashboard-trend-column">
-                                <div class="dashboard-trend-column-head">
-                                    <strong>{{ \Illuminate\Support\Str::replace(' 2026', '', $row['label'] ?? '-') }}</strong>
-                                    <span>{{ $currency($row['rental_total'] ?? 0) }} • {{ $currency($row['sales_total'] ?? 0) }}</span>
-                                </div>
                                 <div class="dashboard-trend-bars">
                                     <div class="dashboard-trend-bar-wrap">
+                                        <div class="dashboard-trend-bar-head">
+                                            <span class="dashboard-trend-bar-value">{{ $compactCurrency($row['rental_total'] ?? 0) }}</span>
+                                            <span class="dashboard-trend-bar-topline" aria-hidden="true"></span>
+                                        </div>
                                         <div class="dashboard-trend-bar is-rental" style="height:{{ max(8, round((((float) ($row['rental_total'] ?? 0)) / max($trendMax, 1)) * 104, 1)) }}px;"></div>
                                         <span class="dashboard-trend-bar-label">R</span>
-                                        <span class="dashboard-trend-bar-value">{{ $compactCurrency($row['rental_total'] ?? 0) }}</span>
                                     </div>
                                     <div class="dashboard-trend-bar-wrap">
+                                        <div class="dashboard-trend-bar-head">
+                                            <span class="dashboard-trend-bar-value">{{ $compactCurrency($row['sales_total'] ?? 0) }}</span>
+                                            <span class="dashboard-trend-bar-topline" aria-hidden="true"></span>
+                                        </div>
                                         <div class="dashboard-trend-bar is-sales" style="height:{{ max(8, round((((float) ($row['sales_total'] ?? 0)) / max($trendMax, 1)) * 104, 1)) }}px;"></div>
                                         <span class="dashboard-trend-bar-label">S</span>
-                                        <span class="dashboard-trend-bar-value">{{ $compactCurrency($row['sales_total'] ?? 0) }}</span>
                                     </div>
                                     <div class="dashboard-trend-bar-wrap">
+                                        <div class="dashboard-trend-bar-head">
+                                            <span class="dashboard-trend-bar-value">{{ number_format((int) ($row['total_orders'] ?? 0)) }}</span>
+                                            <span class="dashboard-trend-bar-meta">orders</span>
+                                            <span class="dashboard-trend-bar-topline" aria-hidden="true"></span>
+                                        </div>
                                         <div class="dashboard-trend-bar is-orders" style="height:{{ max(8, round((((float) ($row['total_orders'] ?? 0)) / max($ordersTrendMax, 1)) * 104, 1)) }}px;"></div>
                                         <span class="dashboard-trend-bar-label">O</span>
-                                        <span class="dashboard-trend-bar-value">{{ number_format((int) ($row['total_orders'] ?? 0)) }}</span>
                                     </div>
                                 </div>
+                                <div class="dashboard-trend-month">{{ \Illuminate\Support\Str::replace(' 2026', '', $row['label'] ?? '-') }}</div>
                             </div>
                         @endforeach
                     </div>
