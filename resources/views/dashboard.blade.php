@@ -1622,100 +1622,213 @@
     }
     .control-room-pipeline {
         display: grid;
-        gap: 8px;
+        gap: 12px;
     }
     .control-room-pipeline-track {
         display: grid;
         grid-template-columns: repeat(6, minmax(0, 1fr));
-        gap: 6px;
+        gap: 10px;
     }
     .control-room-pipeline-stage {
         position: relative;
         display: grid;
-        gap: 4px;
-        padding: 7px 8px;
-        border-radius: 12px;
-        background: #f8fbff;
-        border: 1px solid rgba(148, 163, 184, 0.18);
+        justify-items: center;
+        gap: 6px;
+        padding: 0;
+        border: 0;
+        background: transparent;
     }
     .control-room-pipeline-stage::after {
         content: "";
         position: absolute;
-        top: 18px;
-        right: -8px;
-        width: 8px;
+        top: 19px;
+        right: -12px;
+        width: 14px;
         height: 2px;
-        background: rgba(148, 163, 184, 0.32);
+        background: rgba(148, 163, 184, 0.34);
     }
     .control-room-pipeline-stage:last-child::after {
         display: none;
     }
-    .control-room-pipeline-stage.is-success { background: #f3fbf6; }
-    .control-room-pipeline-stage.is-warning { background: #fffaf3; }
-    .control-room-pipeline-stage.is-info { background: #f7faff; }
+    .control-room-pipeline-stage-icon {
+        width: 38px;
+        height: 38px;
+        border-radius: 999px;
+        display: grid;
+        place-items: center;
+        background: #f7faff;
+        border: 1px solid rgba(191, 219, 254, 0.95);
+        color: var(--ph-color-primary);
+        box-shadow: 0 10px 20px rgba(11, 35, 66, 0.05);
+    }
+    .control-room-pipeline-stage-icon svg {
+        width: 15px;
+        height: 15px;
+    }
+    .control-room-pipeline-stage.is-success .control-room-pipeline-stage-icon {
+        color: var(--ph-color-success);
+        background: #f3fbf6;
+        border-color: rgba(34, 197, 94, 0.22);
+    }
+    .control-room-pipeline-stage.is-warning .control-room-pipeline-stage-icon {
+        color: var(--ph-color-warning);
+        background: #fffaf3;
+        border-color: rgba(251, 146, 60, 0.22);
+    }
+    .control-room-pipeline-stage.is-info .control-room-pipeline-stage-icon {
+        color: var(--ph-color-primary);
+        background: #f7faff;
+        border-color: rgba(59, 130, 246, 0.22);
+    }
     .control-room-pipeline-stage-label {
-        font-size: 9px;
+        font-size: 10px;
         font-weight: 700;
-        letter-spacing: .08em;
-        text-transform: uppercase;
-        color: #6f84a2;
+        line-height: 1.25;
+        text-align: center;
+        color: #4d6383;
     }
     .control-room-pipeline-stage-value {
-        font-size: 17px;
+        font-size: 22px;
         line-height: 1;
         letter-spacing: -.04em;
         color: var(--ph-color-text);
         font-weight: 800;
     }
-    .control-room-pipeline-stage-meter {
-        min-height: 4px;
-        overflow: hidden;
-        border-radius: 999px;
-        background: rgba(148, 163, 184, 0.16);
-    }
-    .control-room-pipeline-stage-meter span {
-        display: block;
-        height: 4px;
-        border-radius: inherit;
-        background: rgba(79, 70, 229, 0.8);
-    }
     .control-room-pipeline-bottom {
         display: grid;
-        grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
-        gap: 8px;
+        grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+        gap: 10px;
     }
     .control-room-summary-grid {
         display: grid;
-        gap: 8px;
+        gap: 0;
+        padding: 10px 12px;
+        border-radius: 16px;
+        border: 1px solid rgba(226, 232, 240, 0.92);
+        background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.92));
     }
     .control-room-summary-tile {
         display: grid;
-        gap: 2px;
-        padding: 7px 9px;
-        border-radius: 12px;
-        background: #f8fbff;
-        border: 1px solid rgba(148, 163, 184, 0.16);
+        grid-template-columns: auto 1fr;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 0;
+        border-top: 1px solid rgba(226, 232, 240, 0.9);
+        background: transparent;
+        border-radius: 0;
+        border-left: 0;
+        border-right: 0;
+        border-bottom: 0;
+    }
+    .control-room-summary-tile:first-child {
+        border-top: 0;
+        padding-top: 0;
     }
     .control-room-summary-tile strong {
-        font-size: 14px;
+        font-size: 20px;
         line-height: 1;
         color: var(--ph-color-text);
     }
     .control-room-summary-tile span {
-        font-size: 9px;
-        color: var(--ph-color-text-soft);
+        font-size: 10px;
+        color: #425c7f;
     }
-    .control-room-summary-meter {
-        min-height: 4px;
-        overflow: hidden;
-        border-radius: 999px;
-        background: rgba(148, 163, 184, 0.15);
+    .control-room-summary-copy {
+        display: grid;
+        gap: 3px;
     }
-    .control-room-summary-meter span {
+    .control-room-summary-copy small {
+        color: #64748b;
+        font-size: 10px;
+        line-height: 1.35;
+    }
+    .control-room-upcoming-list {
+        display: grid;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 16px;
+        border: 1px solid rgba(226, 232, 240, 0.92);
+        background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.92));
+    }
+    .control-room-upcoming-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+    }
+    .control-room-upcoming-icon {
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+        display: grid;
+        place-items: center;
+        background: #eef6ff;
+        border: 1px solid rgba(96, 165, 250, 0.24);
+        color: #2563eb;
+        flex: 0 0 42px;
+    }
+    .control-room-upcoming-icon svg {
+        width: 18px;
+        height: 18px;
+    }
+    .control-room-upcoming-state {
+        display: grid;
+        justify-items: center;
+        align-content: center;
+        min-height: 144px;
+        text-align: center;
+        padding: 6px 8px;
+    }
+    .control-room-upcoming-state strong {
+        font-size: 18px;
+        line-height: 1.25;
+        color: var(--ph-color-text);
+    }
+    .control-room-upcoming-state span {
+        margin-top: 8px;
+        color: #64748b;
+        font-size: 12px;
+        line-height: 1.45;
+        max-width: 180px;
+    }
+    .control-room-upcoming-rows {
+        display: grid;
+        gap: 0;
+    }
+    .control-room-upcoming-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+        padding: 10px 0;
+        border-top: 1px solid rgba(226, 232, 240, 0.9);
+        text-decoration: none;
+        color: inherit;
+    }
+    .control-room-upcoming-row:first-child {
+        border-top: 0;
+        padding-top: 0;
+    }
+    .control-room-upcoming-row strong {
         display: block;
-        height: 4px;
-        border-radius: inherit;
-        background: linear-gradient(90deg, rgba(79, 70, 229, 0.82), rgba(34, 197, 94, 0.72));
+        color: #1d4ed8;
+        font-size: 11px;
+        line-height: 1.3;
+    }
+    .control-room-upcoming-row span {
+        display: block;
+        margin-top: 3px;
+        color: var(--ph-color-text);
+        font-size: 11px;
+        line-height: 1.35;
+    }
+    .control-room-upcoming-row small {
+        display: block;
+        margin-top: 2px;
+        color: #64748b;
+        font-size: 10px;
+        line-height: 1.35;
+        text-align: right;
+        white-space: nowrap;
     }
     .control-room-risk-table,
     .control-room-workload-table {
@@ -2060,6 +2173,9 @@
     @media (max-width: 900px) {
         .control-room-pipeline-track {
             grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .control-room-pipeline-stage::after {
+            display: none;
         }
         .control-room-aging-legend {
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4360,12 +4476,21 @@
                 <div class="control-room-pipeline">
                     <div class="control-room-pipeline-track">
                         @foreach($pipelineStages as $stage)
+                            @php
+                                $stageIcon = match ($stage['label']) {
+                                    'Created' => 'tasks',
+                                    'Assigned' => 'customer',
+                                    'Out for Delivery' => 'delivery',
+                                    'Active Rental' => 'rental',
+                                    'Return Due' => 'pickup',
+                                    'Completed' => 'completed',
+                                    default => 'trend',
+                                };
+                            @endphp
                             <div class="control-room-pipeline-stage {{ $toneCardClass($stage['tone'] ?? null) }}">
+                                <span class="control-room-pipeline-stage-icon">{!! $dashboardIcon($stageIcon) !!}</span>
                                 <span class="control-room-pipeline-stage-label">{{ $stage['label'] }}</span>
                                 <strong class="control-room-pipeline-stage-value">{{ number_format((int) $stage['value']) }}</strong>
-                                <div class="control-room-pipeline-stage-meter">
-                                    <span style="width: {{ max(min((int) round((((int) $stage['value']) / max($pipelineStages->max('value'), 1)) * 100), 100), 8) }}%;"></span>
-                                </div>
                             </div>
                         @endforeach
                     </div>
@@ -4373,53 +4498,47 @@
                     <div class="control-room-pipeline-bottom">
                         <div class="control-room-summary-grid">
                             @foreach($rentalPipelineSummary as $summary)
-                                @php
-                                    $summaryNumericValue = (int) preg_replace('/[^0-9]/', '', (string) $summary['value']);
-                                    $summaryMeterMax = max(1, $activeRentalsCount, $deliveredRentalsCount, $overdueReturnsCount, $endingSoonCount);
-                                    $summaryMeterWidth = max(min((int) round(($summaryNumericValue / $summaryMeterMax) * 100), 100), 6);
-                                @endphp
                                 <div class="control-room-summary-tile">
                                     <strong>{{ $summary['value'] }}</strong>
-                                    <span>{{ $summary['label'] }}</span>
-                                    <span>{{ $summary['note'] }}</span>
-                                    <div class="control-room-summary-meter">
-                                        <span style="width: {{ $summaryMeterWidth }}%;"></span>
+                                    <div class="control-room-summary-copy">
+                                        <span>{{ $summary['label'] }}</span>
+                                        <small>{{ $summary['note'] }}</small>
                                     </div>
                                 </div>
                             @endforeach
                         </div>
 
                         <div class="control-room-upcoming-list">
-                            <div class="control-room-card-header">
+                            <div class="control-room-upcoming-head">
                                 <div>
                                     <h3 class="control-room-card-title">Upcoming Returns</h3>
                                     <p class="control-room-card-copy">Rentals due today or ending soon so the team can prepare pickup coordination early.</p>
                                 </div>
-                                <a href="{{ $mergeDashboardQuery('rentals.index', ['filter' => 'returns_due_today', 'status' => null]) }}" class="control-room-card-link">View all returns</a>
+                                <span class="control-room-upcoming-icon">{!! $dashboardIcon('pickup') !!}</span>
                             </div>
                             @php
                                 $upcomingReturns = collect($returnsDueToday ?? collect())
                                     ->merge(collect($endingSoonRentals ?? collect()))
                                     ->unique('id')
-                                    ->take(5)
+                                    ->take(3)
                                     ->values();
                             @endphp
                             @if($upcomingReturns->isNotEmpty())
-                                @foreach($upcomingReturns as $rental)
-                                    <a href="{{ route('rentals.show', $rental) }}" class="control-room-list-item">
-                                        <div>
-                                            <strong>{{ $rental->customer_name ?? optional($rental->customer)->name ?? 'Customer' }}</strong>
-                                            <span>Rental #{{ $rental->id }} · {{ optional($rental->product)->name ?? 'Product' }}</span>
-                                        </div>
-                                        <div class="control-room-list-amount">
-                                            <strong>{{ optional($rental->end_date)->format('d M Y') ?? '-' }}</strong>
-                                            <small>{{ $currency((float) ($rental->rental_amount ?? 0)) }}</small>
-                                        </div>
-                                    </a>
-                                @endforeach
+                                <div class="control-room-upcoming-rows">
+                                    @foreach($upcomingReturns as $rental)
+                                        <a href="{{ route('rentals.show', $rental) }}" class="control-room-upcoming-row">
+                                            <div>
+                                                <strong>INV-RNT-{{ str_pad((string) $rental->id, 4, '0', STR_PAD_LEFT) }}</strong>
+                                                <span>{{ $rental->customer_name ?? optional($rental->customer)->name ?? 'Customer' }}</span>
+                                                <small>{{ optional($rental->product)->name ?? 'Product' }}</small>
+                                            </div>
+                                            <small>{{ optional($rental->end_date)->format('d M Y') ?? '-' }}</small>
+                                        </a>
+                                    @endforeach
+                                </div>
+                                <a href="{{ $mergeDashboardQuery('rentals.index', ['filter' => 'returns_due_today', 'status' => null]) }}" class="control-room-card-link">View all returns</a>
                             @else
-                                <div class="rx-empty dashboard-empty">
-                                    <div class="rx-empty-icon">{!! $dashboardIcon('pickup') !!}</div>
+                                <div class="control-room-upcoming-state">
                                     <strong>No immediate returns</strong>
                                     <span>The return queue is calm right now.</span>
                                 </div>
