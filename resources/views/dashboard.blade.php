@@ -1510,7 +1510,11 @@
     }
     .control-room-chart-shell {
         display: grid;
-        gap: 6px;
+        gap: 8px;
+        padding: 10px 12px 8px;
+        border-radius: 16px;
+        border: 1px solid rgba(226, 232, 240, 0.92);
+        background: linear-gradient(180deg, rgba(248,250,252,0.82), rgba(255,255,255,0.98));
     }
     .control-room-chart-svg {
         width: 100%;
@@ -1518,10 +1522,37 @@
         display: block;
         overflow: visible;
     }
+    .control-room-chart-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .control-room-chart-legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: #425c7f;
+        font-size: 10px;
+        font-weight: 700;
+    }
+    .control-room-chart-legend-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 999px;
+        display: inline-block;
+    }
+    .control-room-chart-legend-dot.is-collections {
+        background: #4f46e5;
+    }
     .control-room-chart-axis {
         fill: #7b8da7;
         font-size: 9px;
         font-weight: 600;
+    }
+    .control-room-chart-value {
+        fill: #425c7f;
+        font-size: 9px;
+        font-weight: 700;
     }
     .control-room-chart-grid {
         stroke: rgba(148, 163, 184, 0.22);
@@ -1552,7 +1583,11 @@
     }
     .control-room-aging {
         display: grid;
-        gap: 4px;
+        gap: 8px;
+        padding: 10px 12px;
+        border-radius: 16px;
+        border: 1px solid rgba(226, 232, 240, 0.92);
+        background: #fff;
     }
     .control-room-aging-bar {
         display: flex;
@@ -1593,6 +1628,14 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
     }
+    .control-room-dues-list {
+        grid-template-columns: 1fr;
+        gap: 0;
+        padding: 10px 12px;
+        border-radius: 16px;
+        border: 1px solid rgba(226, 232, 240, 0.92);
+        background: #fff;
+    }
     .control-room-list-item {
         display: flex;
         align-items: flex-start;
@@ -1602,6 +1645,32 @@
         border-radius: 12px;
         background: #f9fbff;
         border: 1px solid rgba(148, 163, 184, 0.16);
+    }
+    .control-room-dues-list .control-room-list-item {
+        padding: 10px 0;
+        border-top: 1px solid rgba(226, 232, 240, 0.88);
+        border-radius: 0;
+        background: transparent;
+        border-left: 0;
+        border-right: 0;
+        border-bottom: 0;
+    }
+    .control-room-dues-list .control-room-list-item:first-child {
+        border-top: 0;
+        padding-top: 0;
+    }
+    .control-room-list-track {
+        width: 100%;
+        height: 6px;
+        border-radius: 999px;
+        background: #eef2f7;
+        overflow: hidden;
+        margin-top: 5px;
+    }
+    .control-room-list-fill {
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, rgba(248,113,113,0.6), rgba(251,146,60,0.78));
     }
     .control-room-list-item strong {
         display: block;
@@ -4369,6 +4438,9 @@
 
                     <div class="control-room-chart-shell">
                         @if($collectionsTrendRows->isNotEmpty())
+                            <div class="control-room-chart-legend" aria-label="Collections trend legend">
+                                <span class="control-room-chart-legend-item"><span class="control-room-chart-legend-dot is-collections"></span>Collections Value</span>
+                            </div>
                             <svg class="control-room-chart-svg" viewBox="0 0 560 170" role="img" aria-label="Collections trend">
                                 <line class="control-room-chart-grid" x1="18" y1="18" x2="542" y2="18"></line>
                                 <line class="control-room-chart-grid" x1="18" y1="84" x2="542" y2="84"></line>
@@ -4379,6 +4451,7 @@
                                         $x = 18 + ((560 - 36) * ($index / max($collectionsTrendRows->count() - 1, 1)));
                                         $y = (170 - 18) - ((((float) $row['amount']) / max($collectionsTrendMax, 1)) * (170 - 36));
                                     @endphp
+                                    <text class="control-room-chart-value" x="{{ round($x, 2) }}" y="{{ round(max($y - 8, 16), 2) }}" text-anchor="middle">{{ $compactCurrency((float) ($row['amount'] ?? 0)) }}</text>
                                     <circle class="control-room-chart-dot-primary" cx="{{ round($x, 2) }}" cy="{{ round($y, 2) }}" r="3.5"></circle>
                                 @endforeach
                                 @foreach($collectionsTrendRows->only([0, (int) floor(max($collectionsTrendRows->count() - 1, 0) / 2), max($collectionsTrendRows->count() - 1, 0)]) as $index => $row)
@@ -4433,6 +4506,9 @@
                     <details class="control-room-expandable">
                         <summary class="control-room-expandable-trigger">View Dues Breakdown <span aria-hidden="true">&rarr;</span></summary>
                         @if($topDuesCustomers->isNotEmpty())
+                            @php
+                                $topDuesMax = max(array_merge([1], $topDuesCustomers->pluck('amount')->map(fn ($value) => (float) $value)->all()));
+                            @endphp
                             <div class="control-room-dues-list">
                                 @foreach($topDuesCustomers as $customerRow)
                                     <div class="control-room-list-item">
@@ -4440,6 +4516,7 @@
                                             <strong>{{ $customerRow['label'] }}</strong>
                                             <span>{{ number_format((int) ($customerRow['invoice_count'] ?? 0)) }} invoice(s)</span>
                                             <small>{{ (int) ($customerRow['days_overdue'] ?? 0) > 0 ? $customerRow['days_overdue'] . ' day(s) overdue' : 'Not yet overdue' }}</small>
+                                            <div class="control-room-list-track"><div class="control-room-list-fill" style="width: {{ round((((float) ($customerRow['amount'] ?? 0)) / max($topDuesMax, 1)) * 100, 1) }}%;"></div></div>
                                         </div>
                                         <div class="control-room-list-amount">
                                             <strong>{{ $currency((float) ($customerRow['amount'] ?? 0)) }}</strong>
