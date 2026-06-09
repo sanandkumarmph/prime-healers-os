@@ -1525,7 +1525,7 @@
         grid-template-columns: auto minmax(0, 1fr) auto;
         gap: 8px 10px;
         align-items: center;
-        padding: 9px 10px;
+        padding: 8px 10px;
         border-radius: 12px;
         border: 1px solid rgba(226, 232, 240, 0.88);
         background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.88));
@@ -1568,14 +1568,14 @@
         color: var(--ph-color-text);
     }
     .executive-queue-copy span {
-        font-size: 10px;
+        font-size: 9px;
         color: #425c7f;
     }
     .executive-queue-link {
         display: inline-flex;
         align-items: center;
         gap: 5px;
-        font-size: 10px;
+        font-size: 9px;
         font-weight: 700;
         color: var(--ph-color-primary);
         text-decoration: none;
@@ -2144,9 +2144,15 @@
         line-height: 1.25;
         text-align: center;
         color: #4d6383;
+        min-height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        max-width: 92px;
+        word-break: break-word;
     }
     .control-room-pipeline-stage-value {
-        font-size: 22px;
+        font-size: 16px;
         line-height: 1;
         letter-spacing: -.04em;
         color: var(--ph-color-text);
@@ -4906,8 +4912,8 @@
                             @endphp
                             <div class="control-room-pipeline-stage {{ $toneCardClass($stage['tone'] ?? null) }}">
                                 <span class="control-room-pipeline-stage-icon">{!! $dashboardIcon($stageIcon) !!}</span>
-                                <strong>{{ $stage['label'] }}</strong>
-                                <span>{{ number_format((int) ($stage['value'] ?? 0)) }}</span>
+                                <strong class="control-room-pipeline-stage-label">{{ $stage['label'] }}</strong>
+                                <span class="control-room-pipeline-stage-value">{{ number_format((int) ($stage['value'] ?? 0)) }}</span>
                             </div>
                         @endforeach
                     </div>
@@ -4931,7 +4937,7 @@
                     </div>
                     @if($topPriorityQueueRows->isNotEmpty())
                         <div class="executive-queue-list">
-                            @foreach($topPriorityQueueRows as $row)
+                            @foreach($topPriorityQueueRows->take(6) as $row)
                                 <div class="executive-queue-item">
                                     <span class="executive-queue-pill {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['priority'] }}</span>
                                     <div class="executive-queue-copy">
@@ -4941,6 +4947,23 @@
                                     <a href="{{ $row['href'] }}" class="executive-queue-link">{{ $row['action'] }}</a>
                                 </div>
                             @endforeach
+                            @if($topPriorityQueueRows->count() > 6)
+                                <details class="dashboard-expandable">
+                                    <summary class="dashboard-expandable-summary">Show {{ $topPriorityQueueRows->count() - 6 }} more</summary>
+                                    <div class="dashboard-expandable-content">
+                                        @foreach($topPriorityQueueRows->slice(6) as $row)
+                                            <div class="executive-queue-item">
+                                                <span class="executive-queue-pill {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['priority'] }}</span>
+                                                <div class="executive-queue-copy">
+                                                    <strong>{{ $row['title'] }}</strong>
+                                                    <span>{{ $row['owner'] }} · {{ $row['status'] }}</span>
+                                                </div>
+                                                <a href="{{ $row['href'] }}" class="executive-queue-link">{{ $row['action'] }}</a>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </details>
+                            @endif
                         </div>
                     @else
                         <div class="rx-empty dashboard-empty">
