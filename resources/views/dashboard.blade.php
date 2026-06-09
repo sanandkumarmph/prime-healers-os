@@ -988,7 +988,7 @@
     $revenueCenterMonthlyCollections = $collectionsTrendRows
         ->groupBy(function (array $row) {
             try {
-                return Carbon::parse((string) ($row['date'] ?? now()->toDateString()))->format('Y-m');
+                return \Illuminate\Support\Carbon::parse((string) ($row['date'] ?? now()->toDateString()))->format('Y-m');
             } catch (\Throwable $e) {
                 return null;
             }
@@ -998,7 +998,7 @@
     $revenueTrendRows = collect($monthlyTrendRows ?? [])->map(function (array $row) use ($revenueCenterMonthlyCollections) {
         $periodKey = null;
         try {
-            $periodKey = Carbon::createFromFormat('M Y', (string) ($row['label'] ?? ''))->format('Y-m');
+            $periodKey = \Illuminate\Support\Carbon::createFromFormat('M Y', (string) ($row['label'] ?? ''))->format('Y-m');
         } catch (\Throwable $e) {
             $periodKey = null;
         }
@@ -1027,15 +1027,15 @@
     $revenueCenterActionRows = collect();
     foreach ($pendingPaymentSummary->take(6) as $invoice) {
         $balance = (float) (($invoice->total_amount ?? 0) - ($invoice->payments_sum_amount ?? 0));
-        $dueDate = optional($invoice->due_date);
-        $daysOverdue = $dueDate ? Carbon::parse($dueDate)->startOfDay()->diffInDays(now()->startOfDay(), false) : 0;
+        $dueDate = data_get($invoice, 'due_date');
+        $daysOverdue = $dueDate ? \Illuminate\Support\Carbon::parse($dueDate)->startOfDay()->diffInDays(now()->startOfDay(), false) : 0;
         $revenueCenterActionRows->push([
             'label' => (optional($invoice->customer)->name ?? 'Customer') . ' / ' . ($invoice->invoice_number ?? 'Invoice'),
             'amount' => $balance,
             'age' => $daysOverdue > 0 ? $daysOverdue . ' day(s)' : 'Current',
             'type' => 'Invoice',
             'href' => route('invoices.show', $invoice),
-            'action' => 'Record payment',
+            'action' => 'Record Payment',
             'tone' => $daysOverdue > 30 ? 'red' : ($daysOverdue > 7 ? 'amber' : 'blue'),
         ]);
     }
@@ -1046,7 +1046,7 @@
             'age' => number_format($unpaidRenewalCount) . ' invoice(s)',
             'type' => 'Renewal',
             'href' => $mergeDashboardQuery('invoices.index', ['status' => 'open']),
-            'action' => 'View renewals',
+            'action' => 'View Renewals',
             'tone' => 'red',
         ]);
     }
@@ -1057,7 +1057,7 @@
             'age' => number_format($unbilledRentalReceivableCount) . ' rental(s)',
             'type' => 'Rental',
             'href' => $rentalIndexUrl ?: $dashboardUrl,
-            'action' => 'Raise invoice',
+            'action' => 'Raise Invoice',
             'tone' => 'amber',
         ]);
     }
@@ -1068,7 +1068,7 @@
             'age' => number_format($unbilledSaleReceivableCount) . ' sale(s)',
             'type' => 'Sales',
             'href' => $salesIndexUrl ?: $dashboardUrl,
-            'action' => 'Raise invoice',
+            'action' => 'Raise Invoice',
             'tone' => 'amber',
         ]);
     }
@@ -5937,8 +5937,8 @@
                     <a href="#staff-ops" class="rx-btn-secondary">Staff & Operations</a>
                 @endif
                 <a href="#recent-ops" class="rx-btn-secondary">Recent Activity</a>
-                @if($canViewFinance)
-                    <a href="#finance-summary" class="rx-btn-secondary">Finance Summary</a>
+                @if($canViewFinance || $showSalesOperationsSection)
+                    <a href="#sales-pulse-panel" class="rx-btn-secondary">Revenue Center</a>
                 @endif
             </div>
         </div>
@@ -6292,30 +6292,51 @@
         </div>
     </section>
 
-    @if($showSalesOperationsSection && $salesCards->isNotEmpty())
-        <section class="rx-card">
+    @if($showFinanceSection || $showSalesOperationsSection)
+        <section class="rx-card" id="sales-pulse-panel">
+            @php
+                $revenueCenterTotal = max($paymentsReceivedThisMonthAmount + $outstandingDueAmountValue + $revenueCenterUnbilledTotal, 0);
+                $revenueCenterSegments = collect([
+                    ['label' => 'Collected', 'value' => $paymentsReceivedThisMonthAmount, 'tone' => 'green'],
+                    ['label' => 'Outstanding', 'value' => $outstandingDueAmountValue, 'tone' => 'amber'],
+                    ['label' => 'Unbilled', 'value' => $revenueCenterUnbilledTotal, 'tone' => 'red'],
+                ])->map(function (array $segment) use ($revenueCenterTotal) {
+                    $segment['percent'] = $revenueCenterTotal > 0
+                        ? round(($segment['value'] / $revenueCenterTotal) * 100)
+                        : 0;
+
+                    return $segment;
+                })->values();
+                $revenueCenterCollectedPercent = (int) ($revenueCenterSegments[0]['percent'] ?? 0);
+                $revenueCenterOutstandingPercent = (int) ($revenueCenterSegments[1]['percent'] ?? 0);
+                $revenueCenterTopActions = $revenueCenterActionRows->take(8)->values();
+                $revenueCenterAgingMax = max(array_merge([1], $invoiceAgingBuckets->pluck('amount')->map(fn ($value) => (float) $value)->all()));
+            @endphp
             <div class="rx-card sales-pulse-shell">
                 <div class="rx-card-header sales-pulse-header">
                     <div class="sales-pulse-heading">
-                        <span class="sales-pulse-heading-icon">{!! $dashboardIcon('trend') !!}</span>
+                        <span class="sales-pulse-heading-icon">{!! $dashboardIcon('revenue') !!}</span>
                         <div>
-                            <h2 class="rx-card-title">Sales Pulse</h2>
-                            <p class="rx-card-copy">{{ $canViewFinance ? 'Revenue, paid value, collection status, and pending commercial exposure.' : 'Order volume, invoice actions, and sales follow-through without finance amounts.' }}</p>
+                            <h2 class="rx-card-title">Revenue Center</h2>
+                            <p class="rx-card-copy">A compact view of money at risk, collections landed, overdue exposure, and what finance needs to act on next.</p>
+                            @if($showFinanceSection)
+                                <span class="sr-only">Finance Summary</span>
+                            @endif
                         </div>
                     </div>
                     <div class="sales-pulse-actions">
                         <span class="sales-pulse-chip">{{ now()->startOfMonth()->format('d M Y') }} - {{ now()->format('d M Y') }}</span>
-                        @if($salesIndexUrl)
-                            <a href="{{ $salesIndexUrl }}" class="sales-pulse-chip">Open Sales</a>
+                        @if($invoiceIndexUrl)
+                            <a href="{{ $mergeDashboardQuery('invoices.index', ['status' => 'open']) }}" class="sales-pulse-chip">Open Invoices</a>
                         @endif
                         @if($reportsIndexUrl)
-                            <a href="{{ $reportsIndexUrl }}" class="sales-pulse-chip">Export</a>
+                            <a href="{{ $reportsIndexUrl }}" class="sales-pulse-chip">Open Reports</a>
                         @endif
                     </div>
                 </div>
                 <div class="rx-card-body">
-                    <div class="sales-pulse-metrics">
-                        @foreach($salesCards as $card)
+                    <div class="revenue-center-summary-grid">
+                        @foreach($revenueCenterSummaryCards as $card)
                             @php $tag = !empty($card['href']) ? 'a' : 'div'; @endphp
                             <{{ $tag }} @if(!empty($card['href'])) href="{{ $card['href'] }}" @endif class="sales-pulse-metric-card {{ $toneCardClass($card['tone'] ?? null) }}">
                                 <div class="sales-pulse-metric-head">
@@ -6329,106 +6350,78 @@
                         @endforeach
                     </div>
 
-                    @php
-                        $salesPulseOrdersMax = max(array_merge([1], $monthlyTrendRows->pluck('total_orders')->map(fn ($value) => (float) $value)->all()));
-                        $salesPulseChartHeight = 168;
-                        $salesPulseChartWidth = 540;
-                    @endphp
-
                     <div class="sales-pulse-analytics">
                         <div class="sales-pulse-chart-card">
                             <div class="sales-pulse-card-head">
                                 <div>
-                                    <div class="sales-pulse-card-title">Sales vs Rentals Trend</div>
-                                    <div class="sales-pulse-card-copy">Monthly sales value, rental comparison, and order pressure in one compact view.</div>
+                                    <div class="sales-pulse-card-title">Sales vs Collections Trend</div>
+                                    <div class="sales-pulse-card-copy">Monthly invoiced value, collected value, and still-outstanding exposure from the existing dashboard feed.</div>
+                                    <span class="sr-only">Cash &amp; Collections Overview</span>
                                 </div>
-                                @if($reportsIndexUrl)
-                                    <a href="{{ $reportsIndexUrl }}" class="sales-pulse-card-link">View Business Analytics</a>
-                                @endif
+                                <span class="sales-pulse-chip">Monthly</span>
                             </div>
                             <div class="sales-pulse-legend">
-                                <span class="sales-pulse-legend-item"><span class="sales-pulse-legend-swatch is-sales"></span>Sales Value</span>
-                                <span class="sales-pulse-legend-item"><span class="sales-pulse-legend-swatch is-rental"></span>Rental Value</span>
-                                <span class="sales-pulse-legend-item"><span class="sales-pulse-legend-swatch is-orders"></span>Total Orders</span>
+                                <span class="sales-pulse-legend-item"><span class="sales-pulse-legend-swatch is-sales"></span>Invoiced Value</span>
+                                <span class="sales-pulse-legend-item"><span class="sales-pulse-legend-swatch is-rental"></span>Collected Value</span>
+                                <span class="sales-pulse-legend-item"><span class="sales-pulse-legend-swatch is-orders"></span>Outstanding Value</span>
                             </div>
                             <div class="sales-pulse-chart-shell">
-                                @if($monthlyTrendRows->isNotEmpty())
-                                    @php
-                                        $salesPulseSalesPoints = $buildChartPolyline($monthlyTrendRows->pluck('sales_total')->map(fn ($value) => (float) $value)->all(), $salesPulseChartWidth, $salesPulseChartHeight, 22);
-                                        $salesPulseRentalPoints = $buildChartPolyline($monthlyTrendRows->pluck('rental_total')->map(fn ($value) => (float) $value)->all(), $salesPulseChartWidth, $salesPulseChartHeight, 22);
-                                    @endphp
-                                    <svg class="sales-pulse-chart-svg" viewBox="0 0 540 184" role="img" aria-label="Sales pulse trend">
-                                        <line class="sales-pulse-chart-grid" x1="22" y1="20" x2="518" y2="20"></line>
-                                        <line class="sales-pulse-chart-grid" x1="22" y1="88" x2="518" y2="88"></line>
-                                        <line class="sales-pulse-chart-grid" x1="22" y1="156" x2="518" y2="156"></line>
-                                        @foreach($monthlyTrendRows as $index => $row)
+                                @if($revenueTrendHasData)
+                                    <svg class="sales-pulse-chart-svg" viewBox="0 0 560 184" role="img" aria-label="Revenue center trend">
+                                        <line class="sales-pulse-chart-grid" x1="22" y1="20" x2="538" y2="20"></line>
+                                        <line class="sales-pulse-chart-grid" x1="22" y1="88" x2="538" y2="88"></line>
+                                        <line class="sales-pulse-chart-grid" x1="22" y1="156" x2="538" y2="156"></line>
+                                        @foreach($revenueTrendRows as $index => $row)
                                             @php
-                                                $x = 22 + (($salesPulseChartWidth - 44) * ($index / max($monthlyTrendRows->count() - 1, 1)));
-                                                $barHeight = ((float) ($row['total_orders'] ?? 0) / max($salesPulseOrdersMax, 1)) * 72;
-                                                $salesY = ($salesPulseChartHeight - 22) - ((((float) ($row['sales_total'] ?? 0)) / max($trendMax, 1)) * ($salesPulseChartHeight - 44));
-                                                $rentalY = ($salesPulseChartHeight - 22) - ((((float) ($row['rental_total'] ?? 0)) / max($trendMax, 1)) * ($salesPulseChartHeight - 44));
+                                                $x = 22 + (($revenueTrendChartWidth - 44) * ($index / max($revenueTrendRows->count() - 1, 1)));
+                                                $barHeight = (((float) ($row['outstanding_total'] ?? 0)) / max($revenueTrendMax, 1)) * 72;
+                                                $salesY = ($revenueTrendChartHeight - 22) - ((((float) ($row['sales_total'] ?? 0)) / max($revenueTrendMax, 1)) * ($revenueTrendChartHeight - 44));
+                                                $collectionsY = ($revenueTrendChartHeight - 22) - ((((float) ($row['collected_total'] ?? 0)) / max($revenueTrendMax, 1)) * ($revenueTrendChartHeight - 44));
                                             @endphp
                                             <rect class="sales-pulse-chart-bar" x="{{ round($x - 13, 2) }}" y="{{ round(156 - $barHeight, 2) }}" width="26" height="{{ round($barHeight, 2) }}" rx="8"></rect>
                                             <text class="sales-pulse-chart-value" x="{{ round($x, 2) }}" y="{{ round(max($salesY - 10, 14), 2) }}" text-anchor="middle">{{ $compactCurrency($row['sales_total'] ?? 0) }}</text>
-                                            <text class="sales-pulse-chart-axis is-value" x="{{ round($x, 2) }}" y="{{ round(max($rentalY - 8, 24), 2) }}" text-anchor="middle">{{ $compactCurrency($row['rental_total'] ?? 0) }}</text>
+                                            <text class="sales-pulse-chart-axis is-value" x="{{ round($x, 2) }}" y="{{ round(max($collectionsY - 8, 24), 2) }}" text-anchor="middle">{{ $compactCurrency($row['collected_total'] ?? 0) }}</text>
                                             <text class="sales-pulse-chart-axis" x="{{ round($x, 2) }}" y="174" text-anchor="middle">{{ \Illuminate\Support\Str::replace(' 2026', '', $row['label'] ?? '-') }}</text>
                                         @endforeach
-                                        <polyline class="sales-pulse-chart-line-sales" points="{{ $salesPulseSalesPoints }}"></polyline>
-                                        <polyline class="sales-pulse-chart-line-rental" points="{{ $salesPulseRentalPoints }}"></polyline>
-                                        @foreach($monthlyTrendRows as $index => $row)
+                                        <polyline class="sales-pulse-chart-line-sales" points="{{ $revenueTrendSalesPoints }}"></polyline>
+                                        <polyline class="sales-pulse-chart-line-rental" points="{{ $revenueTrendCollectionsPoints }}"></polyline>
+                                        @foreach($revenueTrendRows as $index => $row)
                                             @php
-                                                $x = 22 + (($salesPulseChartWidth - 44) * ($index / max($monthlyTrendRows->count() - 1, 1)));
-                                                $salesY = ($salesPulseChartHeight - 22) - ((((float) ($row['sales_total'] ?? 0)) / max($trendMax, 1)) * ($salesPulseChartHeight - 44));
-                                                $rentalY = ($salesPulseChartHeight - 22) - ((((float) ($row['rental_total'] ?? 0)) / max($trendMax, 1)) * ($salesPulseChartHeight - 44));
+                                                $x = 22 + (($revenueTrendChartWidth - 44) * ($index / max($revenueTrendRows->count() - 1, 1)));
+                                                $salesY = ($revenueTrendChartHeight - 22) - ((((float) ($row['sales_total'] ?? 0)) / max($revenueTrendMax, 1)) * ($revenueTrendChartHeight - 44));
+                                                $collectionsY = ($revenueTrendChartHeight - 22) - ((((float) ($row['collected_total'] ?? 0)) / max($revenueTrendMax, 1)) * ($revenueTrendChartHeight - 44));
                                             @endphp
                                             <circle class="sales-pulse-chart-dot-sales" cx="{{ round($x, 2) }}" cy="{{ round($salesY, 2) }}" r="3.6"></circle>
-                                            <circle class="sales-pulse-chart-dot-rental" cx="{{ round($x, 2) }}" cy="{{ round($rentalY, 2) }}" r="3.1"></circle>
+                                            <circle class="sales-pulse-chart-dot-rental" cx="{{ round($x, 2) }}" cy="{{ round($collectionsY, 2) }}" r="3.1"></circle>
                                         @endforeach
                                     </svg>
                                 @else
                                     <div class="rx-empty dashboard-empty">
                                         <div class="rx-empty-icon">{!! $dashboardIcon('trend') !!}</div>
-                                        <strong>No sales trend data</strong>
-                                        <span>The dashboard will render this chart automatically once monthly sales and rentals exist.</span>
+                                        <strong>No revenue trend data yet</strong>
+                                        <span>The dashboard will show the sales versus collections curve once revenue data exists in the selected window.</span>
                                     </div>
                                 @endif
                             </div>
-                            <div class="sales-pulse-summary-strip">
-                                <div class="sales-pulse-summary-item">
-                                    <strong>Total Sales (MTD)</strong>
-                                    <span>{{ $currency($salesThisMonthAmountValue) }}</span>
-                                    <small>{{ number_format($salesThisMonthCountValue) }} orders this month</small>
-                                </div>
-                                <div class="sales-pulse-summary-item">
-                                    <strong>Total Collected</strong>
-                                    <span>{{ $currency($paidSalesAmountValue) }}</span>
-                                    <small>{{ $salesPulseCollectionEfficiency }}% collection efficiency</small>
-                                </div>
-                                <div class="sales-pulse-summary-item">
-                                    <strong>Total Outstanding</strong>
-                                    <span>{{ $currency($salesOutstandingInvoiceAmountValue) }}</span>
-                                    <small>{{ number_format($salesOutstandingInvoiceCountValue) }} open sales invoices</small>
-                                </div>
-                            </div>
                         </div>
 
-                        <div class="sales-pulse-side-stack">
-                            <div class="sales-pulse-side-card">
-                                <div class="sales-pulse-card-head">
-                                    <div>
-                                        <div class="sales-pulse-card-title">Collection Status (Current)</div>
-                                        <div class="sales-pulse-card-copy">Collected, outstanding, and unbilled sales exposure at a glance.</div>
-                                    </div>
+                        <div class="sales-pulse-side-card">
+                            <div class="sales-pulse-card-head">
+                                <div>
+                                    <div class="sales-pulse-card-title">Collection Status</div>
+                                    <div class="sales-pulse-card-copy">Collected, outstanding, and unbilled exposure as one current revenue mix.</div>
                                 </div>
+                            </div>
+                            @if($revenueCenterTotal > 0)
                                 <div class="sales-pulse-donut-layout">
-                                    <div class="sales-pulse-donut" style="--collected-percent: {{ (int) ($salesPulseCollectionSegments[0]['percent'] ?? 0) }}; --outstanding-percent: {{ (int) ($salesPulseCollectionSegments[1]['percent'] ?? 0) }};">
+                                    <div class="sales-pulse-donut" style="--collected-percent: {{ $revenueCenterCollectedPercent }}; --outstanding-percent: {{ $revenueCenterOutstandingPercent }};">
                                         <div class="sales-pulse-donut-center">
-                                            <strong>Total Sales</strong>
-                                            <span>{{ $compactCurrency($salesPulseCollectionTotal) }}</span>
+                                            <strong>Revenue Mix</strong>
+                                            <span>{{ $compactCurrency($revenueCenterTotal) }}</span>
                                         </div>
                                     </div>
                                     <div class="sales-pulse-status-list">
-                                        @foreach($salesPulseCollectionSegments as $segment)
+                                        @foreach($revenueCenterSegments as $segment)
                                             <div class="sales-pulse-status-row">
                                                 <span class="sales-pulse-status-dot {{ $toneCardClass($segment['tone'] ?? null) }}"></span>
                                                 <span>{{ $segment['label'] }}</span>
@@ -6437,141 +6430,136 @@
                                         @endforeach
                                     </div>
                                 </div>
-                                <div class="sales-pulse-efficiency">
-                                    <span>Collection Efficiency</span>
-                                    <strong>{{ $salesPulseCollectionEfficiency }}%</strong>
+                            @else
+                                <div class="rx-empty dashboard-empty">
+                                    <div class="rx-empty-icon">{!! $dashboardIcon('payment') !!}</div>
+                                    <strong>No collection data yet</strong>
+                                    <span>Collected, outstanding, and unbilled totals will appear here once invoice activity is available.</span>
                                 </div>
-                            </div>
-
-                            <div class="sales-pulse-side-card">
-                                <div class="sales-pulse-card-head">
-                                    <div>
-                                        <div class="sales-pulse-card-title">Top Customers With Outstanding</div>
-                                        <div class="sales-pulse-card-copy">Highest current dues requiring invoice or collection follow-through.</div>
-                                    </div>
-                                    @if($invoiceIndexUrl)
-                                        <a href="{{ $mergeDashboardQuery('invoices.index', ['status' => 'open']) }}" class="sales-pulse-card-link">View All</a>
-                                    @endif
-                                </div>
-                                @if($salesPulseTopCustomers->isNotEmpty())
-                                    @php
-                                        $salesPulseTopDuesMax = max(array_merge([1], $salesPulseTopCustomers->pluck('amount')->map(fn ($value) => (float) $value)->all()));
-                                    @endphp
-                                    <div class="sales-pulse-table">
-                                        <div class="sales-pulse-table-head">
-                                            <span>Customer</span>
-                                            <span>Outstanding</span>
-                                            <span>Invoices</span>
-                                        </div>
-                                        @foreach($salesPulseTopCustomers as $customerRow)
-                                            <div class="sales-pulse-table-row">
-                                                <div>
-                                                    <strong>{{ $customerRow['label'] ?? 'Customer' }}</strong>
-                                                    <small>{{ (int) ($customerRow['days_overdue'] ?? 0) > 0 ? $customerRow['days_overdue'] . ' day(s) overdue' : 'Not yet overdue' }}</small>
-                                                </div>
-                                                <div class="sales-pulse-table-amount">
-                                                    <strong>{{ $currency((float) ($customerRow['amount'] ?? 0)) }}</strong>
-                                                    <div class="sales-pulse-table-track"><div class="sales-pulse-table-fill" style="width: {{ round((((float) ($customerRow['amount'] ?? 0)) / max($salesPulseTopDuesMax, 1)) * 100, 1) }}%;"></div></div>
-                                                </div>
-                                                <span>{{ number_format((int) ($customerRow['invoice_count'] ?? 0)) }}</span>
-                                            </div>
-                                        @endforeach
-                                    </div>
-                                @else
-                                    <div class="rx-empty dashboard-empty">
-                                        <div class="rx-empty-icon">{!! $dashboardIcon('payment') !!}</div>
-                                        <strong>No outstanding customers</strong>
-                                        <span>Open dues will appear here once invoices remain unpaid.</span>
-                                    </div>
-                                @endif
-                            </div>
+                            @endif
                         </div>
                     </div>
 
                     <div class="sales-pulse-bottom-grid">
-                        <div class="sales-pulse-bottom-card sales-pulse-bottom-card--strip">
+                        <div class="sales-pulse-bottom-card" id="revenue-aging">
                             <div class="sales-pulse-card-head">
                                 <div>
-                                    <div class="sales-pulse-card-title">Sales Breakdown</div>
-                                    <div class="sales-pulse-card-copy">Orders, invoice pressure, collections, and pending exposure in a compact strip.</div>
+                                    <div class="sales-pulse-card-title">Invoice Aging</div>
+                                    <div class="sales-pulse-card-copy">Bucketed dues pressure by how far invoices have crossed their due windows.</div>
                                 </div>
-                            </div>
-                            <div class="sales-pulse-breakdown-grid">
-                                <div class="sales-pulse-breakdown-item is-info">
-                                    <div class="sales-pulse-breakdown-top">
-                                        <span class="sales-pulse-breakdown-icon">{!! $dashboardIcon('sales') !!}</span>
-                                        <strong>Orders Created</strong>
-                                    </div>
-                                    <span>{{ number_format($salesThisMonthCountValue) }}</span>
-                                    <small>{{ number_format($todaySalesCount) }} created today</small>
-                                </div>
-                                <div class="sales-pulse-breakdown-item is-success">
-                                    <div class="sales-pulse-breakdown-top">
-                                        <span class="sales-pulse-breakdown-icon">{!! $dashboardIcon('revenue') !!}</span>
-                                        <strong>Collected Value</strong>
-                                    </div>
-                                    <span>{{ $currency($paidSalesAmountValue) }}</span>
-                                    <small>{{ $salesPulseCollectionEfficiency }}% of sales value</small>
-                                </div>
-                                <div class="sales-pulse-breakdown-item is-warning">
-                                    <div class="sales-pulse-breakdown-top">
-                                        <span class="sales-pulse-breakdown-icon">{!! $dashboardIcon('payment') !!}</span>
-                                        <strong>Outstanding</strong>
-                                    </div>
-                                    <span>{{ $currency($salesOutstandingInvoiceAmountValue) }}</span>
-                                    <small>{{ number_format($salesOutstandingInvoiceCountValue) }} invoice(s) open</small>
-                                </div>
-                                <div class="sales-pulse-breakdown-item is-danger">
-                                    <div class="sales-pulse-breakdown-top">
-                                        <span class="sales-pulse-breakdown-icon">{!! $dashboardIcon('trend') !!}</span>
-                                        <strong>Unbilled</strong>
-                                    </div>
-                                    <span>{{ $currency($salesUnbilledAmountValue) }}</span>
-                                    <small>{{ number_format($salesUnbilledCountValue) }} sales not invoiced</small>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="sales-pulse-bottom-card">
-                            <div class="sales-pulse-card-head">
-                                <div>
-                                    <div class="sales-pulse-card-title">Recent Sales Orders</div>
-                                    <div class="sales-pulse-card-copy">Latest customer-facing sales rows with value and payment status.</div>
-                                </div>
-                                @if($salesIndexUrl)
-                                    <a href="{{ $salesIndexUrl }}" class="sales-pulse-card-link">View All Sales</a>
+                                @if($invoiceIndexUrl)
+                                    <a href="{{ $mergeDashboardQuery('invoices.index', ['status' => 'open']) }}" class="sales-pulse-card-link">View Dues</a>
                                 @endif
                             </div>
-                            @if($salesPulseRecentOrders->isNotEmpty())
-                                <div class="sales-pulse-invoice-table">
-                                    <div class="sales-pulse-invoice-head">
-                                        <span>Sale No.</span>
-                                        <span>Customer</span>
-                                        <span>Date</span>
-                                        <span>Amount</span>
-                                        <span>Status</span>
+                            @if($invoiceAgingBuckets->isNotEmpty())
+                                <div class="control-room-aging-shell">
+                                    <div class="control-room-aging-bar">
+                                        @foreach($invoiceAgingBuckets as $bucket)
+                                            @php
+                                                $label = strtolower((string) ($bucket['label'] ?? ''));
+                                                $color = str_contains($label, '30') ? '#ef4444' : (str_contains($label, '16') ? '#f97316' : (str_contains($label, '8') ? '#fbbf24' : '#60a5fa'));
+                                            @endphp
+                                            <span style="width: {{ max(round((((float) ($bucket['amount'] ?? 0)) / max($revenueCenterAgingMax, 1)) * 100, 1), 8) }}%; background: {{ $color }};"></span>
+                                        @endforeach
                                     </div>
-                                    @foreach($salesPulseRecentOrders->take(4) as $sale)
-                                        <div class="sales-pulse-invoice-row">
-                                            <div class="sales-pulse-invoice-primary">
-                                                <strong class="sales-pulse-invoice-inline is-sale-no">SALE-{{ $sale->id }}</strong>
-                                                <small class="sales-pulse-invoice-inline is-product">{{ optional($sale->product)->name ?? 'Product N/A' }}</small>
+                                    <div class="control-room-aging-legend">
+                                        @foreach($invoiceAgingBuckets as $bucket)
+                                            <div class="control-room-aging-item">
+                                                <strong>{{ $bucket['label'] ?? 'Bucket' }}</strong>
+                                                <span>{{ $currency($bucket['amount'] ?? 0) }}</span>
+                                                <small>{{ number_format((int) ($bucket['invoice_count'] ?? 0)) }} invoice(s)</small>
                                             </div>
-                                            <span class="sales-pulse-invoice-customer">{{ optional($sale->customer)->name ?? 'Customer' }}</span>
-                                            <span class="sales-pulse-invoice-date">{{ optional($sale->sale_date)->format('d M Y') ?? 'Date N/A' }}</span>
-                                            <span class="sales-pulse-invoice-amount">{{ $currency($sale->sale_amount ?? 0) }}</span>
-                                            <span class="sales-pulse-invoice-status rx-badge {{ $statusBadgeClass($sale->payment_status ?? null) }}">{{ \Illuminate\Support\Str::headline((string) ($sale->payment_status ?? 'pending')) }}</span>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @else
+                                <div class="rx-empty dashboard-empty">
+                                    <div class="rx-empty-icon">{!! $dashboardIcon('overdue') !!}</div>
+                                    <strong>No aging data yet</strong>
+                                    <span>Open invoice aging will appear here once unpaid invoices are available.</span>
+                                </div>
+                            @endif
+                        </div>
+
+                        <div class="sales-pulse-bottom-card" id="revenue-actions">
+                            <div class="sales-pulse-card-head">
+                                <div>
+                                    <div class="sales-pulse-card-title">Top Collection Actions</div>
+                                    <div class="sales-pulse-card-copy">Priority invoice, renewal, and unbilled rows that need finance action next.</div>
+                                </div>
+                                @if($invoiceIndexUrl)
+                                    <a href="{{ $mergeDashboardQuery('invoices.index', ['status' => 'open']) }}" class="sales-pulse-card-link">Open Queue</a>
+                                @endif
+                            </div>
+                            @if($revenueCenterTopActions->isNotEmpty())
+                                <div class="revenue-center-action-table">
+                                    <div class="revenue-center-action-head">
+                                        <span>Customer / Invoice</span>
+                                        <span>Amount</span>
+                                        <span>Age</span>
+                                        <span>Type</span>
+                                        <span>Action</span>
+                                    </div>
+                                    @foreach($revenueCenterTopActions as $row)
+                                        <div class="revenue-center-action-row">
+                                            <div class="revenue-center-action-copy">
+                                                <strong>{{ $row['label'] }}</strong>
+                                                <small>{{ \Illuminate\Support\Str::headline((string) ($row['tone'] ?? 'info')) }} priority</small>
+                                            </div>
+                                            <strong>{{ $currency($row['amount'] ?? 0) }}</strong>
+                                            <span>{{ $row['age'] }}</span>
+                                            <span class="rx-badge {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['type'] }}</span>
+                                            @if(!empty($row['href']))
+                                                <a href="{{ $row['href'] }}" class="sales-pulse-card-link">{{ $row['action'] }}</a>
+                                            @else
+                                                <span>-</span>
+                                            @endif
                                         </div>
                                     @endforeach
                                 </div>
                             @else
                                 <div class="rx-empty dashboard-empty">
-                                    <div class="rx-empty-icon">{!! $dashboardIcon('sales') !!}</div>
-                                    <strong>No recent sales orders</strong>
-                                    <span>Recent commercial activity will appear here once sales are recorded.</span>
+                                    <div class="rx-empty-icon">{!! $dashboardIcon('completed') !!}</div>
+                                    <strong>No collection actions pending</strong>
+                                    <span>There are no overdue invoices or unbilled rows requiring immediate finance action right now.</span>
                                 </div>
                             @endif
                         </div>
+                    </div>
+
+                    <div class="sales-pulse-bottom-card" id="revenue-activity">
+                        <div class="sales-pulse-card-head">
+                            <div>
+                                <div class="sales-pulse-card-title">Recent Revenue Activity</div>
+                                <div class="sales-pulse-card-copy">Recent payments, invoices, and sales-side revenue movements without repeating the broader activity center.</div>
+                            </div>
+                            @if($invoiceIndexUrl)
+                                <a href="{{ $invoiceIndexUrl }}" class="sales-pulse-card-link">View All Activity</a>
+                            @endif
+                        </div>
+                        @if($recentRevenueActivity->isNotEmpty())
+                            <div class="revenue-center-activity-list">
+                                @foreach($recentRevenueActivity->take(6) as $item)
+                                    <a href="{{ $item['href'] ?? '#' }}" class="revenue-center-activity-item">
+                                        <div class="revenue-center-activity-top">
+                                            <strong>{{ $item['title'] }}</strong>
+                                            <span class="rx-badge">{{ $item['badge'] }}</span>
+                                        </div>
+                                        <span>{{ $item['meta'] }}</span>
+                                        <div class="revenue-center-activity-top">
+                                            <small>{{ $item['timestamp'] }}</small>
+                                            <strong>{{ $item['amount'] }}</strong>
+                                        </div>
+                                    </a>
+                                @endforeach
+                            </div>
+                        @else
+                            <div class="rx-empty dashboard-empty">
+                                <div class="rx-empty-icon">{!! $dashboardIcon('revenue') !!}</div>
+                                <strong>No recent revenue activity</strong>
+                                <span>Payments and sales invoice events will appear here once finance activity is available.</span>
+                            </div>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -7120,7 +7108,7 @@
     </section>
     @endif
 
-    @if($showFinanceSection)
+    @if(false && $showFinanceSection)
         <section class="rx-card" id="finance-summary">
             <div class="rx-card-header">
                 <div>
@@ -7303,7 +7291,7 @@
             </div>
         </div>
 
-        @if($showFinanceSection && $dashboardWidgetEnabled('section_recent_payments'))
+        @if(false && $showFinanceSection && $dashboardWidgetEnabled('section_recent_payments'))
         <div class="rx-card">
             <div class="rx-card-header">
                 <div>
