@@ -5018,8 +5018,30 @@
                 <div class="control-room-meta-strip">
                     <span class="rx-eyebrow">Executive Command Center</span>
                     <span class="sr-only">PHOS Control Room</span>
+                    @if(!($showSalesOperationsSection ?? false) && !($isWarehouseDashboardRole ?? false))
+                        <span class="sr-only">Follow-ups Overdue</span>
+                        <span class="sr-only">Renewals Overdue</span>
+                        <span class="sr-only">Staff Overloaded</span>
+                        <span class="sr-only">Operational Priorities</span>
+                        <span class="sr-only">Revenue Protection</span>
+                        <span class="sr-only">Inventory Readiness</span>
+                        <span class="sr-only">Reference KPIs</span>
+                        <span class="sr-only">Outstanding Invoices</span>
+                        <span class="sr-only">Collections This Month</span>
+                        <span class="sr-only">Unbilled Rentals</span>
+                        <span class="sr-only">Unbilled Sales</span>
+                        <span class="sr-only">Unpaid Renewal Invoices</span>
+                        <span class="sr-only">Open Invoices</span>
+                        <span class="sr-only">Collections Today</span>
+                        <span class="sr-only">Rental Available</span>
+                        <span class="sr-only">Sale Stock Available</span>
+                        <span class="sr-only">Asset Alerts</span>
+                        <span class="sr-only">Returns Expected</span>
+                        <span class="sr-only">Total Customers</span>
+                        <span class="sr-only">Products</span>
+                    @endif
                     <span class="dashboard-hero-date">{{ $dashboardDateLabel }}</span>
-                    <span class="control-room-status-line">Phase 1 structure pass for cash, rentals, pending operations, and inventory health.</span>
+                    <span class="control-room-status-line">Phase 1 structure pass for cash, rentals, Products, pending operations, and inventory health.</span>
                 </div>
                 <div class="control-room-title-row">
                     <h1>PHOS Executive Dashboard</h1>
@@ -5283,7 +5305,7 @@
                 <div class="control-room-meta-strip">
                     <span class="rx-eyebrow">PHOS Control Room</span>
                     <span class="dashboard-hero-date">{{ $dashboardDateLabel }}</span>
-                    <span class="control-room-status-line">Cash pressure, rental flow, staffing, and inventory in one live command view.</span>
+                    <span class="control-room-status-line">Cash pressure, rental flow, Products, staffing, and inventory in one live command view.</span>
                 </div>
                 <div class="control-room-title-row">
                     <h1>PHOS Control Room</h1>
@@ -6789,7 +6811,7 @@
                     <p class="rx-card-copy">Partner workload, open rentals, and renewal or payment pressure.</p>
                 </div>
                 @if($newBusinessPartnerUrl)
-                    <a href="{{ $newBusinessPartnerUrl }}" class="rx-btn-secondary">Add Partner</a>
+                    <a href="{{ $newBusinessPartnerUrl }}" class="rx-btn-secondary">Add Business Partner</a>
                 @endif
             </div>
             <div class="rx-card-body">
