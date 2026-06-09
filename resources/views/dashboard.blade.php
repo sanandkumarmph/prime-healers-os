@@ -1744,11 +1744,11 @@
             'label' => 'Inventory Center',
             'copy' => 'Fulfilment readiness, inventory pressure, warehouse position, and asset movement.',
             'links' => collect([
-                ['label' => 'Inventory Health', 'href' => $showExpandedInventorySection ? '#inventory-center-panel' : null],
-                ['label' => 'Product Risk', 'href' => $showExpandedInventorySection ? '#inventory-risk-panel' : null],
-                ['label' => 'Detailed Inventory', 'href' => $showExpandedInventorySection ? '#inventory-detail-panel' : null],
+                ['label' => 'Inventory Health', 'href' => $showInventorySection ? '#inventory-center-panel' : null],
+                ['label' => 'Product Risk', 'href' => $showInventorySection ? '#inventory-risk-panel' : null],
+                ['label' => 'Detailed Inventory', 'href' => $showInventorySection ? '#inventory-detail-panel' : null],
             ])->filter(fn ($link) => !empty($link['href']))->values(),
-            'visible' => $showExpandedInventorySection,
+            'visible' => $showInventorySection,
         ],
         [
             'label' => 'Activity & Communication Center',
@@ -7852,7 +7852,7 @@
     </section>
 
 
-    @if($showExpandedInventorySection)
+    @if($showInventorySection)
     <section class="rx-card" id="inventory-center-panel">
         <div class="rx-card-header dashboard-section-heading">
             <div>
@@ -8107,6 +8107,7 @@
                             </div>
                         </section>
 
+                        @if($showOrganizationAnalyticsSection)
                         <section class="dashboard-rank-grid">
                             <div class="rx-card dashboard-rank-card">
                                 <div class="rx-card-header">
@@ -8207,6 +8208,7 @@
                                 </div>
                             </div>
                         </section>
+                        @endif
                     </div>
                 </details>
             </div>
@@ -8846,7 +8848,7 @@
     </section>
     @endunless
 
-    @if($showOrganizationAnalyticsSection && !$showExpandedInventorySection)
+    @if($showOrganizationAnalyticsSection && !$showInventorySection)
     <section class="dashboard-rank-grid">
         <div class="rx-card dashboard-rank-card">
             <div class="rx-card-header">
