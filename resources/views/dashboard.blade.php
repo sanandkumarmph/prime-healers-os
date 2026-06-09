@@ -3255,7 +3255,7 @@
     }
     .sales-pulse-bottom-grid {
         display: grid;
-        grid-template-columns: minmax(0, .78fr) minmax(0, 1.22fr);
+        grid-template-columns: minmax(0, .48fr) minmax(0, 1.52fr);
         gap: 12px;
         align-items: start;
         grid-auto-rows: min-content;
@@ -3265,7 +3265,7 @@
     }
     .sales-pulse-breakdown-grid {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 0;
         border: 1px solid rgba(226, 232, 240, 0.9);
         border-radius: 16px;
@@ -3274,19 +3274,27 @@
     }
     .sales-pulse-breakdown-item {
         display: grid;
-        gap: 4px;
+        gap: 3px;
         align-content: start;
-        padding: 8px 10px;
+        padding: 6px 8px;
         border-left: 1px solid rgba(226, 232, 240, 0.9);
+        border-top: 1px solid rgba(226, 232, 240, 0.9);
         background: transparent;
     }
     .sales-pulse-breakdown-item:first-child {
+        border-left: 0;
+        border-top: 0;
+    }
+    .sales-pulse-breakdown-item:nth-child(2) {
+        border-top: 0;
+    }
+    .sales-pulse-breakdown-item:nth-child(odd) {
         border-left: 0;
     }
     .sales-pulse-breakdown-top {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 5px;
     }
     .sales-pulse-breakdown-icon {
         width: 20px;
@@ -3322,20 +3330,20 @@
     .sales-pulse-breakdown-item strong {
         display: block;
         color: #425c7f;
-        font-size: 8px;
+        font-size: 6.5px;
         font-weight: 800;
         letter-spacing: .07em;
         text-transform: uppercase;
     }
     .sales-pulse-breakdown-item span {
         color: var(--ph-color-text);
-        font-size: 12px;
+        font-size: 10px;
         font-weight: 780;
         line-height: 1.05;
     }
     .sales-pulse-breakdown-item small {
         color: #425c7f;
-        font-size: 8px;
+        font-size: 7px;
         line-height: 1.2;
     }
     .sales-pulse-invoice-table {
@@ -3345,7 +3353,7 @@
     .sales-pulse-invoice-head,
     .sales-pulse-invoice-row {
         display: grid;
-        grid-template-columns: minmax(0, 1.8fr) minmax(0, 1.1fr) 88px 96px 96px;
+        grid-template-columns: minmax(0, 2.85fr) minmax(0, .95fr) 84px 96px 108px;
         gap: 10px;
         align-items: center;
     }
@@ -3359,7 +3367,7 @@
         border-bottom: 1px solid rgba(226, 232, 240, 0.9);
     }
     .sales-pulse-invoice-row {
-        padding: 7px 0 0;
+        padding: 8px 0;
         border-top: 1px solid rgba(241, 245, 249, 0.95);
     }
     .sales-pulse-invoice-row:first-of-type {
@@ -3383,12 +3391,33 @@
     .sales-pulse-invoice-customer {
         min-width: 0;
     }
+    .sales-pulse-invoice-primary {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+        overflow: hidden;
+    }
     .sales-pulse-invoice-inline {
-        display: block;
+        display: inline-block;
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+    .sales-pulse-invoice-inline.is-sale-no {
+        flex: 0 0 auto;
+    }
+    .sales-pulse-invoice-inline.is-product {
+        flex: 1 1 auto;
+    }
+    .sales-pulse-invoice-customer,
+    .sales-pulse-invoice-date,
+    .sales-pulse-invoice-amount,
+    .sales-pulse-invoice-status {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .dashboard-finance-grid {
         grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
@@ -6226,13 +6255,13 @@
                                     @foreach($salesPulseRecentOrders->take(4) as $sale)
                                         <div class="sales-pulse-invoice-row">
                                             <div class="sales-pulse-invoice-primary">
-                                                <strong class="sales-pulse-invoice-inline">SALE-{{ $sale->id }}</strong>
-                                                <small class="sales-pulse-invoice-inline">{{ optional($sale->product)->name ?? 'Product N/A' }}</small>
+                                                <strong class="sales-pulse-invoice-inline is-sale-no">SALE-{{ $sale->id }}</strong>
+                                                <small class="sales-pulse-invoice-inline is-product">{{ optional($sale->product)->name ?? 'Product N/A' }}</small>
                                             </div>
                                             <span class="sales-pulse-invoice-customer">{{ optional($sale->customer)->name ?? 'Customer' }}</span>
-                                            <span>{{ optional($sale->sale_date)->format('d M Y') ?? 'Date N/A' }}</span>
-                                            <span>{{ $currency($sale->sale_amount ?? 0) }}</span>
-                                            <span class="rx-badge {{ $statusBadgeClass($sale->payment_status ?? null) }}">{{ \Illuminate\Support\Str::headline((string) ($sale->payment_status ?? 'pending')) }}</span>
+                                            <span class="sales-pulse-invoice-date">{{ optional($sale->sale_date)->format('d M Y') ?? 'Date N/A' }}</span>
+                                            <span class="sales-pulse-invoice-amount">{{ $currency($sale->sale_amount ?? 0) }}</span>
+                                            <span class="sales-pulse-invoice-status rx-badge {{ $statusBadgeClass($sale->payment_status ?? null) }}">{{ \Illuminate\Support\Str::headline((string) ($sale->payment_status ?? 'pending')) }}</span>
                                         </div>
                                     @endforeach
                                 </div>
