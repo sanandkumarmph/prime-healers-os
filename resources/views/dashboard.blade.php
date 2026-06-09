@@ -2576,6 +2576,10 @@
         box-shadow: 0 12px 24px rgba(11, 35, 66, 0.05);
         padding: 12px 14px;
     }
+    .sales-pulse-bottom-card {
+        align-self: start;
+        height: auto;
+    }
     .sales-pulse-card-head {
         display: flex;
         align-items: flex-start;
@@ -2862,41 +2866,53 @@
     }
     .sales-pulse-bottom-grid {
         display: grid;
-        grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr);
+        grid-template-columns: minmax(0, .78fr) minmax(0, 1.22fr);
         gap: 12px;
+        align-items: start;
+        grid-auto-rows: min-content;
+    }
+    .sales-pulse-bottom-card--strip .sales-pulse-card-head {
+        margin-bottom: 8px;
     }
     .sales-pulse-breakdown-grid {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 10px;
+        gap: 0;
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        border-radius: 16px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.9));
+        overflow: hidden;
     }
     .sales-pulse-breakdown-item {
         display: grid;
-        gap: 6px;
-        padding: 11px 12px;
-        border-radius: 14px;
-        border: 1px solid rgba(226, 232, 240, 0.9);
-        background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.9));
+        gap: 4px;
+        align-content: start;
+        padding: 8px 10px;
+        border-left: 1px solid rgba(226, 232, 240, 0.9);
+        background: transparent;
+    }
+    .sales-pulse-breakdown-item:first-child {
+        border-left: 0;
     }
     .sales-pulse-breakdown-top {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
     }
     .sales-pulse-breakdown-icon {
-        width: 24px;
-        height: 24px;
-        border-radius: 9px;
+        width: 20px;
+        height: 20px;
+        border-radius: 7px;
         display: grid;
         place-items: center;
         border: 1px solid var(--ph-color-border);
         background: var(--ph-color-surface-soft);
         color: var(--ph-color-primary);
-        flex: 0 0 24px;
+        flex: 0 0 20px;
     }
     .sales-pulse-breakdown-icon svg {
-        width: 12px;
-        height: 12px;
+        width: 10px;
+        height: 10px;
     }
     .sales-pulse-breakdown-item.is-success .sales-pulse-breakdown-icon {
         color: var(--ph-color-success);
@@ -2917,31 +2933,31 @@
     .sales-pulse-breakdown-item strong {
         display: block;
         color: #425c7f;
-        font-size: 10px;
+        font-size: 8px;
         font-weight: 800;
         letter-spacing: .07em;
         text-transform: uppercase;
     }
     .sales-pulse-breakdown-item span {
         color: var(--ph-color-text);
-        font-size: 17px;
+        font-size: 12px;
         font-weight: 780;
         line-height: 1.05;
     }
     .sales-pulse-breakdown-item small {
         color: #425c7f;
-        font-size: 10px;
-        line-height: 1.35;
+        font-size: 8px;
+        line-height: 1.2;
     }
     .sales-pulse-invoice-table {
         display: grid;
-        gap: 8px;
+        gap: 2px;
     }
     .sales-pulse-invoice-head,
     .sales-pulse-invoice-row {
         display: grid;
-        grid-template-columns: 1fr 1fr 84px 78px 78px;
-        gap: 8px;
+        grid-template-columns: minmax(0, 1.8fr) minmax(0, 1.1fr) 88px 96px 96px;
+        gap: 10px;
         align-items: center;
     }
     .sales-pulse-invoice-head {
@@ -2954,7 +2970,7 @@
         border-bottom: 1px solid rgba(226, 232, 240, 0.9);
     }
     .sales-pulse-invoice-row {
-        padding-top: 8px;
+        padding: 7px 0 0;
         border-top: 1px solid rgba(241, 245, 249, 0.95);
     }
     .sales-pulse-invoice-row:first-of-type {
@@ -2973,6 +2989,17 @@
     .sales-pulse-invoice-row span,
     .sales-pulse-invoice-row small {
         color: #425c7f;
+    }
+    .sales-pulse-invoice-primary,
+    .sales-pulse-invoice-customer {
+        min-width: 0;
+    }
+    .sales-pulse-invoice-inline {
+        display: block;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
     .dashboard-finance-grid {
         grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
@@ -5497,7 +5524,7 @@
                     </div>
 
                     <div class="sales-pulse-bottom-grid">
-                        <div class="sales-pulse-bottom-card">
+                        <div class="sales-pulse-bottom-card sales-pulse-bottom-card--strip">
                             <div class="sales-pulse-card-head">
                                 <div>
                                     <div class="sales-pulse-card-title">Sales Breakdown</div>
@@ -5559,13 +5586,13 @@
                                         <span>Amount</span>
                                         <span>Status</span>
                                     </div>
-                                    @foreach($salesPulseRecentOrders as $sale)
+                                    @foreach($salesPulseRecentOrders->take(4) as $sale)
                                         <div class="sales-pulse-invoice-row">
-                                            <div>
-                                                <strong>SALE-{{ $sale->id }}</strong>
-                                                <small>{{ optional($sale->product)->name ?? 'Product N/A' }}</small>
+                                            <div class="sales-pulse-invoice-primary">
+                                                <strong class="sales-pulse-invoice-inline">SALE-{{ $sale->id }}</strong>
+                                                <small class="sales-pulse-invoice-inline">{{ optional($sale->product)->name ?? 'Product N/A' }}</small>
                                             </div>
-                                            <span>{{ optional($sale->customer)->name ?? 'Customer' }}</span>
+                                            <span class="sales-pulse-invoice-customer">{{ optional($sale->customer)->name ?? 'Customer' }}</span>
                                             <span>{{ optional($sale->sale_date)->format('d M Y') ?? 'Date N/A' }}</span>
                                             <span>{{ $currency($sale->sale_amount ?? 0) }}</span>
                                             <span class="rx-badge {{ $statusBadgeClass($sale->payment_status ?? null) }}">{{ \Illuminate\Support\Str::headline((string) ($sale->payment_status ?? 'pending')) }}</span>
