@@ -2484,9 +2484,89 @@
     }
     .inventory-donut-shell {
         display: grid;
-        grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
-        gap: 16px;
+        grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
+        gap: 12px;
         align-items: center;
+    }
+    .inventory-availability-visual {
+        display: grid;
+        gap: 10px;
+    }
+    .inventory-availability-track {
+        display: flex;
+        width: 100%;
+        height: 18px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #e7eef8;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+    }
+    .inventory-availability-segment {
+        min-width: 12px;
+        height: 100%;
+    }
+    .inventory-availability-segment.is-green { background: linear-gradient(90deg, #22c55e, #4ade80); }
+    .inventory-availability-segment.is-blue { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+    .inventory-availability-segment.is-warning { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+    .inventory-availability-segment.is-danger { background: linear-gradient(90deg, #ef4444, #f87171); }
+    .inventory-availability-total {
+        display: grid;
+        gap: 2px;
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+        border: 1px solid rgba(148, 163, 184, 0.14);
+    }
+    .inventory-availability-total strong {
+        font-size: 26px;
+        line-height: 1;
+        font-weight: 800;
+        color: var(--ph-color-text);
+    }
+    .inventory-availability-total span {
+        font-size: 12px;
+        color: #4c678d;
+    }
+    .inventory-availability-legend {
+        display: grid;
+        gap: 8px;
+    }
+    .inventory-availability-legend-item {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        border-radius: 14px;
+        background: #f8fbff;
+        border: 1px solid rgba(148, 163, 184, 0.12);
+    }
+    .inventory-availability-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+    }
+    .inventory-availability-dot.is-green { background: #22c55e; }
+    .inventory-availability-dot.is-blue { background: #3b82f6; }
+    .inventory-availability-dot.is-warning { background: #f59e0b; }
+    .inventory-availability-dot.is-danger { background: #ef4444; }
+    .inventory-availability-copy {
+        display: grid;
+        gap: 1px;
+        min-width: 0;
+    }
+    .inventory-availability-copy strong {
+        font-size: 13px;
+        color: var(--ph-color-text);
+    }
+    .inventory-availability-copy span,
+    .inventory-availability-value {
+        font-size: 12px;
+        color: #4c678d;
+    }
+    .inventory-availability-value {
+        font-weight: 700;
+        white-space: nowrap;
     }
     .inventory-readiness-grid,
     .inventory-warehouse-grid {
@@ -2494,16 +2574,33 @@
         grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 10px;
     }
+    .inventory-readiness-card {
+        gap: 5px;
+        padding: 11px 12px;
+        border-radius: 16px;
+    }
+    .inventory-readiness-value {
+        font-size: 20px;
+    }
+    .inventory-risk-wrap {
+        display: grid;
+        gap: 10px;
+    }
     .inventory-risk-table {
         width: 100%;
         border-collapse: collapse;
+        table-layout: fixed;
     }
     .inventory-risk-table th,
     .inventory-risk-table td {
-        padding: 10px 0;
+        padding: 9px 10px 9px 0;
         border-bottom: 1px solid rgba(226, 232, 240, 0.9);
         text-align: left;
         vertical-align: top;
+    }
+    .inventory-risk-table th:last-child,
+    .inventory-risk-table td:last-child {
+        padding-right: 0;
     }
     .inventory-risk-table th {
         font-size: 11px;
@@ -2511,15 +2608,31 @@
         letter-spacing: .08em;
         text-transform: uppercase;
         color: #5f7696;
+        white-space: nowrap;
     }
     .inventory-risk-table td {
         font-size: 12.5px;
         color: #425c7f;
     }
-    .inventory-risk-title {
+    .inventory-risk-table td:first-child {
+        width: 40%;
+    }
+    .inventory-risk-name {
         display: block;
         font-weight: 700;
         color: var(--ph-color-text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .inventory-risk-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--ph-color-primary);
+        text-decoration: none;
     }
     .inventory-movement-list {
         display: grid;
@@ -2603,6 +2716,15 @@
         display: grid;
         gap: 16px;
         padding: 0 16px 16px;
+    }
+    .inventory-section-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--ph-color-primary);
+        text-decoration: none;
     }
     .control-room-priority-card {
         position: relative;
@@ -7890,36 +8012,30 @@
                             @endif
                         </div>
                         <div class="inventory-donut-shell">
-                            <div class="control-room-donut">
-                                <svg viewBox="0 0 120 120" aria-hidden="true">
-                                    @php
-                                        $runningOffset = 0.0;
-                                    @endphp
-                                    @foreach($inventoryAvailabilitySegments as $index => $segment)
-                                        @php
-                                            $segmentLength = round((($segment['percent'] ?? 0) / 100) * 251.2, 2);
-                                            $segmentClass = $toneCardClass($segment['tone'] ?? null);
-                                        @endphp
-                                        <circle class="{{ $segmentClass }}" cx="60" cy="60" r="40"
-                                            stroke-dasharray="{{ $segmentLength }} 251.2"
-                                            stroke-dashoffset="-{{ round($runningOffset, 2) }}"
-                                            transform="rotate(-90 60 60)"></circle>
-                                        @php $runningOffset += $segmentLength; @endphp
-                                    @endforeach
-                                </svg>
-                                <div class="control-room-donut-center">
+                            <div class="inventory-availability-visual">
+                                <div class="inventory-availability-total">
                                     <strong>{{ number_format($inventoryAvailabilityTotal) }}</strong>
-                                    <span>Total Assets</span>
+                                    <span>Total inventory assets tracked</span>
+                                </div>
+                                <div class="inventory-availability-track" aria-label="Inventory availability distribution">
+                                    @foreach($inventoryAvailabilitySegments as $segment)
+                                        <span
+                                            class="inventory-availability-segment {{ $toneCardClass($segment['tone'] ?? null) }}"
+                                            style="width: {{ max((float) ($segment['percent'] ?? 0), ($inventoryAvailabilityTotal > 0 ? 4 : 0)) }}%;"
+                                            title="{{ $segment['label'] }}: {{ number_format((int) ($segment['value'] ?? 0)) }} ({{ number_format((float) ($segment['percent'] ?? 0), 1) }}%)"
+                                        ></span>
+                                    @endforeach
                                 </div>
                             </div>
-                            <div class="control-room-donut-legend">
+                            <div class="inventory-availability-legend">
                                 @foreach($inventoryAvailabilitySegments as $segment)
-                                    <div class="control-room-donut-legend-item">
-                                        <span class="control-room-donut-dot {{ $toneCardClass($segment['tone'] ?? null) }}"></span>
-                                        <div class="control-room-donut-copy">
+                                    <div class="inventory-availability-legend-item">
+                                        <span class="inventory-availability-dot {{ $toneCardClass($segment['tone'] ?? null) }}"></span>
+                                        <div class="inventory-availability-copy">
                                             <strong>{{ $segment['label'] }}</strong>
-                                            <span>{{ number_format((int) ($segment['value'] ?? 0)) }} • {{ number_format((float) ($segment['percent'] ?? 0), 1) }}%</span>
+                                            <span>{{ number_format((int) ($segment['value'] ?? 0)) }} asset(s)</span>
                                         </div>
+                                        <span class="inventory-availability-value">{{ number_format((float) ($segment['percent'] ?? 0), 1) }}%</span>
                                     </div>
                                 @endforeach
                             </div>
@@ -7952,30 +8068,55 @@
                                 <h3 class="control-room-card-title">Product Risk Board</h3>
                                 <p class="control-room-card-copy">Products at risk because they are low, fully out, highly utilized, or sitting idle instead of supporting fulfilment.</p>
                             </div>
+                            @if($productsIndexUrl || $inventoryUrl)
+                                <a href="{{ $productsIndexUrl ?? $inventoryUrl }}" class="control-room-card-link">View All Product Risks</a>
+                            @endif
                         </div>
                         @if($productRiskRows->isNotEmpty())
-                            <table class="inventory-risk-table">
-                                <thead>
-                                    <tr>
-                                        <th>Product</th>
-                                        <th>Available</th>
-                                        <th>Required</th>
-                                        <th>Risk</th>
-                                        <th>Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach($productRiskRows as $row)
+                            <div class="inventory-risk-wrap">
+                                <table class="inventory-risk-table">
+                                    <thead>
                                         <tr>
-                                            <td>{{ $row['name'] }}</td>
-                                            <td>{{ number_format((int) ($row['available'] ?? 0)) }}</td>
-                                            <td>{{ number_format((int) ($row['required'] ?? 0)) }}</td>
-                                            <td><span class="rx-badge {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['risk'] }}</span></td>
-                                            <td><a href="{{ $row['href'] }}" class="operations-queue-action">{{ $row['action'] }}</a></td>
+                                            <th>Product</th>
+                                            <th>Available</th>
+                                            <th>Required</th>
+                                            <th>Risk</th>
+                                            <th>Action</th>
                                         </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody>
+                                        @foreach($productRiskRows->take(5) as $row)
+                                            <tr>
+                                                <td><span class="inventory-risk-name">{{ $row['name'] }}</span></td>
+                                                <td>{{ number_format((int) ($row['available'] ?? 0)) }}</td>
+                                                <td>{{ number_format((int) ($row['required'] ?? 0)) }}</td>
+                                                <td><span class="rx-badge {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['risk'] }}</span></td>
+                                                <td><a href="{{ $row['href'] }}" class="inventory-risk-link">{{ $row['action'] }}</a></td>
+                                            </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                                @if($productRiskRows->count() > 5)
+                                    <details class="dashboard-expandable">
+                                        <summary class="dashboard-expandable-summary">Show {{ $productRiskRows->count() - 5 }} more</summary>
+                                        <div class="dashboard-expandable-content">
+                                            <table class="inventory-risk-table">
+                                                <tbody>
+                                                    @foreach($productRiskRows->slice(5) as $row)
+                                                        <tr>
+                                                            <td><span class="inventory-risk-name">{{ $row['name'] }}</span></td>
+                                                            <td>{{ number_format((int) ($row['available'] ?? 0)) }}</td>
+                                                            <td>{{ number_format((int) ($row['required'] ?? 0)) }}</td>
+                                                            <td><span class="rx-badge {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['risk'] }}</span></td>
+                                                            <td><a href="{{ $row['href'] }}" class="inventory-risk-link">{{ $row['action'] }}</a></td>
+                                                        </tr>
+                                                    @endforeach
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </details>
+                                @endif
+                            </div>
                         @else
                             <div class="rx-empty dashboard-empty">
                                 <div class="rx-empty-icon">{!! $dashboardIcon('asset') !!}</div>
@@ -7999,7 +8140,8 @@
                                     <{{ $tag }} @if(!empty($row['href'])) href="{{ $row['href'] }}" @endif class="inventory-warehouse-card">
                                         <span class="inventory-warehouse-label">{{ $row['label'] }}</span>
                                         <strong class="inventory-warehouse-value">{{ number_format((int) ($row['count'] ?? 0)) }}</strong>
-                                        <span class="inventory-warehouse-note">{{ $row['amount'] }}</span>
+                                        <span class="inventory-warehouse-note">{{ number_format((int) ($row['count'] ?? 0)) }} asset-linked rental(s)</span>
+                                        <span class="inventory-health-link">Open Warehouse →</span>
                                     </{{ $tag }}>
                                 @endforeach
                             </div>
