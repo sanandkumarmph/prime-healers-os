@@ -2406,9 +2406,9 @@
     .inventory-readiness-card,
     .inventory-warehouse-card {
         display: grid;
-        gap: 8px;
-        padding: 14px 15px;
-        border-radius: 18px;
+        gap: 6px;
+        padding: 10px 12px;
+        border-radius: 16px;
         border: 1px solid rgba(148, 163, 184, 0.16);
         background: #fff;
         box-shadow: var(--ph-shadow-card);
@@ -2428,7 +2428,7 @@
     }
     .inventory-health-label,
     .inventory-readiness-label {
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 800;
         letter-spacing: .08em;
         text-transform: uppercase;
@@ -2436,22 +2436,25 @@
     }
     .inventory-health-value,
     .inventory-readiness-value {
-        font-size: 24px;
+        font-size: 20px;
         line-height: 1;
         font-weight: 800;
         letter-spacing: -.04em;
         color: var(--ph-color-text);
     }
     .inventory-health-status {
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 700;
         color: #173a67;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     .inventory-health-note,
     .inventory-readiness-note,
     .inventory-warehouse-note {
-        font-size: 12px;
-        line-height: 1.45;
+        font-size: 11px;
+        line-height: 1.35;
         color: #4c678d;
     }
     .inventory-warehouse-label {
@@ -2480,7 +2483,7 @@
     .inventory-layout-grid {
         display: grid;
         grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr);
-        gap: 12px;
+        gap: 10px;
     }
     .inventory-donut-shell {
         display: grid;
@@ -2512,13 +2515,13 @@
     .inventory-availability-total {
         display: grid;
         gap: 2px;
-        padding: 12px 14px;
-        border-radius: 16px;
+        padding: 10px 12px;
+        border-radius: 14px;
         background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
         border: 1px solid rgba(148, 163, 184, 0.14);
     }
     .inventory-availability-total strong {
-        font-size: 26px;
+        font-size: 22px;
         line-height: 1;
         font-weight: 800;
         color: var(--ph-color-text);
@@ -2536,8 +2539,8 @@
         grid-template-columns: auto minmax(0, 1fr) auto;
         align-items: center;
         gap: 10px;
-        padding: 8px 10px;
-        border-radius: 14px;
+        padding: 7px 9px;
+        border-radius: 12px;
         background: #f8fbff;
         border: 1px solid rgba(148, 163, 184, 0.12);
     }
@@ -2575,12 +2578,12 @@
         gap: 10px;
     }
     .inventory-readiness-card {
-        gap: 5px;
-        padding: 11px 12px;
-        border-radius: 16px;
+        gap: 4px;
+        padding: 9px 10px;
+        border-radius: 14px;
     }
     .inventory-readiness-value {
-        font-size: 20px;
+        font-size: 18px;
     }
     .inventory-risk-wrap {
         display: grid;
@@ -2611,25 +2614,42 @@
         white-space: nowrap;
     }
     .inventory-risk-table td {
-        font-size: 12.5px;
+        font-size: 12px;
         color: #425c7f;
     }
-    .inventory-risk-table td:first-child {
-        width: 40%;
+    .inventory-risk-table th:nth-child(2),
+    .inventory-risk-table th:nth-child(3),
+    .inventory-risk-table td:nth-child(2),
+    .inventory-risk-table td:nth-child(3) {
+        text-align: center;
+        width: 84px;
+        white-space: nowrap;
+    }
+    .inventory-risk-table th:nth-child(4),
+    .inventory-risk-table td:nth-child(4) {
+        width: 110px;
+        white-space: nowrap;
+    }
+    .inventory-risk-table th:nth-child(5),
+    .inventory-risk-table td:nth-child(5) {
+        width: 80px;
+        text-align: right;
+        white-space: nowrap;
     }
     .inventory-risk-name {
-        display: block;
+        display: -webkit-box;
         font-weight: 700;
         color: var(--ph-color-text);
-        white-space: nowrap;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
         overflow: hidden;
-        text-overflow: ellipsis;
+        line-height: 1.35;
     }
     .inventory-risk-link {
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 700;
         color: var(--ph-color-primary);
         text-decoration: none;
@@ -2716,6 +2736,29 @@
         display: grid;
         gap: 16px;
         padding: 0 16px 16px;
+    }
+    .inventory-risk-wrap .rx-badge {
+        font-size: 10px;
+        padding: 4px 8px;
+    }
+    .inventory-warehouse-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+    .inventory-warehouse-card {
+        gap: 3px;
+        align-content: start;
+        min-height: 0;
+    }
+    .inventory-warehouse-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px;
+    }
+    .inventory-warehouse-meta {
+        font-size: 11px;
+        color: #4c678d;
     }
     .inventory-section-link {
         display: inline-flex;
@@ -8138,10 +8181,13 @@
                                 @foreach($warehouseSnapshotRows as $row)
                                     @php $tag = !empty($row['href']) ? 'a' : 'div'; @endphp
                                     <{{ $tag }} @if(!empty($row['href'])) href="{{ $row['href'] }}" @endif class="inventory-warehouse-card">
-                                        <span class="inventory-warehouse-label">{{ $row['label'] }}</span>
+                                        <div class="inventory-warehouse-top">
+                                            <span class="inventory-warehouse-label">{{ $row['label'] }}</span>
+                                            <span class="inventory-health-link">Open →</span>
+                                        </div>
                                         <strong class="inventory-warehouse-value">{{ number_format((int) ($row['count'] ?? 0)) }}</strong>
                                         <span class="inventory-warehouse-note">{{ number_format((int) ($row['count'] ?? 0)) }} asset-linked rental(s)</span>
-                                        <span class="inventory-health-link">Open Warehouse →</span>
+                                        <span class="inventory-warehouse-meta">{{ $row['amount'] }}</span>
                                     </{{ $tag }}>
                                 @endforeach
                             </div>
