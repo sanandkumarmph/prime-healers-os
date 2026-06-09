@@ -1118,6 +1118,185 @@
         ['label' => 'Vendors', 'value' => number_format((int) ($totalBusinessPartners ?? 0)), 'href' => $safeRoute('business-partners.index')],
         ['label' => 'Overdue Rentals', 'value' => number_format($overdueReturnsCount), 'href' => $mergeDashboardQuery('rentals.index', ['filter' => 'overdue', 'status' => null])],
     ])->filter(fn ($card) => !empty($card['href']))->values();
+
+    $pendingOperationsTotal = (int) (
+        $pendingDeliveryCountValue
+        + $pendingPickupCountValue
+        + ((int) ($overdueRenewalsCount ?? 0))
+        + ((int) ($unassignedTasksCount ?? 0))
+    );
+    $inventoryHealthTone = $maintenanceAlertCountValue > 0
+        ? 'amber'
+        : ($availableRentalAssetsCount > 0 ? 'green' : 'blue');
+    $inventoryHealthLabel = $maintenanceAlertCountValue > 0
+        ? number_format($maintenanceAlertCountValue) . ' maintenance alert(s)'
+        : ($availableRentalAssetsCount > 0 ? 'Assets ready for dispatch' : 'Awaiting rental-stock movement');
+    $inventoryHealthNote = $availableRentalAssetsCount > 0
+        ? number_format($availableRentalAssetsCount) . ' rental assets available'
+        : 'No rental assets available in current filter';
+
+    $executiveCommandCards = collect([
+        [
+            'label' => 'Cash at Risk',
+            'value' => $compactCurrency(max($outstandingDueAmountValue, $pendingReceivableAmountValue)),
+            'status' => $canViewFinance
+                ? ($overdueInvoiceCountValue > 0 ? number_format($overdueInvoiceCountValue) . ' overdue invoice(s)' : 'No overdue pressure')
+                : 'Finance access required',
+            'note' => $canViewFinance
+                ? $currency($paymentsReceivedThisMonthAmount) . ' collected this month'
+                : 'Visible to finance-enabled roles',
+            'href' => $canViewFinance ? $mergeDashboardQuery('invoices.index', ['status' => 'open']) : null,
+            'action' => 'View Dues',
+            'icon' => 'payment',
+            'tone' => $overdueInvoiceCountValue > 0 ? 'red' : 'amber',
+            'meter' => $canViewFinance ? min(100, round(($outstandingDueAmountValue / max($outstandingDueAmountValue + $paymentsReceivedThisMonthAmount, 1)) * 100)) : 0,
+        ],
+        [
+            'label' => 'Active Rentals',
+            'value' => number_format($activeRentalsCount),
+            'status' => $endingSoonCount > 0 ? number_format($endingSoonCount) . ' ending soon' : 'No urgent action',
+            'note' => number_format($returnsDueTodayCountValue) . ' return(s) due today',
+            'href' => $mergeDashboardQuery('rentals.index', ['status' => 'live']),
+            'action' => 'Open Rentals',
+            'icon' => 'rental',
+            'tone' => $overdueReturnsCount > 0 ? 'amber' : 'blue',
+            'meter' => min(100, round(($activeRentalsCount / max($totalRentalsValue, 1)) * 100)),
+        ],
+        [
+            'label' => 'Pending Operations',
+            'value' => number_format($pendingOperationsTotal),
+            'status' => number_format($pendingDeliveryCountValue) . ' delivery · ' . number_format($pendingPickupCountValue) . ' pickup',
+            'note' => number_format((int) ($overdueRenewalsCount ?? 0)) . ' renewal(s) overdue · ' . number_format((int) ($unassignedTasksCount ?? 0)) . ' unassigned task(s)',
+            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'delivery_workload']) : ($renewalCenterUrl ?? null),
+            'action' => 'View Queue',
+            'icon' => 'tasks',
+            'tone' => $pendingOperationsTotal > 0 ? 'amber' : 'blue',
+            'meter' => min(100, round(($pendingOperationsTotal / max($totalTasksCountValue + $activeRentalsCount + 1, 1)) * 100)),
+        ],
+        [
+            'label' => 'Inventory Health',
+            'value' => number_format(max($availableRentalAssetsCount, 0)),
+            'status' => $inventoryHealthLabel,
+            'note' => $inventoryHealthNote,
+            'href' => $inventoryUrl ?? $availableRentalAssetsUrl,
+            'action' => 'View Inventory',
+            'icon' => 'asset',
+            'tone' => $inventoryHealthTone,
+            'meter' => min(100, round(($availableRentalAssetsCount / max($inventoryAvailabilityTotal, 1)) * 100)),
+        ],
+    ])->values();
+
+    $revenueProtectionMiniRows = collect([
+        ['label' => 'Outstanding', 'value' => $compactCurrency($outstandingDueAmountValue), 'note' => number_format($openInvoiceCountValue) . ' open invoice(s)', 'tone' => 'red'],
+        ['label' => 'Collected This Month', 'value' => $compactCurrency($paymentsReceivedThisMonthAmount), 'note' => $currency($paymentsReceivedTodayAmount) . ' received today', 'tone' => 'green'],
+        ['label' => 'Overdue Invoices', 'value' => number_format($overdueInvoiceCountValue), 'note' => $currency($pendingReceivableAmountValue) . ' at risk', 'tone' => 'amber'],
+    ])->values();
+
+    $topPriorityQueueRows = collect([
+        $overdueInvoiceCountValue > 0 && $canViewFinance ? [
+            'priority' => 'High',
+            'title' => 'Overdue invoice collections',
+            'owner' => 'Finance',
+            'status' => number_format($overdueInvoiceCountValue) . ' overdue invoice(s)',
+            'href' => $mergeDashboardQuery('invoices.index', ['status' => 'open']),
+            'action' => 'View',
+            'tone' => 'red',
+        ] : null,
+        ((int) ($overdueRenewalsCount ?? 0)) > 0 ? [
+            'priority' => 'High',
+            'title' => 'Renewals past promised return date',
+            'owner' => 'Renewal Center',
+            'status' => number_format((int) ($overdueRenewalsCount ?? 0)) . ' overdue renewal(s)',
+            'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'overdue']) : null,
+            'action' => 'Open',
+            'tone' => 'red',
+        ] : null,
+        ((int) ($pickupCenterOverdueCount ?? 0)) > 0 ? [
+            'priority' => 'Medium',
+            'title' => 'Delayed pickup coordination',
+            'owner' => 'Pickup Center',
+            'status' => number_format((int) ($pickupCenterOverdueCount ?? 0)) . ' pickup(s) overdue',
+            'href' => $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'overdue']) : null,
+            'action' => 'Assign',
+            'tone' => 'amber',
+        ] : null,
+        ((int) ($unassignedTasksCount ?? 0)) > 0 ? [
+            'priority' => 'Medium',
+            'title' => 'Unassigned field tasks',
+            'owner' => 'Dispatch',
+            'status' => number_format((int) ($unassignedTasksCount ?? 0)) . ' task(s) without owner',
+            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['staff' => 'unassigned']) : null,
+            'action' => 'Assign',
+            'tone' => 'amber',
+        ] : null,
+    ])->filter()->merge(
+        $highPriorityFollowUpSummary->map(function ($followUp) use ($communicationCenterUrl) {
+            return [
+                'priority' => 'High',
+                'title' => $followUp->title ?: 'High priority follow-up',
+                'owner' => 'Communication',
+                'status' => optional($followUp->due_at)?->format('d M, h:i A') ?: 'Due soon',
+                'href' => $communicationCenterUrl ? route('communication-center.index', ['priority' => 'high']) : null,
+                'action' => 'Call',
+                'tone' => 'red',
+            ];
+        })->filter(fn ($row) => !empty($row['href']))
+    )->merge(
+        $pendingPaymentSummary->map(function ($invoice) use ($mergeDashboardQuery) {
+            return [
+                'priority' => 'Medium',
+                'title' => $invoice->invoice_number ?: 'Invoice payment follow-up',
+                'owner' => 'Finance',
+                'status' => optional($invoice->due_date)?->format('d M Y') ?: 'Due date pending',
+                'href' => $mergeDashboardQuery('invoices.index', ['status' => 'open']),
+                'action' => 'Collect',
+                'tone' => 'amber',
+            ];
+        })
+    )->take(10)->values();
+
+    $dashboardCenterGroups = collect([
+        [
+            'label' => 'Operations Center',
+            'copy' => 'Widgets, logistics, renewal flow, and pickup coordination.',
+            'links' => collect([
+                ['label' => 'Today Widgets', 'href' => '#today-widgets'],
+                ['label' => 'Top Priority', 'href' => '#top-priority-panel'],
+                ['label' => 'Action Panel', 'href' => '#today-action-panel'],
+                ['label' => 'Logistics Board', 'href' => '#logistics-board-panel'],
+                ['label' => 'Renewal Center', 'href' => '#renewal-center-panel'],
+                ['label' => 'Pickup Center', 'href' => '#pickup-center-panel'],
+            ])->filter(fn ($link) => !empty($link['href']))->values(),
+        ],
+        [
+            'label' => 'Revenue Center',
+            'copy' => 'Sales pulse, finance summary, invoice pressure, and collection actions.',
+            'links' => collect([
+                ['label' => 'Sales Pulse', 'href' => '#sales-pulse-panel'],
+                ['label' => 'Finance Summary', 'href' => '#finance-summary'],
+            ])->filter(fn ($link) => !empty($link['href']))->values(),
+        ],
+        [
+            'label' => 'Inventory Center',
+            'copy' => 'Staff load, partner signals, inventory intelligence, and stock health.',
+            'links' => collect([
+                ['label' => 'Staff & Operations', 'href' => '#staff-ops'],
+                ['label' => 'Business Signals', 'href' => '#business-signals-panel'],
+                ['label' => 'Inventory Intelligence', 'href' => '#inventory-intelligence-panel'],
+            ])->filter(fn ($link) => !empty($link['href']))->values(),
+        ],
+        [
+            'label' => 'Activity & Communication Center',
+            'copy' => 'Recent activity, customer movement, payments, and follow-up queues.',
+            'links' => collect([
+                ['label' => 'Recent Activity', 'href' => '#recent-ops'],
+                ['label' => 'High Priority Follow-ups', 'href' => '#high-priority-followups-panel'],
+                ['label' => 'Recent Rentals', 'href' => '#recent-rentals-panel'],
+                ['label' => 'Recent Customers', 'href' => '#recent-customers-panel'],
+                ['label' => 'Recent Payments', 'href' => '#recent-payments-panel'],
+            ])->filter(fn ($link) => !empty($link['href']))->values(),
+        ],
+    ])->values();
 @endphp
 
 <style>
@@ -1255,6 +1434,216 @@
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 8px;
+    }
+    .executive-command-card {
+        display: grid;
+        gap: 10px;
+        padding: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 18px;
+        background: #fff;
+        box-shadow: var(--ph-shadow-card);
+    }
+    .executive-command-grid {
+        display: grid;
+        grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr) minmax(300px, .95fr);
+        gap: 10px;
+        align-items: start;
+    }
+    .executive-command-mini {
+        display: grid;
+        gap: 8px;
+    }
+    .executive-mini-summary {
+        display: grid;
+        gap: 6px;
+        padding: 10px 11px;
+        border-radius: 14px;
+        border: 1px solid rgba(226, 232, 240, 0.92);
+        background: linear-gradient(180deg, rgba(248,250,252,0.88), rgba(255,255,255,0.98));
+    }
+    .executive-mini-grid {
+        display: grid;
+        gap: 6px;
+    }
+    .executive-mini-row {
+        display: grid;
+        gap: 2px;
+        padding: 8px 9px;
+        border-radius: 12px;
+        border: 1px solid rgba(226, 232, 240, 0.88);
+        background: #fff;
+    }
+    .executive-mini-row-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+    .executive-mini-label {
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: #6f84a2;
+    }
+    .executive-mini-value {
+        font-size: 18px;
+        line-height: 1;
+        font-weight: 800;
+        letter-spacing: -.04em;
+        color: var(--ph-color-text);
+    }
+    .executive-mini-note {
+        margin: 0;
+        color: #425c7f;
+        font-size: 10px;
+        line-height: 1.3;
+    }
+    .executive-mini-meter {
+        height: 5px;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.16);
+        overflow: hidden;
+    }
+    .executive-mini-meter span {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, rgba(79, 70, 229, 0.82), rgba(34, 197, 94, 0.82));
+    }
+    .executive-queue {
+        display: grid;
+        gap: 6px;
+    }
+    .executive-queue-list {
+        display: grid;
+        gap: 6px;
+    }
+    .executive-queue-item {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 8px 10px;
+        align-items: center;
+        padding: 9px 10px;
+        border-radius: 12px;
+        border: 1px solid rgba(226, 232, 240, 0.88);
+        background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.88));
+    }
+    .executive-queue-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 20px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 9px;
+        font-weight: 800;
+        line-height: 1;
+        background: rgba(59, 130, 246, 0.1);
+        color: #2563eb;
+    }
+    .executive-queue-pill.is-danger {
+        background: rgba(239, 68, 68, 0.12);
+        color: #dc2626;
+    }
+    .executive-queue-pill.is-warning {
+        background: rgba(245, 158, 11, 0.14);
+        color: #b45309;
+    }
+    .executive-queue-copy {
+        min-width: 0;
+        display: grid;
+        gap: 2px;
+    }
+    .executive-queue-copy strong,
+    .executive-queue-copy span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .executive-queue-copy strong {
+        font-size: 11px;
+        color: var(--ph-color-text);
+    }
+    .executive-queue-copy span {
+        font-size: 10px;
+        color: #425c7f;
+    }
+    .executive-queue-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--ph-color-primary);
+        text-decoration: none;
+        white-space: nowrap;
+    }
+    .dashboard-center-groups {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .dashboard-center-group {
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 16px;
+        background: #fff;
+        box-shadow: var(--ph-shadow-card);
+        overflow: hidden;
+    }
+    .dashboard-center-summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 11px 12px;
+    }
+    .dashboard-center-summary::-webkit-details-marker {
+        display: none;
+    }
+    .dashboard-center-summary strong {
+        display: block;
+        font-size: 13px;
+        color: var(--ph-color-text);
+    }
+    .dashboard-center-summary span {
+        display: block;
+        margin-top: 2px;
+        font-size: 10px;
+        line-height: 1.3;
+        color: #425c7f;
+    }
+    .dashboard-center-summary::after {
+        content: "+";
+        font-size: 16px;
+        font-weight: 700;
+        color: #64748b;
+    }
+    .dashboard-center-group[open] .dashboard-center-summary::after {
+        content: "−";
+    }
+    .dashboard-center-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 0 12px 12px;
+    }
+    .dashboard-center-link {
+        display: inline-flex;
+        align-items: center;
+        min-height: 30px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(79, 70, 229, 0.14);
+        background: #f8fbff;
+        color: var(--ph-color-primary);
+        font-size: 10px;
+        font-weight: 700;
+        text-decoration: none;
     }
     .control-room-priority-card {
         position: relative;
@@ -4311,6 +4700,253 @@
         <div class="control-room-header">
             <div class="control-room-header-copy">
                 <div class="control-room-meta-strip">
+                    <span class="rx-eyebrow">Executive Command Center</span>
+                    <span class="dashboard-hero-date">{{ $dashboardDateLabel }}</span>
+                    <span class="control-room-status-line">Phase 1 structure pass for cash, rentals, pending operations, and inventory health.</span>
+                </div>
+                <div class="control-room-title-row">
+                    <h1>PHOS Executive Dashboard</h1>
+                    <p>Short decision layer on top, detailed centers below.</p>
+                </div>
+            </div>
+
+            <div class="control-room-header-side">
+                <div class="dashboard-hero-actions">
+                    <div class="dashboard-quick-actions-grid">
+                        @foreach($dashboardQuickActions as $action)
+                            <a href="{{ $action['href'] }}" class="{{ ($action['tone'] ?? 'secondary') === 'primary' ? 'rx-btn' : 'rx-btn-secondary' }}">{{ $action['label'] }}</a>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="control-room-filter-dock">
+            <details class="rx-card dashboard-filters-card">
+                <summary class="rx-card-header">
+                    <div>
+                        <h2 class="rx-card-title">Filters</h2>
+                        <p class="rx-card-copy">Date, city, fulfilment, and payment view.</p>
+                    </div>
+                    <span class="dashboard-filter-toggle" aria-hidden="true"></span>
+                </summary>
+                <div class="rx-card-body">
+                    <form method="GET" action="{{ $dashboardUrl }}" class="rx-form-grid">
+                        <div class="dashboard-filter-grid">
+                            <label class="rx-field">
+                                <span class="rx-label">From Date</span>
+                                <input type="date" name="from_date" value="{{ $fromDate ?? '' }}" class="rn-input" />
+                            </label>
+                            <label class="rx-field">
+                                <span class="rx-label">To Date</span>
+                                <input type="date" name="to_date" value="{{ $toDate ?? '' }}" class="rn-input" />
+                            </label>
+                            <label class="rx-field">
+                                <span class="rx-label">City</span>
+                                <select name="city" class="rn-input">
+                                    <option value="">All Cities</option>
+                                    @foreach($cities as $cityOption)
+                                        <option value="{{ $cityOption }}" @selected(($city ?? null) === $cityOption)>{{ $cityOption }}</option>
+                                    @endforeach
+                                </select>
+                            </label>
+                            <label class="rx-field">
+                                <span class="rx-label">Fulfilment</span>
+                                <select name="fulfilment_source" class="rn-input">
+                                    <option value="">All</option>
+                                    <option value="in_house" @selected(request('fulfilment_source') === 'in_house')>In-house</option>
+                                    <option value="vendor_supplied" @selected(request('fulfilment_source') === 'vendor_supplied')>Vendor supplied</option>
+                                </select>
+                            </label>
+                            <label class="rx-field">
+                                <span class="rx-label">Payment Status</span>
+                                <select name="payment_status" class="rn-input">
+                                    <option value="">All</option>
+                                    <option value="paid" @selected(request('payment_status') === 'paid')>Paid</option>
+                                    <option value="partial" @selected(request('payment_status') === 'partial')>Partial</option>
+                                    <option value="unpaid" @selected(request('payment_status') === 'unpaid')>Unpaid</option>
+                                </select>
+                            </label>
+                            <label class="rx-field">
+                                <span class="rx-label">Search</span>
+                                <input type="text" name="search" value="{{ $search ?? '' }}" placeholder="Customer, rental, phone" class="rn-input" />
+                            </label>
+                        </div>
+
+                        <div class="rx-actions">
+                            <button type="submit" class="rx-btn">Apply</button>
+                            <a href="{{ $safeRoute('dashboard') ?? $dashboardUrl }}" class="rx-btn-secondary">Reset</a>
+                        </div>
+                    </form>
+                </div>
+            </details>
+        </div>
+
+        <section class="executive-command-card">
+            <div class="control-room-card-header">
+                <div>
+                    <h2 class="control-room-card-title">Executive Command Center</h2>
+                    <p class="control-room-card-copy">Only the four top KPIs, one compact revenue block, one rental pipeline, and one priority queue.</p>
+                </div>
+            </div>
+
+            <div class="control-room-priority-grid">
+                @foreach($executiveCommandCards as $card)
+                    @php $priorityTag = !empty($card['href']) ? 'a' : 'div'; @endphp
+                    <{{ $priorityTag }} @if(!empty($card['href'])) href="{{ $card['href'] }}" @endif class="control-room-priority-card {{ $toneCardClass($card['tone'] ?? null) }}">
+                        <div class="control-room-priority-top">
+                            <div class="control-room-priority-copy">
+                                <span class="control-room-priority-label">{{ $card['label'] }}</span>
+                                <p class="control-room-priority-status">
+                                    <span class="control-room-priority-badge">{{ ($card['tone'] ?? 'info') === 'red' ? 'Critical' : (($card['tone'] ?? 'info') === 'amber' ? 'Watch' : 'Stable') }}</span>
+                                    <span>{{ $card['status'] }}</span>
+                                </p>
+                            </div>
+                            <span class="control-room-priority-icon">{!! $dashboardIcon($card['icon']) !!}</span>
+                        </div>
+                        <strong class="control-room-priority-value">{{ $card['value'] }}</strong>
+                        <p class="control-room-priority-note">{{ $card['note'] }}</p>
+                        <div class="control-room-priority-visuals">
+                            <div class="control-room-priority-meter">
+                                <span style="width: {{ max((int) ($card['meter'] ?? 0), 6) }}%;"></span>
+                            </div>
+                            <span class="control-room-priority-link">{{ $card['action'] }} <span aria-hidden="true">&rarr;</span></span>
+                        </div>
+                    </{{ $priorityTag }}>
+                @endforeach
+            </div>
+
+            <div class="executive-command-grid">
+                <section class="control-room-card executive-command-mini">
+                    <div class="control-room-card-header">
+                        <div>
+                            <h3 class="control-room-card-title">Revenue Protection</h3>
+                            <p class="control-room-card-copy">Outstanding exposure, month collections, and overdue invoices only.</p>
+                        </div>
+                        @if($canViewFinance && $invoiceIndexUrl)
+                            <a href="{{ $mergeDashboardQuery('invoices.index', ['status' => 'open']) }}" class="control-room-card-link">View Dues</a>
+                        @endif
+                    </div>
+                    @if($canViewFinance)
+                        <div class="executive-mini-summary">
+                            <div class="executive-mini-grid">
+                                @foreach($revenueProtectionMiniRows as $row)
+                                    <div class="executive-mini-row">
+                                        <div class="executive-mini-row-top">
+                                            <span class="executive-mini-label">{{ $row['label'] }}</span>
+                                            <span class="control-room-priority-badge {{ $toneCardClass($row['tone'] ?? null) }}">{{ ucfirst($row['tone']) }}</span>
+                                        </div>
+                                        <strong class="executive-mini-value">{{ $row['value'] }}</strong>
+                                        <p class="executive-mini-note">{{ $row['note'] }}</p>
+                                    </div>
+                                @endforeach
+                            </div>
+                            <div class="executive-mini-meter">
+                                <span style="width: {{ min(100, round(($paymentsReceivedThisMonthAmount / max($paymentsReceivedThisMonthAmount + $outstandingDueAmountValue, 1)) * 100)) }}%;"></span>
+                            </div>
+                        </div>
+                    @else
+                        <div class="rx-empty dashboard-empty">
+                            <div class="rx-empty-icon">{!! $dashboardIcon('payment') !!}</div>
+                            <strong>Finance access required</strong>
+                            <span>Revenue protection appears here for roles with finance access.</span>
+                        </div>
+                    @endif
+                </section>
+
+                <section class="control-room-card executive-command-mini">
+                    <div class="control-room-card-header">
+                        <div>
+                            <h3 class="control-room-card-title">Rental Operations Pipeline</h3>
+                            <p class="control-room-card-copy">Created, assigned, dispatched, active, due back, and completed.</p>
+                        </div>
+                        <a href="{{ $rentalIndexUrl ?? '#' }}" class="control-room-card-link">View Pipeline</a>
+                    </div>
+                    <div class="control-room-pipeline-track">
+                        @foreach($pipelineStages as $stage)
+                            @php
+                                $stageIcon = match ($stage['label']) {
+                                    'Created' => 'tasks',
+                                    'Assigned' => 'customer',
+                                    'Out for Delivery' => 'delivery',
+                                    'Active Rental' => 'rental',
+                                    'Return Due' => 'pickup',
+                                    'Completed' => 'completed',
+                                    default => 'trend',
+                                };
+                            @endphp
+                            <div class="control-room-pipeline-stage {{ $toneCardClass($stage['tone'] ?? null) }}">
+                                <span class="control-room-pipeline-stage-icon">{!! $dashboardIcon($stageIcon) !!}</span>
+                                <strong>{{ $stage['label'] }}</strong>
+                                <span>{{ number_format((int) ($stage['value'] ?? 0)) }}</span>
+                            </div>
+                        @endforeach
+                    </div>
+                    <div class="executive-mini-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+                        @foreach($rentalPipelineSummary as $summary)
+                            <div class="executive-mini-row">
+                                <span class="executive-mini-label">{{ $summary['label'] }}</span>
+                                <strong class="executive-mini-value">{{ $summary['value'] }}</strong>
+                                <p class="executive-mini-note">{{ $summary['note'] }}</p>
+                            </div>
+                        @endforeach
+                    </div>
+                </section>
+
+                <section class="control-room-card executive-queue">
+                    <div class="control-room-card-header">
+                        <div>
+                            <h3 class="control-room-card-title">Top Priority Queue</h3>
+                            <p class="control-room-card-copy">Maximum 8–10 urgent items pulled from invoices, renewals, tasks, pickups, and follow-ups.</p>
+                        </div>
+                    </div>
+                    @if($topPriorityQueueRows->isNotEmpty())
+                        <div class="executive-queue-list">
+                            @foreach($topPriorityQueueRows as $row)
+                                <div class="executive-queue-item">
+                                    <span class="executive-queue-pill {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['priority'] }}</span>
+                                    <div class="executive-queue-copy">
+                                        <strong>{{ $row['title'] }}</strong>
+                                        <span>{{ $row['owner'] }} · {{ $row['status'] }}</span>
+                                    </div>
+                                    <a href="{{ $row['href'] }}" class="executive-queue-link">{{ $row['action'] }}</a>
+                                </div>
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="rx-empty dashboard-empty">
+                            <div class="rx-empty-icon">{!! $dashboardIcon('tasks') !!}</div>
+                            <strong>No urgent queue</strong>
+                            <span>High-priority items will surface here automatically.</span>
+                        </div>
+                    @endif
+                </section>
+            </div>
+        </section>
+
+        <div class="dashboard-center-groups">
+            @foreach($dashboardCenterGroups as $group)
+                <details class="dashboard-center-group">
+                    <summary class="dashboard-center-summary">
+                        <div>
+                            <strong>{{ $group['label'] }}</strong>
+                            <span>{{ $group['copy'] }}</span>
+                        </div>
+                    </summary>
+                    <div class="dashboard-center-links">
+                        @foreach($group['links'] as $link)
+                            <a href="{{ $link['href'] }}" class="dashboard-center-link">{{ $link['label'] }}</a>
+                        @endforeach
+                    </div>
+                </details>
+            @endforeach
+        </div>
+    </section>
+    @if(false)
+    <section class="control-room-shell">
+        <div class="control-room-header">
+            <div class="control-room-header-copy">
+                <div class="control-room-meta-strip">
                     <span class="rx-eyebrow">PHOS Control Room</span>
                     <span class="dashboard-hero-date">{{ $dashboardDateLabel }}</span>
                     <span class="control-room-status-line">Cash pressure, rental flow, staffing, and inventory in one live command view.</span>
@@ -4958,6 +5594,7 @@
         </section>
     </section>
 
+    @endif
     <section class="rx-card">
         <div class="rx-card-header dashboard-section-heading">
             <div>
@@ -5614,7 +6251,7 @@
     @endif
 
     @if($primaryPriorityCards->isNotEmpty())
-    <section class="dashboard-main-grid">
+        <section class="dashboard-main-grid" id="top-priority-panel">
         <div class="rx-card">
             <div class="rx-card-header">
                 <div>
@@ -5643,7 +6280,7 @@
     @endif
 
     @if($actionItems->isNotEmpty())
-    <section class="dashboard-action-layout">
+    <section class="dashboard-action-layout" id="today-action-panel">
         <div class="rx-card">
             <div class="rx-card-header">
                 <div>
@@ -5673,7 +6310,7 @@
     @endif
 
     @if($deliveryMiniTiles->isNotEmpty())
-    <section class="rx-card">
+    <section class="rx-card" id="logistics-board-panel">
         <div class="rx-card">
             <div class="rx-card-header">
                 <div>
@@ -5700,7 +6337,7 @@
     @endif
 
     @if($renewalMiniTiles->isNotEmpty())
-        <section class="rx-card">
+        <section class="rx-card" id="renewal-center-panel">
             <div class="rx-card-header">
                 <div>
                     <h2 class="rx-card-title">Renewal Center</h2>
@@ -5726,7 +6363,7 @@
     @endif
 
     @if($pickupCenterMiniTiles->isNotEmpty())
-        <section class="rx-card">
+        <section class="rx-card" id="pickup-center-panel">
             <div class="rx-card-header">
                 <div>
                     <h2 class="rx-card-title">Pickup Center</h2>
@@ -5752,7 +6389,7 @@
     @endif
 
     @if($communicationMiniTiles->isNotEmpty())
-        <section class="rx-card">
+        <section class="rx-card" id="communication-center-panel">
             <div class="rx-card-header">
                 <div>
                     <h2 class="rx-card-title">Communication Center</h2>
