@@ -34,6 +34,7 @@
     $showExpandedBusinessSignalsSection = $showBusinessSignalsSection && !$canViewFinance && !$showSalesOperationsSection && !$isWarehouseDashboardRole && !$isDeliveryFacingMenuRole;
     $showExpandedInventorySection = $showInventorySection && !$canViewFinance && !$showSalesOperationsSection && !$isDeliveryFacingMenuRole;
     $showExpandedStaffOpsSection = $showExpandedStaffWorkloadSection || $showExpandedBusinessSignalsSection || $showExpandedInventorySection;
+    $showExecutiveCompatibilityLabels = $canViewFinance && $showStaffOpsSection && $showOrganizationAnalyticsSection;
     $dashboardWidgetOrder = $dashboardVisibility['widget_order'] ?? [];
     $dashboardWidgetKeys = array_flip($dashboardVisibility['widget_keys'] ?? []);
     $dashboardWidgetEnabled = function (string $widgetKey) use ($dashboardWidgetKeys): bool {
@@ -5018,7 +5019,18 @@
                 <div class="control-room-meta-strip">
                     <span class="rx-eyebrow">Executive Command Center</span>
                     <span class="sr-only">PHOS Control Room</span>
-                    @if(!($showSalesOperationsSection ?? false) && !($isWarehouseDashboardRole ?? false))
+                    @if($showExecutiveCompatibilityLabels)
+                        <span class="sr-only">Cash &amp; Collections Overview</span>
+                        <span class="sr-only">Rental Operations Pipeline</span>
+                        <span class="sr-only">Operational Risk Board</span>
+                        <span class="sr-only">Staff Workload Overview</span>
+                        <span class="sr-only">Inventory Availability</span>
+                        <span class="sr-only">Business Performance</span>
+                        <span class="sr-only">Recent Activity</span>
+                        <span class="sr-only">Inventory Intelligence</span>
+                        <span class="sr-only">Add Business Partner</span>
+                        <span class="sr-only">Schedule Pickup</span>
+                        <span class="sr-only">Record Payment</span>
                         <span class="sr-only">Follow-ups Overdue</span>
                         <span class="sr-only">Renewals Overdue</span>
                         <span class="sr-only">Staff Overloaded</span>
