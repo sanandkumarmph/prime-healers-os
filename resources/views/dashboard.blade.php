@@ -1111,6 +1111,126 @@
 
         return $segment;
     })->values();
+    $inventoryAngles = $inventoryAvailabilitySegments->map(fn ($segment) => ((float) ($segment['percent'] ?? 0) / 100) * 360)->values();
+    $availableInventoryCount = (int) ($inventoryAvailabilitySummary->get('available') ?? $availableRentalAssetsCount ?? 0);
+    $onRentInventoryCount = (int) ($inventoryAvailabilitySummary->get('on_rent') ?? 0);
+    $maintenanceInventoryCount = (int) ($inventoryAvailabilitySummary->get('maintenance') ?? $maintenanceAlertCountValue ?? 0);
+    $blockedInventoryCount = (int) ($inventoryAvailabilitySummary->get('blocked_reserved') ?? 0);
+    $outOfStockProductsCount = (int) $lowStockSummary->filter(fn ($product) => (int) ($product->available_quantity ?? 0) <= 0)->count();
+    $awaitingReturnAssetsCount = (int) ($awaitingReturnVerificationCount ?? 0);
+    $inventoryHealthCards = collect([
+        [
+            'label' => 'Available Assets',
+            'value' => number_format(max($availableInventoryCount, 0)),
+            'status' => $availableInventoryCount > 0 ? 'Ready for fulfilment' : 'No ready rental stock',
+            'note' => number_format(max($availableRentalAssetsCount, 0)) . ' rental assets dispatch-ready',
+            'href' => $availableRentalAssetsUrl ?? $inventoryUrl,
+            'action' => 'View Available',
+            'icon' => 'asset',
+            'tone' => $availableInventoryCount > 0 ? 'green' : 'amber',
+        ],
+        [
+            'label' => 'On Rent',
+            'value' => number_format(max($onRentInventoryCount, 0)),
+            'status' => $onRentInventoryCount > 0 ? 'Assets deployed in field' : 'No active deployed stock',
+            'note' => number_format($activeRentalsCount) . ' active rental order(s)',
+            'href' => $mergeDashboardQuery('rentals.index', ['status' => 'live']),
+            'action' => 'Open Rentals',
+            'icon' => 'rental',
+            'tone' => 'blue',
+        ],
+        [
+            'label' => 'Maintenance',
+            'value' => number_format(max($maintenanceInventoryCount, 0)),
+            'status' => $maintenanceInventoryCount > 0 ? 'Needs asset attention' : 'No maintenance queue',
+            'note' => number_format($maintenanceAlertCountValue) . ' maintenance alert(s)',
+            'href' => $inventoryUrl ?? $safeRoute('assets.index'),
+            'action' => 'Open Alerts',
+            'icon' => 'low-stock',
+            'tone' => $maintenanceInventoryCount > 0 ? 'amber' : 'green',
+        ],
+        [
+            'label' => 'Reserved / Blocked',
+            'value' => number_format(max($blockedInventoryCount, 0)),
+            'status' => $blockedInventoryCount > 0 ? 'Unavailable for fulfilment' : 'No blocked stock',
+            'note' => number_format($awaitingReturnAssetsCount) . ' awaiting return verification',
+            'href' => $inventoryUrl ?? $safeRoute('assets.pending-verification'),
+            'action' => 'Review Holds',
+            'icon' => 'warehouse',
+            'tone' => $blockedInventoryCount > 0 ? 'red' : 'blue',
+        ],
+    ])->filter(fn ($card) => !empty($card['href']))->values();
+
+    $fulfilmentReadinessRows = collect([
+        ['label' => 'Ready to Fulfil Today', 'value' => number_format(max($availableRentalAssetsCount, 0)), 'note' => $availableRentalAssetsCount > 0 ? 'Rental assets ready now' : 'Awaiting stock movement', 'tone' => $availableRentalAssetsCount > 0 ? 'green' : 'amber'],
+        ['label' => 'Low Stock Products', 'value' => number_format((int) $lowStockSummary->count()), 'note' => $lowStockSummary->isNotEmpty() ? 'Replenishment attention needed' : 'No immediate low stock pressure', 'tone' => $lowStockSummary->isNotEmpty() ? 'amber' : 'green'],
+        ['label' => 'Out of Stock Products', 'value' => number_format($outOfStockProductsCount), 'note' => $outOfStockProductsCount > 0 ? 'Cannot fulfil some product demand' : 'No product is fully unavailable', 'tone' => $outOfStockProductsCount > 0 ? 'red' : 'green'],
+        ['label' => 'Awaiting Return Assets', 'value' => number_format($awaitingReturnAssetsCount), 'note' => $awaitingReturnAssetsCount > 0 ? 'Needs return verification' : 'No assets stuck in return verification', 'tone' => $awaitingReturnAssetsCount > 0 ? 'amber' : 'blue'],
+    ])->values();
+
+    $productRiskRows = collect();
+    foreach ($lowStockSummary as $product) {
+        $productRiskRows->push([
+            'name' => (string) ($product->name ?? 'Product'),
+            'available' => (int) ($product->available_quantity ?? 0),
+            'required' => max(0, (int) ($product->total_quantity ?? 0) - (int) ($product->available_quantity ?? 0)),
+            'risk' => ((int) ($product->available_quantity ?? 0) <= 0) ? 'Out of Stock' : 'Low Stock',
+            'tone' => ((int) ($product->available_quantity ?? 0) <= 0) ? 'red' : 'amber',
+            'href' => $productsIndexUrl ?? $inventoryUrl,
+            'action' => 'Restock',
+        ]);
+    }
+    foreach ($highUtilizationSummary as $product) {
+        $productRiskRows->push([
+            'name' => (string) ($product->name ?? 'Product'),
+            'available' => (int) ($product->available_quantity ?? 0),
+            'required' => max(0, (int) ($product->total_quantity ?? 0) - (int) ($product->available_quantity ?? 0)),
+            'risk' => 'High Utilization',
+            'tone' => 'amber',
+            'href' => $productsIndexUrl ?? $inventoryUrl,
+            'action' => 'Review',
+        ]);
+    }
+    foreach ($idleInventorySummary as $product) {
+        $productRiskRows->push([
+            'name' => (string) ($product->name ?? 'Product'),
+            'available' => (int) ($product->available_quantity ?? 0),
+            'required' => 0,
+            'risk' => 'Idle Inventory',
+            'tone' => 'blue',
+            'href' => $productsIndexUrl ?? $inventoryUrl,
+            'action' => 'Move',
+        ]);
+    }
+    $productRiskRows = $productRiskRows
+        ->unique(fn ($row) => \Illuminate\Support\Str::lower(($row['name'] ?? '') . '|' . ($row['risk'] ?? '')))
+        ->take(10)
+        ->values();
+
+    $warehouseSnapshotRows = $warehouseSummaryRows->take(4)->map(function ($row) use ($currency, $mergeDashboardQuery) {
+        return [
+            'label' => (string) ($row['label'] ?? 'Unknown Warehouse'),
+            'count' => (int) ($row['count'] ?? 0),
+            'amount' => $currency((float) ($row['total_amount'] ?? 0)),
+            'href' => $mergeDashboardQuery('rentals.index', ['dispatch_warehouse_id' => $row['warehouse_id'] ?? null]),
+        ];
+    })->values();
+
+    $inventoryMovementRows = $recentActivitiesSummary
+        ->filter(function ($activity) {
+            $haystack = \Illuminate\Support\Str::lower(trim((string) (($activity->action ?? '') . ' ' . ($activity->description ?? ''))));
+            return \Illuminate\Support\Str::contains($haystack, ['inventory', 'stock', 'asset', 'warehouse', 'product', 'verification']);
+        })
+        ->take(5)
+        ->map(function ($activity) use ($inventoryUrl) {
+            return [
+                'title' => \Illuminate\Support\Str::headline(str_replace('.', ' ', (string) $activity->action)),
+                'meta' => $activity->description ?: 'Inventory event recorded.',
+                'time' => optional($activity->created_at)?->diffForHumans() ?? 'Recently',
+                'href' => $inventoryUrl,
+            ];
+        })
+        ->values();
 
     $controlRoomCards = collect([
         [
@@ -2273,6 +2393,185 @@
         gap: 16px;
         padding: 0 16px 16px;
     }
+    .inventory-center-grid {
+        display: grid;
+        gap: 12px;
+    }
+    .inventory-health-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .inventory-health-card,
+    .inventory-readiness-card,
+    .inventory-warehouse-card {
+        display: grid;
+        gap: 8px;
+        padding: 14px 15px;
+        border-radius: 18px;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        background: #fff;
+        box-shadow: var(--ph-shadow-card);
+        text-decoration: none;
+        color: inherit;
+    }
+    .inventory-health-card:hover,
+    .inventory-warehouse-card:hover {
+        border-color: rgba(99, 102, 241, 0.22);
+        box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
+    }
+    .inventory-health-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+    .inventory-health-label,
+    .inventory-readiness-label {
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: #597196;
+    }
+    .inventory-health-value,
+    .inventory-readiness-value {
+        font-size: 24px;
+        line-height: 1;
+        font-weight: 800;
+        letter-spacing: -.04em;
+        color: var(--ph-color-text);
+    }
+    .inventory-health-note,
+    .inventory-readiness-note,
+    .inventory-warehouse-note {
+        font-size: 12px;
+        line-height: 1.45;
+        color: #4c678d;
+    }
+    .inventory-health-link,
+    .inventory-center-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--ph-color-primary);
+        text-decoration: none;
+    }
+    .inventory-layout-grid {
+        display: grid;
+        grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr);
+        gap: 12px;
+    }
+    .inventory-donut-shell {
+        display: grid;
+        grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+        gap: 16px;
+        align-items: center;
+    }
+    .inventory-readiness-grid,
+    .inventory-warehouse-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .inventory-risk-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .inventory-risk-table th,
+    .inventory-risk-table td {
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+        text-align: left;
+        vertical-align: top;
+    }
+    .inventory-risk-table th {
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: #5f7696;
+    }
+    .inventory-risk-table td {
+        font-size: 12.5px;
+        color: #425c7f;
+    }
+    .inventory-risk-title {
+        display: block;
+        font-weight: 700;
+        color: var(--ph-color-text);
+    }
+    .inventory-movement-list {
+        display: grid;
+        gap: 10px;
+    }
+    .inventory-movement-item {
+        display: grid;
+        gap: 3px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+    }
+    .inventory-movement-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+    .inventory-movement-head strong {
+        font-size: 13px;
+        color: var(--ph-color-text);
+    }
+    .inventory-movement-head span,
+    .inventory-movement-item small {
+        font-size: 12px;
+        color: #4c678d;
+    }
+    .inventory-detail-group {
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 18px;
+        background: #fff;
+        box-shadow: var(--ph-shadow-card);
+        overflow: hidden;
+    }
+    .inventory-detail-summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 13px 16px;
+    }
+    .inventory-detail-summary::-webkit-details-marker {
+        display: none;
+    }
+    .inventory-detail-summary strong {
+        display: block;
+        font-size: 14px;
+        color: var(--ph-color-text);
+    }
+    .inventory-detail-summary span {
+        display: block;
+        margin-top: 3px;
+        font-size: 12px;
+        color: #4c678d;
+    }
+    .inventory-detail-summary::after {
+        content: "→";
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--ph-color-primary);
+    }
+    .inventory-detail-group[open] .inventory-detail-summary::after {
+        content: "↓";
+    }
+    .inventory-detail-content {
+        display: grid;
+        gap: 16px;
+        padding: 0 16px 16px;
+    }
     .control-room-priority-card {
         position: relative;
         display: grid;
@@ -3273,10 +3572,17 @@
             grid-template-columns: repeat(3, minmax(0, 1fr));
         }
         .operations-health-grid,
-        .operations-pipeline-track {
+        .operations-pipeline-track,
+        .inventory-health-grid,
+        .inventory-readiness-grid,
+        .inventory-warehouse-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
         .operations-layout-grid {
+            grid-template-columns: 1fr;
+        }
+        .inventory-layout-grid,
+        .inventory-donut-shell {
             grid-template-columns: 1fr;
         }
         .control-room-pipeline-stage::after {
@@ -3319,7 +3625,10 @@
         .control-room-stat-grid,
         .control-room-pipeline-track,
         .operations-health-grid,
-        .operations-pipeline-track {
+        .operations-pipeline-track,
+        .inventory-health-grid,
+        .inventory-readiness-grid,
+        .inventory-warehouse-grid {
             grid-template-columns: 1fr;
         }
         .control-room-title-row h1 {
