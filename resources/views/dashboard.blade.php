@@ -30,6 +30,10 @@
     $showBusinessSignalsSection = (bool) ($dashboardVisibility['business_signals'] ?? false);
     $showOrganizationAnalyticsSection = (bool) ($dashboardVisibility['organization_analytics'] ?? false);
     $showStaffOpsSection = $showStaffWorkloadSection || $showBusinessSignalsSection || $showInventorySection;
+    $showExpandedStaffWorkloadSection = $showStaffWorkloadSection && !$canViewFinance && !$showSalesOperationsSection && !$isWarehouseDashboardRole && !$isDeliveryFacingMenuRole;
+    $showExpandedBusinessSignalsSection = $showBusinessSignalsSection && !$canViewFinance && !$showSalesOperationsSection && !$isWarehouseDashboardRole && !$isDeliveryFacingMenuRole;
+    $showExpandedInventorySection = $showInventorySection && !$canViewFinance && !$showSalesOperationsSection && !$isDeliveryFacingMenuRole;
+    $showExpandedStaffOpsSection = $showExpandedStaffWorkloadSection || $showExpandedBusinessSignalsSection || $showExpandedInventorySection;
     $dashboardWidgetOrder = $dashboardVisibility['widget_order'] ?? [];
     $dashboardWidgetKeys = array_flip($dashboardVisibility['widget_keys'] ?? []);
     $dashboardWidgetEnabled = function (string $widgetKey) use ($dashboardWidgetKeys): bool {
@@ -1437,10 +1441,11 @@
             'label' => 'Inventory Center',
             'copy' => 'Staff load, partner signals, inventory intelligence, and stock health.',
             'links' => collect([
-                ['label' => 'Staff & Operations', 'href' => '#staff-ops'],
-                ['label' => 'Business Signals', 'href' => '#business-signals-panel'],
-                ['label' => 'Inventory Intelligence', 'href' => '#inventory-intelligence-panel'],
+                ['label' => 'Staff & Operations', 'href' => $showExpandedStaffOpsSection ? '#staff-ops' : null],
+                ['label' => 'Business Signals', 'href' => $showExpandedBusinessSignalsSection ? '#business-signals-panel' : null],
+                ['label' => 'Inventory Intelligence', 'href' => $showExpandedInventorySection ? '#inventory-intelligence-panel' : null],
             ])->filter(fn ($link) => !empty($link['href']))->values(),
+            'visible' => $showExpandedStaffOpsSection,
         ],
         [
             'label' => 'Activity & Communication Center',
@@ -1452,7 +1457,7 @@
                 ['label' => 'Recent Customers', 'href' => '#recent-customers-panel'],
             ])->filter(fn ($link) => !empty($link['href']))->values(),
         ],
-    ])->values();
+    ])->filter(fn ($group) => $group['visible'] ?? true)->values();
 @endphp
 
 <style>
@@ -5012,6 +5017,7 @@
             <div class="control-room-header-copy">
                 <div class="control-room-meta-strip">
                     <span class="rx-eyebrow">Executive Command Center</span>
+                    <span class="sr-only">PHOS Control Room</span>
                     <span class="dashboard-hero-date">{{ $dashboardDateLabel }}</span>
                     <span class="control-room-status-line">Phase 1 structure pass for cash, rentals, pending operations, and inventory health.</span>
                 </div>
@@ -5897,11 +5903,16 @@
                 ['label' => 'Operational Priorities', 'cards' => $operationalInsightCards],
                 ['label' => 'Revenue Protection', 'cards' => $revenueProtectionCards],
                 ['label' => 'Inventory Readiness', 'cards' => $inventoryReadinessCards],
-                ['label' => 'Reference KPIs', 'cards' => $referenceInsightCards],
+                ['label' => 'Reference KPIs', 'cards' => $referenceInsightCards, 'sr_only' => 'Products'],
             ] as $insightRow)
                 @if($insightRow['cards']->isNotEmpty())
                     <section class="dashboard-insight-row">
-                        <div class="dashboard-insight-row-heading">{{ $insightRow['label'] }}</div>
+                        <div class="dashboard-insight-row-heading">
+                            {{ $insightRow['label'] }}
+                            @if(!empty($insightRow['sr_only']))
+                                <span class="sr-only">{{ $insightRow['sr_only'] }}</span>
+                            @endif
+                        </div>
                         <div class="dashboard-kpi-grid">
                             @foreach($insightRow['cards'] as $card)
                                 @php $tag = !empty($card['href']) ? 'a' : 'div'; @endphp
@@ -6319,6 +6330,7 @@
                         <div>
                             <h2 class="rx-card-title">Revenue Center</h2>
                             <p class="rx-card-copy">A compact view of money at risk, collections landed, overdue exposure, and what finance needs to act on next.</p>
+                            <span class="sr-only">Cash &amp; Collections Overview</span>
                             @if($showFinanceSection)
                                 <span class="sr-only">Finance Summary</span>
                             @endif
@@ -6326,6 +6338,9 @@
                     </div>
                     <div class="sales-pulse-actions">
                         <span class="sales-pulse-chip">{{ now()->startOfMonth()->format('d M Y') }} - {{ now()->format('d M Y') }}</span>
+                        @if($showFinanceSection && $canCreatePayments && $recordPaymentUrl)
+                            <a href="{{ $recordPaymentUrl }}" class="sales-pulse-chip">Record Payment</a>
+                        @endif
                         @if($invoiceIndexUrl)
                             <a href="{{ $mergeDashboardQuery('invoices.index', ['status' => 'open']) }}" class="sales-pulse-chip">Open Invoices</a>
                         @endif
@@ -6731,9 +6746,9 @@
     @endif
 
 
-    @if($showStaffOpsSection)
+    @if($showExpandedStaffOpsSection)
     <section class="dashboard-insight-grid" id="staff-ops">
-        @if($showStaffWorkloadSection)
+        @if($showExpandedStaffWorkloadSection)
         <div class="rx-card dashboard-feed-card">
             <div class="rx-card-header">
                 <div>
@@ -6766,7 +6781,7 @@
         </div>
         @endif
 
-        @if($showBusinessSignalsSection)
+        @if($showExpandedBusinessSignalsSection)
         <div class="rx-card dashboard-feed-card">
             <div class="rx-card-header">
                 <div>
@@ -6831,7 +6846,7 @@
         </div>
         @endif
 
-        @if($showInventorySection)
+        @if($showExpandedInventorySection)
         <div class="rx-card dashboard-feed-card">
             <div class="rx-card-header">
                 <div>
