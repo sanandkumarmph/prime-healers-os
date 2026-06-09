@@ -1415,6 +1415,188 @@
         })
     )->take(10)->values();
 
+    $operationsHealthCards = collect([
+        [
+            'label' => 'Deliveries at Risk',
+            'value' => number_format(max($overdueDeliveryCountValue, 0)),
+            'status' => $overdueDeliveryCountValue > 0 ? 'Overdue dispatch tasks' : 'Delivery flow on track',
+            'note' => number_format($pendingDeliveryCountValue) . ' open delivery task(s)',
+            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'delivery_workload']) : null,
+            'action' => 'Open Deliveries',
+            'icon' => 'delivery',
+            'tone' => $overdueDeliveryCountValue > 0 ? 'red' : 'green',
+        ],
+        [
+            'label' => 'Pickups Pending',
+            'value' => number_format(max($pendingPickupCountValue, 0)),
+            'status' => $pickupCenterOverdueCount > 0 ? number_format((int) $pickupCenterOverdueCount) . ' overdue pickup(s)' : 'Pickup queue manageable',
+            'note' => number_format((int) ($pickupsScheduledTodayCount ?? 0)) . ' scheduled today',
+            'href' => $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'scheduled_today']) : ($deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pickup_workload']) : null),
+            'action' => 'Open Pickups',
+            'icon' => 'pickup',
+            'tone' => $pickupCenterOverdueCount > 0 ? 'amber' : 'blue',
+        ],
+        [
+            'label' => 'Renewals Due',
+            'value' => number_format((int) (($renewalsDueTodayCount ?? 0) + ($overdueRenewalsCount ?? 0))),
+            'status' => ((int) ($overdueRenewalsCount ?? 0)) > 0
+                ? number_format((int) ($overdueRenewalsCount ?? 0)) . ' overdue renewal(s)'
+                : 'Today’s renewal queue visible',
+            'note' => number_format((int) ($renewalsDueTodayCount ?? 0)) . ' due today',
+            'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'due_today']) : null,
+            'action' => 'Open Renewals',
+            'icon' => 'rental',
+            'tone' => ((int) ($overdueRenewalsCount ?? 0)) > 0 ? 'red' : 'amber',
+        ],
+        [
+            'label' => 'Unassigned Work',
+            'value' => number_format((int) ($unassignedTasksCount ?? 0)),
+            'status' => ((int) ($unassignedTasksCount ?? 0)) > 0 ? 'Needs owner assignment' : 'No unassigned field work',
+            'note' => number_format((int) ($failedTasksCount ?? 0)) . ' failed field task(s)',
+            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['staff' => 'unassigned']) : null,
+            'action' => 'Assign Work',
+            'icon' => 'tasks',
+            'tone' => ((int) ($unassignedTasksCount ?? 0)) > 0 ? 'amber' : 'green',
+        ],
+    ])->filter(fn ($card) => !empty($card['href']))->values();
+
+    $operationsPipelineStages = collect([
+        ['label' => 'Created', 'value' => $totalRentalsValue, 'tone' => 'blue', 'icon' => 'tasks'],
+        ['label' => 'Assigned', 'value' => $scheduledDeliveryCountValue + $scheduledPickupCountValue, 'tone' => 'amber', 'icon' => 'customer'],
+        ['label' => 'Out for Delivery', 'value' => $outForDeliveryCountValue, 'tone' => 'blue', 'icon' => 'delivery'],
+        ['label' => 'Active Rental', 'value' => $activeRentalsCount, 'tone' => 'green', 'icon' => 'rental'],
+        ['label' => 'Pickup Due', 'value' => $returnsDueTodayCountValue + $overdueReturnsCount, 'tone' => 'amber', 'icon' => 'pickup'],
+        ['label' => 'Completed', 'value' => $returnedRentalsCount, 'tone' => 'green', 'icon' => 'completed'],
+    ])->values();
+
+    $operationsActionQueueRows = collect([
+        $overdueDeliveryCountValue > 0 ? [
+            'priority' => 'High',
+            'item' => 'Delayed deliveries',
+            'owner' => 'Dispatch',
+            'due' => number_format($overdueDeliveryCountValue) . ' overdue task(s)',
+            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'delivery_workload']) : null,
+            'action' => 'Dispatch',
+            'tone' => 'red',
+            'type' => 'Delivery',
+        ] : null,
+        ((int) ($pickupCenterOverdueCount ?? 0)) > 0 ? [
+            'priority' => 'High',
+            'item' => 'Overdue pickups',
+            'owner' => 'Pickup Desk',
+            'due' => number_format((int) $pickupCenterOverdueCount) . ' overdue pickup(s)',
+            'href' => $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'overdue']) : ($deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pickup_workload']) : null),
+            'action' => 'Assign',
+            'tone' => 'amber',
+            'type' => 'Pickup',
+        ] : null,
+        ((int) ($overdueRenewalsCount ?? 0)) > 0 ? [
+            'priority' => 'High',
+            'item' => 'Overdue renewals',
+            'owner' => 'Renewal Desk',
+            'due' => number_format((int) ($overdueRenewalsCount ?? 0)) . ' renewal(s) overdue',
+            'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'overdue']) : null,
+            'action' => 'Call',
+            'tone' => 'red',
+            'type' => 'Renewal',
+        ] : null,
+        ((int) ($unassignedTasksCount ?? 0)) > 0 ? [
+            'priority' => 'Medium',
+            'item' => 'Unassigned tasks',
+            'owner' => 'Operations',
+            'due' => number_format((int) ($unassignedTasksCount ?? 0)) . ' task(s) without owner',
+            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['staff' => 'unassigned']) : null,
+            'action' => 'Assign',
+            'tone' => 'amber',
+            'type' => 'Task',
+        ] : null,
+        ((int) ($failedTasksCount ?? 0)) > 0 ? [
+            'priority' => 'Medium',
+            'item' => 'Failed field tasks',
+            'owner' => 'Field Team',
+            'due' => number_format((int) ($failedTasksCount ?? 0)) . ' failed attempt(s)',
+            'href' => $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'failed_attempt']) : ($deliveriesIndexUrl ? route('deliveries.index', ['status' => 'cancelled']) : null),
+            'action' => 'Recover',
+            'tone' => 'amber',
+            'type' => 'Task',
+        ] : null,
+        ((int) ($overdueFollowUpsCount ?? 0)) > 0 ? [
+            'priority' => 'Medium',
+            'item' => 'Pending follow-ups',
+            'owner' => 'Communication',
+            'due' => number_format((int) ($overdueFollowUpsCount ?? 0)) . ' overdue follow-up(s)',
+            'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'overdue']) : null,
+            'action' => 'Call',
+            'tone' => 'blue',
+            'type' => 'Follow-up',
+        ] : null,
+        $vendorSummaryRows->first() ? [
+            'priority' => 'Low',
+            'item' => 'Vendor pending actions',
+            'owner' => (string) data_get($vendorSummaryRows->first(), 'name', 'Vendor Desk'),
+            'due' => number_format((int) data_get($vendorSummaryRows->first(), 'rental_count', 0)) . ' rental(s) linked',
+            'href' => $mergeDashboardQuery('rentals.index', ['vendor_id' => data_get($vendorSummaryRows->first(), 'vendor_id')]),
+            'action' => 'Review',
+            'tone' => 'blue',
+            'type' => 'Vendor',
+        ] : null,
+    ])->filter(fn ($row) => !empty($row['href']))->take(10)->values();
+
+    $teamCapacityRows = collect();
+    $teamBucketMap = [
+        'Delivery Team' => ['delivery', 'dispatch'],
+        'Sales Team' => ['sales', 'business'],
+        'Service Team' => ['service', 'warehouse', 'asset', 'inventory'],
+    ];
+    $teamBucketRows = [
+        'Delivery Team' => collect(),
+        'Operations Team' => collect(),
+        'Sales Team' => collect(),
+        'Service Team' => collect(),
+    ];
+
+    foreach ($staffWorkloadSummary as $row) {
+        $haystack = \Illuminate\Support\Str::lower(trim((string) (($row['name'] ?? '') . ' ' . ($row['role'] ?? ''))));
+        $bucket = 'Operations Team';
+
+        foreach ($teamBucketMap as $label => $keywords) {
+            foreach ($keywords as $keyword) {
+                if (\Illuminate\Support\Str::contains($haystack, $keyword)) {
+                    $bucket = $label;
+                    break 2;
+                }
+            }
+        }
+
+        $teamBucketRows[$bucket] = $teamBucketRows[$bucket]->push($row);
+    }
+
+    foreach ($teamBucketRows as $label => $rows) {
+        $deliveryCount = (int) $rows->sum(fn ($row) => (int) ($row['delivery_count'] ?? 0));
+        $pickupCount = (int) $rows->sum(fn ($row) => (int) ($row['pickup_count'] ?? 0));
+        $followupCount = (int) $rows->sum(fn ($row) => (int) ($row['followup_count'] ?? 0));
+        $taskCount = (int) $rows->sum(fn ($row) => (int) ($row['overdue_count'] ?? 0));
+        $hasOverloaded = $rows->contains(fn ($row) => (($row['load_state'] ?? null) === 'Overloaded'));
+        $hasBusy = $rows->contains(fn ($row) => (($row['load_state'] ?? null) === 'Balanced'));
+
+        $teamCapacityRows->push([
+            'label' => $label,
+            'deliveries' => $deliveryCount,
+            'pickups' => $pickupCount,
+            'followups' => $followupCount,
+            'tasks' => $taskCount,
+            'status' => $hasOverloaded ? 'Overloaded' : ($hasBusy ? 'Busy' : 'Normal'),
+            'tone' => $hasOverloaded ? 'red' : ($hasBusy ? 'amber' : 'green'),
+        ]);
+    }
+
+    $operationsSnapshotRows = collect([
+        ['label' => 'Deliveries Today', 'value' => number_format((int) ($deliveriesTodayCount ?? 0)), 'note' => number_format($scheduledDeliveryCountValue) . ' assigned / scheduled', 'tone' => 'blue'],
+        ['label' => 'Pickups Today', 'value' => number_format((int) ($pickupsScheduledTodayCount ?? 0)), 'note' => number_format((int) ($pickupCenterOverdueCount ?? 0)) . ' overdue pickup(s)', 'tone' => 'amber'],
+        ['label' => 'Renewals Today', 'value' => number_format((int) ($renewalsDueTodayCount ?? 0)), 'note' => number_format((int) ($overdueRenewalsCount ?? 0)) . ' overdue renewal(s)', 'tone' => 'red'],
+        ['label' => 'Service Visits Today', 'value' => number_format((int) ($serviceVisitsTodayCount ?? 0)), 'note' => ((int) ($serviceVisitsTodayCount ?? 0)) > 0 ? 'Service queue scheduled' : 'No service visits data yet', 'tone' => 'green'],
+    ])->values();
+
     $dashboardCenterGroups = collect([
         [
             'label' => 'Operations Center',
@@ -1806,6 +1988,290 @@
         font-size: 10px;
         font-weight: 700;
         text-decoration: none;
+    }
+    .operations-center-grid {
+        display: grid;
+        gap: 12px;
+    }
+    .operations-health-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .operations-health-card {
+        display: grid;
+        gap: 8px;
+        padding: 14px 15px;
+        border-radius: 18px;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        background: #fff;
+        box-shadow: var(--ph-shadow-card);
+        text-decoration: none;
+        color: inherit;
+    }
+    .operations-health-card:hover {
+        border-color: rgba(99, 102, 241, 0.22);
+        box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
+    }
+    .operations-health-head,
+    .operations-snapshot-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+    .operations-health-label,
+    .operations-snapshot-label {
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: #597196;
+    }
+    .operations-health-icon {
+        width: 30px;
+        height: 30px;
+        display: grid;
+        place-items: center;
+        border-radius: 12px;
+        border: 1px solid rgba(191, 219, 254, 0.95);
+        background: #f8fbff;
+        color: var(--ph-color-primary);
+    }
+    .operations-health-icon svg {
+        width: 15px;
+        height: 15px;
+    }
+    .operations-health-value {
+        font-size: 26px;
+        line-height: 1;
+        letter-spacing: -.04em;
+        font-weight: 800;
+        color: var(--ph-color-text);
+    }
+    .operations-health-status {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--ph-color-text);
+    }
+    .operations-health-note {
+        font-size: 12px;
+        line-height: 1.45;
+        color: #4c678d;
+    }
+    .operations-health-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--ph-color-primary);
+        text-decoration: none;
+    }
+    .operations-layout-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr);
+        gap: 12px;
+    }
+    .operations-pipeline-wrap {
+        display: grid;
+        gap: 12px;
+    }
+    .operations-pipeline-track {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .operations-pipeline-stage {
+        display: grid;
+        justify-items: center;
+        gap: 8px;
+        padding: 12px 10px;
+        border-radius: 16px;
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        background: #fff;
+        box-shadow: var(--ph-shadow-card);
+        text-align: center;
+    }
+    .operations-pipeline-stage-icon {
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        border: 1px solid rgba(191, 219, 254, 0.9);
+        background: #f8fbff;
+        color: var(--ph-color-primary);
+    }
+    .operations-pipeline-stage-icon svg {
+        width: 15px;
+        height: 15px;
+    }
+    .operations-pipeline-stage-label {
+        min-height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .08em;
+        line-height: 1.3;
+        text-transform: uppercase;
+        color: #5c7393;
+    }
+    .operations-pipeline-stage-value {
+        font-size: 24px;
+        line-height: 1;
+        letter-spacing: -.04em;
+        font-weight: 800;
+        color: var(--ph-color-text);
+    }
+    .operations-queue-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .operations-queue-table th,
+    .operations-queue-table td {
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+        vertical-align: top;
+        text-align: left;
+    }
+    .operations-queue-table th {
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: #5f7696;
+    }
+    .operations-queue-table td {
+        font-size: 12.5px;
+        color: #425c7f;
+    }
+    .operations-queue-title {
+        display: block;
+        font-weight: 700;
+        color: var(--ph-color-text);
+    }
+    .operations-queue-type {
+        display: block;
+        margin-top: 3px;
+        font-size: 11px;
+        color: #6b7f9d;
+    }
+    .operations-queue-action {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--ph-color-primary);
+        text-decoration: none;
+    }
+    .operations-capacity-grid,
+    .operations-snapshot-grid {
+        display: grid;
+        gap: 10px;
+    }
+    .operations-capacity-item,
+    .operations-snapshot-card {
+        display: grid;
+        gap: 6px;
+        padding: 12px 14px;
+        border-radius: 16px;
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        background: #fff;
+        box-shadow: var(--ph-shadow-card);
+    }
+    .operations-capacity-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+    .operations-capacity-title {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--ph-color-text);
+    }
+    .operations-capacity-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        font-size: 12px;
+        color: #4c678d;
+    }
+    .operations-capacity-meta strong {
+        color: var(--ph-color-text);
+        font-size: 13px;
+    }
+    .operations-capacity-meter,
+    .operations-snapshot-meter {
+        width: 100%;
+        height: 6px;
+        border-radius: 999px;
+        background: #e8eef7;
+        overflow: hidden;
+    }
+    .operations-capacity-meter span,
+    .operations-snapshot-meter span {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #6366f1, #34d399);
+    }
+    .operations-snapshot-value {
+        font-size: 22px;
+        line-height: 1;
+        font-weight: 800;
+        letter-spacing: -.04em;
+        color: var(--ph-color-text);
+    }
+    .operations-snapshot-note {
+        font-size: 12px;
+        line-height: 1.45;
+        color: #4c678d;
+    }
+    .operations-detail-group {
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 18px;
+        background: #fff;
+        box-shadow: var(--ph-shadow-card);
+        overflow: hidden;
+    }
+    .operations-detail-summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 13px 16px;
+    }
+    .operations-detail-summary::-webkit-details-marker {
+        display: none;
+    }
+    .operations-detail-summary strong {
+        display: block;
+        font-size: 14px;
+        color: var(--ph-color-text);
+    }
+    .operations-detail-summary span {
+        display: block;
+        margin-top: 3px;
+        font-size: 12px;
+        color: #4c678d;
+    }
+    .operations-detail-summary::after {
+        content: "→";
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--ph-color-primary);
+    }
+    .operations-detail-group[open] .operations-detail-summary::after {
+        content: "↓";
+    }
+    .operations-detail-content {
+        display: grid;
+        gap: 16px;
+        padding: 0 16px 16px;
     }
     .control-room-priority-card {
         position: relative;
@@ -2806,6 +3272,13 @@
         .control-room-pipeline-track {
             grid-template-columns: repeat(3, minmax(0, 1fr));
         }
+        .operations-health-grid,
+        .operations-pipeline-track {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .operations-layout-grid {
+            grid-template-columns: 1fr;
+        }
         .control-room-pipeline-stage::after {
             display: none;
         }
@@ -2844,7 +3317,9 @@
         .control-room-priority-grid,
         .control-room-reference-grid,
         .control-room-stat-grid,
-        .control-room-pipeline-track {
+        .control-room-pipeline-track,
+        .operations-health-grid,
+        .operations-pipeline-track {
             grid-template-columns: 1fr;
         }
         .control-room-title-row h1 {
@@ -5968,26 +6443,164 @@
     </section>
 
     @endif
-    <section class="rx-card">
+    <section class="rx-card" id="operations-center-panel">
         <div class="rx-card-header dashboard-section-heading">
             <div>
-                <h2 class="rx-card-title">Operational Command Center</h2>
-                <p class="rx-card-copy">Jump straight into the parts of the dashboard that need active coordination today.</p>
+                <h2 class="rx-card-title">Operations Center</h2>
+                <p class="rx-card-copy">What requires action today across field movement, renewals, unassigned work, and team capacity.</p>
             </div>
         </div>
         <div class="rx-card-body">
-            <div class="dashboard-anchor-nav">
-                <a href="#today-widgets" class="rx-btn-secondary">Today's Widgets</a>
-                @if($showStaffOpsSection)
-                    <a href="#staff-ops" class="rx-btn-secondary">Staff & Operations</a>
-                @endif
-                <a href="#recent-ops" class="rx-btn-secondary">Recent Activity</a>
-                @if($canViewFinance || $showSalesOperationsSection)
-                    <a href="#sales-pulse-panel" class="rx-btn-secondary">Revenue Center</a>
-                @endif
-            </div>
-        </div>
-    </section>
+            <div class="operations-center-grid">
+                <div class="operations-health-grid">
+                    @foreach($operationsHealthCards as $card)
+                        @php $tag = !empty($card['href']) ? 'a' : 'div'; @endphp
+                        <{{ $tag }} @if(!empty($card['href'])) href="{{ $card['href'] }}" @endif class="operations-health-card {{ $toneCardClass($card['tone'] ?? null) }}">
+                            <div class="operations-health-head">
+                                <span class="operations-health-label">{{ $card['label'] }}</span>
+                                <span class="operations-health-icon">{!! $dashboardIcon($card['icon']) !!}</span>
+                            </div>
+                            <strong class="operations-health-value">{{ $card['value'] }}</strong>
+                            <span class="rx-badge {{ $statusBadgeClass(($card['tone'] ?? 'blue') === 'red' ? 'overdue' : (($card['tone'] ?? 'blue') === 'amber' ? 'warning' : 'completed')) }}">{{ $card['status'] }}</span>
+                            <span class="operations-health-note">{{ $card['note'] }}</span>
+                            <span class="operations-health-link">{{ $card['action'] }} →</span>
+                        </{{ $tag }}>
+                    @endforeach
+                </div>
+
+                <div class="operations-layout-grid">
+                    <section class="control-room-card operations-pipeline-wrap">
+                        <div class="control-room-card-header">
+                            <div>
+                                <h3 class="control-room-card-title">Operations Pipeline</h3>
+                                <p class="control-room-card-copy">Created, assigned, delivery movement, active rentals, pickup due, and completed closure in one view.</p>
+                            </div>
+                            <a href="{{ $rentalIndexUrl ?? '#' }}" class="control-room-card-link">View Detailed Operations Analytics</a>
+                        </div>
+                        <div class="operations-pipeline-track">
+                            @foreach($operationsPipelineStages as $stage)
+                                <div class="operations-pipeline-stage {{ $toneCardClass($stage['tone'] ?? null) }}">
+                                    <span class="operations-pipeline-stage-icon">{!! $dashboardIcon($stage['icon']) !!}</span>
+                                    <span class="operations-pipeline-stage-label">{{ $stage['label'] }}</span>
+                                    <strong class="operations-pipeline-stage-value">{{ number_format((int) ($stage['value'] ?? 0)) }}</strong>
+                                </div>
+                            @endforeach
+                        </div>
+                    </section>
+
+                    <section class="control-room-card">
+                        <div class="control-room-card-header">
+                            <div>
+                                <h3 class="control-room-card-title">Operations Action Queue</h3>
+                                <p class="control-room-card-copy">Maximum 10 items that need direct action across deliveries, pickups, renewals, follow-ups, and vendor-linked field work.</p>
+                            </div>
+                        </div>
+                        @if($operationsActionQueueRows->isNotEmpty())
+                            <table class="operations-queue-table">
+                                <thead>
+                                    <tr>
+                                        <th>Priority</th>
+                                        <th>Item</th>
+                                        <th>Owner</th>
+                                        <th>Due</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach($operationsActionQueueRows as $row)
+                                        <tr>
+                                            <td><span class="rx-badge {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['priority'] }}</span></td>
+                                            <td>
+                                                <span class="operations-queue-title">{{ $row['item'] }}</span>
+                                                <span class="operations-queue-type">{{ $row['type'] }}</span>
+                                            </td>
+                                            <td>{{ $row['owner'] }}</td>
+                                            <td>{{ $row['due'] }}</td>
+                                            <td><a href="{{ $row['href'] }}" class="operations-queue-action">{{ $row['action'] }}</a></td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        @else
+                            <div class="rx-empty dashboard-empty">
+                                <div class="rx-empty-icon">{!! $dashboardIcon('tasks') !!}</div>
+                                <strong>No urgent operations queue</strong>
+                                <span>Deliveries, pickups, renewals, and follow-ups are currently under control.</span>
+                            </div>
+                        @endif
+                    </section>
+                </div>
+
+                <div class="operations-layout-grid">
+                    <section class="control-room-card">
+                        <div class="control-room-card-header">
+                            <div>
+                                <h3 class="control-room-card-title">Team Capacity</h3>
+                                <p class="control-room-card-copy">Compact workload view across Delivery, Operations, Sales, and Service teams.</p>
+                            </div>
+                        </div>
+                        <div class="operations-capacity-grid">
+                            @foreach($teamCapacityRows as $row)
+                                @php
+                                    $capacityTotal = max(1, (int) $row['deliveries'] + (int) $row['pickups'] + (int) $row['followups'] + (int) $row['tasks']);
+                                    $capacityUsed = (int) $row['deliveries'] + (int) $row['pickups'] + (int) $row['followups'];
+                                @endphp
+                                <div class="operations-capacity-item {{ $toneCardClass($row['tone'] ?? null) }}">
+                                    <div class="operations-capacity-top">
+                                        <strong class="operations-capacity-title">{{ $row['label'] }}</strong>
+                                        <span class="rx-badge {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['status'] }}</span>
+                                    </div>
+                                    <div class="operations-capacity-meta">
+                                        <span><strong>{{ $row['deliveries'] }}</strong> deliveries</span>
+                                        <span><strong>{{ $row['pickups'] }}</strong> pickups</span>
+                                        <span><strong>{{ $row['followups'] }}</strong> follow-ups</span>
+                                        <span><strong>{{ $row['tasks'] }}</strong> tasks</span>
+                                    </div>
+                                    <div class="operations-capacity-meter">
+                                        <span style="width: {{ max(10, min(100, round(($capacityUsed / $capacityTotal) * 100))) }}%;"></span>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    </section>
+
+                    <section class="control-room-card">
+                        <div class="control-room-card-header">
+                            <div>
+                                <h3 class="control-room-card-title">Today’s Operations Snapshot</h3>
+                                <p class="control-room-card-copy">A same-day strip for deliveries, pickups, renewals, and service visits.</p>
+                            </div>
+                        </div>
+                        <div class="operations-snapshot-grid">
+                            @foreach($operationsSnapshotRows as $row)
+                                @php
+                                    $snapshotValue = (int) str_replace(',', '', (string) $row['value']);
+                                    $snapshotFill = max(10, min(100, $snapshotValue > 0 ? ($snapshotValue * 10) : 10));
+                                @endphp
+                                <div class="operations-snapshot-card {{ $toneCardClass($row['tone'] ?? null) }}">
+                                    <div class="operations-snapshot-head">
+                                        <span class="operations-snapshot-label">{{ $row['label'] }}</span>
+                                        <span class="rx-badge {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['value'] }}</span>
+                                    </div>
+                                    <strong class="operations-snapshot-value">{{ $row['value'] }}</strong>
+                                    <span class="operations-snapshot-note">{{ $row['note'] }}</span>
+                                    <div class="operations-snapshot-meter">
+                                        <span style="width: {{ $snapshotFill }}%;"></span>
+                                    </div>
+                                </div>
+                            @endforeach
+                        </div>
+                    </section>
+                </div>
+
+                <details class="operations-detail-group">
+                    <summary class="operations-detail-summary">
+                        <div>
+                            <strong>View Detailed Operations Analytics</strong>
+                            <span>Open the legacy widgets, logistics boards, renewal desks, and communication queues only when you need deeper detail.</span>
+                        </div>
+                    </summary>
+                    <div class="operations-detail-content">
 
     <section class="rx-card" id="today-widgets">
         <div class="rx-card-header dashboard-section-heading">
@@ -6778,6 +7391,12 @@
             </div>
         </section>
     @endif
+
+                    </div>
+                </details>
+            </div>
+        </div>
+    </section>
 
 
     @if($showExpandedStaffOpsSection)
