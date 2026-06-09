@@ -937,6 +937,161 @@
     $salesPulseCollectionEfficiency = $salesPulseCollectionTotal > 0
         ? round(($paidSalesAmountValue / max($salesPulseCollectionTotal, 1)) * 100)
         : 0;
+    $revenueCenterUnbilledTotal = max(
+        $unbilledRentalReceivableAmountValue
+        + $unbilledSaleReceivableAmountValue
+        + (float) ($unbilledRenewalAmount ?? 0),
+        0
+    );
+    $revenueCenterSummaryCards = collect([
+        [
+            'label' => 'Total Outstanding',
+            'value' => $compactCurrency($outstandingDueAmountValue),
+            'subtitle' => number_format($openInvoiceCountValue) . ' open invoice(s)',
+            'note' => number_format($overdueInvoiceCountValue) . ' overdue invoice(s)',
+            'href' => $invoiceIndexUrl ? $mergeDashboardQuery('invoices.index', ['status' => 'open']) : null,
+            'action' => 'View invoices',
+            'tone' => $overdueInvoiceCountValue > 0 ? 'red' : 'amber',
+            'icon' => 'payment',
+        ],
+        [
+            'label' => 'Collected This Month',
+            'value' => $compactCurrency($paymentsReceivedThisMonthAmount),
+            'subtitle' => $currency($paymentsReceivedTodayAmount) . ' received today',
+            'note' => $salesPulseCollectionEfficiency . '% collection efficiency',
+            'href' => $reportsIndexUrl ?: $invoiceIndexUrl,
+            'action' => 'Open reports',
+            'tone' => $paymentsReceivedThisMonthAmount > 0 ? 'green' : 'blue',
+            'icon' => 'revenue',
+        ],
+        [
+            'label' => 'Collected Today',
+            'value' => $compactCurrency($paymentsReceivedTodayAmount),
+            'subtitle' => $paymentsReceivedTodayAmount > 0 ? 'Collections recorded today' : 'No collections recorded today',
+            'note' => number_format($recentPaymentsSummary->count()) . ' recent payment item(s)',
+            'href' => $reportsIndexUrl ?: $invoiceIndexUrl,
+            'action' => 'View receipts',
+            'tone' => $paymentsReceivedTodayAmount > 0 ? 'green' : 'blue',
+            'icon' => 'payment',
+        ],
+        [
+            'label' => 'Unbilled Value',
+            'value' => $compactCurrency($revenueCenterUnbilledTotal),
+            'subtitle' => number_format($unbilledRentalReceivableCount + $unbilledSaleReceivableCount + $unbilledRenewalCount) . ' invoice action(s) pending',
+            'note' => $currency((float) ($unbilledRenewalAmount ?? 0)) . ' renewal amount not yet invoiced',
+            'href' => $salesIndexUrl ?: $rentalIndexUrl,
+            'action' => 'Raise invoices',
+            'tone' => $revenueCenterUnbilledTotal > 0 ? 'amber' : 'blue',
+            'icon' => 'sales',
+        ],
+    ])->values();
+    $revenueCenterMonthlyCollections = $collectionsTrendRows
+        ->groupBy(function (array $row) {
+            try {
+                return Carbon::parse((string) ($row['date'] ?? now()->toDateString()))->format('Y-m');
+            } catch (\Throwable $e) {
+                return null;
+            }
+        })
+        ->map(fn ($rows) => round((float) collect($rows)->sum('amount'), 2))
+        ->filter(fn ($value, $key) => filled($key));
+    $revenueTrendRows = collect($monthlyTrendRows ?? [])->map(function (array $row) use ($revenueCenterMonthlyCollections) {
+        $periodKey = null;
+        try {
+            $periodKey = Carbon::createFromFormat('M Y', (string) ($row['label'] ?? ''))->format('Y-m');
+        } catch (\Throwable $e) {
+            $periodKey = null;
+        }
+
+        $collected = $periodKey ? (float) ($revenueCenterMonthlyCollections->get($periodKey) ?? 0.0) : 0.0;
+        $sales = (float) ($row['sales_total'] ?? 0.0);
+        $outstanding = max($sales - $collected, 0.0);
+
+        return [
+            'label' => (string) ($row['label'] ?? ''),
+            'sales_total' => $sales,
+            'collected_total' => $collected,
+            'outstanding_total' => $outstanding,
+        ];
+    })->values();
+    $revenueTrendMax = max(array_merge([1], $revenueTrendRows->flatMap(fn ($row) => [
+        (float) ($row['sales_total'] ?? 0),
+        (float) ($row['collected_total'] ?? 0),
+        (float) ($row['outstanding_total'] ?? 0),
+    ])->all()));
+    $revenueTrendChartWidth = 560;
+    $revenueTrendChartHeight = 172;
+    $revenueTrendSalesPoints = $buildChartPolyline($revenueTrendRows->pluck('sales_total')->map(fn ($value) => (float) $value)->all(), $revenueTrendChartWidth, $revenueTrendChartHeight, 22);
+    $revenueTrendCollectionsPoints = $buildChartPolyline($revenueTrendRows->pluck('collected_total')->map(fn ($value) => (float) $value)->all(), $revenueTrendChartWidth, $revenueTrendChartHeight, 22);
+    $revenueTrendHasData = $revenueTrendRows->contains(fn ($row) => ((float) ($row['sales_total'] ?? 0)) > 0 || ((float) ($row['collected_total'] ?? 0)) > 0 || ((float) ($row['outstanding_total'] ?? 0)) > 0);
+    $revenueCenterActionRows = collect();
+    foreach ($pendingPaymentSummary->take(6) as $invoice) {
+        $balance = (float) (($invoice->total_amount ?? 0) - ($invoice->payments_sum_amount ?? 0));
+        $dueDate = optional($invoice->due_date);
+        $daysOverdue = $dueDate ? Carbon::parse($dueDate)->startOfDay()->diffInDays(now()->startOfDay(), false) : 0;
+        $revenueCenterActionRows->push([
+            'label' => (optional($invoice->customer)->name ?? 'Customer') . ' / ' . ($invoice->invoice_number ?? 'Invoice'),
+            'amount' => $balance,
+            'age' => $daysOverdue > 0 ? $daysOverdue . ' day(s)' : 'Current',
+            'type' => 'Invoice',
+            'href' => route('invoices.show', $invoice),
+            'action' => 'Record payment',
+            'tone' => $daysOverdue > 30 ? 'red' : ($daysOverdue > 7 ? 'amber' : 'blue'),
+        ]);
+    }
+    if ($unpaidRenewalCount > 0) {
+        $revenueCenterActionRows->push([
+            'label' => 'Renewal invoices awaiting payment',
+            'amount' => (float) ($unpaidRenewalAmount ?? 0),
+            'age' => number_format($unpaidRenewalCount) . ' invoice(s)',
+            'type' => 'Renewal',
+            'href' => $mergeDashboardQuery('invoices.index', ['status' => 'open']),
+            'action' => 'View renewals',
+            'tone' => 'red',
+        ]);
+    }
+    if ($unbilledRentalReceivableCount > 0) {
+        $revenueCenterActionRows->push([
+            'label' => 'Delivered rentals awaiting invoice',
+            'amount' => $unbilledRentalReceivableAmountValue,
+            'age' => number_format($unbilledRentalReceivableCount) . ' rental(s)',
+            'type' => 'Rental',
+            'href' => $rentalIndexUrl ?: $dashboardUrl,
+            'action' => 'Raise invoice',
+            'tone' => 'amber',
+        ]);
+    }
+    if ($unbilledSaleReceivableCount > 0) {
+        $revenueCenterActionRows->push([
+            'label' => 'Sales awaiting invoice',
+            'amount' => $unbilledSaleReceivableAmountValue,
+            'age' => number_format($unbilledSaleReceivableCount) . ' sale(s)',
+            'type' => 'Sales',
+            'href' => $salesIndexUrl ?: $dashboardUrl,
+            'action' => 'Raise invoice',
+            'tone' => 'amber',
+        ]);
+    }
+    $revenueCenterActionRows = $revenueCenterActionRows->sortByDesc('amount')->take(10)->values();
+    $recentRevenueActivity = collect()
+        ->merge($recentPaymentsSummary->map(fn ($payment) => [
+            'title' => 'Payment received · ' . (optional($payment->customer)->name ?? 'Customer'),
+            'meta' => optional($payment->invoice)->invoice_number ?? 'Payment entry',
+            'amount' => $currency($payment->amount ?? 0),
+            'timestamp' => optional($payment->payment_date)?->format('d M Y') ?? 'Recent',
+            'badge' => 'Payment',
+            'href' => $invoiceIndexUrl ? route('invoices.index', ['search' => $payment->invoice->invoice_number ?? null]) : $dashboardUrl,
+        ]))
+        ->merge($salesPulseRecentOrders->map(fn ($sale) => [
+            'title' => 'Sales order · SALE-' . $sale->id,
+            'meta' => optional($sale->customer)->name ?? 'Customer',
+            'amount' => $currency($sale->sale_amount ?? 0),
+            'timestamp' => optional($sale->sale_date)?->format('d M Y') ?? 'Recent',
+            'badge' => 'Sales',
+            'href' => $salesIndexUrl ?: $dashboardUrl,
+        ]))
+        ->take(8)
+        ->values();
     $inventoryAvailabilitySummary = collect($inventoryAvailability ?? []);
     $inventoryAvailabilityTotal = max((int) ($inventoryAvailabilitySummary->get('total_assets') ?? 0), 0);
     $inventoryAvailabilitySegments = collect([
@@ -1272,8 +1427,10 @@
             'label' => 'Revenue Center',
             'copy' => 'Sales pulse, finance summary, invoice pressure, and collection actions.',
             'links' => collect([
-                ['label' => 'Sales Pulse', 'href' => '#sales-pulse-panel'],
-                ['label' => 'Finance Summary', 'href' => '#finance-summary'],
+                ['label' => 'Revenue Center', 'href' => '#sales-pulse-panel'],
+                ['label' => 'Invoice Aging', 'href' => '#revenue-aging'],
+                ['label' => 'Collection Actions', 'href' => '#revenue-actions'],
+                ['label' => 'Revenue Activity', 'href' => '#revenue-activity'],
             ])->filter(fn ($link) => !empty($link['href']))->values(),
         ],
         [
@@ -1293,7 +1450,6 @@
                 ['label' => 'High Priority Follow-ups', 'href' => '#high-priority-followups-panel'],
                 ['label' => 'Recent Rentals', 'href' => '#recent-rentals-panel'],
                 ['label' => 'Recent Customers', 'href' => '#recent-customers-panel'],
-                ['label' => 'Recent Payments', 'href' => '#recent-payments-panel'],
             ])->filter(fn ($link) => !empty($link['href']))->values(),
         ],
     ])->values();
@@ -2626,11 +2782,17 @@
         .sales-pulse-metrics {
             grid-template-columns: repeat(3, minmax(0, 1fr));
         }
+        .revenue-center-summary-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
         .sales-pulse-breakdown-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
         .sales-pulse-analytics,
         .sales-pulse-bottom-grid {
+            grid-template-columns: 1fr;
+        }
+        .revenue-center-activity-list {
             grid-template-columns: 1fr;
         }
     }
@@ -2692,8 +2854,18 @@
             margin: 0 auto;
         }
         .sales-pulse-metrics,
+        .revenue-center-summary-grid,
         .sales-pulse-breakdown-grid {
             grid-template-columns: 1fr;
+        }
+        .revenue-center-action-table {
+            display: block;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+        .revenue-center-action-head,
+        .revenue-center-action-row {
+            min-width: 620px;
         }
         .sales-pulse-table-head,
         .sales-pulse-table-row {
@@ -3113,6 +3285,110 @@
         color: #425c7f;
         font-size: 10px;
         line-height: 1.35;
+    }
+    .revenue-center-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+    }
+    .revenue-center-summary-grid .sales-pulse-metric-card {
+        min-height: 102px;
+    }
+    .revenue-center-action-table {
+        display: grid;
+        gap: 2px;
+    }
+    .revenue-center-action-head,
+    .revenue-center-action-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1.75fr) 112px 92px 84px 96px;
+        gap: 10px;
+        align-items: center;
+    }
+    .revenue-center-action-head {
+        color: #64748b;
+        font-size: 10px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        padding-bottom: 6px;
+        border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+    }
+    .revenue-center-action-row {
+        padding: 8px 0;
+        border-top: 1px solid rgba(241, 245, 249, 0.95);
+    }
+    .revenue-center-action-row:first-of-type {
+        border-top: 0;
+        padding-top: 0;
+    }
+    .revenue-center-action-copy,
+    .revenue-center-action-copy strong,
+    .revenue-center-action-copy small {
+        min-width: 0;
+    }
+    .revenue-center-action-copy {
+        display: grid;
+        gap: 2px;
+    }
+    .revenue-center-action-copy strong,
+    .revenue-center-action-row span,
+    .revenue-center-action-row small {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 10px;
+        line-height: 1.35;
+    }
+    .revenue-center-action-copy strong {
+        color: var(--ph-color-text);
+    }
+    .revenue-center-action-row span,
+    .revenue-center-action-row small {
+        color: #425c7f;
+    }
+    .revenue-center-activity-list {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+    .revenue-center-activity-item {
+        display: grid;
+        gap: 3px;
+        padding: 9px 10px;
+        border-radius: 14px;
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.9));
+        text-decoration: none;
+        color: inherit;
+    }
+    .revenue-center-activity-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+    }
+    .revenue-center-activity-top strong,
+    .revenue-center-activity-top span {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .revenue-center-activity-top strong {
+        font-size: 11px;
+        color: var(--ph-color-text);
+    }
+    .revenue-center-activity-top span {
+        font-size: 9px;
+        color: #64748b;
+    }
+    .revenue-center-activity-item small,
+    .revenue-center-activity-item em {
+        font-size: 10px;
+        line-height: 1.35;
+        color: #425c7f;
+        font-style: normal;
     }
     .sales-pulse-side-stack {
         display: grid;
