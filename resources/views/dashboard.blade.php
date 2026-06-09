@@ -1742,13 +1742,13 @@
         ],
         [
             'label' => 'Inventory Center',
-            'copy' => 'Staff load, partner signals, inventory intelligence, and stock health.',
+            'copy' => 'Fulfilment readiness, inventory pressure, warehouse position, and asset movement.',
             'links' => collect([
-                ['label' => 'Staff & Operations', 'href' => $showExpandedStaffOpsSection ? '#staff-ops' : null],
-                ['label' => 'Business Signals', 'href' => $showExpandedBusinessSignalsSection ? '#business-signals-panel' : null],
-                ['label' => 'Inventory Intelligence', 'href' => $showExpandedInventorySection ? '#inventory-intelligence-panel' : null],
+                ['label' => 'Inventory Health', 'href' => $showExpandedInventorySection ? '#inventory-center-panel' : null],
+                ['label' => 'Product Risk', 'href' => $showExpandedInventorySection ? '#inventory-risk-panel' : null],
+                ['label' => 'Detailed Inventory', 'href' => $showExpandedInventorySection ? '#inventory-detail-panel' : null],
             ])->filter(fn ($link) => !empty($link['href']))->values(),
-            'visible' => $showExpandedStaffOpsSection,
+            'visible' => $showExpandedInventorySection,
         ],
         [
             'label' => 'Activity & Communication Center',
@@ -2442,12 +2442,30 @@
         letter-spacing: -.04em;
         color: var(--ph-color-text);
     }
+    .inventory-health-status {
+        font-size: 12px;
+        font-weight: 700;
+        color: #173a67;
+    }
     .inventory-health-note,
     .inventory-readiness-note,
     .inventory-warehouse-note {
         font-size: 12px;
         line-height: 1.45;
         color: #4c678d;
+    }
+    .inventory-warehouse-label {
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: #597196;
+    }
+    .inventory-warehouse-value {
+        font-size: 22px;
+        line-height: 1;
+        font-weight: 800;
+        color: var(--ph-color-text);
     }
     .inventory-health-link,
     .inventory-center-link {
@@ -2512,6 +2530,20 @@
         gap: 3px;
         padding-bottom: 10px;
         border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+        text-decoration: none;
+        color: inherit;
+    }
+    .inventory-movement-item strong {
+        font-size: 13px;
+        color: var(--ph-color-text);
+    }
+    .inventory-movement-item span,
+    .inventory-movement-item em {
+        font-size: 12px;
+        color: #4c678d;
+    }
+    .inventory-movement-item em {
+        font-style: normal;
     }
     .inventory-movement-head {
         display: flex;
@@ -7708,6 +7740,301 @@
     </section>
 
 
+    @if($showExpandedInventorySection)
+    <section class="rx-card" id="inventory-center-panel">
+        <div class="rx-card-header dashboard-section-heading">
+            <div>
+                <h2 class="rx-card-title">Inventory Center</h2>
+                <p class="rx-card-copy">Can we fulfil orders today, what is unavailable, and which products or assets need attention first.</p>
+            </div>
+        </div>
+        <div class="rx-card-body">
+            <div class="inventory-center-grid">
+                <div class="inventory-health-grid">
+                    @foreach($inventoryHealthCards as $card)
+                        @php $tag = !empty($card['href']) ? 'a' : 'div'; @endphp
+                        <{{ $tag }} @if(!empty($card['href'])) href="{{ $card['href'] }}" @endif class="inventory-health-card {{ $toneCardClass($card['tone'] ?? null) }}">
+                            <div class="inventory-health-head">
+                                <span class="inventory-health-label">{{ $card['label'] }}</span>
+                                <span class="inventory-health-icon">{!! $dashboardIcon($card['icon']) !!}</span>
+                            </div>
+                            <strong class="inventory-health-value">{{ $card['value'] }}</strong>
+                            <span class="inventory-health-status">{{ $card['status'] }}</span>
+                            <span class="inventory-health-note">{{ $card['note'] }}</span>
+                            <span class="inventory-health-link">{{ $card['action'] }} →</span>
+                        </{{ $tag }}>
+                    @endforeach
+                </div>
+
+                <div class="inventory-layout-grid">
+                    <section class="control-room-card">
+                        <div class="control-room-card-header">
+                            <div>
+                                <h3 class="control-room-card-title">Inventory Availability Visual</h3>
+                                <p class="control-room-card-copy">Availability split across ready assets, deployed stock, maintenance queue, and blocked inventory.</p>
+                            </div>
+                            @if($inventoryUrl)
+                                <a href="{{ $inventoryUrl }}" class="control-room-card-link">View Inventory</a>
+                            @endif
+                        </div>
+                        <div class="inventory-donut-shell">
+                            <div class="control-room-donut">
+                                <svg viewBox="0 0 120 120" aria-hidden="true">
+                                    @php
+                                        $runningOffset = 0.0;
+                                    @endphp
+                                    @foreach($inventoryAvailabilitySegments as $index => $segment)
+                                        @php
+                                            $segmentLength = round((($segment['percent'] ?? 0) / 100) * 251.2, 2);
+                                            $segmentClass = $toneCardClass($segment['tone'] ?? null);
+                                        @endphp
+                                        <circle class="{{ $segmentClass }}" cx="60" cy="60" r="40"
+                                            stroke-dasharray="{{ $segmentLength }} 251.2"
+                                            stroke-dashoffset="-{{ round($runningOffset, 2) }}"
+                                            transform="rotate(-90 60 60)"></circle>
+                                        @php $runningOffset += $segmentLength; @endphp
+                                    @endforeach
+                                </svg>
+                                <div class="control-room-donut-center">
+                                    <strong>{{ number_format($inventoryAvailabilityTotal) }}</strong>
+                                    <span>Total Assets</span>
+                                </div>
+                            </div>
+                            <div class="control-room-donut-legend">
+                                @foreach($inventoryAvailabilitySegments as $segment)
+                                    <div class="control-room-donut-legend-item">
+                                        <span class="control-room-donut-dot {{ $toneCardClass($segment['tone'] ?? null) }}"></span>
+                                        <div class="control-room-donut-copy">
+                                            <strong>{{ $segment['label'] }}</strong>
+                                            <span>{{ number_format((int) ($segment['value'] ?? 0)) }} • {{ number_format((float) ($segment['percent'] ?? 0), 1) }}%</span>
+                                        </div>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="control-room-card">
+                        <div class="control-room-card-header">
+                            <div>
+                                <h3 class="control-room-card-title">Fulfilment Readiness</h3>
+                                <p class="control-room-card-copy">What is ready now, what is at risk, and which assets are waiting to return into usable stock.</p>
+                            </div>
+                        </div>
+                        <div class="inventory-readiness-grid">
+                            @foreach($fulfilmentReadinessRows as $row)
+                                <div class="inventory-readiness-card {{ $toneCardClass($row['tone'] ?? null) }}">
+                                    <span class="inventory-readiness-label">{{ $row['label'] }}</span>
+                                    <strong class="inventory-readiness-value">{{ $row['value'] }}</strong>
+                                    <span class="inventory-readiness-note">{{ $row['note'] }}</span>
+                                </div>
+                            @endforeach
+                        </div>
+                    </section>
+                </div>
+
+                <div class="inventory-layout-grid">
+                    <section class="control-room-card" id="inventory-risk-panel">
+                        <div class="control-room-card-header">
+                            <div>
+                                <h3 class="control-room-card-title">Product Risk Board</h3>
+                                <p class="control-room-card-copy">Products at risk because they are low, fully out, highly utilized, or sitting idle instead of supporting fulfilment.</p>
+                            </div>
+                        </div>
+                        @if($productRiskRows->isNotEmpty())
+                            <table class="inventory-risk-table">
+                                <thead>
+                                    <tr>
+                                        <th>Product</th>
+                                        <th>Available</th>
+                                        <th>Required</th>
+                                        <th>Risk</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach($productRiskRows as $row)
+                                        <tr>
+                                            <td>{{ $row['name'] }}</td>
+                                            <td>{{ number_format((int) ($row['available'] ?? 0)) }}</td>
+                                            <td>{{ number_format((int) ($row['required'] ?? 0)) }}</td>
+                                            <td><span class="rx-badge {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['risk'] }}</span></td>
+                                            <td><a href="{{ $row['href'] }}" class="operations-queue-action">{{ $row['action'] }}</a></td>
+                                        </tr>
+                                    @endforeach
+                                </tbody>
+                            </table>
+                        @else
+                            <div class="rx-empty dashboard-empty">
+                                <div class="rx-empty-icon">{!! $dashboardIcon('asset') !!}</div>
+                                <strong>No immediate product risk</strong>
+                                <span>Low stock, high utilization, and idle inventory signals are currently under control.</span>
+                            </div>
+                        @endif
+                    </section>
+
+                    <section class="control-room-card">
+                        <div class="control-room-card-header">
+                            <div>
+                                <h3 class="control-room-card-title">Warehouse Snapshot</h3>
+                                <p class="control-room-card-copy">Compact warehouse contribution cards for dispatch planning and fulfilment source balancing.</p>
+                            </div>
+                        </div>
+                        @if($warehouseSnapshotRows->isNotEmpty())
+                            <div class="inventory-warehouse-grid">
+                                @foreach($warehouseSnapshotRows as $row)
+                                    @php $tag = !empty($row['href']) ? 'a' : 'div'; @endphp
+                                    <{{ $tag }} @if(!empty($row['href'])) href="{{ $row['href'] }}" @endif class="inventory-warehouse-card">
+                                        <span class="inventory-warehouse-label">{{ $row['label'] }}</span>
+                                        <strong class="inventory-warehouse-value">{{ number_format((int) ($row['count'] ?? 0)) }}</strong>
+                                        <span class="inventory-warehouse-note">{{ $row['amount'] }}</span>
+                                    </{{ $tag }}>
+                                @endforeach
+                            </div>
+                        @else
+                            <div class="rx-empty dashboard-empty">
+                                <div class="rx-empty-icon">{!! $dashboardIcon('warehouse') !!}</div>
+                                <strong>No warehouse snapshot</strong>
+                                <span>Warehouse distribution will appear here once dispatch-linked rentals are available.</span>
+                            </div>
+                        @endif
+                    </section>
+                </div>
+
+                <section class="control-room-card">
+                    <div class="control-room-card-header">
+                        <div>
+                            <h3 class="control-room-card-title">Inventory Movements</h3>
+                            <p class="control-room-card-copy">Last five inventory-related events across products, stock, assets, warehouses, and verification activity.</p>
+                        </div>
+                    </div>
+                    @if($inventoryMovementRows->isNotEmpty())
+                        <div class="inventory-movement-list">
+                            @foreach($inventoryMovementRows as $row)
+                                @php $tag = !empty($row['href']) ? 'a' : 'div'; @endphp
+                                <{{ $tag }} @if(!empty($row['href'])) href="{{ $row['href'] }}" @endif class="inventory-movement-item">
+                                    <div>
+                                        <strong>{{ $row['title'] }}</strong>
+                                        <span>{{ $row['meta'] }}</span>
+                                    </div>
+                                    <em>{{ $row['time'] }}</em>
+                                </{{ $tag }}>
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="rx-empty dashboard-empty">
+                            <div class="rx-empty-icon">{!! $dashboardIcon('inventory') !!}</div>
+                            <strong>No recent inventory movements</strong>
+                            <span>Stock, asset, and warehouse actions will appear here as soon as the team records them.</span>
+                        </div>
+                    @endif
+                </section>
+
+                <details class="inventory-detail-group" id="inventory-detail-panel">
+                    <summary class="inventory-detail-summary">
+                        <div>
+                            <strong>View Detailed Inventory Analytics</strong>
+                            <span>Open the deeper low-stock, utilization, idle inventory, and warehouse analytics only when you need investigation detail.</span>
+                        </div>
+                    </summary>
+                    <div class="inventory-detail-content">
+                        <section class="dashboard-insight-grid">
+                            <div class="rx-card dashboard-feed-card">
+                                <div class="rx-card-header">
+                                    <div>
+                                        <h2 class="rx-card-title">Inventory Intelligence</h2>
+                                        <p class="rx-card-copy">Low stock, high utilization, and idle inventory in one collapsed operational lens.</p>
+                                    </div>
+                                    @if($productsIndexUrl)
+                                        <a href="{{ $productsIndexUrl }}" class="rx-btn-secondary">Open Product Master</a>
+                                    @endif
+                                </div>
+                                <div class="rx-card-body">
+                                    <div class="dashboard-feed-list">
+                                        <div class="dashboard-feed-item">
+                                            <div class="dashboard-feed-meta">
+                                                <strong>Low stock alerts</strong>
+                                                <em>{{ $lowStockSummary->count() }}</em>
+                                            </div>
+                                            <small>
+                                                @if($lowStockSummaryVisible->isNotEmpty())
+                                                    {{ $lowStockSummaryVisible->map(fn ($product) => $product->name . ' (' . $product->available_quantity . '/' . $product->total_quantity . ')')->implode(', ') }}
+                                                @else
+                                                    No immediate low-stock pressure.
+                                                @endif
+                                            </small>
+                                        </div>
+                                        <div class="dashboard-feed-item">
+                                            <div class="dashboard-feed-meta">
+                                                <strong>High utilization</strong>
+                                                <em>{{ $highUtilizationSummary->count() }}</em>
+                                            </div>
+                                            <small>
+                                                @if($highUtilizationSummaryVisible->isNotEmpty())
+                                                    {{ $highUtilizationSummaryVisible->map(fn ($product) => $product->name . ' (' . max(0, (int) $product->total_quantity - (int) $product->available_quantity) . '/' . $product->total_quantity . ' out)')->implode(', ') }}
+                                                @else
+                                                    No high-utilization products flagged right now.
+                                                @endif
+                                            </small>
+                                        </div>
+                                        <div class="dashboard-feed-item">
+                                            <div class="dashboard-feed-meta">
+                                                <strong>Idle inventory</strong>
+                                                <em>{{ $idleInventorySummary->count() }}</em>
+                                            </div>
+                                            <small>
+                                                @if($idleInventorySummaryVisible->isNotEmpty())
+                                                    {{ $idleInventorySummaryVisible->map(fn ($product) => $product->name . ' (' . $product->available_quantity . ' available)')->implode(', ') }}
+                                                @else
+                                                    No idle stock signals at the moment.
+                                                @endif
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="rx-card dashboard-rank-card" id="warehouse-analytics">
+                                <div class="rx-card-header">
+                                    <div>
+                                        <h2 class="rx-card-title">Top Warehouses</h2>
+                                        <p class="rx-card-copy">Dispatch source strength by contribution.</p>
+                                    </div>
+                                </div>
+                                <div class="rx-card-body">
+                                    @if($warehouseSummaryRows->isNotEmpty())
+                                        <div class="dashboard-rank-list">
+                                            @foreach($warehouseSummaryRows as $row)
+                                                <a href="{{ $mergeDashboardQuery('rentals.index', ['dispatch_warehouse_id' => $row['warehouse_id'] ?? null]) }}" class="dashboard-rank-link">
+                                                    <div class="dashboard-rank-head">
+                                                        <div>
+                                                            <strong class="dashboard-rank-title">{{ $row['label'] ?? 'Unknown' }}</strong>
+                                                            <span>{{ (int) ($row['count'] ?? 0) }} rentals</span>
+                                                        </div>
+                                                        <span class="dashboard-rank-title">{{ $currency($row['total_amount'] ?? 0) }}</span>
+                                                    </div>
+                                                    <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['total_amount'] ?? 0)) / $warehouseBreakdownMax) * 100, 1) }}%;background:var(--ph-color-warning);"></div></div>
+                                                </a>
+                                            @endforeach
+                                        </div>
+                                    @else
+                                        <div class="rx-empty dashboard-empty">
+                                            <div class="rx-empty-icon">{!! $dashboardIcon('warehouse') !!}</div>
+                                            <strong>No warehouse-linked data</strong>
+                                            <span>No warehouse performance information is available for this window.</span>
+                                        </div>
+                                    @endif
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </details>
+            </div>
+        </div>
+    </section>
+    @endif
+
+
     @if($showExpandedStaffOpsSection)
     <section class="dashboard-insight-grid" id="staff-ops">
         @if($showExpandedStaffWorkloadSection)
@@ -7808,7 +8135,7 @@
         </div>
         @endif
 
-        @if($showExpandedInventorySection)
+        @if(false && $showExpandedInventorySection)
         <div class="rx-card dashboard-feed-card">
             <div class="rx-card-header">
                 <div>
@@ -8407,6 +8734,7 @@
             </div>
         </div>
 
+        @if(!$showExpandedInventorySection)
         <div class="rx-card dashboard-rank-card">
             <div class="rx-card-header">
                 <div>
@@ -8439,6 +8767,7 @@
                 @endif
             </div>
         </div>
+        @endif
     </section>
 
     <section class="dashboard-queue-grid">
