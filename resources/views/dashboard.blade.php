@@ -6942,6 +6942,118 @@
                         </div>
                     </summary>
                     <div class="operations-detail-content">
+                        <section class="dashboard-queue-grid">
+                            <div class="rx-card dashboard-queue-card">
+                                <div class="rx-card-header">
+                                    <div>
+                                        <h2 class="rx-card-title">Critical Queue</h2>
+                                        <p class="rx-card-copy">Overdue delivered rentals that need immediate recovery.</p>
+                                    </div>
+                                    <span class="rx-badge is-danger">{{ $criticalQueue->count() }}</span>
+                                </div>
+                                <div class="rx-card-body">
+                                    @if($criticalQueue->isNotEmpty())
+                                        <div class="dashboard-queue-list">
+                                            @foreach($criticalQueue as $rental)
+                                                <div class="dashboard-queue-item">
+                                                    <div>
+                                                        <strong>#{{ $rental->id }} - {{ $rental->customer_name }}</strong>
+                                                        <small>{{ $rental->product->name ?? 'Product N/A' }} | Due {{ optional($rental->end_date)->format('d M Y') }}</small>
+                                                        <small>{{ $rental->phone ?: 'No phone' }}</small>
+                                                        <div class="dashboard-queue-actions">
+                                                            <a href="{{ route('rentals.show', $rental) }}">Open</a>
+                                                            @if($rental->phone)
+                                                                <a href="tel:{{ preg_replace('/\s+/', '', $rental->phone) }}">Call</a>
+                                                            @endif
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    @else
+                                        <div class="rx-empty dashboard-empty">
+                                            <div class="rx-empty-icon">{!! $dashboardIcon('overdue') !!}</div>
+                                            <strong>No critical follow-ups</strong>
+                                            <span>No critical rentals are waiting in this filter set.</span>
+                                        </div>
+                                    @endif
+                                </div>
+                            </div>
+
+                            <div class="rx-card dashboard-queue-card">
+                                <div class="rx-card-header">
+                                    <div>
+                                        <h2 class="rx-card-title">Today Queue</h2>
+                                        <p class="rx-card-copy">Returns due today and rentals closing today.</p>
+                                    </div>
+                                    <span class="rx-badge is-warning">{{ $todayQueue->count() }}</span>
+                                </div>
+                                <div class="rx-card-body">
+                                    @if($todayQueue->isNotEmpty())
+                                        <div class="dashboard-queue-list">
+                                            @foreach($todayQueue as $rental)
+                                                <div class="dashboard-queue-item">
+                                                    <div>
+                                                        <strong>#{{ $rental->id }} - {{ $rental->customer_name }}</strong>
+                                                        <small>{{ $rental->product->name ?? 'Product N/A' }} | Due {{ optional($rental->end_date)->format('d M Y') }}</small>
+                                                        <small>{{ $rental->phone ?: 'No phone' }}</small>
+                                                        <div class="dashboard-queue-actions">
+                                                            <a href="{{ route('rentals.show', $rental) }}">Open</a>
+                                                            @if($rental->phone)
+                                                                <a href="tel:{{ preg_replace('/\s+/', '', $rental->phone) }}">Call</a>
+                                                            @endif
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    @else
+                                        <div class="rx-empty dashboard-empty">
+                                            <div class="rx-empty-icon">{!! $dashboardIcon('pickup') !!}</div>
+                                            <strong>No same-day follow-ups</strong>
+                                            <span>No returns or same-day closures are waiting in this view.</span>
+                                        </div>
+                                    @endif
+                                </div>
+                            </div>
+
+                            <div class="rx-card dashboard-queue-card">
+                                <div class="rx-card-header">
+                                    <div>
+                                        <h2 class="rx-card-title">This Week</h2>
+                                        <p class="rx-card-copy">Upcoming rental closures that should not age into risk.</p>
+                                    </div>
+                                    <span class="rx-badge is-info">{{ $weekQueue->count() }}</span>
+                                </div>
+                                <div class="rx-card-body">
+                                    @if($weekQueue->isNotEmpty())
+                                        <div class="dashboard-queue-list">
+                                            @foreach($weekQueue as $rental)
+                                                <div class="dashboard-queue-item">
+                                                    <div>
+                                                        <strong>#{{ $rental->id }} - {{ $rental->customer_name }}</strong>
+                                                        <small>{{ $rental->product->name ?? 'Product N/A' }} | Due {{ optional($rental->end_date)->format('d M Y') }}</small>
+                                                        <small>{{ $rental->phone ?: 'No phone' }}</small>
+                                                        <div class="dashboard-queue-actions">
+                                                            <a href="{{ route('rentals.show', $rental) }}">Open</a>
+                                                            @if($rental->phone)
+                                                                <a href="tel:{{ preg_replace('/\s+/', '', $rental->phone) }}">Call</a>
+                                                            @endif
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    @else
+                                        <div class="rx-empty dashboard-empty">
+                                            <div class="rx-empty-icon">{!! $dashboardIcon('trend') !!}</div>
+                                            <strong>No week-ahead queue</strong>
+                                            <span>No upcoming closures need attention in this filter set.</span>
+                                        </div>
+                                    @endif
+                                </div>
+                            </div>
+                        </section>
 
     <section class="rx-card" id="today-widgets">
         <div class="rx-card-header dashboard-section-heading">
@@ -7993,6 +8105,74 @@
                                     </div>
                                 </div>
                             </div>
+                        </section>
+
+                        <section class="dashboard-rank-grid">
+                            <div class="rx-card dashboard-rank-card">
+                                <div class="rx-card-header">
+                                    <div>
+                                        <h2 class="rx-card-title">Top Cities</h2>
+                                        <p class="rx-card-copy">Best rental value concentration by city.</p>
+                                    </div>
+                                </div>
+                                <div class="rx-card-body">
+                                    @if($citySummaryRows->isNotEmpty())
+                                        <div class="dashboard-rank-list">
+                                            @foreach($citySummaryRows as $row)
+                                                <a href="{{ $mergeDashboardQuery('rentals.index', ['city' => ($row['label'] ?? null) !== 'Unspecified' ? ($row['label'] ?? null) : null]) }}" class="dashboard-rank-link">
+                                                    <div class="dashboard-rank-head">
+                                                        <div>
+                                                            <strong class="dashboard-rank-title">{{ $row['label'] ?? 'Unknown' }}</strong>
+                                                            <span>{{ (int) ($row['count'] ?? 0) }} rentals</span>
+                                                        </div>
+                                                        <span class="dashboard-rank-title">{{ $currency($row['total_amount'] ?? 0) }}</span>
+                                                    </div>
+                                                    <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['total_amount'] ?? 0)) / $cityBreakdownMax) * 100, 1) }}%;background:var(--ph-color-primary);"></div></div>
+                                                </a>
+                                            @endforeach
+                                        </div>
+                                    @else
+                                        <div class="rx-empty dashboard-empty">
+                                            <div class="rx-empty-icon">{!! $dashboardIcon('city') !!}</div>
+                                            <strong>No city performance data</strong>
+                                            <span>This view does not currently surface city rankings.</span>
+                                        </div>
+                                    @endif
+                                </div>
+                            </div>
+
+                            <div class="rx-card dashboard-rank-card">
+                                <div class="rx-card-header">
+                                    <div>
+                                        <h2 class="rx-card-title">Top Vendors</h2>
+                                        <p class="rx-card-copy">Assigned vendor or field staff impact.</p>
+                                    </div>
+                                </div>
+                                <div class="rx-card-body">
+                                    @if($vendorSummaryRows->isNotEmpty())
+                                        <div class="dashboard-rank-list">
+                                            @foreach($vendorSummaryRows as $row)
+                                                <a href="{{ $mergeDashboardQuery('rentals.index', ['vendor_id' => $row['vendor_id'] ?? null]) }}" class="dashboard-rank-link">
+                                                    <div class="dashboard-rank-head">
+                                                        <div>
+                                                            <strong class="dashboard-rank-title">{{ $row['label'] ?? 'Unknown' }}</strong>
+                                                            <span>{{ (int) ($row['count'] ?? 0) }} rentals</span>
+                                                        </div>
+                                                        <span class="dashboard-rank-title">{{ $currency($row['total_amount'] ?? 0) }}</span>
+                                                    </div>
+                                                    <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['total_amount'] ?? 0)) / $vendorBreakdownMax) * 100, 1) }}%;background:var(--ph-color-success);"></div></div>
+                                                </a>
+                                            @endforeach
+                                        </div>
+                                    @else
+                                        <div class="rx-empty dashboard-empty">
+                                            <div class="rx-empty-icon">{!! $dashboardIcon('vendor') !!}</div>
+                                            <strong>No vendor performance data</strong>
+                                            <span>This role or filter currently has no vendor ranking data.</span>
+                                        </div>
+                                    @endif
+                                </div>
+                            </div>
 
                             <div class="rx-card dashboard-rank-card" id="warehouse-analytics">
                                 <div class="rx-card-header">
@@ -8666,7 +8846,7 @@
     </section>
     @endunless
 
-    @if($showOrganizationAnalyticsSection)
+    @if($showOrganizationAnalyticsSection && !$showExpandedInventorySection)
     <section class="dashboard-rank-grid">
         <div class="rx-card dashboard-rank-card">
             <div class="rx-card-header">
@@ -8734,7 +8914,6 @@
             </div>
         </div>
 
-        @if(!$showExpandedInventorySection)
         <div class="rx-card dashboard-rank-card">
             <div class="rx-card-header">
                 <div>
@@ -8767,9 +8946,10 @@
                 @endif
             </div>
         </div>
-        @endif
     </section>
+    @endif
 
+    @unless($showExpandedStaffOpsSection)
     <section class="dashboard-queue-grid">
         <div class="rx-card dashboard-queue-card">
             <div class="rx-card-header">
@@ -8882,6 +9062,7 @@
             </div>
         </div>
     </section>
+    @endunless
 
     <section class="dashboard-trend-layout">
         <div class="rx-card dashboard-trend-card">
@@ -9000,7 +9181,6 @@
             </div>
         </div>
     </section>
-    @endif
     @endif
 </div>
 <script>
