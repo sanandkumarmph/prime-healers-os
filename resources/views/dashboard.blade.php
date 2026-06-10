@@ -6560,6 +6560,7 @@
         </section>
     @else
     <section class="control-room-shell">
+        @if(false)
         <div class="control-room-header">
             <div class="control-room-header-copy">
                 <div class="control-room-meta-strip">
@@ -6617,6 +6618,7 @@
                 </div>
             </div>
         </div>
+        @endif
 
         <div class="control-room-filter-dock">
             <details class="rx-card dashboard-filters-card">
