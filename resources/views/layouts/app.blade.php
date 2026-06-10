@@ -2628,7 +2628,7 @@
     .app-shell {
         --ph-header-height:72px;
         padding-top:var(--ph-header-height);
-        height:100vh;
+        height:100dvh;
         overflow:hidden;
     }
     .brand-panel {
@@ -2636,8 +2636,8 @@
     }
     .app-shell-sidebar {
         padding:8px 10px 10px;
-        height:calc(100vh - var(--ph-header-height));
-        max-height:calc(100vh - var(--ph-header-height));
+        height:calc(100dvh - var(--ph-header-height));
+        max-height:calc(100dvh - var(--ph-header-height));
         background:var(--ph-color-sidebar);
         border-color:var(--ph-color-border-strong);
         box-shadow:0 16px 36px rgba(15,23,42,.05);
@@ -2991,10 +2991,12 @@
         gap:10px;
     }
     .app-shell-main {
-        height:calc(100vh - var(--ph-header-height));
+        height:calc(100dvh - var(--ph-header-height));
         max-width:calc(100vw - var(--ph-sidebar-width));
         padding:18px 22px 22px;
         overflow-y:auto;
+        overscroll-behavior:contain;
+        -webkit-overflow-scrolling:touch;
     }
     .sidebar-panel {
         transition:none;
@@ -3558,6 +3560,34 @@
         }
 
         const scrollKey = 'rentnexis:action-scroll:' + window.location.pathname;
+        const getShellScrollContainer = function () {
+            const shellMain = document.querySelector('.app-shell-main');
+
+            if (shellMain && shellMain.scrollHeight > shellMain.clientHeight + 1) {
+                return shellMain;
+            }
+
+            return document.scrollingElement || document.documentElement;
+        };
+        const getCurrentScrollTop = function () {
+            const container = getShellScrollContainer();
+
+            return container === document.scrollingElement || container === document.documentElement
+                ? (window.scrollY || document.documentElement.scrollTop || 0)
+                : container.scrollTop;
+        };
+        const restoreScrollTop = function (top) {
+            const parsedTop = Number.parseInt(top, 10);
+            const nextTop = Math.max((Number.isFinite(parsedTop) ? parsedTop : 0) - 80, 0);
+            const container = getShellScrollContainer();
+
+            if (container === document.scrollingElement || container === document.documentElement) {
+                window.scrollTo({ top: nextTop, behavior: 'auto' });
+                return;
+            }
+
+            container.scrollTop = nextTop;
+        };
 
         document.addEventListener('submit', function (event) {
             const form = event.target;
@@ -3573,7 +3603,7 @@
             }
 
             try {
-                sessionStorage.setItem(scrollKey, String(window.scrollY || document.documentElement.scrollTop || 0));
+                sessionStorage.setItem(scrollKey, String(getCurrentScrollTop()));
             } catch (error) {
                 // Storage can be disabled in strict browsers; action should still submit normally.
             }
@@ -3682,7 +3712,7 @@
                 if (savedScroll !== null) {
                     sessionStorage.removeItem(scrollKey);
                     window.requestAnimationFrame(function () {
-                        window.scrollTo({ top: Math.max(parseInt(savedScroll, 10) - 80, 0), behavior: 'auto' });
+                        restoreScrollTop(savedScroll);
                     });
                 }
             } catch (error) {

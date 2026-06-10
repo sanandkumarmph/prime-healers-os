@@ -2980,6 +2980,7 @@ class RentalController extends Controller
         $city = trim((string) $request->get('city', ''));
         $vendorId = $request->get('vendor_id', '');
         $customerId = $request->get('customer_id', '');
+        $fulfilmentSource = (string) $request->get('fulfilment_source', '');
         [$fromDate, $toDate] = $this->normalizedDateFilters($request);
 
         if ($search !== '') {
@@ -3022,6 +3023,10 @@ class RentalController extends Controller
 
         if (filled($vendorId)) {
             $this->applyVendorFilterToRentalQuery($query, (int) $vendorId);
+        }
+
+        if (in_array($fulfilmentSource, VendorOrderDetail::FULFILMENT_SOURCES, true)) {
+            $query->where('fulfilment_source', $fulfilmentSource);
         }
 
         if (filled($deliveryStatus)) {
@@ -3730,6 +3735,7 @@ class RentalController extends Controller
         $search = trim((string) $request->get('search', ''));
         $city = trim((string) $request->get('city', ''));
         $customerId = $request->get('customer_id', '');
+        $fulfilmentSource = (string) $request->get('fulfilment_source', '');
         [$fromDate, $toDate] = $this->normalizedDateFilters($request);
 
         if ($search !== '') {
@@ -3759,6 +3765,10 @@ class RentalController extends Controller
             $query->where('customer_id', $customerId);
         }
 
+        if (in_array($fulfilmentSource, VendorOrderDetail::FULFILMENT_SOURCES, true)) {
+            $query->where('fulfilment_source', $fulfilmentSource);
+        }
+
         return $this->applySimpleDateRangeFilter($query, 'sale_date', $fromDate, $toDate);
     }
 
@@ -3774,6 +3784,7 @@ class RentalController extends Controller
         $search = trim((string) $request->get('search', ''));
         $city = trim((string) $request->get('city', ''));
         $customerId = $request->get('customer_id', '');
+        $fulfilmentSource = (string) $request->get('fulfilment_source', '');
         [$fromDate, $toDate] = $this->normalizedDateFilters($request);
 
         if ($search !== '') {
@@ -3805,6 +3816,14 @@ class RentalController extends Controller
 
         if (filled($customerId)) {
             $query->where('customer_id', $customerId);
+        }
+
+        if (in_array($fulfilmentSource, VendorOrderDetail::FULFILMENT_SOURCES, true)) {
+            $query->where(function ($invoiceFulfilmentQuery) use ($fulfilmentSource) {
+                $invoiceFulfilmentQuery
+                    ->whereHas('rental', fn ($rentalQuery) => $rentalQuery->where('fulfilment_source', $fulfilmentSource))
+                    ->orWhereHas('sale', fn ($saleQuery) => $saleQuery->where('fulfilment_source', $fulfilmentSource));
+            });
         }
 
         return $this->applySimpleDateRangeFilter($query, 'invoice_date', $fromDate, $toDate);
@@ -3899,6 +3918,7 @@ class RentalController extends Controller
         $search = trim((string) $request->get('search', ''));
         $city = trim((string) $request->get('city', ''));
         $customerId = $request->get('customer_id', '');
+        $fulfilmentSource = (string) $request->get('fulfilment_source', '');
         [$fromDate, $toDate] = $this->normalizedDateFilters($request);
 
         if ($search !== '') {
@@ -3949,6 +3969,15 @@ class RentalController extends Controller
                     $invoiceQuery->where('customer_id', $customerId);
                 });
             }
+        }
+
+        if (in_array($fulfilmentSource, VendorOrderDetail::FULFILMENT_SOURCES, true)) {
+            $query->where(function ($paymentFulfilmentQuery) use ($fulfilmentSource) {
+                $paymentFulfilmentQuery
+                    ->whereHas('rental', fn ($rentalQuery) => $rentalQuery->where('fulfilment_source', $fulfilmentSource))
+                    ->orWhereHas('invoice.rental', fn ($rentalQuery) => $rentalQuery->where('fulfilment_source', $fulfilmentSource))
+                    ->orWhereHas('invoice.sale', fn ($saleQuery) => $saleQuery->where('fulfilment_source', $fulfilmentSource));
+            });
         }
 
         return $this->applySimpleDateRangeFilter($query, 'payment_date', $fromDate, $toDate);
@@ -4010,6 +4039,7 @@ class RentalController extends Controller
         $vendorId = $request->get('vendor_id', '');
         $warehouseId = $request->get('dispatch_warehouse_id', '');
         $customerId = $request->get('customer_id', '');
+        $fulfilmentSource = (string) $request->get('fulfilment_source', '');
         [$fromDate, $toDate] = $this->normalizedDateFilters($request);
 
         if ($search !== '') {
@@ -4063,7 +4093,110 @@ class RentalController extends Controller
             });
         }
 
+        if (in_array($fulfilmentSource, VendorOrderDetail::FULFILMENT_SOURCES, true)) {
+            $query->whereHas('rental', function ($rentalQuery) use ($fulfilmentSource) {
+                $rentalQuery->where('fulfilment_source', $fulfilmentSource);
+            });
+        }
+
         return $this->applySimpleDateRangeFilter($query, 'scheduled_at', $fromDate, $toDate);
+    }
+
+    private function dashboardVendorPerformanceSummary(Request $request, bool $canViewVendorCosts): array
+    {
+        $fulfilmentSource = (string) $request->get('fulfilment_source', '');
+
+        if ($fulfilmentSource === VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE || !$canViewVendorCosts) {
+            return [
+                'available' => false,
+                'message' => $canViewVendorCosts
+                    ? 'Vendor performance is available when Vendor Supplied fulfilment is in scope.'
+                    : 'Vendor cost permission is required to view vendor performance.',
+                'vendor_revenue' => 0.0,
+                'vendor_cost' => 0.0,
+                'vendor_margin' => 0.0,
+                'vendor_orders_count' => 0,
+                'top_vendor_name' => null,
+                'top_vendor_revenue' => 0.0,
+            ];
+        }
+
+        $query = VendorOrderDetail::query()
+            ->forOrganization($this->orgId())
+            ->with(['vendor', 'rental.customer', 'sale.customer'])
+            ->where('fulfilment_source', VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED);
+
+        $city = trim((string) $request->get('city', ''));
+        $customerId = $request->get('customer_id', '');
+        $vendorId = $request->get('vendor_id', '');
+        [$fromDate, $toDate] = $this->normalizedDateFilters($request);
+
+        if (filled($vendorId)) {
+            $query->where('vendor_id', $vendorId);
+        }
+
+        if ($fromDate !== '' || $toDate !== '') {
+            $query->where(function ($dateQuery) use ($fromDate, $toDate) {
+                $dateQuery
+                    ->whereHas('rental', function ($rentalQuery) use ($fromDate, $toDate) {
+                        $this->applySimpleDateRangeFilter($rentalQuery, 'start_date', $fromDate, $toDate);
+                    })
+                    ->orWhereHas('sale', function ($saleQuery) use ($fromDate, $toDate) {
+                        $this->applySimpleDateRangeFilter($saleQuery, 'sale_date', $fromDate, $toDate);
+                    });
+            });
+        }
+
+        if ($city !== '') {
+            $query->where(function ($cityQuery) use ($city) {
+                $cityQuery
+                    ->whereHas('rental.customer', fn ($customerQuery) => $customerQuery->where('city', 'like', "%{$city}%"))
+                    ->orWhereHas('sale.customer', fn ($customerQuery) => $customerQuery->where('city', 'like', "%{$city}%"));
+            });
+        }
+
+        if (filled($customerId)) {
+            $query->where(function ($customerQuery) use ($customerId) {
+                $customerQuery
+                    ->whereHas('rental', fn ($rentalQuery) => $rentalQuery->where('customer_id', $customerId))
+                    ->orWhereHas('sale', fn ($saleQuery) => $saleQuery->where('customer_id', $customerId));
+            });
+        }
+
+        $rows = $query->get();
+
+        if ($rows->isEmpty()) {
+            return [
+                'available' => false,
+                'message' => 'No vendor-supplied orders match the current dashboard filters.',
+                'vendor_revenue' => 0.0,
+                'vendor_cost' => 0.0,
+                'vendor_margin' => 0.0,
+                'vendor_orders_count' => 0,
+                'top_vendor_name' => null,
+                'top_vendor_revenue' => 0.0,
+            ];
+        }
+
+        $topVendor = $rows
+            ->groupBy(fn (VendorOrderDetail $detail) => $detail->vendor?->name ?? 'Unassigned Vendor')
+            ->map(fn ($items, $name) => [
+                'name' => $name,
+                'revenue' => round((float) $items->sum(fn (VendorOrderDetail $detail) => $detail->customerRevenue()), 2),
+            ])
+            ->sortByDesc('revenue')
+            ->first();
+
+        return [
+            'available' => true,
+            'message' => null,
+            'vendor_revenue' => round((float) $rows->sum(fn (VendorOrderDetail $detail) => $detail->customerRevenue()), 2),
+            'vendor_cost' => round((float) $rows->sum(fn (VendorOrderDetail $detail) => $detail->totalVendorCost()), 2),
+            'vendor_margin' => round((float) $rows->sum(fn (VendorOrderDetail $detail) => $detail->grossMargin()), 2),
+            'vendor_orders_count' => $rows->count(),
+            'top_vendor_name' => $topVendor['name'] ?? null,
+            'top_vendor_revenue' => (float) ($topVendor['revenue'] ?? 0),
+        ];
     }
 
     private function monthlyDashboardTrend(Request $request, int $months = 6): array
@@ -4332,6 +4465,7 @@ class RentalController extends Controller
         $canViewBusinessSignals = (bool) ($dashboardVisibility['business_signals'] ?? false);
         $canViewInventoryIntelligence = (bool) ($dashboardVisibility['inventory_intelligence'] ?? false);
         $canViewOrganizationAnalytics = (bool) ($dashboardVisibility['organization_analytics'] ?? false);
+        $canViewVendorCosts = (bool) ($currentUser?->hasPermission('vendor_costs.view') ?? false);
         $canReadDeliveries = $currentUser?->canAccessModule('deliveries', 'read') ?? false;
         $restrictDashboardToSelfCreated = (bool) ($currentUser?->hasScope('self_created', 'rentals') ?? false);
         $restrictDashboardToAssignedFollowUps = (bool) (
@@ -5159,6 +5293,18 @@ class RentalController extends Controller
         $topCustomersWithDues = $canViewFinance
             ? $this->dashboardTopCustomersWithDues($invoiceQuery, $today)
             : collect();
+        $vendorPerformanceSummary = $canViewFinance
+            ? $this->dashboardVendorPerformanceSummary($baseFilterRequest, $canViewVendorCosts)
+            : [
+                'available' => false,
+                'message' => 'Finance access is required to view vendor performance.',
+                'vendor_revenue' => 0.0,
+                'vendor_cost' => 0.0,
+                'vendor_margin' => 0.0,
+                'vendor_orders_count' => 0,
+                'top_vendor_name' => null,
+                'top_vendor_revenue' => 0.0,
+            ];
         $staffOverloadedCount = $staffWorkloadRows->where('load_state', 'Overloaded')->count();
         $staffBusyCount = $staffWorkloadRows->where('load_state', 'Balanced')->count();
         $inventoryAvailability = $canViewInventoryIntelligence
@@ -5354,6 +5500,7 @@ class RentalController extends Controller
             'collectionsTrend',
             'invoiceAging',
             'topCustomersWithDues',
+            'vendorPerformanceSummary',
             'staffOverloadedCount',
             'staffBusyCount',
             'inventoryAvailability'

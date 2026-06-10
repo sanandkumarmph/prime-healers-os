@@ -9,7 +9,10 @@ use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\Rental;
 use App\Models\Role;
+use App\Models\Sale;
 use App\Models\User;
+use App\Models\Vendor;
+use App\Models\VendorOrderDetail;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\TestData;
 use Tests\TestCase;
@@ -575,8 +578,8 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
 
         $response->assertOk()
             ->assertSeeText('Add Follow-up')
-            ->assertSeeText('Today\'s Renewals')
-            ->assertSeeText('Today\'s Follow-ups')
+            ->assertSeeText('Executive Command Center')
+            ->assertSeeText('Activity & Communication Center')
             ->assertDontSeeText('My Active Rentals')
             ->assertDontSeeText('Sales Pulse')
             ->assertDontSeeText('Staff Workload')
@@ -612,12 +615,184 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
         $response = $this->actingAs($financeUser)->get(route('dashboard'));
 
         $response->assertOk()
-            ->assertSeeText('Finance Summary')
+            ->assertSeeText('Revenue Center')
+            ->assertSeeText('Revenue Mix')
+            ->assertSeeText('Cash Position')
+            ->assertSeeText('Invoice Health')
             ->assertSeeText('Record Payment')
             ->assertDontSeeText('Staff Workload')
             ->assertDontSeeText('Business Partner Signals')
             ->assertDontSeeText('Inventory Intelligence')
             ->assertDontSeeText('Sales Pulse');
+    }
+
+    public function test_dashboard_filters_recalculate_revenue_operations_and_vendor_performance(): void
+    {
+        $organization = TestData::organization();
+        $financeRole = Role::create([
+            'organization_id' => $organization->id,
+            'name' => 'Vendor Finance User',
+            'slug' => User::ROLE_FINANCE,
+            'permissions' => [
+                'rentals' => ['read'],
+                'sales' => ['read'],
+                'invoices' => ['read'],
+                'payments' => ['read'],
+                'vendors' => ['read'],
+                '__special' => ['vendor_reports.view', 'vendor_costs.view'],
+            ],
+        ]);
+
+        $financeUser = User::factory()->create([
+            'organization_id' => $organization->id,
+            'role' => User::ROLE_FINANCE,
+            'role_id' => $financeRole->id,
+            'is_internal' => true,
+            'is_active' => true,
+            'email_verified_at' => now(),
+        ]);
+
+        $bengaluruCustomer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Bengaluru Vendor Customer',
+            'phone' => '9000000001',
+            'city' => 'Bengaluru',
+        ]);
+        $mumbaiCustomer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Mumbai In House Customer',
+            'phone' => '9000000002',
+            'city' => 'Mumbai',
+        ]);
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Filter Audit Product',
+            'product_type' => Product::TYPE_BOTH,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'available_quantity' => 10,
+            'total_quantity' => 10,
+            'price_per_day' => 400,
+            'rental_price' => 1200,
+            'sale_price' => 5000,
+        ]);
+        $vendor = Vendor::create([
+            'organization_id' => $organization->id,
+            'name' => 'Vendor Alpha',
+            'contact_person' => 'Vendor Ops',
+            'phone' => '9888888888',
+            'vendor_type' => 'Procurement Partner',
+            'is_active' => true,
+        ]);
+
+        $vendorRental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $bengaluruCustomer->id,
+            'customer_name' => $bengaluruCustomer->name,
+            'phone' => $bengaluruCustomer->phone,
+            'product_id' => $product->id,
+            'vendor_id' => $vendor->id,
+            'fulfilment_source' => VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED,
+            'quantity' => 1,
+            'start_date' => now()->subDays(3)->toDateString(),
+            'end_date' => now()->addDays(4)->toDateString(),
+            'status' => 'active',
+            'rental_amount' => 3000,
+            'deposit_amount' => 500,
+            'transport_amount' => 200,
+            'other_amount' => 0,
+        ]);
+        $inHouseRental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $mumbaiCustomer->id,
+            'customer_name' => $mumbaiCustomer->name,
+            'phone' => $mumbaiCustomer->phone,
+            'product_id' => $product->id,
+            'fulfilment_source' => VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE,
+            'quantity' => 1,
+            'start_date' => now()->subDays(2)->toDateString(),
+            'end_date' => now()->addDays(5)->toDateString(),
+            'status' => 'active',
+            'rental_amount' => 1500,
+        ]);
+
+        $vendorSale = Sale::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $bengaluruCustomer->id,
+            'customer_type' => 'direct_customer',
+            'product_id' => $product->id,
+            'vendor_id' => $vendor->id,
+            'fulfilment_source' => VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED,
+            'quantity' => 1,
+            'unit_price' => 5000,
+            'sale_date' => now()->subDays(3)->toDateString(),
+            'sale_amount' => 5000,
+            'payment_status' => 'pending',
+        ]);
+        Sale::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $mumbaiCustomer->id,
+            'customer_type' => 'direct_customer',
+            'product_id' => $product->id,
+            'fulfilment_source' => VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE,
+            'quantity' => 1,
+            'unit_price' => 2500,
+            'sale_date' => now()->subDays(2)->toDateString(),
+            'sale_amount' => 2500,
+            'payment_status' => 'paid',
+        ]);
+
+        VendorOrderDetail::create([
+            'organization_id' => $organization->id,
+            'vendor_id' => $vendor->id,
+            'rental_id' => $vendorRental->id,
+            'order_type' => VendorOrderDetail::ORDER_TYPE_RENTAL,
+            'fulfilment_source' => VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED,
+            'vendor_order_status' => 'completed',
+            'procurement_cost' => 1200,
+            'vendor_delivery_cost' => 300,
+            'vendor_pickup_cost' => 200,
+            'other_vendor_cost' => 100,
+        ]);
+        VendorOrderDetail::create([
+            'organization_id' => $organization->id,
+            'vendor_id' => $vendor->id,
+            'sale_id' => $vendorSale->id,
+            'order_type' => VendorOrderDetail::ORDER_TYPE_SALE,
+            'fulfilment_source' => VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED,
+            'vendor_order_status' => 'completed',
+            'procurement_cost' => 2000,
+            'vendor_delivery_cost' => 250,
+            'vendor_pickup_cost' => 0,
+            'other_vendor_cost' => 0,
+        ]);
+
+        $vendorResponse = $this->actingAs($financeUser)->get(route('dashboard', [
+            'from_date' => now()->subDays(7)->toDateString(),
+            'to_date' => now()->toDateString(),
+            'city' => 'Bengaluru',
+            'fulfilment_source' => VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED,
+        ]));
+
+        $vendorResponse->assertOk()
+            ->assertSeeText('Vendor Performance')
+            ->assertSeeText('Vendor Alpha');
+        $this->assertSame(1, (int) $vendorResponse->viewData('totalRentals'));
+        $this->assertSame(1, (int) $vendorResponse->viewData('totalSales'));
+        $this->assertTrue((bool) data_get($vendorResponse->viewData('vendorPerformanceSummary'), 'available'));
+        $this->assertSame(8700.0, (float) data_get($vendorResponse->viewData('vendorPerformanceSummary'), 'vendor_revenue'));
+        $this->assertSame(4050.0, (float) data_get($vendorResponse->viewData('vendorPerformanceSummary'), 'vendor_cost'));
+
+        $inHouseResponse = $this->actingAs($financeUser)->get(route('dashboard', [
+            'from_date' => now()->subDays(7)->toDateString(),
+            'to_date' => now()->toDateString(),
+            'city' => 'Mumbai',
+            'fulfilment_source' => VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE,
+        ]));
+
+        $inHouseResponse->assertOk();
+        $this->assertSame(1, (int) $inHouseResponse->viewData('totalRentals'));
+        $this->assertSame(1, (int) $inHouseResponse->viewData('totalSales'));
+        $this->assertFalse((bool) data_get($inHouseResponse->viewData('vendorPerformanceSummary'), 'available'));
     }
 
     public function test_warehouse_style_dashboard_can_access_and_see_inventory_intelligence_without_finance(): void

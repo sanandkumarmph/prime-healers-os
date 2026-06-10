@@ -990,6 +990,34 @@
             'icon' => 'sales',
         ],
     ])->values();
+    $revenueMixTotal = max($totalRentalValueAmount + $totalSalesAmountValue + $totalDepositValueAmount + $totalTransportValueAmount, 0);
+    $revenueMixRows = collect([
+        ['label' => 'Rental Revenue', 'value' => $totalRentalValueAmount, 'display' => $compactCurrency($totalRentalValueAmount), 'tone' => 'blue', 'href' => $rentalIndexUrl],
+        ['label' => 'Sales Revenue', 'value' => $totalSalesAmountValue, 'display' => $compactCurrency($totalSalesAmountValue), 'tone' => 'green', 'href' => $salesIndexUrl],
+        ['label' => 'Deposits', 'value' => $totalDepositValueAmount, 'display' => $compactCurrency($totalDepositValueAmount), 'tone' => 'amber', 'href' => $rentalIndexUrl],
+        ['label' => 'Transport', 'value' => $totalTransportValueAmount, 'display' => $compactCurrency($totalTransportValueAmount), 'tone' => 'violet', 'href' => $rentalIndexUrl],
+    ])->map(function (array $row) use ($revenueMixTotal) {
+        $row['percent'] = $revenueMixTotal > 0 ? round(($row['value'] / max($revenueMixTotal, 1)) * 100, 1) : 0.0;
+
+        return $row;
+    })->values();
+    $cashPositionRows = collect([
+        ['label' => 'Collected This Month', 'value' => $paymentsReceivedThisMonthAmount, 'display' => $compactCurrency($paymentsReceivedThisMonthAmount), 'tone' => 'green', 'href' => $reportsIndexUrl ?: $invoiceIndexUrl],
+        ['label' => 'Outstanding', 'value' => $outstandingDueAmountValue, 'display' => $compactCurrency($outstandingDueAmountValue), 'tone' => $outstandingDueAmountValue > 0 ? 'amber' : 'green', 'href' => $invoiceIndexUrl ? $mergeDashboardQuery('invoices.index', ['status' => 'open']) : null],
+        ['label' => 'Collection Efficiency', 'value' => $salesPulseCollectionEfficiency, 'display' => $salesPulseCollectionEfficiency . '%', 'tone' => $salesPulseCollectionEfficiency >= 70 ? 'green' : ($salesPulseCollectionEfficiency > 0 ? 'amber' : 'blue'), 'href' => $reportsIndexUrl ?: $invoiceIndexUrl],
+    ])->values();
+    $invoiceHealthRows = collect([
+        ['label' => 'Unbilled', 'value' => $revenueCenterUnbilledTotal, 'display' => $compactCurrency($revenueCenterUnbilledTotal), 'tone' => $revenueCenterUnbilledTotal > 0 ? 'amber' : 'green', 'href' => $salesIndexUrl ?: $rentalIndexUrl],
+        ['label' => 'Unpaid Renewals', 'value' => (float) ($unpaidRenewalAmount ?? 0), 'display' => $compactCurrency((float) ($unpaidRenewalAmount ?? 0)), 'tone' => ((float) ($unpaidRenewalAmount ?? 0)) > 0 ? 'red' : 'green', 'href' => $invoiceIndexUrl ? $mergeDashboardQuery('invoices.index', ['status' => 'open']) : null],
+        ['label' => 'Overdue Invoices', 'value' => $overdueInvoiceCountValue, 'display' => number_format($overdueInvoiceCountValue), 'tone' => $overdueInvoiceCountValue > 0 ? 'red' : 'green', 'href' => $invoiceIndexUrl ? $mergeDashboardQuery('invoices.index', ['status' => 'open']) : null],
+    ])->values();
+    $vendorPerformance = collect($vendorPerformanceSummary ?? []);
+    $vendorPerformanceRows = collect([
+        ['label' => 'Vendor Revenue', 'display' => $compactCurrency((float) $vendorPerformance->get('vendor_revenue', 0)), 'tone' => 'blue'],
+        ['label' => 'Vendor Cost', 'display' => $compactCurrency((float) $vendorPerformance->get('vendor_cost', 0)), 'tone' => 'amber'],
+        ['label' => 'Vendor Margin', 'display' => $compactCurrency((float) $vendorPerformance->get('vendor_margin', 0)), 'tone' => ((float) $vendorPerformance->get('vendor_margin', 0)) < 0 ? 'red' : 'green'],
+        ['label' => 'Vendor Orders', 'display' => number_format((int) $vendorPerformance->get('vendor_orders_count', 0)), 'tone' => 'blue'],
+    ])->values();
     $revenueCenterMonthlyCollections = $collectionsTrendRows
         ->groupBy(function (array $row) {
             try {
@@ -1466,12 +1494,6 @@
         ],
     ])->values();
 
-    $revenueProtectionMiniRows = collect([
-        ['label' => 'Outstanding', 'value' => $compactCurrency($outstandingDueAmountValue), 'note' => number_format($openInvoiceCountValue) . ' open invoice(s)', 'tone' => 'red'],
-        ['label' => 'Collected This Month', 'value' => $compactCurrency($paymentsReceivedThisMonthAmount), 'note' => $currency($paymentsReceivedTodayAmount) . ' received today', 'tone' => 'green'],
-        ['label' => 'Overdue Invoices', 'value' => number_format($overdueInvoiceCountValue), 'note' => $currency($pendingReceivableAmountValue) . ' at risk', 'tone' => 'amber'],
-    ])->values();
-
     $topPriorityQueueRows = collect([
         $overdueInvoiceCountValue > 0 && $canViewFinance ? [
             'priority' => 'High',
@@ -1535,6 +1557,192 @@
         })
     )->take(10)->values();
 
+    $activityTimestamp = function ($value): int {
+        if (!$value) {
+            return 0;
+        }
+
+        try {
+            return $value instanceof \Illuminate\Support\Carbon
+                ? $value->timestamp
+                : \Illuminate\Support\Carbon::parse($value)->timestamp;
+        } catch (\Throwable $exception) {
+            return 0;
+        }
+    };
+    $activityRecentItems = collect()
+        ->merge($recentPaymentsSummary->map(fn ($payment) => [
+            'type' => 'Payment',
+            'title' => 'Payment received',
+            'meta' => (optional($payment->customer)->name ?? 'Customer') . ' / ' . (optional($payment->invoice)->invoice_number ?? 'Invoice'),
+            'value' => $currency((float) ($payment->amount ?? 0)),
+            'time' => optional($payment->payment_date)?->format('d M Y') ?? 'Recent',
+            'sort' => $activityTimestamp($payment->payment_date ?? $payment->created_at ?? null),
+            'tone' => 'green',
+            'href' => $invoiceIndexUrl ? route('invoices.index', ['search' => optional($payment->invoice)->invoice_number]) : $dashboardUrl,
+        ]))
+        ->merge($pendingPaymentSummary->map(fn ($invoice) => [
+            'type' => 'Invoice',
+            'title' => $invoice->invoice_number ?: 'Invoice follow-up',
+            'meta' => optional($invoice->customer)->name ?? 'Customer',
+            'value' => $currency((float) (($invoice->total_amount ?? 0) - ($invoice->payments_sum_amount ?? 0))),
+            'time' => optional($invoice->due_date)?->format('d M Y') ?? 'Due now',
+            'sort' => $activityTimestamp($invoice->updated_at ?? $invoice->due_date ?? null),
+            'tone' => 'amber',
+            'href' => route('invoices.show', $invoice),
+        ]))
+        ->merge($recentRentalsSummary->map(fn ($rental) => [
+            'type' => 'Rental',
+            'title' => 'Rental #' . $rental->id,
+            'meta' => $rental->customer_name ?? optional($rental->customer)->name ?? 'Customer',
+            'value' => optional($rental->product)->name ?? 'Product',
+            'time' => optional($rental->created_at)?->diffForHumans() ?? 'Recent',
+            'sort' => $activityTimestamp($rental->created_at ?? null),
+            'tone' => 'blue',
+            'href' => route('rentals.show', $rental),
+        ]))
+        ->merge($recentDeliveriesSummary->map(fn ($task) => [
+            'type' => \Illuminate\Support\Str::headline((string) $task->type),
+            'title' => ucfirst((string) $task->type) . ' #' . $task->id,
+            'meta' => $task->linkedCustomerName() ?: 'Customer',
+            'value' => optional($task->scheduled_at)?->format('d M, h:i A') ?? 'Schedule pending',
+            'time' => optional($task->updated_at)?->diffForHumans() ?? 'Recent',
+            'sort' => $activityTimestamp($task->updated_at ?? $task->scheduled_at ?? null),
+            'tone' => $task->type === 'pickup' ? 'amber' : 'violet',
+            'href' => route('deliveries.show', $task),
+        ]))
+        ->sortByDesc('sort')
+        ->take(8)
+        ->values();
+    $activityAlertItems = collect([
+        [
+            'label' => 'Overdue payments',
+            'count' => $overdueInvoiceCountValue,
+            'status' => $overdueInvoiceCountValue > 0 ? 'Collection escalation' : 'Clear',
+            'tone' => $overdueInvoiceCountValue > 0 ? 'red' : 'green',
+            'href' => $invoiceIndexUrl ? $mergeDashboardQuery('invoices.index', ['status' => 'open']) : null,
+        ],
+        [
+            'label' => 'Delayed deliveries',
+            'count' => $overdueDeliveryCountValue,
+            'status' => $overdueDeliveryCountValue > 0 ? 'Dispatch delay' : 'On track',
+            'tone' => $overdueDeliveryCountValue > 0 ? 'red' : 'green',
+            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'delivery_workload']) : null,
+        ],
+        [
+            'label' => 'Overdue renewals',
+            'count' => (int) ($overdueRenewalsCount ?? 0),
+            'status' => ((int) ($overdueRenewalsCount ?? 0)) > 0 ? 'Return overdue' : 'Clear',
+            'tone' => ((int) ($overdueRenewalsCount ?? 0)) > 0 ? 'red' : 'green',
+            'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'overdue']) : null,
+        ],
+        [
+            'label' => 'Customer issues',
+            'count' => (int) ($highPriorityFollowUpsCount ?? 0),
+            'status' => ((int) ($highPriorityFollowUpsCount ?? 0)) > 0 ? 'Callback priority' : 'No critical callbacks',
+            'tone' => ((int) ($highPriorityFollowUpsCount ?? 0)) > 0 ? 'amber' : 'green',
+            'href' => $communicationCenterUrl ? route('communication-center.index', ['priority' => 'high']) : null,
+        ],
+        [
+            'label' => 'Vendor delays',
+            'count' => (int) ($vendorDelayedCount ?? $vendorDelayCount ?? 0),
+            'status' => ((int) ($vendorDelayedCount ?? $vendorDelayCount ?? 0)) > 0 ? 'Vendor follow-up' : 'No vendor delay flagged',
+            'tone' => ((int) ($vendorDelayedCount ?? $vendorDelayCount ?? 0)) > 0 ? 'amber' : 'green',
+            'href' => $safeRoute('business-partners.index') ?: $dashboardUrl,
+        ],
+    ])->take(8)->values();
+    $communicationQueueRows = collect([
+        ['label' => 'Follow-ups pending', 'value' => (int) (($pendingRenewalFollowUpsCount ?? 0) + ($pendingPaymentFollowUpsCount ?? 0) + ($pendingPickupFollowUpsCount ?? 0)), 'note' => number_format((int) ($overdueFollowUpsCount ?? 0)) . ' overdue', 'tone' => ((int) ($overdueFollowUpsCount ?? 0)) > 0 ? 'red' : 'blue', 'href' => $communicationCenterUrl],
+        ['label' => 'Reminders due today', 'value' => (int) ($followUpsDueTodayCount ?? 0), 'note' => 'Due before day close', 'tone' => ((int) ($followUpsDueTodayCount ?? 0)) > 0 ? 'amber' : 'green', 'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'today']) : null],
+        ['label' => 'Customer callbacks', 'value' => (int) ($highPriorityFollowUpsCount ?? 0), 'note' => 'High priority queue', 'tone' => ((int) ($highPriorityFollowUpsCount ?? 0)) > 0 ? 'red' : 'green', 'href' => $communicationCenterUrl ? route('communication-center.index', ['priority' => 'high']) : null],
+        ['label' => 'Communication workload', 'value' => (int) ($todayFollowUpSummary->count() + $highPriorityFollowUpSummary->count()), 'note' => 'Today + critical items', 'tone' => ($todayFollowUpSummary->count() + $highPriorityFollowUpSummary->count()) > 0 ? 'blue' : 'green', 'href' => $communicationCenterUrl],
+    ])->values();
+    $notificationSummaryRows = collect([
+        ['label' => 'Unread', 'value' => (int) ($unreadNotificationsCount ?? $topbarNotificationCount ?? 0), 'tone' => ((int) ($unreadNotificationsCount ?? $topbarNotificationCount ?? 0)) > 0 ? 'blue' : 'green'],
+        ['label' => 'Critical', 'value' => (int) ($overdueInvoiceCountValue + $overdueDeliveryCountValue + ($highPriorityFollowUpsCount ?? 0)), 'tone' => ($overdueInvoiceCountValue + $overdueDeliveryCountValue + ((int) ($highPriorityFollowUpsCount ?? 0))) > 0 ? 'red' : 'green'],
+        ['label' => 'Assigned', 'value' => (int) ($assignedOpenTasksCount ?? 0), 'tone' => ((int) ($assignedOpenTasksCount ?? 0)) > 0 ? 'amber' : 'green'],
+    ])->values();
+    $activityEscalationRows = $topPriorityQueueRows->take(8)->values();
+    $activityCenterLinks = collect([
+        ['label' => 'View Renewal Center', 'href' => $renewalCenterUrl],
+        ['label' => 'View Pickup Center', 'href' => $pickupCenterUrl],
+        ['label' => 'View Communication Center', 'href' => $communicationCenterUrl],
+    ])->filter(fn ($link) => !empty($link['href']))->values();
+    $trendPercent = function ($current, $previous): float {
+        $current = (float) $current;
+        $previous = (float) $previous;
+
+        if ($previous == 0.0) {
+            return 0.0;
+        }
+
+        return round((($current - $previous) / abs($previous)) * 100, 1);
+    };
+    $buildExecutiveTrendMetric = function (string $label, $current, $previous, callable $formatter) use ($trendPercent) {
+        $current = (float) $current;
+        $previous = (float) $previous;
+
+        if ($previous > 0) {
+            $percent = $trendPercent($current, $previous);
+            $value = ($percent > 0 ? '+' : '') . number_format($percent, 1) . '%';
+            $tone = $percent < 0 ? 'red' : ($percent > 0 ? 'green' : 'blue');
+        } elseif ($current > 0) {
+            $value = 'New Activity';
+            $tone = 'blue';
+        } else {
+            $value = 'No activity';
+            $tone = 'blue';
+        }
+
+        return [
+            'label' => $label,
+            'value' => $value,
+            'tone' => $tone,
+            'tooltip' => 'Current Period: ' . $formatter($current) . "\n" . 'Previous Period: ' . $formatter($previous),
+        ];
+    };
+    $latestTrendRow = $monthlyTrendRows->last() ?? [];
+    $previousTrendRow = $monthlyTrendRows->slice(-2, 1)->first() ?? [];
+    $latestRevenueTrendRow = $revenueTrendRows->last() ?? [];
+    $previousRevenueTrendRow = $revenueTrendRows->slice(-2, 1)->first() ?? [];
+    $executiveRevenueTrendCurrent = ((float) ($latestTrendRow['rental_total'] ?? 0)) + ((float) ($latestTrendRow['sales_total'] ?? 0));
+    $executiveRevenueTrendPrevious = ((float) ($previousTrendRow['rental_total'] ?? 0)) + ((float) ($previousTrendRow['sales_total'] ?? 0));
+    $executiveOrdersTrendCurrent = (float) ($latestTrendRow['total_orders'] ?? 0);
+    $executiveOrdersTrendPrevious = (float) ($previousTrendRow['total_orders'] ?? 0);
+    $executiveCollectionTrendCurrent = (float) ($latestRevenueTrendRow['collected_total'] ?? 0);
+    $executiveCollectionTrendPrevious = (float) ($previousRevenueTrendRow['collected_total'] ?? 0);
+    $executiveRentalUtilizationPercent = $inventoryAvailabilityTotal > 0
+        ? round(($onRentInventoryCount / max($inventoryAvailabilityTotal, 1)) * 100, 1)
+        : $activePercent;
+    $executiveBusinessHealthRows = collect([
+        $buildExecutiveTrendMetric('Revenue Trend', $executiveRevenueTrendCurrent, $executiveRevenueTrendPrevious, fn ($value) => $currency($value)),
+        $buildExecutiveTrendMetric('Orders Trend', $executiveOrdersTrendCurrent, $executiveOrdersTrendPrevious, fn ($value) => number_format((int) $value) . ' order(s)'),
+        $buildExecutiveTrendMetric('Collection Trend', $executiveCollectionTrendCurrent, $executiveCollectionTrendPrevious, fn ($value) => $currency($value)),
+        [
+            'label' => 'Rental Utilization',
+            'value' => number_format($executiveRentalUtilizationPercent, 1) . '%',
+            'tone' => $executiveRentalUtilizationPercent >= 65 ? 'green' : ($executiveRentalUtilizationPercent >= 35 ? 'amber' : 'blue'),
+            'tooltip' => 'Current Period: ' . number_format($onRentInventoryCount) . ' on-rent rental asset(s) / ' . number_format($inventoryAvailabilityTotal) . ' total rental asset(s)' . "\n" . 'Previous Period: Not period-based',
+        ],
+    ])->values();
+    $executiveCommunicationPulseRows = collect([
+        ['label' => 'Follow-ups Pending', 'value' => (int) (($pendingRenewalFollowUpsCount ?? 0) + ($pendingPaymentFollowUpsCount ?? 0) + ($pendingPickupFollowUpsCount ?? 0)), 'tone' => ((int) ($overdueFollowUpsCount ?? 0)) > 0 ? 'red' : 'blue'],
+        ['label' => 'Critical Alerts', 'value' => (int) ($overdueInvoiceCountValue + $overdueDeliveryCountValue + ($highPriorityFollowUpsCount ?? 0)), 'tone' => ($overdueInvoiceCountValue + $overdueDeliveryCountValue + ((int) ($highPriorityFollowUpsCount ?? 0))) > 0 ? 'red' : 'green'],
+        ['label' => 'Unread Notifications', 'value' => (int) ($unreadNotificationsCount ?? $topbarNotificationCount ?? 0), 'tone' => ((int) ($unreadNotificationsCount ?? $topbarNotificationCount ?? 0)) > 0 ? 'amber' : 'green'],
+    ])->values();
+    $executiveForecastRows = collect([
+        ['label' => 'Renewals Due', 'value' => (int) ($renewalsDueThisWeekCount ?? 0), 'tone' => ((int) ($renewalsDueThisWeekCount ?? 0)) > 0 ? 'amber' : 'green'],
+        ['label' => 'Returns Due', 'value' => (int) (($returnsDueTodayCountValue ?? 0) + ($endingSoonCount ?? 0)), 'tone' => (((int) ($returnsDueTodayCountValue ?? 0) + (int) ($endingSoonCount ?? 0)) > 0) ? 'amber' : 'green'],
+        ['label' => 'Deliveries Scheduled', 'value' => $scheduledDeliveryCountValue, 'tone' => $scheduledDeliveryCountValue > 0 ? 'blue' : 'green'],
+        ['label' => 'Pickups Scheduled', 'value' => $scheduledPickupCountValue, 'tone' => $scheduledPickupCountValue > 0 ? 'blue' : 'green'],
+    ])->values();
+    $executivePerformanceRows = collect([
+        ['label' => 'Rental Revenue', 'value' => $compactCurrency((float) ($latestTrendRow['rental_total'] ?? 0)), 'points' => $buildMiniSparkline($monthlyTrendRows->pluck('rental_total')->map(fn ($value) => (float) $value)->all()), 'tone' => 'blue'],
+        ['label' => 'Sales Revenue', 'value' => $compactCurrency((float) ($latestTrendRow['sales_total'] ?? 0)), 'points' => $buildMiniSparkline($monthlyTrendRows->pluck('sales_total')->map(fn ($value) => (float) $value)->all()), 'tone' => 'green'],
+        ['label' => 'Total Orders', 'value' => number_format((int) ($latestTrendRow['total_orders'] ?? 0)), 'points' => $buildMiniSparkline($monthlyTrendRows->pluck('total_orders')->map(fn ($value) => (float) $value)->all()), 'tone' => 'amber'],
+    ])->values();
+    $executiveRecentActivityRows = $activityRecentItems->take(5)->values();
+
     $operationsHealthCards = collect([
         [
             'label' => 'Deliveries at Risk',
@@ -1579,88 +1787,6 @@
             'tone' => ((int) ($unassignedTasksCount ?? 0)) > 0 ? 'amber' : 'green',
         ],
     ])->filter(fn ($card) => !empty($card['href']))->values();
-
-    $operationsPipelineStages = collect([
-        ['label' => 'Created', 'value' => $totalRentalsValue, 'tone' => 'blue', 'icon' => 'tasks'],
-        ['label' => 'Assigned', 'value' => $scheduledDeliveryCountValue + $scheduledPickupCountValue, 'tone' => 'amber', 'icon' => 'customer'],
-        ['label' => 'Out for Delivery', 'value' => $outForDeliveryCountValue, 'tone' => 'blue', 'icon' => 'delivery'],
-        ['label' => 'Active Rental', 'value' => $activeRentalsCount, 'tone' => 'green', 'icon' => 'rental'],
-        ['label' => 'Pickup Due', 'value' => $returnsDueTodayCountValue + $overdueReturnsCount, 'tone' => 'amber', 'icon' => 'pickup'],
-        ['label' => 'Completed', 'value' => $returnedRentalsCount, 'tone' => 'green', 'icon' => 'completed'],
-    ])->values();
-
-    $operationsActionQueueRows = collect([
-        $overdueDeliveryCountValue > 0 ? [
-            'priority' => 'High',
-            'item' => 'Delayed deliveries',
-            'owner' => 'Dispatch',
-            'due' => number_format($overdueDeliveryCountValue) . ' overdue task(s)',
-            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'delivery_workload']) : null,
-            'action' => 'Dispatch',
-            'tone' => 'red',
-            'type' => 'Delivery',
-        ] : null,
-        ((int) ($pickupCenterOverdueCount ?? 0)) > 0 ? [
-            'priority' => 'High',
-            'item' => 'Overdue pickups',
-            'owner' => 'Pickup Desk',
-            'due' => number_format((int) $pickupCenterOverdueCount) . ' overdue pickup(s)',
-            'href' => $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'overdue']) : ($deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pickup_workload']) : null),
-            'action' => 'Assign',
-            'tone' => 'amber',
-            'type' => 'Pickup',
-        ] : null,
-        ((int) ($overdueRenewalsCount ?? 0)) > 0 ? [
-            'priority' => 'High',
-            'item' => 'Overdue renewals',
-            'owner' => 'Renewal Desk',
-            'due' => number_format((int) ($overdueRenewalsCount ?? 0)) . ' renewal(s) overdue',
-            'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'overdue']) : null,
-            'action' => 'Call',
-            'tone' => 'red',
-            'type' => 'Renewal',
-        ] : null,
-        ((int) ($unassignedTasksCount ?? 0)) > 0 ? [
-            'priority' => 'Medium',
-            'item' => 'Unassigned tasks',
-            'owner' => 'Operations',
-            'due' => number_format((int) ($unassignedTasksCount ?? 0)) . ' task(s) without owner',
-            'href' => $deliveriesIndexUrl ? route('deliveries.index', ['staff' => 'unassigned']) : null,
-            'action' => 'Assign',
-            'tone' => 'amber',
-            'type' => 'Task',
-        ] : null,
-        ((int) ($failedTasksCount ?? 0)) > 0 ? [
-            'priority' => 'Medium',
-            'item' => 'Failed field tasks',
-            'owner' => 'Field Team',
-            'due' => number_format((int) ($failedTasksCount ?? 0)) . ' failed attempt(s)',
-            'href' => $pickupCenterUrl ? route('pickup-center.index', ['tab' => 'failed_attempt']) : ($deliveriesIndexUrl ? route('deliveries.index', ['status' => 'cancelled']) : null),
-            'action' => 'Recover',
-            'tone' => 'amber',
-            'type' => 'Task',
-        ] : null,
-        ((int) ($overdueFollowUpsCount ?? 0)) > 0 ? [
-            'priority' => 'Medium',
-            'item' => 'Pending follow-ups',
-            'owner' => 'Communication',
-            'due' => number_format((int) ($overdueFollowUpsCount ?? 0)) . ' overdue follow-up(s)',
-            'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'overdue']) : null,
-            'action' => 'Call',
-            'tone' => 'blue',
-            'type' => 'Follow-up',
-        ] : null,
-        $vendorSummaryRows->first() ? [
-            'priority' => 'Low',
-            'item' => 'Vendor pending actions',
-            'owner' => (string) data_get($vendorSummaryRows->first(), 'name', 'Vendor Desk'),
-            'due' => number_format((int) data_get($vendorSummaryRows->first(), 'rental_count', 0)) . ' rental(s) linked',
-            'href' => $mergeDashboardQuery('rentals.index', ['vendor_id' => data_get($vendorSummaryRows->first(), 'vendor_id')]),
-            'action' => 'Review',
-            'tone' => 'blue',
-            'type' => 'Vendor',
-        ] : null,
-    ])->filter(fn ($row) => !empty($row['href']))->take(10)->values();
 
     $teamCapacityRows = collect();
     $teamBucketMap = [
@@ -1720,14 +1846,12 @@
     $dashboardCenterGroups = collect([
         [
             'label' => 'Operations Center',
-            'copy' => 'Widgets, logistics, renewal flow, and pickup coordination.',
+            'copy' => 'Operations health, rental pipeline, priority queue, capacity, and daily workload.',
             'links' => collect([
-                ['label' => 'Today Widgets', 'href' => '#today-widgets'],
-                ['label' => 'Top Priority', 'href' => '#top-priority-panel'],
-                ['label' => 'Action Panel', 'href' => '#today-action-panel'],
-                ['label' => 'Logistics Board', 'href' => '#logistics-board-panel'],
-                ['label' => 'Renewal Center', 'href' => '#renewal-center-panel'],
-                ['label' => 'Pickup Center', 'href' => '#pickup-center-panel'],
+                ['label' => 'Operations Health', 'href' => '#operations-center-panel'],
+                ['label' => 'Rental Pipeline', 'href' => '#operations-center-panel'],
+                ['label' => 'Priority Queue', 'href' => '#operations-center-panel'],
+                ['label' => 'Team Capacity', 'href' => '#operations-center-panel'],
             ])->filter(fn ($link) => !empty($link['href']))->values(),
         ],
         [
@@ -1752,12 +1876,12 @@
         ],
         [
             'label' => 'Activity & Communication Center',
-            'copy' => 'Recent activity, customer movement, payments, and follow-up queues.',
+            'copy' => 'Recent activity, alerts, communications, notifications, and escalation queue.',
             'links' => collect([
                 ['label' => 'Recent Activity', 'href' => '#recent-ops'],
-                ['label' => 'High Priority Follow-ups', 'href' => '#high-priority-followups-panel'],
-                ['label' => 'Recent Rentals', 'href' => '#recent-rentals-panel'],
-                ['label' => 'Recent Customers', 'href' => '#recent-customers-panel'],
+                ['label' => 'Alerts', 'href' => '#activity-alerts'],
+                ['label' => 'Communication Queue', 'href' => '#activity-communication'],
+                ['label' => 'Escalation Queue', 'href' => '#activity-escalations'],
             ])->filter(fn ($link) => !empty($link['href']))->values(),
         ],
     ])->filter(fn ($group) => $group['visible'] ?? true)->values();
@@ -1908,23 +2032,150 @@
         background: #fff;
         box-shadow: var(--ph-shadow-card);
     }
-    .executive-command-grid {
+    .executive-health-strip {
         display: grid;
-        grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr) minmax(300px, .95fr);
-        gap: 10px;
-        align-items: start;
-    }
-    .executive-command-mini {
-        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 8px;
     }
-    .executive-mini-summary {
+    .executive-health-chip {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        min-height: 36px;
+        padding: 7px 9px;
+        border-radius: 12px;
+        border: 1px solid rgba(226, 232, 240, 0.92);
+        background: #fbfdff;
+    }
+    .executive-health-chip span,
+    .executive-micro-label {
+        color: #5f7696;
+        font-size: 10px;
+        font-weight: 900;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+    }
+    .executive-health-chip strong {
+        color: var(--ph-color-text);
+        font-size: 15px;
+        font-weight: 900;
+        white-space: nowrap;
+    }
+    .executive-intel-grid {
         display: grid;
-        gap: 6px;
-        padding: 10px 11px;
+        grid-template-columns: minmax(0, .78fr) minmax(0, .92fr) minmax(0, 1.3fr);
+        gap: 8px;
+        align-items: stretch;
+    }
+    .executive-micro-card {
+        display: grid;
+        gap: 7px;
+        min-width: 0;
+        padding: 9px;
         border-radius: 14px;
         border: 1px solid rgba(226, 232, 240, 0.92);
-        background: linear-gradient(180deg, rgba(248,250,252,0.88), rgba(255,255,255,0.98));
+        background: #fff;
+    }
+    .executive-micro-list,
+    .executive-performance-list,
+    .executive-activity-strip {
+        display: grid;
+        gap: 6px;
+    }
+    .executive-micro-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: center;
+    }
+    .executive-micro-row span,
+    .executive-performance-row span,
+    .executive-activity-item span {
+        overflow: hidden;
+        color: #425c7f;
+        font-size: 11px;
+        line-height: 1.2;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .executive-micro-row strong,
+    .executive-performance-row strong {
+        color: var(--ph-color-text);
+        font-size: 14px;
+        font-weight: 900;
+        white-space: nowrap;
+    }
+    .executive-performance-row {
+        display: grid;
+        grid-template-columns: minmax(92px, .9fr) auto 96px;
+        gap: 8px;
+        align-items: center;
+    }
+    .executive-sparkline {
+        width: 96px;
+        height: 26px;
+        display: block;
+    }
+    .executive-sparkline polyline {
+        fill: none;
+        stroke: var(--ph-color-primary);
+        stroke-width: 2.4;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+    }
+    .executive-sparkline.is-green polyline { stroke: var(--ph-color-success); }
+    .executive-sparkline.is-amber polyline { stroke: var(--ph-color-warning); }
+    .executive-footer-activity {
+        display: grid;
+        gap: 7px;
+        padding-top: 2px;
+    }
+    .executive-activity-strip {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+    .executive-activity-item {
+        display: grid;
+        gap: 3px;
+        min-width: 0;
+        padding: 7px 8px;
+        border-radius: 12px;
+        border: 1px solid rgba(226, 232, 240, 0.92);
+        background: #fbfdff;
+        text-decoration: none;
+        color: inherit;
+    }
+    .executive-activity-item strong {
+        overflow: hidden;
+        color: var(--ph-color-text);
+        font-size: 11px;
+        line-height: 1.2;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .activity-control-shell {
+        overflow: hidden;
+    }
+    .activity-control-shell > summary {
+        list-style: none;
+        cursor: pointer;
+    }
+    .activity-control-shell > summary::-webkit-details-marker {
+        display: none;
+    }
+    .activity-control-shell > summary::after {
+        content: "Expand";
+        align-self: center;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(79, 70, 229, 0.16);
+        background: #f8fbff;
+        color: var(--ph-color-primary);
+        font-size: 11px;
+        font-weight: 900;
+    }
+    .activity-control-shell[open] > summary::after {
+        content: "Collapse";
     }
     .executive-mini-grid {
         display: grid;
@@ -1963,18 +2214,6 @@
         color: #425c7f;
         font-size: 10px;
         line-height: 1.3;
-    }
-    .executive-mini-meter {
-        height: 5px;
-        border-radius: 999px;
-        background: rgba(148, 163, 184, 0.16);
-        overflow: hidden;
-    }
-    .executive-mini-meter span {
-        display: block;
-        height: 100%;
-        border-radius: inherit;
-        background: linear-gradient(90deg, rgba(79, 70, 229, 0.82), rgba(34, 197, 94, 0.82));
     }
     .executive-queue {
         display: grid;
@@ -2197,157 +2436,283 @@
         display: grid;
         gap: 12px;
     }
-    .operations-pipeline-track {
+    .operations-command-panel {
+        grid-column: 1 / -1;
+        align-content: start;
+    }
+    .operations-command-grid {
         display: grid;
-        grid-template-columns: repeat(6, minmax(0, 1fr));
+        grid-template-columns: minmax(0, 1.25fr) minmax(280px, .75fr);
         gap: 10px;
+        align-items: start;
     }
-    .operations-pipeline-stage {
+    .operations-command-block {
         display: grid;
-        justify-items: center;
-        gap: 8px;
-        padding: 12px 10px;
-        border-radius: 16px;
-        border: 1px solid rgba(148, 163, 184, 0.14);
-        background: #fff;
-        box-shadow: var(--ph-shadow-card);
-        text-align: center;
+        gap: 6px;
+        min-width: 0;
     }
-    .operations-pipeline-stage-icon {
-        width: 34px;
-        height: 34px;
-        display: grid;
-        place-items: center;
-        border-radius: 999px;
-        border: 1px solid rgba(191, 219, 254, 0.9);
-        background: #f8fbff;
-        color: var(--ph-color-primary);
-    }
-    .operations-pipeline-stage-icon svg {
-        width: 15px;
-        height: 15px;
-    }
-    .operations-pipeline-stage-label {
-        min-height: 30px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+    .operations-command-label {
         font-size: 10px;
-        font-weight: 700;
-        letter-spacing: .08em;
-        line-height: 1.3;
-        text-transform: uppercase;
-        color: #5c7393;
-    }
-    .operations-pipeline-stage-value {
-        font-size: 24px;
-        line-height: 1;
-        letter-spacing: -.04em;
-        font-weight: 800;
-        color: var(--ph-color-text);
-    }
-    .operations-queue-table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-    .operations-queue-table th,
-    .operations-queue-table td {
-        padding: 10px 0;
-        border-bottom: 1px solid rgba(226, 232, 240, 0.9);
-        vertical-align: top;
-        text-align: left;
-    }
-    .operations-queue-table th {
-        font-size: 11px;
         font-weight: 800;
         letter-spacing: .08em;
         text-transform: uppercase;
         color: #5f7696;
     }
-    .operations-queue-table td {
-        font-size: 12.5px;
+    .operations-capacity-table-wrap {
+        overflow-x: auto;
+    }
+    .operations-capacity-table {
+        width: 100%;
+        min-width: 650px;
+        border-collapse: collapse;
+    }
+    .operations-capacity-table th,
+    .operations-capacity-table td {
+        padding: 8px 10px;
+        border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+        text-align: left;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+    .operations-capacity-table th {
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: #5f7696;
+    }
+    .operations-capacity-table td {
+        font-size: 12px;
         color: #425c7f;
     }
-    .operations-queue-title {
-        display: block;
-        font-weight: 700;
+    .operations-capacity-team {
+        font-weight: 800;
         color: var(--ph-color-text);
     }
-    .operations-queue-type {
-        display: block;
-        margin-top: 3px;
-        font-size: 11px;
-        color: #6b7f9d;
+    .operations-capacity-count {
+        font-weight: 800;
+        color: var(--ph-color-text);
     }
-    .operations-queue-action {
+    .operations-command-action {
         font-size: 12px;
-        font-weight: 700;
+        font-weight: 800;
         color: var(--ph-color-primary);
         text-decoration: none;
     }
-    .operations-capacity-grid,
-    .operations-snapshot-grid {
+    .operations-snapshot-strip {
         display: grid;
-        gap: 10px;
-    }
-    .operations-capacity-item,
-    .operations-snapshot-card {
-        display: grid;
-        gap: 6px;
-        padding: 12px 14px;
-        border-radius: 16px;
-        border: 1px solid rgba(148, 163, 184, 0.14);
-        background: #fff;
-        box-shadow: var(--ph-shadow-card);
-    }
-    .operations-capacity-top {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
     }
-    .operations-capacity-title {
-        font-size: 13px;
-        font-weight: 700;
-        color: var(--ph-color-text);
-    }
-    .operations-capacity-meta {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        font-size: 12px;
-        color: #4c678d;
-    }
-    .operations-capacity-meta strong {
-        color: var(--ph-color-text);
-        font-size: 13px;
-    }
-    .operations-capacity-meter,
-    .operations-snapshot-meter {
-        width: 100%;
-        height: 6px;
-        border-radius: 999px;
-        background: #e8eef7;
-        overflow: hidden;
-    }
-    .operations-capacity-meter span,
-    .operations-snapshot-meter span {
-        display: block;
-        height: 100%;
-        border-radius: inherit;
-        background: linear-gradient(90deg, #6366f1, #34d399);
+    .operations-snapshot-card {
+        display: grid;
+        gap: 3px;
+        min-height: 78px;
+        padding: 9px 10px;
+        border-radius: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        background: #fff;
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
     }
     .operations-snapshot-value {
-        font-size: 22px;
+        font-size: 20px;
         line-height: 1;
         font-weight: 800;
         letter-spacing: -.04em;
         color: var(--ph-color-text);
     }
     .operations-snapshot-note {
-        font-size: 12px;
-        line-height: 1.45;
+        font-size: 11px;
+        line-height: 1.3;
         color: #4c678d;
+    }
+    .activity-control-header {
+        align-items: center;
+    }
+    .activity-control-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: flex-end;
+    }
+    .activity-control-links a {
+        display: inline-flex;
+        align-items: center;
+        min-height: 30px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(79, 70, 229, 0.16);
+        background: #f8fbff;
+        color: var(--ph-color-primary);
+        font-size: 11px;
+        font-weight: 800;
+        text-decoration: none;
+        white-space: nowrap;
+    }
+    .activity-control-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(320px, .8fr);
+        gap: 10px;
+        align-items: start;
+    }
+    .activity-control-card {
+        display: grid;
+        gap: 8px;
+        min-width: 0;
+        padding: 12px;
+        border-radius: 14px;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        background: #fff;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+    }
+    .activity-control-card.is-wide {
+        grid-column: 1 / -1;
+    }
+    .activity-control-card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+    }
+    .activity-control-title {
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        color: #526b90;
+    }
+    .activity-control-count {
+        font-size: 11px;
+        font-weight: 800;
+        color: #64748b;
+    }
+    .activity-control-list {
+        display: grid;
+        gap: 6px;
+    }
+    .activity-control-item {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: center;
+        min-height: 42px;
+        padding: 7px 8px;
+        border-radius: 12px;
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        background: #fbfdff;
+        color: inherit;
+        text-decoration: none;
+    }
+    .activity-control-item:hover {
+        border-color: rgba(99, 102, 241, 0.24);
+        background: #fff;
+    }
+    .activity-control-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: #64748b;
+    }
+    .activity-control-dot.is-green { background: var(--ph-color-success); }
+    .activity-control-dot.is-blue { background: var(--ph-color-primary); }
+    .activity-control-dot.is-violet { background: #7c3aed; }
+    .activity-control-dot.is-amber { background: var(--ph-color-warning); }
+    .activity-control-dot.is-red { background: var(--ph-color-danger); }
+    .activity-control-main {
+        min-width: 0;
+    }
+    .activity-control-main strong {
+        display: block;
+        overflow: hidden;
+        color: var(--ph-color-text);
+        font-size: 13px;
+        line-height: 1.15;
+        font-weight: 800;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .activity-control-main span {
+        display: block;
+        overflow: hidden;
+        margin-top: 2px;
+        color: #526b90;
+        font-size: 11px;
+        line-height: 1.25;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .activity-control-side {
+        display: grid;
+        justify-items: end;
+        gap: 2px;
+        min-width: 68px;
+        color: #64748b;
+        font-size: 10px;
+        font-weight: 800;
+        text-align: right;
+    }
+    .activity-control-side strong {
+        color: var(--ph-color-text);
+        font-size: 12px;
+    }
+    .activity-control-kpis {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+    }
+    .activity-control-kpi {
+        display: grid;
+        gap: 3px;
+        padding: 9px;
+        border-radius: 12px;
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        background: #fbfdff;
+    }
+    .activity-control-kpi span {
+        color: #526b90;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+    }
+    .activity-control-kpi strong {
+        color: var(--ph-color-text);
+        font-size: 22px;
+        line-height: 1;
+        font-weight: 900;
+        letter-spacing: -.04em;
+    }
+    .activity-control-queue {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+    }
+    .activity-control-queue-card {
+        display: grid;
+        gap: 3px;
+        padding: 8px 9px;
+        border-radius: 12px;
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        background: #fbfdff;
+        color: inherit;
+        text-decoration: none;
+    }
+    .activity-control-queue-card span {
+        color: #526b90;
+        font-size: 11px;
+        line-height: 1.25;
+        font-weight: 800;
+    }
+    .activity-control-queue-card strong {
+        color: var(--ph-color-text);
+        font-size: 20px;
+        line-height: 1;
+        font-weight: 900;
+    }
+    .activity-control-queue-card small {
+        color: #64748b;
+        font-size: 10px;
+        line-height: 1.25;
     }
     .operations-detail-group {
         border: 1px solid rgba(148, 163, 184, 0.16);
@@ -2494,31 +2859,33 @@
     .inventory-availability-visual {
         display: grid;
         gap: 10px;
+        justify-items: center;
     }
-    .inventory-availability-track {
-        display: flex;
-        width: 100%;
-        height: 18px;
-        overflow: hidden;
+    .inventory-availability-pie {
+        position: relative;
+        width: 168px;
+        height: 168px;
         border-radius: 999px;
-        background: #e7eef8;
-        border: 1px solid rgba(148, 163, 184, 0.18);
-    }
-    .inventory-availability-segment {
-        min-width: 12px;
-        height: 100%;
-    }
-    .inventory-availability-segment.is-green { background: linear-gradient(90deg, #22c55e, #4ade80); }
-    .inventory-availability-segment.is-blue { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
-    .inventory-availability-segment.is-warning { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
-    .inventory-availability-segment.is-danger { background: linear-gradient(90deg, #ef4444, #f87171); }
-    .inventory-availability-total {
-        display: grid;
-        gap: 2px;
-        padding: 10px 12px;
-        border-radius: 14px;
-        background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
         border: 1px solid rgba(148, 163, 184, 0.14);
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.4);
+    }
+    .inventory-availability-pie::after {
+        content: "";
+        position: absolute;
+        inset: 28px;
+        border-radius: 999px;
+        background: #fff;
+        box-shadow: inset 0 0 0 1px rgba(226, 232, 240, 0.9);
+    }
+    .inventory-availability-total {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        display: grid;
+        place-content: center;
+        justify-items: center;
+        gap: 3px;
+        text-align: center;
     }
     .inventory-availability-total strong {
         font-size: 22px;
@@ -2527,7 +2894,9 @@
         color: var(--ph-color-text);
     }
     .inventory-availability-total span {
-        font-size: 12px;
+        max-width: 84px;
+        font-size: 11px;
+        line-height: 1.3;
         color: #4c678d;
     }
     .inventory-availability-legend {
@@ -2549,8 +2918,10 @@
         height: 10px;
         border-radius: 999px;
     }
-    .inventory-availability-dot.is-green { background: #22c55e; }
-    .inventory-availability-dot.is-blue { background: #3b82f6; }
+    .inventory-availability-dot.is-green,
+    .inventory-availability-dot.is-success { background: #22c55e; }
+    .inventory-availability-dot.is-blue,
+    .inventory-availability-dot.is-info { background: #3b82f6; }
     .inventory-availability-dot.is-warning { background: #f59e0b; }
     .inventory-availability-dot.is-danger { background: #ef4444; }
     .inventory-availability-copy {
@@ -2577,10 +2948,17 @@
         grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 10px;
     }
+    .inventory-readiness-grid {
+        align-items: start;
+    }
     .inventory-readiness-card {
+        align-content: start;
         gap: 4px;
         padding: 9px 10px;
         border-radius: 14px;
+    }
+    .inventory-readiness-panel {
+        align-content: start;
     }
     .inventory-readiness-value {
         font-size: 18px;
@@ -2743,12 +3121,16 @@
     }
     .inventory-warehouse-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: start;
         gap: 8px;
     }
     .inventory-warehouse-card {
         gap: 3px;
         align-content: start;
         min-height: 0;
+    }
+    .inventory-warehouse-panel {
+        align-content: start;
     }
     .inventory-warehouse-top {
         display: flex;
@@ -3753,6 +4135,9 @@
         .revenue-center-summary-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
+        .revenue-decision-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
         .sales-pulse-breakdown-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
@@ -3763,13 +4148,21 @@
         .revenue-center-activity-list {
             grid-template-columns: 1fr;
         }
+        .executive-intel-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .executive-intel-grid .executive-micro-card:last-child {
+            grid-column: 1 / -1;
+        }
+        .executive-activity-strip {
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
     }
     @media (max-width: 900px) {
         .control-room-pipeline-track {
             grid-template-columns: repeat(3, minmax(0, 1fr));
         }
         .operations-health-grid,
-        .operations-pipeline-track,
         .inventory-health-grid,
         .inventory-readiness-grid,
         .inventory-warehouse-grid {
@@ -3777,6 +4170,24 @@
         }
         .operations-layout-grid {
             grid-template-columns: 1fr;
+        }
+        .operations-command-grid {
+            grid-template-columns: 1fr;
+        }
+        .activity-control-grid {
+            grid-template-columns: 1fr;
+        }
+        .executive-health-strip {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .executive-intel-grid {
+            grid-template-columns: 1fr;
+        }
+        .executive-intel-grid .executive-micro-card:last-child {
+            grid-column: auto;
+        }
+        .operations-snapshot-strip {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
         }
         .inventory-layout-grid,
         .inventory-donut-shell {
@@ -3822,7 +4233,6 @@
         .control-room-stat-grid,
         .control-room-pipeline-track,
         .operations-health-grid,
-        .operations-pipeline-track,
         .inventory-health-grid,
         .inventory-readiness-grid,
         .inventory-warehouse-grid {
@@ -3832,16 +4242,48 @@
             font-size: 20px;
         }
         .control-room-risk-table,
-        .control-room-workload-table {
+        .control-room-workload-table,
+        .operations-capacity-table-wrap {
             display: block;
             overflow-x: auto;
             white-space: nowrap;
+        }
+        .operations-snapshot-strip {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .activity-control-header,
+        .activity-control-links {
+            justify-content: flex-start;
+        }
+        .activity-control-kpis,
+        .activity-control-queue {
+            grid-template-columns: 1fr;
+        }
+        .executive-health-strip,
+        .executive-activity-strip {
+            grid-template-columns: 1fr;
+        }
+        .executive-performance-row {
+            grid-template-columns: minmax(0, 1fr) auto;
+        }
+        .executive-sparkline {
+            grid-column: 1 / -1;
+            width: 100%;
+        }
+        .activity-control-item {
+            grid-template-columns: auto minmax(0, 1fr);
+        }
+        .activity-control-side {
+            grid-column: 2;
+            justify-items: start;
+            text-align: left;
         }
         .control-room-donut {
             margin: 0 auto;
         }
         .sales-pulse-metrics,
         .revenue-center-summary-grid,
+        .revenue-decision-grid,
         .sales-pulse-breakdown-grid {
             grid-template-columns: 1fr;
         }
@@ -4134,6 +4576,10 @@
         align-self: start;
         height: auto;
     }
+    .sales-pulse-chart-stack {
+        display: grid;
+        gap: 12px;
+    }
     .sales-pulse-card-head {
         display: flex;
         align-items: flex-start;
@@ -4280,6 +4726,95 @@
     }
     .revenue-center-summary-grid .sales-pulse-metric-card {
         min-height: 102px;
+    }
+    .revenue-decision-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr) minmax(0, .9fr) minmax(280px, .9fr);
+        gap: 10px;
+        align-items: stretch;
+    }
+    .revenue-decision-card {
+        display: grid;
+        gap: 8px;
+        min-width: 0;
+        padding: 12px;
+        border-radius: 14px;
+        border: 1px solid rgba(226, 232, 240, 0.92);
+        background: #fff;
+        box-shadow: 0 12px 26px rgba(15, 23, 42, 0.05);
+    }
+    .revenue-decision-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 10px;
+    }
+    .revenue-decision-title {
+        color: var(--ph-color-text);
+        font-size: 13px;
+        font-weight: 900;
+        letter-spacing: -.02em;
+    }
+    .revenue-decision-total {
+        color: var(--ph-color-text);
+        font-size: 18px;
+        font-weight: 900;
+        line-height: 1;
+        white-space: nowrap;
+    }
+    .revenue-composition-bar {
+        display: flex;
+        height: 10px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #eef4fb;
+    }
+    .revenue-composition-bar span {
+        min-width: 4px;
+    }
+    .revenue-composition-bar .is-blue { background: #3b82f6; }
+    .revenue-composition-bar .is-green { background: #22c55e; }
+    .revenue-composition-bar .is-amber { background: #f59e0b; }
+    .revenue-composition-bar .is-violet { background: #7c3aed; }
+    .revenue-decision-list {
+        display: grid;
+        gap: 6px;
+    }
+    .revenue-decision-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: center;
+        color: inherit;
+        text-decoration: none;
+    }
+    .revenue-decision-row span {
+        overflow: hidden;
+        color: #526b90;
+        font-size: 11px;
+        font-weight: 800;
+        line-height: 1.25;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .revenue-decision-row strong {
+        color: var(--ph-color-text);
+        font-size: 12px;
+        font-weight: 900;
+        white-space: nowrap;
+    }
+    .vendor-performance-empty {
+        display: grid;
+        gap: 4px;
+        align-content: center;
+        min-height: 86px;
+        color: #526b90;
+        font-size: 12px;
+        line-height: 1.35;
+    }
+    .vendor-performance-empty strong {
+        color: var(--ph-color-text);
+        font-size: 13px;
     }
     .revenue-center-action-table {
         display: grid;
@@ -4437,6 +4972,9 @@
         font-size: 10px;
         color: var(--ph-color-text);
     }
+    .sales-pulse-status-row strong {
+        text-align: right;
+    }
     .sales-pulse-status-dot {
         width: 10px;
         height: 10px;
@@ -4464,6 +5002,33 @@
         color: var(--ph-color-text);
         font-size: 11px;
         font-weight: 700;
+    }
+    .revenue-protection-meter {
+        margin-top: 10px;
+        display: grid;
+        gap: 6px;
+    }
+    .revenue-protection-meter-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        color: #425c7f;
+        font-size: 10px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+    }
+    .revenue-protection-meter-track {
+        height: 8px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(226, 232, 240, 0.95);
+    }
+    .revenue-protection-meter-track span {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #16a34a, #60a5fa);
     }
     .sales-pulse-table {
         display: grid;
@@ -6118,8 +6683,17 @@
             <div class="control-room-card-header">
                 <div>
                     <h2 class="control-room-card-title">Executive Command Center</h2>
-                    <p class="control-room-card-copy">Only the four top KPIs, one compact revenue block, one rental pipeline, and one priority queue.</p>
+                    <p class="control-room-card-copy">Top KPIs plus compact business health, communication pressure, forecast, and performance signals.</p>
                 </div>
+            </div>
+
+            <div class="executive-health-strip">
+                @foreach($executiveBusinessHealthRows as $row)
+                    <div class="executive-health-chip {{ $toneCardClass($row['tone'] ?? null) }}" title="{{ $row['tooltip'] ?? '' }}">
+                        <span>{{ $row['label'] }}</span>
+                        <strong>{{ $row['value'] }}</strong>
+                    </div>
+                @endforeach
             </div>
 
             <div class="control-room-priority-grid">
@@ -6148,129 +6722,64 @@
                 @endforeach
             </div>
 
-            <div class="executive-command-grid">
-                <section class="control-room-card executive-command-mini">
-                    <div class="control-room-card-header">
-                        <div>
-                            <h3 class="control-room-card-title">Revenue Protection</h3>
-                            <p class="control-room-card-copy">Outstanding exposure, month collections, and overdue invoices only.</p>
-                        </div>
-                        @if($canViewFinance && $invoiceIndexUrl)
-                            <a href="{{ $mergeDashboardQuery('invoices.index', ['status' => 'open']) }}" class="control-room-card-link">View Dues</a>
-                        @endif
-                    </div>
-                    @if($canViewFinance)
-                        <div class="executive-mini-summary">
-                            <div class="executive-mini-grid">
-                                @foreach($revenueProtectionMiniRows as $row)
-                                    <div class="executive-mini-row">
-                                        <div class="executive-mini-row-top">
-                                            <span class="executive-mini-label">{{ $row['label'] }}</span>
-                                            <span class="control-room-priority-badge {{ $toneCardClass($row['tone'] ?? null) }}">{{ ucfirst($row['tone']) }}</span>
-                                        </div>
-                                        <strong class="executive-mini-value">{{ $row['value'] }}</strong>
-                                        <p class="executive-mini-note">{{ $row['note'] }}</p>
-                                    </div>
-                                @endforeach
-                            </div>
-                            <div class="executive-mini-meter">
-                                <span style="width: {{ min(100, round(($paymentsReceivedThisMonthAmount / max($paymentsReceivedThisMonthAmount + $outstandingDueAmountValue, 1)) * 100)) }}%;"></span>
-                            </div>
-                        </div>
-                    @else
-                        <div class="rx-empty dashboard-empty">
-                            <div class="rx-empty-icon">{!! $dashboardIcon('payment') !!}</div>
-                            <strong>Finance access required</strong>
-                            <span>Revenue protection appears here for roles with finance access.</span>
-                        </div>
-                    @endif
-                </section>
-
-                <section class="control-room-card executive-command-mini">
-                    <div class="control-room-card-header">
-                        <div>
-                            <h3 class="control-room-card-title">Rental Operations Pipeline</h3>
-                            <p class="control-room-card-copy">Created, assigned, dispatched, active, due back, and completed.</p>
-                        </div>
-                        <a href="{{ $rentalIndexUrl ?? '#' }}" class="control-room-card-link">View Pipeline</a>
-                    </div>
-                    <div class="control-room-pipeline-track">
-                        @foreach($pipelineStages as $stage)
-                            @php
-                                $stageIcon = match ($stage['label']) {
-                                    'Created' => 'tasks',
-                                    'Assigned' => 'customer',
-                                    'Out for Delivery' => 'delivery',
-                                    'Active Rental' => 'rental',
-                                    'Return Due' => 'pickup',
-                                    'Completed' => 'completed',
-                                    default => 'trend',
-                                };
-                            @endphp
-                            <div class="control-room-pipeline-stage {{ $toneCardClass($stage['tone'] ?? null) }}">
-                                <span class="control-room-pipeline-stage-icon">{!! $dashboardIcon($stageIcon) !!}</span>
-                                <strong class="control-room-pipeline-stage-label">{{ $stage['label'] }}</strong>
-                                <span class="control-room-pipeline-stage-value">{{ number_format((int) ($stage['value'] ?? 0)) }}</span>
+            <div class="executive-intel-grid">
+                <div class="executive-micro-card">
+                    <span class="executive-micro-label">Communication Pulse</span>
+                    <div class="executive-micro-list">
+                        @foreach($executiveCommunicationPulseRows as $row)
+                            <div class="executive-micro-row {{ $toneCardClass($row['tone'] ?? null) }}">
+                                <span>{{ $row['label'] }}</span>
+                                <strong>{{ number_format((int) $row['value']) }}</strong>
                             </div>
                         @endforeach
                     </div>
-                    <div class="executive-mini-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
-                        @foreach($rentalPipelineSummary as $summary)
-                            <div class="executive-mini-row">
-                                <span class="executive-mini-label">{{ $summary['label'] }}</span>
-                                <strong class="executive-mini-value">{{ $summary['value'] }}</strong>
-                                <p class="executive-mini-note">{{ $summary['note'] }}</p>
+                </div>
+
+                <div class="executive-micro-card">
+                    <span class="executive-micro-label">Next 7 Days Forecast</span>
+                    <div class="executive-micro-list">
+                        @foreach($executiveForecastRows as $row)
+                            <div class="executive-micro-row {{ $toneCardClass($row['tone'] ?? null) }}">
+                                <span>{{ $row['label'] }}</span>
+                                <strong>{{ number_format((int) $row['value']) }}</strong>
                             </div>
                         @endforeach
                     </div>
-                </section>
+                </div>
 
-                <section class="control-room-card executive-queue">
-                    <div class="control-room-card-header">
-                        <div>
-                            <h3 class="control-room-card-title">Top Priority Queue</h3>
-                            <p class="control-room-card-copy">Maximum 8–10 urgent items pulled from invoices, renewals, tasks, pickups, and follow-ups.</p>
-                        </div>
+                <div class="executive-micro-card">
+                    <span class="executive-micro-label">Business Performance</span>
+                    <div class="executive-performance-list">
+                        @foreach($executivePerformanceRows as $row)
+                            <div class="executive-performance-row">
+                                <span>{{ $row['label'] }}</span>
+                                <strong>{{ $row['value'] }}</strong>
+                                @if(!empty($row['points']))
+                                    <svg class="executive-sparkline is-{{ $row['tone'] ?? 'blue' }}" viewBox="0 0 96 26" role="img" aria-label="{{ $row['label'] }} mini trend">
+                                        <polyline points="{{ $row['points'] }}"></polyline>
+                                    </svg>
+                                @endif
+                            </div>
+                        @endforeach
                     </div>
-                    @if($topPriorityQueueRows->isNotEmpty())
-                        <div class="executive-queue-list">
-                            @foreach($topPriorityQueueRows->take(6) as $row)
-                                <div class="executive-queue-item">
-                                    <span class="executive-queue-pill {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['priority'] }}</span>
-                                    <div class="executive-queue-copy">
-                                        <strong>{{ $row['title'] }}</strong>
-                                        <span>{{ $row['owner'] }} · {{ $row['status'] }}</span>
-                                    </div>
-                                    <a href="{{ $row['href'] }}" class="executive-queue-link">{{ $row['action'] }}</a>
-                                </div>
-                            @endforeach
-                            @if($topPriorityQueueRows->count() > 6)
-                                <details class="dashboard-expandable">
-                                    <summary class="dashboard-expandable-summary">Show {{ $topPriorityQueueRows->count() - 6 }} more</summary>
-                                    <div class="dashboard-expandable-content">
-                                        @foreach($topPriorityQueueRows->slice(6) as $row)
-                                            <div class="executive-queue-item">
-                                                <span class="executive-queue-pill {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['priority'] }}</span>
-                                                <div class="executive-queue-copy">
-                                                    <strong>{{ $row['title'] }}</strong>
-                                                    <span>{{ $row['owner'] }} · {{ $row['status'] }}</span>
-                                                </div>
-                                                <a href="{{ $row['href'] }}" class="executive-queue-link">{{ $row['action'] }}</a>
-                                            </div>
-                                        @endforeach
-                                    </div>
-                                </details>
-                            @endif
-                        </div>
-                    @else
-                        <div class="rx-empty dashboard-empty">
-                            <div class="rx-empty-icon">{!! $dashboardIcon('tasks') !!}</div>
-                            <strong>No urgent queue</strong>
-                            <span>High-priority items will surface here automatically.</span>
-                        </div>
-                    @endif
-                </section>
+                </div>
             </div>
+
+            @if($executiveRecentActivityRows->isNotEmpty())
+                <div class="executive-footer-activity">
+                    <span class="executive-micro-label">Recent Activity</span>
+                    <div class="executive-activity-strip">
+                        @foreach($executiveRecentActivityRows as $item)
+                            @php $activityTag = !empty($item['href']) ? 'a' : 'div'; @endphp
+                            <{{ $activityTag }} @if(!empty($item['href'])) href="{{ $item['href'] }}" @endif class="executive-activity-item {{ $toneCardClass($item['tone'] ?? null) }}">
+                                <strong>{{ $item['title'] }}</strong>
+                                <span>{{ $item['type'] }} / {{ $item['time'] }}</span>
+                            </{{ $activityTag }}>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+
         </section>
 
         <div class="dashboard-center-groups">
@@ -6978,123 +7487,151 @@
                     <section class="control-room-card operations-pipeline-wrap">
                         <div class="control-room-card-header">
                             <div>
-                                <h3 class="control-room-card-title">Operations Pipeline</h3>
-                                <p class="control-room-card-copy">Created, assigned, delivery movement, active rentals, pickup due, and completed closure in one view.</p>
+                                <h3 class="control-room-card-title">Rental Operations Pipeline</h3>
+                                <p class="control-room-card-copy">Created, assigned, dispatched, active, due back, and completed.</p>
                             </div>
-                            <a href="{{ $rentalIndexUrl ?? '#' }}" class="control-room-card-link">View Detailed Operations Analytics</a>
+                            <a href="{{ $rentalIndexUrl ?? '#' }}" class="control-room-card-link">View Pipeline</a>
                         </div>
-                        <div class="operations-pipeline-track">
-                            @foreach($operationsPipelineStages as $stage)
-                                <div class="operations-pipeline-stage {{ $toneCardClass($stage['tone'] ?? null) }}">
-                                    <span class="operations-pipeline-stage-icon">{!! $dashboardIcon($stage['icon']) !!}</span>
-                                    <span class="operations-pipeline-stage-label">{{ $stage['label'] }}</span>
-                                    <strong class="operations-pipeline-stage-value">{{ number_format((int) ($stage['value'] ?? 0)) }}</strong>
+                        <div class="control-room-pipeline-track">
+                            @foreach($pipelineStages as $stage)
+                                @php
+                                    $stageIcon = match ($stage['label']) {
+                                        'Created' => 'tasks',
+                                        'Assigned' => 'customer',
+                                        'Out for Delivery' => 'delivery',
+                                        'Active Rental' => 'rental',
+                                        'Return Due' => 'pickup',
+                                        'Completed' => 'completed',
+                                        default => 'trend',
+                                    };
+                                @endphp
+                                <div class="control-room-pipeline-stage {{ $toneCardClass($stage['tone'] ?? null) }}">
+                                    <span class="control-room-pipeline-stage-icon">{!! $dashboardIcon($stageIcon) !!}</span>
+                                    <strong class="control-room-pipeline-stage-label">{{ $stage['label'] }}</strong>
+                                    <span class="control-room-pipeline-stage-value">{{ number_format((int) ($stage['value'] ?? 0)) }}</span>
+                                </div>
+                            @endforeach
+                        </div>
+                        <div class="executive-mini-grid" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+                            @foreach($rentalPipelineSummary as $summary)
+                                <div class="executive-mini-row">
+                                    <span class="executive-mini-label">{{ $summary['label'] }}</span>
+                                    <strong class="executive-mini-value">{{ $summary['value'] }}</strong>
+                                    <p class="executive-mini-note">{{ $summary['note'] }}</p>
                                 </div>
                             @endforeach
                         </div>
                     </section>
 
-                    <section class="control-room-card">
+                    <section class="control-room-card executive-queue">
                         <div class="control-room-card-header">
                             <div>
-                                <h3 class="control-room-card-title">Operations Action Queue</h3>
-                                <p class="control-room-card-copy">Maximum 10 items that need direct action across deliveries, pickups, renewals, follow-ups, and vendor-linked field work.</p>
+                                <h3 class="control-room-card-title">Top Priority Queue</h3>
+                                <p class="control-room-card-copy">Urgent invoices, renewals, tasks, pickups, and follow-ups requiring action.</p>
                             </div>
                         </div>
-                        @if($operationsActionQueueRows->isNotEmpty())
-                            <table class="operations-queue-table">
-                                <thead>
-                                    <tr>
-                                        <th>Priority</th>
-                                        <th>Item</th>
-                                        <th>Owner</th>
-                                        <th>Due</th>
-                                        <th>Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach($operationsActionQueueRows as $row)
-                                        <tr>
-                                            <td><span class="rx-badge {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['priority'] }}</span></td>
-                                            <td>
-                                                <span class="operations-queue-title">{{ $row['item'] }}</span>
-                                                <span class="operations-queue-type">{{ $row['type'] }}</span>
-                                            </td>
-                                            <td>{{ $row['owner'] }}</td>
-                                            <td>{{ $row['due'] }}</td>
-                                            <td><a href="{{ $row['href'] }}" class="operations-queue-action">{{ $row['action'] }}</a></td>
-                                        </tr>
-                                    @endforeach
-                                </tbody>
-                            </table>
+                        @if($topPriorityQueueRows->isNotEmpty())
+                            <div class="executive-queue-list">
+                                @foreach($topPriorityQueueRows->take(6) as $row)
+                                    <div class="executive-queue-item">
+                                        <span class="executive-queue-pill {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['priority'] }}</span>
+                                        <div class="executive-queue-copy">
+                                            <strong>{{ $row['title'] }}</strong>
+                                            <span>{{ $row['owner'] }} · {{ $row['status'] }}</span>
+                                        </div>
+                                        <a href="{{ $row['href'] }}" class="executive-queue-link">{{ $row['action'] }}</a>
+                                    </div>
+                                @endforeach
+                                @if($topPriorityQueueRows->count() > 6)
+                                    <details class="dashboard-expandable">
+                                        <summary class="dashboard-expandable-summary">Show {{ $topPriorityQueueRows->count() - 6 }} more</summary>
+                                        <div class="dashboard-expandable-content">
+                                            @foreach($topPriorityQueueRows->slice(6) as $row)
+                                                <div class="executive-queue-item">
+                                                    <span class="executive-queue-pill {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['priority'] }}</span>
+                                                    <div class="executive-queue-copy">
+                                                        <strong>{{ $row['title'] }}</strong>
+                                                        <span>{{ $row['owner'] }} · {{ $row['status'] }}</span>
+                                                    </div>
+                                                    <a href="{{ $row['href'] }}" class="executive-queue-link">{{ $row['action'] }}</a>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </details>
+                                @endif
+                            </div>
                         @else
                             <div class="rx-empty dashboard-empty">
                                 <div class="rx-empty-icon">{!! $dashboardIcon('tasks') !!}</div>
-                                <strong>No urgent operations queue</strong>
-                                <span>Deliveries, pickups, renewals, and follow-ups are currently under control.</span>
+                                <strong>No urgent queue</strong>
+                                <span>High-priority items will surface here automatically.</span>
                             </div>
                         @endif
                     </section>
                 </div>
 
                 <div class="operations-layout-grid">
-                    <section class="control-room-card">
+                    <section class="control-room-card operations-command-panel">
                         <div class="control-room-card-header">
                             <div>
-                                <h3 class="control-room-card-title">Team Capacity</h3>
-                                <p class="control-room-card-copy">Compact workload view across Delivery, Operations, Sales, and Service teams.</p>
+                                <h3 class="control-room-card-title">Operations Command Panel</h3>
+                                <p class="control-room-card-copy">Team workload and same-day operations in a compact control view.</p>
                             </div>
                         </div>
-                        <div class="operations-capacity-grid">
-                            @foreach($teamCapacityRows as $row)
-                                @php
-                                    $capacityTotal = max(1, (int) $row['deliveries'] + (int) $row['pickups'] + (int) $row['followups'] + (int) $row['tasks']);
-                                    $capacityUsed = (int) $row['deliveries'] + (int) $row['pickups'] + (int) $row['followups'];
-                                @endphp
-                                <div class="operations-capacity-item {{ $toneCardClass($row['tone'] ?? null) }}">
-                                    <div class="operations-capacity-top">
-                                        <strong class="operations-capacity-title">{{ $row['label'] }}</strong>
-                                        <span class="rx-badge {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['status'] }}</span>
-                                    </div>
-                                    <div class="operations-capacity-meta">
-                                        <span><strong>{{ $row['deliveries'] }}</strong> deliveries</span>
-                                        <span><strong>{{ $row['pickups'] }}</strong> pickups</span>
-                                        <span><strong>{{ $row['followups'] }}</strong> follow-ups</span>
-                                        <span><strong>{{ $row['tasks'] }}</strong> tasks</span>
-                                    </div>
-                                    <div class="operations-capacity-meter">
-                                        <span style="width: {{ max(10, min(100, round(($capacityUsed / $capacityTotal) * 100))) }}%;"></span>
-                                    </div>
+                        <div class="operations-command-grid">
+                            <div class="operations-command-block">
+                                <span class="operations-command-label">Team Capacity</span>
+                                <div class="operations-capacity-table-wrap">
+                                    <table class="operations-capacity-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Team</th>
+                                                <th>Deliveries</th>
+                                                <th>Pickups</th>
+                                                <th>Follow-ups</th>
+                                                <th>Tasks</th>
+                                                <th>Status</th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach($teamCapacityRows as $row)
+                                                <tr>
+                                                    <td class="operations-capacity-team">{{ $row['label'] }}</td>
+                                                    <td><span class="operations-capacity-count">{{ number_format((int) $row['deliveries']) }}</span></td>
+                                                    <td><span class="operations-capacity-count">{{ number_format((int) $row['pickups']) }}</span></td>
+                                                    <td><span class="operations-capacity-count">{{ number_format((int) $row['followups']) }}</span></td>
+                                                    <td><span class="operations-capacity-count">{{ number_format((int) $row['tasks']) }}</span></td>
+                                                    <td><span class="rx-badge {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['status'] }}</span></td>
+                                                    <td>
+                                                        @if($deliveriesIndexUrl)
+                                                            <a href="{{ $deliveriesIndexUrl }}" class="operations-command-action">Open</a>
+                                                        @else
+                                                            <span class="operations-command-action">Review</span>
+                                                        @endif
+                                                    </td>
+                                                </tr>
+                                            @endforeach
+                                        </tbody>
+                                    </table>
                                 </div>
-                            @endforeach
-                        </div>
-                    </section>
+                            </div>
 
-                    <section class="control-room-card">
-                        <div class="control-room-card-header">
-                            <div>
-                                <h3 class="control-room-card-title">Today’s Operations Snapshot</h3>
-                                <p class="control-room-card-copy">A same-day strip for deliveries, pickups, renewals, and service visits.</p>
-                            </div>
-                        </div>
-                        <div class="operations-snapshot-grid">
-                            @foreach($operationsSnapshotRows as $row)
-                                @php
-                                    $snapshotValue = (int) str_replace(',', '', (string) $row['value']);
-                                    $snapshotFill = max(10, min(100, $snapshotValue > 0 ? ($snapshotValue * 10) : 10));
-                                @endphp
-                                <div class="operations-snapshot-card {{ $toneCardClass($row['tone'] ?? null) }}">
-                                    <div class="operations-snapshot-head">
-                                        <span class="operations-snapshot-label">{{ $row['label'] }}</span>
-                                        <span class="rx-badge {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['value'] }}</span>
-                                    </div>
-                                    <strong class="operations-snapshot-value">{{ $row['value'] }}</strong>
-                                    <span class="operations-snapshot-note">{{ $row['note'] }}</span>
-                                    <div class="operations-snapshot-meter">
-                                        <span style="width: {{ $snapshotFill }}%;"></span>
-                                    </div>
+                            <div class="operations-command-block">
+                                <span class="operations-command-label">Today’s Operations Snapshot</span>
+                                <div class="operations-snapshot-strip">
+                                    @foreach($operationsSnapshotRows as $row)
+                                        <div class="operations-snapshot-card {{ $toneCardClass($row['tone'] ?? null) }}">
+                                            <div class="operations-snapshot-head">
+                                                <span class="operations-snapshot-label">{{ $row['label'] }}</span>
+                                                <span class="rx-badge {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['value'] }}</span>
+                                            </div>
+                                            <strong class="operations-snapshot-value">{{ $row['value'] }}</strong>
+                                            <span class="operations-snapshot-note">{{ $row['note'] }}</span>
+                                        </div>
+                                    @endforeach
                                 </div>
-                            @endforeach
+                            </div>
                         </div>
                     </section>
                 </div>
@@ -7220,6 +7757,7 @@
                             </div>
                         </section>
 
+    @if(false)
     <section class="rx-card" id="today-widgets">
         <div class="rx-card-header dashboard-section-heading">
             <div>
@@ -7568,6 +8106,8 @@
         </div>
     </section>
 
+    @endif
+
     @if($showFinanceSection || $showSalesOperationsSection)
         <section class="rx-card" id="sales-pulse-panel">
             @php
@@ -7585,6 +8125,23 @@
                 })->values();
                 $revenueCenterCollectedPercent = (int) ($revenueCenterSegments[0]['percent'] ?? 0);
                 $revenueCenterOutstandingPercent = (int) ($revenueCenterSegments[1]['percent'] ?? 0);
+                $revenueProtectionRows = collect([
+                    ['label' => 'Outstanding', 'value' => $outstandingDueAmountValue, 'display' => $currency($outstandingDueAmountValue), 'tone' => 'amber'],
+                    ['label' => 'Collected This Month', 'value' => $paymentsReceivedThisMonthAmount, 'display' => $currency($paymentsReceivedThisMonthAmount), 'tone' => 'green'],
+                    ['label' => 'Overdue Invoices', 'value' => $overdueInvoiceCountValue, 'display' => number_format($overdueInvoiceCountValue) . ' invoice(s)', 'tone' => $overdueInvoiceCountValue > 0 ? 'red' : 'green'],
+                    ['label' => 'Unbilled', 'value' => $revenueCenterUnbilledTotal, 'display' => $currency($revenueCenterUnbilledTotal), 'tone' => 'red'],
+                ]);
+                $revenueProtectionTotal = max($paymentsReceivedThisMonthAmount + $outstandingDueAmountValue, 1);
+                $revenueProtectionCollectionPercent = round(($paymentsReceivedThisMonthAmount / $revenueProtectionTotal) * 100);
+                $businessTrendValuesRental = $monthlyTrendRows->pluck('rental_total')->map(fn ($value) => (float) $value)->all();
+                $businessTrendValuesSales = $monthlyTrendRows->pluck('sales_total')->map(fn ($value) => (float) $value)->all();
+                $businessTrendValuesOrders = $monthlyTrendRows->pluck('total_orders')->map(fn ($value) => (float) $value)->all();
+                $businessTrendWidth = 560;
+                $businessTrendHeight = 156;
+                $businessTrendRentalPoints = $buildChartPolyline($businessTrendValuesRental, $businessTrendWidth, $businessTrendHeight, 18);
+                $businessTrendSalesPoints = $buildChartPolyline($businessTrendValuesSales, $businessTrendWidth, $businessTrendHeight, 18);
+                $businessTrendOrdersMax = max(array_merge([1], $businessTrendValuesOrders));
+                $businessTrendHasData = $monthlyTrendRows->contains(fn ($row) => ((float) ($row['rental_total'] ?? 0)) > 0 || ((float) ($row['sales_total'] ?? 0)) > 0 || ((float) ($row['total_orders'] ?? 0)) > 0);
                 $revenueCenterTopActions = $revenueCenterActionRows->take(8)->values();
                 $revenueCenterAgingMax = max(array_merge([1], $invoiceAgingBuckets->pluck('amount')->map(fn ($value) => (float) $value)->all()));
             @endphp
@@ -7615,99 +8172,231 @@
                     </div>
                 </div>
                 <div class="rx-card-body">
-                    <div class="revenue-center-summary-grid">
-                        @foreach($revenueCenterSummaryCards as $card)
-                            @php $tag = !empty($card['href']) ? 'a' : 'div'; @endphp
-                            <{{ $tag }} @if(!empty($card['href'])) href="{{ $card['href'] }}" @endif class="sales-pulse-metric-card {{ $toneCardClass($card['tone'] ?? null) }}">
-                                <div class="sales-pulse-metric-head">
-                                    <span class="sales-pulse-metric-label">{{ $card['label'] }}</span>
-                                    <span class="sales-pulse-metric-icon">{!! $dashboardIcon($card['icon']) !!}</span>
+                    <div class="revenue-decision-grid">
+                        <div class="revenue-decision-card">
+                            <div class="revenue-decision-head">
+                                <span class="revenue-decision-title">Revenue Mix</span>
+                                <strong class="revenue-decision-total">{{ $compactCurrency($revenueMixTotal) }}</strong>
+                            </div>
+                            <div class="revenue-composition-bar" aria-label="Revenue mix composition">
+                                @foreach($revenueMixRows as $row)
+                                    <span class="is-{{ $row['tone'] }}" style="width: {{ max((float) ($row['percent'] ?? 0), $revenueMixTotal > 0 ? 4 : 0) }}%;" title="{{ $row['label'] }}: {{ $row['display'] }}"></span>
+                                @endforeach
+                            </div>
+                            <div class="revenue-decision-list">
+                                @foreach($revenueMixRows as $row)
+                                    @php $mixTag = !empty($row['href']) ? 'a' : 'div'; @endphp
+                                    <{{ $mixTag }} @if(!empty($row['href'])) href="{{ $row['href'] }}" @endif class="revenue-decision-row">
+                                        <span>{{ $row['label'] }}</span>
+                                        <strong>{{ $row['display'] }}</strong>
+                                    </{{ $mixTag }}>
+                                @endforeach
+                            </div>
+                        </div>
+
+                        <div class="revenue-decision-card">
+                            <div class="revenue-decision-head">
+                                <span class="revenue-decision-title">Cash Position</span>
+                                <strong class="revenue-decision-total">{{ $salesPulseCollectionEfficiency }}%</strong>
+                            </div>
+                            <div class="revenue-decision-list">
+                                @foreach($cashPositionRows as $row)
+                                    @php $cashTag = !empty($row['href']) ? 'a' : 'div'; @endphp
+                                    <{{ $cashTag }} @if(!empty($row['href'])) href="{{ $row['href'] }}" @endif class="revenue-decision-row {{ $toneCardClass($row['tone'] ?? null) }}">
+                                        <span>{{ $row['label'] }}</span>
+                                        <strong>{{ $row['display'] }}</strong>
+                                    </{{ $cashTag }}>
+                                @endforeach
+                            </div>
+                        </div>
+
+                        <div class="revenue-decision-card">
+                            <div class="revenue-decision-head">
+                                <span class="revenue-decision-title">Invoice Health</span>
+                                <strong class="revenue-decision-total">{{ number_format($overdueInvoiceCountValue) }}</strong>
+                            </div>
+                            <div class="revenue-decision-list">
+                                @foreach($invoiceHealthRows as $row)
+                                    @php $invoiceTag = !empty($row['href']) ? 'a' : 'div'; @endphp
+                                    <{{ $invoiceTag }} @if(!empty($row['href'])) href="{{ $row['href'] }}" @endif class="revenue-decision-row {{ $toneCardClass($row['tone'] ?? null) }}">
+                                        <span>{{ $row['label'] }}</span>
+                                        <strong>{{ $row['display'] }}</strong>
+                                    </{{ $invoiceTag }}>
+                                @endforeach
+                            </div>
+                        </div>
+
+                        <div class="revenue-decision-card">
+                            <div class="revenue-decision-head">
+                                <span class="revenue-decision-title">Vendor Performance</span>
+                                @if($safeRoute('vendor-orders.index'))
+                                    <a href="{{ $safeRoute('vendor-orders.index') }}" class="sales-pulse-card-link">Open</a>
+                                @endif
+                            </div>
+                            @if((bool) $vendorPerformance->get('available', false))
+                                <div class="revenue-decision-list">
+                                    @foreach($vendorPerformanceRows as $row)
+                                        <div class="revenue-decision-row {{ $toneCardClass($row['tone'] ?? null) }}">
+                                            <span>{{ $row['label'] }}</span>
+                                            <strong>{{ $row['display'] }}</strong>
+                                        </div>
+                                    @endforeach
+                                    <div class="revenue-decision-row">
+                                        <span>Top Vendor by Revenue</span>
+                                        <strong>{{ $vendorPerformance->get('top_vendor_name') ?: 'Unassigned' }} / {{ $compactCurrency((float) $vendorPerformance->get('top_vendor_revenue', 0)) }}</strong>
+                                    </div>
                                 </div>
-                                <div class="sales-pulse-metric-value">{{ $card['value'] }}</div>
-                                <div class="sales-pulse-metric-subtitle">{{ $card['subtitle'] }}</div>
-                                <div class="sales-pulse-metric-note">{{ $card['note'] }}</div>
-                            </{{ $tag }}>
-                        @endforeach
+                            @else
+                                <div class="vendor-performance-empty">
+                                    <strong>No vendor performance data</strong>
+                                    <span>{{ $vendorPerformance->get('message') ?: 'Vendor revenue, cost, and margin will appear when vendor-supplied orders match the current filters.' }}</span>
+                                </div>
+                            @endif
+                        </div>
                     </div>
 
                     <div class="sales-pulse-analytics">
-                        <div class="sales-pulse-chart-card">
-                            <div class="sales-pulse-card-head">
-                                <div>
-                                    <div class="sales-pulse-card-title">Sales vs Collections Trend</div>
-                                    <div class="sales-pulse-card-copy">Monthly invoiced value, collected value, and still-outstanding exposure from the existing dashboard feed.</div>
-                                    <span class="sr-only">Cash &amp; Collections Overview</span>
-                                </div>
-                                <span class="sales-pulse-chip">Monthly</span>
-                            </div>
-                            <div class="sales-pulse-legend">
-                                <span class="sales-pulse-legend-item"><span class="sales-pulse-legend-swatch is-sales"></span>Invoiced Value</span>
-                                <span class="sales-pulse-legend-item"><span class="sales-pulse-legend-swatch is-rental"></span>Collected Value</span>
-                                <span class="sales-pulse-legend-item"><span class="sales-pulse-legend-swatch is-orders"></span>Outstanding Value</span>
-                            </div>
-                            <div class="sales-pulse-chart-shell">
-                                @if($revenueTrendHasData)
-                                    <svg class="sales-pulse-chart-svg" viewBox="0 0 560 184" role="img" aria-label="Revenue center trend">
-                                        <line class="sales-pulse-chart-grid" x1="22" y1="20" x2="538" y2="20"></line>
-                                        <line class="sales-pulse-chart-grid" x1="22" y1="88" x2="538" y2="88"></line>
-                                        <line class="sales-pulse-chart-grid" x1="22" y1="156" x2="538" y2="156"></line>
-                                        @foreach($revenueTrendRows as $index => $row)
-                                            @php
-                                                $x = 22 + (($revenueTrendChartWidth - 44) * ($index / max($revenueTrendRows->count() - 1, 1)));
-                                                $barHeight = (((float) ($row['outstanding_total'] ?? 0)) / max($revenueTrendMax, 1)) * 72;
-                                                $salesY = ($revenueTrendChartHeight - 22) - ((((float) ($row['sales_total'] ?? 0)) / max($revenueTrendMax, 1)) * ($revenueTrendChartHeight - 44));
-                                                $collectionsY = ($revenueTrendChartHeight - 22) - ((((float) ($row['collected_total'] ?? 0)) / max($revenueTrendMax, 1)) * ($revenueTrendChartHeight - 44));
-                                            @endphp
-                                            <rect class="sales-pulse-chart-bar" x="{{ round($x - 13, 2) }}" y="{{ round(156 - $barHeight, 2) }}" width="26" height="{{ round($barHeight, 2) }}" rx="8"></rect>
-                                            <text class="sales-pulse-chart-value" x="{{ round($x, 2) }}" y="{{ round(max($salesY - 10, 14), 2) }}" text-anchor="middle">{{ $compactCurrency($row['sales_total'] ?? 0) }}</text>
-                                            <text class="sales-pulse-chart-axis is-value" x="{{ round($x, 2) }}" y="{{ round(max($collectionsY - 8, 24), 2) }}" text-anchor="middle">{{ $compactCurrency($row['collected_total'] ?? 0) }}</text>
-                                            <text class="sales-pulse-chart-axis" x="{{ round($x, 2) }}" y="174" text-anchor="middle">{{ \Illuminate\Support\Str::replace(' 2026', '', $row['label'] ?? '-') }}</text>
-                                        @endforeach
-                                        <polyline class="sales-pulse-chart-line-sales" points="{{ $revenueTrendSalesPoints }}"></polyline>
-                                        <polyline class="sales-pulse-chart-line-rental" points="{{ $revenueTrendCollectionsPoints }}"></polyline>
-                                        @foreach($revenueTrendRows as $index => $row)
-                                            @php
-                                                $x = 22 + (($revenueTrendChartWidth - 44) * ($index / max($revenueTrendRows->count() - 1, 1)));
-                                                $salesY = ($revenueTrendChartHeight - 22) - ((((float) ($row['sales_total'] ?? 0)) / max($revenueTrendMax, 1)) * ($revenueTrendChartHeight - 44));
-                                                $collectionsY = ($revenueTrendChartHeight - 22) - ((((float) ($row['collected_total'] ?? 0)) / max($revenueTrendMax, 1)) * ($revenueTrendChartHeight - 44));
-                                            @endphp
-                                            <circle class="sales-pulse-chart-dot-sales" cx="{{ round($x, 2) }}" cy="{{ round($salesY, 2) }}" r="3.6"></circle>
-                                            <circle class="sales-pulse-chart-dot-rental" cx="{{ round($x, 2) }}" cy="{{ round($collectionsY, 2) }}" r="3.1"></circle>
-                                        @endforeach
-                                    </svg>
-                                @else
-                                    <div class="rx-empty dashboard-empty">
-                                        <div class="rx-empty-icon">{!! $dashboardIcon('trend') !!}</div>
-                                        <strong>No revenue trend data yet</strong>
-                                        <span>The dashboard will show the sales versus collections curve once revenue data exists in the selected window.</span>
+                        <div class="sales-pulse-chart-stack">
+                            <div class="sales-pulse-chart-card">
+                                <div class="sales-pulse-card-head">
+                                    <div>
+                                        <div class="sales-pulse-card-title">Sales vs Collections Trend</div>
+                                        <div class="sales-pulse-card-copy">Monthly invoiced value, collected value, and still-outstanding exposure from the existing dashboard feed.</div>
+                                        <span class="sr-only">Cash &amp; Collections Overview</span>
                                     </div>
-                                @endif
+                                    <span class="sales-pulse-chip">Monthly</span>
+                                </div>
+                                <div class="sales-pulse-legend">
+                                    <span class="sales-pulse-legend-item"><span class="sales-pulse-legend-swatch is-sales"></span>Invoiced Value</span>
+                                    <span class="sales-pulse-legend-item"><span class="sales-pulse-legend-swatch is-rental"></span>Collected Value</span>
+                                    <span class="sales-pulse-legend-item"><span class="sales-pulse-legend-swatch is-orders"></span>Outstanding Value</span>
+                                </div>
+                                <div class="sales-pulse-chart-shell">
+                                    @if($revenueTrendHasData)
+                                        <svg class="sales-pulse-chart-svg" viewBox="0 0 560 184" role="img" aria-label="Revenue center trend">
+                                            <line class="sales-pulse-chart-grid" x1="22" y1="20" x2="538" y2="20"></line>
+                                            <line class="sales-pulse-chart-grid" x1="22" y1="88" x2="538" y2="88"></line>
+                                            <line class="sales-pulse-chart-grid" x1="22" y1="156" x2="538" y2="156"></line>
+                                            @foreach($revenueTrendRows as $index => $row)
+                                                @php
+                                                    $x = 22 + (($revenueTrendChartWidth - 44) * ($index / max($revenueTrendRows->count() - 1, 1)));
+                                                    $barHeight = (((float) ($row['outstanding_total'] ?? 0)) / max($revenueTrendMax, 1)) * 72;
+                                                    $salesY = ($revenueTrendChartHeight - 22) - ((((float) ($row['sales_total'] ?? 0)) / max($revenueTrendMax, 1)) * ($revenueTrendChartHeight - 44));
+                                                    $collectionsY = ($revenueTrendChartHeight - 22) - ((((float) ($row['collected_total'] ?? 0)) / max($revenueTrendMax, 1)) * ($revenueTrendChartHeight - 44));
+                                                @endphp
+                                                <rect class="sales-pulse-chart-bar" x="{{ round($x - 13, 2) }}" y="{{ round(156 - $barHeight, 2) }}" width="26" height="{{ round($barHeight, 2) }}" rx="8"></rect>
+                                                <text class="sales-pulse-chart-value" x="{{ round($x, 2) }}" y="{{ round(max($salesY - 10, 14), 2) }}" text-anchor="middle">{{ $compactCurrency($row['sales_total'] ?? 0) }}</text>
+                                                <text class="sales-pulse-chart-axis is-value" x="{{ round($x, 2) }}" y="{{ round(max($collectionsY - 8, 24), 2) }}" text-anchor="middle">{{ $compactCurrency($row['collected_total'] ?? 0) }}</text>
+                                                <text class="sales-pulse-chart-axis" x="{{ round($x, 2) }}" y="174" text-anchor="middle">{{ \Illuminate\Support\Str::replace(' 2026', '', $row['label'] ?? '-') }}</text>
+                                            @endforeach
+                                            <polyline class="sales-pulse-chart-line-sales" points="{{ $revenueTrendSalesPoints }}"></polyline>
+                                            <polyline class="sales-pulse-chart-line-rental" points="{{ $revenueTrendCollectionsPoints }}"></polyline>
+                                            @foreach($revenueTrendRows as $index => $row)
+                                                @php
+                                                    $x = 22 + (($revenueTrendChartWidth - 44) * ($index / max($revenueTrendRows->count() - 1, 1)));
+                                                    $salesY = ($revenueTrendChartHeight - 22) - ((((float) ($row['sales_total'] ?? 0)) / max($revenueTrendMax, 1)) * ($revenueTrendChartHeight - 44));
+                                                    $collectionsY = ($revenueTrendChartHeight - 22) - ((((float) ($row['collected_total'] ?? 0)) / max($revenueTrendMax, 1)) * ($revenueTrendChartHeight - 44));
+                                                @endphp
+                                                <circle class="sales-pulse-chart-dot-sales" cx="{{ round($x, 2) }}" cy="{{ round($salesY, 2) }}" r="3.6"></circle>
+                                                <circle class="sales-pulse-chart-dot-rental" cx="{{ round($x, 2) }}" cy="{{ round($collectionsY, 2) }}" r="3.1"></circle>
+                                            @endforeach
+                                        </svg>
+                                    @else
+                                        <div class="rx-empty dashboard-empty">
+                                            <div class="rx-empty-icon">{!! $dashboardIcon('trend') !!}</div>
+                                            <strong>No revenue trend data yet</strong>
+                                            <span>The dashboard will show the sales versus collections curve once revenue data exists in the selected window.</span>
+                                        </div>
+                                    @endif
+                                </div>
+                            </div>
+
+                            <div class="sales-pulse-chart-card">
+                                <div class="sales-pulse-card-head">
+                                    <div>
+                                        <div class="sales-pulse-card-title">Business Performance</div>
+                                        <div class="sales-pulse-card-copy">Rental revenue, sales revenue, and total order volume across the monthly trend window.</div>
+                                    </div>
+                                    @if($reportsIndexUrl)
+                                        <a href="{{ $reportsIndexUrl }}" class="sales-pulse-card-link">Open Analytics</a>
+                                    @endif
+                                </div>
+                                <div class="sales-pulse-legend">
+                                    <span class="sales-pulse-legend-item"><span class="sales-pulse-legend-swatch is-rental"></span>Rental Revenue</span>
+                                    <span class="sales-pulse-legend-item"><span class="sales-pulse-legend-swatch is-sales"></span>Sales Revenue</span>
+                                    <span class="sales-pulse-legend-item"><span class="sales-pulse-legend-swatch is-orders"></span>Total Orders</span>
+                                </div>
+                                <div class="sales-pulse-chart-shell">
+                                    @if($businessTrendHasData)
+                                        <svg class="sales-pulse-chart-svg" viewBox="0 0 560 168" role="img" aria-label="Business performance chart">
+                                            <line class="sales-pulse-chart-grid" x1="22" y1="18" x2="538" y2="18"></line>
+                                            <line class="sales-pulse-chart-grid" x1="22" y1="82" x2="538" y2="82"></line>
+                                            <line class="sales-pulse-chart-grid" x1="22" y1="146" x2="538" y2="146"></line>
+                                            @foreach($monthlyTrendRows as $index => $row)
+                                                @php
+                                                    $x = 22 + (($businessTrendWidth - 44) * ($index / max($monthlyTrendRows->count() - 1, 1)));
+                                                    $barHeight = (((float) ($row['total_orders'] ?? 0)) / max($businessTrendOrdersMax, 1)) * 58;
+                                                    $rentalY = ($businessTrendHeight - 18) - ((((float) ($row['rental_total'] ?? 0)) / max($trendMax, 1)) * ($businessTrendHeight - 36));
+                                                    $salesY = ($businessTrendHeight - 18) - ((((float) ($row['sales_total'] ?? 0)) / max($trendMax, 1)) * ($businessTrendHeight - 36));
+                                                @endphp
+                                                <rect class="sales-pulse-chart-bar" x="{{ round($x - 10, 2) }}" y="{{ round(146 - $barHeight, 2) }}" width="20" height="{{ round($barHeight, 2) }}" rx="7"></rect>
+                                                <text class="sales-pulse-chart-axis" x="{{ round($x, 2) }}" y="162" text-anchor="middle">{{ \Illuminate\Support\Str::replace(' 2026', '', $row['label'] ?? '-') }}</text>
+                                            @endforeach
+                                            <polyline class="sales-pulse-chart-line-rental" points="{{ $businessTrendRentalPoints }}"></polyline>
+                                            <polyline class="sales-pulse-chart-line-sales" points="{{ $businessTrendSalesPoints }}"></polyline>
+                                            @foreach($monthlyTrendRows as $index => $row)
+                                                @php
+                                                    $x = 22 + (($businessTrendWidth - 44) * ($index / max($monthlyTrendRows->count() - 1, 1)));
+                                                    $rentalY = ($businessTrendHeight - 18) - ((((float) ($row['rental_total'] ?? 0)) / max($trendMax, 1)) * ($businessTrendHeight - 36));
+                                                    $salesY = ($businessTrendHeight - 18) - ((((float) ($row['sales_total'] ?? 0)) / max($trendMax, 1)) * ($businessTrendHeight - 36));
+                                                @endphp
+                                                <circle class="sales-pulse-chart-dot-rental" cx="{{ round($x, 2) }}" cy="{{ round($rentalY, 2) }}" r="3.2"></circle>
+                                                <circle class="sales-pulse-chart-dot-sales" cx="{{ round($x, 2) }}" cy="{{ round($salesY, 2) }}" r="3.2"></circle>
+                                            @endforeach
+                                        </svg>
+                                    @else
+                                        <div class="rx-empty dashboard-empty">
+                                            <div class="rx-empty-icon">{!! $dashboardIcon('trend') !!}</div>
+                                            <strong>No performance trend yet</strong>
+                                            <span>Rental revenue, sales revenue, and order volume will appear once monthly activity exists.</span>
+                                        </div>
+                                    @endif
+                                </div>
                             </div>
                         </div>
 
                         <div class="sales-pulse-side-card">
                             <div class="sales-pulse-card-head">
                                 <div>
-                                    <div class="sales-pulse-card-title">Collection Status</div>
-                                    <div class="sales-pulse-card-copy">Collected, outstanding, and unbilled exposure as one current revenue mix.</div>
+                                    <div class="sales-pulse-card-title">Revenue Protection Visual</div>
+                                    <div class="sales-pulse-card-copy">Outstanding exposure, month collections, overdue invoices, and collection progress.</div>
                                 </div>
                             </div>
                             @if($revenueCenterTotal > 0)
                                 <div class="sales-pulse-donut-layout">
                                     <div class="sales-pulse-donut" style="--collected-percent: {{ $revenueCenterCollectedPercent }}; --outstanding-percent: {{ $revenueCenterOutstandingPercent }};">
                                         <div class="sales-pulse-donut-center">
-                                            <strong>Revenue Mix</strong>
-                                            <span>{{ $compactCurrency($revenueCenterTotal) }}</span>
+                                            <strong>Collected</strong>
+                                            <span>{{ $revenueProtectionCollectionPercent }}%</span>
                                         </div>
                                     </div>
                                     <div class="sales-pulse-status-list">
-                                        @foreach($revenueCenterSegments as $segment)
+                                        @foreach($revenueProtectionRows as $segment)
                                             <div class="sales-pulse-status-row">
                                                 <span class="sales-pulse-status-dot {{ $toneCardClass($segment['tone'] ?? null) }}"></span>
                                                 <span>{{ $segment['label'] }}</span>
-                                                <strong>{{ $currency($segment['value'] ?? 0) }} ({{ $segment['percent'] }}%)</strong>
+                                                <strong>{{ $segment['display'] }}</strong>
                                             </div>
                                         @endforeach
+                                    </div>
+                                </div>
+                                <div class="revenue-protection-meter">
+                                    <div class="revenue-protection-meter-top">
+                                        <span>Collection Progress</span>
+                                        <strong>{{ $revenueProtectionCollectionPercent }}%</strong>
+                                    </div>
+                                    <div class="revenue-protection-meter-track">
+                                        <span style="width: {{ max(4, min(100, $revenueProtectionCollectionPercent)) }}%;"></span>
                                     </div>
                                 </div>
                             @else
@@ -7932,7 +8621,7 @@
     </section>
     @endif
 
-    @if($renewalMiniTiles->isNotEmpty())
+    @if(false && $renewalMiniTiles->isNotEmpty())
         <section class="rx-card" id="renewal-center-panel">
             <div class="rx-card-header">
                 <div>
@@ -7958,7 +8647,7 @@
         </section>
     @endif
 
-    @if($pickupCenterMiniTiles->isNotEmpty())
+    @if(false && $pickupCenterMiniTiles->isNotEmpty())
         <section class="rx-card" id="pickup-center-panel">
             <div class="rx-card-header">
                 <div>
@@ -7984,7 +8673,7 @@
         </section>
     @endif
 
-    @if($communicationMiniTiles->isNotEmpty())
+    @if(false && $communicationMiniTiles->isNotEmpty())
         <section class="rx-card" id="communication-center-panel">
             <div class="rx-card-header">
                 <div>
@@ -8056,18 +8745,41 @@
                         </div>
                         <div class="inventory-donut-shell">
                             <div class="inventory-availability-visual">
-                                <div class="inventory-availability-total">
-                                    <strong>{{ number_format($inventoryAvailabilityTotal) }}</strong>
-                                    <span>Total inventory assets tracked</span>
-                                </div>
-                                <div class="inventory-availability-track" aria-label="Inventory availability distribution">
-                                    @foreach($inventoryAvailabilitySegments as $segment)
-                                        <span
-                                            class="inventory-availability-segment {{ $toneCardClass($segment['tone'] ?? null) }}"
-                                            style="width: {{ max((float) ($segment['percent'] ?? 0), ($inventoryAvailabilityTotal > 0 ? 4 : 0)) }}%;"
-                                            title="{{ $segment['label'] }}: {{ number_format((int) ($segment['value'] ?? 0)) }} ({{ number_format((float) ($segment['percent'] ?? 0), 1) }}%)"
-                                        ></span>
-                                    @endforeach
+                                @php
+                                    $pieStops = [];
+                                    $pieStart = 0;
+                                    $piePalette = [
+                                        'green' => '#22c55e',
+                                        'blue' => '#3b82f6',
+                                        'amber' => '#f59e0b',
+                                        'red' => '#ef4444',
+                                    ];
+                                    foreach ($inventoryAvailabilitySegments as $segment) {
+                                        $toneKey = match ($segment['tone'] ?? null) {
+                                            'green' => 'green',
+                                            'blue' => 'blue',
+                                            'amber' => 'amber',
+                                            'red' => 'red',
+                                            default => 'blue',
+                                        };
+                                        $color = $piePalette[$toneKey] ?? '#3b82f6';
+                                        $pieEnd = $pieStart + (float) ($segment['percent'] ?? 0);
+                                        $pieStops[] = $color . ' ' . number_format($pieStart, 1, '.', '') . '% ' . number_format($pieEnd, 1, '.', '') . '%';
+                                        $pieStart = $pieEnd;
+                                    }
+                                    if (empty($pieStops)) {
+                                        $pieStops[] = '#dbe5f1 0% 100%';
+                                    }
+                                @endphp
+                                <div
+                                    class="inventory-availability-pie"
+                                    style="background: conic-gradient({{ implode(', ', $pieStops) }});"
+                                    aria-label="Inventory availability pie chart"
+                                >
+                                    <div class="inventory-availability-total">
+                                        <strong>{{ number_format($inventoryAvailabilityTotal) }}</strong>
+                                        <span>Total inventory assets tracked</span>
+                                    </div>
                                 </div>
                             </div>
                             <div class="inventory-availability-legend">
@@ -8085,7 +8797,7 @@
                         </div>
                     </section>
 
-                    <section class="control-room-card">
+                    <section class="control-room-card inventory-readiness-panel">
                         <div class="control-room-card-header">
                             <div>
                                 <h3 class="control-room-card-title">Fulfilment Readiness</h3>
@@ -8169,7 +8881,7 @@
                         @endif
                     </section>
 
-                    <section class="control-room-card">
+                    <section class="control-room-card inventory-warehouse-panel">
                         <div class="control-room-card-header">
                             <div>
                                 <h3 class="control-room-card-title">Warehouse Snapshot</h3>
@@ -8582,11 +9294,147 @@
     </section>
     @endif
 
-    @if(
+    <details class="rx-card activity-control-shell" id="recent-ops">
+        <summary class="rx-card-header dashboard-section-heading activity-control-header">
+            <div>
+                <h2 class="rx-card-title">Activity &amp; Communication Center</h2>
+                <p class="rx-card-copy">Recent movement, unresolved alerts, communication workload, and the highest-priority escalations in one compact panel.</p>
+            </div>
+            @if($activityCenterLinks->isNotEmpty())
+                <div class="activity-control-links">
+                    @foreach($activityCenterLinks as $link)
+                        <a href="{{ $link['href'] }}">{{ $link['label'] }} →</a>
+                    @endforeach
+                </div>
+            @endif
+        </summary>
+        <div class="rx-card-body">
+            <div class="activity-control-grid">
+                <div class="activity-control-card">
+                    <div class="activity-control-card-head">
+                        <span class="activity-control-title">Recent Activity</span>
+                        <span class="activity-control-count">{{ $activityRecentItems->count() }} item(s)</span>
+                    </div>
+                    @if($activityRecentItems->isNotEmpty())
+                        <div class="activity-control-list">
+                            @foreach($activityRecentItems as $item)
+                                @php $activityTag = !empty($item['href']) ? 'a' : 'div'; @endphp
+                                <{{ $activityTag }} @if(!empty($item['href'])) href="{{ $item['href'] }}" @endif class="activity-control-item">
+                                    <span class="activity-control-dot is-{{ $item['tone'] ?? 'blue' }}"></span>
+                                    <span class="activity-control-main">
+                                        <strong>{{ $item['title'] }}</strong>
+                                        <span>{{ $item['type'] }} / {{ $item['meta'] }}</span>
+                                    </span>
+                                    <span class="activity-control-side">
+                                        <strong>{{ $item['value'] }}</strong>
+                                        <span>{{ $item['time'] }}</span>
+                                    </span>
+                                </{{ $activityTag }}>
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="rx-empty dashboard-empty">
+                            <div class="rx-empty-icon">{!! $dashboardIcon('trend') !!}</div>
+                            <strong>No recent activity</strong>
+                            <span>Payments, invoices, rentals, deliveries, and pickups will appear here as work moves.</span>
+                        </div>
+                    @endif
+                </div>
+
+                <div class="activity-control-card">
+                    <div class="activity-control-card-head">
+                        <span class="activity-control-title">Notifications Summary</span>
+                        <span class="activity-control-count">Unread / critical / assigned</span>
+                    </div>
+                    <div class="activity-control-kpis">
+                        @foreach($notificationSummaryRows as $row)
+                            <div class="activity-control-kpi {{ $toneCardClass($row['tone'] ?? null) }}">
+                                <span>{{ $row['label'] }}</span>
+                                <strong>{{ number_format((int) $row['value']) }}</strong>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+
+                <div class="activity-control-card" id="activity-alerts">
+                    <div class="activity-control-card-head">
+                        <span class="activity-control-title">Alerts &amp; Escalations</span>
+                        <span class="activity-control-count">Max 8</span>
+                    </div>
+                    <div class="activity-control-list">
+                        @foreach($activityAlertItems as $item)
+                            @php $alertTag = !empty($item['href']) ? 'a' : 'div'; @endphp
+                            <{{ $alertTag }} @if(!empty($item['href'])) href="{{ $item['href'] }}" @endif class="activity-control-item">
+                                <span class="activity-control-dot is-{{ $item['tone'] ?? 'blue' }}"></span>
+                                <span class="activity-control-main">
+                                    <strong>{{ $item['label'] }}</strong>
+                                    <span>{{ $item['status'] }}</span>
+                                </span>
+                                <span class="activity-control-side">
+                                    <strong>{{ number_format((int) $item['count']) }}</strong>
+                                    <span>open</span>
+                                </span>
+                            </{{ $alertTag }}>
+                        @endforeach
+                    </div>
+                </div>
+
+                <div class="activity-control-card" id="activity-communication">
+                    <div class="activity-control-card-head">
+                        <span class="activity-control-title">Communication Queue</span>
+                        <span class="activity-control-count">Calls and reminders</span>
+                    </div>
+                    <div class="activity-control-queue">
+                        @foreach($communicationQueueRows as $row)
+                            @php $queueTag = !empty($row['href']) ? 'a' : 'div'; @endphp
+                            <{{ $queueTag }} @if(!empty($row['href'])) href="{{ $row['href'] }}" @endif class="activity-control-queue-card {{ $toneCardClass($row['tone'] ?? null) }}">
+                                <span>{{ $row['label'] }}</span>
+                                <strong>{{ number_format((int) $row['value']) }}</strong>
+                                <small>{{ $row['note'] }}</small>
+                            </{{ $queueTag }}>
+                        @endforeach
+                    </div>
+                </div>
+
+                <div class="activity-control-card is-wide" id="activity-escalations">
+                    <div class="activity-control-card-head">
+                        <span class="activity-control-title">Escalation Queue</span>
+                        <span class="activity-control-count">{{ $activityEscalationRows->count() }} item(s)</span>
+                    </div>
+                    @if($activityEscalationRows->isNotEmpty())
+                        <div class="activity-control-list">
+                            @foreach($activityEscalationRows as $row)
+                                @php $escalationTag = !empty($row['href']) ? 'a' : 'div'; @endphp
+                                <{{ $escalationTag }} @if(!empty($row['href'])) href="{{ $row['href'] }}" @endif class="activity-control-item">
+                                    <span class="activity-control-dot is-{{ $row['tone'] ?? 'blue' }}"></span>
+                                    <span class="activity-control-main">
+                                        <strong>{{ $row['title'] }}</strong>
+                                        <span>{{ $row['owner'] }} / {{ $row['status'] }}</span>
+                                    </span>
+                                    <span class="activity-control-side">
+                                        <strong>{{ $row['priority'] }}</strong>
+                                        <span>{{ $row['action'] }} →</span>
+                                    </span>
+                                </{{ $escalationTag }}>
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="rx-empty dashboard-empty">
+                            <div class="rx-empty-icon">{!! $dashboardIcon('tasks') !!}</div>
+                            <strong>No unresolved escalations</strong>
+                            <span>The top-priority queue is clear for the selected view.</span>
+                        </div>
+                    @endif
+                </div>
+            </div>
+        </div>
+    </details>
+
+    @if(false && (
         $dashboardWidgetEnabled('section_recent_activity')
         || $dashboardWidgetEnabled('section_recent_deliveries')
         || $dashboardWidgetEnabled('section_high_priority_followups')
-    )
+    ))
     <section class="dashboard-recent-grid" id="recent-ops">
         @if($dashboardWidgetEnabled('section_recent_activity'))
         <div class="rx-card dashboard-feed-card">
