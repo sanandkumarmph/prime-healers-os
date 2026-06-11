@@ -33,6 +33,9 @@ class Rental extends Model
         'pickup_responsibility',
         'delivery_staff_id',
         'pickup_staff_id',
+        'referral_source_type',
+        'referred_by',
+        'referral_incentive_amount',
         'quantity',
         'start_date',
         'end_date',
@@ -51,6 +54,7 @@ class Rental extends Model
         'start_date' => 'date',
         'end_date' => 'date',
         'returned_at' => 'datetime',
+        'referral_incentive_amount' => 'decimal:2',
     ];
 
     public function product()

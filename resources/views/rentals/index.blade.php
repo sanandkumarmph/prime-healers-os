@@ -112,7 +112,8 @@
         ['value' => 'priority', 'label' => 'Priority'],
     ];
     $currentMobileSortLabel = collect($mobileSortOptions)->firstWhere('value', $sortBy)['label'] ?? 'Newest First';
-    $hasActiveFilters = filled($search) || filled($status) || filled($deliveryStatus) || filled($pickupStatus) || filled($warehouseId) || filled($city) || filled($vendorId) || filled($fromDate) || filled($toDate) || $sortBy !== 'priority';
+    $referredBy = $referredBy ?? '';
+    $hasActiveFilters = filled($search) || filled($status) || filled($deliveryStatus) || filled($pickupStatus) || filled($warehouseId) || filled($city) || filled($vendorId) || filled($referredBy) || filled($fromDate) || filled($toDate) || $sortBy !== 'priority';
     $activeFilterChips = collect([
         filled($search) ? 'Search: ' . $search : null,
         filled($status) ? 'Rental: ' . ucfirst(str_replace('_', ' ', $status)) : null,
@@ -121,17 +122,20 @@
         filled($warehouseId) ? 'Warehouse selected' : null,
         filled($city) ? 'City: ' . $city : null,
         filled($vendorId) ? 'Assignee selected' : null,
+        filled($referredBy) ? 'Referred by: ' . $referredBy : null,
         filled($fromDate) ? 'From: ' . $fromDate : null,
         filled($toDate) ? 'To: ' . $toDate : null,
         $sortBy !== 'priority' ? 'Sort: ' . $currentMobileSortLabel : null,
     ])->filter()->values();
+    $needsActionCount = (int) $renewalQueueCount + (int) $unpaidRenewalCount;
+    $paymentRiskCount = (int) $unpaidRenewalCount;
 @endphp
 
 <style>
-    .rentals-page { display:grid; gap:10px; width:100%; max-width:100%; min-width:0; margin:0 auto; padding:6px 0 18px; box-sizing:border-box; overflow:hidden; }
-    .rentals-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; background:#fff; border:1px solid var(--ph-color-border); border-radius:18px; padding:14px 16px; box-shadow:var(--ph-shadow-soft); min-width:0; }
-    .rentals-header h1 { margin:0; font-size:26px; color:var(--ph-color-text); font-family: var(--ph-font-heading); }
-    .rentals-header p { margin:5px 0 0; color:var(--ph-color-text-soft); font-size:13px; max-width:760px; }
+    .rentals-page { display:grid; gap:8px; width:100%; max-width:100%; min-width:0; margin:0 auto; padding:0 0 14px; box-sizing:border-box; overflow:hidden; }
+    .rentals-header { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; background:#fff; border:1px solid var(--ph-color-border); border-radius:14px; padding:10px 12px; box-shadow:var(--ph-shadow-soft); min-width:0; }
+    .rentals-header h1 { margin:0; font-size:22px; line-height:1.1; color:var(--ph-color-text); font-family: var(--ph-font-heading); }
+    .rentals-header p { margin:3px 0 0; color:var(--ph-color-text-soft); font-size:13px; max-width:760px; }
     .rentals-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; min-width:0; }
     .ops-btn, .ops-btn-light, .ops-btn-success, .ops-btn-danger, .ops-btn-wa {
         display:inline-flex; align-items:center; justify-content:center; gap:6px;
@@ -156,74 +160,61 @@
     .ops-card-head h2 { margin:0; font-size:15px; color:var(--ph-color-text); font-family: var(--ph-font-heading); }
     .ops-card-head span { color:var(--ph-color-text-soft); font-size:12px; }
     .ops-card-body { padding:10px 12px; min-width:0; }
-    .summary-grid { display:grid; grid-template-columns:repeat(6, minmax(0, 1fr)); gap:8px; }
+    .summary-grid { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:8px; min-width:0; }
     .summary-card {
-        display:grid; gap:4px; padding:9px 11px; border-radius:14px; border:1px solid #dbe3ef;
+        display:grid; grid-template-columns:auto 1fr; align-items:center; gap:4px 9px; padding:9px 10px; border-radius:14px; border:1px solid #dbe3ef;
         background:#ffffff;
         text-decoration:none; color:inherit; transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
-        min-height:88px;
+        min-height:74px; min-width:0;
     }
     .summary-card:hover { transform:translateY(-1px); box-shadow:var(--ph-shadow-card); border-color:var(--ph-color-border-strong); }
-    .summary-card span { color:var(--ph-color-text-soft); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; font-family: var(--ph-font-heading); }
-    .summary-card strong { font-size:19px; color:var(--ph-color-text); line-height:1; font-family: var(--ph-font-heading); }
-    .summary-card small { color:var(--ph-color-text-soft); font-size:12px; }
+    .summary-card span { color:var(--ph-color-text-soft); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; font-family: var(--ph-font-heading); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .summary-card strong { font-size:22px; color:var(--ph-color-text); line-height:1; font-family: var(--ph-font-heading); }
+    .summary-card small { grid-column:2; color:var(--ph-color-text-soft); font-size:12px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .summary-card.accent-active { border-color:rgba(14,159,75,.18); background:var(--ph-color-success-soft); }
     .summary-card.accent-alert { border-color:rgba(179,13,35,.18); background:var(--ph-color-danger-soft); }
     .summary-card.accent-warning { border-color:rgba(183,121,31,.18); background:var(--ph-color-warning-soft); }
     .summary-card.accent-neutral { border-color:rgba(23,119,189,.18); background:var(--ph-color-info-soft); }
+    .summary-card .rn-summary-icon { grid-row:1 / span 3; width:34px; height:34px; border-radius:12px; background:#fff; box-shadow:0 8px 18px rgba(15,23,42,.08); color:#64748b; display:grid; place-items:center; }
+    .summary-card .rn-summary-icon svg { width:18px; height:18px; }
     .filter-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; }
     .filter-field { display:grid; gap:5px; }
     .filter-field label { font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
-    .desktop-search-shell {
-        display:grid;
-        gap:10px;
-        padding:12px;
-        border:1px solid #dbe3ef;
-        border-radius:16px;
-        background:linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
-        box-shadow:var(--ph-shadow-soft);
-    }
-    .desktop-search-form {
-        display:grid;
-        grid-template-columns:minmax(0, 1fr) auto auto;
-        gap:8px;
-        align-items:end;
-    }
-    .desktop-search-field { display:grid; gap:6px; min-width:0; }
-    .desktop-search-field label { font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
     .desktop-filter-chip-row { display:flex; gap:8px; flex-wrap:wrap; }
     .desktop-filter-chip {
         display:inline-flex; align-items:center; min-height:30px; padding:6px 10px;
         border-radius:999px; border:1px solid #dbe3ef; background:#fff; color:#334155; font-size:12px; font-weight:700;
     }
-    .desktop-filter-toggle summary {
-        list-style:none; cursor:pointer; display:flex; justify-content:space-between; align-items:center; gap:10px;
-        padding:10px 12px; border-bottom:1px solid #e2e8f0;
-    }
-    .desktop-filter-toggle summary::-webkit-details-marker { display:none; }
-    .desktop-filter-toggle summary h2 { margin:0; font-size:15px; color:#0f172a; }
-    .desktop-filter-toggle summary span { color:#64748b; font-size:12px; }
-    .desktop-filter-toggle:not([open]) summary { border-bottom:0; }
     .ops-input, .ops-select {
         width:100%; min-height:36px; border:1px solid #cbd5e1; border-radius:10px;
         padding:7px 10px; font-size:13px; color:#0f172a; background:#fff;
     }
     .filter-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     .bulk-toolbar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 10px; border:1px solid #e2e8f0; border-radius:12px; background:#f8fafc; margin-bottom:10px; }
+    .bulk-toolbar.is-hidden { display:none; }
     .bulk-toolbar strong { color:#0f172a; font-size:13px; }
     .bulk-toolbar span { color:#64748b; font-size:12px; font-weight:700; }
     .bulk-actions { display:flex; gap:8px; flex-wrap:wrap; }
     .bulk-col { width:38px; text-align:center; }
     .bulk-check { width:16px; height:16px; accent-color:#2563eb; }
-    .quick-filter-bar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
-    .quick-filter-chip {
-        display:inline-flex; align-items:center; justify-content:center; min-height:32px; padding:6px 10px;
-        border-radius:999px; border:1px solid #cbd5e1; background:#fff; color:#334155; text-decoration:none;
-        font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.04em;
-    }
-    .quick-filter-chip.is-active { background:#0f172a; color:#fff; border-color:#0f172a; }
-    .mobile-chip-row { display:none; }
-    .mobile-list-command { display:none; }
+    .rental-smart-filter { display:grid; gap:8px; padding:9px 10px; border:1px solid #dbe3ef; border-radius:14px; background:#fff; box-shadow:var(--ph-shadow-soft); min-width:0; overflow:hidden; }
+    .rental-smart-filter-main { display:grid; grid-template-columns:minmax(220px, 1.4fr) repeat(auto-fit, minmax(118px, 1fr)); gap:8px; align-items:end; min-width:0; }
+    .rental-smart-filter-more summary { list-style:none; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; min-height:36px; padding:7px 11px; border:1px solid var(--ph-color-border-strong); border-radius:10px; background:#fff; color:var(--ph-color-text); font-size:12px; font-weight:800; }
+    .rental-smart-filter-more summary::-webkit-details-marker { display:none; }
+    .rental-smart-filter-more[open] summary { background:#eef2ff; color:#4f46e5; border-color:#c7d2fe; }
+    .rental-smart-filter-advanced { display:grid; grid-template-columns:repeat(3, minmax(140px, 1fr)); gap:8px; padding-top:8px; border-top:1px solid #e2e8f0; }
+    .decision-tabs { display:flex; gap:7px; flex-wrap:wrap; padding:8px; border:1px solid #dbe3ef; border-radius:14px; background:#fff; box-shadow:var(--ph-shadow-soft); }
+    .decision-tab { display:inline-flex; align-items:center; gap:8px; min-height:34px; padding:7px 11px; border:1px solid #dbe3ef; border-radius:999px; background:#fff; color:#334155; text-decoration:none; font-size:12px; font-weight:900; }
+    .decision-tab.is-active { background:#eef2ff; border-color:#a5b4fc; color:#4338ca; }
+    .decision-tab-count { display:inline-flex; align-items:center; justify-content:center; min-width:24px; height:22px; padding:0 7px; border-radius:999px; background:#f1f5f9; color:#475569; font-size:11px; }
+    .decision-tab.is-active .decision-tab-count { background:#4f46e5; color:#fff; }
+    .rental-detail-id { display:block; color:#4f46e5; font-size:12px; font-weight:900; margin-bottom:2px; }
+    .rental-period-cell strong,
+    .rental-period-cell .cell-subtle { display:block; }
+    .product-mini { display:flex; align-items:flex-start; gap:9px; min-width:0; }
+    .product-thumb { width:34px; height:34px; border-radius:10px; background:#eef2ff; color:#4f46e5; display:grid; place-items:center; font-size:12px; font-weight:900; flex:0 0 34px; }
+    .status-stack { display:flex; flex-wrap:wrap; gap:5px; }
+    .amount-stack strong { display:block; font-size:14px; }
     .alert-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px; }
     .alert-list { display:grid; gap:8px; }
     .alert-item {
@@ -235,7 +226,7 @@
     .table-wrap { overflow-x:auto; overflow-y:visible; width:100%; max-width:100%; min-width:0; border-radius:12px; }
     .table-wrap::-webkit-scrollbar { height:8px; }
     .table-wrap::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:999px; }
-    .ops-table { width:100%; border-collapse:separate; border-spacing:0; min-width:1280px; table-layout:auto; }
+    .ops-table { width:100%; border-collapse:separate; border-spacing:0; min-width:980px; table-layout:auto; }
     .ops-table th, .ops-table td { padding:8px 10px; border-bottom:1px solid #e2e8f0; text-align:left; vertical-align:top; position:relative; }
     .ops-table tr:has(.ops-action-menu[open]) { position:relative; z-index:60; }
     .ops-table th {
@@ -254,6 +245,9 @@
     .ops-table tbody tr.rental-row.row-due-soon td { background:#fffcf4; }
     .serial-col { width:54px; min-width:54px; color:#64748b; font-weight:700; }
     .rental-id-col { width:120px; min-width:120px; }
+    .serial-col,
+    .rental-id-col,
+    .due-date-col { display:none; }
     .customer-col { width:240px; min-width:240px; }
     .items-col { width:210px; min-width:210px; }
     .date-col { width:116px; min-width:116px; }
@@ -315,59 +309,27 @@
     .ops-action-panel { position:absolute; right:48px; top:0; z-index:999; display:grid; gap:6px; min-width:190px; padding:8px; border:1px solid var(--ph-color-border); border-radius:12px; background:#fff; box-shadow:0 18px 40px rgba(11,35,66,.16); text-align:left; }
     .hotlist-note { color:var(--ph-color-danger); font-size:11px; font-weight:700; }
     .empty-state { color:var(--ph-color-text-soft); font-size:13px; padding:18px 0; }
+    .rentals-pagination { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-top:12px; color:#64748b; font-size:12px; font-weight:700; }
+    .rentals-pagination-links { min-width:0; }
+    .rentals-per-page { display:flex; align-items:center; gap:6px; }
+    .rentals-per-page .ops-select { width:72px; min-height:32px; padding:4px 8px; }
     @media (max-width: 1180px) {
-        .summary-grid { grid-template-columns:repeat(3, minmax(0, 1fr)); }
-        .ops-table { min-width:1200px; }
+        .summary-grid { grid-template-columns:repeat(4, minmax(150px, 1fr)); }
+        .rental-smart-filter-main { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+        .ops-table { min-width:980px; }
     }
     @media (max-width: 820px) {
-        .ops-table { min-width:1120px; }
+        .summary-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+        .ops-table { min-width:920px; }
     }
     @media (max-width: 767px) {
         .rentals-page { padding:4px 0 16px; gap:8px; }
-        .rentals-header { display:none; }
+        .rentals-header { display:flex; }
         .desktop-priority-panel { display:none !important; }
-        .desktop-search-shell { display:none; }
         .summary-grid, .filter-grid { grid-template-columns:1fr; }
+        .rental-smart-filter-main,
+        .rental-smart-filter-advanced { grid-template-columns:1fr; }
         .filter-actions, .rentals-actions { flex-direction:column; align-items:stretch; }
-        .quick-filter-bar { display:none; }
-        .mobile-list-command {
-            display:grid; gap:8px; padding:8px; border:1px solid var(--ph-color-border); border-radius:16px;
-            background:#fff; box-shadow:var(--ph-shadow-soft);
-        }
-        .mobile-search-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
-        .mobile-search-row .ops-input { min-height:40px; border-radius:12px; font-size:16px; }
-        .mobile-search-row .ops-btn { min-height:40px; border-radius:12px; padding:7px 12px; }
-        .mobile-stat-strip {
-            display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:6px;
-        }
-        .mobile-stat-strip a {
-            display:grid; gap:2px; min-width:0; padding:7px 8px; border:1px solid var(--ph-color-border); border-radius:12px;
-            background:var(--ph-color-surface-soft); color:var(--ph-color-text); text-decoration:none;
-        }
-        .mobile-stat-strip span { font-size:9px; color:var(--ph-color-text-soft); font-weight:800; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        .mobile-stat-strip strong { font-size:16px; line-height:1; }
-        .mobile-filter-toggle {
-            border:1px solid var(--ph-color-border); border-radius:12px; background:var(--ph-color-surface-soft); overflow:hidden;
-        }
-        .mobile-filter-toggle summary {
-            list-style:none; cursor:pointer; min-height:36px; display:flex; align-items:center; justify-content:space-between;
-            padding:8px 10px; font-size:12px; font-weight:800; color:var(--ph-color-text);
-        }
-        .mobile-filter-toggle summary::-webkit-details-marker { display:none; }
-        .mobile-filter-body { padding:0 10px 10px; display:grid; gap:8px; }
-        .mobile-filter-body .filter-grid { gap:8px; }
-        .rentals-page > .mobile-chip-row { display:none; }
-        .mobile-chip-row {
-            display:flex; gap:8px; overflow-x:auto; padding:2px 1px 4px;
-            scrollbar-width:none;
-        }
-        .mobile-chip-row::-webkit-scrollbar { display:none; }
-        .mobile-chip {
-            flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center;
-            min-height:34px; padding:7px 11px; border-radius:999px; border:1px solid var(--ph-color-border-strong);
-            background:#fff; color:var(--ph-color-text); text-decoration:none; font-size:12px; font-weight:800;
-        }
-        .mobile-chip.is-active { background:var(--ph-color-sidebar); color:#fff; border-color:var(--ph-color-sidebar); }
         .table-wrap { overflow-x:visible; }
         .ops-table { min-width:0; border-collapse:separate; border-spacing:0 10px; }
         .ops-table thead { display:none; }
@@ -437,22 +399,15 @@
         <div>
             <div class="rx-eyebrow">Rental Ops</div>
             <h1>Rentals</h1>
-            <p>Manage active, overdue, and completed rentals.</p>
+            <p>Manage and track all your rental operations</p>
         </div>
 
         <div class="rentals-actions">
-            <a href="{{ route('rentals.export.csv', $queryWithoutPage) }}" class="ops-btn-light">Export CSV</a>
+            <a href="{{ route('rentals.export.csv', $queryWithoutPage) }}" class="ops-btn-light">Export</a>
             @if($canCreateRentals)
                 <a href="{{ route('rentals.create') }}" class="ops-btn">+ New Rental</a>
             @endif
         </div>
-    </div>
-
-    <div class="mobile-chip-row" aria-label="Rental quick filters">
-        <a href="{{ $rentalUrl(['status' => 'active', 'filter' => null]) }}" class="mobile-chip {{ $status === 'active' ? 'is-active' : '' }}">Active</a>
-        <a href="{{ $rentalUrl(['status' => null, 'filter' => 'returns_due_today']) }}" class="mobile-chip {{ $filter === 'returns_due_today' ? 'is-active' : '' }}">Due Today</a>
-        <a href="{{ $rentalUrl(['status' => null, 'filter' => 'overdue']) }}" class="mobile-chip {{ $filter === 'overdue' ? 'is-active' : '' }}">Overdue</a>
-        <a href="{{ $rentalUrl(['status' => 'returned', 'filter' => null]) }}" class="mobile-chip {{ $status === 'returned' ? 'is-active' : '' }}">Returned</a>
     </div>
 
     @if(session('success'))
@@ -467,62 +422,7 @@
         </div>
     @endif
 
-    <div id="rentals-mobile-filters" class="mobile-filter-sheet" data-mobile-filter-sheet hidden>
-        <div class="mobile-filter-sheet-panel">
-            <div class="mobile-filter-sheet-header">
-                <div>
-                    <h3>Rental Filters</h3>
-                    <p>Apply filters without losing your place in the list.</p>
-                </div>
-                <button type="button" class="mobile-filter-sheet-close" data-mobile-sheet-close="rentals-mobile-filters" aria-label="Close filters">×</button>
-            </div>
-            <div class="mobile-filter-sheet-body">
-                <form method="GET" action="{{ route('rentals.index') }}" class="mobile-sheet-form">
-                    @if($filter)
-                        <input type="hidden" name="filter" value="{{ $filter }}">
-                    @endif
-                    <input type="hidden" name="search" value="{{ $search }}">
-                    <input type="hidden" name="sort_by" value="{{ $sortBy }}">
-                    <div class="mobile-sheet-grid">
-                        <div class="mobile-sheet-field">
-                            <label for="mobile_status">Rental Status</label>
-                            <select id="mobile_status" class="ops-select" name="status">
-                                <option value="">All</option>
-                                <option value="active" @selected($status === 'active')>Active</option>
-                                <option value="delivery_pending" @selected($status === 'delivery_pending')>Delivery Pending</option>
-                                <option value="returned" @selected($status === 'returned')>Returned</option>
-                                <option value="overdue" @selected($status === 'overdue')>Overdue</option>
-                            </select>
-                        </div>
-                        <div class="mobile-sheet-field">
-                            <label for="mobile_delivery_status">Delivery</label>
-                            <select id="mobile_delivery_status" class="ops-select" name="delivery_status">
-                                <option value="">All</option>
-                                <option value="pending" @selected($deliveryStatus === 'pending')>Pending</option>
-                                <option value="assigned" @selected($deliveryStatus === 'assigned')>Assigned</option>
-                                <option value="in_progress" @selected($deliveryStatus === 'in_progress')>Out</option>
-                                <option value="completed" @selected($deliveryStatus === 'completed')>Delivered</option>
-                            </select>
-                        </div>
-                        <div class="mobile-sheet-field">
-                            <label for="mobile_from_date">From</label>
-                            <input id="mobile_from_date" class="ops-input" type="date" name="from_date" value="{{ $fromDate }}">
-                        </div>
-                        <div class="mobile-sheet-field">
-                            <label for="mobile_to_date">To</label>
-                            <input id="mobile_to_date" class="ops-input" type="date" name="to_date" value="{{ $toDate }}">
-                        </div>
-                    </div>
-                    <div class="mobile-sheet-actions">
-                        <button type="submit" class="ops-btn">Apply</button>
-                        <a href="{{ route('rentals.index') }}" class="ops-btn-light">Reset</a>
-                    </div>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <div class="summary-grid desktop-priority-panel">
+    <div class="summary-grid">
         <a href="{{ $rentalUrl(['status' => 'live', 'filter' => null]) }}" class="summary-card accent-active rn-summary-link">
             <span class="rn-summary-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v4"/><path d="M17 3v4"/><path d="M4 8h16"/><path d="M5 5h14a1 1 0 0 1 1 1v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1Z"/></svg>
@@ -543,112 +443,120 @@
             <span class="rn-summary-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v5"/><path d="m12 16 .01 0"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
             </span>
-            <span>Overdue</span>
+            <span>Overdue Rentals</span>
             <strong>{{ $overdueCount }}</strong>
             <small>Delivered and past end date</small>
-        </a>
-        <a href="{{ $rentalUrl(['status' => null, 'filter' => null]) }}" class="summary-card accent-neutral rn-summary-link">
-            <span class="rn-summary-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="M4 18h10"/><path d="M4 6h16"/></svg>
-            </span>
-            <span>Total Rentals</span>
-            <strong>{{ $totalRentals }}</strong>
-            <small>Filtered rentals excluding cancelled</small>
-        </a>
-        <a href="{{ $rentalUrl(['status' => 'returned', 'filter' => null]) }}" class="summary-card accent-neutral rn-summary-link">
-            <span class="rn-summary-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7"/></svg>
-            </span>
-            <span>Returned Rentals</span>
-            <strong>{{ $returnedRentals }}</strong>
-            <small>Closed rental orders</small>
-        </a>
-        <a href="{{ $rentalUrl(['status' => null, 'filter' => null]) }}" class="summary-card accent-warning rn-summary-link">
-            <span class="rn-summary-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="m10 12 2 2 4-4"/></svg>
-            </span>
-            <span>Follow-up Queue</span>
-            <strong>{{ $renewalQueueCount }}</strong>
-            <small>Needs renewal or collection follow-up</small>
-        </a>
-        <a href="{{ $rentalUrl(['status' => null, 'filter' => null]) }}#renewal-workspace" class="summary-card accent-warning rn-summary-link">
-            <span class="rn-summary-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg>
-            </span>
-            <span>Unbilled Renewals</span>
-            <strong>{{ $unbilledRenewalCount }}</strong>
-            <small>{{ $currency($unbilledRenewalAmount) }} awaiting invoice</small>
         </a>
         <a href="{{ route('invoices.index', ['status' => 'unpaid']) }}" class="summary-card accent-alert rn-summary-link">
             <span class="rn-summary-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             </span>
-            <span>Unpaid Renewal Invoices</span>
-            <strong>{{ $unpaidRenewalCount }}</strong>
+            <span>Payment Risk</span>
+            <strong>{{ $paymentRiskCount }}</strong>
             <small>{{ $currency($unpaidRenewalAmount) }} pending collection</small>
         </a>
     </div>
 
-    <div class="mobile-list-command" aria-label="Mobile rental controls">
-        <form method="GET" action="{{ route('rentals.index') }}" class="mobile-search-row">
-            @foreach(request()->except(['search', 'page']) as $key => $value)
-                @if(is_scalar($value) && $value !== '')
-                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
-                @endif
-            @endforeach
-            <input class="ops-input" type="search" name="search" value="{{ $search }}" placeholder="Search rentals, phone, product">
-            <button type="submit" class="ops-btn">Search</button>
-        </form>
-
-        <div class="mobile-stat-strip" aria-label="Rental summary">
-            <a href="{{ $rentalUrl(['status' => null, 'filter' => null]) }}"><span>Total</span><strong>{{ $totalRentals }}</strong></a>
-            <a href="{{ $rentalUrl(['status' => 'active', 'filter' => null]) }}"><span>Active</span><strong>{{ $activeRentals }}</strong></a>
-            <a href="{{ $rentalUrl(['status' => null, 'filter' => 'overdue']) }}"><span>Overdue</span><strong>{{ $overdueCount }}</strong></a>
-            <a href="{{ $rentalUrl(['status' => null, 'filter' => 'ending_soon']) }}"><span>Renew</span><strong>{{ $renewalQueueCount }}</strong></a>
-            <a href="{{ $rentalUrl(['status' => null, 'filter' => null]) }}#renewal-workspace"><span>Unbilled</span><strong>{{ $unbilledRenewalCount }}</strong></a>
-            <a href="{{ route('invoices.index', ['status' => 'unpaid']) }}"><span>Renewal Due</span><strong>{{ $unpaidRenewalCount }}</strong></a>
-        </div>
-
-        <div class="mobile-chip-row" aria-label="Rental quick filters">
-            <a href="{{ $rentalUrl(['status' => 'active', 'filter' => null]) }}" class="mobile-chip {{ $status === 'active' ? 'is-active' : '' }}">Active</a>
-            <a href="{{ $rentalUrl(['status' => null, 'filter' => 'returns_due_today']) }}" class="mobile-chip {{ $filter === 'returns_due_today' ? 'is-active' : '' }}">Due Today</a>
-            <a href="{{ $rentalUrl(['status' => null, 'filter' => 'overdue']) }}" class="mobile-chip {{ $filter === 'overdue' ? 'is-active' : '' }}">Overdue</a>
-            <a href="{{ $rentalUrl(['status' => 'returned', 'filter' => null]) }}" class="mobile-chip {{ $status === 'returned' ? 'is-active' : '' }}">Returned</a>
-        </div>
-
-        <div class="mobile-action-toolbar" aria-label="Mobile rental filters and sorting">
-            <button type="button" class="mobile-toolbar-btn" data-mobile-filter-open="rentals-mobile-filters">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16"/><path d="M7 12h10"/><path d="M10 18h4"/></svg>
-                <span>Filter</span>
-            </button>
-            <div class="mobile-sort-anchor" data-mobile-sort-root>
-                <button type="button" class="mobile-toolbar-btn" data-mobile-sort-trigger>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m7 15 5 5 5-5"/><path d="M7 9 12 4l5 5"/></svg>
-                    <span>{{ $currentMobileSortLabel }}</span>
-                </button>
-                <div class="mobile-sort-popover" data-mobile-sort-menu hidden>
-                    @foreach($mobileSortOptions as $option)
-                        <a href="{{ $rentalUrl(['sort_by' => $option['value']]) }}" class="mobile-sort-option {{ $sortBy === $option['value'] ? 'is-active' : '' }}">{{ $option['label'] }}</a>
+    <form method="GET" action="{{ route('rentals.index') }}" class="rental-smart-filter" aria-label="Rental filters">
+        @if($filter)
+            <input type="hidden" name="filter" value="{{ $filter }}">
+        @endif
+        <div class="rental-smart-filter-main">
+            <div class="filter-field">
+                <label for="smart_search">Search</label>
+                <input id="smart_search" class="ops-input" type="search" name="search" value="{{ $search }}" placeholder="Search rentals by ID, customer, product">
+            </div>
+            <div class="filter-field">
+                <label for="smart_status">Status</label>
+                <select id="smart_status" class="ops-select" name="status">
+                    <option value="">All</option>
+                    <option value="live" @selected($status === 'live')>Live</option>
+                    <option value="active" @selected($status === 'active')>Active</option>
+                    <option value="delivery_pending" @selected($status === 'delivery_pending')>Delivery Pending</option>
+                    <option value="returned" @selected($status === 'returned')>Completed</option>
+                    <option value="overdue" @selected($status === 'overdue')>Overdue</option>
+                </select>
+            </div>
+            <div class="filter-field">
+                <label for="smart_delivery_status">Delivery</label>
+                <select id="smart_delivery_status" class="ops-select" name="delivery_status">
+                    <option value="">All</option>
+                    <option value="pending" @selected($deliveryStatus === 'pending')>Pending</option>
+                    <option value="assigned" @selected($deliveryStatus === 'assigned')>Assigned</option>
+                    <option value="in_progress" @selected($deliveryStatus === 'in_progress')>Out for Delivery</option>
+                    <option value="completed" @selected($deliveryStatus === 'completed')>Completed</option>
+                </select>
+            </div>
+            <div class="filter-field">
+                <label for="smart_pickup_status">Pickup</label>
+                <select id="smart_pickup_status" class="ops-select" name="pickup_status">
+                    <option value="">All</option>
+                    <option value="pending" @selected($pickupStatus === 'pending')>Pending</option>
+                    <option value="assigned" @selected($pickupStatus === 'assigned')>Assigned</option>
+                    <option value="in_progress" @selected($pickupStatus === 'in_progress')>Out for Pickup</option>
+                    <option value="completed" @selected($pickupStatus === 'completed')>Completed</option>
+                </select>
+            </div>
+            <div class="filter-field">
+                <label for="smart_warehouse">Warehouse</label>
+                <select id="smart_warehouse" class="ops-select" name="dispatch_warehouse_id">
+                    <option value="">All</option>
+                    @foreach($warehouses as $warehouse)
+                        <option value="{{ $warehouse->id }}" @selected((string) $warehouseId === (string) $warehouse->id)>{{ $warehouse->name }}</option>
                     @endforeach
+                </select>
+            </div>
+            <div class="filter-field">
+                <label for="smart_city">City</label>
+                <select id="smart_city" class="ops-select" name="city">
+                    <option value="">All</option>
+                    @foreach($cities as $cityOption)
+                        <option value="{{ $cityOption }}" @selected($city === $cityOption)>{{ $cityOption }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="filter-field">
+                <label for="smart_from_date">From</label>
+                <input id="smart_from_date" class="ops-input" type="date" name="from_date" value="{{ $fromDate }}">
+            </div>
+            <button type="submit" class="ops-btn">Apply</button>
+            <details class="rental-smart-filter-more">
+                <summary>More Filters</summary>
+                <div class="rental-smart-filter-advanced">
+                    <div class="filter-field">
+                        <label for="smart_to_date">To</label>
+                        <input id="smart_to_date" class="ops-input" type="date" name="to_date" value="{{ $toDate }}">
+                    </div>
+                    <div class="filter-field">
+                        <label for="smart_vendor_id">Vendor / Assignee</label>
+                        <select id="smart_vendor_id" class="ops-select" name="vendor_id">
+                            <option value="">All</option>
+                            @foreach($vendors as $vendor)
+                                <option value="{{ $vendor->id }}" @selected((string) $vendorId === (string) $vendor->id)>{{ $vendor->name }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="filter-field">
+                        <label for="smart_referred_by">Referred By</label>
+                        <input id="smart_referred_by" class="ops-input" type="search" name="referred_by" value="{{ $referredBy }}" placeholder="Doctor, clinic, customer...">
+                    </div>
+                    <div class="filter-field">
+                        <label for="smart_sort_by">Sort</label>
+                        <select id="smart_sort_by" class="ops-select" name="sort_by">
+                            <option value="priority" @selected($sortBy === 'priority')>Priority</option>
+                            <option value="latest" @selected($sortBy === 'latest')>Latest First</option>
+                            <option value="oldest" @selected($sortBy === 'oldest')>Oldest First</option>
+                            <option value="end_date_asc" @selected($sortBy === 'end_date_asc')>End Date: Earliest</option>
+                            <option value="amount_desc" @selected($sortBy === 'amount_desc')>Amount: High to Low</option>
+                            <option value="amount_asc" @selected($sortBy === 'amount_asc')>Amount: Low to High</option>
+                        </select>
+                    </div>
+                    <div class="filter-actions">
+                        <a href="{{ route('rentals.index') }}" class="ops-btn-light" data-filter-clear="rentals-index">Reset</a>
+                    </div>
                 </div>
-            </div>
+            </details>
         </div>
-    </div>
-
-    <div class="desktop-search-shell">
-        <form method="GET" action="{{ route('rentals.index') }}" class="desktop-search-form">
-            @foreach(request()->except(['search', 'page']) as $key => $value)
-                @if(is_scalar($value) && $value !== '')
-                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
-                @endif
-            @endforeach
-            <div class="desktop-search-field">
-                <label for="desktop-rental-search">Search rentals</label>
-                <input id="desktop-rental-search" class="ops-input" type="search" name="search" value="{{ $search }}" placeholder="Search customer, phone, product, asset serial">
-            </div>
-            <button type="submit" class="ops-btn">Search</button>
-            <a href="{{ route('rentals.index') }}" class="ops-btn-light" data-filter-clear="rentals-index">Clear Filters</a>
-        </form>
         @if($hasActiveFilters)
             <div class="desktop-filter-chip-row">
                 @foreach($activeFilterChips as $chip)
@@ -656,124 +564,16 @@
                 @endforeach
             </div>
         @endif
+    </form>
+
+    <div class="decision-tabs" aria-label="Rental decision tabs">
+        <a href="{{ $rentalUrl(['status' => null, 'filter' => 'ending_soon']) }}" class="decision-tab {{ blank($status) && blank($filter) ? 'is-active' : '' }}">Needs Action <span class="decision-tab-count">{{ $needsActionCount }}</span></a>
+        <a href="{{ $rentalUrl(['status' => null, 'filter' => 'ending_soon']) }}" class="decision-tab {{ $filter === 'ending_soon' ? 'is-active' : '' }}">Ending Soon <span class="decision-tab-count">{{ $endingSoonCount }}</span></a>
+        <a href="{{ $rentalUrl(['status' => null, 'filter' => 'overdue']) }}" class="decision-tab {{ $filter === 'overdue' || $status === 'overdue' ? 'is-active' : '' }}">Overdue <span class="decision-tab-count">{{ $overdueCount }}</span></a>
+        <a href="{{ $rentalUrl(['status' => 'active', 'filter' => null]) }}" class="decision-tab {{ $status === 'active' ? 'is-active' : '' }}">Active <span class="decision-tab-count">{{ $activeRentals }}</span></a>
+        <a href="{{ $rentalUrl(['status' => 'returned', 'filter' => null]) }}" class="decision-tab {{ $status === 'returned' ? 'is-active' : '' }}">Completed <span class="decision-tab-count">{{ $returnedRentals }}</span></a>
+        <a href="{{ $rentalUrl(['status' => null, 'filter' => null]) }}" class="decision-tab">All Rentals <span class="decision-tab-count">{{ $totalRentals }}</span></a>
     </div>
-
-    <details class="ops-card desktop-priority-panel desktop-filter-toggle" data-filter-panel data-filter-panel-key="rentals-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" @if($hasActiveFilters) open @endif>
-        <summary>
-            <h2>Search & Filters</h2>
-            <span>{{ $hasActiveFilters ? 'Filters Active · ' . $activeFilterChips->count() : 'Expand advanced filters' }}</span>
-        </summary>
-        <div class="ops-card-body">
-            <form method="GET" action="{{ route('rentals.index') }}" style="display:grid; gap:12px;">
-                @if($filter)
-                    <input type="hidden" name="filter" value="{{ $filter }}">
-                @endif
-
-                <div class="filter-grid">
-                    <div class="filter-field">
-                        <label for="search">Search</label>
-                        <input id="search" class="ops-input" type="text" name="search" value="{{ $search }}" placeholder="Customer, phone, product, asset serial">
-                    </div>
-
-                    <div class="filter-field">
-                        <label for="status">Rental Status</label>
-                        <select id="status" class="ops-select" name="status">
-                            <option value="">All</option>
-                            <option value="live" @selected($status === 'live')>Live (Current + Overdue)</option>
-                            <option value="active" @selected($status === 'active')>Active</option>
-                            <option value="delivery_pending" @selected($status === 'delivery_pending')>Delivery Pending</option>
-                            <option value="returned" @selected($status === 'returned')>Returned</option>
-                            <option value="overdue" @selected($status === 'overdue')>Overdue</option>
-                        </select>
-                    </div>
-
-                    <div class="filter-field">
-                        <label for="delivery_status">Delivery</label>
-                        <select id="delivery_status" class="ops-select" name="delivery_status">
-                            <option value="">All</option>
-                            <option value="pending" @selected($deliveryStatus === 'pending')>Pending</option>
-                            <option value="assigned" @selected($deliveryStatus === 'assigned')>Assigned</option>
-                            <option value="in_progress" @selected($deliveryStatus === 'in_progress')>Out for Delivery</option>
-                            <option value="completed" @selected($deliveryStatus === 'completed')>Delivered</option>
-                        </select>
-                    </div>
-
-                    <div class="filter-field">
-                        <label for="pickup_status">Pickup</label>
-                        <select id="pickup_status" class="ops-select" name="pickup_status">
-                            <option value="">All</option>
-                            <option value="pending" @selected($pickupStatus === 'pending')>Pending</option>
-                            <option value="assigned" @selected($pickupStatus === 'assigned')>Assigned</option>
-                            <option value="in_progress" @selected($pickupStatus === 'in_progress')>Out for Pickup</option>
-                            <option value="completed" @selected($pickupStatus === 'completed')>Picked Up</option>
-                        </select>
-                    </div>
-
-                    <div class="filter-field">
-                        <label for="dispatch_warehouse_id">Warehouse</label>
-                        <select id="dispatch_warehouse_id" class="ops-select" name="dispatch_warehouse_id">
-                            <option value="">All Warehouses</option>
-                            @foreach($warehouses as $warehouse)
-                                <option value="{{ $warehouse->id }}" @selected((string) $warehouseId === (string) $warehouse->id)>{{ $warehouse->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    <div class="filter-field">
-                        <label for="city">City</label>
-                        <select id="city" class="ops-select" name="city">
-                            <option value="">All Cities</option>
-                            @foreach($cities as $cityOption)
-                                <option value="{{ $cityOption }}" @selected($city === $cityOption)>{{ $cityOption }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    <div class="filter-field">
-                        <label for="vendor_id">Vendor / Assignee</label>
-                        <select id="vendor_id" class="ops-select" name="vendor_id">
-                            <option value="">All Assignable Staff</option>
-                            @foreach($vendors as $vendor)
-                                <option value="{{ $vendor->id }}" @selected((string) $vendorId === (string) $vendor->id)>{{ $vendor->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    <div class="filter-field">
-                        <label for="from_date">From Date</label>
-                        <input id="from_date" class="ops-input" type="date" name="from_date" value="{{ $fromDate }}">
-                    </div>
-
-                    <div class="filter-field">
-                        <label for="to_date">To Date</label>
-                        <input id="to_date" class="ops-input" type="date" name="to_date" value="{{ $toDate }}">
-                    </div>
-
-                    <div class="filter-field">
-                        <label for="sort_by">Sort By</label>
-                        <select id="sort_by" class="ops-select" name="sort_by">
-                            <option value="priority" @selected($sortBy === 'priority')>Priority</option>
-                            <option value="latest" @selected($sortBy === 'latest')>Latest First</option>
-                            <option value="oldest" @selected($sortBy === 'oldest')>Oldest First</option>
-                            <option value="end_date_asc" @selected($sortBy === 'end_date_asc')>End Date: Earliest</option>
-                            <option value="end_date_desc" @selected($sortBy === 'end_date_desc')>End Date: Latest</option>
-                            <option value="customer_asc" @selected($sortBy === 'customer_asc')>Customer A-Z</option>
-                            <option value="customer_desc" @selected($sortBy === 'customer_desc')>Customer Z-A</option>
-                            <option value="amount_desc" @selected($sortBy === 'amount_desc')>Amount: High to Low</option>
-                            <option value="amount_asc" @selected($sortBy === 'amount_asc')>Amount: Low to High</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="filter-actions">
-                    <button type="submit" class="ops-btn">Apply Filters</button>
-                    <a href="{{ route('rentals.index') }}" class="ops-btn-light" data-filter-clear="rentals-index">Reset</a>
-                    <a href="{{ route('rentals.index', array_merge($queryWithoutPage, ['filter' => 'ending_soon', 'status' => null])) }}" target="_blank" class="ops-btn-light">Ending Soon</a>
-                    <a href="{{ route('rentals.index', array_merge($queryWithoutPage, ['filter' => 'overdue', 'status' => null])) }}" target="_blank" class="ops-btn-light">Overdue</a>
-                </div>
-            </form>
-        </div>
-    </details>
 
     <div class="ops-card rn-table-shell">
         <div class="ops-card-head">
@@ -781,28 +581,28 @@
             <span>{{ $rentals->total() }} records - one row per rental</span>
         </div>
         <div class="ops-card-body">
-            <div class="quick-filter-bar desktop-priority-panel" aria-label="Quick rental filters">
-                <a href="{{ $rentalUrl(['status' => null, 'filter' => 'overdue']) }}" class="quick-filter-chip {{ $filter === 'overdue' ? 'is-active' : '' }}">Overdue</a>
-                <a href="{{ $rentalUrl(['status' => null, 'filter' => 'returns_due_today']) }}" class="quick-filter-chip {{ $filter === 'returns_due_today' ? 'is-active' : '' }}">Today</a>
-                <a href="{{ $rentalUrl(['status' => 'active', 'filter' => null]) }}" class="quick-filter-chip {{ $status === 'active' ? 'is-active' : '' }}">Active</a>
-                <a href="{{ $rentalUrl(['status' => 'returned', 'filter' => null]) }}" class="quick-filter-chip {{ $status === 'returned' ? 'is-active' : '' }}">Completed</a>
-            </div>
-
             @if($rentals->isEmpty())
                 <div class="empty-state">No rentals match this view right now. Adjust filters or create a new rental to keep operations moving.</div>
             @else
                 @if($canReadInvoices)
-                    <form id="rentalInvoiceBulkForm" method="GET" action="{{ route('invoices.bulk.print') }}" target="_blank" class="bulk-toolbar">
+                    <form id="rentalInvoiceBulkForm" method="GET" action="{{ route('invoices.bulk.print') }}" target="_blank" class="bulk-toolbar is-hidden">
                         @csrf
                         <div>
-                            <strong>Invoice bulk actions</strong>
+                            <strong>Bulk Actions</strong>
                             <span id="rentalInvoiceSelectedCount">0 selected</span>
                         </div>
                         <div class="bulk-actions">
-                            <button type="submit" class="ops-btn-light" data-rental-bulk-action="{{ route('invoices.bulk.print') }}" data-rental-bulk-method="GET" data-rental-bulk-target="_blank">Bulk PDF / Print</button>
-                            <button type="submit" class="ops-btn-light" data-rental-bulk-action="{{ route('invoices.export.csv') }}" data-rental-bulk-method="GET" data-rental-bulk-target="_self">Export Selected CSV</button>
+                            <button type="button" class="ops-btn-light" data-rental-clear-selection>Clear</button>
+                            <button type="submit" class="ops-btn-light" data-rental-bulk-action="{{ route('invoices.bulk.print') }}" data-rental-bulk-method="GET" data-rental-bulk-target="_blank">Bulk PDF</button>
+                            <button type="submit" class="ops-btn-light" data-rental-bulk-action="{{ route('invoices.export.csv') }}" data-rental-bulk-method="GET" data-rental-bulk-target="_self">Export</button>
                             <button type="submit" class="ops-btn-light" data-rental-bulk-action="{{ route('invoices.bulk.action') }}" data-rental-bulk-method="POST" data-rental-bulk-task="mark_paid" data-rental-bulk-target="_self">Mark Paid</button>
-                            <button type="submit" class="ops-btn-danger" data-rental-bulk-action="{{ route('invoices.bulk.action') }}" data-rental-bulk-method="POST" data-rental-bulk-task="void" data-rental-bulk-target="_self" data-rental-confirm="Void selected invoices?">Void</button>
+                            <button type="button" class="ops-btn-light" disabled title="Open individual rental rows to assign delivery">Assign Delivery</button>
+                            <details class="ops-action-menu">
+                                <summary aria-label="More bulk actions">More</summary>
+                                <div class="ops-action-panel row-actions">
+                                    <button type="submit" class="ops-btn-danger" data-rental-bulk-action="{{ route('invoices.bulk.action') }}" data-rental-bulk-method="POST" data-rental-bulk-task="void" data-rental-bulk-target="_self" data-rental-confirm="Void selected invoices?">Void</button>
+                                </div>
+                            </details>
                         </div>
                     </form>
                 @endif
@@ -814,12 +614,12 @@
                                 <th class="bulk-col"><input type="checkbox" class="bulk-check" id="selectAllRentalRows" aria-label="Select all rentals"></th>
                                 <th class="serial-col">#</th>
                                 <th class="rental-id-col">Rental ID</th>
-                                <th class="customer-col">Customer</th>
-                                <th class="items-col">Items</th>
-                                <th class="date-col">Start Date</th>
-                                <th class="date-col">Due Date</th>
+                                <th class="customer-col">Rental Details</th>
+                                <th class="items-col">Product</th>
+                                <th class="date-col">Rental Period</th>
+                                <th class="date-col due-date-col">Due Date</th>
                                 <th class="status-col">Status</th>
-                                @if($canSeeRentalFinance)<th class="balance-col">Balance</th>@endif
+                                @if($canSeeRentalFinance)<th class="balance-col">Amount</th>@endif
                                 <th class="actions-cell">Actions</th>
                             </tr>
                         </thead>
@@ -836,7 +636,19 @@
                                     $assetSummary = $activeAssets->pluck('asset.serial_number')->filter()->implode(', ');
                                     $whatsAppUrl = route('rentals.reminders.open', ['rental' => $rental, 'type' => $reminderType]);
                                     $renewalWhatsAppUrl = route('rentals.reminders.open', ['rental' => $rental, 'type' => 'renewal']);
-                                    $totalAmount = (float) ($rental->rental_amount ?? 0) + (float) ($rental->deposit_amount ?? 0) + (float) ($rental->transport_amount ?? 0) + (float) ($rental->other_amount ?? 0);
+                                    $rentalItems = $rental->rentalItems ?? collect();
+                                    $rentalLineTotal = $rentalItems->isNotEmpty()
+                                        ? (float) $rentalItems->sum(function ($item) {
+                                            $lineTotal = (float) ($item->line_total ?? 0);
+
+                                            if ($lineTotal > 0) {
+                                                return $lineTotal;
+                                            }
+
+                                            return max((int) ($item->quantity ?? 1), 1) * (float) ($item->unit_rental_amount ?? 0);
+                                        })
+                                        : (float) ($rental->rental_amount ?? 0);
+                                    $totalAmount = $rentalLineTotal + (float) ($rental->deposit_amount ?? 0) + (float) ($rental->transport_amount ?? 0) + (float) ($rental->other_amount ?? 0);
                                     $pickupAssignUrl = route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'pickup']);
                                     $deliveryAssignee = $taskAssignmentLabel($rental->deliveryRecord, $rental->deliveryStaff->name ?? 'Not assigned');
                                     $pickupAssignee = $taskAssignmentLabel($rental->pickupRecord, $rental->pickupStaff->name ?? 'Not assigned');
@@ -850,7 +662,13 @@
                                     $isDueToday = $endDate?->isToday() ?? false;
                                     $isOverdueDate = $operationalStatus === 'overdue' || $isHotlisted;
                                     $isEndingSoonDate = !$isOverdueDate && $endDate && $endDate->isFuture() && now()->diffInDays($endDate, false) <= 2;
-                                    $rentalItems = $rental->rentalItems ?? collect();
+                                    $periodSignal = 'No due date';
+                                    if ($endDate) {
+                                        $daysUntilEnd = now()->startOfDay()->diffInDays($endDate->copy()->startOfDay(), false);
+                                        $periodSignal = $daysUntilEnd < 0
+                                            ? abs($daysUntilEnd) . ' day' . (abs($daysUntilEnd) === 1 ? '' : 's') . ' overdue'
+                                            : ($daysUntilEnd === 0 ? 'Due today' : $daysUntilEnd . ' day' . ($daysUntilEnd === 1 ? '' : 's') . ' remaining');
+                                    }
                                     $displayItems = $rentalItems->isNotEmpty()
                                         ? $rentalItems->map(function ($item) {
                                             $name = $item->product?->name ?? 'Rental item';
@@ -861,9 +679,9 @@
                                         : collect([['name' => $rental->product->name ?? 'Product not linked', 'qty' => (int) ($rental->quantity ?? 1)]]);
                                     $primaryItem = $displayItems->first();
                                     $extraItemCount = max(0, $displayItems->count() - 1);
-                                    $outstandingBalance = (float) ($rental->outstanding_invoice_balance ?? 0);
                                     $linkedInvoiceId = (int) ($rental->linked_invoice_id ?? 0);
                                     $linkedInvoiceStatus = $rental->linked_invoice_payment_status ?? null;
+                                    $outstandingBalance = (float) ($rental->linked_invoice_balance_amount ?? $rental->outstanding_invoice_balance ?? 0);
                                     $linkedInvoiceTotalAmount = (float) ($rental->linked_invoice_total_amount ?? 0);
                                     $paymentBadge = $rentalPaymentBadge($linkedInvoiceStatus, $linkedInvoiceId, $outstandingBalance, $linkedInvoiceTotalAmount, $totalAmount);
                                     $balanceDisplay = $paymentBadge['label'] === 'Paid'
@@ -889,17 +707,20 @@
                                     <td class="customer-col" data-label="Customer">
                                         <div class="cell-title has-wa">
                                             <div style="min-width:0;">
+                                                <span class="rental-detail-id">Rental #{{ $rental->id }}</span>
                                                 @if(\Illuminate\Support\Facades\Route::has('customers.show') && $rental->customer)
                                                     <a href="{{ route('customers.show', $rental->customer) }}" class="rn-record-link">{{ $rental->customer_name }}</a>
                                                 @else
                                                     <strong>{{ $rental->customer_name }}</strong>
                                                 @endif
                                                 <span class="cell-subtle">
-                                                    {{ $rental->phone ?: 'No phone' }}
                                                     @if($rental->customer?->city)
-                                                        - {{ $rental->customer->city }}
+                                                        {{ $rental->customer->city }}
+                                                    @else
+                                                        City not set
                                                     @endif
                                                 </span>
+                                                <span class="cell-subtle">{{ $rental->phone ?: 'No phone' }}</span>
                                             </div>
                                             @if(WhatsAppHelper::resolveCustomerNumber($rental->customer))
                                                 <div class="customer-contact-actions">
@@ -912,28 +733,31 @@
                                         </div>
                                     </td>
                                     <td class="items-col items-cell" data-label="Items">
-                                        <div class="cell-stack compact">
-                                            <div class="items-line">
-                                                @if(\Illuminate\Support\Facades\Route::has('products.show') && $rental->product)
-                                                    <a href="{{ route('products.show', $rental->product) }}" class="rn-record-link product-wrap items-primary">{{ $primaryItem['name'] }}</a>
-                                                @else
-                                                    <strong class="product-wrap items-primary">{{ $primaryItem['name'] }}</strong>
+                                        <div class="product-mini">
+                                            <div class="product-thumb">{{ strtoupper(substr((string) ($primaryItem['name'] ?? 'P'), 0, 1)) }}</div>
+                                            <div class="cell-stack compact" style="min-width:0;">
+                                                <div class="items-line">
+                                                    @if(\Illuminate\Support\Facades\Route::has('products.show') && $rental->product)
+                                                        <a href="{{ route('products.show', $rental->product) }}" class="rn-record-link product-wrap items-primary">{{ $primaryItem['name'] }}</a>
+                                                    @else
+                                                        <strong class="product-wrap items-primary">{{ $primaryItem['name'] }}</strong>
+                                                    @endif
+                                                    <span class="item-qty">Qty {{ $primaryItem['qty'] }}</span>
+                                                </div>
+                                                <span class="cell-subtle">{{ $assetSummary ?: ($rental->product?->sku ?? $rental->product?->product_code ?? 'Code not set') }}</span>
+                                                @if($extraItemCount > 0)
+                                                    <span class="cell-subtle">+ {{ $extraItemCount }} more item{{ $extraItemCount === 1 ? '' : 's' }}</span>
                                                 @endif
-                                                <span class="item-qty">Qty {{ $primaryItem['qty'] }}</span>
                                             </div>
-                                            @if($extraItemCount > 0)
-                                                <span class="cell-subtle">+ {{ $extraItemCount }} more item{{ $extraItemCount === 1 ? '' : 's' }}</span>
-                                            @else
-                                                <span class="cell-subtle">Single item</span>
-                                            @endif
                                         </div>
                                     </td>
-                                    <td class="date-col" data-label="Start Date">
+                                    <td class="date-col rental-period-cell" data-label="Rental Period">
                                         <div class="cell-stack compact">
-                                            <strong>{{ optional($rental->start_date)->format('d M Y') }}</strong>
+                                            <strong>{{ optional($rental->start_date)->format('d M Y') }} - {{ optional($rental->end_date)->format('d M Y') }}</strong>
+                                            <span class="cell-subtle {{ $isOverdueDate ? 'is-danger' : ($isEndingSoonDate || $isDueToday ? 'is-warning' : '') }}">{{ $periodSignal }}</span>
                                         </div>
                                     </td>
-                                    <td class="date-col" data-label="Due Date">
+                                    <td class="date-col due-date-col" data-label="Due Date">
                                         <div class="cell-stack compact">
                                             <strong>{{ optional($rental->end_date)->format('d M Y') }}</strong>
                                             @if($isOverdueDate)
@@ -959,6 +783,9 @@
                                                 <span class="badge rn-badge {{ $pickupStatusValue === 'completed' ? 'rn-badge-success' : ($pickupStatusValue === 'in_progress' ? 'rn-badge-active' : ($pickupStatusValue === 'cancelled' ? 'rn-badge-muted' : 'rn-badge-warning')) }}" style="{{ $statusBadge($pickupStatusValue) }}">
                                                     P {{ ucfirst(str_replace('_', ' ', $pickupStatusValue ?: 'pending')) }}
                                                 </span>
+                                                <span class="badge rn-badge {{ $paymentBadge['class'] }}" style="{{ $paymentBadge['tone'] }}">
+                                                    Pay {{ $paymentBadge['label'] }}
+                                                </span>
                                             </div>
                                             <span class="cell-subtle">Del: {{ $deliveryAssignee }}</span>
                                             <span class="cell-subtle">Pick: {{ $pickupAssignee }}</span>
@@ -969,8 +796,9 @@
                                     </td>
                                     @if($canSeeRentalFinance)
                                     <td class="balance-col" data-label="Balance">
-                                        <div class="cell-stack compact">
-                                            <strong style="{{ $outstandingBalance > 0 ? 'color:#b91c1c;' : '' }}">{{ $currency($balanceDisplay) }}</strong>
+                                        <div class="cell-stack compact amount-stack">
+                                            <strong>{{ $currency($totalAmount) }}</strong>
+                                            <span class="cell-subtle" style="{{ $balanceDisplay > 0 ? 'color:#b91c1c;font-weight:700;' : '' }}">{{ $balanceDisplay > 0 ? $currency($balanceDisplay) . ' due' : 'No dues' }}</span>
                                             <span class="badge rn-badge {{ $paymentBadge['class'] }}" style="{{ $paymentBadge['tone'] }}">
                                                 {{ $paymentBadge['label'] }}
                                             </span>
@@ -1110,8 +938,15 @@
                     </table>
                 </div>
 
-                <div style="margin-top:12px;">
-                    {{ $rentals->links() }}
+                <div class="rentals-pagination">
+                    <span>Showing {{ $rentals->firstItem() ?? 0 }} to {{ $rentals->lastItem() ?? 0 }} of {{ $rentals->total() }} rentals</span>
+                    <div class="rentals-pagination-links">{{ $rentals->links() }}</div>
+                    <label class="rentals-per-page">
+                        <span>Per page</span>
+                        <select class="ops-select" disabled>
+                            <option selected>{{ $rentals->perPage() }}</option>
+                        </select>
+                    </label>
                 </div>
             @endif
         </div>
@@ -1148,8 +983,13 @@
             const selected = rowChecks.filter((checkbox) => checkbox.checked).length;
             const invoiceEligible = invoiceChecks.filter((checkbox) => checkbox.checked && checkbox.dataset.invoiceId).length;
 
+            bulkForm?.classList.toggle('is-hidden', selected === 0);
+
             if (countEl) {
-                countEl.textContent = `${selected} selected, ${invoiceEligible} with invoices`;
+                countEl.textContent = `${selected} selected`;
+                if (invoiceEligible !== selected) {
+                    countEl.textContent += `, ${invoiceEligible} with invoices`;
+                }
             }
 
             if (selectAll) {
@@ -1166,6 +1006,13 @@
         });
 
         rowChecks.forEach((checkbox) => checkbox.addEventListener('change', updateSelectedCount));
+
+        document.querySelector('[data-rental-clear-selection]')?.addEventListener('click', () => {
+            rowChecks.forEach((checkbox) => {
+                checkbox.checked = false;
+            });
+            updateSelectedCount();
+        });
 
         document.querySelectorAll('[data-rental-bulk-action]').forEach((button) => {
             button.addEventListener('click', (event) => {

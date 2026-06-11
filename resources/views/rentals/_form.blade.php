@@ -4,6 +4,8 @@
     $businessPartners = $businessPartners ?? collect();
     $initialPartnerClients = $initialPartnerClients ?? collect();
     $businessPartnerFlowAvailable = $businessPartnerFlowAvailable ?? true;
+    $hasReferralSourceTypeColumn = \Illuminate\Support\Facades\Schema::hasColumn('rentals', 'referral_source_type');
+    $hasReferredByColumn = \Illuminate\Support\Facades\Schema::hasColumn('rentals', 'referred_by');
     $customerTypeValue = old('customer_type', $isEdit ? $rental->customerTypeValue() : 'direct_customer');
     if (!$businessPartnerFlowAvailable && $customerTypeValue === 'business_partner') {
         $customerTypeValue = 'direct_customer';
@@ -17,13 +19,17 @@
         ? (bool) ($selectedBusinessPartner || $selectedPartnerClient)
         : filled($selectedCustomerId);
     $rentalProducts = $rentalProducts ?? $products;
-    $selectedAssetIds = collect(old('asset_ids', $isEdit ? $rental->activeRentalAssets->pluck('asset_id')->all() : []))
-        ->filter(fn ($value) => filled($value))
-        ->map(fn ($value) => (int) $value)
-        ->values()
-        ->all();
     $existingRentalItems = $isEdit ? ($rental->rentalItems ?? collect()) : collect();
     $primaryRentalItem = $existingRentalItems->first();
+    $savedPrimaryAssetIds = $primaryRentalItem && filled($primaryRentalItem->asset_ids)
+        ? collect($primaryRentalItem->asset_ids)->all()
+        : ($isEdit ? $rental->activeRentalAssets->pluck('asset_id')->all() : []);
+    $selectedAssetIds = collect(old('asset_ids', $savedPrimaryAssetIds))
+        ->filter(fn ($value) => filled($value))
+        ->map(fn ($value) => (int) $value)
+        ->unique()
+        ->values()
+        ->all();
     $additionalRentalRows = collect(old('rental_items', $existingRentalItems->skip(1)->map(function ($item) {
         return [
             'product_id' => $item->product_id,
@@ -85,8 +91,6 @@
             ->values()
             ->all();
     };
-    $additionalRentalExpanded = count($additionalRentalRows) > 0;
-    $newProductsExpanded = count($saleItemRows) > 0;
     $selectedDeliveryAssignment = old('delivery_staff_id');
     $internalAssignableUsers = collect($assignableUsers ?? collect())->filter(function ($user) {
         $signals = collect([
@@ -194,20 +198,28 @@
 
     $hasRentalItemsError = collect($errors->keys())->contains(fn ($key) => str_starts_with($key, 'rental_items'));
     $hasSaleItemsError = collect($errors->keys())->contains(fn ($key) => str_starts_with($key, 'sale_items'));
+    $additionalRentalExpanded = $hasRentalItemsError;
+    $newProductsExpanded = $hasSaleItemsError;
 @endphp
 
 @include('partials.business-partner-flow-styles')
 
 <style>
-    .rental-shell { display:grid; gap:18px; width:100%; max-width:100%; min-width:0; overflow-x:clip; }
-    .rental-toolbar { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:4px; }
-    .rental-title h1 { margin:0; font-size:26px; color:#0f172a; }
-    .rental-title p { margin:6px 0 0; color:#64748b; font-size:13px; }
+    .rental-focused-form-page {
+        width:100%;
+        max-width:100%;
+        padding:0 0 24px;
+        margin:0;
+    }
+    .rental-shell { display:grid; gap:10px; width:100%; max-width:100%; min-width:0; overflow-x:clip; }
+    .rental-toolbar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:0; }
+    .rental-title h1 { margin:0; font-size:24px; color:#0f172a; }
+    .rental-title p { margin:4px 0 0; color:#64748b; font-size:13px; }
     .rental-actions { display:flex; gap:8px; flex-wrap:wrap; }
-    .rental-card { background:#fff; border:1px solid #dbe3ef; border-radius:14px; padding:16px; box-shadow:0 8px 24px rgba(15, 23, 42, 0.04); min-width:0; max-width:100%; }
-    .rental-card h2 { margin:0 0 4px; font-size:16px; color:#0f172a; }
-    .rental-card p.section-copy { margin:0 0 10px; font-size:11px; color:#64748b; }
-    .rental-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:12px; min-width:0; }
+    .rental-card { background:#fff; border:1px solid #dbe3ef; border-radius:12px; padding:12px; box-shadow:0 8px 24px rgba(15, 23, 42, 0.04); min-width:0; max-width:100%; }
+    .rental-card h2 { margin:0 0 3px; font-size:15px; color:#0f172a; }
+    .rental-card p.section-copy { margin:0 0 8px; font-size:11px; color:#64748b; }
+    .rental-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:9px; min-width:0; }
     .rental-col-3 { grid-column:span 3; }
     .rental-col-4 { grid-column:span 4; }
     .rental-col-5 { grid-column:span 5; }
@@ -215,7 +227,7 @@
     .rental-col-7 { grid-column:span 7; }
     .rental-col-8 { grid-column:span 8; }
     .rental-col-12 { grid-column:span 12; }
-    .rental-field { display:flex; flex-direction:column; gap:4px; }
+    .rental-field { display:flex; flex-direction:column; gap:3px; }
     .rental-field label { font-size:11px; font-weight:700; color:#334155; letter-spacing:0.03em; text-transform:uppercase; }
     .rental-field .hint { font-size:10px; color:#94a3b8; line-height:1.35; }
     .rental-mode-shell { display:grid; gap:12px; }
@@ -230,13 +242,138 @@
         width:100%;
         border:1px solid #cbd5e1;
         border-radius:9px;
-        padding:8px 11px;
+        padding:7px 10px;
         font-size:13px;
         color:#0f172a;
         background:#fff;
         box-sizing:border-box;
     }
-    .rental-field textarea { min-height:78px; resize:vertical; }
+    .rental-field textarea { min-height:62px; resize:vertical; }
+    .rental-wizard-nav {
+        display:grid;
+        grid-template-columns:repeat(5, minmax(0, 1fr));
+        gap:7px;
+        padding:8px;
+        border:1px solid #dbe3ef;
+        border-radius:14px;
+        background:#fff;
+        box-shadow:0 8px 24px rgba(15, 23, 42, 0.04);
+    }
+    .rental-wizard-tab {
+        display:flex;
+        align-items:center;
+        gap:7px;
+        min-width:0;
+        min-height:38px;
+        border:1px solid #dbe3ef;
+        border-radius:11px;
+        background:#f8fafc;
+        color:#334155;
+        padding:7px 8px;
+        text-align:left;
+        cursor:pointer;
+        font-size:12px;
+        font-weight:800;
+    }
+    .rental-wizard-tab span:first-child {
+        display:grid;
+        place-items:center;
+        width:22px;
+        height:22px;
+        border-radius:999px;
+        background:#e2e8f0;
+        color:#334155;
+        font-size:11px;
+        flex:0 0 22px;
+    }
+    .rental-wizard-tab strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .rental-wizard-tab.is-active { border-color:#a5b4fc; background:#eef2ff; color:#4338ca; }
+    .rental-wizard-tab.is-active span:first-child { background:#4f46e5; color:#fff; }
+    .rental-wizard-tab.is-complete span:first-child { background:#16a34a; color:#fff; }
+    .rental-wizard-tab.is-warning span:first-child { background:#f59e0b; color:#fff; }
+    .rental-wizard-layout {
+        display:grid;
+        grid-template-columns:minmax(0, 1fr) minmax(280px, 340px);
+        gap:10px;
+        align-items:start;
+    }
+    .rental-wizard-main { display:grid; gap:10px; min-width:0; }
+    .rental-wizard-step { display:none; }
+    .rental-wizard-step.is-active { display:block; }
+    .rental-wizard-step.rental-step-actions { display:none; }
+    .rental-wizard-step.rental-step-actions.is-active { display:flex; }
+    .rental-step-actions {
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:8px;
+        flex-wrap:wrap;
+        padding:8px 0 0;
+    }
+    .rental-step-actions .ops-button,
+    .rental-step-actions .ops-button-secondary { min-height:34px; }
+    .rental-step-actions button:disabled {
+        opacity:.48;
+        cursor:not-allowed;
+        filter:grayscale(.2);
+    }
+    .rental-order-summary {
+        position:sticky;
+        top:88px;
+        display:grid;
+        gap:10px;
+        padding:12px;
+        border:1px solid #dbe3ef;
+        border-radius:14px;
+        background:#fff;
+        box-shadow:0 12px 30px rgba(15, 23, 42, 0.08);
+        min-width:0;
+    }
+    .rental-order-summary h2 { margin:0; font-size:15px; color:#0f172a; }
+    .rental-order-summary details { display:grid; gap:8px; }
+    .rental-order-summary summary { list-style:none; display:flex; justify-content:space-between; gap:8px; cursor:pointer; }
+    .rental-order-summary summary::-webkit-details-marker { display:none; }
+    .rental-summary-list { display:grid; gap:7px; }
+    .rental-summary-row {
+        display:grid;
+        grid-template-columns:105px minmax(0, 1fr);
+        gap:8px;
+        align-items:start;
+        font-size:12px;
+    }
+    .rental-summary-row span { color:#64748b; font-weight:800; text-transform:uppercase; letter-spacing:.04em; font-size:10px; }
+    .rental-summary-row strong { color:#0f172a; font-weight:800; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .rental-review-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; }
+    .rental-review-box { border:1px solid #e2e8f0; border-radius:10px; padding:9px; background:#f8fafc; display:grid; gap:3px; }
+    .rental-review-box span { font-size:10px; color:#64748b; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+    .rental-review-box strong { font-size:13px; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .rental-availability-panel {
+        display:grid;
+        grid-template-columns:repeat(5, minmax(0, 1fr));
+        gap:8px;
+        padding:8px;
+        border:1px solid #dbe3ef;
+        border-radius:12px;
+        background:#f8fafc;
+    }
+    .rental-availability-panel div { display:grid; gap:3px; padding:8px; border-radius:10px; background:#fff; border:1px solid #e2e8f0; min-width:0; }
+    .rental-availability-panel span { font-size:10px; color:#64748b; font-weight:800; text-transform:uppercase; letter-spacing:.04em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .rental-availability-panel strong { font-size:15px; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .partner-billing-note {
+        display:inline-flex;
+        margin-top:6px;
+        padding:6px 8px;
+        border-radius:9px;
+        background:#eef2ff;
+        color:#4338ca;
+        font-size:11px;
+        font-weight:800;
+    }
+    .rental-draft-status {
+        font-size:11px;
+        color:#64748b;
+        font-weight:700;
+    }
     .rental-field.is-error label { color:#b91c1c; }
     .rental-field.is-error input,
     .rental-field.is-error select,
@@ -265,6 +402,8 @@
     }
     .searchable-select {
         position:relative;
+        width:100%;
+        min-width:0;
     }
     .searchable-select-trigger {
         width:100%;
@@ -281,6 +420,13 @@
         justify-content:space-between;
         gap:10px;
         cursor:pointer;
+        box-sizing:border-box;
+    }
+    .searchable-select-trigger span {
+        min-width:0;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
     }
     .searchable-select-trigger::after {
         content:"";
@@ -311,6 +457,7 @@
         box-shadow:0 18px 40px rgba(15, 23, 42, 0.14);
         display:grid;
         gap:8px;
+        min-width:min(320px, calc(100vw - 32px));
     }
     .searchable-select-panel[hidden] { display:none !important; }
     .searchable-select-search {
@@ -582,22 +729,23 @@
         border:1px solid #dbe3ef;
         border-radius:12px;
         background:#fcfdff;
-        overflow:hidden;
-    }
-    .sale-item-panel.is-rental-items {
         overflow:visible;
+        max-width:100%;
     }
+    .sale-item-panel.is-rental-items { overflow:visible; }
     .sale-item-head,
     .sale-item-row {
         display:grid;
-        grid-template-columns:minmax(0, 2.2fr) 90px 120px 120px 190px;
+        grid-template-columns:minmax(0, 2fr) minmax(70px, .45fr) minmax(100px, .7fr) minmax(90px, .65fr) minmax(130px, .8fr);
         gap:10px;
         align-items:start;
         padding:12px 14px;
+        max-width:100%;
+        box-sizing:border-box;
     }
     .sale-item-panel.is-sale-items .sale-item-head,
     .sale-item-panel.is-sale-items .sale-item-row {
-        grid-template-columns:minmax(0, 2fr) minmax(140px, 1fr) 90px 140px 190px;
+        grid-template-columns:minmax(0, 1.7fr) minmax(0, 1.2fr) minmax(70px, .45fr) minmax(105px, .7fr) minmax(130px, .8fr);
     }
     .sale-item-head {
         background:#f8fafc;
@@ -610,10 +758,32 @@
     }
     .sale-item-row + .sale-item-row { border-top:1px solid #e2e8f0; }
     .sale-item-entry + .sale-item-entry { border-top:1px solid #e2e8f0; }
+    .rental-line-heading {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+        padding:10px 14px 0;
+        color:#0f172a;
+        font-weight:800;
+        font-size:13px;
+    }
+    .rental-line-heading span {
+        color:#64748b;
+        font-size:11px;
+        font-weight:700;
+        text-transform:uppercase;
+        letter-spacing:.04em;
+    }
+    .rental-grid .rental-line-heading {
+        padding:0;
+        grid-column:1 / -1;
+    }
     .sale-item-row select,
     .sale-item-row input,
     .sale-item-row textarea {
         width:100%;
+        min-width:0;
         border:1px solid #cbd5e1;
         border-radius:10px;
         padding:9px 10px;
@@ -818,6 +988,7 @@
         align-items:center;
         gap:8px;
         flex-wrap:wrap;
+        min-width:0;
     }
     .sale-item-empty {
         padding:18px 14px;
@@ -827,11 +998,10 @@
         background:#fff;
     }
     .sale-item-summary {
-        display:flex;
-        justify-content:space-between;
+        display:grid;
+        grid-template-columns:1fr;
         align-items:center;
         gap:10px;
-        flex-wrap:wrap;
         margin-top:12px;
         padding:12px 14px;
         border:1px solid #e2e8f0;
@@ -839,6 +1009,39 @@
         background:#f8fafc;
         font-size:13px;
         color:#475569;
+        overflow:visible;
+        max-width:100%;
+        box-sizing:border-box;
+    }
+    .sale-item-summary > div {
+        min-width:0;
+    }
+    .sale-item-summary .sale-item-actions {
+        justify-content:stretch;
+    }
+    .sale-item-summary .sale-item-actions .ops-button-secondary {
+        width:100%;
+    }
+    .add-line-cta.is-header {
+        min-height:36px;
+        padding:8px 14px;
+        white-space:nowrap;
+    }
+    .ops-button-secondary.add-line-cta {
+        background:#4f46e5;
+        border-color:#4f46e5;
+        color:#fff;
+        box-shadow:0 10px 22px rgba(79, 70, 229, 0.22);
+        font-weight:800;
+        max-width:100%;
+        box-sizing:border-box;
+    }
+    .ops-button-secondary.add-line-cta:hover,
+    .ops-button-secondary.add-line-cta:focus {
+        background:#4338ca;
+        border-color:#4338ca;
+        color:#fff;
+        box-shadow:0 12px 26px rgba(79, 70, 229, 0.28);
     }
     .rental-inline-stack { display:flex; gap:8px; align-items:flex-end; flex-wrap:nowrap; }
     .rental-inline-stack .rental-field { flex:1 1 auto; min-width:0; }
@@ -953,7 +1156,32 @@
         color:#166534;
     }
     body.modal-open { overflow:hidden; }
+    @media (max-width: 1280px) {
+        .sale-item-panel .sale-item-head { display:none; }
+        .sale-item-row,
+        .sale-item-panel.is-sale-items .sale-item-row {
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+        }
+        .sale-item-actions {
+            justify-content:stretch;
+        }
+        .sale-item-actions .ops-button-secondary {
+            flex:1 1 140px;
+        }
+        .sale-item-total {
+            min-height:34px;
+        }
+    }
     @media (max-width: 980px) {
+        .rental-wizard-layout { grid-template-columns:1fr; }
+        .rental-order-summary { position:static; order:-1; }
+        .rental-wizard-nav {
+            display:flex;
+            overflow-x:auto;
+            scrollbar-width:none;
+        }
+        .rental-wizard-nav::-webkit-scrollbar { display:none; }
+        .rental-wizard-tab { flex:0 0 190px; }
         .rental-col-3,
         .rental-col-4,
         .rental-col-5,
@@ -961,6 +1189,7 @@
         .rental-col-7,
         .rental-col-8 { grid-column:span 12; }
         .rental-summary { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+        .rental-availability-panel { grid-template-columns:repeat(2, minmax(0, 1fr)); }
         .asset-summary-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
         .sale-item-head { display:none; }
         .sale-item-row { grid-template-columns:repeat(2, minmax(0, 1fr)); }
@@ -996,14 +1225,17 @@
         .quick-inline-grid { grid-template-columns:1fr; }
         .sale-item-row { grid-template-columns:1fr; }
         .rental-snapshot-card { display:none; }
-        .rental-card { border-radius:14px !important; }
-        .rental-card h2 { font-size:18px !important; }
-        .sale-item-summary,
+        .rental-card { border-radius:12px !important; padding:10px; }
+        .rental-card h2 { font-size:15px !important; }
+        .rental-wizard-tab { flex-basis:170px; }
+        .rental-summary-row { grid-template-columns:90px minmax(0, 1fr); }
+        .rental-review-grid { grid-template-columns:1fr; }
+        .rental-availability-panel { grid-template-columns:1fr; }
+        .sale-item-summary { grid-template-columns:1fr; align-items:stretch; }
+        .sale-item-summary .sale-item-actions { justify-content:stretch; }
+        .sale-item-summary .sale-item-actions .ops-button-secondary { width:100%; }
         .asset-toolbar,
-        .asset-toolbar-actions {
-            flex-direction:column;
-            align-items:stretch;
-        }
+        .asset-toolbar-actions { flex-direction:column; align-items:stretch; }
         .rental-inline-stack { flex-direction:column; align-items:stretch; }
         .rental-inline-stack > * { width:100%; }
         .ops-button,
@@ -1042,46 +1274,17 @@
         </div>
     @endif
 
-    <x-section-nav
-        class="ph-section-nav-static ph-section-nav-static-mobile"
-        label="Rental form sections"
-        :items="[
-            ['id' => 'rental-fulfilment-section', 'label' => 'Fulfilment'],
-            ['id' => 'rental-customer-section', 'label' => 'Customer'],
-            ['id' => 'rental-product-section', 'label' => 'Product'],
-            ['id' => 'rental-dates-section', 'label' => 'Dates'],
-            ['id' => 'rental-pricing-section', 'label' => 'Pricing'],
-            ['id' => 'rental-delivery-section', 'label' => 'Delivery'],
-            ['id' => 'rental-notes-section', 'label' => 'Notes'],
-            ['id' => 'rental-assets-section', 'label' => 'Assets'],
-            ['id' => 'rental-addons-section', 'label' => 'Add-ons'],
-        ]"
-    />
-
-    <div class="rental-card">
-        <h2>Step 7 · Review & Create</h2>
-        <p class="section-copy">Check the fulfilment path, customer, and totals before saving.</p>
-        <div class="rental-summary">
-            <div class="rental-metric">
-                <span>Mode</span>
-                <strong>{{ $isEdit ? 'Update Existing' : 'Create Fresh' }}</strong>
-            </div>
-            <div class="rental-metric">
-                <span>Assigned Assets</span>
-                <strong id="selectedAssetCount">{{ count($selectedAssetIds) }}</strong>
-            </div>
-            <div class="rental-metric">
-                <span>Requested Quantity</span>
-                <strong id="quantityMetric">{{ old('quantity', $isEdit ? $rental->quantity : 1) }}</strong>
-            </div>
-            <div class="rental-metric">
-                <span>Dispatch Warehouse</span>
-                <strong id="warehouseMetric">{{ old('dispatch_warehouse_id', $isEdit ? $rental->dispatch_warehouse_id : '') ? optional($warehouses->firstWhere('id', (int) old('dispatch_warehouse_id', $isEdit ? $rental->dispatch_warehouse_id : '')))->name : 'Any warehouse' }}</strong>
-            </div>
-        </div>
+    <div class="rental-wizard-nav" aria-label="Rental creation steps">
+        <button type="button" class="rental-wizard-tab is-active" data-rental-wizard-tab="fulfilment"><span>1</span><strong>Fulfilment & Customer</strong></button>
+        <button type="button" class="rental-wizard-tab" data-rental-wizard-tab="product"><span>2</span><strong>Product & Asset</strong></button>
+        <button type="button" class="rental-wizard-tab" data-rental-wizard-tab="dates"><span>3</span><strong>Dates & Pricing</strong></button>
+        <button type="button" class="rental-wizard-tab" data-rental-wizard-tab="delivery"><span>4</span><strong>Delivery & Pickup</strong></button>
+        <button type="button" class="rental-wizard-tab" data-rental-wizard-tab="review"><span>5</span><strong>Review & Create</strong></button>
     </div>
 
-    <div class="rental-card">
+    <div class="rental-wizard-layout">
+        <div class="rental-wizard-main">
+    <section class="rental-card rental-wizard-step is-active" data-rental-wizard-step="fulfilment">
         <h2>Fulfilment & Customer</h2>
         <p class="section-copy">Pick fulfilment source and city first, then the rest of the rental flow narrows automatically.</p>
         <div class="rental-grid">
@@ -1195,6 +1398,7 @@
                         </div>
                         <button type="button" class="party-flow-link" data-open-modal="rentalBusinessPartnerModal">+ Add</button>
                     </div>
+                    <div class="partner-billing-note" data-customer-mode-block="business_partner">Partner is billed; actual client receives delivery.</div>
 
                     <div class="party-flow-row" data-customer-mode-block="business_partner" id="partnerClientRow">
                         <div class="rental-field{{ $hasFieldError('partner_client_id') ? ' is-error' : '' }}">
@@ -1278,12 +1482,52 @@
                 </div>
             </div>
 
+            <div class="rental-field rental-col-3{{ $hasFieldError('referral_source_type') ? ' is-error' : '' }}">
+                <label for="referral_source_type">Referred By Type</label>
+                @php($referralSourceType = old('referral_source_type', ($isEdit && $hasReferralSourceTypeColumn) ? ($rental->referral_source_type ?? '') : ''))
+                <select name="referral_source_type" id="referral_source_type">
+                    <option value="">No referral</option>
+                    <option value="doctor" {{ $referralSourceType === 'doctor' ? 'selected' : '' }}>Doctor</option>
+                    <option value="business" {{ $referralSourceType === 'business' ? 'selected' : '' }}>Business</option>
+                    <option value="customer" {{ $referralSourceType === 'customer' ? 'selected' : '' }}>Customer</option>
+                    <option value="staff" {{ $referralSourceType === 'staff' ? 'selected' : '' }}>Staff</option>
+                    <option value="other" {{ $referralSourceType === 'other' ? 'selected' : '' }}>Other</option>
+                </select>
+                @if($hasFieldError('referral_source_type'))
+                    <span class="field-error">{{ $fieldError('referral_source_type') }}</span>
+                @endif
+            </div>
+
+            <div class="rental-field rental-col-5{{ $hasFieldError('referred_by') ? ' is-error' : '' }}">
+                <label for="referred_by">Referred By</label>
+                <input type="text" name="referred_by" id="referred_by" value="{{ old('referred_by', ($isEdit && $hasReferredByColumn) ? ($rental->referred_by ?? '') : '') }}" placeholder="Doctor, clinic, business, customer, or contact name">
+                <span class="hint">{{ $hasReferredByColumn ? 'Used for referral tracking and incentive review.' : 'Referral tracking needs the pending migration before it can be saved.' }}</span>
+                @if($hasFieldError('referred_by'))
+                    <span class="field-error">{{ $fieldError('referred_by') }}</span>
+                @endif
+            </div>
+
             <input type="hidden" name="customer_name" id="customer_name" value="{{ old('customer_name', $isEdit ? $rental->customer_name : ($selectedCustomer?->name ?? '')) }}">
             <input type="hidden" name="phone_country_code" id="phone_country_code" value="{{ old('phone_country_code', $phoneParts['code']) }}">
             <input type="hidden" name="phone" id="phone" value="{{ $phoneParts['local'] }}">
 
+        </div>
+        <div class="rental-step-actions">
+            <span class="rental-draft-status" data-rental-draft-status></span>
+            <button type="button" class="ops-button" data-rental-wizard-next="product">Next: Product & Asset</button>
+        </div>
+    </section>
+
+    <section class="rental-card rental-wizard-step" data-rental-wizard-step="product">
+        <h2>Product & Asset</h2>
+        <p class="section-copy">Choose product, fulfilment stock source, and quantity.</p>
+        <div class="rental-grid">
+            <div class="rental-line-heading">
+                <strong>Rental Item #1</strong>
+                <span>Primary rental product</span>
+            </div>
             <div class="rental-field rental-col-4{{ $hasFieldError('product_id', 'rental_items') ? ' is-error' : '' }} section-nav-target" id="rental-product-section">
-                <label for="product_id">Step 4 · Product</label>
+                <label for="product_id">Product</label>
                 <select name="product_id" id="product_id" required data-searchable-select data-search-placeholder="Search product by name, brand, model, SKU, or code">
                     <option value="">Select product</option>
                     @foreach($rentalProducts as $product)
@@ -1305,7 +1549,7 @@
                             data-rental-price-90="{{ (float) ($product->rental_price_3_months ?? 0) }}"
                             data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}"
                             data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}"
-                            data-search="{{ trim(implode(' ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code]))) }}"
+                            data-search="{{ trim(implode(' ', array_filter([$product->name, $product->category, $product->brand, $product->model_name, $product->display_model ?? null, $product->sku, $product->product_code, $product->rental_dropdown_label ?? null, $product->stock_mode, $product->product_type]))) }}"
                             {{ (int) old('product_id', $isEdit ? $rental->product_id : null) === $product->id ? 'selected' : '' }}>
                             {{ $selectedFulfilmentSource === 'vendor_supplied'
                                 ? $product->name
@@ -1368,34 +1612,6 @@
                 @endif
             </div>
 
-            <div class="rental-field rental-col-3{{ $hasFieldError('duration_preset') ? ' is-error' : '' }} section-nav-target" id="rental-dates-section">
-                <label for="duration_preset">Duration</label>
-                <select id="duration_preset" name="duration_preset">
-                    <option value="custom">Custom</option>
-                    <option value="7_days">7 Days</option>
-                    <option value="15_days">15 Days</option>
-                    <option value="30_days">30 Days</option>
-                    <option value="3_months">3 Months</option>
-                    <option value="6_months">6 Months</option>
-                </select>
-            </div>
-
-            <div class="rental-field rental-col-3{{ $hasFieldError('start_date') ? ' is-error' : '' }}">
-                <label for="start_date">Start Date</label>
-                <input type="date" name="start_date" id="start_date" value="{{ old('start_date', $isEdit && $rental->start_date ? $rental->start_date->format('Y-m-d') : '') }}" required>
-                @if($hasFieldError('start_date'))
-                    <span class="field-error">{{ $fieldError('start_date') }}</span>
-                @endif
-            </div>
-
-            <div class="rental-field rental-col-3{{ $hasFieldError('end_date') ? ' is-error' : '' }}">
-                <label for="end_date">End Date</label>
-                <input type="date" name="end_date" id="end_date" value="{{ old('end_date', $isEdit && $rental->end_date ? $rental->end_date->format('Y-m-d') : '') }}" required>
-                @if($hasFieldError('end_date'))
-                    <span class="field-error">{{ $fieldError('end_date') }}</span>
-                @endif
-            </div>
-
             <div class="rental-field rental-col-3{{ $hasFieldError('rental_amount') ? ' is-error' : '' }} section-nav-target" id="rental-pricing-section">
                 <label for="rental_amount">Rental Amount</label>
                 <input type="number" step="0.01" min="0" name="rental_amount" id="rental_amount" value="{{ old('rental_amount', $isEdit ? $rental->rental_amount : 0) }}">
@@ -1441,6 +1657,54 @@
                 @endif
             </div>
 
+            <div class="rental-col-12">
+                <div class="rental-availability-panel" id="rentalAvailabilityPanel">
+                    <div><span>Available</span><strong data-availability-value="available">0</strong></div>
+                    <div><span>On Rent</span><strong data-availability-value="onRent">0</strong></div>
+                    <div><span>Maintenance</span><strong data-availability-value="maintenance">0</strong></div>
+                    <div><span>Reserved</span><strong data-availability-value="reserved">0</strong></div>
+                    <div><span>Warehouse Stock</span><strong data-availability-value="warehouse">Select warehouse</strong></div>
+                </div>
+            </div>
+
+        </div>
+        <div class="rental-step-actions">
+            <button type="button" class="ops-button-secondary" data-rental-wizard-prev="fulfilment">Previous</button>
+        </div>
+    </section>
+
+    <section class="rental-card rental-wizard-step" data-rental-wizard-step="dates">
+        <h2>Dates & Pricing</h2>
+        <p class="section-copy">Set rental period, taxes, deposit, and charges.</p>
+        <div class="rental-grid">
+            <div class="rental-field rental-col-3{{ $hasFieldError('duration_preset') ? ' is-error' : '' }} section-nav-target" id="rental-dates-section">
+                <label for="duration_preset">Duration</label>
+                <select id="duration_preset" name="duration_preset">
+                    <option value="custom">Custom</option>
+                    <option value="7_days">7 Days</option>
+                    <option value="15_days">15 Days</option>
+                    <option value="30_days">30 Days</option>
+                    <option value="3_months">3 Months</option>
+                    <option value="6_months">6 Months</option>
+                </select>
+            </div>
+
+            <div class="rental-field rental-col-3{{ $hasFieldError('start_date') ? ' is-error' : '' }}">
+                <label for="start_date">Start Date</label>
+                <input type="date" name="start_date" id="start_date" value="{{ old('start_date', $isEdit && $rental->start_date ? $rental->start_date->format('Y-m-d') : '') }}" required>
+                @if($hasFieldError('start_date'))
+                    <span class="field-error">{{ $fieldError('start_date') }}</span>
+                @endif
+            </div>
+
+            <div class="rental-field rental-col-3{{ $hasFieldError('end_date') ? ' is-error' : '' }}">
+                <label for="end_date">End Date</label>
+                <input type="date" name="end_date" id="end_date" value="{{ old('end_date', $isEdit && $rental->end_date ? $rental->end_date->format('Y-m-d') : '') }}" required>
+                @if($hasFieldError('end_date'))
+                    <span class="field-error">{{ $fieldError('end_date') }}</span>
+                @endif
+            </div>
+
             <div class="rental-field rental-col-3{{ $hasFieldError('deposit_amount') ? ' is-error' : '' }}">
                 <label for="deposit_amount">Deposit</label>
                 <input type="number" step="0.01" min="0" name="deposit_amount" id="deposit_amount" value="{{ old('deposit_amount', $isEdit ? $rental->deposit_amount : 0) }}">
@@ -1468,6 +1732,17 @@
             <input type="hidden" name="delivery_responsibility" id="delivery_responsibility" value="{{ $selectedDeliveryResponsibility }}">
             <input type="hidden" name="pickup_responsibility" id="pickup_responsibility" value="{{ $selectedPickupResponsibility }}">
 
+        </div>
+        <div class="rental-step-actions">
+            <button type="button" class="ops-button-secondary" data-rental-wizard-prev="product">Previous</button>
+            <button type="button" class="ops-button" data-rental-wizard-next="delivery">Next: Delivery & Pickup</button>
+        </div>
+    </section>
+
+    <section class="rental-card rental-wizard-step" data-rental-wizard-step="delivery">
+        <h2>Delivery & Pickup</h2>
+        <p class="section-copy">Assign dispatch responsibility and capture pickup handling.</p>
+        <div class="rental-grid">
             <div class="rental-field rental-col-3{{ $hasFieldError('delivery_assignment_type') ? ' is-error' : '' }} section-nav-target" id="rental-delivery-section">
                 <label for="delivery_assignment_type">Step 6 · Delivery Assignment</label>
                 <select name="delivery_assignment_type" id="delivery_assignment_type">
@@ -1617,9 +1892,13 @@
                 <textarea id="internal_notes" disabled placeholder="Use delivery notes after save.">{{ $isEdit ? 'Adjust delivery or assets after save.' : 'Delivery opens after save.' }}</textarea>
             </div>
         </div>
-    </div>
+        <div class="rental-step-actions">
+            <button type="button" class="ops-button-secondary" data-rental-wizard-prev="dates">Previous</button>
+            <button type="button" class="ops-button" data-rental-wizard-next="review">Next: Review & Create</button>
+        </div>
+    </section>
 
-    <div class="rental-card{{ $hasFieldError('asset_ids') ? ' is-error' : '' }} section-nav-target" id="rental-assets-section">
+    <section class="rental-card rental-wizard-step{{ $hasFieldError('asset_ids') ? ' is-error' : '' }} section-nav-target" data-rental-wizard-step="product" id="rental-assets-section">
         <h2>Asset Assignment</h2>
         <p class="section-copy">Select rental assets.</p>
         <div class="asset-panel">
@@ -1658,6 +1937,7 @@
             </div>
             <div id="assetSelectionAlert" class="asset-warning" style="display:none;"></div>
             <div id="assetGrid" class="asset-grid"></div>
+            <div id="primaryAssetHiddenInputs"></div>
             <div class="asset-load-more" id="assetLoadMoreWrap" style="display:none;">
                 <button type="button" class="ops-button-secondary" id="assetLoadMoreButton">Load More</button>
             </div>
@@ -1666,19 +1946,33 @@
                 <div class="field-error" style="margin-top:10px;">{{ $fieldError('asset_ids') }}</div>
             @endif
         </div>
-    </div>
+    </section>
 
-    <div class="rental-card section-nav-target" id="rental-addons-section">
+    <section class="rental-card rental-wizard-step" data-rental-wizard-step="review" id="rental-review-section">
+        <h2>Review & Create</h2>
+        <p class="section-copy">Confirm the rental setup, add-ons, and warnings before saving.</p>
+        <div class="rental-review-grid">
+            <div class="rental-review-box"><span>Fulfilment</span><strong data-summary-value="fulfilment">In-house Stock</strong></div>
+            <div class="rental-review-box"><span>Customer</span><strong data-summary-value="customer">Not selected</strong></div>
+            <div class="rental-review-box"><span>Product</span><strong data-summary-value="product">Not selected</strong></div>
+            <div class="rental-review-box"><span>Dates</span><strong data-summary-value="dates">Not set</strong></div>
+            <div class="rental-review-box"><span>Pricing</span><strong data-summary-value="pricing">0.00</strong></div>
+            <div class="rental-review-box"><span>Assets</span><strong data-summary-value="assets">Not assigned</strong></div>
+        </div>
+    </section>
+
+    <section class="rental-card rental-wizard-step section-nav-target" data-rental-wizard-step="product" id="rental-addons-section">
         <details class="sale-section-disclosure compact-section-disclosure{{ $hasRentalItemsError ? ' is-error' : '' }}" id="additionalRentalDisclosure" {{ $additionalRentalExpanded ? 'open' : '' }}>
             <summary>
                 <span class="compact-section-title">
-                    Add More rental products
+                    Additional Rental Products
                     <span class="is-collapsed">+</span>
                     <span class="is-open">-</span>
                 </span>
                 <div class="compact-section-summary">
                     <span class="sale-section-chip"><strong id="rentalItemsCountSummary">{{ count($additionalRentalRows) }}</strong> line(s)</span>
                     <span class="sale-section-chip">Total <strong id="rentalItemsGrandTotalSummary">0.00</strong></span>
+                    <button type="button" class="ops-button-secondary add-line-cta is-header" data-add-rental-item>+ Add Rental Product</button>
                 </div>
             </summary>
             <div class="sale-section-body">
@@ -1701,19 +1995,19 @@
                     <div><strong id="rentalItemsCount">0</strong> additional rental line(s)</div>
                     <div>Additional rental total: <strong id="rentalItemsGrandTotal">0.00</strong></div>
                     <div class="sale-item-actions">
-                        <button type="button" class="ops-button-secondary" id="addRentalItemButton">Add Rental Product</button>
+                        <button type="button" class="ops-button-secondary add-line-cta" id="addRentalItemButton">+ Add Rental Product</button>
                     </div>
                 </div>
             </div>
         </details>
-    </div>
+    </section>
 
-    <div class="rental-card">
+    <section class="rental-card rental-wizard-step" data-rental-wizard-step="product">
         <details class="sale-section-disclosure{{ $hasSaleItemsError ? ' is-error' : '' }}" id="newProductsDisclosure" {{ $newProductsExpanded ? 'open' : '' }}>
             <summary>
                 <div class="sale-section-heading">
-                    <strong>New Products Alongside Rental</strong>
-                    <span>Optional sale lines.</span>
+                    <strong>Sales Add-ons</strong>
+                    <span>Optional sale products billed with this rental.</span>
                 </div>
                 <div class="sale-section-meta">
                     <span class="sale-section-chip"><strong id="saleItemsCountSummary">{{ count($saleItemRows) }}</strong> line(s)</span>
@@ -1722,6 +2016,7 @@
                         <span class="is-collapsed">Expand</span>
                         <span class="is-open">Collapse</span>
                     </span>
+                    <button type="button" class="ops-button-secondary add-line-cta is-header" data-add-sale-item>+ Add Sale Product</button>
                 </div>
             </summary>
             <div class="sale-section-body">
@@ -1744,23 +2039,249 @@
                     <div><strong id="saleItemsCount">0</strong> new product line(s) attached</div>
                     <div>New products total: <strong id="saleItemsGrandTotal">0.00</strong></div>
                     <div class="sale-item-actions">
-                        <button type="button" class="ops-button-secondary" id="addSaleItemButton">Add New Product</button>
+                        <button type="button" class="ops-button-secondary add-line-cta" id="addSaleItemButton">+ Add Sale Product</button>
                     </div>
                 </div>
             </div>
         </details>
+    </section>
+
+    <div class="rental-step-actions rental-wizard-step" data-rental-wizard-step="product">
+        <button type="button" class="ops-button-secondary" data-rental-wizard-prev="fulfilment">Previous</button>
+        <button type="button" class="ops-button" data-rental-wizard-next="dates">Next: Dates & Pricing</button>
     </div>
 
-    <div class="rental-toolbar" style="margin-top:-4px;">
+    <div class="rental-toolbar rental-wizard-step" data-rental-wizard-step="review" style="margin-top:-4px;">
         <div class="rental-inline-note" id="rentalSaveGuidance">
             Match rental asset count with quantity.
         </div>
         <div class="rental-actions">
+            <span class="rental-draft-status" data-rental-draft-status></span>
             <a href="{{ route('rentals.index') }}" class="ops-button-secondary">Cancel</a>
+            <button type="button" class="ops-button-secondary" id="rentalSaveDraftButton">Save Draft</button>
             <button type="submit" class="ops-button" id="rentalSubmitButton">{{ $isEdit ? 'Update Rental' : 'Save Rental' }}</button>
         </div>
     </div>
+        </div>
+
+        <aside class="rental-order-summary" aria-label="Order summary">
+            <details open>
+                <summary>
+                    <h2>Order Summary</h2>
+                    <span class="badge badge-blue">Live</span>
+                </summary>
+                <div class="rental-summary-list">
+                    <div class="rental-summary-row"><span>Fulfilment</span><strong data-summary-value="fulfilment">In-house Stock</strong></div>
+                    <div class="rental-summary-row"><span>City</span><strong data-summary-value="city">Not selected</strong></div>
+                    <div class="rental-summary-row"><span>Billing Party</span><strong data-summary-value="customer">Not selected</strong></div>
+                    <div class="rental-summary-row"><span>Actual Client</span><strong data-summary-value="actualClient">Not applicable</strong></div>
+                    <div class="rental-summary-row"><span>Product</span><strong data-summary-value="product">Not selected</strong></div>
+                    <div class="rental-summary-row"><span>Quantity</span><strong data-summary-value="quantity">{{ old('quantity', $isEdit ? $rental->quantity : 1) }}</strong></div>
+                    <div class="rental-summary-row"><span>Source</span><strong data-summary-value="source">Any warehouse</strong></div>
+                    <div class="rental-summary-row"><span>Dates</span><strong data-summary-value="dates">Not set</strong></div>
+                    <div class="rental-summary-row"><span>Rental</span><strong data-summary-value="pricing">0.00</strong></div>
+                    <div class="rental-summary-row"><span>Deposit</span><strong data-summary-value="deposit">0.00</strong></div>
+                    <div class="rental-summary-row"><span>Delivery</span><strong data-summary-value="delivery">PH Internal</strong></div>
+                    <div class="rental-summary-row"><span>Assets</span><strong data-summary-value="assets">Not assigned</strong></div>
+                </div>
+            </details>
+        </aside>
+    </div>
 </div>
+
+<script>
+    (function () {
+        const tabs = Array.from(document.querySelectorAll('[data-rental-wizard-tab]'));
+        const steps = Array.from(document.querySelectorAll('[data-rental-wizard-step]'));
+        const nextButtons = Array.from(document.querySelectorAll('[data-rental-wizard-next]'));
+        const prevButtons = Array.from(document.querySelectorAll('[data-rental-wizard-prev]'));
+        const openAddonButtons = Array.from(document.querySelectorAll('[data-open-addons]'));
+        const saveDraftButton = document.getElementById('rentalSaveDraftButton');
+        const draftStatusNodes = Array.from(document.querySelectorAll('[data-rental-draft-status]'));
+        const summaryValues = Array.from(document.querySelectorAll('[data-summary-value]'));
+        const form = document.currentScript.closest('form') || document.querySelector('form[action*="rentals"]');
+        const draftKey = 'phos:rental-create:draft';
+        const getEl = (id) => document.getElementById(id);
+        const textOf = (select) => select?.selectedOptions?.[0]?.textContent?.trim() || '';
+        const valueOf = (id) => getEl(id)?.value?.trim() || '';
+        const setSummary = (key, value) => {
+            summaryValues
+                .filter((node) => node.dataset.summaryValue === key)
+                .forEach((node) => { node.textContent = value || 'Not selected'; });
+        };
+        const setAvailability = (key, value) => {
+            document.querySelectorAll('[data-availability-value="' + key + '"]')
+                .forEach((node) => { node.textContent = value; });
+        };
+        const stepRequirements = {
+            fulfilment: ['fulfilment_source', 'city_id'],
+            product: ['product_id', 'quantity'],
+            dates: ['start_date', 'end_date', 'rental_amount'],
+            delivery: ['delivery_assignment_type'],
+            review: [],
+        };
+        const isStepComplete = (stepName) => (stepRequirements[stepName] || []).every((id) => valueOf(id));
+        const showStep = (stepName, shouldScroll = true) => {
+            tabs.forEach((tab) => tab.classList.toggle('is-active', tab.dataset.rentalWizardTab === stepName));
+            steps.forEach((step) => step.classList.toggle('is-active', step.dataset.rentalWizardStep === stepName));
+            if (shouldScroll) {
+                document.querySelector('[data-rental-wizard-tab="' + stepName + '"]')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        };
+        const selectedAssetCount = () => document.querySelectorAll('input[name="asset_ids[]"]:checked').length;
+        const updateWizardState = () => {
+            tabs.forEach((tab) => {
+                const stepName = tab.dataset.rentalWizardTab;
+                const complete = isStepComplete(stepName);
+                const hasErrors = steps
+                    .filter((step) => step.dataset.rentalWizardStep === stepName)
+                    .some((step) => step.querySelector('.is-error, .field-error'));
+                tab.classList.toggle('is-complete', complete && !hasErrors);
+                tab.classList.toggle('is-warning', hasErrors || (!complete && stepName !== 'review'));
+                const badge = tab.querySelector('span:first-child');
+                if (badge) {
+                    badge.textContent = hasErrors || (!complete && stepName !== 'review') ? '!' : (complete ? '✓' : String(tabs.indexOf(tab) + 1));
+                }
+            });
+            nextButtons.forEach((button) => {
+                const stepName = button.closest('[data-rental-wizard-step]')?.dataset.rentalWizardStep;
+                button.disabled = !!stepName && !isStepComplete(stepName);
+                button.title = button.disabled ? 'Complete required fields in this step first.' : '';
+            });
+        };
+        const setDraftStatus = (message) => {
+            draftStatusNodes.forEach((node) => { node.textContent = message || ''; });
+        };
+        const updateSummary = () => {
+            const productSelect = getEl('product_id');
+            const selectedProduct = productSelect?.selectedOptions?.[0] || null;
+            const warehouseId = valueOf('dispatch_warehouse_id');
+            const fulfilment = textOf(getEl('fulfilment_source')) || 'In-house Stock';
+            const isVendor = valueOf('fulfilment_source') === 'vendor_supplied';
+            const customerType = valueOf('customer_type');
+            setSummary('fulfilment', fulfilment);
+            setSummary('city', textOf(getEl('city_id')) || 'Not selected');
+            setSummary('customer', customerType === 'business_partner' ? textOf(getEl('business_partner_id')) : textOf(getEl('customer_id')));
+            setSummary('actualClient', customerType === 'business_partner' ? textOf(getEl('partner_client_id')) : 'Direct customer');
+            setSummary('product', textOf(getEl('product_id')) || 'Not selected');
+            setSummary('quantity', valueOf('quantity') || '1');
+            setSummary('source', isVendor ? (textOf(getEl('vendor_id')) || 'Vendor not selected') : (textOf(getEl('dispatch_warehouse_id')) || 'Warehouse not selected'));
+            const start = valueOf('start_date');
+            const end = valueOf('end_date');
+            setSummary('dates', start && end ? start + ' to ' + end : 'Not set');
+            setSummary('pricing', valueOf('rental_amount') || '0.00');
+            setSummary('deposit', valueOf('deposit_amount') || '0.00');
+            setSummary('delivery', textOf(getEl('delivery_assignment_type')) || 'PH Internal');
+            const assetCount = selectedAssetCount();
+            setSummary('assets', isVendor ? 'Vendor supplied' : (assetCount ? assetCount + ' selected' : 'Not assigned'));
+            let available = parseInt(selectedProduct?.dataset?.rentalAvailable || selectedProduct?.dataset?.available || '0', 10);
+            let warehouseStock = warehouseId ? '0' : 'All warehouses';
+            try {
+                const warehouseQuantities = JSON.parse(selectedProduct?.dataset?.rentalWarehouseQuantities || '{}');
+                if (warehouseId && Object.prototype.hasOwnProperty.call(warehouseQuantities, warehouseId)) {
+                    available = parseInt(warehouseQuantities[warehouseId] || '0', 10);
+                    warehouseStock = String(available);
+                }
+            } catch (error) {
+                warehouseStock = warehouseId ? String(Number.isNaN(available) ? 0 : available) : 'All warehouses';
+            }
+            if (!selectedProduct || !selectedProduct.value || isVendor) {
+                setAvailability('available', isVendor ? 'Vendor' : '0');
+                setAvailability('warehouse', isVendor ? 'Vendor stock' : 'Select product');
+            } else {
+                setAvailability('available', String(Number.isNaN(available) ? 0 : available));
+                setAvailability('warehouse', warehouseStock);
+            }
+            setAvailability('onRent', '0');
+            setAvailability('maintenance', '0');
+            setAvailability('reserved', '0');
+            updateWizardState();
+        };
+        tabs.forEach((tab) => {
+            tab.addEventListener('click', () => showStep(tab.dataset.rentalWizardTab));
+        });
+        nextButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                if (button.disabled) {
+                    return;
+                }
+                showStep(button.dataset.rentalWizardNext);
+                if (button.hasAttribute('data-open-addons')) {
+                    document.getElementById('additionalRentalDisclosure')?.setAttribute('open', 'open');
+                    document.getElementById('newProductsDisclosure')?.setAttribute('open', 'open');
+                }
+            });
+        });
+        openAddonButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                document.getElementById('additionalRentalDisclosure')?.setAttribute('open', 'open');
+                document.getElementById('newProductsDisclosure')?.setAttribute('open', 'open');
+                document.getElementById('rental-addons-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        });
+        prevButtons.forEach((button) => {
+            button.addEventListener('click', () => showStep(button.dataset.rentalWizardPrev));
+        });
+        saveDraftButton?.addEventListener('click', () => {
+            if (!form) {
+                setDraftStatus('Unable to find the rental form.');
+                return;
+            }
+
+            const originalLabel = saveDraftButton.textContent;
+            const payload = {};
+
+            try {
+                const formData = new FormData(form);
+                formData.forEach((value, key) => {
+                    if (key === '_token' || key === '_method') {
+                        return;
+                    }
+                    if (Object.prototype.hasOwnProperty.call(payload, key)) {
+                        payload[key] = Array.isArray(payload[key]) ? payload[key].concat(value) : [payload[key], value];
+                    } else {
+                        payload[key] = value;
+                    }
+                });
+                localStorage.setItem(draftKey, JSON.stringify({ savedAt: new Date().toISOString(), payload }));
+                saveDraftButton.textContent = 'Draft Saved';
+                setDraftStatus('Draft saved locally at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '.');
+                window.setTimeout(() => {
+                    saveDraftButton.textContent = originalLabel;
+                }, 1800);
+            } catch (error) {
+                setDraftStatus('Unable to save draft in this browser.');
+            }
+        });
+        try {
+            const draft = JSON.parse(localStorage.getItem(draftKey) || 'null');
+            if (draft?.savedAt) {
+                setDraftStatus('Local draft available.');
+            }
+        } catch (error) {
+            localStorage.removeItem(draftKey);
+        }
+        form?.addEventListener('input', updateSummary);
+        form?.addEventListener('change', updateSummary);
+        form?.addEventListener('invalid', (event) => {
+            const stepName = event.target.closest('[data-rental-wizard-step]')?.dataset.rentalWizardStep;
+            if (stepName) {
+                showStep(stepName);
+            }
+        }, true);
+        document.addEventListener('click', (event) => {
+            if (event.target.closest('#selectSuggestedAssets, #clearSelectedAssets, .asset-card')) {
+                window.setTimeout(updateSummary, 0);
+            }
+        });
+        const firstErrorStep = steps.find((step) => step.querySelector('.is-error, .field-error'))?.dataset.rentalWizardStep;
+        if (window.matchMedia('(max-width: 980px)').matches) {
+            document.querySelector('.rental-order-summary details')?.removeAttribute('open');
+        }
+        showStep(firstErrorStep || 'fulfilment', false);
+        updateSummary();
+    })();
+</script>
 
 <script>
     (function () {
@@ -1804,6 +2325,7 @@
         const primaryGstModeSelect = document.getElementById('gst_mode');
         const primaryTaxTypeSelect = document.getElementById('tax_type');
         const assetGrid = document.getElementById('assetGrid');
+        const primaryAssetHiddenInputs = document.getElementById('primaryAssetHiddenInputs');
         const assetEmptyState = document.getElementById('assetEmptyState');
         const assetSearch = document.getElementById('assetSearch');
         const assetCountNote = document.getElementById('assetCountNote');
@@ -1853,7 +2375,7 @@
         const currentRentalId = @json($isEdit ? $rental->id : null);
         const organizationState = @json($organization?->state ?? null);
         const partnerClientEndpointTemplate = @json($businessPartnerFlowAvailable ? route('rentals.business-partners.actual-clients', ['business_partner' => '__PARTNER__']) : null);
-        const rentalProductOptionsHtml = `<option value="">Select rental product</option>@foreach($rentalProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->rental_price ?? $product->price_per_day ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-product-name="{{ e($product->name) }}" data-in-house-option-label="{{ e($product->name . ' | ' . ($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity)))) }}" data-vendor-option-label="{{ e($product->name) }}" data-rental-available="{{ $product->rental_available_quantity ?? $product->display_available_quantity ?? $product->available_quantity }}" data-rental-status="{{ $product->rental_availability_status }}" data-rental-label="{{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}" data-tracks-rental="{{ $product->tracksRentalStock() ? 1 : 0 }}" data-search="{{ e(trim(implode(' ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code, $product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))])))) }}">{{ e($product->name) }} | {{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}</option>@endforeach`;
+        const rentalProductOptionsHtml = `<option value="">Select rental product</option>@foreach($rentalProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->rental_price ?? $product->price_per_day ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-product-name="{{ e($product->name) }}" data-in-house-option-label="{{ e($product->name . ' | ' . ($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity)))) }}" data-vendor-option-label="{{ e($product->name) }}" data-rental-available="{{ $product->rental_available_quantity ?? $product->display_available_quantity ?? $product->available_quantity }}" data-rental-status="{{ $product->rental_availability_status }}" data-rental-label="{{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}" data-tracks-rental="{{ $product->tracksRentalStock() ? 1 : 0 }}" data-search="{{ e(trim(implode(' ', array_filter([$product->name, $product->category, $product->brand, $product->model_name, $product->display_model ?? null, $product->sku, $product->product_code, $product->stock_mode, $product->product_type, $product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))])))) }}">{{ e($product->name) }} | {{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}</option>@endforeach`;
         const saleProductOptionsHtml = `<option value="">Select new product</option>@foreach($sellableProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->sale_price ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-search="{{ e(trim(implode(' ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code, 'Sale ' . number_format((float) ($product->sale_price ?? 0), 2)])))) }}">{{ e($product->name) }} | Sale {{ number_format((float) ($product->sale_price ?? 0), 2) }}</option>@endforeach`;
         const saleAssetOptions = @json($saleAssetRows);
         const primaryRentalAssetIndex = @json($primaryRentalAssetIndex ?? []);
@@ -1865,6 +2387,8 @@
         let primaryAvailabilityLoadedFor = null;
         let primaryAssetRequestToken = 0;
         let lastPrimaryAssetSignature = null;
+        let lastPrimaryProductValue = null;
+        let primaryProductInitialized = false;
         let latestPrimaryAssetResponseCount = 0;
         let latestPrimaryAssetRequestUrl = '—';
         let latestAssetHideReason = 'initial';
@@ -1937,6 +2461,41 @@
             const end = start + term.length;
 
             return `${escapeHtml(source.slice(0, start))}<mark>${escapeHtml(source.slice(start, end))}</mark>${escapeHtml(source.slice(end))}`;
+        }
+
+        function normalizeSearchText(value) {
+            return String(value || '')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function optionMatchesSearch(option, query, select) {
+            const normalizedQuery = normalizeSearchText(query);
+
+            if (!normalizedQuery) {
+                return true;
+            }
+
+            const haystack = normalizeSearchText([
+                option.getAttribute('data-search'),
+                optionDisplayLabel(select, option),
+                option.textContent,
+                option.value,
+            ].filter(Boolean).join(' '));
+
+            if (!haystack) {
+                return false;
+            }
+
+            const words = haystack.split(' ');
+
+            return normalizedQuery.split(' ').every(function (token) {
+                return haystack.includes(token) || words.some(function (word) {
+                    return word.startsWith(token) || token.startsWith(word);
+                });
+            });
         }
 
         function optionDisplayLabel(select, option) {
@@ -2024,15 +2583,15 @@
             }
 
             function renderOptions() {
-                const query = searchInput.value.trim().toLowerCase();
+                const query = searchInput.value.trim();
                 optionsWrap.innerHTML = '';
 
                 visibleOptions = Array.from(select.options).filter(function (option) {
                     if (option.hidden) {
                         return false;
                     }
-                    const searchText = (option.getAttribute('data-search') || option.textContent || '').toLowerCase();
-                    return !query || searchText.includes(query);
+
+                    return optionMatchesSearch(option, query, select);
                 });
 
                 visibleOptions.forEach(function (option) {
@@ -2647,7 +3206,9 @@
 
         function updateWarehouseMetric() {
             const selected = warehouseSelect.options[warehouseSelect.selectedIndex];
-            warehouseMetric.textContent = warehouseSelect.value ? selected.textContent.trim() : 'Any warehouse';
+            if (warehouseMetric) {
+                warehouseMetric.textContent = warehouseSelect.value ? selected.textContent.trim() : 'Any warehouse';
+            }
         }
 
         function parseRentalWarehouseQuantities(selected) {
@@ -3018,19 +3579,38 @@
         }
 
         function handlePrimaryProductChange() {
-            rentalAmountTouched = false;
-            primaryAvailabilityLoadedFor = null;
-            lastPrimaryAssetSignature = null;
-            syncPrimaryTaxDefaults(true);
+            const nextProductValue = selectedPrimaryProductValue();
+            const productChanged = primaryProductInitialized && nextProductValue !== lastPrimaryProductValue;
+
+            lastPrimaryProductValue = nextProductValue;
+            primaryProductInitialized = true;
+
+            if (productChanged) {
+                rentalAmountTouched = false;
+                selectedAssetIds = [];
+                primaryAvailabilityLoadedFor = null;
+                lastPrimaryAssetSignature = null;
+                syncPrimaryTaxDefaults(true);
+            }
+
             updateAvailabilityHint();
             updatePrimaryRentalFeedback();
-            fetchAssets();
-            syncPrimaryRentalAmount(true);
 
-            window.requestAnimationFrame(function () {
+            if (productChanged) {
+                fetchAssets();
                 syncPrimaryRentalAmount(true);
-            });
+
+                window.requestAnimationFrame(function () {
+                    syncPrimaryRentalAmount(true);
+                });
+                return;
+            }
+
+            syncPrimaryAssetStateIfNeeded();
         }
+
+        lastPrimaryProductValue = selectedPrimaryProductValue();
+        primaryProductInitialized = true;
 
         window.__phosHandlePrimaryRentalProductSelection = handlePrimaryProductChange;
 
@@ -3140,8 +3720,12 @@
             const selectedCount = selectedAssetIds.length;
             const hasAssets = currentAssets.length > 0;
 
-            quantityMetric.textContent = quantity || 0;
-            selectedAssetCount.textContent = selectedCount;
+            if (quantityMetric) {
+                quantityMetric.textContent = quantity || 0;
+            }
+            if (selectedAssetCount) {
+                selectedAssetCount.textContent = selectedCount;
+            }
             assetRequiredCount.textContent = quantity || 0;
             assetSelectedCountInline.textContent = selectedCount;
             assetSelectedLabel.textContent = selectedCount + ' chosen';
@@ -3259,6 +3843,11 @@
             });
             const displayCount = Math.max(visibleAssetCount, selectedAssetIds.length);
             const visibleAssets = prioritizedAssets.slice(0, displayCount);
+            const visibleAssetIds = visibleAssets.map(function (asset) {
+                return asset.id;
+            });
+
+            renderPrimaryAssetHiddenInputs(visibleAssetIds);
 
             if (!selectedPrimaryProductValue()) {
                 assetEmptyState.style.display = 'block';
@@ -3329,6 +3918,21 @@
             refreshAssetDebugPanel();
         }
 
+        function renderPrimaryAssetHiddenInputs(visibleAssetIds) {
+            if (!primaryAssetHiddenInputs) {
+                return;
+            }
+
+            const visibleIds = Array.isArray(visibleAssetIds) ? visibleAssetIds : [];
+            const retainedIds = selectedAssetIds.filter(function (assetId) {
+                return !visibleIds.includes(assetId);
+            });
+
+            primaryAssetHiddenInputs.innerHTML = retainedIds.map(function (assetId) {
+                return `<input type="hidden" name="asset_ids[]" value="${assetId}">`;
+            }).join('');
+        }
+
         function fetchAssets() {
             const requestToken = ++primaryAssetRequestToken;
             currentAssets = [];
@@ -3352,11 +3956,6 @@
                 currentAssets = preloadedAssets;
                 latestPrimaryAssetResponseCount = preloadedAssets.length;
                 latestPrimaryAssetRequestUrl = 'preloaded:index';
-                selectedAssetIds = selectedAssetIds.filter(function (assetId) {
-                    return currentAssets.some(function (asset) {
-                        return asset.id === assetId;
-                    });
-                });
                 updateAvailabilityHint();
                 updatePrimaryRentalFeedback();
                 renderAssets();
@@ -3422,11 +4021,6 @@
                     primaryAvailabilityLoadedFor = selectedPrimaryProductValue();
                     currentAssets = Array.isArray(payload.data) ? payload.data : [];
                     latestPrimaryAssetResponseCount = currentAssets.length;
-                    selectedAssetIds = selectedAssetIds.filter(function (assetId) {
-                        return currentAssets.some(function (asset) {
-                            return asset.id === assetId;
-                        });
-                    });
                     updateAvailabilityHint();
                     updatePrimaryRentalFeedback();
                     renderAssets();
@@ -3649,7 +4243,7 @@
 
             rentalItems.forEach(function (item, index) {
                 if (typeof item.expanded !== 'boolean') {
-                    item.expanded = Boolean((item.notes && item.notes.trim()) || normalizeIdArray(item.asset_ids).length);
+                    item.expanded = Boolean(item.product_id || (item.notes && item.notes.trim()) || normalizeIdArray(item.asset_ids).length);
                 }
                 ensureInlineAssetState(item);
 
@@ -3659,17 +4253,14 @@
                 const usesPhAssets = rentalItemUsesPhAssets(item);
                 const needsWarehouseSelection = rentalItemNeedsWarehouseSelection(item);
                 const cacheKey = rentalItemAssetCacheKey(item.product_id);
-                const hasCachedAssets = Object.prototype.hasOwnProperty.call(rentalItemAssetCache, cacheKey);
-                const cachedAssets = rentalItemAssetCache[cacheKey] || [];
-                const cachedAssetIds = cachedAssets.map(function (asset) {
-                    return asset.id;
+                const usedElsewhere = selectedAdditionalRentalAssetIds(index);
+                const duplicateSelectedIds = selectedIds.filter(function (assetId) {
+                    return usedElsewhere.includes(assetId);
                 });
 
-                if (hasCachedAssets && selectedIds.some(function (assetId) {
-                    return !cachedAssetIds.includes(assetId);
-                })) {
+                if (duplicateSelectedIds.length) {
                     rentalItems[index].asset_ids = selectedIds.filter(function (assetId) {
-                        return cachedAssetIds.includes(assetId);
+                        return !usedElsewhere.includes(assetId);
                     });
                     renderRentalItems();
                     return;
@@ -3695,6 +4286,12 @@
                         return Number(selectedIds.includes(right.id)) - Number(selectedIds.includes(left.id));
                     });
                 const visibleAssets = filteredAssetChoices.slice(0, Math.max(item.assetVisibleCount, selectedIds.length));
+                const visibleAssetIds = visibleAssets.map(function (asset) {
+                    return asset.id;
+                });
+                const retainedSelectedIds = selectedIds.filter(function (assetId) {
+                    return !visibleAssetIds.includes(assetId);
+                });
                 const isLoadingAssets = Boolean(item.product_id && rentalItemAssetRequests[cacheKey]);
                 const quantity = Math.max(parseInt(item.quantity || '0', 10), 0);
                 const toggleLabel = item.expanded
@@ -3715,6 +4312,10 @@
                             : 'No matching assets.'))));
                 const entry = document.createElement('div');
                 entry.className = 'sale-item-entry';
+                const heading = document.createElement('div');
+                heading.className = 'rental-line-heading';
+                heading.innerHTML = `<strong>Rental Item #${index + 2}</strong><span>Additional rental product</span>`;
+                entry.appendChild(heading);
                 const row = document.createElement('div');
                 row.className = 'sale-item-row';
                 row.innerHTML = `
@@ -3759,6 +4360,9 @@
                                         return `<label class="rental-line-asset-option"><input type="checkbox" name="rental_items[${index}][asset_ids][]" value="${asset.id}" data-rental-asset-input="${index}" ${selectedIds.includes(asset.id) ? 'checked' : ''}><span class="rental-line-asset-option-text"><span class="rental-line-asset-option-title">${asset.label}</span><span class="rental-line-asset-option-meta">Serial: ${serial}</span><span class="rental-line-asset-option-meta">Barcode: ${barcode}</span><span class="rental-line-asset-option-meta">Warehouse: ${warehouse}</span></span></label>`;
                                     }).join('')
                                     : `<div class="rental-line-asset-empty">${item.product_id ? (isLoadingAssets ? 'Loading assets...' : 'No assets available') : 'Select product first'}</div>`))}
+                                ${retainedSelectedIds.map(function (assetId) {
+                                    return `<input type="hidden" name="rental_items[${index}][asset_ids][]" value="${assetId}">`;
+                                }).join('')}
                             </div>
                             ${usesPhAssets && filteredAssetChoices.length > visibleAssets.length
                                 ? `<div class="line-asset-load-more"><button type="button" class="ops-button-secondary" data-rental-asset-load-more="${index}">Load More</button></div>`
@@ -3814,7 +4418,14 @@
                 enhanceSearchableSelect(productSelectEl);
 
                 const handleRentalItemProductChange = function () {
-                    rentalItems[index].product_id = this.value ? parseInt(this.value, 10) : null;
+                    const previousProductId = parseInt(rentalItems[index].product_id || '0', 10) || null;
+                    const nextProductId = this.value ? parseInt(this.value, 10) : null;
+
+                    if (previousProductId === nextProductId) {
+                        return;
+                    }
+
+                    rentalItems[index].product_id = nextProductId;
                     rentalItems[index].asset_ids = [];
                     rentalItems[index].assetSearch = '';
                     rentalItems[index].assetVisibleCount = inlineAssetVisibleStep;
@@ -3843,6 +4454,20 @@
 
                 priceInputEl.addEventListener('input', function () {
                     rentalItems[index].unit_rental_amount = this.value || '';
+                    const totalNode = row.querySelector('.sale-item-total');
+                    if (totalNode) {
+                        totalNode.textContent = 'Total ' + rentalItemLineTotal(rentalItems[index]);
+                    }
+                    rentalItemsGrandTotal.textContent = rentalItems
+                        .reduce(function (sum, rentalItem) {
+                            return sum + parseFloat(rentalItemLineTotal(rentalItem));
+                        }, 0)
+                        .toFixed(2);
+                    rentalItemsGrandTotalSummary.textContent = rentalItemsGrandTotal.textContent;
+                });
+
+                priceInputEl.addEventListener('change', function () {
+                    rentalItems[index].unit_rental_amount = this.value || '';
                     renderRentalItems();
                 });
 
@@ -3869,12 +4494,13 @@
 
                 assetCheckboxes.forEach(function (checkbox) {
                     checkbox.addEventListener('change', function () {
+                        const usedElsewhere = selectedAdditionalRentalAssetIds(index);
                         rentalItems[index].asset_ids = Array.from(detail.querySelectorAll(`[data-rental-asset-input="${index}"]:checked`))
                             .map(function (option) {
                                 return parseInt(option.value || '0', 10);
                             })
                             .filter(function (value) {
-                                return value > 0;
+                                return value > 0 && !usedElsewhere.includes(value);
                             });
                         renderRentalItems();
                     });
@@ -3949,7 +4575,7 @@
 
             saleItems.forEach(function (item, index) {
                 if (typeof item.expanded !== 'boolean') {
-                    item.expanded = Boolean(item.asset_id || item.notes);
+                    item.expanded = Boolean(item.product_id || item.asset_id || item.notes);
                 }
                 ensureInlineAssetState(item);
 
@@ -3979,6 +4605,11 @@
                         return Number(parseInt(item.asset_id || '0', 10) === right.id) - Number(parseInt(item.asset_id || '0', 10) === left.id);
                     });
                 const visibleAssets = filteredAssetChoices.slice(0, Math.max(item.assetVisibleCount, item.asset_id ? 1 : 0));
+                const selectedSaleAssetId = parseInt(item.asset_id || '0', 10);
+                const visibleSaleAssetIds = visibleAssets.map(function (asset) {
+                    return asset.id;
+                });
+                const shouldRetainHiddenSaleAsset = selectedSaleAssetId > 0 && !visibleSaleAssetIds.includes(selectedSaleAssetId);
                 const toggleLabel = item.expanded
                     ? 'Hide Details'
                     : (linkedAsset
@@ -3991,6 +4622,10 @@
                         : 'Select new product first to see matching serialized assets.');
                 const entry = document.createElement('div');
                 entry.className = 'sale-item-entry';
+                const heading = document.createElement('div');
+                heading.className = 'rental-line-heading';
+                heading.innerHTML = `<strong>Sale Item #${index + 1}</strong><span>Sales add-on</span>`;
+                entry.appendChild(heading);
                 const row = document.createElement('div');
                 row.className = 'sale-item-row';
                 row.innerHTML = `
@@ -4034,6 +4669,7 @@
                                 ${visibleAssets.map(function (asset) {
                                     return `<label class="rental-line-asset-option"><input type="radio" name="sale_items[${index}][asset_id]" value="${asset.id}" data-sale-asset-input="${index}" ${parseInt(item.asset_id || '0', 10) === asset.id ? 'checked' : ''}><span>${asset.label}</span></label>`;
                                 }).join('')}
+                                ${shouldRetainHiddenSaleAsset ? `<input type="hidden" name="sale_items[${index}][asset_id]" value="${selectedSaleAssetId}">` : ''}
                                 ${!visibleAssets.length && item.product_id ? `<div class="rental-line-asset-empty">No assets available</div>` : ''}
                             </div>
                             ${filteredAssetChoices.length > visibleAssets.length
@@ -4089,9 +4725,17 @@
                 warehouseSelectEl.value = item.warehouse_id || '';
 
                 productSelectEl.addEventListener('change', function () {
-                    saleItems[index].product_id = this.value ? parseInt(this.value, 10) : null;
+                    const previousProductId = parseInt(saleItems[index].product_id || '0', 10) || null;
+                    const nextProductId = this.value ? parseInt(this.value, 10) : null;
+
+                    if (previousProductId === nextProductId) {
+                        return;
+                    }
+
+                    saleItems[index].product_id = nextProductId;
                     saleItems[index].assetSearch = '';
                     saleItems[index].assetVisibleCount = inlineAssetVisibleStep;
+                    saleItems[index].expanded = Boolean(saleItems[index].product_id);
 
                     const selectedAsset = findSaleAsset(saleItems[index].asset_id);
                     if (selectedAsset && parseInt(selectedAsset.product_id || '0', 10) !== parseInt(this.value || '0', 10)) {
@@ -4167,6 +4811,20 @@
                 });
 
                 priceInputEl.addEventListener('input', function () {
+                    saleItems[index].unit_price = this.value || '';
+                    const totalNode = row.querySelector('.sale-item-total');
+                    if (totalNode) {
+                        totalNode.textContent = 'Total ' + saleItemLineTotal(saleItems[index]);
+                    }
+                    saleItemsGrandTotal.textContent = saleItems
+                        .reduce(function (sum, saleItem) {
+                            return sum + parseFloat(saleItemLineTotal(saleItem));
+                        }, 0)
+                        .toFixed(2);
+                    saleItemsGrandTotalSummary.textContent = saleItemsGrandTotal.textContent;
+                });
+
+                priceInputEl.addEventListener('change', function () {
                     saleItems[index].unit_price = this.value || '';
                     renderSaleItems();
                 });
@@ -4412,7 +5070,7 @@
             visibleAssetCount += assetVisibleStep;
             renderAssets();
         });
-        addRentalItemButton.addEventListener('click', function () {
+        const addRentalItem = function () {
             additionalRentalDisclosure.open = true;
             rentalItems.push({
                 product_id: null,
@@ -4427,8 +5085,8 @@
             });
 
             renderRentalItems();
-        });
-        addSaleItemButton.addEventListener('click', function () {
+        };
+        const addSaleItem = function () {
             newProductsDisclosure.open = true;
             saleItems.push({
                 product_id: null,
@@ -4444,6 +5102,22 @@
             });
 
             renderSaleItems();
+        };
+        addRentalItemButton.addEventListener('click', addRentalItem);
+        addSaleItemButton.addEventListener('click', addSaleItem);
+        document.querySelectorAll('[data-add-rental-item]').forEach(function (button) {
+            button.addEventListener('click', function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                addRentalItem();
+            });
+        });
+        document.querySelectorAll('[data-add-sale-item]').forEach(function (button) {
+            button.addEventListener('click', function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                addSaleItem();
+            });
         });
 
         updateCustomerModeVisibility();
@@ -4725,7 +5399,8 @@
                 warehouseField.style.display = isVendorSupplied ? 'none' : '';
             }
             if (assetSection) {
-                assetSection.style.display = isVendorSupplied ? 'none' : '';
+                const productChosen = !!(productSelect && productSelect.value);
+                assetSection.style.display = (!isVendorSupplied && cityChosen && productChosen) ? '' : 'none';
             }
 
             if (vendorSelect) {
@@ -4787,6 +5462,7 @@
 
         fulfilmentSourceSelect.addEventListener('change', updateFulfilmentFields);
         citySelect.addEventListener('change', updateFulfilmentFields);
+        productSelect?.addEventListener('change', updateFulfilmentFields);
         deliveryAssignmentTypeSelect.addEventListener('change', updatePartnerField);
         deliveryAssignmentSelect?.addEventListener('change', updatePartnerField);
 

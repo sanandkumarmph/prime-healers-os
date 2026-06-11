@@ -1,7 +1,9 @@
 @extends('layouts.app')
 
+@section('focused_form', true)
+
 @section('content')
-<div class="container" style="padding:20px 24px 32px;">
+<div class="container rental-focused-form-page">
     <form action="{{ route('rentals.update', $rental) }}" method="POST">
         @csrf
         @method('PUT')

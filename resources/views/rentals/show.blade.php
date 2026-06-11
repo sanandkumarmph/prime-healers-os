@@ -20,6 +20,16 @@
     $renewalFeatureReady = \App\Models\Rental::hasRenewalsTable();
     $saleItems = $rental->saleItems ?? collect();
     $rentalItems = $rental->displayRentalItems();
+    $rentalLineAmount = function ($item): float {
+        $lineTotal = (float) ($item->line_total ?? 0);
+
+        if ($lineTotal > 0) {
+            return round($lineTotal, 2);
+        }
+
+        return round(max((int) ($item->quantity ?? 1), 1) * (float) ($item->unit_rental_amount ?? 0), 2);
+    };
+    $rentalLineTotal = round((float) $rentalItems->sum(fn ($item) => $rentalLineAmount($item)), 2);
     $suggestedRenewalDays = $rental->suggestedRenewalDays();
     $suggestedRenewalAmount = $rental->suggestedRenewalAmount($suggestedRenewalDays);
     $suggestedRenewedEndDate = optional($rental->end_date)->copy()?->addDays($suggestedRenewalDays) ?? now()->addDays($suggestedRenewalDays);
@@ -31,7 +41,7 @@
     $rentalInvoiceStatus = $rentalInvoice?->payment_status ?? null;
     $rentalInvoiceDue = (float) ($rentalInvoice->balance_amount ?? 0);
     $initialBookingEndDate = optional($renewalHistoryChronological->first())->previous_end_date ?: $rental->end_date;
-    $baseRentalAmount = max((float) ($rental->rental_amount ?? 0) - (float) $renewalHistoryChronological->sum('rental_amount_added'), 0);
+    $baseRentalAmount = max($rentalLineTotal - (float) $renewalHistoryChronological->sum('rental_amount_added'), 0);
     $baseDepositAmount = max((float) ($rental->deposit_amount ?? 0) - (float) $renewalHistoryChronological->sum('deposit_amount_added'), 0);
     $baseTransportAmount = max((float) ($rental->transport_amount ?? 0) - (float) $renewalHistoryChronological->sum('transport_amount_added'), 0);
     $baseOtherAmount = max((float) ($rental->other_amount ?? 0) - (float) $renewalHistoryChronological->sum('other_amount_added'), 0);
@@ -40,6 +50,19 @@
     $baseBookingPaidAmount = round((float) $baseBookingPayments->sum('amount'), 2);
     $baseBookingTotal = round($baseRentalAmount + $baseDepositAmount + $baseTransportAmount + $baseOtherAmount, 2);
     $baseBookingBalance = round(max($baseBookingTotal - $baseBookingPaidAmount, 0), 2);
+    $currentChargeBreakdown = [
+        'Rental' => $rentalLineTotal,
+        'Deposit' => (float) ($rental->deposit_amount ?? 0),
+        'Transport' => (float) ($rental->transport_amount ?? 0),
+        'Other' => (float) ($rental->other_amount ?? 0),
+    ];
+    $currentRentalTotal = round(array_sum($currentChargeBreakdown), 2);
+    $invoiceTotalAmount = round((float) ($rentalInvoice->total_amount ?? $currentRentalTotal), 2);
+    $invoicePaidAmount = round((float) ($rentalInvoice->paid_amount ?? 0), 2);
+    $invoiceBalanceAmount = round((float) ($rentalInvoice->balance_amount ?? max($invoiceTotalAmount - $invoicePaidAmount, 0)), 2);
+    $financeSourceLabel = $rentalInvoice ? 'Invoice #' . $rentalInvoice->invoice_number : 'Rental charges before invoice';
+    $collectionPercent = $invoiceTotalAmount > 0 ? min(100, round(($invoicePaidAmount / $invoiceTotalAmount) * 100, 1)) : 0;
+    $rentalInvoiceDue = $invoiceBalanceAmount;
     $reminderContactName = $rental->reminderContactName();
     $reminderContactPhone = $rental->reminderContactPhone();
     $deliveryContactName = $rental->deliveryContactName();
@@ -287,6 +310,16 @@
             'target' => '_blank',
             'rel' => 'noopener',
             'linkLabel' => 'Open Map',
+        ]);
+    }
+
+    if (filled($rental->referred_by ?? null)) {
+        $rentalInfoItems->push([
+            'label' => 'Referred By',
+            'value' => collect([
+                $rental->referred_by,
+                filled($rental->referral_source_type ?? null) ? ucfirst(str_replace('_', ' ', $rental->referral_source_type)) : null,
+            ])->filter()->implode(' | '),
         ]);
     }
 
@@ -595,6 +628,70 @@
         line-height: 1.5;
         text-align: right;
         overflow-wrap: anywhere;
+    }
+    .rental-finance-panel {
+        display: grid;
+        gap: 10px;
+    }
+    .rental-finance-kpis {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+    .rental-finance-kpi {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 10px;
+        background: #f8fafc;
+        min-width: 0;
+    }
+    .rental-finance-kpi span {
+        display: block;
+        color: #64748b;
+        font-size: 10px;
+        font-weight: 900;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+    }
+    .rental-finance-kpi strong {
+        display: block;
+        margin-top: 6px;
+        color: #0f172a;
+        font-size: 18px;
+        line-height: 1.1;
+        overflow-wrap: anywhere;
+    }
+    .rental-finance-kpi small {
+        display: block;
+        margin-top: 5px;
+        color: #64748b;
+        font-size: 11px;
+        line-height: 1.35;
+    }
+    .rental-finance-kpi.is-due {
+        background: #fff7ed;
+        border-color: #fed7aa;
+    }
+    .rental-finance-kpi.is-paid {
+        background: #ecfdf5;
+        border-color: #bbf7d0;
+    }
+    .rental-finance-progress {
+        height: 8px;
+        border-radius: 999px;
+        background: #e2e8f0;
+        overflow: hidden;
+    }
+    .rental-finance-progress i {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #4f46e5, #22c55e);
+    }
+    .rental-finance-source {
+        color: #64748b;
+        font-size: 11px;
+        line-height: 1.4;
     }
     .ph-rental-section-grid {
         display: grid;
@@ -935,10 +1032,34 @@
         background:linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
     }
     .booking-snapshot-card.is-range,
+    .booking-snapshot-card.is-items,
     .booking-snapshot-card.is-total,
     .booking-snapshot-card.is-balance,
     .booking-snapshot-card.is-status {
         grid-column:span 6;
+    }
+    .booking-snapshot-card.is-items {
+        grid-column:span 12;
+    }
+    .booking-snapshot-items {
+        display:grid;
+        gap:8px;
+    }
+    .booking-snapshot-item {
+        display:flex;
+        justify-content:space-between;
+        gap:12px;
+        padding:8px 0;
+        border-top:1px solid #e2e8f0;
+        color:#0f172a;
+        font-size:13px;
+    }
+    .booking-snapshot-item:first-child {
+        border-top:none;
+    }
+    .booking-snapshot-item strong,
+    .booking-snapshot-item span {
+        overflow-wrap:anywhere;
     }
     .booking-snapshot-card .snapshot-label {
         display:block;
@@ -1102,9 +1223,11 @@
         .metric-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
         .booking-snapshot-card { grid-column:span 4; }
         .booking-snapshot-card.is-range,
+        .booking-snapshot-card.is-items,
         .booking-snapshot-card.is-total,
         .booking-snapshot-card.is-balance,
         .booking-snapshot-card.is-status { grid-column:span 6; }
+        .booking-snapshot-card.is-items { grid-column:span 12; }
         .renewal-form-grid { grid-template-columns:1fr; }
         .renewal-span-2 { grid-column:span 1; }
         .item-progress-table,
@@ -1208,6 +1331,9 @@
         .ph-rental-summary-grid {
             grid-template-columns: 1fr;
         }
+        .rental-finance-kpis {
+            grid-template-columns: 1fr;
+        }
         .ph-rental-detail-row {
             flex-direction: column;
         }
@@ -1290,6 +1416,7 @@
             gap:10px;
         }
         .booking-snapshot-card,
+        .booking-snapshot-card.is-items,
         .booking-snapshot-card.is-total,
         .booking-snapshot-card.is-balance,
         .booking-snapshot-card.is-status {
@@ -1297,6 +1424,7 @@
             padding:12px;
         }
         .booking-snapshot-card.is-range,
+        .booking-snapshot-card.is-items,
         .booking-snapshot-card.is-total,
         .booking-snapshot-card.is-balance,
         .booking-snapshot-card.is-status {
@@ -1560,28 +1688,35 @@
                     subtitle="{{ $canSeeRentalFinance ? 'Invoice status, payment posture, and quick next steps.' : 'Finance amounts are hidden for your role, but status remains visible.' }}"
                     padding="sm"
                 >
-                    <div class="ph-rental-detail-list">
+                    <div class="rental-finance-panel">
                         @if($canSeeRentalFinance)
-                            <div class="ph-rental-detail-row">
-                                <span>Rent Amount</span>
-                                <strong>{{ $canViewFinanceAmounts ? $currency($rental->rental_amount) : ucfirst($rentalInvoiceStatus ?: 'pending') }}</strong>
+                            <div class="rental-finance-kpis">
+                                <div class="rental-finance-kpi">
+                                    <span>Total Payable</span>
+                                    <strong>{{ $canViewFinanceAmounts ? $currency($invoiceTotalAmount) : ucfirst($rentalInvoiceStatus ?: 'pending') }}</strong>
+                                    <small>{{ $financeSourceLabel }}</small>
+                                </div>
+                                <div class="rental-finance-kpi is-paid">
+                                    <span>Collected</span>
+                                    <strong>{{ $canViewFinanceAmounts ? $currency($invoicePaidAmount) : ucfirst($rentalInvoiceStatus ?: 'pending') }}</strong>
+                                    <small>{{ $collectionPercent }}% collected</small>
+                                </div>
+                                <div class="rental-finance-kpi {{ $invoiceBalanceAmount > 0 ? 'is-due' : 'is-paid' }}">
+                                    <span>Balance Due</span>
+                                    <strong>{{ $canViewFinanceAmounts ? $currency($invoiceBalanceAmount) : ($rentalInvoice ? 'Invoice tracked' : 'Pending invoice') }}</strong>
+                                    <small>{{ $rentalInvoice ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus ?: 'unpaid')) : 'Invoice not generated' }}</small>
+                                </div>
+                                <div class="rental-finance-kpi">
+                                    <span>Current Charges</span>
+                                    <strong>{{ $canViewFinanceAmounts ? $currency($currentRentalTotal) : 'Restricted' }}</strong>
+                                    <small>Rent {{ $currency($currentChargeBreakdown['Rental']) }} + deposit {{ $currency($currentChargeBreakdown['Deposit']) }}</small>
+                                </div>
                             </div>
-                            <div class="ph-rental-detail-row">
-                                <span>Deposit</span>
-                                <strong>{{ $canViewFinanceAmounts ? $currency($rental->deposit_amount) : ($rental->deposit_amount > 0 ? 'Captured' : 'Not captured') }}</strong>
+                            <div class="rental-finance-progress" aria-label="Collection progress">
+                                <i style="width:{{ $collectionPercent }}%"></i>
                             </div>
-                            <div class="ph-rental-detail-row">
-                                <span>Invoice Status</span>
-                                <strong>{{ $rentalInvoice ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus ?: 'unpaid')) : 'Not generated' }}</strong>
-                            </div>
-                            <div class="ph-rental-detail-row">
-                                <span>Payment Status</span>
-                                <strong>
-                                    {{ $rentalInvoiceStatus ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus)) : 'Pending' }}
-                                    @if($canViewFinanceAmounts && $rentalInvoiceDue > 0)
-                                        • Due {{ $currency($rentalInvoiceDue) }}
-                                    @endif
-                                </strong>
+                            <div class="rental-finance-source">
+                                Finance figures use invoice totals when an invoice exists. Rental charges are shown as fallback before invoice generation.
                             </div>
                         @else
                             <div class="ph-rental-detail-row">
@@ -1885,7 +2020,7 @@
         <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
             <div>
                 <h2 style="margin:0; font-size:18px;">Original Booking Snapshot</h2>
-                <div class="ops-muted" style="margin-top:6px;">Base rental charges before renewals were added, so the first agreed price and collection stay visible.</div>
+                <div class="ops-muted" style="margin-top:6px;">Historical base charges before renewals. Use Financial Summary for the current invoice balance.</div>
             </div>
         </div>
         <div class="booking-snapshot-grid">
@@ -1897,6 +2032,18 @@
                     {{ optional($initialBookingEndDate)->format('d M Y') ?: '-' }}
                 </div>
                 <div class="snapshot-subtle">Initial agreed rental window before renewals extended the case.</div>
+            </div>
+            <div class="booking-snapshot-card is-items">
+                <span class="snapshot-label">Booked Products</span>
+                <div class="booking-snapshot-items">
+                    @foreach($rentalItems as $item)
+                        <div class="booking-snapshot-item">
+                            <strong>{{ $item->product?->name ?? 'Rental item' }} · Qty {{ (int) ($item->quantity ?? 1) }}</strong>
+                            <span>{{ $currency($rentalLineAmount($item)) }}</span>
+                        </div>
+                    @endforeach
+                </div>
+                <div class="snapshot-subtle">Rental product line total before deposit, transport, and other charges.</div>
             </div>
             <div class="booking-snapshot-card">
                 <span class="snapshot-label">Rental</span>
@@ -1928,9 +2075,9 @@
                 <div class="snapshot-value">{{ $currency($baseBookingBalance) }}</div>
             </div>
             <div class="booking-snapshot-card is-status">
-                <span class="snapshot-label">Base Invoice Status</span>
+                <span class="snapshot-label">Current Invoice Workflow</span>
                 <div class="snapshot-value">{{ strtoupper(str_replace('_', ' ', (string) ($rentalInvoice->payment_status ?? 'not_generated'))) }}</div>
-                <div class="snapshot-subtle">Reflects the current invoice workflow state for the original booking.</div>
+                <div class="snapshot-subtle">Shown only to connect this historical booking view with the live invoice state.</div>
             </div>
         </div>
     </div>
@@ -2284,16 +2431,16 @@
         <x-operational-card
             class="span-6"
             title="{{ $canSeeRentalFinance ? 'Finance Snapshot' : 'Operational Snapshot' }}"
-            subtitle="{{ $canSeeRentalFinance ? 'Keep charges, payment posture, and collection status visible without leaving the rental.' : 'Your role can see workflow status without exposing finance amounts.' }}"
+            subtitle="{{ $canSeeRentalFinance ? 'Current charge breakdown plus the invoice receivable used for collection.' : 'Your role can see workflow status without exposing finance amounts.' }}"
         >
             @if($canSeeRentalFinance)
                 <div class="ph-rental-summary-grid">
-                    <x-summary-card label="Rental" :value="$canViewFinanceAmounts ? $currency($rental->rental_amount) : ucfirst($rentalInvoiceStatus ?: 'pending')" />
+                    <x-summary-card label="Current Rental Charge" :value="$canViewFinanceAmounts ? $currency($rentalLineTotal) : ucfirst($rentalInvoiceStatus ?: 'pending')" />
                     <x-summary-card label="Deposit" :value="$canViewFinanceAmounts ? $currency($rental->deposit_amount) : ($rental->deposit_amount > 0 ? 'Captured' : 'Not captured')" />
                     <x-summary-card label="Transport" :value="$canViewFinanceAmounts ? $currency($rental->transport_amount) : (($rental->transport_amount ?? 0) > 0 ? 'Added' : 'Not added')" />
                     <x-summary-card label="Other Charges" :value="$canViewFinanceAmounts ? $currency($rental->other_amount) : (($rental->other_amount ?? 0) > 0 ? 'Added' : 'Not added')" />
-                    <x-summary-card label="Invoice Status" :value="$rentalInvoice ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus ?: 'unpaid')) : 'Not generated'" :tone="$invoiceStatusTone" />
-                    <x-summary-card label="Payment Status" :value="$rentalInvoiceStatus ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus)) : 'Pending'" :tone="$paymentStatusTone" :meta="$canViewFinanceAmounts && $rentalInvoiceDue > 0 ? 'Due ' . $currency($rentalInvoiceDue) : null" />
+                    <x-summary-card label="Invoice Total" :value="$canViewFinanceAmounts ? $currency($invoiceTotalAmount) : ($rentalInvoice ? 'Generated' : 'Not generated')" :tone="$invoiceStatusTone" :meta="$rentalInvoice ? $rentalInvoice->invoice_number : 'Invoice pending'" />
+                    <x-summary-card label="Receivable Balance" :value="$canViewFinanceAmounts ? $currency($invoiceBalanceAmount) : ($rentalInvoiceStatus ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus)) : 'Pending')" :tone="$paymentStatusTone" :meta="$invoicePaidAmount > 0 ? 'Collected ' . $currency($invoicePaidAmount) : 'No collection logged'" />
                 </div>
             @else
                 <div class="ph-rental-detail-list">

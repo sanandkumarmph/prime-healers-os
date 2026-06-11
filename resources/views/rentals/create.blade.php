@@ -1,7 +1,9 @@
 @extends('layouts.app')
 
+@section('focused_form', true)
+
 @section('content')
-<div class="container ph-mobile-form-page" style="padding:20px 24px 32px;">
+<div class="container ph-mobile-form-page rental-focused-form-page">
     <form action="{{ route('rentals.store') }}" method="POST">
         @csrf
         @include('rentals._form')

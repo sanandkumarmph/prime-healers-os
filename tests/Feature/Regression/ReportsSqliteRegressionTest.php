@@ -66,11 +66,79 @@ class ReportsSqliteRegressionTest extends TestCase
 
         $response->assertOk()
             ->assertViewIs('reports.index')
+            ->assertSee('Vendor Performance Summary', false)
+            ->assertSee('Vendor Leaderboard', false)
             ->assertSee('Repeat Customer', false)
             ->assertDontSee('HAVING clause on a non-aggregate query', false);
     }
 
-    private function createRental(int $organizationId, int $productId, Customer $customer, string $startDate): Rental
+    public function test_reports_filters_feed_analytics_and_csv_export_still_streams(): void
+    {
+        $organization = TestData::organization();
+        $reportUser = $this->userWithRole($organization, 'Report Analytics Reader', [
+            'reports' => ['read'],
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Filtered Report Product',
+            'category' => 'Respiratory',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'available_quantity' => 5,
+            'total_quantity' => 5,
+            'price_per_day' => 200,
+            'rental_price' => 1200,
+            'sale_price' => 0,
+            'gst_tax_type' => 'none',
+            'gst_calculation_mode' => 'exclusive',
+        ]);
+
+        $bengaluruCustomer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Bengaluru Filter Customer',
+            'phone' => '9000000101',
+            'city' => 'Bengaluru',
+        ]);
+
+        $delhiCustomer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Delhi Filter Customer',
+            'phone' => '9000000102',
+            'city' => 'Delhi',
+        ]);
+
+        $this->createRental($organization->id, $product->id, $bengaluruCustomer, now()->subDays(3)->toDateString());
+        $this->createRental($organization->id, $product->id, $delhiCustomer, now()->subDays(3)->toDateString(), 'vendor_supplied');
+
+        $response = $this->actingAs($reportUser)->get(route('reports.index', [
+            'city' => 'Bengaluru',
+            'fulfilment_source' => 'in_house',
+            'product_category' => 'Respiratory',
+            'tab' => 'vendors',
+        ]));
+
+        $response->assertOk()
+            ->assertSee('Global Filters', false)
+            ->assertSee('name="tab" id="reports_active_tab" value="vendors"', false)
+            ->assertSee('id="tab-vendors" name="reports-tab" value="vendors" checked', false)
+            ->assertViewHas('reportGroups', function (array $reportGroups) {
+                return ($reportGroups['rental_reports']['metrics']['totalRentals'] ?? null) === 1
+                    && (float) ($reportGroups['revenue_analytics']['rental_revenue'] ?? 0) === 1200.0;
+            });
+
+        $exportResponse = $this->actingAs($reportUser)->get(route('reports.export.csv', [
+            'city' => 'Bengaluru',
+            'fulfilment_source' => 'in_house',
+            'product_category' => 'Respiratory',
+        ]));
+
+        $exportResponse->assertOk()
+            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+        $this->assertStringContainsString('Bengaluru Filter Customer', $exportResponse->streamedContent());
+    }
+
+    private function createRental(int $organizationId, int $productId, Customer $customer, string $startDate, string $fulfilmentSource = 'in_house'): Rental
     {
         return Rental::create([
             'organization_id' => $organizationId,
@@ -86,6 +154,7 @@ class ReportsSqliteRegressionTest extends TestCase
             'deposit_amount' => 0,
             'transport_amount' => 0,
             'other_amount' => 0,
+            'fulfilment_source' => $fulfilmentSource,
         ]);
     }
 

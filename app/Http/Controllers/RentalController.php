@@ -300,6 +300,31 @@ class RentalController extends Controller
         return $this->hasDispatchWarehouseColumn ??= Schema::hasColumn('rentals', 'dispatch_warehouse_id');
     }
 
+    private function rentalReferralPayload(Request $request): array
+    {
+        $payload = [];
+
+        if (Schema::hasColumn('rentals', 'referral_source_type')) {
+            $payload['referral_source_type'] = $request->filled('referral_source_type')
+                ? $request->input('referral_source_type')
+                : null;
+        }
+
+        if (Schema::hasColumn('rentals', 'referred_by')) {
+            $payload['referred_by'] = $request->filled('referred_by')
+                ? $request->input('referred_by')
+                : null;
+        }
+
+        if (Schema::hasColumn('rentals', 'referral_incentive_amount')) {
+            $payload['referral_incentive_amount'] = $request->filled('referral_incentive_amount')
+                ? $request->input('referral_incentive_amount')
+                : null;
+        }
+
+        return $payload;
+    }
+
     private function deliveryWorkflowService(): DeliveryWorkflowService
     {
         return app(DeliveryWorkflowService::class);
@@ -1392,7 +1417,7 @@ class RentalController extends Controller
                 ->where('organization_id', $this->orgId())
                 ->findOrFail((int) $productId);
 
-            if (!$product->isRentalEligibleForSelection()) {
+            if (!$product->isRentalEligibleForSelection() || $this->isSaleOnlyProduct($product)) {
                 throw ValidationException::withMessages([
                     'rental_items' => [$product->name . ' is not available for rental under the current product and stock configuration.'],
                 ]);
@@ -1452,6 +1477,16 @@ class RentalController extends Controller
     {
         if (empty($items)) {
             return;
+        }
+
+        $allAssetIds = collect($items)
+            ->flatMap(fn ($item) => $this->normalizeAssetIds($item['asset_ids'] ?? []))
+            ->values();
+
+        if ($allAssetIds->duplicates()->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'rental_items' => ['The same asset cannot be assigned to more than one rental line. Select a different available asset.'],
+            ]);
         }
 
         $products = Product::query()
@@ -1614,6 +1649,10 @@ class RentalController extends Controller
     {
         return $products
             ->filter(function (Product $product) {
+                if ($this->isSaleOnlyProduct($product)) {
+                    return false;
+                }
+
                 if (!$product->isRentalEligibleForSelection()) {
                     return false;
                 }
@@ -1628,6 +1667,12 @@ class RentalController extends Controller
                 return true;
             })
             ->values();
+    }
+
+    private function isSaleOnlyProduct(Product $product): bool
+    {
+        return (string) ($product->product_type ?? '') === Product::TYPE_SELLABLE
+            || ((bool) ($product->is_sellable ?? false) && !(bool) ($product->is_rentable ?? false));
     }
 
     private function primaryRentalAssetIndex($products, ?Rental $rental = null): array
@@ -1709,7 +1754,7 @@ class RentalController extends Controller
 
     private function rentalAvailabilityForProduct(Product $product, ?int $warehouseId = null, ?int $preloadedTrackedQuantity = null): array
     {
-        if (!$product->isRentalEligibleForSelection()) {
+        if (!$product->isRentalEligibleForSelection() || $this->isSaleOnlyProduct($product)) {
             return [
                 'quantity' => 0,
                 'status' => 'sale_only',
@@ -2881,16 +2926,26 @@ class RentalController extends Controller
 
         $query->select('rentals.*');
 
-        $query->selectSub(
-            Invoice::query()
-                ->selectRaw('COALESCE(SUM(invoices.balance_amount), 0)')
-                ->join('invoice_items', 'invoice_items.invoice_id', '=', 'invoices.id')
-                ->whereColumn('invoice_items.source_id', 'rentals.id')
-                ->where('invoice_items.source_type', 'rental')
-                ->where('invoices.organization_id', $this->orgId())
-                ->whereNotIn('invoices.payment_status', ['paid', 'cancelled']),
-            'outstanding_invoice_balance'
-        );
+        $outstandingInvoiceBalanceQuery = Invoice::query()
+            ->selectRaw('COALESCE(SUM(invoices.balance_amount), 0)')
+            ->where('invoices.organization_id', $this->orgId())
+            ->whereNotIn('invoices.payment_status', ['paid', 'cancelled'])
+            ->where(function ($invoiceQuery) {
+                if ($this->hasInvoiceRentalColumn()) {
+                    $invoiceQuery->whereColumn('invoices.rental_id', 'rentals.id');
+                }
+
+                $invoiceQuery->orWhereIn('invoices.id', function ($itemQuery) {
+                    $itemQuery
+                        ->select('invoice_items.invoice_id')
+                        ->from('invoice_items')
+                        ->whereColumn('invoice_items.source_id', 'rentals.id')
+                        ->where('invoice_items.source_type', 'rental')
+                        ->distinct();
+                });
+            });
+
+        $query->selectSub($outstandingInvoiceBalanceQuery, 'outstanding_invoice_balance');
 
         if (Rental::hasReminderLogsTable()) {
             $query->selectSub(
@@ -2981,6 +3036,7 @@ class RentalController extends Controller
         $vendorId = $request->get('vendor_id', '');
         $customerId = $request->get('customer_id', '');
         $fulfilmentSource = (string) $request->get('fulfilment_source', '');
+        $referredBy = trim((string) $request->get('referred_by', ''));
         [$fromDate, $toDate] = $this->normalizedDateFilters($request);
 
         if ($search !== '') {
@@ -3001,6 +3057,10 @@ class RentalController extends Controller
                         $assetQuery->where('serial_number', 'like', "%{$search}%")
                             ->orWhere('barcode_value', 'like', "%{$search}%");
                     });
+                }
+
+                if (Schema::hasColumn('rentals', 'referred_by')) {
+                    $q->orWhere('referred_by', 'like', "%{$search}%");
                 }
             });
         }
@@ -3027,6 +3087,10 @@ class RentalController extends Controller
 
         if (in_array($fulfilmentSource, VendorOrderDetail::FULFILMENT_SOURCES, true)) {
             $query->where('fulfilment_source', $fulfilmentSource);
+        }
+
+        if ($referredBy !== '' && Schema::hasColumn('rentals', 'referred_by')) {
+            $query->where('referred_by', 'like', "%{$referredBy}%");
         }
 
         if (filled($deliveryStatus)) {
@@ -5615,6 +5679,7 @@ class RentalController extends Controller
         $filter = (string) $request->get('filter', '');
         $city = trim((string) $request->get('city', ''));
         $vendorId = $request->get('vendor_id', '');
+        $referredBy = trim((string) $request->get('referred_by', ''));
         $sortBy = (string) $request->get('sort_by', 'latest');
         [$fromDate, $toDate] = $this->normalizedDateFilters($request);
 
@@ -5731,6 +5796,7 @@ class RentalController extends Controller
             'warehouseId',
             'city',
             'vendorId',
+            'referredBy',
             'sortBy',
             'fromDate',
             'toDate'
@@ -5891,6 +5957,9 @@ class RentalController extends Controller
             'third_party_contact' => 'nullable|string|max:255',
             'third_party_phone' => 'nullable|string|max:30',
             'pickup_staff_id' => ['nullable', $this->activeRentalStaffExistsRule()],
+            'referral_source_type' => 'nullable|string|max:80',
+            'referred_by' => 'nullable|string|max:180',
+            'referral_incentive_amount' => 'nullable|numeric|min:0',
             'quantity' => 'required|integer|min:1',
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
@@ -5928,7 +5997,7 @@ class RentalController extends Controller
         }
 
         $product = Product::where('organization_id', $this->orgId())->findOrFail($request->product_id);
-        if (!$product->isRentalEligibleForSelection()) {
+        if (!$product->isRentalEligibleForSelection() || $this->isSaleOnlyProduct($product)) {
             throw ValidationException::withMessages([
                 'product_id' => [$product->name . ' is sale only and cannot be rented.'],
             ]);
@@ -5970,6 +6039,7 @@ class RentalController extends Controller
                 'pickup_responsibility' => $fulfilment['pickup_responsibility'],
                 'delivery_staff_id' => $deliveryAssignment['staff_id'],
                 'pickup_staff_id' => null,
+                ...$this->rentalReferralPayload($request),
                 'quantity' => $request->quantity,
                 'start_date' => $request->start_date,
                 'end_date' => $request->end_date,
@@ -6718,6 +6788,9 @@ class RentalController extends Controller
             'third_party_contact' => 'nullable|string|max:255',
             'third_party_phone' => 'nullable|string|max:30',
             'pickup_staff_id' => ['nullable', $this->activeRentalStaffExistsRule()],
+            'referral_source_type' => 'nullable|string|max:80',
+            'referred_by' => 'nullable|string|max:180',
+            'referral_incentive_amount' => 'nullable|numeric|min:0',
             'quantity' => 'required|integer|min:1',
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
@@ -6771,7 +6844,7 @@ class RentalController extends Controller
 
         $oldProduct = Product::where('organization_id', $this->orgId())->findOrFail($rental->product_id);
         $newProduct = Product::where('organization_id', $this->orgId())->findOrFail($request->product_id);
-        if (!$newProduct->isRentalEligibleForSelection()) {
+        if (!$newProduct->isRentalEligibleForSelection() || $this->isSaleOnlyProduct($newProduct)) {
             throw ValidationException::withMessages([
                 'product_id' => [$newProduct->name . ' is sale only and cannot be rented.'],
             ]);
@@ -6837,6 +6910,7 @@ class RentalController extends Controller
                 'pickup_responsibility' => $fulfilment['pickup_responsibility'],
                 'delivery_staff_id' => $deliveryAssignment['staff_id'],
                 'pickup_staff_id' => $request->pickup_staff_id,
+                ...$this->rentalReferralPayload($request),
                 'quantity' => $request->quantity,
                 'start_date' => $request->start_date,
                 'end_date' => $request->end_date,

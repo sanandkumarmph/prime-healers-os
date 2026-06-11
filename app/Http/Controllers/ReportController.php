@@ -9,7 +9,10 @@ use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Rental;
 use App\Models\RentalAsset;
+use App\Models\Sale;
 use App\Models\User;
+use App\Models\Vendor;
+use App\Models\VendorOrderDetail;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -63,11 +66,18 @@ class ReportController extends Controller
             'from_date' => trim((string) $request->get('from_date', '')),
             'to_date' => trim((string) $request->get('to_date', '')),
             'city' => trim((string) $request->get('city', '')),
+            'period' => trim((string) $request->get('period', 'month')) ?: 'month',
+            'fulfilment_source' => trim((string) $request->get('fulfilment_source', '')),
+            'product_category' => trim((string) $request->get('product_category', '')),
             'vendor_id' => trim((string) $request->get('vendor_id', '')),
             'warehouse_id' => trim((string) $request->get('warehouse_id', '')),
             'customer_id' => trim((string) $request->get('customer_id', '')),
+            'business_partner_id' => trim((string) $request->get('business_partner_id', '')),
+            'staff_user_id' => trim((string) $request->get('staff_user_id', '')),
             'product_id' => trim((string) $request->get('product_id', '')),
+            'referred_by' => trim((string) $request->get('referred_by', '')),
             'report' => trim((string) $request->get('report', 'overview')) ?: 'overview',
+            'tab' => trim((string) $request->get('tab', 'revenue')) ?: 'revenue',
         ];
     }
 
@@ -83,16 +93,11 @@ class ReportController extends Controller
             ->orderBy('city')
             ->pluck('city');
 
-        $vendors = User::query()
-            ->with('assignedRole')
+        $vendors = Vendor::query()
             ->where('organization_id', $organizationId)
-            ->when(Schema::hasColumn('users', 'is_active'), fn ($query) => $query->where('is_active', true))
-            ->where(function ($query) {
-                $query->where('role', User::ROLE_VENDOR)
-                    ->orWhereHas('assignedRole', fn ($roleQuery) => $roleQuery->where('slug', User::ROLE_VENDOR));
-            })
+            ->when(Schema::hasColumn('vendors', 'is_active'), fn ($query) => $query->where('is_active', true))
             ->orderBy('name')
-            ->get(['id', 'name', 'role', 'role_id']);
+            ->get(['id', 'name']);
 
         $warehouses = Warehouse::query()
             ->where('organization_id', $organizationId)
@@ -109,7 +114,26 @@ class ReportController extends Controller
             ->orderBy('name')
             ->get(['id', 'name']);
 
-        return compact('cities', 'vendors', 'warehouses', 'customers', 'products');
+        $productCategories = Product::query()
+            ->where('organization_id', $organizationId)
+            ->whereNotNull('category')
+            ->where('category', '!=', '')
+            ->distinct()
+            ->orderBy('category')
+            ->pluck('category');
+
+        $businessPartners = \App\Models\BusinessPartner::query()
+            ->where('organization_id', $organizationId)
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        $staffUsers = User::query()
+            ->where('organization_id', $organizationId)
+            ->when(Schema::hasColumn('users', 'is_active'), fn ($query) => $query->where('is_active', true))
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        return compact('cities', 'vendors', 'warehouses', 'customers', 'products', 'productCategories', 'businessPartners', 'staffUsers');
     }
 
     private function applyDateRange($query, string $column, array $filters)
@@ -138,11 +162,21 @@ class ReportController extends Controller
                 'deliveryRecord.assignedStaff',
                 'pickupRecord.assignedUser',
                 'pickupRecord.assignedStaff',
+                'vendorOrderDetail.vendor',
+                'createdBy',
             ])
             ->where('rentals.organization_id', $this->orgId());
 
         if ($filters['city'] !== '') {
             $query->whereHas('customer', fn ($customerQuery) => $customerQuery->where('city', 'like', '%' . $filters['city'] . '%'));
+        }
+
+        if ($filters['fulfilment_source'] !== '') {
+            $query->where('fulfilment_source', $filters['fulfilment_source']);
+        }
+
+        if ($filters['product_category'] !== '') {
+            $query->whereHas('product', fn ($productQuery) => $productQuery->where('category', $filters['product_category']));
         }
 
         if ($filters['vendor_id'] !== '') {
@@ -157,8 +191,20 @@ class ReportController extends Controller
             $query->where('customer_id', (int) $filters['customer_id']);
         }
 
+        if ($filters['business_partner_id'] !== '') {
+            $query->where('business_partner_id', (int) $filters['business_partner_id']);
+        }
+
+        if ($filters['staff_user_id'] !== '') {
+            $query->where('created_by_user_id', (int) $filters['staff_user_id']);
+        }
+
         if ($filters['product_id'] !== '') {
             $query->where('product_id', (int) $filters['product_id']);
+        }
+
+        if ($filters['referred_by'] !== '' && Schema::hasColumn('rentals', 'referred_by')) {
+            $query->where('referred_by', 'like', '%' . $filters['referred_by'] . '%');
         }
 
         return $this->applyDateRange($query, 'start_date', $filters);
@@ -186,7 +232,7 @@ class ReportController extends Controller
             $query->whereHas('items', fn ($itemQuery) => $itemQuery->where('product_id', (int) $filters['product_id']));
         }
 
-        if ($filters['vendor_id'] !== '' || $filters['warehouse_id'] !== '') {
+        if ($filters['vendor_id'] !== '' || $filters['warehouse_id'] !== '' || $filters['fulfilment_source'] !== '' || $filters['product_category'] !== '' || $filters['business_partner_id'] !== '' || $filters['staff_user_id'] !== '' || $filters['referred_by'] !== '') {
             $rentalIdQuery = Rental::query()
                 ->select('id')
                 ->forOrganization($this->orgId());
@@ -199,14 +245,153 @@ class ReportController extends Controller
                 $rentalIdQuery->where('dispatch_warehouse_id', (int) $filters['warehouse_id']);
             }
 
-            $query->whereHas('items', function ($itemQuery) use ($rentalIdQuery) {
-                $itemQuery
-                    ->where('source_type', 'rental')
-                    ->whereIn('source_id', $rentalIdQuery);
+            if ($filters['fulfilment_source'] !== '') {
+                $rentalIdQuery->where('fulfilment_source', $filters['fulfilment_source']);
+            }
+
+            if ($filters['product_category'] !== '') {
+                $rentalIdQuery->whereHas('product', fn ($productQuery) => $productQuery->where('category', $filters['product_category']));
+            }
+
+            if ($filters['business_partner_id'] !== '') {
+                $rentalIdQuery->where('business_partner_id', (int) $filters['business_partner_id']);
+            }
+
+            if ($filters['staff_user_id'] !== '') {
+                $rentalIdQuery->where('created_by_user_id', (int) $filters['staff_user_id']);
+            }
+
+            if ($filters['referred_by'] !== '' && Schema::hasColumn('rentals', 'referred_by')) {
+                $rentalIdQuery->where('referred_by', 'like', '%' . $filters['referred_by'] . '%');
+            }
+
+            $saleIdQuery = $this->saleQuery($filters)->select('id');
+
+            $query->where(function ($sourceQuery) use ($rentalIdQuery, $saleIdQuery) {
+                $sourceQuery
+                    ->whereHas('items', function ($itemQuery) use ($rentalIdQuery) {
+                        $itemQuery
+                            ->where('source_type', 'rental')
+                            ->whereIn('source_id', $rentalIdQuery);
+                    })
+                    ->orWhereHas('items', function ($itemQuery) use ($saleIdQuery) {
+                        $itemQuery
+                            ->where('source_type', 'sale')
+                            ->whereIn('source_id', $saleIdQuery);
+                    });
             });
         }
 
         return $this->applyDateRange($query, 'invoice_date', $filters);
+    }
+
+    private function saleQuery(array $filters)
+    {
+        $query = Sale::query()
+            ->with(['customer', 'businessPartner', 'product', 'warehouse', 'vendorOrderDetail.vendor'])
+            ->where('sales.organization_id', $this->orgId());
+
+        if ($filters['city'] !== '') {
+            $query->whereHas('customer', fn ($customerQuery) => $customerQuery->where('city', 'like', '%' . $filters['city'] . '%'));
+        }
+
+        if ($filters['fulfilment_source'] !== '') {
+            $query->where('fulfilment_source', $filters['fulfilment_source']);
+        }
+
+        if ($filters['vendor_id'] !== '') {
+            $query->where(function ($vendorQuery) use ($filters) {
+                $vendorQuery
+                    ->where('vendor_id', (int) $filters['vendor_id'])
+                    ->orWhereHas('vendorOrderDetail', fn ($detailQuery) => $detailQuery->where('vendor_id', (int) $filters['vendor_id']));
+            });
+        }
+
+        if ($filters['warehouse_id'] !== '') {
+            $query->where('warehouse_id', (int) $filters['warehouse_id']);
+        }
+
+        if ($filters['customer_id'] !== '') {
+            $query->where('customer_id', (int) $filters['customer_id']);
+        }
+
+        if ($filters['business_partner_id'] !== '') {
+            $query->where('business_partner_id', (int) $filters['business_partner_id']);
+        }
+
+        if ($filters['staff_user_id'] !== '') {
+            $query->where('created_by_user_id', (int) $filters['staff_user_id']);
+        }
+
+        if ($filters['product_id'] !== '') {
+            $query->where('product_id', (int) $filters['product_id']);
+        }
+
+        if ($filters['product_category'] !== '') {
+            $query->whereHas('product', fn ($productQuery) => $productQuery->where('category', $filters['product_category']));
+        }
+
+        return $this->applyDateRange($query, 'sale_date', $filters);
+    }
+
+    private function deliveryQuery(array $filters)
+    {
+        $query = \App\Models\Delivery::query()
+            ->with(['assignedUser', 'rental.customer', 'rental.product', 'sale.customer', 'sale.product'])
+            ->where('organization_id', $this->orgId());
+
+        if ($filters['staff_user_id'] !== '') {
+            $query->where('assigned_user_id', (int) $filters['staff_user_id']);
+        }
+
+        if ($filters['fulfilment_source'] !== '' || $filters['city'] !== '' || $filters['vendor_id'] !== '' || $filters['warehouse_id'] !== '' || $filters['customer_id'] !== '' || $filters['business_partner_id'] !== '' || $filters['product_id'] !== '' || $filters['product_category'] !== '') {
+            $query->where(function ($linkedQuery) use ($filters) {
+                $linkedQuery
+                    ->whereHas('rental', fn ($rentalQuery) => $rentalQuery->whereIn('rentals.id', (clone $this->rentalQuery($filters))->select('rentals.id')))
+                    ->orWhereHas('sale', fn ($saleQuery) => $saleQuery->whereIn('sales.id', (clone $this->saleQuery($filters))->select('sales.id')));
+            });
+        }
+
+        return $this->applyDateRange($query, 'scheduled_at', $filters);
+    }
+
+    private function vendorOrderQuery(array $filters)
+    {
+        $query = VendorOrderDetail::query()
+            ->with(['vendor', 'rental.product', 'rental.customer', 'sale.product', 'sale.customer'])
+            ->forOrganization($this->orgId());
+
+        if ($filters['vendor_id'] !== '') {
+            $query->where('vendor_id', (int) $filters['vendor_id']);
+        }
+
+        if ($filters['fulfilment_source'] !== '') {
+            $query->where('fulfilment_source', $filters['fulfilment_source']);
+        }
+
+        if ($filters['city'] !== '' || $filters['warehouse_id'] !== '' || $filters['customer_id'] !== '' || $filters['business_partner_id'] !== '' || $filters['product_id'] !== '' || $filters['product_category'] !== '' || $filters['staff_user_id'] !== '') {
+            $query->where(function ($linkedQuery) use ($filters) {
+                $linkedQuery
+                    ->whereHas('rental', fn ($rentalQuery) => $rentalQuery->whereIn('rentals.id', (clone $this->rentalQuery($filters))->select('rentals.id')))
+                    ->orWhereHas('sale', fn ($saleQuery) => $saleQuery->whereIn('sales.id', (clone $this->saleQuery($filters))->select('sales.id')));
+            });
+        }
+
+        if ($filters['from_date'] !== '' || $filters['to_date'] !== '') {
+            $query->where(function ($dateQuery) use ($filters) {
+                $dateQuery
+                    ->whereHas('rental', fn ($rentalQuery) => $this->applyDateRange($rentalQuery, 'start_date', $filters))
+                    ->orWhereHas('sale', fn ($saleQuery) => $this->applyDateRange($saleQuery, 'sale_date', $filters))
+                    ->orWhere(function ($unlinkedQuery) use ($filters) {
+                        $unlinkedQuery
+                            ->whereNull('rental_id')
+                            ->whereNull('sale_id');
+                        $this->applyDateRange($unlinkedQuery, 'created_at', $filters);
+                    });
+            });
+        }
+
+        return $query;
     }
 
     private function paymentQuery(array $filters)
@@ -260,7 +445,7 @@ class ReportController extends Controller
             });
         }
 
-        if ($filters['vendor_id'] !== '' || $filters['warehouse_id'] !== '' || $filters['product_id'] !== '') {
+        if ($filters['vendor_id'] !== '' || $filters['warehouse_id'] !== '' || $filters['product_id'] !== '' || $filters['fulfilment_source'] !== '' || $filters['product_category'] !== '' || $filters['business_partner_id'] !== '' || $filters['staff_user_id'] !== '') {
             $query->whereHas('rental', function ($rentalQuery) use ($filters) {
                 if ($filters['vendor_id'] !== '') {
                     $this->applyVendorFilterToRentalQuery($rentalQuery, (int) $filters['vendor_id']);
@@ -272,6 +457,22 @@ class ReportController extends Controller
 
                 if ($filters['product_id'] !== '') {
                     $rentalQuery->where('product_id', (int) $filters['product_id']);
+                }
+
+                if ($filters['fulfilment_source'] !== '') {
+                    $rentalQuery->where('fulfilment_source', $filters['fulfilment_source']);
+                }
+
+                if ($filters['product_category'] !== '') {
+                    $rentalQuery->whereHas('product', fn ($productQuery) => $productQuery->where('category', $filters['product_category']));
+                }
+
+                if ($filters['business_partner_id'] !== '') {
+                    $rentalQuery->where('business_partner_id', (int) $filters['business_partner_id']);
+                }
+
+                if ($filters['staff_user_id'] !== '') {
+                    $rentalQuery->where('created_by_user_id', (int) $filters['staff_user_id']);
                 }
             });
         }
@@ -320,6 +521,10 @@ class ReportController extends Controller
             $query->where('product_id', (int) $filters['product_id']);
         }
 
+        if ($filters['product_category'] !== '') {
+            $query->whereHas('product', fn ($productQuery) => $productQuery->where('category', $filters['product_category']));
+        }
+
         return $this->applyDateRange($query, 'purchase_date', $filters);
     }
 
@@ -331,7 +536,9 @@ class ReportController extends Controller
 
         return $query->where(function ($vendorQuery) use ($vendorUserId) {
             $vendorQuery
-                ->whereHas('deliveryRecord', fn ($deliveryQuery) => $deliveryQuery->where('assigned_user_id', $vendorUserId))
+                ->where('vendor_id', $vendorUserId)
+                ->orWhereHas('vendorOrderDetail', fn ($detailQuery) => $detailQuery->where('vendor_id', $vendorUserId))
+                ->orWhereHas('deliveryRecord', fn ($deliveryQuery) => $deliveryQuery->where('assigned_user_id', $vendorUserId))
                 ->orWhereHas('pickupRecord', fn ($pickupQuery) => $pickupQuery->where('assigned_user_id', $vendorUserId));
         });
     }
@@ -341,7 +548,11 @@ class ReportController extends Controller
         $deliveryVendor = $this->vendorNameFromDeliveryRecord($rental->deliveryRecord);
         $pickupVendor = $this->vendorNameFromDeliveryRecord($rental->pickupRecord);
 
-        return $deliveryVendor ?? $pickupVendor ?? 'Unassigned';
+        return $rental->vendorOrderDetail?->vendor?->name
+            ?? $rental->vendor?->name
+            ?? $deliveryVendor
+            ?? $pickupVendor
+            ?? 'Unassigned';
     }
 
     private function vendorNameFromDeliveryRecord($delivery): ?string
@@ -452,14 +663,32 @@ class ReportController extends Controller
         $rentalQuery = $this->rentalQuery($filters);
         $invoiceQuery = $this->invoiceQuery($filters);
         $paymentQuery = $this->paymentQuery($filters);
+        $saleQuery = $this->saleQuery($filters);
+        $deliveryQuery = $this->deliveryQuery($filters);
+        $vendorOrderQuery = $this->vendorOrderQuery($filters);
         $customerQuery = $this->customerQuery($filters);
         $customerAggregateQuery = $this->customerBaseQuery($filters);
         $assetQuery = $this->assetQuery($filters);
+
+        $rentalRevenue = (clone $rentalQuery)->sum('rental_amount');
+        $rentalDeposit = (clone $rentalQuery)->sum('deposit_amount');
+        $rentalTransport = (clone $rentalQuery)->sum('transport_amount');
+        $rentalOtherCharges = (clone $rentalQuery)->sum('other_amount');
+        $salesRevenue = (clone $saleQuery)->sum('sale_amount');
+        $invoiceRevenue = (clone $invoiceQuery)->sum('total_amount');
+        $invoiceDeposit = (clone $invoiceQuery)->sum('deposit_amount');
+        $invoiceTransport = (clone $invoiceQuery)->sum('shipping_charges');
+        $totalRevenue = max((float) $invoiceRevenue, (float) $rentalRevenue + (float) $salesRevenue + (float) $rentalDeposit + (float) $rentalTransport + (float) $rentalOtherCharges);
+        $depositRevenue = max((float) $invoiceDeposit, (float) $rentalDeposit);
+        $transportRevenue = max((float) $invoiceTransport, (float) $rentalTransport + (float) (clone $saleQuery)->sum('shipping_charges'));
+        $otherChargesRevenue = (float) $rentalOtherCharges;
 
         $activeRentals = (clone $rentalQuery)->effectivelyActive()->count();
         $returnedRentals = (clone $rentalQuery)->where('status', 'returned')->count();
         $overdueRentals = (clone $rentalQuery)->overdue()->count();
         $endingSoonRentals = (clone $rentalQuery)->endingSoon()->count();
+        $totalRentals = (clone $rentalQuery)->count();
+        $totalSales = (clone $saleQuery)->count();
 
         $cityWiseRentals = (clone $rentalQuery)
             ->join('customers', 'customers.id', '=', 'rentals.customer_id')
@@ -498,6 +727,8 @@ class ReportController extends Controller
             ->get();
 
         $monthlyRentalsTrend = $this->monthlyTrendData($rentalQuery, 'start_date');
+        $monthlyRevenueTrend = $this->monthlyTrendData($invoiceQuery, 'invoice_date', 'SUM(total_amount)');
+        $monthlySalesTrend = $this->monthlyTrendData($saleQuery, 'sale_date', 'SUM(sale_amount)');
 
         $paymentsToday = (clone $paymentQuery)->whereDate('payment_date', Carbon::today())->sum('amount');
         $paymentsThisMonth = (clone $paymentQuery)
@@ -523,6 +754,9 @@ class ReportController extends Controller
             ->get();
 
         $monthlyCollectionsTrend = $this->monthlyTrendData($paymentQuery, 'payment_date', 'SUM(amount)');
+        $collectionEfficiency = $totalRevenue > 0
+            ? round((((float) (clone $paymentQuery)->sum('amount')) / $totalRevenue) * 100, 1)
+            : 0.0;
 
         $topCustomers = (clone $customerQuery)
             ->orderByDesc('rentals_count')
@@ -559,9 +793,35 @@ class ReportController extends Controller
             ->limit(10)
             ->get();
 
+        $hasReferralColumns = Schema::hasColumn('rentals', 'referred_by');
+        $referralRentalsQuery = $hasReferralColumns
+            ? (clone $rentalQuery)->whereNotNull('referred_by')->where('referred_by', '!=', '')
+            : null;
+        $referralRentalCount = $referralRentalsQuery ? (clone $referralRentalsQuery)->count() : 0;
+        $referralRevenue = $referralRentalsQuery
+            ? round((float) (clone $referralRentalsQuery)->selectRaw('SUM(rental_amount + deposit_amount + transport_amount + other_amount) as total')->value('total'), 2)
+            : 0.0;
+        $referralLeaderboard = $referralRentalsQuery
+            ? (clone $referralRentalsQuery)
+                ->selectRaw("COALESCE(NULLIF(referral_source_type, ''), 'other') as referral_type")
+                ->selectRaw('referred_by as label')
+                ->selectRaw('COUNT(id) as rentals_count')
+                ->selectRaw('SUM(rental_amount + deposit_amount + transport_amount + other_amount) as revenue')
+                ->groupBy('referral_type', 'referred_by')
+                ->orderByDesc('rentals_count')
+                ->orderByDesc('revenue')
+                ->limit(10)
+                ->get()
+            : collect();
+
         $availableAssets = (clone $assetQuery)->where('asset_status', 'available')->count();
         $rentedAssets = (clone $assetQuery)->where('asset_status', 'rented')->count();
         $maintenanceAssets = (clone $assetQuery)->where('asset_status', 'maintenance')->count();
+        $reservedBlockedAssets = (clone $assetQuery)->whereIn('asset_status', ['reserved', 'blocked', 'reserved_for_sale'])->count();
+        $assetTotal = (clone $assetQuery)->count();
+        $assetUtilizationPercent = $assetTotal > 0
+            ? round((($rentedAssets + $reservedBlockedAssets) / $assetTotal) * 100, 1)
+            : 0.0;
 
         $warehouseStockSummary = (clone $assetQuery)
             ->leftJoin('warehouses', 'warehouses.id', '=', 'assets.warehouse_id')
@@ -573,14 +833,48 @@ class ReportController extends Controller
 
         $productUtilization = Product::query()
             ->where('organization_id', $this->orgId())
+            ->when($filters['product_id'] !== '', fn ($query) => $query->where('id', (int) $filters['product_id']))
+            ->when($filters['product_category'] !== '', fn ($query) => $query->where('category', $filters['product_category']))
             ->withCount([
-                'assets as total_assets',
-                'assets as rented_assets' => fn ($assetBase) => $assetBase->whereIn('asset_status', ['rented', 'reserved']),
+                'assets as total_assets' => fn ($assetBase) => $assetBase
+                    ->when($filters['warehouse_id'] !== '', fn ($warehouseQuery) => $warehouseQuery->where('warehouse_id', (int) $filters['warehouse_id'])),
+                'assets as available_assets' => fn ($assetBase) => $assetBase
+                    ->when($filters['warehouse_id'] !== '', fn ($warehouseQuery) => $warehouseQuery->where('warehouse_id', (int) $filters['warehouse_id']))
+                    ->where('asset_status', 'available'),
+                'assets as rented_assets' => fn ($assetBase) => $assetBase
+                    ->when($filters['warehouse_id'] !== '', fn ($warehouseQuery) => $warehouseQuery->where('warehouse_id', (int) $filters['warehouse_id']))
+                    ->whereIn('asset_status', ['rented', 'reserved', 'blocked']),
+                'assets as maintenance_assets' => fn ($assetBase) => $assetBase
+                    ->when($filters['warehouse_id'] !== '', fn ($warehouseQuery) => $warehouseQuery->where('warehouse_id', (int) $filters['warehouse_id']))
+                    ->where('asset_status', 'maintenance'),
                 'rentals as active_rentals' => fn ($rentalBase) => $rentalBase->where('status', 'active'),
             ])
             ->orderByDesc('rented_assets')
             ->limit(10)
-            ->get(['id', 'name']);
+            ->get(['id', 'name', 'category', 'available_quantity', 'total_quantity']);
+
+        $lowStockThresholdExpression = DB::connection()->getDriverName() === 'sqlite'
+            ? 'max(2, total_quantity * 0.15)'
+            : 'GREATEST(2, total_quantity * 0.15)';
+        $lowStockProducts = Product::query()
+            ->where('organization_id', $this->orgId())
+            ->when($filters['product_id'] !== '', fn ($query) => $query->where('id', (int) $filters['product_id']))
+            ->when($filters['product_category'] !== '', fn ($query) => $query->where('category', $filters['product_category']))
+            ->whereRaw("available_quantity <= {$lowStockThresholdExpression}")
+            ->orderBy('available_quantity')
+            ->limit(10)
+            ->get(['id', 'name', 'available_quantity', 'total_quantity']);
+
+        $categoryAvailability = (clone $assetQuery)
+            ->join('products', 'products.id', '=', 'assets.product_id')
+            ->selectRaw("COALESCE(products.category, 'Uncategorized') as label")
+            ->selectRaw("SUM(CASE WHEN assets.asset_status = 'available' THEN 1 ELSE 0 END) as available_count")
+            ->selectRaw("SUM(CASE WHEN assets.asset_status IN ('rented', 'reserved', 'blocked') THEN 1 ELSE 0 END) as committed_count")
+            ->selectRaw('COUNT(assets.id) as total_count')
+            ->groupBy('label')
+            ->orderByDesc('total_count')
+            ->limit(10)
+            ->get();
 
         $idleAssets = (clone $assetQuery)
             ->where('asset_status', 'available')
@@ -598,9 +892,226 @@ class ReportController extends Controller
         $paidInvoices = (clone $invoiceQuery)->where('payment_status', 'paid')->count();
         $monthlyInvoiceTrend = $this->monthlyTrendData($invoiceQuery, 'invoice_date');
 
+        $businessPartnerRows = collect()
+            ->merge((clone $rentalQuery)->with(['businessPartner', 'partnerClient'])->whereNotNull('business_partner_id')->get()->map(fn ($rental) => [
+                'id' => $rental->business_partner_id,
+                'label' => $rental->businessPartner?->name ?? 'Business Partner',
+                'client' => $rental->partnerClient?->displayName() ?? null,
+                'rental_revenue' => (float) ($rental->rental_amount ?? 0) + (float) ($rental->deposit_amount ?? 0) + (float) ($rental->transport_amount ?? 0) + (float) ($rental->other_amount ?? 0),
+                'sales_revenue' => 0.0,
+                'rentals' => 1,
+                'sales' => 0,
+            ]))
+            ->merge((clone $saleQuery)->with(['businessPartner', 'partnerClient'])->whereNotNull('business_partner_id')->get()->map(fn ($sale) => [
+                'id' => $sale->business_partner_id,
+                'label' => $sale->businessPartner?->name ?? 'Business Partner',
+                'client' => $sale->partnerClient?->displayName() ?? null,
+                'rental_revenue' => 0.0,
+                'sales_revenue' => (float) ($sale->sale_amount ?? 0),
+                'rentals' => 0,
+                'sales' => 1,
+            ]))
+            ->groupBy('id')
+            ->map(fn ($items) => (object) [
+                'id' => $items->first()['id'],
+                'label' => $items->first()['label'],
+                'revenue' => round($items->sum('rental_revenue') + $items->sum('sales_revenue'), 2),
+                'actual_clients' => $items->pluck('client')->filter()->unique()->count(),
+                'rentals_count' => $items->sum('rentals'),
+                'sales_count' => $items->sum('sales'),
+                'outstanding' => (float) (clone $invoiceQuery)->whereHas('customer', fn ($customerBase) => $customerBase->where('name', $items->first()['label']))->sum('balance_amount'),
+                'collection_percent' => $items->sum('rental_revenue') + $items->sum('sales_revenue') > 0 ? round((max(0, $items->sum('rental_revenue') + $items->sum('sales_revenue') - (float) (clone $invoiceQuery)->whereHas('customer', fn ($customerBase) => $customerBase->where('name', $items->first()['label']))->sum('balance_amount')) / ($items->sum('rental_revenue') + $items->sum('sales_revenue'))) * 100, 1) : 0,
+            ])
+            ->sortByDesc('revenue')
+            ->take(10)
+            ->values();
+
+        $rentalCreators = (clone $rentalQuery)
+            ->whereNotNull('created_by_user_id')
+            ->get(['created_by_user_id', 'rental_amount', 'deposit_amount', 'transport_amount', 'other_amount'])
+            ->groupBy('created_by_user_id');
+        $saleCreators = (clone $saleQuery)
+            ->whereNotNull('created_by_user_id')
+            ->get(['created_by_user_id', 'sale_amount'])
+            ->groupBy('created_by_user_id');
+        $staffNames = User::query()
+            ->where('organization_id', $this->orgId())
+            ->whereIn('id', $rentalCreators->keys()->merge($saleCreators->keys())->filter()->unique()->values())
+            ->pluck('name', 'id');
+        $followUpsByUser = Schema::hasTable('follow_ups')
+            ? DB::table('follow_ups')
+                ->where('organization_id', $this->orgId())
+                ->where('status', 'completed')
+                ->when($filters['staff_user_id'] !== '', fn ($query) => $query->where('assigned_user_id', (int) $filters['staff_user_id']))
+                ->selectRaw('assigned_user_id, COUNT(*) as total')
+                ->groupBy('assigned_user_id')
+                ->pluck('total', 'assigned_user_id')
+            : collect();
+        $salesStaffPerformance = $rentalCreators->keys()
+            ->merge($saleCreators->keys())
+            ->merge($followUpsByUser->keys())
+            ->filter()
+            ->unique()
+            ->map(fn ($userId) => (object) [
+                'label' => $staffNames[$userId] ?? ('User #' . $userId),
+                'orders_created' => ($rentalCreators->get($userId)?->count() ?? 0) + ($saleCreators->get($userId)?->count() ?? 0),
+                'revenue_generated' => round(($rentalCreators->get($userId)?->sum(fn ($rental) => (float) $rental->rental_amount + (float) $rental->deposit_amount + (float) $rental->transport_amount + (float) $rental->other_amount) ?? 0) + ($saleCreators->get($userId)?->sum('sale_amount') ?? 0), 2),
+                'collections_supported' => 0,
+                'followups_completed' => (int) ($followUpsByUser[$userId] ?? 0),
+            ])
+            ->sortByDesc('revenue_generated')
+            ->take(10)
+            ->values();
+
+        $deliveryStaffPerformance = (clone $deliveryQuery)
+            ->whereNotNull('assigned_user_id')
+            ->get(['assigned_user_id', 'type', 'status', 'scheduled_at', 'completed_at'])
+            ->groupBy('assigned_user_id')
+            ->map(fn ($items, $userId) => (object) [
+                'label' => $items->first()->assignedUser?->name ?? ('User #' . $userId),
+                'assigned_deliveries' => $items->where('type', 'delivery')->count(),
+                'completed_deliveries' => $items->where('type', 'delivery')->where('status', 'completed')->count(),
+                'delayed_deliveries' => $items->where('type', 'delivery')->filter(fn ($delivery) => $delivery->status !== 'completed' && $delivery->scheduled_at && $delivery->scheduled_at->lt(now()))->count(),
+                'pickups_completed' => $items->where('type', 'pickup')->whereIn('status', ['completed', 'picked_up'])->count(),
+            ])
+            ->sortByDesc('assigned_deliveries')
+            ->take(10)
+            ->values();
+
+        $vendorOrders = (clone $vendorOrderQuery)->get();
+        $vendorRevenue = round($vendorOrders->sum(fn ($detail) => $detail->customerRevenue()), 2);
+        $vendorCost = round($vendorOrders->sum(fn ($detail) => $detail->totalVendorCost()), 2);
+        $vendorMargin = round($vendorRevenue - $vendorCost, 2);
+        $vendorCompletedStates = ['delivery_completed', 'pickup_completed', 'completed'];
+        $vendorOrdersCount = $vendorOrders->count();
+        $vendorOnTimeFulfilments = $vendorOrders
+            ->filter(fn ($detail) => in_array($detail->operationalFulfilmentStatus(), $vendorCompletedStates, true) && ($detail->vendor_order_status ?? null) !== 'cancelled')
+            ->count();
+        $vendorCancelledFulfilments = $vendorOrders
+            ->filter(fn ($detail) => ($detail->vendor_order_status ?? null) === 'cancelled')
+            ->count();
+        $vendorDelayedFulfilments = $vendorOrders
+            ->filter(fn ($detail) => $detail->fulfilment_source === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED
+                && !in_array($detail->operationalFulfilmentStatus(), $vendorCompletedStates, true)
+                && ($detail->vendor_order_status ?? null) !== 'cancelled')
+            ->count();
+        $vendorFulfilmentScore = $vendorOrdersCount > 0
+            ? round(max(0, (($vendorOnTimeFulfilments - ($vendorDelayedFulfilments * 0.5) - $vendorCancelledFulfilments) / $vendorOrdersCount) * 100), 1)
+            : 0.0;
+        $topVendors = $vendorOrders
+            ->groupBy('vendor_id')
+            ->map(function ($items) use ($vendorCompletedStates) {
+                $revenue = round($items->sum(fn ($detail) => $detail->customerRevenue()), 2);
+                $cost = round($items->sum(fn ($detail) => $detail->totalVendorCost()), 2);
+                $orders = $items->count();
+                $onTime = $items
+                    ->filter(fn ($detail) => in_array($detail->operationalFulfilmentStatus(), $vendorCompletedStates, true) && ($detail->vendor_order_status ?? null) !== 'cancelled')
+                    ->count();
+                $cancelled = $items->filter(fn ($detail) => ($detail->vendor_order_status ?? null) === 'cancelled')->count();
+                $delayed = $items
+                    ->filter(fn ($detail) => $detail->fulfilment_source === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED
+                        && !in_array($detail->operationalFulfilmentStatus(), $vendorCompletedStates, true)
+                        && ($detail->vendor_order_status ?? null) !== 'cancelled')
+                    ->count();
+
+                return (object) [
+                    'label' => $items->first()->vendor?->name ?? 'Unassigned vendor',
+                    'orders' => $orders,
+                    'revenue' => $revenue,
+                    'cost' => $cost,
+                    'margin' => round($revenue - $cost, 2),
+                    'margin_percent' => $revenue > 0 ? round((($revenue - $cost) / $revenue) * 100, 1) : 0.0,
+                    'on_time' => $onTime,
+                    'delayed' => $delayed,
+                    'cancelled' => $cancelled,
+                    'fulfilment_score' => $orders > 0 ? round(max(0, (($onTime - ($delayed * 0.5) - $cancelled) / $orders) * 100), 1) : 0.0,
+                ];
+            })
+            ->sortByDesc('revenue')
+            ->take(10)
+            ->values();
+        $delayedVendorFulfilment = $vendorOrders
+            ->filter(fn ($detail) => $detail->fulfilment_source === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED
+                && !in_array($detail->operationalFulfilmentStatus(), $vendorCompletedStates, true)
+                && ($detail->vendor_order_status ?? null) !== 'cancelled')
+            ->take(8)
+            ->values();
+        $vendorTrend = $vendorOrders
+            ->groupBy(fn ($detail) => optional($detail->created_at)->format('Y-m') ?: 'Unknown')
+            ->map(fn ($items, $month) => [
+                'month' => $month,
+                'revenue' => round($items->sum(fn ($detail) => $detail->customerRevenue()), 2),
+                'cost' => round($items->sum(fn ($detail) => $detail->totalVendorCost()), 2),
+                'margin' => round($items->sum(fn ($detail) => $detail->grossMargin()), 2),
+            ])
+            ->sortBy('month')
+            ->values();
+        $highCostVendors = $topVendors
+            ->filter(fn ($vendor) => $vendor->cost > 0 && ($vendor->revenue <= 0 || $vendor->cost >= ($vendor->revenue * 0.75)))
+            ->sortByDesc('cost')
+            ->take(6)
+            ->values();
+        $lowMarginVendors = $topVendors
+            ->filter(fn ($vendor) => $vendor->orders > 0 && $vendor->margin_percent <= 10)
+            ->sortBy('margin_percent')
+            ->take(6)
+            ->values();
+        $delayedVendors = $topVendors
+            ->filter(fn ($vendor) => $vendor->delayed > 0)
+            ->sortByDesc('delayed')
+            ->take(6)
+            ->values();
+
+        $deliveryLogisticsCost = round($vendorOrders->sum(fn ($detail) => (float) ($detail->vendor_delivery_cost ?? 0) + (float) ($detail->vendor_pickup_cost ?? 0)), 2);
+        $maintenanceCost = round($vendorOrders->sum('other_vendor_cost'), 2);
+        $grossMargin = round($totalRevenue - $vendorCost, 2);
+        $estimatedEbitda = round($totalRevenue - $vendorCost - $deliveryLogisticsCost - $maintenanceCost, 2);
+
+        $averageRentalDuration = (clone $rentalQuery)
+            ->get(['start_date', 'end_date'])
+            ->filter(fn ($rental) => $rental->start_date && $rental->end_date)
+            ->avg(fn ($rental) => max(1, $rental->start_date->diffInDays($rental->end_date)));
+        $productTrends = $productWiseRentals
+            ->map(function ($row) use ($productUtilization) {
+                $product = $productUtilization->firstWhere('name', $row->label);
+                $utilization = ($product && (int) $product->total_assets > 0)
+                    ? round(((int) $product->rented_assets / (int) $product->total_assets) * 100, 1)
+                    : 0.0;
+
+                return (object) [
+                    'label' => $row->label,
+                    'rental_frequency' => (int) $row->total,
+                    'quantity_total' => (int) $row->quantity_total,
+                    'utilization_percent' => $utilization,
+                    'demand_projection' => $row->total >= 5 ? 'Rising' : ($row->total >= 2 ? 'Stable' : 'Low signal'),
+                    'suggested_procurement' => $utilization >= 80 ? 'Consider procurement' : ($utilization >= 60 ? 'Monitor demand' : 'No immediate need'),
+                ];
+            })
+            ->take(10)
+            ->values();
+
         return [
+            'revenue_analytics' => [
+                'total_revenue' => round((float) $totalRevenue, 2),
+                'rental_revenue' => round((float) $rentalRevenue, 2),
+                'sales_revenue' => round((float) $salesRevenue, 2),
+                'deposit' => round((float) $depositRevenue, 2),
+                'transport' => round((float) $transportRevenue, 2),
+                'other_charges' => round((float) $otherChargesRevenue, 2),
+                'composition' => [
+                    ['label' => 'Rental', 'value' => round((float) $rentalRevenue, 2), 'color' => '#4f46e5'],
+                    ['label' => 'Sales', 'value' => round((float) $salesRevenue, 2), 'color' => '#0891b2'],
+                    ['label' => 'Deposit', 'value' => round((float) $depositRevenue, 2), 'color' => '#16a34a'],
+                    ['label' => 'Transport', 'value' => round((float) $transportRevenue, 2), 'color' => '#f59e0b'],
+                    ['label' => 'Other', 'value' => round((float) $otherChargesRevenue, 2), 'color' => '#64748b'],
+                ],
+                'revenue_trend' => $monthlyRevenueTrend,
+                'rental_trend' => $monthlyRentalsTrend,
+                'sales_trend' => $monthlySalesTrend,
+                'collection_efficiency' => $collectionEfficiency,
+            ],
             'rental_reports' => [
-                'metrics' => compact('activeRentals', 'returnedRentals', 'overdueRentals', 'endingSoonRentals'),
+                'metrics' => compact('activeRentals', 'returnedRentals', 'overdueRentals', 'endingSoonRentals', 'totalRentals'),
                 'city_wise' => $cityWiseRentals,
                 'vendor_wise' => $vendorWiseRentals,
                 'warehouse_wise' => $warehouseWiseRentals,
@@ -622,13 +1133,26 @@ class ReportController extends Controller
                 'inactive_customers' => $inactiveCustomers,
                 'new_customers_by_month' => $newCustomersByMonth,
                 'city_wise_counts' => $cityWiseCustomerCount,
+                'business_partner_performance' => $businessPartnerRows,
+                'referral_summary' => [
+                    'rental_count' => $referralRentalCount,
+                    'revenue' => $referralRevenue,
+                    'unique_referrers' => $referralLeaderboard->pluck('label')->filter()->unique()->count(),
+                    'leaderboard' => $referralLeaderboard,
+                    'available' => $hasReferralColumns,
+                ],
             ],
             'inventory_reports' => [
                 'available_assets' => $availableAssets,
                 'rented_assets' => $rentedAssets,
                 'maintenance_assets' => $maintenanceAssets,
+                'reserved_blocked_assets' => $reservedBlockedAssets,
+                'utilization_percent' => $assetUtilizationPercent,
                 'warehouse_stock_summary' => $warehouseStockSummary,
                 'product_utilization' => $productUtilization,
+                'low_stock_products' => $lowStockProducts,
+                'high_demand_products' => $productWiseRentals->take(8)->values(),
+                'category_availability' => $categoryAvailability,
                 'idle_assets' => $idleAssets,
             ],
             'sales_invoice_reports' => [
@@ -637,6 +1161,49 @@ class ReportController extends Controller
                 'partial_invoices' => $partialInvoices,
                 'paid_invoices' => $paidInvoices,
                 'monthly_invoice_trend' => $monthlyInvoiceTrend,
+                'sales_count' => $totalSales,
+            ],
+            'staff_performance' => [
+                'sales_staff' => $salesStaffPerformance,
+                'delivery_staff' => $deliveryStaffPerformance,
+            ],
+            'vendor_analytics' => [
+                'vendor_supplied_rentals' => (clone $rentalQuery)->where('fulfilment_source', VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED)->count(),
+                'vendor_supplied_sales' => (clone $saleQuery)->where('fulfilment_source', VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED)->count(),
+                'vendor_revenue' => $vendorRevenue,
+                'vendor_cost' => $vendorCost,
+                'vendor_margin' => $vendorMargin,
+                'vendor_orders_count' => $vendorOrdersCount,
+                'fulfilment_performance' => [
+                    'on_time' => $vendorOnTimeFulfilments,
+                    'delayed' => $vendorDelayedFulfilments,
+                    'cancelled' => $vendorCancelledFulfilments,
+                    'score' => $vendorFulfilmentScore,
+                ],
+                'top_vendors' => $topVendors,
+                'delayed_vendor_fulfilment' => $delayedVendorFulfilment,
+                'vendor_trend' => $vendorTrend,
+                'vendor_risk' => [
+                    'delayed_vendors' => $delayedVendors,
+                    'high_cost_vendors' => $highCostVendors,
+                    'low_margin_vendors' => $lowMarginVendors,
+                ],
+            ],
+            'profitability_reports' => [
+                'total_revenue' => round((float) $totalRevenue, 2),
+                'vendor_cost' => $vendorCost,
+                'delivery_logistics_cost' => $deliveryLogisticsCost,
+                'repair_maintenance_cost' => $maintenanceCost,
+                'gross_margin' => $grossMargin,
+                'estimated_ebitda' => $estimatedEbitda,
+                'is_estimated' => true,
+            ],
+            'product_trends' => [
+                'fast_moving_products' => $productWiseRentals->take(8)->values(),
+                'average_rental_duration' => round((float) ($averageRentalDuration ?? 0), 1),
+                'utilization_trend' => $productTrends,
+                'demand_projection' => $productTrends->where('demand_projection', 'Rising')->values(),
+                'suggested_procurement' => $productTrends->filter(fn ($row) => $row->suggested_procurement !== 'No immediate need')->values(),
             ],
         ];
     }

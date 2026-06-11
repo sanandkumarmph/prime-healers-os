@@ -5094,6 +5094,61 @@
         align-items: start;
         grid-auto-rows: min-content;
     }
+    #revenue-aging .control-room-aging-shell {
+        display: grid;
+        gap: 9px;
+    }
+    #revenue-aging .control-room-aging-bar {
+        display: flex;
+        width: 100%;
+        height: 10px;
+        min-height: 10px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #eef2f7;
+    }
+    #revenue-aging .control-room-aging-bar span {
+        display: block;
+        min-width: 8px;
+        height: 100%;
+    }
+    #revenue-aging .control-room-aging-legend {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 7px;
+    }
+    #revenue-aging .control-room-aging-item {
+        display: grid;
+        gap: 3px;
+        min-width: 0;
+        padding: 8px;
+        border: 1px solid rgba(226, 232, 240, 0.92);
+        border-radius: 12px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.88));
+    }
+    #revenue-aging .control-room-aging-item strong,
+    #revenue-aging .control-room-aging-item span,
+    #revenue-aging .control-room-aging-item small {
+        display: block;
+        min-width: 0;
+        overflow-wrap: anywhere;
+        line-height: 1.2;
+    }
+    #revenue-aging .control-room-aging-item strong {
+        color: var(--ph-color-text);
+        font-size: 11px;
+        font-weight: 900;
+    }
+    #revenue-aging .control-room-aging-item span {
+        color: var(--ph-color-text);
+        font-size: 13px;
+        font-weight: 800;
+    }
+    #revenue-aging .control-room-aging-item small {
+        color: var(--ph-color-text-soft);
+        font-size: 10px;
+        font-weight: 700;
+    }
     .sales-pulse-bottom-card--strip .sales-pulse-card-head {
         margin-bottom: 8px;
     }

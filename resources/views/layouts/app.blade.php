@@ -785,6 +785,9 @@
         box-sizing:border-box;
         transition:none;
     }
+    .app-shell-main.is-focused-form {
+        padding-top:10px;
+    }
     .app-shell-topbar {
         position:sticky;
         top:14px;
@@ -3193,7 +3196,7 @@
 
     </aside>
 
-    <main class="app-shell-main">
+    <main class="app-shell-main{{ View::hasSection('focused_form') ? ' is-focused-form' : '' }}">
         <header class="app-shell-topbar">
             <div class="app-shell-topbar-left">
                 <div class="desktop-header-brand-wrap">
@@ -3430,7 +3433,7 @@
             </div>
         </header>
 
-        @unless($isDashboardRoute)
+        @unless($isDashboardRoute || View::hasSection('focused_form'))
             <div class="rn-trust-strip" data-mobile-trust="standard" aria-label="Workspace trust indicators">
                 <span class="rn-trust-pill">
                     <svg class="rn-trust-icon icon-chip icon-admin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-5"/></svg>
@@ -3449,7 +3452,7 @@
 
         @hasSection('breadcrumbs')
             @yield('breadcrumbs')
-        @elseif(!empty($breadcrumbItems))
+        @elseif(!empty($breadcrumbItems) && !View::hasSection('focused_form'))
             <nav class="desktop-breadcrumb" aria-label="Breadcrumb" style="display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin:0 0 14px; padding:10px 14px; border:1px solid #e2e8f0; border-radius:20px; background:#ffffff; box-shadow:0 14px 34px rgba(15,23,42,0.04); font-size:12px; color:#64748b;">
                 @foreach($breadcrumbItems as $index => $crumb)
                     @if($index > 0)
