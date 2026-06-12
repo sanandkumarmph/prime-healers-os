@@ -300,6 +300,11 @@ class RentalController extends Controller
         return $this->hasDispatchWarehouseColumn ??= Schema::hasColumn('rentals', 'dispatch_warehouse_id');
     }
 
+    private function hasRentalDeliveryNotesColumn(): bool
+    {
+        return Schema::hasColumn('rentals', 'delivery_notes');
+    }
+
     private function rentalReferralPayload(Request $request): array
     {
         $payload = [];
@@ -5956,6 +5961,7 @@ class RentalController extends Controller
             'third_party_name' => 'nullable|string|max:255',
             'third_party_contact' => 'nullable|string|max:255',
             'third_party_phone' => 'nullable|string|max:30',
+            'delivery_notes' => 'nullable|string',
             'pickup_staff_id' => ['nullable', $this->activeRentalStaffExistsRule()],
             'referral_source_type' => 'nullable|string|max:80',
             'referred_by' => 'nullable|string|max:180',
@@ -6037,6 +6043,7 @@ class RentalController extends Controller
                 'fulfilment_source' => $fulfilment['fulfilment_source'],
                 'delivery_responsibility' => $fulfilment['delivery_responsibility'],
                 'pickup_responsibility' => $fulfilment['pickup_responsibility'],
+                ...($this->hasRentalDeliveryNotesColumn() ? ['delivery_notes' => $request->input('delivery_notes')] : []),
                 'delivery_staff_id' => $deliveryAssignment['staff_id'],
                 'pickup_staff_id' => null,
                 ...$this->rentalReferralPayload($request),
@@ -6072,7 +6079,9 @@ class RentalController extends Controller
                 'assigned_to' => null,
                 'scheduled_at' => $request->start_date . ' 10:00:00',
                 'status' => 'pending',
-                'notes' => 'Auto-created when rental was added.',
+                'notes' => filled($request->input('delivery_notes'))
+                    ? trim((string) $request->input('delivery_notes'))
+                    : 'Auto-created when rental was added.',
             ];
 
             if ($this->hasDeliveryAssignmentTypeColumn()) {
@@ -6787,6 +6796,7 @@ class RentalController extends Controller
             'third_party_name' => 'nullable|string|max:255',
             'third_party_contact' => 'nullable|string|max:255',
             'third_party_phone' => 'nullable|string|max:30',
+            'delivery_notes' => 'nullable|string',
             'pickup_staff_id' => ['nullable', $this->activeRentalStaffExistsRule()],
             'referral_source_type' => 'nullable|string|max:80',
             'referred_by' => 'nullable|string|max:180',
@@ -6908,6 +6918,7 @@ class RentalController extends Controller
                 'fulfilment_source' => $fulfilment['fulfilment_source'],
                 'delivery_responsibility' => $fulfilment['delivery_responsibility'],
                 'pickup_responsibility' => $fulfilment['pickup_responsibility'],
+                ...($this->hasRentalDeliveryNotesColumn() ? ['delivery_notes' => $request->input('delivery_notes')] : []),
                 'delivery_staff_id' => $deliveryAssignment['staff_id'],
                 'pickup_staff_id' => $request->pickup_staff_id,
                 ...$this->rentalReferralPayload($request),
@@ -6962,6 +6973,10 @@ class RentalController extends Controller
                     : null;
             }
 
+            if (filled($request->input('delivery_notes'))) {
+                $deliveryAssignmentUpdates['notes'] = trim((string) $request->input('delivery_notes'));
+            }
+
             $openDeliveryTasks = $rental->deliveries()
                 ->where('type', 'delivery')
                 ->where('status', '!=', 'completed');
@@ -6978,7 +6993,9 @@ class RentalController extends Controller
                         'type' => 'delivery',
                         'scheduled_at' => $request->start_date . ' 10:00:00',
                         'status' => 'pending',
-                        'notes' => 'Auto-created after rental fulfilment changed to PH internal delivery.',
+                        'notes' => filled($request->input('delivery_notes'))
+                            ? trim((string) $request->input('delivery_notes'))
+                            : 'Auto-created after rental fulfilment changed to PH internal delivery.',
                     ];
 
                     if ($this->hasDeliveryAssignmentTypeColumn()) {

@@ -31,6 +31,7 @@ class Rental extends Model
         'fulfilment_source',
         'delivery_responsibility',
         'pickup_responsibility',
+        'delivery_notes',
         'delivery_staff_id',
         'pickup_staff_id',
         'referral_source_type',

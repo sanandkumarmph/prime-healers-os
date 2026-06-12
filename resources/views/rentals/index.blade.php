@@ -235,6 +235,7 @@
     }
     .ops-table td { font-size:13px; color:#0f172a; background:#fff; line-height:1.45; }
     .ops-table tbody tr.rental-row td { background:#fff; transition:box-shadow .18s ease, background-color .18s ease, transform .18s ease; }
+    .ops-table tbody tr.rental-row { cursor:pointer; }
     .ops-table tbody tr.rental-row:hover td { background:#fbfdff; }
     .ops-table tbody tr.rental-row td:first-child { border-left:1px solid #e2e8f0; border-top-left-radius:12px; border-bottom-left-radius:12px; }
     .ops-table tbody tr.rental-row td:last-child { border-right:1px solid #e2e8f0; border-top-right-radius:12px; border-bottom-right-radius:12px; }
@@ -300,6 +301,9 @@
         width:14px; height:14px; flex:0 0 14px;
     }
     .actions-cell { position:sticky; right:0; z-index:8; width:280px; min-width:280px; text-align:left; background:#fff !important; box-shadow:-12px 0 20px rgba(11,35,66,.08); overflow:visible; }
+    .rental-open-link { display:inline-flex; align-items:center; gap:5px; font-weight:900; color:#4f46e5; text-decoration:none; }
+    .rental-open-link:hover { color:#3730a3; text-decoration:underline; }
+    .rental-open-icon { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:999px; background:#eef2ff; color:#4338ca; font-size:12px; line-height:1; }
     .ops-table tr:has(.ops-action-menu[open]) .actions-cell { z-index:1000; }
     .ops-table th.actions-cell { z-index:4; background:var(--ph-color-surface-soft) !important; }
     .ops-action-menu { position:relative; display:inline-block; z-index:20; }
@@ -698,7 +702,10 @@
                                     <td class="rental-id-col" data-label="Rental ID">
                                         <div class="cell-stack compact">
                                             @if(\Illuminate\Support\Facades\Route::has('rentals.show'))
-                                                <a href="{{ route('rentals.show', $rental) }}" class="rn-record-link">#{{ $rental->id }}</a>
+                                                <a href="{{ route('rentals.show', $rental) }}" class="rental-open-link" aria-label="Open rental #{{ $rental->id }}" data-row-click-ignore>
+                                                    <span>Rental #{{ $rental->id }}</span>
+                                                    <span class="rental-open-icon" aria-hidden="true">👁</span>
+                                                </a>
                                             @else
                                                 <strong>#{{ $rental->id }}</strong>
                                             @endif
@@ -707,7 +714,10 @@
                                     <td class="customer-col" data-label="Customer">
                                         <div class="cell-title has-wa">
                                             <div style="min-width:0;">
-                                                <span class="rental-detail-id">Rental #{{ $rental->id }}</span>
+                                                <a href="{{ route('rentals.show', $rental) }}" class="rental-detail-id rental-open-link" aria-label="Open rental #{{ $rental->id }}" data-row-click-ignore>
+                                                    <span>Rental #{{ $rental->id }}</span>
+                                                    <span class="rental-open-icon" aria-hidden="true">👁</span>
+                                                </a>
                                                 @if(\Illuminate\Support\Facades\Route::has('customers.show') && $rental->customer)
                                                     <a href="{{ route('customers.show', $rental->customer) }}" class="rn-record-link">{{ $rental->customer_name }}</a>
                                                 @else
@@ -955,6 +965,57 @@
 @if($canCreateRentals)
     @include('partials.mobile-fab', ['href' => route('rentals.create'), 'label' => 'Add Rental'])
 @endif
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const interactiveSelector = [
+            'a',
+            'button',
+            'input',
+            'select',
+            'textarea',
+            'label',
+            'summary',
+            'details',
+            'form',
+            '[role="button"]',
+            '[data-row-click-ignore]',
+            '.ops-action-menu',
+            '.ops-action-panel',
+            '.row-actions',
+            '.customer-contact-actions'
+        ].join(',');
+
+        document.querySelectorAll('tr.rental-row').forEach(function (row) {
+            const openLink = row.querySelector('.rental-open-link[href]');
+
+            if (!openLink) {
+                return;
+            }
+
+            row.addEventListener('click', function (event) {
+                if (event.target.closest(interactiveSelector)) {
+                    return;
+                }
+
+                window.location.href = openLink.href;
+            });
+
+            row.addEventListener('keydown', function (event) {
+                if (!['Enter', ' '].includes(event.key) || event.target.closest(interactiveSelector)) {
+                    return;
+                }
+
+                event.preventDefault();
+                window.location.href = openLink.href;
+            });
+
+            if (!row.hasAttribute('tabindex')) {
+                row.setAttribute('tabindex', '0');
+            }
+            row.setAttribute('aria-label', openLink.getAttribute('aria-label') || openLink.textContent.trim());
+        });
+    });
+</script>
 @endsection
 
 @push('scripts')

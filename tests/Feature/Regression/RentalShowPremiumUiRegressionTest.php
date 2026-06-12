@@ -70,18 +70,17 @@ class RentalShowPremiumUiRegressionTest extends TestCase
 
         $this->get(route('rentals.show', $rental))
             ->assertOk()
-            ->assertSee('Rental Command View')
-            ->assertSee('Rental Actions')
-            ->assertSee('Overview')
+            ->assertSee('Rental Command Center')
+            ->assertSee('Customer Summary')
+            ->assertSee('Rental Lifecycle')
+            ->assertSee('Operations Workspace')
+            ->assertSee('Product Workspace')
             ->assertSee('href="#rental-notes-section"', false)
-            ->assertSee('Timeline &amp; Notes', false)
-            ->assertSee('data-activity-timeline', false)
-            ->assertSee('Latest:', false)
-            ->assertSee('Expand', false)
+            ->assertSee('Timeline &amp; Communication', false)
+            ->assertSee('Open notes and recent activity')
             ->assertSee('Direct Customer')
-            ->assertSee('Product &amp; Assigned Assets', false)
-            ->assertSee('Finance Snapshot')
-            ->assertSee('₹1,500.00');
+            ->assertSee('Finance Workspace')
+            ->assertSee('1,500.00');
     }
 
     public function test_rental_show_separates_partner_contacts_and_hides_finance_amounts_for_sales_user(): void
@@ -146,15 +145,13 @@ class RentalShowPremiumUiRegressionTest extends TestCase
 
         $this->get(route('rentals.show', $rental))
             ->assertOk()
-            ->assertSee('Customer &amp; Partner Contacts', false)
-            ->assertSee('Reminder / Payment Contact')
-            ->assertSee('Delivery / Service Contact')
-            ->assertSee('View Partner')
-            ->assertSee('View Actual Client')
-            ->assertSee('Operational Snapshot')
-            ->assertDontSee('Finance Snapshot')
-            ->assertDontSee('₹2,500.00')
-            ->assertDontSee('₹800.00');
+            ->assertSee('Customer Summary')
+            ->assertSee('Partner:')
+            ->assertSee('Actual client:')
+            ->assertSee('Finance amounts are hidden for your role.')
+            ->assertDontSee('Finance Workspace')
+            ->assertDontSee('2,500.00')
+            ->assertDontSee('800.00');
     }
 
     private function makeRentalProduct(string $name = 'Wheelchair'): Product

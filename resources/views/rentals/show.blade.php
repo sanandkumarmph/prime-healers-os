@@ -552,7 +552,72 @@
     $partnerBillingMeta = collect([
         $rental->businessPartner?->billingStateValue(),
         $rental->businessPartner?->gstin ? 'GSTIN ' . $rental->businessPartner->gstin : null,
-    ])->filter()->implode(' • ');
+    ])->filter()->implode(' - ');
+    $paymentStatusLabel = $rentalInvoiceStatus ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus)) : 'Pending';
+    $latestPayment = ($rental->payments ?? collect())->sortByDesc('payment_date')->sortByDesc('id')->first();
+    $lifecycleSteps = collect([
+        ['label' => 'Created', 'meta' => optional($rental->created_at)->format('d M Y') ?: 'Logged', 'tone' => 'done'],
+        ['label' => 'Delivered', 'meta' => $deliveryRecord?->completed_at ? $deliveryRecord->completed_at->format('d M Y') : $deliveryStatusLabel($rental->deliveryStatus()), 'tone' => $rental->deliveryStatus() === 'completed' ? 'done' : ($hasOpenDeliveryTask ? 'active' : 'pending')],
+        ['label' => 'Active', 'meta' => ucfirst(str_replace('_', ' ', $operationalStatus)), 'tone' => in_array($operationalStatus, ['active', 'delivery_pending'], true) ? 'active' : ($operationalStatus === 'returned' ? 'done' : ($isHotlisted ? 'problem' : 'pending'))],
+        ['label' => 'Return Due', 'meta' => optional($rental->end_date)->format('d M Y') ?: 'Not set', 'tone' => $daysUntilEnd !== null && $daysUntilEnd < 0 ? 'problem' : ($daysUntilEnd !== null && $daysUntilEnd <= 2 ? 'warn' : 'pending')],
+        ['label' => 'Completed', 'meta' => $rental->returned_at ? $rental->returned_at->format('d M Y') : 'Pending', 'tone' => $operationalStatus === 'returned' ? 'done' : 'pending'],
+    ]);
+    $workflowSteps = collect([
+        [
+            'label' => 'Rental',
+            'status' => ucfirst(str_replace('_', ' ', $operationalStatus)),
+            'person' => $rental->createdBy->name ?? 'System',
+            'scheduled' => optional($rental->start_date)->format('d M Y') ?: 'Not set',
+            'completed' => optional($rental->created_at)->format('d M Y h:i A') ?: null,
+            'tone' => $isHotlisted ? 'problem' : 'done',
+            'action' => $canUpdateRentals ? ['label' => 'Edit', 'href' => route('rentals.edit', $rental)] : null,
+        ],
+        [
+            'label' => 'Delivery',
+            'status' => $deliveryStatusLabel($rental->deliveryStatus()),
+            'person' => $deliveryAssigneeLabel,
+            'scheduled' => $deliveryRecord?->scheduled_at ? $deliveryRecord->scheduled_at->format('d M Y h:i A') : 'Not scheduled',
+            'completed' => $deliveryRecord?->completed_at ? $deliveryRecord->completed_at->format('d M Y h:i A') : null,
+            'tone' => $rental->deliveryStatus() === 'completed' ? 'done' : ($hasOpenDeliveryTask ? 'active' : 'pending'),
+            'action' => $deliveryRecord ? ['label' => 'Open', 'href' => route('deliveries.show', $deliveryRecord)] : (($canCreateDeliveries && $hasPendingDeliveryItems) ? ['label' => 'Assign', 'href' => route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'delivery'])] : null),
+        ],
+        [
+            'label' => 'Active Usage',
+            'status' => $daysRemainingLabel,
+            'person' => $deliveryContactName,
+            'scheduled' => optional($rental->end_date)->format('d M Y') ?: 'Not set',
+            'completed' => null,
+            'tone' => $isHotlisted ? 'problem' : ($daysUntilEnd !== null && $daysUntilEnd <= 2 ? 'warn' : 'active'),
+            'action' => $renewalUrl ? ['label' => 'Reminder', 'href' => $renewalUrl, 'target' => '_blank'] : null,
+        ],
+        [
+            'label' => 'Pickup',
+            'status' => ucfirst(str_replace('_', ' ', $rental->pickupStatus() ?: 'pending')),
+            'person' => $pickupAssigneeLabel,
+            'scheduled' => $pickupRecord?->scheduled_at ? $pickupRecord->scheduled_at->format('d M Y h:i A') : 'Not scheduled',
+            'completed' => $pickupRecord?->completed_at ? $pickupRecord->completed_at->format('d M Y h:i A') : null,
+            'tone' => in_array($rental->pickupStatus(), ['completed', 'picked_up', 'returned'], true) ? 'done' : ($hasOpenPickupTask ? 'active' : ($isHotlisted ? 'problem' : 'pending')),
+            'action' => $pickupRecord ? ['label' => 'Open', 'href' => route('deliveries.show', $pickupRecord)] : ($canAssignPickup ? ['label' => 'Schedule', 'href' => route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'pickup'])] : null),
+        ],
+        [
+            'label' => 'Return Verification',
+            'status' => $operationalStatus === 'returned' ? 'Returned' : 'Pending',
+            'person' => $pickupAssigneeLabel,
+            'scheduled' => $rental->returned_at ? $rental->returned_at->format('d M Y h:i A') : 'After pickup',
+            'completed' => $rental->returned_at ? $rental->returned_at->format('d M Y h:i A') : null,
+            'tone' => $operationalStatus === 'returned' ? 'done' : 'pending',
+            'action' => $rental->canBeReturned() ? ['label' => 'Return', 'form' => true] : null,
+        ],
+    ]);
+    $timelinePreview = ($activityLogs ?? collect())->take(10);
+    $renewalSummaryStatus = $rental->canRenew()
+        ? ($daysUntilEnd !== null && $daysUntilEnd < 0 ? abs($daysUntilEnd) . ' days overdue' : 'Renewal available')
+        : 'Renewal closed';
+    $lastRenewal = $renewalHistory->first();
+    $latestRenewalForWarning = $renewalHistory->first();
+    $showDuplicateRenewalWarning = $latestRenewalForWarning
+        && $latestRenewalForWarning->canBeEdited()
+        && optional($latestRenewalForWarning->renewed_end_date)?->greaterThan(now()->startOfDay());
 @endphp
 
 <style>
@@ -1582,62 +1647,682 @@
             font-size: 10.5px;
         }
     }
+    .rcc-shell {
+        display:grid;
+        gap:12px;
+    }
+    .rcc-card {
+        background:#fff;
+        border:1px solid #dbe3ef;
+        border-radius:16px;
+        box-shadow:0 10px 28px rgba(15, 23, 42, .05);
+        min-width:0;
+        overflow:hidden;
+    }
+    .rcc-pad { padding:14px; }
+    .rcc-command-grid {
+        display:grid;
+        grid-template-columns:minmax(0, 1.05fr) minmax(280px, 1.35fr) minmax(260px, .95fr);
+        gap:12px;
+        align-items:stretch;
+    }
+    .rcc-panel {
+        border:1px solid #e2e8f0;
+        border-radius:14px;
+        background:#f8fafc;
+        padding:12px;
+        min-width:0;
+    }
+    .rcc-eyebrow {
+        color:#64748b;
+        font-size:11px;
+        font-weight:900;
+        letter-spacing:.06em;
+        text-transform:uppercase;
+    }
+    .rcc-title {
+        margin:6px 0 0;
+        color:#0f172a;
+        font-size:20px;
+        line-height:1.15;
+        font-weight:900;
+        overflow-wrap:anywhere;
+    }
+    .rcc-meta {
+        display:grid;
+        gap:5px;
+        margin-top:10px;
+        color:#64748b;
+        font-size:12px;
+        line-height:1.35;
+    }
+    .rcc-meta strong { color:#334155; }
+    .rcc-chip {
+        display:inline-flex;
+        align-items:center;
+        width:max-content;
+        max-width:100%;
+        border-radius:999px;
+        padding:4px 8px;
+        font-size:11px;
+        font-weight:800;
+        background:#eef2ff;
+        color:#4338ca;
+        line-height:1.1;
+    }
+    .rcc-chip.done { background:#dcfce7; color:#166534; }
+    .rcc-chip.active { background:#dbeafe; color:#1d4ed8; }
+    .rcc-chip.warn { background:#fef3c7; color:#92400e; }
+    .rcc-chip.problem { background:#fee2e2; color:#b91c1c; }
+    .rcc-chip.pending { background:#f1f5f9; color:#475569; }
+    .rcc-lifecycle {
+        display:grid;
+        grid-template-columns:repeat(5, minmax(0, 1fr));
+        gap:8px;
+    }
+    .rcc-step {
+        position:relative;
+        display:grid;
+        gap:6px;
+        min-width:0;
+        padding:10px;
+        border:1px solid #e2e8f0;
+        border-radius:12px;
+        background:#fff;
+    }
+    .rcc-step strong {
+        color:#0f172a;
+        font-size:12px;
+        line-height:1.2;
+    }
+    .rcc-step span:not(.rcc-chip) {
+        color:#64748b;
+        font-size:11px;
+        line-height:1.3;
+        overflow-wrap:anywhere;
+    }
+    .rcc-finance-grid {
+        display:grid;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:8px;
+        margin-top:10px;
+    }
+    .rcc-money {
+        display:grid;
+        gap:4px;
+        border:1px solid #e2e8f0;
+        border-radius:12px;
+        background:#fff;
+        padding:9px;
+        min-width:0;
+    }
+    .rcc-money span {
+        color:#64748b;
+        font-size:10px;
+        font-weight:900;
+        text-transform:uppercase;
+        letter-spacing:.05em;
+    }
+    .rcc-money strong {
+        color:#0f172a;
+        font-size:16px;
+        line-height:1.15;
+        overflow-wrap:anywhere;
+    }
+    .rcc-actions {
+        display:flex;
+        flex-wrap:wrap;
+        gap:8px;
+        align-items:center;
+    }
+    .rcc-actions form { margin:0; }
+    .rcc-action-more {
+        margin-left:auto;
+        position:relative;
+    }
+    .rcc-more-menu {
+        position:absolute;
+        right:0;
+        top:calc(100% + 6px);
+        z-index:20;
+        display:none;
+        min-width:220px;
+        padding:8px;
+        border:1px solid #dbe3ef;
+        border-radius:12px;
+        background:#fff;
+        box-shadow:0 16px 32px rgba(15, 23, 42, .14);
+    }
+    .rcc-action-more:hover .rcc-more-menu,
+    .rcc-action-more:focus-within .rcc-more-menu {
+        display:grid;
+        gap:6px;
+    }
+    .rcc-more-menu a,
+    .rcc-more-menu button {
+        display:flex;
+        width:100%;
+        justify-content:flex-start;
+        border:0;
+        background:#f8fafc;
+        border-radius:8px;
+        padding:8px 9px;
+        color:#334155;
+        font-size:12px;
+        font-weight:800;
+        text-decoration:none;
+        cursor:pointer;
+    }
+    .rcc-section-head {
+        display:flex;
+        justify-content:space-between;
+        gap:10px;
+        align-items:flex-start;
+        padding:14px 14px 0;
+    }
+    .rcc-section-head h2 {
+        margin:0;
+        color:#0f172a;
+        font-size:17px;
+        line-height:1.2;
+    }
+    .rcc-section-head p {
+        margin:4px 0 0;
+        color:#64748b;
+        font-size:12px;
+        line-height:1.4;
+    }
+    .rcc-workflow {
+        display:grid;
+        grid-template-columns:repeat(5, minmax(0, 1fr));
+        gap:8px;
+        padding:14px;
+    }
+    .rcc-workflow-item {
+        display:grid;
+        gap:7px;
+        border:1px solid #e2e8f0;
+        border-radius:12px;
+        background:#fff;
+        padding:10px;
+        min-width:0;
+    }
+    .rcc-workflow-item strong {
+        color:#0f172a;
+        font-size:13px;
+        line-height:1.2;
+    }
+    .rcc-workflow-item small {
+        color:#64748b;
+        font-size:11px;
+        line-height:1.35;
+        overflow-wrap:anywhere;
+    }
+    .rcc-workflow-item a,
+    .rcc-workflow-item button {
+        width:max-content;
+        max-width:100%;
+        border:1px solid #c7d2fe;
+        border-radius:8px;
+        background:#eef2ff;
+        color:#4338ca;
+        padding:6px 8px;
+        font-size:11px;
+        font-weight:900;
+        text-decoration:none;
+        cursor:pointer;
+    }
+    .rcc-two-col {
+        display:grid;
+        grid-template-columns:minmax(0, 1.25fr) minmax(320px, .75fr);
+        gap:12px;
+    }
+    .rcc-product-list {
+        display:grid;
+        gap:8px;
+        padding:14px;
+    }
+    .rcc-product-row {
+        display:grid;
+        grid-template-columns:minmax(220px, 1.2fr) repeat(4, minmax(86px, .45fr)) minmax(110px, .55fr);
+        gap:8px;
+        align-items:center;
+        border:1px solid #e2e8f0;
+        border-radius:12px;
+        background:#fff;
+        padding:10px;
+        min-width:0;
+    }
+    .rcc-product-name {
+        display:grid;
+        gap:3px;
+        min-width:0;
+    }
+    .rcc-product-name strong {
+        color:#0f172a;
+        font-size:13px;
+        line-height:1.25;
+        overflow-wrap:anywhere;
+    }
+    .rcc-product-name small,
+    .rcc-cell small {
+        color:#64748b;
+        font-size:11px;
+        line-height:1.35;
+        overflow-wrap:anywhere;
+    }
+    .rcc-cell {
+        display:grid;
+        gap:3px;
+        min-width:0;
+    }
+    .rcc-cell span {
+        color:#64748b;
+        font-size:10px;
+        font-weight:900;
+        text-transform:uppercase;
+        letter-spacing:.05em;
+    }
+    .rcc-cell strong {
+        color:#0f172a;
+        font-size:13px;
+        line-height:1.2;
+    }
+    .rcc-finance-panel {
+        display:grid;
+        gap:10px;
+        padding:14px;
+    }
+    .rcc-finance-kpis {
+        display:grid;
+        grid-template-columns:repeat(3, minmax(0, 1fr));
+        gap:8px;
+    }
+    .rcc-finance-actions {
+        display:flex;
+        gap:8px;
+        flex-wrap:wrap;
+    }
+    .rcc-payment-form {
+        display:grid;
+        grid-template-columns:repeat(4, minmax(0, 1fr)) auto;
+        gap:8px;
+        align-items:end;
+        padding:10px;
+        border:1px dashed #cbd5e1;
+        border-radius:12px;
+        background:#f8fafc;
+    }
+    .rcc-payment-form label {
+        display:grid;
+        gap:5px;
+        color:#64748b;
+        font-size:10px;
+        font-weight:900;
+        text-transform:uppercase;
+        letter-spacing:.05em;
+    }
+    .rcc-payment-form input {
+        min-height:36px;
+        width:100%;
+        border:1px solid #cbd5e1;
+        border-radius:9px;
+        padding:7px 9px;
+        color:#0f172a;
+        font-size:13px;
+        font-weight:600;
+        background:#fff;
+    }
+    .rcc-renewal-summary {
+        display:grid;
+        grid-template-columns:repeat(4, minmax(0, 1fr));
+        gap:8px;
+        padding:14px;
+    }
+    .rcc-details {
+        border-top:1px solid #e2e8f0;
+        padding:0 14px 14px;
+    }
+    .rcc-details summary {
+        cursor:pointer;
+        color:#4338ca;
+        font-size:12px;
+        font-weight:900;
+        padding:12px 0;
+    }
+    .rcc-timeline-list {
+        display:grid;
+        gap:8px;
+        padding:14px;
+    }
+    .rcc-timeline-item {
+        display:grid;
+        grid-template-columns:110px minmax(0, 1fr);
+        gap:10px;
+        border-top:1px solid #e2e8f0;
+        padding-top:8px;
+    }
+    .rcc-timeline-item:first-child {
+        border-top:0;
+        padding-top:0;
+    }
+    .rcc-timeline-item time {
+        color:#64748b;
+        font-size:11px;
+        line-height:1.35;
+    }
+    .rcc-timeline-item strong {
+        color:#0f172a;
+        font-size:13px;
+        line-height:1.25;
+    }
+    .rcc-timeline-item p {
+        margin:3px 0 0;
+        color:#64748b;
+        font-size:12px;
+        line-height:1.35;
+    }
+    @media (max-width: 1100px) {
+        .rcc-command-grid,
+        .rcc-two-col {
+            grid-template-columns:1fr;
+        }
+        .rcc-workflow {
+            grid-template-columns:repeat(3, minmax(0, 1fr));
+        }
+        .rcc-product-row {
+            grid-template-columns:minmax(0, 1fr) repeat(2, minmax(86px, .4fr));
+        }
+        .rcc-finance-kpis,
+        .rcc-renewal-summary {
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+        }
+    }
+    @media (max-width: 720px) {
+        .rcc-pad,
+        .rcc-section-head,
+        .rcc-workflow,
+        .rcc-product-list,
+        .rcc-finance-panel,
+        .rcc-renewal-summary,
+        .rcc-timeline-list {
+            padding:10px;
+        }
+        .rcc-lifecycle {
+            display:flex;
+            overflow-x:auto;
+            padding-bottom:2px;
+        }
+        .rcc-step {
+            min-width:150px;
+        }
+        .rcc-actions {
+            display:grid;
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+        }
+        .rcc-actions .detail-btn,
+        .rcc-actions .detail-btn-secondary,
+        .rcc-actions .detail-btn-danger,
+        .rcc-actions form,
+        .rcc-actions button {
+            width:100%;
+        }
+        .rcc-action-more {
+            margin-left:0;
+        }
+        .rcc-workflow,
+        .rcc-finance-kpis,
+        .rcc-payment-form,
+        .rcc-renewal-summary {
+            grid-template-columns:1fr;
+        }
+        .rcc-product-row {
+            grid-template-columns:1fr;
+        }
+        .rcc-timeline-item {
+            grid-template-columns:1fr;
+            gap:3px;
+        }
+    }
+    .rcc-shell {
+        color:#111827;
+    }
+    .rcc-shell .rcc-card {
+        border-color:#cbd5e1;
+        border-radius:14px;
+        box-shadow:0 8px 22px rgba(15,23,42,.06);
+    }
+    .rcc-shell .rcc-pad,
+    .rcc-shell .rcc-workflow,
+    .rcc-shell .rcc-product-list,
+    .rcc-shell .rcc-finance-panel,
+    .rcc-shell .rcc-renewal-summary,
+    .rcc-shell .rcc-timeline-list {
+        padding:12px;
+    }
+    .rcc-shell .rcc-panel {
+        border-color:#cbd5e1;
+        background:#f7f9fc;
+        padding:10px;
+    }
+    .rcc-shell .rcc-eyebrow,
+    .rcc-shell .rcc-meta,
+    .rcc-shell .rcc-section-head p,
+    .rcc-shell .rcc-product-name small,
+    .rcc-shell .rcc-cell small,
+    .rcc-shell .rcc-cell span,
+    .rcc-shell .rcc-money span,
+    .rcc-shell .rcc-workflow-item small,
+    .rcc-shell .rcc-timeline-item time,
+    .rcc-shell .rcc-timeline-item p,
+    .rcc-shell .rcc-payment-form label {
+        color:#475569;
+    }
+    .rcc-shell .rcc-chip.done { background:#d9fbe7; color:#14532d; }
+    .rcc-shell .rcc-chip.active { background:#dbeafe; color:#1e3a8a; }
+    .rcc-shell .rcc-chip.warn { background:#fef3c7; color:#78350f; }
+    .rcc-shell .rcc-chip.problem { background:#fee2e2; color:#991b1b; }
+    .rcc-shell .rcc-chip.pending { background:#e2e8f0; color:#334155; }
+    .rcc-shell .rcc-lifecycle {
+        display:grid;
+        grid-template-columns:repeat(3, minmax(0, 1fr));
+        gap:6px;
+        overflow:visible;
+        padding-bottom:0;
+    }
+    .rcc-shell .rcc-step {
+        min-width:0;
+        gap:4px;
+        padding:8px 9px;
+        border-color:#cbd5e1;
+        border-left:4px solid #94a3b8;
+        border-radius:10px;
+    }
+    .rcc-shell .rcc-step.done { border-left-color:#16a34a; background:#f0fdf4; }
+    .rcc-shell .rcc-step.active { border-left-color:#2563eb; background:#eff6ff; }
+    .rcc-shell .rcc-step.warn { border-left-color:#d97706; background:#fffbeb; }
+    .rcc-shell .rcc-step.problem { border-left-color:#dc2626; background:#fef2f2; }
+    .rcc-shell .rcc-step.pending { border-left-color:#94a3b8; background:#f8fafc; }
+    .rcc-shell .rcc-section-head {
+        padding:12px 12px 0;
+    }
+    .rcc-shell .rcc-workflow-item,
+    .rcc-shell .rcc-money,
+    .rcc-shell .rcc-product-row {
+        border-color:#cbd5e1;
+    }
+    .rcc-shell .rcc-product-row {
+        grid-template-columns:minmax(260px,.7fr) minmax(0,1.6fr);
+        gap:10px;
+        align-items:start;
+    }
+    .rcc-shell .rcc-two-col {
+        grid-template-columns:1fr;
+    }
+    .rcc-product-metrics {
+        display:grid;
+        grid-template-columns:repeat(4,minmax(82px,.7fr)) minmax(170px,1.3fr) minmax(130px,.8fr);
+        gap:8px;
+        min-width:0;
+    }
+    .rcc-product-metrics .rcc-cell {
+        min-width:0;
+    }
+    .rcc-product-metrics .rcc-chip {
+        max-width:100%;
+        white-space:normal;
+        line-height:1.15;
+    }
+    .rcc-compact-actions {
+        display:flex;
+        flex-wrap:wrap;
+        gap:8px;
+        margin-top:10px;
+    }
+    .rcc-details-panel {
+        border:1px solid #cbd5e1;
+        border-radius:12px;
+        background:#fff;
+        overflow:hidden;
+    }
+    .rcc-details-panel summary {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:8px;
+        cursor:pointer;
+        padding:10px 12px;
+        color:#0f172a;
+        font-size:13px;
+        font-weight:900;
+        list-style:none;
+    }
+    .rcc-details-panel summary::-webkit-details-marker { display:none; }
+    .rcc-details-panel.rcc-payment-details summary {
+        background:#eff6ff;
+        color:#1e3a8a;
+    }
+    .rcc-details-panel.rcc-payment-details summary::after {
+        content:"Click to enter payment";
+        color:#2563eb;
+        font-size:11px;
+        font-weight:900;
+    }
+    .rcc-details-panel-body {
+        display:grid;
+        gap:10px;
+        padding:0 12px 12px;
+    }
+    .rcc-snapshot-lines {
+        display:grid;
+        gap:6px;
+    }
+    .rcc-snapshot-line,
+    .rcc-payment-line {
+        display:grid;
+        grid-template-columns:minmax(0,1fr) auto;
+        gap:10px;
+        align-items:center;
+        padding:8px 0;
+        border-top:1px solid #e2e8f0;
+        color:#334155;
+        font-size:12px;
+    }
+    .rcc-snapshot-line:first-child,
+    .rcc-payment-line:first-child { border-top:0; }
+    .rcc-snapshot-line strong,
+    .rcc-payment-line strong { color:#0f172a; }
+    .rcc-mini-grid {
+        display:grid;
+        grid-template-columns:repeat(4,minmax(120px,1fr));
+        gap:8px;
+    }
+    .rcc-shell .rcc-finance-kpis {
+        grid-template-columns:repeat(6,minmax(120px,1fr));
+    }
+    .rcc-shell .rcc-money {
+        padding:8px 10px;
+    }
+    .rcc-shell .rcc-money strong {
+        font-size:14px;
+        line-height:1.2;
+        word-break:break-word;
+    }
+    .rcc-shell .rcc-money span {
+        font-size:9.5px;
+    }
+    .rcc-payment-details .rcc-payment-form {
+        grid-template-columns:150px 150px minmax(140px,1fr) minmax(180px,1.2fr) auto;
+        padding:8px;
+    }
+    .rcc-payment-details .rcc-payment-form button {
+        min-height:38px;
+    }
+    .rcc-action-more {
+        margin-left:auto;
+        position:relative;
+    }
+    .rcc-action-more summary {
+        list-style:none;
+    }
+    .rcc-action-more summary::-webkit-details-marker { display:none; }
+    .rcc-action-more[open] .rcc-more-menu {
+        display:grid;
+        gap:6px;
+        position:absolute;
+        right:0;
+        top:calc(100% + 8px);
+        z-index:50;
+    }
+    .rcc-action-more[open] summary {
+        background:#eef2ff;
+        color:#3730a3;
+    }
+    #rental-actions-bar,
+    #rental-actions-bar.rcc-card {
+        overflow:visible;
+        position:relative;
+        z-index:20;
+    }
+    @media (max-width: 720px) {
+        .rcc-shell .rcc-product-row,
+        .rcc-product-metrics,
+        .rcc-mini-grid {
+            grid-template-columns:1fr;
+        }
+        .rcc-shell .rcc-finance-kpis {
+            grid-template-columns:repeat(2,minmax(0,1fr));
+        }
+        .rcc-payment-details .rcc-payment-form {
+            grid-template-columns:1fr;
+        }
+        .rcc-shell .rcc-step {
+            min-width:128px;
+        }
+        .rcc-shell .rcc-lifecycle {
+            display:flex;
+            overflow-x:auto;
+            padding-bottom:2px;
+        }
+        .rcc-action-more[open] .rcc-more-menu {
+            position:static;
+            margin-top:8px;
+        }
+    }
 </style>
 
-<div class="container detail-page">
-    <div class="ph-rental-reference-shell">
+<div class="container detail-page rcc-shell">
+    <div class="ph-rental-reference-shell rcc-shell">
         <x-operational-page-header
-            eyebrow="Rental Command View"
+            eyebrow="Rental Command Center"
             :title="'Rental #' . $rental->id"
-            subtitle="Premium operational view for customer communication, delivery, pickup, invoicing, and renewal coordination."
+            subtitle="One compact workspace for customer, lifecycle, products, finance, renewal, and activity."
             :back-url="route('rentals.index')"
             back-label="Back to Rentals"
-            :meta="[
-                ['label' => 'Start Date', 'value' => optional($rental->start_date)->format('d M Y') ?: 'Not set'],
-                ['label' => 'End Date', 'value' => optional($rental->end_date)->format('d M Y') ?: 'Not set'],
-                ['label' => 'Timeline', 'value' => $daysRemainingLabel],
-            ]"
             :chips="[
                 ['label' => $isHotlisted ? 'Hotlisted' : ucfirst(str_replace('_', ' ', $operationalStatus)), 'tone' => $rentalStatusTone],
                 ['label' => $rentalTypeLabel, 'tone' => 'accent'],
                 ['label' => $daysRemainingLabel, 'tone' => $daysRemainingTone],
-            ]"
-        >
-            <div class="ph-rental-hero-tools">
-                @if($canUpdateRentals)
-                    <a href="{{ route('rentals.edit', $rental) }}" class="detail-btn-secondary">Edit Rental</a>
-                @endif
-                @if($rental->canBeReturned())
-                    <form action="{{ route('rentals.return', $rental) }}" method="POST" style="margin:0;">
-                        @csrf
-                        @method('PUT')
-                        <button type="submit" class="detail-btn-danger" onclick="return confirm('Mark this rental as returned?');">Return Rental</button>
-                    </form>
-                @endif
-            </div>
-        </x-operational-page-header>
-
-        <x-operational-action-bar
-            label="Rental Actions"
-            description="Keep the primary rental actions close without leaving the operational view."
-            :actions="$rentalQuickActions->all()"
-            :more-actions="$rentalMoreActions->all()"
-            :info-items="$rentalInfoItems->all()"
-        />
-
-        <x-section-nav
-            class="ph-rental-section-nav ph-section-nav-static ph-section-nav-static-mobile"
-            label="Rental page sections"
-            :items="[
-                ['id' => 'rental-overview-section', 'label' => 'Overview'],
-                ['id' => 'rental-customer-section', 'label' => 'Customer'],
-                ['id' => 'rental-products-section', 'label' => 'Product'],
-                ['id' => 'rental-billing-actions', 'label' => 'Invoice'],
-                ['id' => 'rental-delivery-section', 'label' => 'Delivery'],
-                ['id' => 'rental-pickup-section', 'label' => 'Pickup'],
-                ['id' => 'rental-payments-section', 'label' => 'Payments'],
-                ['id' => 'rental-activity-timeline', 'label' => 'Timeline'],
-                ['id' => 'rental-notes-section', 'label' => 'Notes'],
             ]"
         />
 
@@ -1667,755 +2352,83 @@
             </div>
         @endif
 
-        <x-operational-card
-            class="section-nav-target"
-            id="rental-overview-section"
-            title="Overview"
-            subtitle="Fast operational snapshot of the rental, finance posture, and next actions."
-        >
-            <div class="ph-rental-overview-grid">
-                <div class="ph-rental-summary-grid">
-                    <x-summary-card label="Rental ID" :value="'#' . $rental->id" meta="Primary reference for delivery, pickup, and finance coordination." />
-                    <x-summary-card label="Rental Type" :value="$rentalTypeLabel" meta="{{ $rentalTypeLabel === 'Business Partner' ? 'Partner handles reminders and payment communication.' : 'Customer remains the single contact for service and payment.' }}" />
-                    <x-summary-card label="Delivery Status" :value="$deliveryStatusLabel($rental->deliveryStatus())" :tone="$deliveryStatusTone" meta="{{ $deliveryAssigneeLabel !== 'Not assigned' ? 'Assigned to ' . $deliveryAssigneeLabel : 'Delivery team still needs assignment.' }}" />
-                    <x-summary-card label="Pickup Status" :value="ucfirst(str_replace('_', ' ', $rental->pickupStatus() ?: 'pending'))" :tone="$pickupStatusTone" meta="{{ $pickupAssigneeLabel !== 'Not assigned' ? 'Assigned to ' . $pickupAssigneeLabel : 'Pickup workflow has not started yet.' }}" />
-                    <x-summary-card label="End / Renewal Date" :value="optional($rental->end_date)->format('d M Y') ?: 'Not set'" :tone="$daysRemainingTone" :meta="$daysRemainingLabel" />
-                    <x-summary-card label="Created By" :value="$rental->createdBy->name ?? 'N/A'" meta="{{ optional($rental->created_at)->format('d M Y h:i A') ?: 'Created date unavailable' }}" />
-                </div>
-
-                <x-operational-card
-                    title="{{ $canSeeRentalFinance ? 'Financial Summary' : 'Operational Summary' }}"
-                    subtitle="{{ $canSeeRentalFinance ? 'Invoice status, payment posture, and quick next steps.' : 'Finance amounts are hidden for your role, but status remains visible.' }}"
-                    padding="sm"
-                >
-                    <div class="rental-finance-panel">
-                        @if($canSeeRentalFinance)
-                            <div class="rental-finance-kpis">
-                                <div class="rental-finance-kpi">
-                                    <span>Total Payable</span>
-                                    <strong>{{ $canViewFinanceAmounts ? $currency($invoiceTotalAmount) : ucfirst($rentalInvoiceStatus ?: 'pending') }}</strong>
-                                    <small>{{ $financeSourceLabel }}</small>
-                                </div>
-                                <div class="rental-finance-kpi is-paid">
-                                    <span>Collected</span>
-                                    <strong>{{ $canViewFinanceAmounts ? $currency($invoicePaidAmount) : ucfirst($rentalInvoiceStatus ?: 'pending') }}</strong>
-                                    <small>{{ $collectionPercent }}% collected</small>
-                                </div>
-                                <div class="rental-finance-kpi {{ $invoiceBalanceAmount > 0 ? 'is-due' : 'is-paid' }}">
-                                    <span>Balance Due</span>
-                                    <strong>{{ $canViewFinanceAmounts ? $currency($invoiceBalanceAmount) : ($rentalInvoice ? 'Invoice tracked' : 'Pending invoice') }}</strong>
-                                    <small>{{ $rentalInvoice ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus ?: 'unpaid')) : 'Invoice not generated' }}</small>
-                                </div>
-                                <div class="rental-finance-kpi">
-                                    <span>Current Charges</span>
-                                    <strong>{{ $canViewFinanceAmounts ? $currency($currentRentalTotal) : 'Restricted' }}</strong>
-                                    <small>Rent {{ $currency($currentChargeBreakdown['Rental']) }} + deposit {{ $currency($currentChargeBreakdown['Deposit']) }}</small>
-                                </div>
-                            </div>
-                            <div class="rental-finance-progress" aria-label="Collection progress">
-                                <i style="width:{{ $collectionPercent }}%"></i>
-                            </div>
-                            <div class="rental-finance-source">
-                                Finance figures use invoice totals when an invoice exists. Rental charges are shown as fallback before invoice generation.
-                            </div>
-                        @else
-                            <div class="ph-rental-detail-row">
-                                <span>Invoice</span>
-                                <strong>{{ $rentalInvoice ? 'Generated' : 'Pending' }}</strong>
-                            </div>
-                            <div class="ph-rental-detail-row">
-                                <span>Payment</span>
-                                <strong>{{ $rentalInvoiceStatus ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus)) : 'Pending' }}</strong>
-                            </div>
-                            <div class="ph-rental-detail-row">
-                                <span>Renewal</span>
-                                <strong>{{ $rental->canRenew() ? 'Available' : 'Not available yet' }}</strong>
-                            </div>
-                            <div class="ph-rental-detail-row">
-                                <span>Reminder Sent</span>
-                                <strong>{{ $latestReminderAt ? $latestReminderAt->format('d M Y h:i A') : 'Not logged yet' }}</strong>
-                            </div>
+        <section class="rcc-card rcc-pad" id="rental-command-center">
+            <div class="rcc-command-grid">
+                <div class="rcc-panel">
+                    <span class="rcc-eyebrow">Customer Summary</span>
+                    <h1 class="rcc-title">Rental #{{ $rental->id }}</h1>
+                    <div class="rcc-meta">
+                        <div><strong>{{ $rental->billingContactName() }}</strong></div>
+                        <div>{{ $reminderContactPhone ?: 'No phone' }}</div>
+                        <div>{{ $rental->billingContactCity() ?: $rental->deliveryContactCity() ?: 'City not set' }}</div>
+                        @if($rental->usesBusinessPartnerFlow())
+                            <div><strong>Partner:</strong> {{ $rental->businessPartner?->displayName() ?? 'Business Partner' }}</div>
+                            <div><strong>Actual client:</strong> {{ $rental->partnerClient?->displayName() ?? $rental->deliveryContactName() }}</div>
+                        @endif
+                        @if(filled($rental->referred_by ?? null))
+                            <div><strong>Referred by:</strong> {{ $rental->referred_by }}</div>
                         @endif
                     </div>
-
-                    <div class="ph-rental-action-links">
-                        @if($rentalInvoice)
-                            <a href="{{ route('invoices.show', $rentalInvoice) }}" class="detail-btn-secondary">View Invoice</a>
-                        @elseif($canUpdateRentals)
-                            <form action="{{ route('rentals.invoice', $rental) }}" method="POST" style="margin:0;">
-                                @csrf
-                                <button type="submit" class="detail-btn-secondary">Generate Invoice</button>
-                            </form>
+                    <div class="rcc-compact-actions">
+                        @if($reminderCallHref)
+                            <a href="{{ $reminderCallHref }}" class="detail-btn-secondary">Call</a>
                         @endif
-                        @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
-                            <a href="#rental-billing-actions" class="detail-btn">Record Payment</a>
+                        @if($reminderWhatsappHref)
+                            <a href="{{ $reminderWhatsappHref }}" target="_blank" rel="noopener" class="detail-btn-secondary">WhatsApp</a>
                         @endif
-                        @if($pickupRecord && $hasOpenPickupTask)
-                            <a href="{{ route('deliveries.show', $pickupRecord) }}" class="detail-btn-secondary">View Pickup</a>
-                        @elseif($canAssignPickup)
-                            <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'pickup']) }}" class="detail-btn-secondary">Schedule Pickup</a>
+                        @if($deliveryContactMapUrl)
+                            <a href="{{ $deliveryContactMapUrl }}" target="_blank" rel="noopener" class="detail-btn-secondary">Map</a>
                         @endif
-                        @if($rental->canRenew() && $canUpdateRentals)
-                            <button type="button" class="detail-btn-secondary" data-open-renewal-modal>Renew / Extend</button>
+                        @if($rental->customer_id)
+                            <a href="{{ route('customers.show', $rental->customer_id) }}" class="detail-btn-secondary">View Customer</a>
+                        @elseif($rental->business_partner_id)
+                            <a href="{{ route('business-partners.show', $rental->business_partner_id) }}" class="detail-btn-secondary">View Partner</a>
                         @endif
                     </div>
-                </x-operational-card>
-            </div>
-        </x-operational-card>
-
-    <div class="detail-card section-nav-target" id="rental-billing-actions">
-        <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
-            <div>
-                <h2 style="margin:0; font-size:18px;">Billing Actions</h2>
-                <div class="ops-muted" style="margin-top:6px;">
-                    {{ $rentalInvoice ? 'Keep invoice and payment actions here on the rental itself.' : 'Generate the invoice here, then record full or partial payment without leaving this page.' }}
                 </div>
-            </div>
-            @if($rentalInvoice)
-                <div class="status-badge" style="{{ $badge($rentalInvoiceStatus === 'paid' ? 'active' : ($rentalInvoiceStatus === 'partial' ? 'in_progress' : 'pending')) }}">
-                    {{ ucfirst($rentalInvoiceStatus ?: 'unpaid') }}
-                    @if($rentalInvoiceDue > 0)
-                        · Due {{ $currency($rentalInvoiceDue) }}
+
+                <div class="rcc-panel">
+                    <span class="rcc-eyebrow">Rental Lifecycle</span>
+                    <div class="rcc-lifecycle" style="margin-top:10px;">
+                        @foreach($lifecycleSteps as $step)
+                            <div class="rcc-step {{ $step['tone'] }}">
+                                <span class="rcc-chip {{ $step['tone'] }}">{{ ucfirst($step['tone']) }}</span>
+                                <strong>{{ $step['label'] }}</strong>
+                                <span>{{ $step['meta'] }}</span>
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+
+                <div class="rcc-panel">
+                    <span class="rcc-eyebrow">Financial Snapshot</span>
+                    @if($canSeeRentalFinance)
+                        <div class="rcc-finance-grid">
+                            <div class="rcc-money"><span>Rental Value</span><strong>{{ $currency($rentalLineTotal) }}</strong></div>
+                            <div class="rcc-money"><span>Invoice Value</span><strong>{{ $currency($invoiceTotalAmount) }}</strong></div>
+                            <div class="rcc-money"><span>Paid</span><strong>{{ $currency($invoicePaidAmount) }}</strong></div>
+                            <div class="rcc-money"><span>Outstanding</span><strong>{{ $currency($invoiceBalanceAmount) }}</strong></div>
+                        </div>
+                        <div style="margin-top:10px;"><span class="rcc-chip {{ $rentalInvoiceStatus === 'paid' ? 'done' : ($rentalInvoiceStatus === 'partial' ? 'warn' : 'problem') }}">{{ $paymentStatusLabel }}</span></div>
+                    @else
+                        <div class="rcc-meta">
+                            <div><strong>Invoice:</strong> {{ $rentalInvoice ? 'Generated' : 'Pending' }}</div>
+                            <div><strong>Payment:</strong> {{ $paymentStatusLabel }}</div>
+                            <div><strong>Renewal:</strong> {{ $rental->canRenew() ? 'Available' : 'Closed' }}</div>
+                        </div>
                     @endif
                 </div>
-            @endif
-        </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:14px;">
-            @if($canUpdateRentals)
-                <a href="{{ route('rentals.edit', $rental) }}" class="detail-btn-secondary">Edit Rental</a>
-            @endif
-            @if($rentalInvoice)
-                <a href="{{ route('invoices.show', $rentalInvoice) }}" class="detail-btn-secondary">Open Invoice</a>
-            @elseif(auth()->user()->canAccessModule('rentals', 'update'))
-                <form action="{{ route('rentals.invoice', $rental) }}" method="POST" style="margin:0;">
-                    @csrf
-                    <button type="submit" class="detail-btn-secondary">Generate Invoice</button>
-                </form>
-            @endif
-            @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
-                <form action="{{ route('rentals.markPaid', $rental) }}" method="POST" style="margin:0;">
-                    @csrf
-                    <button type="submit" class="detail-btn">Mark as Paid</button>
-                </form>
-            @endif
-        </div>
-        @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
-            <form action="{{ route('rentals.recordPayment', $rental) }}" method="POST" class="billing-form-grid">
-                @csrf
-                <div>
-                    <span class="label">Payment Date</span>
-                    <input type="date" name="payment_date" value="{{ old('payment_date', now()->toDateString()) }}" style="width:100%; min-height:38px; border:1px solid #cbd5e1; border-radius:10px; padding:8px 10px; font-size:13px;">
-                </div>
-                <div>
-                    <span class="label">Amount</span>
-                    <input type="number" step="0.01" min="0.01" name="amount" value="{{ old('amount', $rentalInvoiceDue > 0 ? number_format($rentalInvoiceDue, 2, '.', '') : '') }}" style="width:100%; min-height:38px; border:1px solid #cbd5e1; border-radius:10px; padding:8px 10px; font-size:13px;">
-                </div>
-                <div>
-                    <span class="label">Payment Method</span>
-                    <input type="text" name="payment_method" value="{{ old('payment_method', 'other') }}" placeholder="cash / upi / bank" style="width:100%; min-height:38px; border:1px solid #cbd5e1; border-radius:10px; padding:8px 10px; font-size:13px;">
-                </div>
-                <div>
-                    <span class="label">Notes</span>
-                    <input type="text" name="notes" value="{{ old('notes') }}" placeholder="Partial payment note" style="width:100%; min-height:38px; border:1px solid #cbd5e1; border-radius:10px; padding:8px 10px; font-size:13px;">
-                </div>
-                <div style="grid-column:1 / -1; display:flex; justify-content:flex-end;">
-                    <button type="submit" class="detail-btn-secondary">Record Partial Payment</button>
-                </div>
-            </form>
-        @endif
-    </div>
+            </div>
+        </section>
 
-    <div class="detail-card">
-        <div class="rental-status-grid">
-            <div class="status-card">
-                <span class="label">Rental</span>
-                <span class="status-badge" style="{{ $badge($isHotlisted ? 'overdue' : $operationalStatus) }}">
-                    {{ $isHotlisted ? 'Hotlisted' : ucfirst(str_replace('_', ' ', $operationalStatus)) }}
-                </span>
-            </div>
-            <div class="status-card">
-                <span class="label">Delivery</span>
-                <span class="status-badge" style="{{ $badge($rental->deliveryStatus()) }}">
-                    {{ $deliveryStatusLabel($rental->deliveryStatus()) }}
-                </span>
-            </div>
-            <div class="status-card">
-                <span class="label">Pickup</span>
-                <span class="status-badge" style="{{ $badge($rental->pickupStatus()) }}">
-                    {{ ucfirst(str_replace('_', ' ', $rental->pickupStatus() ?: 'pending')) }}
-                </span>
-            </div>
-            <div class="status-card">
-                <span class="label">Invoice</span>
-                <span class="status-badge" style="{{ $badge($rentalInvoice ? 'completed' : 'pending') }}">
-                    {{ $rentalInvoice ? 'Generated' : 'Pending' }}
-                </span>
-            </div>
-            <div class="status-card">
-                <span class="label">Payment</span>
-                <span class="status-badge" style="{{ $badge($rentalInvoiceStatus === 'paid' ? 'completed' : ($rentalInvoiceStatus === 'partial' ? 'in_progress' : 'pending')) }}">
-                    {{ $rentalInvoiceStatus ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus)) : 'Pending' }}
-                </span>
-            </div>
-            <div class="status-card">
-                <span class="label">Return</span>
-                <span class="status-badge" style="{{ $badge($operationalStatus === 'returned' ? 'completed' : 'pending') }}">
-                    {{ $operationalStatus === 'returned' ? 'Completed' : 'Pending' }}
-                </span>
-            </div>
-        </div>
-    </div>
-
-    <div class="detail-card">
-        <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
-            <div>
-                <h2 style="margin:0; font-size:18px;">Item Delivery & Pickup Progress</h2>
-                <div class="ops-muted" style="margin-top:6px;">Track delivered and returned quantities per rental item so field teams can complete this order in multiple visits.</div>
-            </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                <span class="status-badge" style="{{ $itemProgressBadge($rental->deliveryStatus()) }}">{{ $itemProgressLabel($rental->deliveryStatus()) }}</span>
-                <span class="status-badge" style="{{ $itemProgressBadge($rental->pickupStatus()) }}">{{ $itemProgressLabel($rental->pickupStatus()) }}</span>
-            </div>
-        </div>
-        <div style="overflow:auto; margin-top:14px;">
-            <table class="item-progress-table">
-                <thead>
-                    <tr>
-                        <th>Item</th>
-                        <th>Ordered</th>
-                        <th>Delivered</th>
-                        <th>Pending Delivery</th>
-                        <th>Returned</th>
-                        <th>Pending Pickup</th>
-                        <th>Status</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach($rentalItems as $item)
-                        @php
-                            $orderedQty = (int) ($item->ordered_quantity ?? $item->quantity ?? 0);
-                            $deliveredQty = (int) ($item->delivered_quantity_value ?? 0);
-                            $pendingDeliveryQty = (int) ($item->pending_delivery_quantity ?? max($orderedQty - $deliveredQty, 0));
-                            $returnedQty = (int) ($item->returned_quantity_value ?? 0);
-                            $pendingPickupQty = (int) ($item->pending_pickup_quantity ?? max($deliveredQty - $returnedQty, 0));
-                            $linkedAssetIds = collect($item->asset_ids ?? [])
-                                ->filter(fn ($assetId) => filled($assetId))
-                                ->map(fn ($assetId) => (int) $assetId)
-                                ->filter(fn ($assetId) => $assetId > 0)
-                                ->values();
-                            $hasAwaitingVerificationAsset = $linkedAssetIds->isNotEmpty()
-                                && \App\Models\Asset::query()
-                                    ->where('organization_id', $rental->organization_id)
-                                    ->whereIn('id', $linkedAssetIds->all())
-                                    ->where('asset_status', \App\Models\Asset::STATUS_AWAITING_VERIFICATION)
-                                    ->exists();
-                            $itemDeliveryStatus = $pendingDeliveryQty > 0
-                                ? ($deliveredQty > 0 ? 'partially_delivered' : 'delivery_pending')
-                                : ($deliveredQty > 0 ? 'delivered' : 'delivery_pending');
-                            $itemLifecycleStatuses = collect();
-
-                            if ($deliveredQty > $returnedQty) {
-                                $itemLifecycleStatuses->push('with_customer');
-                            }
-
-                            if ($pendingPickupQty > 0) {
-                                $itemLifecycleStatuses->push($returnedQty > 0 ? 'partially_returned' : 'pickup_pending');
-                            } elseif ($deliveredQty > 0 && $returnedQty === $deliveredQty) {
-                                $itemLifecycleStatuses->push($hasAwaitingVerificationAsset ? 'awaiting_verification' : 'returned');
-                            }
-
-                            $itemLifecycleStatuses = $itemLifecycleStatuses->unique()->values();
-                        @endphp
-                        <tr>
-                            <td data-label="Item">
-                                <div class="value" style="font-weight:700;">{{ $item->product->name ?? $rental->product->name ?? 'Rental item' }}</div>
-                                <div class="item-progress-meta">
-                                    @if(!empty($item->notes))
-                                        <span>{{ $item->notes }}</span>
-                                    @endif
-                                    @if(!empty($item->asset_ids))
-                                        <span>{{ count($item->asset_ids) }} linked asset{{ count($item->asset_ids) === 1 ? '' : 's' }}</span>
-                                    @endif
-                                </div>
-                            </td>
-                            <td class="value" data-label="Ordered">
-                                <span class="item-progress-inline-label">Ordered</span>
-                                {{ $orderedQty }}
-                            </td>
-                            <td class="value" data-label="Delivered">
-                                <span class="item-progress-inline-label">Delivered</span>
-                                {{ $deliveredQty }}
-                            </td>
-                            <td class="value" data-label="Pending Delivery">
-                                <span class="item-progress-inline-label">Pending Delivery</span>
-                                {{ $pendingDeliveryQty }}
-                            </td>
-                            <td class="value" data-label="Returned">
-                                <span class="item-progress-inline-label">Returned</span>
-                                {{ $returnedQty }}
-                            </td>
-                            <td class="value" data-label="Pending Pickup">
-                                <span class="item-progress-inline-label">Pending Pickup</span>
-                                {{ $pendingPickupQty }}
-                            </td>
-                            <td data-label="Status">
-                                <span class="item-progress-inline-label">Status</span>
-                                <div style="display:grid; gap:6px;">
-                                    <span class="status-badge" style="{{ $itemProgressBadge($itemDeliveryStatus) }}">{{ $itemProgressLabel($itemDeliveryStatus) }}</span>
-                                    @foreach($itemLifecycleStatuses as $itemLifecycleStatus)
-                                        <span class="status-badge" style="{{ $itemProgressBadge($itemLifecycleStatus) }}">{{ $itemProgressLabel($itemLifecycleStatus) }}</span>
-                                    @endforeach
-                                </div>
-                            </td>
-                            <td data-label="Actions">
-                                <span class="item-progress-inline-label">Actions</span>
-                                <div style="display:grid; gap:10px;">
-                                    @if($deliveryRecord && in_array($deliveryRecord->status, ['pending', 'in_progress'], true) && $pendingDeliveryQty > 0)
-                                        <form method="POST" action="{{ route('deliveries.partial_delivery', $deliveryRecord) }}" class="item-progress-form">
-                                            @csrf
-                                            @method('PUT')
-                                            <input type="hidden" name="rental_item_id" value="{{ $item->id }}">
-                                            <div>
-                                                <span class="label">Deliver Qty</span>
-                                                <input type="number" name="quantity" min="1" max="{{ $pendingDeliveryQty }}" value="1">
-                                            </div>
-                                            <div>
-                                                <span class="label">Notes</span>
-                                                <input type="text" name="notes" placeholder="Optional note">
-                                            </div>
-                                            <button type="submit" class="detail-btn-secondary">Deliver</button>
-                                        </form>
-                                    @endif
-                                    @if($pickupRecord && in_array($pickupRecord->status, ['pending', 'in_progress'], true) && $pendingPickupQty > 0)
-                                        <form method="POST" action="{{ route('deliveries.partial_pickup', $pickupRecord) }}" class="item-progress-form">
-                                            @csrf
-                                            @method('PUT')
-                                            <input type="hidden" name="rental_item_id" value="{{ $item->id }}">
-                                            <div>
-                                                <span class="label">Pickup Qty</span>
-                                                <input type="number" name="quantity" min="1" max="{{ $pendingPickupQty }}" value="1">
-                                            </div>
-                                            <div>
-                                                <span class="label">Notes</span>
-                                                <input type="text" name="notes" placeholder="Optional note">
-                                            </div>
-                                            <button type="submit" class="detail-btn-secondary">Pickup</button>
-                                        </form>
-                                    @endif
-                                    @if((!$deliveryRecord || !in_array($deliveryRecord->status, ['pending', 'in_progress'], true)) && (! $pickupRecord || !in_array($pickupRecord->status, ['pending', 'in_progress'], true)))
-                                        <span class="ops-muted">Open a delivery or pickup task to record item quantities.</span>
-                                    @endif
-                                </div>
-                            </td>
-                        </tr>
-                    @endforeach
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    @if($canSeeRentalFinance)
-    <div class="detail-card">
-        <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
-            <div>
-                <h2 style="margin:0; font-size:18px;">Original Booking Snapshot</h2>
-                <div class="ops-muted" style="margin-top:6px;">Historical base charges before renewals. Use Financial Summary for the current invoice balance.</div>
-            </div>
-        </div>
-        <div class="booking-snapshot-grid">
-            <div class="booking-snapshot-card is-range">
-                <span class="snapshot-label">Original Period</span>
-                <div class="snapshot-value">
-                    {{ optional($rental->start_date)->format('d M Y') ?: '-' }}
-                    <span style="color:#94a3b8; font-weight:700;">→</span>
-                    {{ optional($initialBookingEndDate)->format('d M Y') ?: '-' }}
-                </div>
-                <div class="snapshot-subtle">Initial agreed rental window before renewals extended the case.</div>
-            </div>
-            <div class="booking-snapshot-card is-items">
-                <span class="snapshot-label">Booked Products</span>
-                <div class="booking-snapshot-items">
-                    @foreach($rentalItems as $item)
-                        <div class="booking-snapshot-item">
-                            <strong>{{ $item->product?->name ?? 'Rental item' }} · Qty {{ (int) ($item->quantity ?? 1) }}</strong>
-                            <span>{{ $currency($rentalLineAmount($item)) }}</span>
-                        </div>
-                    @endforeach
-                </div>
-                <div class="snapshot-subtle">Rental product line total before deposit, transport, and other charges.</div>
-            </div>
-            <div class="booking-snapshot-card">
-                <span class="snapshot-label">Rental</span>
-                <div class="snapshot-value">{{ $currency($baseRentalAmount) }}</div>
-            </div>
-            <div class="booking-snapshot-card">
-                <span class="snapshot-label">Deposit</span>
-                <div class="snapshot-value">{{ $currency($baseDepositAmount) }}</div>
-            </div>
-            <div class="booking-snapshot-card">
-                <span class="snapshot-label">Transport</span>
-                <div class="snapshot-value">{{ $currency($baseTransportAmount) }}</div>
-            </div>
-            <div class="booking-snapshot-card">
-                <span class="snapshot-label">Other</span>
-                <div class="snapshot-value">{{ $currency($baseOtherAmount) }}</div>
-            </div>
-            <div class="booking-snapshot-card is-total">
-                <span class="snapshot-label">Original Booking Total</span>
-                <div class="snapshot-value">{{ $currency($baseBookingTotal) }}</div>
-                <div class="snapshot-subtle">Base rental value before renewal additions and later adjustments.</div>
-            </div>
-            <div class="booking-snapshot-card">
-                <span class="snapshot-label">Collected Against Base Booking</span>
-                <div class="snapshot-value">{{ $currency($baseBookingPaidAmount) }}</div>
-            </div>
-            <div class="booking-snapshot-card is-balance">
-                <span class="snapshot-label">Remaining on Base Booking</span>
-                <div class="snapshot-value">{{ $currency($baseBookingBalance) }}</div>
-            </div>
-            <div class="booking-snapshot-card is-status">
-                <span class="snapshot-label">Current Invoice Workflow</span>
-                <div class="snapshot-value">{{ strtoupper(str_replace('_', ' ', (string) ($rentalInvoice->payment_status ?? 'not_generated'))) }}</div>
-                <div class="snapshot-subtle">Shown only to connect this historical booking view with the live invoice state.</div>
-            </div>
-        </div>
-    </div>
-    @endif
-
-    <div class="detail-card section-nav-target" id="rental-payments-section">
-        <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
-            <div>
-                <h2 style="margin:0; font-size:18px;">Payment History</h2>
-                <div class="ops-muted" style="margin-top:6px;">This now reflects invoice-linked and rental-linked payments without sending you to a separate payment page.</div>
-            </div>
-        </div>
-        <div class="payment-history-list">
-            @forelse($rental->payments as $payment)
-                <div class="payment-history-card">
-                    <div>
-                        <span class="label">Date</span>
-                        <div class="value">{{ optional($payment->payment_date)->format('d M Y') ?: '-' }}</div>
-                    </div>
-                    <div>
-                        <strong>{{ $payment->paymentMethodLabel() }}</strong>
-                        <div class="ops-muted">
-                            {{ $payment->invoice?->invoice_number ? 'Invoice ' . $payment->invoice->invoice_number : 'Rental payment' }}
-                            @if($payment->notes)
-                                - {{ $payment->notes }}
-                            @endif
-                        </div>
-                    </div>
-                    <div>
-                        <span class="label">Amount</span>
-                        <div class="value">{{ $canViewFinanceAmounts ? $currency($payment->amount) : 'Restricted' }}</div>
-                    </div>
-                    @if($canDeletePayments)
-                        <form action="{{ route('payments.destroy', $payment) }}" method="POST" style="margin:0;">
-                            @csrf
-                            @method('DELETE')
-                            <button type="submit" class="detail-btn-danger" onclick="return confirm('Delete this payment? Related invoice balance will be recalculated if applicable.');">Delete</button>
-                        </form>
-                    @endif
-                </div>
-            @empty
-                <div class="ops-muted">No payments recorded for this rental.</div>
-            @endforelse
-        </div>
-    </div>
-
-    <div class="detail-card renewal-highlight section-nav-target" id="renewal-workspace">
-        <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start;">
-            <div>
-                <h2 style="margin:0; font-size:18px;">Renewal Workspace</h2>
-                <div class="ops-muted" style="margin-top:6px;">Extend this rental in place, capture renewal payment if received, and keep the full history on the same rental record.</div>
-            </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                @if($renewalUrl)
-                    <a href="{{ $renewalUrl }}" target="_blank" class="detail-btn-secondary">Send Renewal WhatsApp</a>
+        <section class="rcc-card rcc-pad" id="rental-actions-bar">
+            <div class="rcc-actions">
+                @if($reminderCallHref)
+                    <a href="{{ $reminderCallHref }}" class="detail-btn-secondary">Call</a>
                 @endif
-                @if($rental->canRenew() && auth()->user()->canAccessModule('rentals', 'update'))
-                    <form method="POST" action="{{ route('rentals.quick-renew', $rental) }}" style="margin:0;" data-quick-renew-form data-renewal-days="{{ $suggestedRenewalDays }}">
-                        @csrf
-                        <button type="submit" class="detail-btn-secondary">Quick Renew</button>
-                    </form>
-                    <button type="button" class="detail-btn" data-open-renewal-modal>Renewal Options</button>
+                @if($reminderWhatsappHref)
+                    <a href="{{ $reminderWhatsappHref }}" target="_blank" rel="noopener" class="detail-btn-secondary">WhatsApp</a>
                 @endif
-            </div>
-        </div>
-
-    @unless($renewalFeatureReady)
-            <div class="flash flash-warning" style="margin-top:14px;">
-                Renewal history logging is waiting on the latest migration. Run <code>php artisan migrate</code> so future renewals show up here automatically.
-            </div>
-        @endunless
-
-        @php
-            $latestRenewalForWarning = $renewalHistory->first();
-            $showDuplicateRenewalWarning = $latestRenewalForWarning
-                && $latestRenewalForWarning->canBeEdited()
-                && optional($latestRenewalForWarning->renewed_end_date)?->greaterThan(now()->startOfDay());
-        @endphp
-
-        @if($showDuplicateRenewalWarning)
-            <div class="flash flash-warning" style="margin-top:14px;">
-                A renewal is already logged up to <strong>{{ optional($latestRenewalForWarning->renewed_end_date)->format('d M Y') }}</strong>.
-                Use <strong>Edit Renewal</strong> if you only need to correct invoice, payment, notes, or charge details. Create another renewal only if you intentionally want to extend this rental again.
-            </div>
-        @endif
-
-        <div class="renewal-history" style="margin-top:14px;">
-            @forelse($renewalHistory as $index => $renewal)
-                @php
-                    $renewalInvoiceStatus = $renewal->invoiceWorkflowStatus();
-                    $renewalPaymentStatus = $renewal->paymentWorkflowStatus();
-                    $renewalOutstanding = $renewal->outstandingAmount();
-                    $renewalInvoiceBadgeTone = match ($renewalInvoiceStatus) {
-                        'paid' => 'success',
-                        'generated', 'partial' => 'info',
-                        'pending' => 'warning',
-                        default => 'default',
-                    };
-                    $renewalPaymentBadgeTone = match ($renewalPaymentStatus) {
-                        'paid' => 'success',
-                        'partial' => 'info',
-                        'pending' => 'danger',
-                        default => 'default',
-                    };
-                @endphp
-                <div class="renewal-entry">
-                    <div style="display:grid; grid-template-columns:72px minmax(0, 1.25fr) minmax(0, .9fr) auto; gap:12px; align-items:start;">
-                        <div>
-                            <span class="label">S/N</span>
-                            <div class="value">{{ $index + 1 }}</div>
-                        </div>
-                        <div>
-                            <strong>{{ optional($renewal->previous_end_date)->format('d M Y') ?: '-' }} to {{ optional($renewal->renewed_end_date)->format('d M Y') }}</strong>
-                    <div class="ops-muted" style="margin-top:6px;">
-                        {{ $renewal->renewal_days }} day{{ (int) $renewal->renewal_days === 1 ? '' : 's' }} added
-                        · Rental {{ $currency($renewal->rental_amount_added ?? 0) }}
-                        @if(($renewal->payment_amount ?? 0) > 0)
-                            · Payment {{ $currency($renewal->payment_amount) }} via {{ strtoupper(str_replace('_', ' ', $renewal->payment_method ?? 'other')) }}
-                        @endif
-                        · {{ $renewal->created_at?->format('d M Y h:i A') }}
-                        @if($renewal->renewedBy)
-                            · by {{ $renewal->renewedBy->name }}
-                        @endif
-                    </div>
-                    @if($renewal->notes)
-                        <div class="ops-muted" style="margin-top:6px;">{{ $renewal->notes }}</div>
-                    @endif
-                    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px;">
-                        <span class="status-badge" style="{{ $badge($renewalInvoiceBadgeTone) }}">Invoice {{ strtoupper(str_replace('_', ' ', $renewalInvoiceStatus)) }}</span>
-                        <span class="status-badge" style="{{ $badge($renewalPaymentBadgeTone) }}">Payment {{ strtoupper(str_replace('_', ' ', $renewalPaymentStatus)) }}</span>
-                        @if($renewalOutstanding > 0.009)
-                            <span class="ops-muted">Balance {{ $currency($renewalOutstanding) }} pending</span>
-                        @endif
-                    </div>
-                    @if($renewalPaymentStatus === 'pending')
-                        <div style="margin-top:10px; padding:10px 12px; border-radius:12px; background:#fff7ed; border:1px solid #fdba74; color:#9a3412; font-weight:600;">
-                            Renewal payment is still pending.
-                        </div>
-                    @endif
-                        </div>
-                        <div>
-                            <span class="label">Logged</span>
-                            <div class="value">{{ $renewal->created_at?->format('d M Y h:i A') }}</div>
-                            <div class="ops-muted" style="margin-top:6px;">{{ $renewal->renewedBy?->name ?? 'System' }}</div>
-                        </div>
-                        <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
-                            <span class="status-badge" style="{{ $badge('info') }}">{{ ucfirst($renewal->renewal_type) }} Renewal</span>
-                            @if($renewal->invoice)
-                                <a href="{{ route('invoices.show', $renewal->invoice) }}" class="detail-btn-secondary">Open Invoice</a>
-                            @elseif(auth()->user()->canAccessModule('rentals', 'update'))
-                                <form action="{{ route('rentals.renewals.invoice', [$rental, $renewal]) }}" method="POST" style="margin:0;">
-                                    @csrf
-                                    <button type="submit" class="detail-btn-secondary">Generate Invoice</button>
-                                </form>
-                            @endif
-                            @if(auth()->user()->canAccessModule('rentals', 'update'))
-                                <button
-                                    type="button"
-                                    class="detail-btn-secondary"
-                                    data-open-renewal-modal
-                                    data-renewal-mode="edit"
-                                    data-renewal-id="{{ $renewal->id }}"
-                                    data-renewal-title="Edit Renewal"
-                                    data-renewal-submit="Update Renewal"
-                                    data-renewal-current-end="{{ optional($renewal->previous_end_date)->format('d M Y') }}"
-                                    data-renewal-current-end-raw="{{ optional($renewal->previous_end_date)->format('Y-m-d') }}"
-                                    data-renewal-preset="custom"
-                                    data-renewal-new-end="{{ optional($renewal->renewed_end_date)->format('Y-m-d') }}"
-                                    data-renewal-rental="{{ (float) ($renewal->rental_amount_added ?? 0) }}"
-                                    data-renewal-deposit="{{ (float) ($renewal->deposit_amount_added ?? 0) }}"
-                                    data-renewal-transport="{{ (float) ($renewal->transport_amount_added ?? 0) }}"
-                                    data-renewal-other="{{ (float) ($renewal->other_amount_added ?? 0) }}"
-                                    data-renewal-payment="{{ (float) ($renewal->payment_amount ?? 0) }}"
-                                    data-renewal-payment-date="{{ optional($renewal->payment?->payment_date)->format('Y-m-d') ?: '' }}"
-                                    data-renewal-payment-method="{{ $renewal->payment_method ?? '' }}"
-                                    data-renewal-notes="{{ $renewal->notes ?? '' }}"
-                                >Edit Renewal</button>
-                            @endif
-                            @if(auth()->user()->canAccessModule('rentals', 'update') && !$renewal->invoice_id && (float) ($renewal->payment_amount ?? 0) <= 0.009)
-                                <form action="{{ route('rentals.renewals.destroy', [$rental, $renewal]) }}" method="POST" style="margin:0;">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button
-                                        type="submit"
-                                        class="detail-btn-secondary"
-                                        onclick="return confirm('Delete this renewal? This is allowed only before invoice or payment history is linked. Later renewal dates will be recalculated safely if needed.');"
-                                    >Delete Renewal</button>
-                                </form>
-                            @endif
-                        </div>
-                    </div>
-                </div>
-            @empty
-                <div class="renewal-entry">
-                    <div class="value">No renewal history yet. The first renewal will extend this same rental and be logged here.</div>
-                </div>
-            @endforelse
-        </div>
-    </div>
-
-    <div class="detail-card section-nav-target" id="rental-products-section">
-        <h2 style="margin-top:0; margin-bottom:14px; font-size:18px;">Rental Product Rows</h2>
-        <div style="display:grid; gap:10px;">
-            @foreach($rentalItems as $itemIndex => $item)
-                @php($linkedAssets = method_exists($item, 'linkedAssets') ? $item->linkedAssets() : collect())
-                <div style="border:1px solid #e2e8f0; border-radius:12px; padding:12px 14px; background:#fcfdff;">
-                    <div class="rental-product-line">
-                        <div>
-                            <span class="label">S/N</span>
-                            <div class="value">{{ $itemIndex + 1 }}</div>
-                        </div>
-                        <div>
-                            <strong>{{ $item->product->name ?? ($rental->product->name ?? 'Rental product') }}</strong>
-                            @if($item->notes)
-                                <div class="ops-muted" style="margin-top:6px;">{{ $item->notes }}</div>
-                            @endif
-                            @if($linkedAssets->isNotEmpty())
-                                <div class="ops-muted" style="margin-top:6px;">
-                                    Assets {{ $linkedAssets->map(fn ($asset) => $asset->serial_number ?: ($asset->asset_name ?: ('#' . $asset->id)))->implode(', ') }}
-                                </div>
-                            @endif
-                        </div>
-                        <div>
-                            <span class="label">Quantity</span>
-                            <div class="value">{{ $item->quantity ?? 1 }}</div>
-                        </div>
-                        <div>
-                            <span class="label">{{ $canSeeRentalFinance ? 'Line Amount' : 'Line Status' }}</span>
-                            <div class="value">
-                                {{ $canSeeRentalFinance ? $currency($item->line_total ?? 0) : 'Operational line' }}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            @endforeach
-        </div>
-    </div>
-
-    @if($saleItems->isNotEmpty())
-        <div class="detail-card">
-            <h2 style="margin-top:0; margin-bottom:14px; font-size:18px;">New Products Sold With This Rental</h2>
-            <div class="ops-muted" style="margin-bottom:14px;">These items were sold on the same order and stay outside rental duration, overdue logic, and renewal calculations.</div>
-            <div style="display:grid; gap:10px;">
-                @foreach($saleItems as $saleItem)
-                    <div style="border:1px solid #e2e8f0; border-radius:12px; padding:12px 14px; background:#fcfdff;">
-                        <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-                            <div>
-                                <strong>{{ $saleItem->product->name ?? 'New product' }}</strong>
-                                <div class="ops-muted" style="margin-top:4px;">
-                                    Qty {{ $saleItem->quantity }}
-                                    @if($canSeeRentalFinance)
-                                        | Unit {{ $currency($saleItem->unit_price ?? 0) }}
-                                    @endif
-                                    @if($saleItem->asset)
-                                        | Asset {{ $saleItem->asset->serial_number ?: ($saleItem->asset->asset_name ?: ('#' . $saleItem->asset->id)) }}
-                                    @endif
-                                    @if($saleItem->warehouse)
-                                        | Warehouse {{ $saleItem->warehouse->name }}
-                                    @endif
-                                </div>
-                            </div>
-                            <div style="font-weight:700; color:#0f172a;">{{ $canSeeRentalFinance ? $currency($saleItem->line_total ?? 0) : 'Operational item' }}</div>
-                        </div>
-                        @if($saleItem->notes)
-                            <div class="ops-muted" style="margin-top:8px;">{{ $saleItem->notes }}</div>
-                        @endif
-                    </div>
-                @endforeach
-            </div>
-        </div>
-    @endif
-
-    <div class="detail-grid">
-        <x-operational-card
-            class="span-6 section-nav-target"
-            id="rental-customer-section"
-            :title="$rental->usesBusinessPartnerFlow() ? 'Customer & Partner Contacts' : 'Customer Contact'"
-            subtitle="Keep reminder/payment contact and delivery/service contact clearly separated."
-        >
-            @if($rental->usesBusinessPartnerFlow())
-                <div class="ph-rental-contact-grid">
-                    <x-contact-block
-                        title="Reminder / Payment Contact"
-                        :name="$rental->businessPartner?->displayName() ?? $rental->billingContactName()"
-                        :role="$rental->businessPartner?->contact_person ? 'Contact person: ' . $rental->businessPartner->contact_person : 'Business Partner'"
-                        :phone="$rental->businessPartner?->preferredReminderNumber()"
-                        :whatsapp="$rental->businessPartner?->preferredReminderNumber()"
-                        :email="$rental->businessPartner?->email"
-                        :address="$partnerBillingAddress ?: $rental->businessPartner?->address"
-                        :map-url="$rental->businessPartner?->openMapUrl()"
-                        :notes="$partnerBillingMeta ?: ($latestReminderAt ? 'Last reminder sent ' . $latestReminderAt->format('d M Y h:i A') : null)"
-                        view-label="View Partner"
-                        :view-url="route('business-partners.show', $rental->business_partner_id)"
-                        :chips="collect([
-                            $rental->businessPartner?->gstin ? ['label' => 'GST Available', 'tone' => 'success'] : null,
-                            $latestReminderAt ? ['label' => 'Reminder Logged', 'tone' => 'info'] : null,
-                        ])->filter()->values()->all()"
-                    />
-
-                    <x-contact-block
-                        title="Delivery / Service Contact"
-                        :name="$rental->partnerClient?->displayName() ?? $rental->deliveryContactName()"
-                        role="Actual Client / Delivery Location"
-                        :phone="$rental->partnerClient?->primaryPhone() ?? $rental->deliveryContactPhone()"
-                        :whatsapp="$rental->partnerClient?->primaryPhone() ?? $rental->deliveryContactPhone()"
-                        :address="$rental->partnerClient?->address"
-                        :city="$rental->partnerClient?->city"
-                        :state="$rental->partnerClient?->state"
-                        :pincode="$rental->partnerClient?->pincode"
-                        :map-url="$rental->partnerClient?->openMapUrl() ?? $deliveryContactMapUrl"
-                        :notes="$rental->partnerClient?->delivery_notes"
-                        view-label="View Actual Client"
-                        :view-url="route('business-partners.show', $rental->business_partner_id) . '#actual-clients'"
-                        :chips="[['label' => 'Service Contact', 'tone' => 'accent']]"
-                    />
-                </div>
-            @else
-                <div class="ph-rental-contact-stack">
-                    <x-contact-block
-                        title="Direct Customer"
-                        :name="$rental->customer?->displayName() ?? $rental->billingContactName()"
-                        :role="$rental->customer?->contactPersonName() ? 'Contact person: ' . $rental->customer->contactPersonName() : 'Direct customer rental'"
-                        :phone="$rental->customer?->phone ?? $rental->reminderContactPhone()"
-                        :whatsapp="$rental->customer?->preferredWhatsAppNumber()"
-                        :email="$rental->customer?->email"
-                        :address="$rental->customer?->address"
-                        :city="$rental->customer?->city"
-                        :state="$rental->customer?->state"
-                        :pincode="$rental->customer?->pincode"
-                        :map-url="$rental->customer?->openMapUrl()"
-                        :notes="$latestReminderAt ? 'Last reminder sent ' . $latestReminderAt->format('d M Y h:i A') : null"
-                        view-label="View Customer"
-                        :view-url="$rental->customer_id ? route('customers.show', $rental->customer_id) : null"
-                    />
-                </div>
-            @endif
-
-            <div class="ph-rental-inline-toolbar">
                 @if($deliveryUrl)
                     <a href="{{ $deliveryUrl }}" target="_blank" rel="noopener" class="detail-btn-secondary">Delivery Message</a>
                 @endif
@@ -2425,237 +2438,350 @@
                 @if($deliveryContactMapUrl)
                     <a href="{{ $deliveryContactMapUrl }}" target="_blank" rel="noopener" class="detail-btn-secondary">Open Service Map</a>
                 @endif
+                @if($rentalInvoice)
+                    <a href="{{ route('invoices.show', $rentalInvoice) }}" class="detail-btn-secondary">Open Invoice</a>
+                @elseif($canUpdateRentals)
+                    <form action="{{ route('rentals.invoice', $rental) }}" method="POST">
+                        @csrf
+                        <button type="submit" class="detail-btn-secondary">Create Invoice</button>
+                    </form>
+                @endif
+                @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
+                    <button
+                        type="button"
+                        class="detail-btn"
+                        onclick="document.getElementById('record-payment-panel')?.setAttribute('open', 'open'); document.getElementById('record-payment-panel')?.scrollIntoView({behavior:'smooth', block:'center'});"
+                    >Record Payment</button>
+                @endif
+                @if($rental->canRenew() && $canUpdateRentals)
+                    <button type="button" class="detail-btn-secondary" data-open-renewal-modal>Renew Rental</button>
+                @endif
+                @if($deliveryRecord && $hasOpenDeliveryTask && $canUpdateDeliveries)
+                    <a href="{{ route('deliveries.edit', $deliveryRecord) }}" class="detail-btn-secondary">Assign Delivery</a>
+                @elseif($canCreateDeliveries && !$hasOpenDeliveryTask && $hasPendingDeliveryItems)
+                    <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'delivery']) }}" class="detail-btn-secondary">Assign Delivery</a>
+                @endif
+                @if($pickupRecord && $hasOpenPickupTask && $canUpdateDeliveries)
+                    <a href="{{ route('deliveries.edit', $pickupRecord) }}" class="detail-btn-secondary">Assign Pickup</a>
+                @elseif($canAssignPickup && !$hasOpenPickupTask)
+                    <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'pickup']) }}" class="detail-btn-secondary">Assign Pickup</a>
+                @endif
+                <details class="rcc-action-more">
+                    <summary class="detail-btn-secondary">More</summary>
+                    <div class="rcc-more-menu">
+                        @if($canUpdateRentals)
+                            <a href="{{ route('rentals.edit', $rental) }}">Edit Rental</a>
+                        @endif
+                        <a href="#rental-timeline-workspace">Timeline</a>
+                        @if($deliveryContactMapUrl)
+                            <a href="{{ $deliveryContactMapUrl }}" target="_blank" rel="noopener">Open Map</a>
+                        @endif
+                        @if($rental->canBeReturned())
+                            <form action="{{ route('rentals.return', $rental) }}" method="POST">
+                                @csrf
+                                @method('PUT')
+                                <button type="submit" onclick="return confirm('Mark this rental as returned?');">Complete Pickup</button>
+                            </form>
+                        @endif
+                        @if($canUpdateRentals && !in_array($rental->status, ['returned', 'cancelled'], true))
+                            <form action="{{ route('rentals.cancel', $rental) }}" method="POST">
+                                @csrf
+                                @method('PUT')
+                                <button type="submit" onclick="return confirm('Cancel this rental? This keeps the record for audit history.');">Cancel Rental</button>
+                            </form>
+                        @endif
+                        @if($canDeleteRentals)
+                            <form action="{{ route('rentals.destroy', $rental) }}" method="POST">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" onclick="return confirm('Delete this rental order permanently?');">Delete Rental</button>
+                            </form>
+                        @endif
+                    </div>
+                </details>
             </div>
-        </x-operational-card>
+        </section>
 
-        <x-operational-card
-            class="span-6"
-            title="{{ $canSeeRentalFinance ? 'Finance Snapshot' : 'Operational Snapshot' }}"
-            subtitle="{{ $canSeeRentalFinance ? 'Current charge breakdown plus the invoice receivable used for collection.' : 'Your role can see workflow status without exposing finance amounts.' }}"
-        >
-            @if($canSeeRentalFinance)
-                <div class="ph-rental-summary-grid">
-                    <x-summary-card label="Current Rental Charge" :value="$canViewFinanceAmounts ? $currency($rentalLineTotal) : ucfirst($rentalInvoiceStatus ?: 'pending')" />
-                    <x-summary-card label="Deposit" :value="$canViewFinanceAmounts ? $currency($rental->deposit_amount) : ($rental->deposit_amount > 0 ? 'Captured' : 'Not captured')" />
-                    <x-summary-card label="Transport" :value="$canViewFinanceAmounts ? $currency($rental->transport_amount) : (($rental->transport_amount ?? 0) > 0 ? 'Added' : 'Not added')" />
-                    <x-summary-card label="Other Charges" :value="$canViewFinanceAmounts ? $currency($rental->other_amount) : (($rental->other_amount ?? 0) > 0 ? 'Added' : 'Not added')" />
-                    <x-summary-card label="Invoice Total" :value="$canViewFinanceAmounts ? $currency($invoiceTotalAmount) : ($rentalInvoice ? 'Generated' : 'Not generated')" :tone="$invoiceStatusTone" :meta="$rentalInvoice ? $rentalInvoice->invoice_number : 'Invoice pending'" />
-                    <x-summary-card label="Receivable Balance" :value="$canViewFinanceAmounts ? $currency($invoiceBalanceAmount) : ($rentalInvoiceStatus ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus)) : 'Pending')" :tone="$paymentStatusTone" :meta="$invoicePaidAmount > 0 ? 'Collected ' . $currency($invoicePaidAmount) : 'No collection logged'" />
+        <section class="rcc-card" id="rental-operations-workspace">
+            <div class="rcc-section-head">
+                <div>
+                    <h2>Operations Workspace</h2>
+                    <p>Rental, delivery, active usage, pickup, and return verification in one operational row.</p>
                 </div>
-            @else
-                <div class="ph-rental-detail-list">
-                    <div class="ph-rental-detail-row">
-                        <span>Invoice</span>
-                        <strong>{{ $rentalInvoice ? 'Generated' : 'Pending' }}</strong>
-                    </div>
-                    <div class="ph-rental-detail-row">
-                        <span>Payment</span>
-                        <strong>{{ $rentalInvoiceStatus ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus)) : 'Pending' }}</strong>
-                    </div>
-                    <div class="ph-rental-detail-row">
-                        <span>Delivery Staff</span>
-                        <strong>{{ $deliveryAssigneeLabel }}</strong>
-                    </div>
-                    <div class="ph-rental-detail-row">
-                        <span>Pickup Staff</span>
-                        <strong>{{ $pickupAssigneeLabel }}</strong>
-                    </div>
-                </div>
-            @endif
-        </x-operational-card>
-
-        <x-operational-card
-            class="span-12"
-            title="Product & Assigned Assets"
-            subtitle="See which units are still with the customer and what will come back into verification."
-        >
-            <div class="ph-rental-summary-grid" style="margin-bottom:12px;">
-                <x-summary-card label="Primary Product" :value="$rental->product->name ?? 'N/A'" />
-                <x-summary-card label="Quantity" :value="$rental->quantity" />
-                <x-summary-card label="Returned At" :value="$rental->returned_at ? $rental->returned_at->format('d M Y h:i A') : 'Not returned yet'" />
             </div>
+            <div class="rcc-workflow">
+                @foreach($workflowSteps as $step)
+                    <div class="rcc-workflow-item">
+                        <span class="rcc-chip {{ $step['tone'] }}">{{ $step['status'] }}</span>
+                        <strong>{{ $step['label'] }}</strong>
+                        <small>Owner: {{ $step['person'] }}</small>
+                        <small>Scheduled: {{ $step['scheduled'] }}</small>
+                        @if($step['completed'])
+                            <small>Completed: {{ $step['completed'] }}</small>
+                        @endif
+                        @if(!empty($step['action']['form']))
+                            <form action="{{ route('rentals.return', $rental) }}" method="POST" style="margin:0;">
+                                @csrf
+                                @method('PUT')
+                                <button type="submit" onclick="return confirm('Mark this rental as returned?');">{{ $step['action']['label'] }}</button>
+                            </form>
+                        @elseif(!empty($step['action']['href']))
+                            <a href="{{ $step['action']['href'] }}" @if(!empty($step['action']['target'])) target="{{ $step['action']['target'] }}" rel="noopener" @endif>{{ $step['action']['label'] }}</a>
+                        @endif
+                    </div>
+                @endforeach
+            </div>
+        </section>
 
-            <div class="ph-rental-asset-grid">
-                @forelse($activeAssets as $assignment)
-                    <div class="ph-rental-asset-tile">
-                        <span>Serial</span>
-                        <strong>{{ $assignment->asset->serial_number ?? 'N/A' }}</strong>
-                        <span>Barcode</span>
-                        <strong>{{ $assignment->asset->barcode_value ?? '-' }}</strong>
-                        <span>Warehouse</span>
-                        <strong>{{ $assignment->asset->warehouse->name ?? 'Not set' }}</strong>
+        <div class="rcc-two-col">
+            <section class="rcc-card" id="rental-products-section">
+                <div class="rcc-section-head">
+                    <div>
+                        <h2>Product Workspace</h2>
+                        <p>Rental items, tracked assets, progress quantities, period, status, and amount.</p>
+                    </div>
+                </div>
+                <div class="rcc-product-list">
+                    @foreach($rentalItems as $item)
+                        @php
+                            $orderedQty = (int) ($item->ordered_quantity ?? $item->quantity ?? 0);
+                            $deliveredQty = (int) ($item->delivered_quantity_value ?? $item->delivered_quantity ?? 0);
+                            $returnedQty = (int) ($item->returned_quantity_value ?? $item->returned_quantity ?? 0);
+                            $itemAssetIds = collect($item->asset_ids ?? [])->map(fn ($assetId) => (int) $assetId)->filter()->values();
+                            $itemAssetSummary = $activeAssets
+                                ->filter(fn ($assignment) => $itemAssetIds->contains((int) ($assignment->asset_id ?? $assignment->asset?->id)))
+                                ->map(fn ($assignment) => $assignment->asset?->serial_number ?: $assignment->asset?->barcode_value)
+                                ->filter()
+                                ->implode(', ');
+                            $itemStatus = $returnedQty >= $orderedQty && $orderedQty > 0 ? 'Returned' : ($deliveredQty >= $orderedQty && $orderedQty > 0 ? 'With Customer' : ($deliveredQty > 0 ? 'Partial Delivery' : 'Pending Delivery'));
+                            $itemTone = $itemStatus === 'Returned' ? 'done' : ($itemStatus === 'With Customer' ? 'active' : 'warn');
+                        @endphp
+                        <div class="rcc-product-row">
+                            <div class="rcc-product-name">
+                                <strong>{{ $item->product?->name ?? 'Rental item' }}</strong>
+                                <small>{{ $itemAssetSummary ?: 'No tracked serial linked' }}</small>
+                            </div>
+                            <div class="rcc-product-metrics">
+                                <div class="rcc-cell"><span>Requested</span><strong>{{ $orderedQty }}</strong></div>
+                                <div class="rcc-cell"><span>Delivered</span><strong>{{ $deliveredQty }}</strong></div>
+                                <div class="rcc-cell"><span>Returned</span><strong>{{ $returnedQty }}</strong></div>
+                                <div class="rcc-cell"><span>Period</span><small>{{ optional($rental->start_date)->format('d M') }} - {{ optional($rental->end_date)->format('d M Y') }}</small></div>
+                                <div class="rcc-cell"><span>Status</span><span class="rcc-chip {{ $itemTone }}">{{ $itemStatus }}</span></div>
+                                <div class="rcc-cell"><span>Amount</span><strong>{{ $canSeeRentalFinance ? $currency($rentalLineAmount($item)) : 'Restricted' }}</strong></div>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            </section>
+
+            <section class="rcc-card" id="rental-finance-workspace">
+                <span id="rental-billing-actions" class="section-nav-target"></span>
+                <div class="rcc-section-head">
+                    <div>
+                        <h2>Finance Workspace</h2>
+                        <p>Invoice, payment, deposit, transport, and latest collection in one place.</p>
+                    </div>
+                    <span class="rcc-chip {{ $rentalInvoiceStatus === 'paid' ? 'done' : ($rentalInvoiceStatus === 'partial' ? 'warn' : 'problem') }}">{{ $paymentStatusLabel }}</span>
+                </div>
+                <div class="rcc-finance-panel">
+                    @if($canSeeRentalFinance)
+                        <div class="rcc-finance-kpis">
+                            <div class="rcc-money"><span>Invoice</span><strong>{{ $rentalInvoice?->invoice_number ?? 'Not generated' }}</strong></div>
+                            <div class="rcc-money"><span>Invoice Amount</span><strong>{{ $currency($invoiceTotalAmount) }}</strong></div>
+                            <div class="rcc-money"><span>Paid</span><strong>{{ $currency($invoicePaidAmount) }}</strong></div>
+                            <div class="rcc-money"><span>Outstanding</span><strong>{{ $currency($invoiceBalanceAmount) }}</strong></div>
+                            <div class="rcc-money"><span>Deposit</span><strong>{{ $currency($rental->deposit_amount) }}</strong></div>
+                            <div class="rcc-money"><span>Transport</span><strong>{{ $currency($rental->transport_amount) }}</strong></div>
+                        </div>
+                        <div class="rcc-meta">
+                            <div><strong>Latest payment:</strong> {{ $latestPayment ? $currency($latestPayment->amount) . ' on ' . optional($latestPayment->payment_date)->format('d M Y') : 'No collection logged' }}</div>
+                        </div>
+                    @else
+                        <div class="rcc-meta"><div>Finance amounts are hidden for your role.</div></div>
+                    @endif
+                    <div class="rcc-finance-actions">
+                        @if($rentalInvoice)
+                            <a href="{{ route('invoices.show', $rentalInvoice) }}" class="detail-btn-secondary">Open Invoice</a>
+                            <a href="{{ route('invoices.show', $rentalInvoice) }}" class="detail-btn-secondary">Download PDF</a>
+                        @elseif($canUpdateRentals)
+                            <form action="{{ route('rentals.invoice', $rental) }}" method="POST" style="margin:0;">
+                                @csrf
+                                <button type="submit" class="detail-btn-secondary">Create Invoice</button>
+                            </form>
+                        @endif
+                        @if($renewalUrl)
+                            <a href="{{ $renewalUrl }}" target="_blank" rel="noopener" class="detail-btn-secondary">Send Reminder</a>
+                        @endif
+                    </div>
+                    @if($canSeeRentalFinance)
+                        <details class="rcc-details-panel" open>
+                            <summary>
+                                <span>Original Booking Snapshot</span>
+                                <span class="rcc-chip pending">{{ $currency($baseBookingTotal) }}</span>
+                            </summary>
+                            <div class="rcc-details-panel-body">
+                                <div class="rcc-mini-grid">
+                                    <div class="rcc-money"><span>Original Period</span><strong>{{ optional($rental->start_date)->format('d M Y') }} - {{ optional($initialBookingEndDate)->format('d M Y') }}</strong></div>
+                                    <div class="rcc-money"><span>Rental</span><strong>{{ $currency($baseRentalAmount) }}</strong></div>
+                                    <div class="rcc-money"><span>Deposit</span><strong>{{ $currency($baseDepositAmount) }}</strong></div>
+                                    <div class="rcc-money"><span>Transport</span><strong>{{ $currency($baseTransportAmount) }}</strong></div>
+                                </div>
+                                <div class="rcc-snapshot-lines">
+                                    @foreach($rentalItems as $item)
+                                        <div class="rcc-snapshot-line">
+                                            <div>
+                                                <strong>{{ $item->product?->name ?? 'Rental item' }}</strong>
+                                                <div>Qty {{ (int) ($item->ordered_quantity ?? $item->quantity ?? 0) }}</div>
+                                            </div>
+                                            <strong>{{ $currency($rentalLineAmount($item)) }}</strong>
+                                        </div>
+                                    @endforeach
+                                </div>
+                                <div class="rcc-mini-grid">
+                                    <div class="rcc-money"><span>Other</span><strong>{{ $currency($baseOtherAmount) }}</strong></div>
+                                    <div class="rcc-money"><span>Collected</span><strong>{{ $currency($baseBookingPaidAmount) }}</strong></div>
+                                    <div class="rcc-money"><span>Remaining</span><strong>{{ $currency($baseBookingBalance) }}</strong></div>
+                                    <div class="rcc-money"><span>Invoice Flow</span><strong>{{ strtoupper($rentalInvoiceStatus ?? 'Pending') }}</strong></div>
+                                </div>
+                            </div>
+                        </details>
+                        <details class="rcc-details-panel">
+                            <summary>
+                                <span>Payment History</span>
+                                <span class="rcc-chip {{ $latestPayment ? 'done' : 'pending' }}">{{ $rental->payments?->count() ?? 0 }} payment(s)</span>
+                            </summary>
+                            <div class="rcc-details-panel-body">
+                                @forelse(($rental->payments ?? collect())->sortByDesc('payment_date')->sortByDesc('id')->take(8) as $payment)
+                                    <div class="rcc-payment-line">
+                                        <div>
+                                            <strong>{{ optional($payment->payment_date)->format('d M Y') ?: 'Date not set' }}</strong>
+                                            <div>{{ ucfirst(str_replace('_', ' ', $payment->payment_method ?? 'payment')) }}{{ $payment->invoice?->invoice_number ? '  -  ' . $payment->invoice->invoice_number : '' }}</div>
+                                            @if(filled($payment->notes ?? null))
+                                                <div>{{ $payment->notes }}</div>
+                                            @endif
+                                        </div>
+                                        <strong>{{ $currency($payment->amount) }}</strong>
+                                    </div>
+                                @empty
+                                    <div class="rcc-meta" style="margin-top:0;">No payments recorded for this rental.</div>
+                                @endforelse
+                            </div>
+                        </details>
+                    @endif
+                    @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
+                        <details class="rcc-details-panel rcc-payment-details" id="record-payment-panel">
+                            <summary>
+                                <span>Record Payment</span>
+                                <span class="rcc-chip active">{{ $currency($rentalInvoiceDue) }} due</span>
+                            </summary>
+                            <div class="rcc-details-panel-body">
+                                <form action="{{ route('rentals.recordPayment', $rental) }}" method="POST" class="rcc-payment-form">
+                                    @csrf
+                                    <label>Date<input type="date" name="payment_date" value="{{ old('payment_date', now()->toDateString()) }}"></label>
+                                    <label>Amount<input type="number" step="0.01" min="0.01" name="amount" value="{{ old('amount', $rentalInvoiceDue > 0 ? number_format($rentalInvoiceDue, 2, '.', '') : '') }}"></label>
+                                    <label>Method<input type="text" name="payment_method" value="{{ old('payment_method', 'other') }}" placeholder="cash / upi / bank"></label>
+                                    <label>Note<input type="text" name="notes" value="{{ old('notes') }}" placeholder="Payment note"></label>
+                                    <button type="submit" class="detail-btn">Record</button>
+                                </form>
+                            </div>
+                        </details>
+                    @endif
+                </div>
+            </section>
+        </div>
+
+        <section class="rcc-card" id="renewal-workspace">
+            <div class="rcc-section-head">
+                <div>
+                    <h2>Renewal Workspace</h2>
+                    <p>Collapsed summary first; expand only when renewal history is needed.</p>
+                </div>
+                @if($rental->canRenew() && $canUpdateRentals)
+                    <button type="button" class="detail-btn" data-open-renewal-modal>Quick Renew</button>
+                @endif
+            </div>
+            <div class="rcc-renewal-summary">
+                <div class="rcc-money"><span>Status</span><strong>{{ $renewalSummaryStatus }}</strong></div>
+                <div class="rcc-money"><span>Due Date</span><strong>{{ optional($rental->end_date)->format('d M Y') ?: 'Not set' }}</strong></div>
+                <div class="rcc-money"><span>Last Renewal Invoice</span><strong>{{ $lastRenewal?->invoice?->invoice_number ?? 'None' }}</strong></div>
+                <div class="rcc-money"><span>Suggested Extension</span><strong>{{ $suggestedRenewalDays }} days</strong></div>
+            </div>
+            <details class="rcc-details">
+                <summary>View renewal history</summary>
+                @if(!$renewalFeatureReady)
+                    <div class="ops-muted">Renewal history logging is waiting on the latest migration.</div>
+                @elseif($renewalHistory->isEmpty())
+                    <x-empty-state title="No renewals yet" message="Use Quick Renew when this rental needs extension." />
+                @else
+                    <div class="payment-history-list">
+                        @foreach($renewalHistory as $renewal)
+                            <div class="payment-history-card">
+                                <div>
+                                    <span class="label">Renewed To</span>
+                                    <strong>{{ optional($renewal->renewed_end_date)->format('d M Y') ?: '-' }}</strong>
+                                    <div class="ops-muted">{{ ucfirst($renewal->renewal_type) }} renewal  -  {{ $currency(($renewal->rental_amount_added ?? 0) + ($renewal->deposit_amount_added ?? 0) + ($renewal->transport_amount_added ?? 0) + ($renewal->other_amount_added ?? 0)) }}</div>
+                                </div>
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                                    @if($renewal->invoice)
+                                        <a href="{{ route('invoices.show', $renewal->invoice) }}" class="detail-btn-secondary">Invoice</a>
+                                    @endif
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+            </details>
+        </section>
+
+        <section class="rcc-card" id="rental-timeline-workspace">
+            <div class="rcc-section-head">
+                <div>
+                    <h2>Timeline & Communication</h2>
+                    <p>Latest rental activity, reminders, invoice events, delivery updates, and notes.</p>
+                </div>
+                <a href="#rental-full-timeline" class="detail-btn-secondary">View full timeline</a>
+            </div>
+            <div class="rcc-timeline-list">
+                @forelse($timelinePreview as $log)
+                    <div class="rcc-timeline-item">
+                        <time>{{ optional($log->created_at)->format('d M Y h:i A') }}</time>
+                        <div>
+                            <strong>{{ $log->description ?? ucfirst(str_replace(['_', '.'], ' ', $log->action ?? 'Activity')) }}</strong>
+                            @if(!empty($log->properties) && is_array($log->properties))
+                                <p>{{ collect($log->properties)->take(2)->map(fn ($value, $key) => ucfirst(str_replace('_', ' ', $key)) . ': ' . (is_scalar($value) ? $value : json_encode($value)))->implode('  -  ') }}</p>
+                            @endif
+                        </div>
                     </div>
                 @empty
-                    <x-empty-state
-                        title="No assigned assets yet"
-                        message="This rental does not currently have tracked asset units linked. You can still continue delivery and update the assignment later if needed."
-                    />
+                    <x-empty-state title="No activity yet" message="Rental activity and internal notes will appear here as the order moves." />
                 @endforelse
             </div>
-        </x-operational-card>
-
-        <x-operational-card
-            class="span-6 section-nav-target"
-            id="rental-delivery-section"
-            title="Delivery"
-            subtitle="Track assignment, service contact, schedule, and completion."
-        >
-            <div class="ph-rental-detail-list">
-                <div class="ph-rental-detail-row">
-                    <span>Status</span>
-                    <strong>{{ $deliveryStatusLabel($rental->deliveryStatus()) }}</strong>
+            <details class="rcc-details" id="rental-full-timeline">
+                <summary>Open notes and recent activity</summary>
+                <div class="section-nav-target" id="rental-activity-timeline"></div>
+                <div class="section-nav-target" id="rental-notes-section"></div>
+                <form action="{{ route('rentals.notes.store', $rental) }}" method="POST" style="display:grid;gap:8px;margin:0 0 12px;">
+                    @csrf
+                    <input type="hidden" name="note_type" value="general">
+                    <textarea name="note" rows="3" placeholder="Add internal note..." style="width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:10px;font-size:13px;resize:vertical;"></textarea>
+                    <div style="display:flex;justify-content:flex-end;">
+                        <button type="submit" class="detail-btn-secondary">Add Note</button>
+                    </div>
+                </form>
+                <div class="rcc-timeline-list" style="padding:0;">
+                    @foreach(($activityLogs ?? collect())->take(20) as $log)
+                        <div class="rcc-timeline-item">
+                            <time>{{ optional($log->created_at)->format('d M Y h:i A') }}</time>
+                            <div>
+                                <strong>{{ $log->description ?? ucfirst(str_replace(['_', '.'], ' ', $log->action ?? 'Activity')) }}</strong>
+                            </div>
+                        </div>
+                    @endforeach
                 </div>
-                <div class="ph-rental-detail-row">
-                    <span>Assigned Staff</span>
-                    <strong>{{ $deliveryAssigneeLabel }}</strong>
-                </div>
-                <div class="ph-rental-detail-row">
-                    <span>Scheduled</span>
-                    <strong>{{ $deliveryRecord?->scheduled_at ? $deliveryRecord->scheduled_at->format('d M Y h:i A') : 'Not scheduled' }}</strong>
-                </div>
-            </div>
-
-            <x-contact-block
-                title="Delivery Contact"
-                :name="$deliveryContactName"
-                role="Delivery / Service"
-                :phone="$deliveryContactPhone"
-                :whatsapp="$deliveryContactPhone"
-                :address="$rental->deliveryContactAddress()"
-                :city="$rental->deliveryContactCity()"
-                :state="$rental->deliveryContactState()"
-                :pincode="$rental->deliveryContactPincode()"
-                :map-url="$deliveryContactMapUrl"
-                :notes="$rental->deliveryContactNotes()"
-            />
-
-            <div class="ph-rental-inline-toolbar">
-                @if($deliveryRecord)
-                    @if($canUpdateDeliveries)
-                        <a href="{{ route('deliveries.edit', $deliveryRecord) }}" class="detail-btn-secondary">Assign</a>
-                    @endif
-                    @if($deliveryRecord->status === 'pending')
-                        <form method="POST" action="{{ route('deliveries.in_progress', $deliveryRecord) }}" style="margin:0;">
-                            @csrf
-                            @method('PUT')
-                            <button type="submit" class="detail-btn-secondary">Start</button>
-                        </form>
-                    @elseif($deliveryRecord->status === 'in_progress')
-                        <form method="POST" action="{{ route('deliveries.complete', $deliveryRecord) }}" style="margin:0;">
-                            @csrf
-                            @method('PUT')
-                            @if($hasPendingDeliveryItems)
-                                <input type="hidden" name="confirm_partial" value="1">
-                            @endif
-                            <button type="submit" class="detail-btn">Mark Delivered</button>
-                        </form>
-                    @endif
-                    @if($deliveryContactMapUrl)
-                        <a href="{{ $deliveryContactMapUrl }}" target="_blank" rel="noopener" class="detail-btn-secondary">Open Map</a>
-                    @endif
-                @elseif($rental->deliveryStaff)
-                    @if($canCreateDeliveries && !$hasOpenDeliveryTask)
-                        <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'delivery']) }}" class="detail-btn-secondary">Create Delivery Task</a>
-                    @endif
-                    @if($canUpdateRentals)
-                        <form method="POST" action="{{ route('rentals.delivery-assignment.clear', $rental) }}" style="margin:0;">
-                            @csrf
-                            @method('DELETE')
-                            <button type="submit" class="detail-btn-danger" onclick="return confirm('Clear this delivery assignment from the rental?');">Clear Assignment</button>
-                        </form>
-                    @endif
-                @elseif($canCreateDeliveries && !$hasOpenDeliveryTask)
-                    <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'delivery']) }}" class="detail-btn-secondary">Assign Delivery</a>
-                @else
-                    <span class="ops-muted">Delivery action is not available right now.</span>
-                @endif
-            </div>
-        </x-operational-card>
-
-        <x-operational-card
-            class="span-6 section-nav-target"
-            id="rental-pickup-section"
-            title="Pickup"
-            subtitle="Schedule, assign, and close the return workflow from the rental itself."
-        >
-            <div class="ph-rental-detail-list">
-                <div class="ph-rental-detail-row">
-                    <span>Status</span>
-                    <strong>{{ ucfirst(str_replace('_', ' ', $rental->pickupStatus() ?: 'pending')) }}</strong>
-                </div>
-                <div class="ph-rental-detail-row">
-                    <span>Assigned Staff</span>
-                    <strong>{{ $pickupAssigneeLabel }}</strong>
-                </div>
-                <div class="ph-rental-detail-row">
-                    <span>Scheduled</span>
-                    <strong>{{ $pickupRecord?->scheduled_at ? $pickupRecord->scheduled_at->format('d M Y h:i A') : 'Not scheduled' }}</strong>
-                </div>
-            </div>
-
-            <x-contact-block
-                title="Pickup Contact"
-                :name="$deliveryContactName"
-                role="Pickup / Return"
-                :phone="$deliveryContactPhone"
-                :whatsapp="$deliveryContactPhone"
-                :address="$rental->deliveryContactAddress()"
-                :city="$rental->deliveryContactCity()"
-                :state="$rental->deliveryContactState()"
-                :pincode="$rental->deliveryContactPincode()"
-                :map-url="$deliveryContactMapUrl"
-                :notes="$rental->deliveryContactNotes()"
-            />
-
-            <div class="ph-rental-inline-toolbar">
-                @if($pickupRecord)
-                    @if($canUpdateDeliveries)
-                        <a href="{{ route('deliveries.edit', $pickupRecord) }}" class="detail-btn-secondary">Assign Staff</a>
-                    @endif
-                    @if($pickupRecord->status === 'pending')
-                        <form method="POST" action="{{ route('deliveries.in_progress', $pickupRecord) }}" style="margin:0;">
-                            @csrf
-                            @method('PUT')
-                            <button type="submit" class="detail-btn-secondary">Start Pickup</button>
-                        </form>
-                    @elseif($pickupRecord->status === 'in_progress')
-                        <form method="POST" action="{{ route('deliveries.complete', $pickupRecord) }}" style="margin:0;">
-                            @csrf
-                            @method('PUT')
-                            @if($hasPendingPickupItems)
-                                <input type="hidden" name="confirm_partial" value="1">
-                            @endif
-                            <button type="submit" class="detail-btn">Mark Picked Up</button>
-                        </form>
-                    @endif
-                    @if($deliveryContactMapUrl)
-                        <a href="{{ $deliveryContactMapUrl }}" target="_blank" rel="noopener" class="detail-btn-secondary">Open Map</a>
-                    @endif
-                @elseif($canAssignPickup && !$hasOpenPickupTask)
-                    <a href="{{ route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'pickup']) }}" class="detail-btn-secondary">Schedule Pickup</a>
-                @elseif($canCreateDeliveries)
-                    <span class="ops-muted">Pickup becomes actionable after at least one item is delivered.</span>
-                @endif
-            </div>
-        </x-operational-card>
+            </details>
+        </section>
     </div>
 </div>
-
-<div class="ph-rental-notes-shell">
-    <div class="section-nav-target" id="rental-activity-timeline"></div>
-    <div class="section-nav-target" id="rental-notes-section"></div>
-    @include('partials.activity-timeline', [
-        'timeline' => $activityLogs ?? collect(),
-        'title' => 'Timeline & Notes',
-        'subtitle' => 'Renewals, reminders, invoices, delivery updates, follow-ups, and internal notes stay together here.',
-        'timelineFilter' => $timelineFilter ?? 'all',
-        'timelineRoute' => 'rentals.show',
-        'noteAction' => route('rentals.notes.store', $rental),
-        'noteLabel' => 'Add Note',
-        'anchorId' => 'rental-activity-timeline',
-    ])
-</div>
-
 <div class="renewal-modal" id="renewalModal" aria-hidden="true">
     <div class="renewal-modal-panel">
         <div class="renewal-modal-head">
@@ -2766,7 +2892,7 @@
     {{--
         <div class="rental-cta-meta">
             <span class="rental-cta-eyebrow">Rental Actions</span>
-            <div class="rental-cta-title">Rental #{{ $rental->id }} · {{ $rental->billingContactName() }}</div>
+            <div class="rental-cta-title">Rental #{{ $rental->id }} Ã‚ -  {{ $rental->billingContactName() }}</div>
             <div class="rental-cta-subtitle">
                 @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
                     {{ $rentalInvoiceDue > 0 ? 'Invoice due ' . $currency($rentalInvoiceDue) . '. Use Receive Payment or Mark Paid.' : 'Payment action is available for this rental.' }}
@@ -3141,3 +3267,5 @@
     })();
 </script>
 @endpush
+
+

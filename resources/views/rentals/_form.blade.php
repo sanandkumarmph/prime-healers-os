@@ -249,6 +249,19 @@
         box-sizing:border-box;
     }
     .rental-field textarea { min-height:62px; resize:vertical; }
+    .rental-inline-warning {
+        display:none;
+        grid-column:span 12;
+        padding:9px 11px;
+        border:1px solid #fbbf24;
+        border-radius:10px;
+        background:#fffbeb;
+        color:#78350f;
+        font-size:12px;
+        font-weight:700;
+        line-height:1.4;
+    }
+    .rental-inline-warning.is-visible { display:block; }
     .rental-wizard-nav {
         display:grid;
         grid-template-columns:repeat(5, minmax(0, 1fr));
@@ -1729,6 +1742,8 @@
                 @endif
             </div>
 
+            <div class="rental-inline-warning" id="pricingWarning" role="status" aria-live="polite"></div>
+
             <input type="hidden" name="delivery_responsibility" id="delivery_responsibility" value="{{ $selectedDeliveryResponsibility }}">
             <input type="hidden" name="pickup_responsibility" id="pickup_responsibility" value="{{ $selectedPickupResponsibility }}">
 
@@ -1887,9 +1902,13 @@
             </div>
             @endif
 
-            <div class="rental-field rental-col-12 section-nav-target" id="rental-notes-section">
-                <label for="internal_notes">Ops Note</label>
-                <textarea id="internal_notes" disabled placeholder="Use delivery notes after save.">{{ $isEdit ? 'Adjust delivery or assets after save.' : 'Delivery opens after save.' }}</textarea>
+            <div class="rental-field rental-col-12 section-nav-target{{ $hasFieldError('delivery_notes') ? ' is-error' : '' }}" id="rental-notes-section">
+                <label for="delivery_notes">Delivery Note</label>
+                <textarea name="delivery_notes" id="delivery_notes" placeholder="Delivery instruction, landmark, service note, or customer handling request.">{{ old('delivery_notes', $isEdit ? ($rental->delivery_notes ?? '') : '') }}</textarea>
+                <span class="hint">Visible to operations while coordinating delivery and pickup.</span>
+                @if($hasFieldError('delivery_notes'))
+                    <span class="field-error">{{ $fieldError('delivery_notes') }}</span>
+                @endif
             </div>
         </div>
         <div class="rental-step-actions">
@@ -2100,6 +2119,7 @@
         const draftStatusNodes = Array.from(document.querySelectorAll('[data-rental-draft-status]'));
         const summaryValues = Array.from(document.querySelectorAll('[data-summary-value]'));
         const form = document.currentScript.closest('form') || document.querySelector('form[action*="rentals"]');
+        const pricingWarning = document.getElementById('pricingWarning');
         const draftKey = 'phos:rental-create:draft';
         const getEl = (id) => document.getElementById(id);
         const textOf = (select) => select?.selectedOptions?.[0]?.textContent?.trim() || '';
@@ -2120,7 +2140,91 @@
             delivery: ['delivery_assignment_type'],
             review: [],
         };
-        const isStepComplete = (stepName) => (stepRequirements[stepName] || []).every((id) => valueOf(id));
+        const selectedAssetCount = () => {
+            const displayedCount = parseInt(document.getElementById('assetSelectedCountInline')?.textContent || '', 10);
+
+            if (!Number.isNaN(displayedCount)) {
+                return displayedCount;
+            }
+
+            const primaryAssetSection = document.getElementById('rental-assets-section');
+            const ids = Array.from(primaryAssetSection?.querySelectorAll('input[name="asset_ids[]"]') || [])
+                .map((input) => parseInt(input.value || '0', 10))
+                .filter((id) => id > 0);
+
+            return new Set(ids).size;
+        };
+        const primaryProductRequiresAssets = () => {
+            if (valueOf('fulfilment_source') === 'vendor_supplied') {
+                return false;
+            }
+
+            const option = getEl('product_id')?.selectedOptions?.[0];
+            return Boolean(option?.value) && option.getAttribute('data-tracks-rental') === '1';
+        };
+        const requiredPrimaryAssetCount = () => Math.max(parseInt(valueOf('quantity') || '0', 10), 0);
+        const primaryAssetSelectionMessage = () => {
+            if (!primaryProductRequiresAssets()) {
+                return '';
+            }
+
+            const required = requiredPrimaryAssetCount();
+            const selected = selectedAssetCount();
+
+            if (required > 0 && selected !== required) {
+                return 'Select exactly ' + required + ' asset(s) before moving to Dates & Pricing. Currently selected: ' + selected + '.';
+            }
+
+            return '';
+        };
+        const syncPrimaryAssetWarning = () => {
+            const message = primaryAssetSelectionMessage();
+            const alert = document.getElementById('assetSelectionAlert');
+            const productWarning = document.getElementById('productRentalWarning');
+
+            if (alert) {
+                alert.textContent = message;
+                alert.style.display = message ? 'block' : 'none';
+            }
+
+            if (productWarning && message) {
+                productWarning.textContent = message;
+                productWarning.style.display = 'block';
+            }
+        };
+        const pricingWarningMessage = () => {
+            const missing = [];
+
+            if (parseFloat(valueOf('deposit_amount') || '0') <= 0) {
+                missing.push('deposit');
+            }
+
+            if (parseFloat(valueOf('transport_amount') || '0') <= 0) {
+                missing.push('transportation cost');
+            }
+
+            return missing.length
+                ? 'Warning: ' + missing.join(' and ') + ' not added. Confirm this is intentional before creating the rental.'
+                : '';
+        };
+        const syncPricingWarning = () => {
+            if (!pricingWarning) {
+                return;
+            }
+
+            const message = pricingWarningMessage();
+            pricingWarning.textContent = message;
+            pricingWarning.classList.toggle('is-visible', Boolean(message));
+        };
+        const isStepComplete = (stepName) => {
+            const fieldsComplete = (stepRequirements[stepName] || []).every((id) => valueOf(id));
+
+            if (stepName === 'product') {
+                return fieldsComplete && !primaryAssetSelectionMessage();
+            }
+
+            return fieldsComplete;
+        };
         const showStep = (stepName, shouldScroll = true) => {
             tabs.forEach((tab) => tab.classList.toggle('is-active', tab.dataset.rentalWizardTab === stepName));
             steps.forEach((step) => step.classList.toggle('is-active', step.dataset.rentalWizardStep === stepName));
@@ -2128,8 +2232,9 @@
                 document.querySelector('[data-rental-wizard-tab="' + stepName + '"]')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
         };
-        const selectedAssetCount = () => document.querySelectorAll('input[name="asset_ids[]"]:checked').length;
         const updateWizardState = () => {
+            syncPrimaryAssetWarning();
+            syncPricingWarning();
             tabs.forEach((tab) => {
                 const stepName = tab.dataset.rentalWizardTab;
                 const complete = isStepComplete(stepName);
@@ -2202,6 +2307,15 @@
         });
         nextButtons.forEach((button) => {
             button.addEventListener('click', () => {
+                const stepName = button.closest('[data-rental-wizard-step]')?.dataset.rentalWizardStep;
+                syncPrimaryAssetWarning();
+                syncPricingWarning();
+
+                if (stepName === 'product' && primaryAssetSelectionMessage()) {
+                    document.getElementById('rental-assets-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    return;
+                }
+
                 if (button.disabled) {
                     return;
                 }
@@ -2274,6 +2388,7 @@
                 window.setTimeout(updateSummary, 0);
             }
         });
+        document.addEventListener('phos:rental-assets-updated', updateSummary);
         const firstErrorStep = steps.find((step) => step.querySelector('.is-error, .field-error'))?.dataset.rentalWizardStep;
         if (window.matchMedia('(max-width: 980px)').matches) {
             document.querySelector('.rental-order-summary details')?.removeAttribute('open');
@@ -3770,6 +3885,7 @@
 
             latestAssetHideReason = selectedCount === quantity ? 'ready' : 'quantity_mismatch';
             refreshAssetDebugPanel();
+            document.dispatchEvent(new CustomEvent('phos:rental-assets-updated'));
         }
 
         function syncDurationPreset() {
