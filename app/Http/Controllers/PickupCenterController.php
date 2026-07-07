@@ -13,6 +13,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class PickupCenterController extends Controller
@@ -482,10 +483,13 @@ class PickupCenterController extends Controller
     private function assignableUsers()
     {
         return User::query()
+            ->with('assignedRole')
             ->where('organization_id', $this->orgId())
             ->when(Schema::hasColumn('users', 'is_active'), fn (Builder $query) => $query->where('is_active', true))
             ->orderBy('name')
-            ->get(['id', 'name', 'role']);
+            ->get()
+            ->filter(fn (User $user) => $this->userAssignableForInternalPickup($user))
+            ->values();
     }
 
     private function assignableStaff()
@@ -501,7 +505,11 @@ class PickupCenterController extends Controller
         $assignmentTarget = trim($assignmentTarget);
 
         if (str_starts_with($assignmentTarget, 'user:')) {
-            return ['delivery_team', (int) substr($assignmentTarget, 5), null];
+            $userId = (int) substr($assignmentTarget, 5);
+
+            abort_unless($this->userAssignableForInternalPickupId($userId), 422, 'Choose a delivery or operations executive for internal pickup.');
+
+            return ['delivery_team', $userId, null];
         }
 
         if (str_starts_with($assignmentTarget, 'staff:')) {
@@ -509,6 +517,53 @@ class PickupCenterController extends Controller
         }
 
         return ['delivery_team', null, null];
+    }
+
+    private function userAssignableForInternalPickupId(int $userId): bool
+    {
+        $user = User::query()
+            ->with('assignedRole')
+            ->where('organization_id', $this->orgId())
+            ->when(Schema::hasColumn('users', 'is_active'), fn (Builder $query) => $query->where('is_active', true))
+            ->find($userId);
+
+        return $user ? $this->userAssignableForInternalPickup($user) : false;
+    }
+
+    private function userAssignableForInternalPickup(User $user): bool
+    {
+        $roleSignals = collect([
+            $user->effective_role,
+            $user->role,
+            $user->assignedRole?->slug,
+            $user->assignedRole?->name,
+        ])->filter()->map(function ($value) {
+            return Str::of((string) $value)
+                ->lower()
+                ->replace([' ', '-'], '_')
+                ->value();
+        });
+
+        $blocked = [
+            User::ROLE_SUPER_ADMIN,
+            User::ROLE_ADMIN_OPERATIONS,
+            'admin',
+            User::ROLE_FINANCE,
+            User::ROLE_SALES,
+            User::ROLE_SALES_RENEWALS,
+        ];
+
+        if ($roleSignals->contains(fn ($value) => in_array($value, $blocked, true))) {
+            return false;
+        }
+
+        return $roleSignals->contains(fn ($value) => in_array($value, [
+            User::ROLE_DELIVERY_EXECUTIVE,
+            User::ROLE_OPERATIONS_EXECUTIVE,
+            User::ROLE_DELIVERY,
+            'delivery_staff',
+            'pickup_staff',
+        ], true));
     }
 
     private function resolvePickupTimeSlot(?string $slot): string

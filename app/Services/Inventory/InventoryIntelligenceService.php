@@ -5,6 +5,7 @@ namespace App\Services\Inventory;
 use App\Models\Asset;
 use App\Models\Delivery;
 use App\Models\Product;
+use App\Models\ProductCategory;
 use App\Models\Rental;
 use App\Models\Sale;
 use App\Models\StockMovement;
@@ -12,10 +13,18 @@ use App\Models\Warehouse;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Collection;
 
 class InventoryIntelligenceService
 {
+    private function applyCategoryConstraint(Builder $query, string $category): Builder
+    {
+        return ctype_digit($category) && Schema::hasColumn('products', 'category_id')
+            ? $query->where('category_id', (int) $category)
+            : $query->where('category', $category);
+    }
+
     public function build(int $organizationId, array $filters = []): array
     {
         [$timeScope, $month, $year, $startDate, $endDate, $bucketMode, $periodLabel] = $this->resolveTimeWindow($filters, $organizationId);
@@ -41,7 +50,7 @@ class InventoryIntelligenceService
         }
 
         if (($filters['category'] ?? '') !== '') {
-            $productQuery->where('category', (string) $filters['category']);
+            $this->applyCategoryConstraint($productQuery, (string) $filters['category']);
         }
 
         $mode = strtolower((string) ($filters['mode'] ?? 'all'));
@@ -976,7 +985,7 @@ class InventoryIntelligenceService
         if (($filters['category'] ?? '') !== '') {
             $category = (string) $filters['category'];
             $assetsQuery->whereHas('product', function (Builder $query) use ($category) {
-                $query->where('category', $category);
+                $this->applyCategoryConstraint($query, $category);
             });
         }
 
@@ -1106,13 +1115,13 @@ class InventoryIntelligenceService
                 ->where('organization_id', $organizationId)
                 ->orderBy('name')
                 ->get(['id', 'name', 'category', 'product_type', 'stock_mode']),
-            'categories' => Product::query()
-                ->where('organization_id', $organizationId)
-                ->whereNotNull('category')
-                ->where('category', '!=', '')
-                ->distinct()
-                ->orderBy('category')
-                ->pluck('category'),
+            'categories' => Schema::hasTable('product_categories')
+                ? ProductCategory::query()
+                    ->forOrganization($organizationId)
+                    ->active()
+                    ->orderBy('name')
+                    ->get(['id', 'name'])
+                : collect(),
             'warehouses' => Warehouse::query()
                 ->where('organization_id', $organizationId)
                 ->orderBy('name')

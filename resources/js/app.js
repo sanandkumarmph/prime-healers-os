@@ -1614,3 +1614,186 @@ const initializeUnifiedInAppNotifications = () => {
 };
 
 document.addEventListener('DOMContentLoaded', initializeUnifiedInAppNotifications);
+
+const initializeMobileUxStandardization = () => {
+    const mobileQuery = window.matchMedia('(max-width: 767px)');
+
+    const filterSelector = [
+        'details[data-filter-panel]',
+        'details.reports-filter',
+        'details.invoice-filter-toggle',
+        'details.desktop-filter-toggle',
+        'details.ops-filter-toggle',
+        'details.product-filter-card',
+        'details.asset-card[data-filter-panel]',
+    ].join(', ');
+
+    const closeMobileFilters = () => {
+        if (!mobileQuery.matches) {
+            return;
+        }
+
+        document.querySelectorAll(filterSelector).forEach((panel) => {
+            if (!(panel instanceof HTMLDetailsElement)) {
+                return;
+            }
+
+            if (panel.dataset.mobileKeepOpen === 'true') {
+                return;
+            }
+
+            panel.open = false;
+            panel.setAttribute('data-mobile-standardized', 'true');
+        });
+    };
+
+    const markMobileStandardizedRoots = () => {
+        if (!mobileQuery.matches) {
+            return;
+        }
+
+        document.querySelectorAll('.mobile-filter-sheet, .quick-customer-modal, .quick-party-modal, .delivery-edit-modal').forEach((root) => {
+            if (root instanceof HTMLElement) {
+                root.setAttribute('data-mobile-standardized', 'true');
+            }
+        });
+    };
+
+    closeMobileFilters();
+    window.setTimeout(closeMobileFilters, 0);
+    window.setTimeout(closeMobileFilters, 180);
+    markMobileStandardizedRoots();
+
+    if (typeof mobileQuery.addEventListener === 'function') {
+        mobileQuery.addEventListener('change', (event) => {
+            if (event.matches) {
+                closeMobileFilters();
+                markMobileStandardizedRoots();
+            }
+        });
+    }
+};
+
+document.addEventListener('DOMContentLoaded', initializeMobileUxStandardization);
+const initializeGlobalOutsideDismiss = () => {
+    const menuSelector = [
+        'details.rcc-action-more',
+        'details.customer-action-menu',
+        'details.ops-action-menu',
+        'details.delivery-action-menu',
+        'details.product-action-menu',
+        'details.asset-action-menu',
+        'details.invoice-action-menu',
+        'details.mobile-actions-menu',
+        'details.quick-add-menu',
+        'details.topbar-notification-menu',
+        'details.topbar-user-menu',
+        'details[data-rental-mobile-menu]',
+        'details[data-dropdown-menu]',
+        'details[data-action-menu]',
+    ].join(', ');
+
+    const excludedMenuSelector = [
+        '.rcc-accordion-section',
+        '.rcc-details-panel',
+        '.rcc-details',
+        '[data-filter-panel]',
+        '.reports-filter',
+        '.invoice-filter-toggle',
+        '.desktop-filter-toggle',
+        '.ops-filter-toggle',
+        '.product-filter-card',
+        '.asset-card[data-filter-panel]',
+        '.ph-rental-mobile-accordion',
+    ].join(', ');
+
+    const getManagedMenus = () => Array.from(document.querySelectorAll(menuSelector)).filter((menu) => {
+        return menu instanceof HTMLDetailsElement && !menu.matches(excludedMenuSelector);
+    });
+
+    const closeManagedMenus = (except = null) => {
+        getManagedMenus().forEach((menu) => {
+            if (menu === except || !menu.open) {
+                return;
+            }
+
+            menu.open = false;
+            menu.removeAttribute('open');
+            menu.closest('tr')?.classList.remove('is-action-open');
+        });
+    };
+
+    const closeModalFromBackdropClick = (event) => {
+        const target = event.target;
+
+        if (!(target instanceof HTMLElement)) {
+            return;
+        }
+
+        const modalSelector = [
+            '.renewal-modal.is-open',
+            '.delivery-edit-modal.is-open',
+            '.quick-customer-modal.is-open',
+            '.quick-party-modal.is-open',
+            '[data-modal].is-open',
+            '[data-modal].open',
+        ].join(', ');
+
+        if (!target.matches(modalSelector)) {
+            return;
+        }
+
+        const closeButton = target.querySelector([
+            '[data-close-renewal-modal]',
+            '[data-close-pickup-modal]',
+            '[data-delivery-edit-close]',
+            '[data-modal-close]',
+            '[data-close-modal]',
+            '.modal-close',
+            '[aria-label="Close"]',
+        ].join(', '));
+
+        if (closeButton instanceof HTMLElement) {
+            closeButton.click();
+            return;
+        }
+
+        target.classList.remove('is-open', 'open');
+        target.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+    };
+
+    document.addEventListener('toggle', (event) => {
+        const menu = event.target;
+
+        if (!(menu instanceof HTMLDetailsElement) || !menu.matches(menuSelector) || menu.matches(excludedMenuSelector)) {
+            return;
+        }
+
+        if (menu.open) {
+            closeManagedMenus(menu);
+        }
+    }, true);
+
+    document.addEventListener('click', (event) => {
+        const target = event.target;
+
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        closeModalFromBackdropClick(event);
+
+        if (!target.closest(menuSelector)) {
+            closeManagedMenus();
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            closeManagedMenus();
+        }
+    });
+};
+
+document.addEventListener('DOMContentLoaded', initializeGlobalOutsideDismiss);

@@ -44,6 +44,78 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
         ]);
     }
 
+    public function test_delivery_edit_summary_uses_completed_rental_item_progress_for_stale_task_status(): void
+    {
+        $organization = TestData::organization();
+        $this->actingAs(TestData::user($organization));
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Progress Customer',
+            'phone' => '9876503001',
+        ]);
+
+        $warehouse = Warehouse::create([
+            'organization_id' => $organization->id,
+            'name' => 'Bengaluru',
+            'code' => 'BLR',
+            'is_active' => true,
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Oxygen Concentrator',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_RENTAL,
+            'price_per_day' => 1000,
+            'sale_price' => 0,
+            'rental_price' => 1000,
+            'available_quantity' => 0,
+            'total_quantity' => 0,
+        ]);
+
+        $rental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'dispatch_warehouse_id' => $warehouse->id,
+            'quantity' => 1,
+            'start_date' => now()->toDateString(),
+            'end_date' => now()->addDays(30)->toDateString(),
+            'rental_amount' => 1000,
+            'status' => 'active',
+        ]);
+
+        RentalItem::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'delivered_quantity' => 1,
+            'returned_quantity' => 0,
+            'unit_rental_amount' => 1000,
+            'line_total' => 1000,
+        ]);
+
+        $delivery = Delivery::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'type' => 'delivery',
+            'scheduled_at' => now(),
+            'status' => 'in_progress',
+            'assignment_type' => 'delivery_team',
+        ]);
+
+        $response = $this->get(route('deliveries.edit', ['delivery' => $delivery, 'embedded' => 1]));
+
+        $response->assertOk();
+        $response->assertSee('<strong id="summaryStatus">Delivered</strong>', false);
+        $response->assertSee('<option value="completed" selected', false);
+        $response->assertDontSee('<strong id="summaryStatus">In Progress</strong>', false);
+    }
+
     public function test_partial_pickup_moves_tracked_rental_assets_to_awaiting_verification(): void
     {
         $organization = TestData::organization();
@@ -676,7 +748,7 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
             'asset_ids' => [$asset->id],
             'quantity' => 1,
             'delivered_quantity' => 1,
-            'returned_quantity' => 1,
+            'returned_quantity' => 0,
             'unit_rental_amount' => 1900,
             'line_total' => 1900,
         ]);
@@ -2132,6 +2204,186 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
         $this->get(route('assets.pending-verification'))
             ->assertOk()
             ->assertSeeText('RETURN-VERIFY-001');
+    }
+
+    public function test_returned_pickup_still_enqueues_asset_when_assignment_was_already_marked_returned(): void
+    {
+        $organization = TestData::organization();
+        $this->actingAs(TestData::user($organization));
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Pickup Queue Customer',
+            'phone' => '8888888811',
+        ]);
+
+        $warehouse = Warehouse::create([
+            'organization_id' => $organization->id,
+            'name' => 'Pickup Queue Warehouse',
+            'code' => 'PQW',
+            'is_active' => true,
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'CPAP Machine',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_RENTAL,
+            'price_per_day' => 900,
+            'sale_price' => 0,
+            'rental_price' => 900,
+            'available_quantity' => 0,
+            'total_quantity' => 0,
+        ]);
+
+        $asset = Asset::create([
+            'organization_id' => $organization->id,
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'asset_name' => 'CPAP Queue Asset',
+            'serial_number' => 'RETURN-QUEUE-001',
+            'asset_stage' => Asset::STAGE_RENTAL_STOCK,
+            'condition_status' => 'good',
+            'asset_status' => Asset::STATUS_RENTED,
+        ]);
+
+        $rental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'dispatch_warehouse_id' => $warehouse->id,
+            'quantity' => 1,
+            'start_date' => now()->subDays(8)->toDateString(),
+            'end_date' => now()->addDays(2)->toDateString(),
+            'rental_amount' => 900,
+            'status' => 'active',
+        ]);
+
+        RentalItem::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'product_id' => $product->id,
+            'asset_ids' => [$asset->id],
+            'quantity' => 1,
+            'delivered_quantity' => 1,
+            'returned_quantity' => 0,
+            'unit_rental_amount' => 900,
+            'line_total' => 900,
+        ]);
+
+        RentalAsset::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'asset_id' => $asset->id,
+            'assigned_at' => now()->subDays(8),
+            'delivered_at' => now()->subDays(8),
+            'returned_at' => now()->subMinute(),
+        ]);
+
+        Delivery::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'type' => 'delivery',
+            'scheduled_at' => now()->subDays(8),
+            'completed_at' => now()->subDays(8),
+            'status' => 'completed',
+        ]);
+
+        $this->from(route('rentals.show', $rental))
+            ->put(route('rentals.return', $rental))
+            ->assertRedirect('/rentals');
+
+        $this->assertSame(Asset::STATUS_AWAITING_VERIFICATION, $asset->refresh()->asset_status);
+
+        $this->get(route('assets.pending-verification'))
+            ->assertOk()
+            ->assertSeeText('RETURN-QUEUE-001');
+    }
+
+    public function test_return_verification_queue_reconciles_completed_pickup_assets_stuck_as_rented(): void
+    {
+        $organization = TestData::organization();
+        $this->actingAs(TestData::user($organization));
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Queue Repair Customer',
+            'phone' => '8888888822',
+        ]);
+
+        $warehouse = Warehouse::create([
+            'organization_id' => $organization->id,
+            'name' => 'Queue Repair Warehouse',
+            'code' => 'QRW',
+            'is_active' => true,
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'CPAP Queue Repair',
+            'product_type' => Product::TYPE_RENTABLE,
+            'stock_mode' => Product::STOCK_MODE_TRACKED_RENTAL,
+            'price_per_day' => 900,
+            'sale_price' => 0,
+            'rental_price' => 900,
+            'available_quantity' => 0,
+            'total_quantity' => 0,
+        ]);
+
+        $asset = Asset::create([
+            'organization_id' => $organization->id,
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'asset_name' => 'Stuck Returned Asset',
+            'serial_number' => 'RETURN-STUCK-001',
+            'asset_stage' => Asset::STAGE_RENTAL_STOCK,
+            'condition_status' => 'good',
+            'asset_status' => Asset::STATUS_RENTED,
+        ]);
+
+        $rental = Rental::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $customer->id,
+            'customer_name' => $customer->name,
+            'phone' => $customer->phone,
+            'product_id' => $product->id,
+            'dispatch_warehouse_id' => $warehouse->id,
+            'quantity' => 1,
+            'start_date' => now()->subDays(8)->toDateString(),
+            'end_date' => now()->subDays(1)->toDateString(),
+            'rental_amount' => 900,
+            'status' => 'returned',
+            'returned_at' => now()->subMinute(),
+        ]);
+
+        RentalItem::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'product_id' => $product->id,
+            'asset_ids' => [$asset->id],
+            'quantity' => 1,
+            'delivered_quantity' => 1,
+            'returned_quantity' => 1,
+            'unit_rental_amount' => 900,
+            'line_total' => 900,
+        ]);
+
+        Delivery::create([
+            'organization_id' => $organization->id,
+            'rental_id' => $rental->id,
+            'type' => 'pickup',
+            'scheduled_at' => now()->subMinute(),
+            'completed_at' => now()->subMinute(),
+            'status' => 'completed',
+        ]);
+
+        $this->get(route('assets.pending-verification'))
+            ->assertOk()
+            ->assertSeeText('RETURN-STUCK-001');
+
+        $this->assertSame(Asset::STATUS_AWAITING_VERIFICATION, $asset->refresh()->asset_status);
     }
 
     private function startCapturePayload(): array

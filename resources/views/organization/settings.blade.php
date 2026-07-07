@@ -1,536 +1,138 @@
+
 @php
-    $indianStates = [
-        'Andhra Pradesh',
-        'Arunachal Pradesh',
-        'Assam',
-        'Bihar',
-        'Chhattisgarh',
-        'Goa',
-        'Gujarat',
-        'Haryana',
-        'Himachal Pradesh',
-        'Jharkhand',
-        'Karnataka',
-        'Kerala',
-        'Madhya Pradesh',
-        'Maharashtra',
-        'Manipur',
-        'Meghalaya',
-        'Mizoram',
-        'Nagaland',
-        'Odisha',
-        'Punjab',
-        'Rajasthan',
-        'Sikkim',
-        'Tamil Nadu',
-        'Telangana',
-        'Tripura',
-        'Uttar Pradesh',
-        'Uttarakhand',
-        'West Bengal',
-        'Andaman and Nicobar Islands',
-        'Chandigarh',
-        'Dadra and Nagar Haveli and Daman and Diu',
-        'Delhi',
-        'Jammu and Kashmir',
-        'Ladakh',
-        'Lakshadweep',
-        'Puducherry',
+    $indianStates = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Andaman and Nicobar Islands','Chandigarh','Dadra and Nagar Haveli and Daman and Diu','Delhi','Jammu and Kashmir','Ladakh','Lakshadweep','Puducherry'];
+    $completionItems = [
+        ['label' => 'Company Profile', 'complete' => filled($organization->name) && filled($organization->gst_number)],
+        ['label' => 'Banking & UPI', 'complete' => filled($organization->bank_account_number) || filled($organization->upi_id)],
+        ['label' => 'Invoice Settings', 'complete' => filled($organization->default_terms)],
+        ['label' => 'Branding Assets', 'complete' => filled($organization->logo) || filled($organization->digital_signature) || filled($organization->payment_qr_code)],
+        ['label' => 'Contact Details', 'complete' => filled($organization->phone) || filled($organization->email)],
+        ['label' => 'Address', 'complete' => filled($organization->address) || filled($organization->city)],
     ];
+    $completionDone = collect($completionItems)->where('complete', true)->count();
+    $completionPercent = count($completionItems) ? (int) round(($completionDone / count($completionItems)) * 100) : 0;
 @endphp
-
 @extends('layouts.app')
-
 @section('content')
-<div style="max-width:1180px; margin:0 auto;">
-    <style>
-        .org-settings-shell {
-            display: grid;
-            gap: 22px;
-        }
-
-        .org-settings-hero {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 20px;
-            padding: 30px;
-            border-radius: 28px;
-            border: 1px solid #dbe7f3;
-            background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%);
-            box-shadow: 0 18px 40px rgba(15, 23, 42, 0.06);
-        }
-
-        .org-settings-hero h1 {
-            margin: 0 0 8px;
-            font-size: 34px;
-            line-height: 1.05;
-            color: #0f172a;
-        }
-
-        .org-settings-hero p {
-            margin: 0;
-            color: #64748b;
-            font-size: 15px;
-            line-height: 1.7;
-            max-width: 680px;
-        }
-
-        .org-settings-badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 8px 12px;
-            border-radius: 999px;
-            background: #ecfeff;
-            color: #0f766e;
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 0.14em;
-            text-transform: uppercase;
-            white-space: nowrap;
-        }
-
-        .org-alert-success,
-        .org-alert-error {
-            padding: 14px 16px;
-            border-radius: 18px;
-        }
-
-        .org-alert-success {
-            background: #dcfce7;
-            color: #166534;
-            border: 1px solid #bbf7d0;
-        }
-
-        .org-alert-error {
-            background: #fee2e2;
-            color: #991b1b;
-            border: 1px solid #fecaca;
-        }
-
-        .org-alert-error ul {
-            margin: 0;
-            padding-left: 18px;
-        }
-
-        .org-panel-grid {
-            display: grid;
-            gap: 22px;
-        }
-
-        .org-panel {
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-radius: 24px;
-            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.04);
-            overflow: hidden;
-        }
-
-        .org-panel-header {
-            padding: 22px 24px 0;
-        }
-
-        .org-panel-title {
-            margin: 0;
-            font-size: 20px;
-            color: #0f172a;
-        }
-
-        .org-panel-subtitle {
-            margin: 6px 0 0;
-            color: #64748b;
-            font-size: 14px;
-        }
-
-        .org-panel-body {
-            padding: 24px;
-        }
-
-        .org-grid-2,
-        .org-grid-3 {
-            display: grid;
-            gap: 16px;
-        }
-
-        .org-grid-2 {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-
-        .org-grid-3 {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-        }
-
-        .org-label {
-            display: block;
-            margin-bottom: 8px;
-            color: #475569;
-            font-size: 13px;
-            font-weight: 600;
-        }
-
-        .org-input,
-        .org-textarea {
-            width: 100%;
-            padding: 11px 12px;
-            border: 1px solid #cbd5e1;
-            border-radius: 12px;
-            background: #ffffff;
-            color: #0f172a;
-            font-size: 14px;
-            outline: none;
-        }
-
-        .org-textarea {
-            min-height: 140px;
-            resize: vertical;
-        }
-
-        .org-input:focus,
-        .org-textarea:focus {
-            border-color: #0f766e;
-            box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
-        }
-
-        .org-file-card {
-            padding: 18px;
-            border: 1px solid #e2e8f0;
-            border-radius: 20px;
-            background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
-        }
-
-        .org-file-preview {
-            margin-top: 14px;
-            padding: 12px;
-            border: 1px dashed #cbd5e1;
-            border-radius: 16px;
-            background: #f8fafc;
-        }
-
-        .org-file-preview img {
-            max-width: 220px;
-            max-height: 160px;
-            display: block;
-            object-fit: contain;
-        }
-
-        .org-actions {
-            display: flex;
-            justify-content: flex-end;
-        }
-
-        .org-save-button {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 13px 20px;
-            border: 1px solid #0f172a;
-            border-radius: 12px;
-            background: #0f172a;
-            color: #ffffff;
-            font-weight: 600;
-            cursor: pointer;
-            box-shadow: 0 14px 30px rgba(15, 23, 42, 0.16);
-        }
-
-        @media (max-width: 900px) {
-            .org-settings-hero,
-            .org-grid-2,
-            .org-grid-3 {
-                grid-template-columns: 1fr;
-                display: grid;
-            }
-        }
-
-        @media (max-width: 640px) {
-            .org-settings-hero,
-            .org-panel-body {
-                padding: 18px;
-            }
-
-            .org-panel-header {
-                padding: 18px 18px 0;
-            }
-
-            .org-panel,
-            .org-file-card {
-                border-radius: 18px;
-            }
-
-            .org-actions {
-                justify-content: stretch;
-            }
-
-            .org-save-button {
-                width: 100%;
-            }
-        }
-    </style>
-
-    <div class="org-settings-shell">
-        <div class="org-settings-hero">
-            <div>
-                <h1>Company Settings</h1>
-                <p>Manage Prime Healers invoice, payment, and branding defaults from the same internal admin control center used for users, roles, cities, warehouses, and vendors.</p>
-            </div>
-            <div class="org-settings-badge">Super Admin</div>
-        </div>
-
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px;">
-            <a href="{{ route('users.index') }}" style="display:flex; flex-direction:column; gap:4px; padding:16px; border-radius:18px; border:1px solid #dbe7f3; background:#ffffff; text-decoration:none;">
-                <span style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">Users</span>
-                <span style="font-size:15px; font-weight:700; color:#0f172a;">Manage Accounts</span>
-            </a>
-            <a href="{{ route('roles.index') }}" style="display:flex; flex-direction:column; gap:4px; padding:16px; border-radius:18px; border:1px solid #dbe7f3; background:#ffffff; text-decoration:none;">
-                <span style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">Roles</span>
-                <span style="font-size:15px; font-weight:700; color:#0f172a;">Permission Matrix</span>
-            </a>
-            <a href="{{ route('cities.index') }}" style="display:flex; flex-direction:column; gap:4px; padding:16px; border-radius:18px; border:1px solid #dbe7f3; background:#ffffff; text-decoration:none;">
-                <span style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">Cities</span>
-                <span style="font-size:15px; font-weight:700; color:#0f172a;">Reusable Master</span>
-            </a>
-            <a href="{{ route('warehouses.index') }}" style="display:flex; flex-direction:column; gap:4px; padding:16px; border-radius:18px; border:1px solid #dbe7f3; background:#ffffff; text-decoration:none;">
-                <span style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">Warehouses</span>
-                <span style="font-size:15px; font-weight:700; color:#0f172a;">Location Control</span>
-            </a>
-            <a href="{{ route('vendors.index') }}" style="display:flex; flex-direction:column; gap:4px; padding:16px; border-radius:18px; border:1px solid #dbe7f3; background:#ffffff; text-decoration:none;">
-                <span style="font-size:12px; color:#64748b; text-transform:uppercase; font-weight:700;">Vendors</span>
-                <span style="font-size:15px; font-weight:700; color:#0f172a;">Third Parties</span>
-            </a>
-            <div style="display:flex; flex-direction:column; gap:4px; padding:16px; border-radius:18px; border:1px solid #cce7df; background:#ecfeff;">
-                <span style="font-size:12px; color:#0f766e; text-transform:uppercase; font-weight:700;">Settings</span>
-                <span style="font-size:15px; font-weight:700; color:#0f172a;">Current Page</span>
-            </div>
-        </div>
-
-        @if(session('success'))
-            <div class="org-alert-success">{{ session('success') }}</div>
-        @endif
-
-        @if($errors->any())
-            <div class="org-alert-error">
-                <ul>
-                    @foreach($errors->all() as $error)
-                        <li>{{ $error }}</li>
-                    @endforeach
-                </ul>
-            </div>
-        @endif
-
-        <form method="POST" action="{{ route('organization.settings.update') }}" enctype="multipart/form-data">
-            @csrf
-            @method('PUT')
-
-            <div class="org-panel-grid">
-                <div class="org-panel">
-                    <div class="org-panel-header" id="company">
-                        <h2 class="org-panel-title">Company Details</h2>
-                        <p class="org-panel-subtitle">These values appear in invoice headers and customer-facing communication.</p>
-                    </div>
-
-                    <div class="org-panel-body">
-                        <div class="org-grid-2">
-                            <div>
-                                <label class="org-label">Company Name</label>
-                                <input type="text" name="name" value="{{ old('name', $organization->name) }}" class="org-input">
-                            </div>
-
-                            <div>
-                                <label class="org-label">GST Number</label>
-                                <input type="text" name="gst_number" value="{{ old('gst_number', $organization->gst_number) }}" class="org-input">
-                            </div>
-
-                            <div>
-                                <label class="org-label">Phone</label>
-                                <div style="display:flex; align-items:center; border:1px solid #d4dce8; border-radius:14px; overflow:visible; background:#fff;">
-                                    @php($organizationPhoneParts = \App\Support\PhoneNumber::split(old('phone', $organization->phone)))
-                                    @include('partials.country-code-picker', [
-                                        'name' => 'phone_country_code',
-                                        'pickerId' => 'phone_country_code',
-                                        'value' => old('phone_country_code', $organizationPhoneParts['code']),
-                                        'options' => \App\Support\PhoneNumber::countryCodeOptions(),
-                                        'dividerColor' => '#d4dce8',
-                                        'width' => '92px',
-                                    ])
-                                    <input type="text" name="phone" value="{{ $organizationPhoneParts['local'] }}" class="org-input" inputmode="numeric" maxlength="15" pattern="[0-9]{6,15}" data-phone-local style="border:none; box-shadow:none;">
-                                </div>
-                            </div>
-
-                            <div>
-                                <label class="org-label">Email</label>
-                                <input type="email" name="email" value="{{ old('email', $organization->email) }}" class="org-input">
-                            </div>
-                        </div>
-
-                        <div style="margin-top:16px;">
-                            <label class="org-label">Address</label>
-                            <textarea name="address" class="org-textarea" style="min-height:110px;">{{ old('address', $organization->address) }}</textarea>
-                        </div>
-
-                        <div class="org-grid-3" style="margin-top:16px;">
-                            <div>
-                                <label class="org-label">City</label>
-                                <input type="text" name="city" value="{{ old('city', $organization->city) }}" class="org-input">
-                            </div>
-
-                            <div>
-                                <label class="org-label">State</label>
-                                <input type="text" name="state" list="org_indian_states" value="{{ old('state', $organization->state) }}" class="org-input">
-                                <datalist id="org_indian_states">
-                                    @foreach($indianStates as $stateOption)
-                                        <option value="{{ $stateOption }}"></option>
-                                    @endforeach
-                                </datalist>
-                            </div>
-
-                            <div>
-                                <label class="org-label">State Code</label>
-                                <input type="text" name="state_code" value="{{ old('state_code', $organization->state_code) }}" class="org-input">
-                            </div>
-
-                            <div>
-                                <label class="org-label">Pincode</label>
-                                <input type="text" name="pincode" value="{{ old('pincode', $organization->pincode) }}" class="org-input">
-                            </div>
-
-                            <div>
-                                <label class="org-label">Country</label>
-                                <input type="text" name="country" value="{{ old('country', $organization->country) }}" class="org-input">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="org-panel">
-                    <div class="org-panel-header">
-                        <h2 class="org-panel-title">Banking & UPI</h2>
-                        <p class="org-panel-subtitle">These values can be printed on invoices for easier customer payments.</p>
-                    </div>
-
-                    <div class="org-panel-body">
-                        <div class="org-grid-2">
-                            <div>
-                                <label class="org-label">Bank Account Name</label>
-                                <input type="text" name="bank_account_name" value="{{ old('bank_account_name', $organization->bank_account_name) }}" class="org-input">
-                            </div>
-
-                            <div>
-                                <label class="org-label">Bank Account Number</label>
-                                <input type="text" name="bank_account_number" value="{{ old('bank_account_number', $organization->bank_account_number) }}" class="org-input">
-                            </div>
-
-                            <div>
-                                <label class="org-label">IFSC</label>
-                                <input type="text" name="bank_ifsc" value="{{ old('bank_ifsc', $organization->bank_ifsc) }}" class="org-input">
-                            </div>
-
-                            <div>
-                                <label class="org-label">Bank Name</label>
-                                <input type="text" name="bank_name" value="{{ old('bank_name', $organization->bank_name) }}" class="org-input">
-                            </div>
-
-                            <div>
-                                <label class="org-label">Branch</label>
-                                <input type="text" name="bank_branch" value="{{ old('bank_branch', $organization->bank_branch) }}" class="org-input">
-                            </div>
-
-                            <div>
-                                <label class="org-label">UPI ID</label>
-                                <input type="text" name="upi_id" value="{{ old('upi_id', $organization->upi_id) }}" class="org-input">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="org-panel">
-                    <div class="org-panel-header">
-                        <h2 class="org-panel-title">Invoice Assets & Defaults</h2>
-                        <p class="org-panel-subtitle">Upload payment QR and signature once, and reuse them across printed invoices.</p>
-                    </div>
-
-                    <div class="org-panel-body">
-                        <div class="org-grid-3">
-                            <div class="org-file-card">
-                                <label class="org-label">Organization Logo</label>
-                                <input type="file" name="logo" accept="image/*" class="org-input">
-
-                                @if($organization->logo)
-                                    <div class="org-file-preview">
-                                        <img src="{{ asset('storage/' . $organization->logo) }}" alt="Organization Logo">
-                                    </div>
-                                @endif
-                            </div>
-
-                            <div class="org-file-card">
-                                <label class="org-label">Payment QR Code</label>
-                                <input type="file" name="payment_qr_code" accept="image/*" class="org-input">
-
-                                @if($organization->payment_qr_code)
-                                    <div class="org-file-preview">
-                                        <img src="{{ asset('storage/' . $organization->payment_qr_code) }}" alt="Payment QR Code">
-                                    </div>
-                                @endif
-                            </div>
-
-                            <div class="org-file-card">
-                                <label class="org-label">Digital Signature</label>
-                                <input type="file" name="digital_signature" accept="image/*" class="org-input">
-
-                                @if($organization->digital_signature)
-                                    <div class="org-file-preview">
-                                        <img src="{{ asset('storage/' . $organization->digital_signature) }}" alt="Digital Signature">
-                                    </div>
-                                @endif
-                            </div>
-                        </div>
-
-                        <div style="margin-top:18px;">
-                            <label class="org-label">Default Invoice Terms</label>
-                            <textarea name="default_terms" class="org-textarea">{{ old('default_terms', $organization->default_terms) }}</textarea>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="org-panel" id="preferences">
-                    <div class="org-panel-header">
-                        <h2 class="org-panel-title">Preferences</h2>
-                        <p class="org-panel-subtitle">This section is ready for the next implementation pass, so the Preferences link lands on something useful instead of a dead end.</p>
-                    </div>
-
-                    <div class="org-panel-body">
-                        <div class="org-grid-2">
-                            @foreach ([
-                                ['title' => 'Company Preferences', 'copy' => 'Locale, numbering style, and organization-wide display defaults.'],
-                                ['title' => 'Rental Settings', 'copy' => 'Default renewal timing, return reminders, and operational workflow preferences.'],
-                                ['title' => 'Invoice Settings', 'copy' => 'Draft numbering behavior, due-date defaults, and print presentation preferences.'],
-                                ['title' => 'Notification Settings', 'copy' => 'Reminder channels and team follow-up preferences for operations and finance.'],
-                                ['title' => 'Branding Settings', 'copy' => 'Shared logo, footer, signature, and customer-facing presentation defaults.'],
-                            ] as $preferenceCard)
-                                <div class="org-file-card" style="display:grid; gap:10px;">
-                                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
-                                        <div>
-                                            <div class="org-label" style="margin-bottom:4px;">{{ $preferenceCard['title'] }}</div>
-                                            <div style="color:#64748b; font-size:13px; line-height:1.6;">{{ $preferenceCard['copy'] }}</div>
-                                        </div>
-                                        <span class="rn-badge rn-badge-draft">Coming Soon</span>
-                                    </div>
-                                </div>
-                            @endforeach
-                        </div>
-                    </div>
-                </div>
-
-                <div class="org-actions">
-                    <button type="submit" class="org-save-button">Save Company Settings</button>
-                </div>
-            </div>
-        </form>
-    </div>
+<div class="company-settings-page">
+<style>
+.company-settings-page{--blue:#3150ff;--indigo:#4f46e5;--navy:#111827;--muted:#64748b;--line:#dbe4f0;max-width:1480px;margin:0 auto;padding-bottom:88px}.settings-topbar{position:sticky;top:0;z-index:20;display:flex;justify-content:space-between;gap:16px;margin-bottom:18px;padding:16px 18px;border:1px solid var(--line);border-radius:22px;background:rgba(255,255,255,.94);box-shadow:0 16px 40px rgba(15,23,42,.06);backdrop-filter:blur(14px)}.settings-topbar h1{margin:0;color:#0f172a;font-size:28px;line-height:1.1}.settings-topbar p{margin:6px 0 0;color:var(--muted);font-size:14px}.settings-top-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.settings-status{display:inline-flex;align-items:center;gap:7px;min-height:38px;padding:0 12px;border:1px solid #bbf7d0;border-radius:12px;background:#ecfdf5;color:#15803d;font-size:12px;font-weight:800}.settings-status.is-dirty{border-color:#fed7aa;background:#fff7ed;color:#c2410c}.settings-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:0 14px;border:1px solid #cbd8ea;border-radius:12px;background:#fff;color:#334155;font-size:13px;font-weight:800;text-decoration:none;cursor:pointer}.settings-btn:hover{background:#f8fafc}.settings-btn-primary{border-color:var(--indigo);background:linear-gradient(135deg,var(--blue),var(--indigo));color:#fff;box-shadow:0 14px 28px rgba(79,70,229,.22)}.settings-frame{display:grid;grid-template-columns:214px minmax(0,1fr) 296px;gap:18px;align-items:start}.settings-sidebar,.settings-card,.settings-section-head,.settings-rail-card{border:1px solid var(--line);border-radius:20px;background:#fff;box-shadow:0 12px 30px rgba(15,23,42,.04)}.settings-sidebar{position:sticky;top:96px;padding:14px}.settings-nav-title{padding:8px 10px 10px;color:#0f172a;font-size:13px;font-weight:900}.settings-nav-group{display:grid;gap:5px;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid #edf2f7}.settings-nav-group:last-child{padding-bottom:0;margin-bottom:0;border-bottom:0}.settings-nav-item{display:flex;align-items:center;gap:10px;width:100%;min-height:38px;padding:0 10px;border:0;border-radius:12px;background:transparent;color:#475569;font-size:13px;font-weight:750;text-align:left;text-decoration:none;cursor:pointer}.settings-nav-item:hover,.settings-nav-item.is-active{background:#eef2ff;color:#3730a3}.settings-icon{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;flex:0 0 28px;border-radius:10px;background:#eef2ff;color:var(--indigo);font-size:13px;font-weight:900}.settings-main{min-width:0}.settings-section{display:none}.settings-section.is-active{display:grid;gap:14px}.settings-section-head{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px}.settings-section-title{display:flex;align-items:center;gap:12px}.settings-section-title h2{margin:0;color:#0f172a;font-size:21px}.settings-section-title p{margin:4px 0 0;color:var(--muted);font-size:13px}.settings-tabbar{display:flex;gap:6px;padding:6px;border:1px solid var(--line);border-radius:14px;background:#f8fafc;overflow-x:auto}.settings-tab{min-height:34px;padding:0 13px;border:0;border-radius:10px;background:transparent;color:#475569;font-size:12px;font-weight:850;white-space:nowrap;cursor:pointer}.settings-tab.is-active{background:#eef2ff;color:#4338ca}.settings-card{padding:16px}.settings-card-head{display:flex;justify-content:space-between;gap:12px;margin-bottom:14px}.settings-card h3,.settings-rail-card h3{margin:0;color:#0f172a;font-size:17px}.settings-card small,.settings-help{color:var(--muted);font-size:12px;line-height:1.45}
+.settings-grid-2,.settings-grid-3{display:grid;gap:12px}.settings-grid-2{grid-template-columns:repeat(2,minmax(0,1fr))}.settings-grid-3,.settings-upload-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.settings-field label{display:block;margin:0 0 6px;color:#475569;font-size:11px;font-weight:850;letter-spacing:.04em;text-transform:uppercase}.settings-input,.settings-textarea{width:100%;border:1px solid #cbd8ea;border-radius:12px;background:#fff;color:#111827;font-size:14px;outline:none}.settings-input{min-height:42px;padding:9px 11px}.settings-textarea{min-height:100px;padding:11px;resize:vertical}.settings-input:focus,.settings-textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(49,80,255,.12)}.settings-phone-wrap{display:flex;align-items:center;min-height:42px;border:1px solid #cbd8ea;border-radius:12px;background:#fff;overflow:visible}.settings-phone-wrap .settings-input{border:0;min-height:40px;box-shadow:none}.settings-panel{display:none}.settings-panel.is-active{display:block}.settings-upload-grid{display:grid;gap:12px}.settings-upload-card{display:grid;gap:10px;padding:13px;border:1px solid #dbe4f0;border-radius:16px;background:#fbfdff}.settings-preview-box{display:flex;align-items:center;justify-content:center;min-height:112px;border:1px dashed #cbd8ea;border-radius:14px;background:#f8fafc;overflow:hidden}.settings-preview-box img{max-width:100%;max-height:108px;object-fit:contain}.settings-placeholder{display:inline-flex;align-items:center;justify-content:center;width:58px;height:58px;border-radius:16px;background:#eef2ff;color:#4338ca;font-size:18px;font-weight:900}.settings-muted-card{display:grid;gap:8px;padding:16px;border:1px dashed #cbd8ea;border-radius:16px;background:#f8fafc;color:var(--muted);font-size:13px}.settings-rail{position:sticky;top:96px;display:grid;gap:14px}.settings-rail-card{padding:16px}.settings-progress-wrap{display:grid;grid-template-columns:96px 1fr;gap:13px;align-items:center}.settings-progress-ring{width:88px;height:88px;border-radius:999px;display:grid;place-items:center;background:conic-gradient(#22c55e calc(var(--progress) * 1%),#e2e8f0 0)}.settings-progress-ring span{display:grid;place-items:center;width:66px;height:66px;border-radius:999px;background:#fff;color:#0f172a;font-size:20px;font-weight:900}.settings-checklist{display:grid;gap:8px}.settings-check-row{display:flex;align-items:center;gap:8px;color:#475569;font-size:12px;font-weight:750}.settings-check-dot{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:999px;background:#dcfce7;color:#15803d;font-size:11px;font-weight:900}.settings-check-dot.is-missing{background:#ffedd5;color:#c2410c}.invoice-preview{display:grid;gap:12px;padding:14px;border:1px solid #dbe4f0;border-radius:18px;background:linear-gradient(180deg,#fff,#f8fafc)}.invoice-preview-top,.invoice-preview-row{display:flex;justify-content:space-between;gap:12px}.invoice-preview-logo{display:flex;align-items:center;gap:10px;min-width:0}.invoice-preview-logo img{width:46px;height:46px;object-fit:contain;border:1px solid #e2e8f0;border-radius:12px;background:#fff}.invoice-preview-title{max-width:138px;color:#0f172a;font-size:15px;font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.invoice-preview-lines{display:grid;gap:8px;padding:10px 0;border-top:1px solid #edf2f7;border-bottom:1px solid #edf2f7;font-size:12px;color:#475569}.settings-quick-link{display:flex;justify-content:space-between;align-items:center;min-height:40px;padding:0 12px;border:1px solid #dbe4f0;border-radius:12px;color:#334155;font-size:13px;font-weight:800;text-decoration:none}.settings-mobile-selector,.settings-mobile-save{display:none}.org-alert-success,.org-alert-error{margin-bottom:14px;padding:13px 15px;border-radius:16px;font-size:13px;font-weight:750}.org-alert-success{border:1px solid #bbf7d0;background:#ecfdf5;color:#166534}.org-alert-error{border:1px solid #fecaca;background:#fef2f2;color:#991b1b}.org-alert-error ul{margin:0;padding-left:18px}@media(max-width:1180px){.settings-frame{grid-template-columns:190px minmax(0,1fr)}.settings-rail{grid-column:2;position:static;grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:860px){.settings-topbar{position:static;align-items:stretch;flex-direction:column;padding:14px}.settings-frame{display:block}.settings-sidebar{display:none}.settings-mobile-selector{display:block;margin-bottom:12px}.settings-grid-2,.settings-grid-3,.settings-upload-grid,.settings-rail{grid-template-columns:1fr}.settings-top-actions .settings-status,.settings-top-actions .settings-btn-primary{display:none}.settings-mobile-save{position:sticky;bottom:12px;z-index:30;display:flex;gap:10px;margin-top:18px;padding:10px;border:1px solid #dbe4f0;border-radius:18px;background:rgba(255,255,255,.96);box-shadow:0 16px 40px rgba(15,23,42,.16)}.settings-mobile-save .settings-btn{flex:1}}@media(max-width:560px){.settings-topbar h1{font-size:23px}.settings-top-actions{display:grid;grid-template-columns:1fr 1fr}.settings-section-head,.settings-card,.settings-rail-card{padding:14px;border-radius:16px}.settings-section-title h2{font-size:18px}.settings-progress-wrap{grid-template-columns:84px 1fr}.settings-progress-ring{width:76px;height:76px}.settings-progress-ring span{width:58px;height:58px;font-size:17px}}
+.company-settings-page,.company-settings-page *{box-sizing:border-box}.company-settings-page{max-width:min(1480px,100%);overflow-x:hidden}.settings-frame{grid-template-columns:minmax(176px,214px) minmax(0,1fr) minmax(260px,296px)}.settings-main,.settings-rail,.settings-card,.settings-rail-card,.settings-upload-card{min-width:0}.settings-upload-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.settings-upload-card{overflow:hidden}.settings-file-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}.settings-file-control{display:grid;gap:7px}.settings-file-button{display:flex;align-items:center;justify-content:center;min-height:38px;padding:0 12px;border:1px solid #b8c8dd;border-radius:12px;background:#fff;color:#243244;font-size:13px;font-weight:850;cursor:pointer}.settings-file-button:hover{background:#eef2ff;border-color:#9fb2ff;color:#3730a3}.settings-file-status{display:block;min-height:16px;color:#64748b;font-size:11px;font-weight:750;line-height:1.35;word-break:break-word}.settings-file-status.is-ready{color:#15803d}.settings-file-status.is-error{color:#dc2626}.settings-preview-box{aspect-ratio:1.12/1;min-height:96px}.settings-preview-box img{width:100%;height:100%;object-fit:contain}.settings-rail-card{overflow:hidden}.invoice-preview{max-width:100%;overflow:hidden}.invoice-preview-row strong{min-width:0;text-align:right;word-break:break-word}.settings-preview-highlight{outline:3px solid rgba(49,80,255,.22);box-shadow:0 0 0 6px rgba(49,80,255,.08)}@media(max-width:1320px){.settings-frame{grid-template-columns:190px minmax(0,1fr)}.settings-rail{grid-column:2;position:static;grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:980px){.settings-upload-grid{grid-template-columns:1fr}}@media(max-width:860px){.company-settings-page{padding-bottom:156px}.settings-top-actions{grid-template-columns:1fr}.settings-top-actions .settings-btn{width:100%}.settings-mobile-save{position:fixed;left:12px;right:12px;bottom:78px;z-index:60;margin:0;display:flex}.settings-rail{display:grid;grid-template-columns:1fr}.settings-rail-card{max-width:100%}.settings-upload-grid{grid-template-columns:1fr}}@media(max-width:560px){.settings-file-button{min-height:40px}.settings-preview-box{min-height:112px}}
+</style>
+@if(session('success'))<div class="org-alert-success">{{ session('success') }}</div>@endif
+@if($errors->any())<div class="org-alert-error"><strong>Please review the highlighted settings.</strong><ul>@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></div>@endif
+<form id="companySettingsForm" method="POST" action="{{ route('organization.settings.update') }}" enctype="multipart/form-data">
+@csrf @method('PUT')
+<div class="settings-topbar"><div><h1>Company Settings</h1><p>Manage organization profile, branding, banking, and operational defaults.</p></div><div class="settings-top-actions"><span class="settings-status" data-save-status><span>OK</span><span data-save-status-text>All changes saved</span></span><button type="button" class="settings-btn" data-preview-invoice>Preview Invoice</button><button type="submit" class="settings-btn settings-btn-primary">Save Changes</button></div></div>
+<select class="settings-input settings-mobile-selector" data-settings-mobile-select aria-label="Settings section"><option value="general">General</option><option value="branding">Branding</option><option value="banking">Banking & UPI</option><option value="invoice">Invoice Settings</option><option value="rental">Rental Defaults</option><option value="notifications">Notification Settings</option></select>
+<div class="settings-frame"><aside class="settings-sidebar" aria-label="Company settings navigation"><div class="settings-nav-title">Company Settings</div><div class="settings-nav-group"><button type="button" class="settings-nav-item is-active" data-org-section-target="general"><span class="settings-icon">G</span>General</button><button type="button" class="settings-nav-item" data-org-section-target="branding"><span class="settings-icon">B</span>Branding</button><button type="button" class="settings-nav-item" data-org-section-target="banking"><span class="settings-icon">U</span>Banking & UPI</button><button type="button" class="settings-nav-item" data-org-section-target="invoice"><span class="settings-icon">I</span>Invoice Settings</button><button type="button" class="settings-nav-item" data-org-section-target="rental"><span class="settings-icon">R</span>Rental Defaults</button><button type="button" class="settings-nav-item" data-org-section-target="notifications"><span class="settings-icon">N</span>Notification Settings</button></div><div class="settings-nav-group"><a class="settings-nav-item" href="{{ route('users.index') }}"><span class="settings-icon">U</span>Users</a><a class="settings-nav-item" href="{{ route('roles.index') }}"><span class="settings-icon">P</span>Roles</a><a class="settings-nav-item" href="{{ route('cities.index') }}"><span class="settings-icon">C</span>Cities</a><a class="settings-nav-item" href="{{ route('warehouses.index') }}"><span class="settings-icon">W</span>Warehouses</a><a class="settings-nav-item" href="{{ route('vendors.index') }}"><span class="settings-icon">V</span>Vendors</a></div></aside><main class="settings-main">
+<section class="settings-section is-active" data-org-section="general"><div class="settings-section-head"><div class="settings-section-title"><span class="settings-icon">G</span><div><h2>General</h2><p>Update company details and primary contact information.</p></div></div></div><div class="settings-tabbar" role="tablist" aria-label="General settings tabs"><button type="button" class="settings-tab is-active" data-settings-tab="profile">Company Profile</button><button type="button" class="settings-tab" data-settings-tab="address">Address</button><button type="button" class="settings-tab" data-settings-tab="contact">Contact</button><button type="button" class="settings-tab" data-settings-tab="business">Business Info</button></div>
+<div class="settings-card settings-panel is-active" data-settings-panel="profile"><div class="settings-card-head"><div><h3>Identity</h3><small>Shown on invoices and official documents.</small></div></div><div class="settings-grid-2"><div class="settings-field"><label for="org_name">Company Name</label><input id="org_name" type="text" name="name" value="{{ old('name', $organization->name) }}" class="settings-input" required></div><div class="settings-field"><label for="org_gst_number">GSTIN</label><input id="org_gst_number" type="text" name="gst_number" value="{{ old('gst_number', $organization->gst_number) }}" class="settings-input"></div><div class="settings-field"><label for="org_state_code">State Code</label><input id="org_state_code" type="text" name="state_code" value="{{ old('state_code', $organization->state_code) }}" class="settings-input"></div><div class="settings-muted-card"><strong>Business profile</strong><span>Legal entity, PAN, and registration fields are not part of the current saved settings yet.</span></div></div></div>
+<div class="settings-card settings-panel" data-settings-panel="address"><div class="settings-card-head"><div><h3>Address</h3><small>Primary business address for finance documents.</small></div></div><div class="settings-field"><label for="org_address">Address</label><textarea id="org_address" name="address" class="settings-textarea">{{ old('address', $organization->address) }}</textarea></div><div class="settings-grid-2" style="margin-top:12px;"><div class="settings-field"><label for="org_city">City</label><input id="org_city" type="text" name="city" value="{{ old('city', $organization->city) }}" class="settings-input"></div><div class="settings-field"><label for="org_state">State</label><input id="org_state" type="text" name="state" list="org_indian_states" value="{{ old('state', $organization->state) }}" class="settings-input"><datalist id="org_indian_states">@foreach($indianStates as $stateOption)<option value="{{ $stateOption }}"></option>@endforeach</datalist></div><div class="settings-field"><label for="org_pincode">PIN Code</label><input id="org_pincode" type="text" name="pincode" value="{{ old('pincode', $organization->pincode) }}" class="settings-input"></div><div class="settings-field"><label for="org_country">Country</label><input id="org_country" type="text" name="country" value="{{ old('country', $organization->country) }}" class="settings-input"></div></div></div>
+<div class="settings-card settings-panel" data-settings-panel="contact"><div class="settings-card-head"><div><h3>Contact</h3><small>Primary contact used on customer-facing documents.</small></div></div><div class="settings-grid-2"><div class="settings-field"><label for="org_phone">Primary Phone</label><div class="settings-phone-wrap">@php($organizationPhoneParts = \App\Support\PhoneNumber::split(old('phone', $organization->phone)))@include('partials.country-code-picker', ['name' => 'phone_country_code','pickerId' => 'phone_country_code','value' => old('phone_country_code', $organizationPhoneParts['code']),'options' => \App\Support\PhoneNumber::countryCodeOptions(),'dividerColor' => '#d4dce8','width' => '92px'])<input id="org_phone" type="text" name="phone" value="{{ $organizationPhoneParts['local'] }}" class="settings-input" inputmode="numeric" maxlength="15" pattern="[0-9]{6,15}" data-phone-local></div></div><div class="settings-field"><label for="org_email">Email</label><input id="org_email" type="email" name="email" value="{{ old('email', $organization->email) }}" class="settings-input"></div></div></div>
+<div class="settings-card settings-panel" data-settings-panel="business"><div class="settings-card-head"><div><h3>Business Info</h3><small>Current saved business defaults available in PHOS.</small></div></div><div class="settings-grid-3"><div class="settings-muted-card"><strong>GSTIN</strong><span>{{ $organization->gst_number ?: 'Not set' }}</span></div><div class="settings-muted-card"><strong>State Code</strong><span>{{ $organization->state_code ?: 'Not set' }}</span></div><div class="settings-muted-card"><strong>Country</strong><span>{{ $organization->country ?: 'Not set' }}</span></div></div></div></section>
+<section class="settings-section" data-org-section="branding"><div class="settings-section-head"><div class="settings-section-title"><span class="settings-icon">B</span><div><h2>Branding</h2><p>Manage logo, payment QR, and digital signature.</p></div></div></div><div class="settings-card"><div class="settings-upload-grid"><div class="settings-upload-card"><div class="settings-card-head" style="margin-bottom:0;"><h3>Logo</h3></div><div class="settings-preview-box">@if($organization->logo)<img src="{{ asset('storage/' . $organization->logo) }}" alt="Organization logo">@else<span class="settings-placeholder">L</span>@endif</div><div class="settings-file-control"><input id="org_logo_upload" type="file" name="logo" accept="image/png,image/jpeg,image/webp" class="settings-file-input" aria-label="Upload organization logo" data-settings-file data-preview-label="L"><label class="settings-file-button" for="org_logo_upload">Choose logo</label><span class="settings-file-status" data-file-status>No file selected</span></div><span class="settings-help">PNG, JPG, WEBP. Max 2 MB.</span></div><div class="settings-upload-card"><div class="settings-card-head" style="margin-bottom:0;"><h3>Payment QR</h3></div><div class="settings-preview-box">@if($organization->payment_qr_code)<img src="{{ asset('storage/' . $organization->payment_qr_code) }}" alt="Payment QR code">@else<span class="settings-placeholder">QR</span>@endif</div><div class="settings-file-control"><input id="org_qr_upload" type="file" name="payment_qr_code" accept="image/png,image/jpeg,image/webp" class="settings-file-input" aria-label="Upload payment QR code" data-settings-file data-preview-label="QR"><label class="settings-file-button" for="org_qr_upload">Choose QR</label><span class="settings-file-status" data-file-status>No file selected</span></div><span class="settings-help">Printed on invoices when available.</span></div><div class="settings-upload-card"><div class="settings-card-head" style="margin-bottom:0;"><h3>Signature</h3></div><div class="settings-preview-box">@if($organization->digital_signature)<img src="{{ asset('storage/' . $organization->digital_signature) }}" alt="Digital signature">@else<span class="settings-placeholder">S</span>@endif</div><div class="settings-file-control"><input id="org_signature_upload" type="file" name="digital_signature" accept="image/png,image/jpeg,image/webp" class="settings-file-input" aria-label="Upload digital signature" data-settings-file data-preview-label="S"><label class="settings-file-button" for="org_signature_upload">Choose signature</label><span class="settings-file-status" data-file-status>No file selected</span></div><span class="settings-help">Used for authorized signatory blocks.</span></div></div></div></section>
+<section class="settings-section" data-org-section="banking"><div class="settings-section-head"><div class="settings-section-title"><span class="settings-icon">U</span><div><h2>Banking & UPI</h2><p>Configure bank account and payment collection details.</p></div></div></div><div class="settings-card"><div class="settings-card-head"><h3>Bank Details</h3></div><div class="settings-grid-2"><div class="settings-field"><label for="org_bank_account_name">Account Holder</label><input id="org_bank_account_name" type="text" name="bank_account_name" value="{{ old('bank_account_name', $organization->bank_account_name) }}" class="settings-input"></div><div class="settings-field"><label for="org_bank_name">Bank Name</label><input id="org_bank_name" type="text" name="bank_name" value="{{ old('bank_name', $organization->bank_name) }}" class="settings-input"></div><div class="settings-field"><label for="org_bank_account_number">Account Number</label><input id="org_bank_account_number" type="text" name="bank_account_number" value="{{ old('bank_account_number', $organization->bank_account_number) }}" class="settings-input"></div><div class="settings-field"><label for="org_bank_ifsc">IFSC</label><input id="org_bank_ifsc" type="text" name="bank_ifsc" value="{{ old('bank_ifsc', $organization->bank_ifsc) }}" class="settings-input"></div><div class="settings-field"><label for="org_bank_branch">Branch</label><input id="org_bank_branch" type="text" name="bank_branch" value="{{ old('bank_branch', $organization->bank_branch) }}" class="settings-input"></div><div class="settings-field"><label for="org_upi_id">UPI ID</label><input id="org_upi_id" type="text" name="upi_id" value="{{ old('upi_id', $organization->upi_id) }}" class="settings-input"></div></div></div></section>
+<section class="settings-section" data-org-section="invoice"><div class="settings-section-head"><div class="settings-section-title"><span class="settings-icon">I</span><div><h2>Invoice Settings</h2><p>Manage customer-facing invoice notes and terms.</p></div></div></div><div class="settings-card"><div class="settings-card-head"><div><h3>Default Invoice Terms</h3><small>Shown on generated invoices unless overridden by the workflow.</small></div></div><div class="settings-field"><label for="org_default_terms">Terms and Notes</label><textarea id="org_default_terms" name="default_terms" class="settings-textarea">{{ old('default_terms', $organization->default_terms) }}</textarea></div></div></section>
+<section class="settings-section" data-org-section="rental"><div class="settings-section-head"><div class="settings-section-title"><span class="settings-icon">R</span><div><h2>Rental Defaults</h2><p>Rental defaults will appear here when saved settings are available.</p></div></div></div><div class="settings-muted-card"><strong>No rental default fields are configured yet.</strong><span>Existing rental workflows, deposits, renewals, and transport rules remain unchanged.</span></div></section>
+<section class="settings-section" data-org-section="notifications"><div class="settings-section-head"><div class="settings-section-title"><span class="settings-icon">N</span><div><h2>Notification Settings</h2><p>Notification defaults will appear here when saved settings are available.</p></div></div></div><div class="settings-muted-card"><strong>No notification preference fields are configured yet.</strong><span>Current reminders and communication workflows continue to use existing module logic.</span></div></section>
+<div class="settings-mobile-save"><button type="button" class="settings-btn" onclick="window.history.back()">Cancel</button><button type="submit" class="settings-btn settings-btn-primary">Save Changes</button></div></main>
+<aside class="settings-rail" aria-label="Settings summary"><div class="settings-rail-card"><h3>Setup Progress</h3><div class="settings-progress-wrap"><div class="settings-progress-ring" style="--progress: {{ $completionPercent }};"><span>{{ $completionPercent }}%</span></div><div class="settings-checklist">@foreach($completionItems as $item)<div class="settings-check-row"><span class="settings-check-dot {{ $item['complete'] ? '' : 'is-missing' }}">{{ $item['complete'] ? 'OK' : '!' }}</span><span>{{ $item['label'] }}</span></div>@endforeach</div></div></div>
+<div class="settings-rail-card" id="companyInvoicePreview"><h3>Invoice Preview</h3><div class="invoice-preview"><div class="invoice-preview-top"><div class="invoice-preview-logo">@if($organization->logo)<img src="{{ asset('storage/' . $organization->logo) }}" alt="Organization logo preview">@else<span class="settings-placeholder" style="width:46px;height:46px;border-radius:12px;">PH</span>@endif<div><div class="invoice-preview-title">{{ $organization->name ?: 'Prime Healers' }}</div><small>{{ $organization->email ?: 'Company email not set' }}</small></div></div><strong style="color:#4338ca;font-size:13px;">INVOICE</strong></div><div class="invoice-preview-lines"><div class="invoice-preview-row"><span>Bill To</span><strong>Customer Name</strong></div><div class="invoice-preview-row"><span>Total</span><strong>Rs. 8,100.00</strong></div><div class="invoice-preview-row"><span>Due Date</span><strong>10/07/2026</strong></div></div><div class="invoice-preview-top"><div>@if($organization->payment_qr_code)<img src="{{ asset('storage/' . $organization->payment_qr_code) }}" alt="Payment QR preview" style="width:54px;height:54px;object-fit:contain;">@else<span class="settings-placeholder" style="width:54px;height:54px;border-radius:10px;font-size:13px;">QR</span>@endif</div><div style="text-align:right;"><small>Authorized Signatory</small><br>@if($organization->digital_signature)<img src="{{ asset('storage/' . $organization->digital_signature) }}" alt="Signature preview" style="max-width:94px;max-height:42px;object-fit:contain;">@else<strong>Signature</strong>@endif</div></div></div><button type="button" class="settings-btn" style="width:100%;margin-top:12px;" data-org-section-target="branding">Update Preview</button></div>
+<div class="settings-rail-card"><h3>Quick Actions</h3><div class="settings-checklist"><a class="settings-quick-link" href="{{ route('users.index') }}"><span>Users</span><span>></span></a><a class="settings-quick-link" href="{{ route('cities.index') }}"><span>Cities</span><span>></span></a><a class="settings-quick-link" href="{{ route('warehouses.index') }}"><span>Warehouses</span><span>></span></a><a class="settings-quick-link" href="{{ route('vendors.index') }}"><span>Vendors</span><span>></span></a></div></div></aside></div></form>
 </div>
 <script>
-document.querySelectorAll('[data-phone-local]').forEach(function (input) {
-    input.addEventListener('input', function () {
-        input.value = input.value.replace(/\D+/g, '').slice(0, 15);
+(function () {
+    const form = document.getElementById('companySettingsForm');
+    const navButtons = Array.from(document.querySelectorAll('[data-org-section-target]'));
+    const sections = Array.from(document.querySelectorAll('[data-org-section]'));
+    const mobileSelect = document.querySelector('[data-settings-mobile-select]');
+    const tabs = Array.from(document.querySelectorAll('[data-settings-tab]'));
+    const panels = Array.from(document.querySelectorAll('[data-settings-panel]'));
+    const saveStatus = document.querySelector('[data-save-status]');
+    const saveStatusText = document.querySelector('[data-save-status-text]');
+
+    function showSection(sectionName) {
+        sections.forEach((section) => section.classList.toggle('is-active', section.dataset.orgSection === sectionName));
+        navButtons.forEach((button) => {
+            if (button.tagName === 'BUTTON') {
+                button.classList.toggle('is-active', button.dataset.orgSectionTarget === sectionName);
+            }
+        });
+        if (mobileSelect && mobileSelect.value !== sectionName) mobileSelect.value = sectionName;
+    }
+
+    navButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            if (button.dataset.orgSectionTarget) showSection(button.dataset.orgSectionTarget);
+        });
     });
-});
+
+    if (mobileSelect) mobileSelect.addEventListener('change', () => showSection(mobileSelect.value));
+
+    tabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+            const target = tab.dataset.settingsTab;
+            tabs.forEach((candidate) => candidate.classList.toggle('is-active', candidate === tab));
+            panels.forEach((panel) => panel.classList.toggle('is-active', panel.dataset.settingsPanel === target));
+        });
+    });
+
+    document.querySelectorAll('[data-phone-local]').forEach(function (input) {
+        input.addEventListener('input', function () {
+            input.value = input.value.replace(/\D+/g, '').slice(0, 15);
+        });
+    });
+
+
+    document.querySelectorAll('[data-settings-file]').forEach(function (input) {
+        const card = input.closest('.settings-upload-card');
+        const preview = card ? card.querySelector('.settings-preview-box') : null;
+        const status = card ? card.querySelector('[data-file-status]') : null;
+        input.addEventListener('change', function () {
+            const file = input.files && input.files[0];
+            if (!status || !preview) return;
+            status.classList.remove('is-ready', 'is-error');
+            if (!file) {
+                status.textContent = 'No file selected';
+                return;
+            }
+            const validType = ['image/png', 'image/jpeg', 'image/webp'].includes(file.type);
+            const validSize = file.size <= 2 * 1024 * 1024;
+            if (!validType || !validSize) {
+                status.classList.add('is-error');
+                status.textContent = !validType ? 'Use PNG, JPG, or WEBP.' : 'File is above 2 MB.';
+                input.value = '';
+                return;
+            }
+            status.classList.add('is-ready');
+            status.textContent = file.name + ' selected';
+            const reader = new FileReader();
+            reader.onload = function (event) {
+                preview.innerHTML = '<img src="' + event.target.result + '" alt="Selected file preview">';
+            };
+            reader.readAsDataURL(file);
+        });
+    });
+
+    document.querySelectorAll('[data-preview-invoice]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            const preview = document.getElementById('companyInvoicePreview');
+            if (!preview) return;
+            preview.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            preview.classList.add('settings-preview-highlight');
+            window.setTimeout(function () { preview.classList.remove('settings-preview-highlight'); }, 1400);
+        });
+    });
+    if (form && saveStatus && saveStatusText) {
+        const markDirty = function () {
+            saveStatus.classList.add('is-dirty');
+            saveStatusText.textContent = 'Unsaved changes';
+        };
+        form.addEventListener('input', markDirty);
+        form.addEventListener('change', markDirty);
+    }
+})();
 </script>
 @endsection

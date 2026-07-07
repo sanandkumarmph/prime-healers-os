@@ -17,6 +17,17 @@
     $productCategories = collect($filterOptions['productCategories'] ?? []);
     $businessPartners = collect($filterOptions['businessPartners'] ?? []);
     $staffUsers = collect($filterOptions['staffUsers'] ?? []);
+    $referralSources = collect($filterOptions['referralSources'] ?? []);
+    $referralTypeOptions = [
+        'doctor' => 'Doctor',
+        'hospital' => 'Hospital',
+        'business_partner' => 'Business Partner',
+        'employee' => 'Employee',
+        'customer_referral' => 'Customer Referral',
+        'digital_marketing' => 'Digital Marketing',
+        'walk_in' => 'Walk-in',
+        'other' => 'Other',
+    ];
 
     $revenue = $reportGroups['revenue_analytics'] ?? [];
     $rentals = $reportGroups['rental_reports'] ?? [];
@@ -26,11 +37,12 @@
     $salesInvoices = $reportGroups['sales_invoice_reports'] ?? [];
     $staff = $reportGroups['staff_performance'] ?? [];
     $vendorsReport = $reportGroups['vendor_analytics'] ?? [];
+    $referrals = $reportGroups['referral_analytics'] ?? [];
     $profitability = $reportGroups['profitability_reports'] ?? [];
     $productTrends = $reportGroups['product_trends'] ?? [];
     $rentalMetrics = $rentals['metrics'] ?? [];
 
-    $tabKeys = ['revenue', 'rentals', 'inventory', 'customers', 'staff', 'vendors', 'profit', 'trends'];
+    $tabKeys = ['revenue', 'rentals', 'inventory', 'customers', 'staff', 'vendors', 'referrals', 'profit', 'trends'];
     $activeTab = in_array(($filters['tab'] ?? 'revenue'), $tabKeys, true) ? ($filters['tab'] ?? 'revenue') : 'revenue';
     $hasAppliedFilters = collect($filters)
         ->except(['report', 'tab', 'period'])
@@ -94,6 +106,7 @@
     #tab-customers:checked ~ .reports-panel .reports-tabs label[for="tab-customers"],
     #tab-staff:checked ~ .reports-panel .reports-tabs label[for="tab-staff"],
     #tab-vendors:checked ~ .reports-panel .reports-tabs label[for="tab-vendors"],
+    #tab-referrals:checked ~ .reports-panel .reports-tabs label[for="tab-referrals"],
     #tab-profit:checked ~ .reports-panel .reports-tabs label[for="tab-profit"],
     #tab-trends:checked ~ .reports-panel .reports-tabs label[for="tab-trends"] { background:#eef2ff; border-color:#a5b4fc; color:#4338ca; }
     #tab-revenue:checked ~ .reports-panel .revenue-tab,
@@ -102,6 +115,7 @@
     #tab-customers:checked ~ .reports-panel .customers-tab,
     #tab-staff:checked ~ .reports-panel .staff-tab,
     #tab-vendors:checked ~ .reports-panel .vendors-tab,
+    #tab-referrals:checked ~ .reports-panel .referrals-tab,
     #tab-profit:checked ~ .reports-panel .profit-tab,
     #tab-trends:checked ~ .reports-panel .trends-tab { display:grid; gap:12px; }
     .metric-strip { display:grid; grid-template-columns:repeat(6, minmax(0, 1fr)); gap:8px; }
@@ -121,6 +135,18 @@
     .reports-table th, .reports-table td { padding:8px 7px; border-bottom:1px solid #edf2f7; text-align:left; font-size:12px; vertical-align:top; white-space:nowrap; }
     .reports-table th { color:#64748b; font-size:10px; text-transform:uppercase; letter-spacing:.06em; }
     .reports-table a { color:#1d4ed8; font-weight:800; text-decoration:none; }
+    .referral-row { cursor:pointer; }
+    .referral-row:hover { background:#f8fafc; }
+    .referral-detail-row[hidden] { display:none; }
+    .reports-detail { border:1px solid #dbe3ef; border-radius:10px; background:#fff; overflow:hidden; }
+    .reports-detail summary { cursor:pointer; list-style:none; padding:0; }
+    .reports-detail summary::-webkit-details-marker { display:none; }
+    .reports-detail[open] { box-shadow:0 8px 20px rgba(15,23,42,.06); }
+    .detail-panel { padding:10px; border-top:1px solid #edf2f7; display:grid; gap:10px; background:#f8fafc; }
+    .detail-facts { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:8px; }
+    .detail-facts div { border:1px solid #e2e8f0; background:#fff; border-radius:9px; padding:8px; }
+    .detail-facts span { display:block; color:#64748b; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; }
+    .detail-facts strong { display:block; margin-top:4px; font-size:13px; overflow-wrap:anywhere; }
     .empty { color:#64748b; font-size:12px; padding:8px 0; }
     .donut-wrap { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
     .donut { width:132px; height:132px; border-radius:50%; position:relative; flex:0 0 auto; }
@@ -137,7 +163,7 @@
     .badge.warn { background:#fef3c7; color:#92400e; }
     .badge.bad { background:#fee2e2; color:#991b1b; }
     @media (max-width: 1280px) { .reports-filter-grid { grid-template-columns:repeat(4, minmax(0, 1fr)); } .metric-strip { grid-template-columns:repeat(3, minmax(0, 1fr)); } }
-    @media (max-width: 920px) { .reports-grid-2, .reports-grid-3 { grid-template-columns:1fr; } .metric-strip { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 920px) { .reports-grid-2, .reports-grid-3, .detail-facts { grid-template-columns:1fr; } .metric-strip { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 640px) { .reports-shell { padding:12px; } .reports-filter-grid, .metric-strip { grid-template-columns:1fr; } .reports-actions { width:100%; } .reports-btn { flex:1; } }
 </style>
 
@@ -187,12 +213,15 @@
                     <option value="vendor_supplied" @selected(($filters['fulfilment_source'] ?? '') === 'vendor_supplied')>Vendor Supplied</option>
                 </select>
             </div>
-            <div class="reports-field"><label for="product_category">Category</label><select id="product_category" name="product_category"><option value="">All</option>@foreach($productCategories as $category)<option value="{{ $category }}" @selected(($filters['product_category'] ?? '') === $category)>{{ $category }}</option>@endforeach</select></div>
+            <div class="reports-field"><label for="product_category">Category</label><select id="product_category" name="product_category"><option value="">All</option>@foreach($productCategories as $category)@php($categoryValue = is_object($category) ? (string) $category->id : (string) $category)@php($categoryLabel = is_object($category) ? $category->name : $category)<option value="{{ $categoryValue }}" @selected((string)($filters['product_category'] ?? '') === $categoryValue)>{{ $categoryLabel }}</option>@endforeach</select></div>
             <div class="reports-field"><label for="warehouse_id">Warehouse</label><select id="warehouse_id" name="warehouse_id"><option value="">All</option>@foreach($warehouses as $warehouse)<option value="{{ $warehouse->id }}" @selected((string)($filters['warehouse_id'] ?? '') === (string)$warehouse->id)>{{ $warehouse->name }}</option>@endforeach</select></div>
             <div class="reports-field"><label for="business_partner_id">Partner</label><select id="business_partner_id" name="business_partner_id"><option value="">All</option>@foreach($businessPartners as $partner)<option value="{{ $partner->id }}" @selected((string)($filters['business_partner_id'] ?? '') === (string)$partner->id)>{{ $partner->name }}</option>@endforeach</select></div>
             <div class="reports-field"><label for="vendor_id">Vendor</label><select id="vendor_id" name="vendor_id"><option value="">All</option>@foreach($vendors as $vendor)<option value="{{ $vendor->id }}" @selected((string)($filters['vendor_id'] ?? '') === (string)$vendor->id)>{{ $vendor->name }}</option>@endforeach</select></div>
             <div class="reports-field"><label for="product_id">Product</label><select id="product_id" name="product_id"><option value="">All</option>@foreach($products as $product)<option value="{{ $product->id }}" @selected((string)($filters['product_id'] ?? '') === (string)$product->id)>{{ $product->name }}</option>@endforeach</select></div>
             <div class="reports-field"><label for="customer_id">Customer</label><select id="customer_id" name="customer_id"><option value="">All</option>@foreach($customers as $customer)<option value="{{ $customer->id }}" @selected((string)($filters['customer_id'] ?? '') === (string)$customer->id)>{{ $customer->name }}</option>@endforeach</select></div>
+            <div class="reports-field"><label for="referral_source_id">Referral Source</label><select id="referral_source_id" name="referral_source_id"><option value="">All</option>@foreach($referralSources as $source)<option value="{{ $source->id }}" @selected((string)($filters['referral_source_id'] ?? '') === (string)$source->id)>{{ $source->name }}</option>@endforeach</select></div>
+            <div class="reports-field"><label for="referral_source_type">Referral Type</label><select id="referral_source_type" name="referral_source_type"><option value="">All</option>@foreach($referralTypeOptions as $value => $label)<option value="{{ $value }}" @selected(($filters['referral_source_type'] ?? '') === $value)>{{ $label }}</option>@endforeach</select></div>
+            <div class="reports-field"><label for="referral_order_type">Order Type</label><select id="referral_order_type" name="referral_order_type"><option value="">All</option><option value="rental" @selected(($filters['referral_order_type'] ?? '') === 'rental')>Rentals</option><option value="sale" @selected(($filters['referral_order_type'] ?? '') === 'sale')>Sales</option></select></div>
             <div class="reports-field"><label for="referred_by">Referred By</label><input id="referred_by" type="search" name="referred_by" value="{{ $filters['referred_by'] ?? '' }}" placeholder="Doctor, clinic, customer..."></div>
             <div class="reports-field"><label for="staff_user_id">Staff/User</label><select id="staff_user_id" name="staff_user_id"><option value="">All</option>@foreach($staffUsers as $user)<option value="{{ $user->id }}" @selected((string)($filters['staff_user_id'] ?? '') === (string)$user->id)>{{ $user->name }}</option>@endforeach</select></div>
         </div>
@@ -210,6 +239,7 @@
     <input class="reports-radio" type="radio" id="tab-customers" name="reports-tab" value="customers" @checked($activeTab === 'customers')>
     <input class="reports-radio" type="radio" id="tab-staff" name="reports-tab" value="staff" @checked($activeTab === 'staff')>
     <input class="reports-radio" type="radio" id="tab-vendors" name="reports-tab" value="vendors" @checked($activeTab === 'vendors')>
+    <input class="reports-radio" type="radio" id="tab-referrals" name="reports-tab" value="referrals" @checked($activeTab === 'referrals')>
     <input class="reports-radio" type="radio" id="tab-profit" name="reports-tab" value="profit" @checked($activeTab === 'profit')>
     <input class="reports-radio" type="radio" id="tab-trends" name="reports-tab" value="trends" @checked($activeTab === 'trends')>
 
@@ -221,6 +251,7 @@
             <label class="reports-tab" for="tab-customers">Customer & Partner</label>
             <label class="reports-tab" for="tab-staff">Staff Performance</label>
             <label class="reports-tab" for="tab-vendors">Vendor Analytics</label>
+            <label class="reports-tab" for="tab-referrals">Referral Analytics</label>
             <label class="reports-tab" for="tab-profit">Profitability / EBITDA</label>
             <label class="reports-tab" for="tab-trends">Product Trends</label>
         </div>
@@ -318,18 +349,49 @@
                 <div class="mini-card">
                     <div class="mini-head"><div><h2>Referral Analytics</h2><p>Rental orders and value attributed to referred-by entries.</p></div><a class="reports-btn" href="{{ $rentalsUrl(['referred_by' => $filters['referred_by'] ?? '']) }}">View Rentals</a></div>
                     <div class="mini-body">
-                        @php($referrals = $customersReport['referral_summary'] ?? [])
-                        @if(!($referrals['available'] ?? false))
+                        @php($customerReferrals = $customersReport['referral_summary'] ?? [])
+                        @if(!($customerReferrals['available'] ?? false))
                             <div class="empty">Referral analytics will appear after the referral migration is applied.</div>
                         @else
                             <div class="metric-strip" style="grid-template-columns:repeat(3, minmax(0, 1fr)); margin-bottom:10px;">
-                                <div class="metric"><span>Referred Rentals</span><strong>{{ $number($referrals['rental_count'] ?? 0) }}</strong><small>Filtered rental count</small></div>
-                                <div class="metric"><span>Referral Value</span><strong>{{ $currency($referrals['revenue'] ?? 0) }}</strong><small>Rental, deposit, transport, other</small></div>
-                                <div class="metric"><span>Referrers</span><strong>{{ $number($referrals['unique_referrers'] ?? 0) }}</strong><small>Unique referred-by names</small></div>
+                                <div class="metric"><span>Referred Rentals</span><strong>{{ $number($customerReferrals['rental_count'] ?? 0) }}</strong><small>Filtered rental count</small></div>
+                                <div class="metric"><span>Referral Value</span><strong>{{ $currency($customerReferrals['revenue'] ?? 0) }}</strong><small>Rental, deposit, transport, other</small></div>
+                                <div class="metric"><span>Referrers</span><strong>{{ $number($customerReferrals['unique_referrers'] ?? 0) }}</strong><small>Unique referred-by names</small></div>
                             </div>
-                            <div class="reports-table-wrap"><table class="reports-table"><thead><tr><th>Referred By</th><th>Type</th><th>Rentals</th><th>Value</th></tr></thead><tbody>@forelse(collect($referrals['leaderboard'] ?? [])->take(8) as $row)<tr><td>{{ $row->label }}</td><td>{{ ucfirst(str_replace('_', ' ', $row->referral_type ?? 'other')) }}</td><td>{{ $number($row->rentals_count) }}</td><td>{{ $currency($row->revenue) }}</td></tr>@empty<tr><td colspan="4"><div class="empty">No referral data under current filters.</div></td></tr>@endforelse</tbody></table></div>
+                            <div class="reports-table-wrap"><table class="reports-table"><thead><tr><th>Referred By</th><th>Contact</th><th>Rentals</th><th>Sales</th><th>Value</th></tr></thead><tbody>@forelse(collect($customerReferrals['leaderboard'] ?? [])->take(8) as $row)<tr><td>{{ $row['name'] ?? 'Unspecified' }}</td><td>{{ $row['contact'] ?? 'Not captured' }}</td><td>{{ $number($row['rental_orders'] ?? 0) }}</td><td>{{ $number($row['sale_orders'] ?? 0) }}</td><td>{{ $currency($row['revenue'] ?? 0) }}</td></tr>@empty<tr><td colspan="5"><div class="empty">No referral data under current filters.</div></td></tr>@endforelse</tbody></table></div>
                         @endif
                     </div>
+                </div>
+            </div>
+
+            <div class="mini-card">
+                <div class="mini-head">
+                    <div><h2>Referral Order Details</h2><p>Latest individual referral-linked rentals and sales. Limited to 10 rows here.</p></div>
+                    <div class="reports-actions">
+                        <a class="reports-btn" href="{{ $exportFor('referral_order_details') }}">View All / Export</a>
+                    </div>
+                </div>
+                <div class="mini-body reports-table-wrap">
+                    <table class="reports-table">
+                        <thead><tr><th>Date</th><th>Order Type</th><th>Order Number</th><th>Referral Source</th><th>Customer</th><th>Product</th><th>Revenue Eligible</th><th>Status</th><th>Action</th></tr></thead>
+                        <tbody>
+                            @forelse(collect($referrals['order_details'] ?? []) as $order)
+                                <tr>
+                                    <td>{{ $order['order_date'] ?? '' }}</td>
+                                    <td>{{ \Illuminate\Support\Str::title((string) ($order['order_type'] ?? '')) }}</td>
+                                    <td>{{ $order['order_number'] ?? '' }}</td>
+                                    <td>{{ $order['referral_source_name'] ?? '' }}</td>
+                                    <td>{{ $order['customer_name'] ?? '' }}</td>
+                                    <td>{{ $order['products'] ?? '' }}</td>
+                                    <td>{{ $currency($order['eligible_revenue'] ?? 0) }}</td>
+                                    <td>{{ \Illuminate\Support\Str::headline((string) ($order['status'] ?? '')) }}</td>
+                                    <td><a href="{{ $order['url'] ?? '#' }}">Open</a></td>
+                                </tr>
+                            @empty
+                                <tr><td colspan="9"><div class="empty">No referral order details under current filters.</div></td></tr>
+                            @endforelse
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </section>
@@ -372,6 +434,159 @@
             </div>
         </section>
 
+        <section class="reports-tab-content referrals-tab">
+            <div class="metric-strip">
+                <div class="metric"><span>Referred Revenue</span><strong>{{ $currency($referrals['referred_revenue'] ?? 0) }}</strong><small>Referral revenue excludes deposits and transport.</small></div>
+                <div class="metric"><span>Referred Orders</span><strong>{{ $number($referrals['referred_orders'] ?? 0) }}</strong><small>{{ $number($referrals['rental_orders'] ?? 0) }} rentals + {{ $number($referrals['sale_orders'] ?? 0) }} sales</small></div>
+                <div class="metric"><span>Active Referrers</span><strong>{{ $number($referrals['total_referrers'] ?? 0) }}</strong><small>Sources with linked orders</small></div>
+                <div class="metric"><span>Top Referrer</span><strong>{{ data_get($referrals, 'top_referrer.name', 'No data') }}</strong><small>{{ $currency(data_get($referrals, 'top_referrer.revenue', 0)) }} product revenue</small></div>
+                <div class="metric"><span>Top by Orders</span><strong>{{ data_get($referrals, 'top_referrer_by_orders.name', 'No data') }}</strong><small>{{ $number(data_get($referrals, 'top_referrer_by_orders.orders', 0)) }} orders</small></div>
+                <div class="metric"><span>Avg Revenue / Order</span><strong>{{ $currency($referrals['average_revenue_per_order'] ?? 0) }}</strong><small>{{ $number($referrals['manual_referrers'] ?? 0) }} manual / unlinked referrers</small></div>
+            </div>
+
+            <div class="reports-grid-2">
+                <div class="mini-card">
+                    <div class="mini-head">
+                        <div><h2>Month-wise Referral Trend</h2><p>Product revenue and order count by month. Deposits and transport are excluded.</p></div>
+                    </div>
+                    <div class="mini-body reports-table-wrap">
+                        <table class="reports-table">
+                            <thead><tr><th>Month</th><th>Rental Revenue</th><th>Sales Revenue</th><th>Total Revenue</th><th>Rental Orders</th><th>Sales Orders</th><th>Total Orders</th></tr></thead>
+                            <tbody>
+                                @forelse(collect($referrals['trend'] ?? []) as $row)
+                                    <tr>
+                                        <td>{{ $monthLabel($row['month'] ?? '') }}</td>
+                                        <td>{{ $currency($row['rental_revenue'] ?? 0) }}</td>
+                                        <td>{{ $currency($row['sales_revenue'] ?? 0) }}</td>
+                                        <td>{{ $currency($row['total_revenue'] ?? 0) }}</td>
+                                        <td>{{ $number($row['rental_orders'] ?? 0) }}</td>
+                                        <td>{{ $number($row['sales_orders'] ?? 0) }}</td>
+                                        <td>{{ $number($row['total_orders'] ?? 0) }}</td>
+                                    </tr>
+                                @empty
+                                    <tr><td colspan="7"><div class="empty">No month-wise referral trend under current filters.</div></td></tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="mini-card">
+                    <div class="mini-head">
+                        <div><h2>Referral Conversion Mix</h2><p>Rental versus sales share for referred orders.</p></div>
+                    </div>
+                    <div class="mini-body trend-list">
+                        @php($totalReferralOrders = max(1, (int) ($referrals['referred_orders'] ?? 0)))
+                        <div class="trend-row"><strong>Rentals</strong><span class="bar"><i style="width:{{ min(100, (((int) ($referrals['rental_orders'] ?? 0)) / $totalReferralOrders) * 100) }}%"></i></span><span>{{ $number($referrals['rental_orders'] ?? 0) }}</span></div>
+                        <div class="trend-row"><strong>Sales</strong><span class="bar"><i style="width:{{ min(100, (((int) ($referrals['sale_orders'] ?? 0)) / $totalReferralOrders) * 100) }}%"></i></span><span>{{ $number($referrals['sale_orders'] ?? 0) }}</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="reports-grid-2">
+                <div class="mini-card">
+                    <div class="mini-head">
+                        <div><h2>Referral Leaderboard</h2><p>Track referral volume and product revenue for incentive review. Referral revenue excludes deposits and transport.</p></div>
+                        <a class="reports-btn" href="{{ $exportFor('referral_order_details') }}">Export Details CSV</a>
+                    </div>
+                    <div class="mini-body reports-table-wrap">
+                        <table class="reports-table">
+                            <thead>
+                                <tr>
+                                    <th>Referral Source</th>
+                                    <th>Type</th>
+                                    <th>Contact</th>
+                                    <th>City</th>
+                                    <th>Rentals</th>
+                                    <th>Sales</th>
+                                    <th>Total Orders</th>
+                                    <th>Rental Revenue</th>
+                                    <th>Sales Revenue</th>
+                                    <th>Revenue</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse(collect($referrals['leaderboard'] ?? []) as $row)
+                                    @php($detailId = 'referral-detail-' . md5((string) ($row['detail_key'] ?? ($row['name'] ?? $loop->index))))
+                                    <tr class="referral-row" data-referral-toggle="{{ $detailId }}" aria-controls="{{ $detailId }}">
+                                        <td><strong>{{ $row['name'] ?? 'Unspecified' }}</strong><div style="font-size:10px; color:#64748b; margin-top:2px;">Click for orders</div></td>
+                                        <td>{{ \Illuminate\Support\Str::of((string) ($row['type'] ?? 'Unspecified'))->replace('_', ' ')->title() }}</td>
+                                        <td>{{ $row['contact'] ?? 'Not captured' }}</td>
+                                        <td>{{ $row['city'] ?? 'Not linked' }}</td>
+                                        <td>{{ $number($row['rental_orders'] ?? 0) }}</td>
+                                        <td>{{ $number($row['sale_orders'] ?? 0) }}</td>
+                                        <td>{{ $number($row['orders'] ?? 0) }}</td>
+                                        <td>{{ $currency($row['rental_revenue'] ?? 0) }}</td>
+                                        <td>{{ $currency($row['sale_revenue'] ?? 0) }}</td>
+                                        <td>{{ $currency($row['revenue'] ?? 0) }}</td>
+                                    </tr>
+                                    <tr id="{{ $detailId }}" class="referral-detail-row" hidden>
+                                        <td colspan="10">
+                                            <div class="detail-panel">
+                                                <div class="detail-facts">
+                                                    <div><span>Referral Source</span><strong>{{ $row['name'] ?? 'Unspecified' }}</strong></div>
+                                                    <div><span>Type</span><strong>{{ \Illuminate\Support\Str::of((string) ($row['type'] ?? 'Unspecified'))->replace('_', ' ')->title() }}</strong></div>
+                                                    <div><span>Contact / City</span><strong>{{ $row['contact'] ?? 'Not captured' }} / {{ $row['city'] ?? 'Not linked' }}</strong></div>
+                                                    <div><span>Total Revenue</span><strong>{{ $currency($row['revenue'] ?? 0) }}</strong></div>
+                                                    <div><span>Total Orders</span><strong>{{ $number($row['orders'] ?? 0) }}</strong></div>
+                                                    <div><span>Rental Orders</span><strong>{{ $number($row['rental_orders'] ?? 0) }}</strong></div>
+                                                    <div><span>Sales Orders</span><strong>{{ $number($row['sale_orders'] ?? 0) }}</strong></div>
+                                                    <div><span>Preview</span><strong>{{ $number($row['orders_all_count'] ?? 0) }} linked orders</strong></div>
+                                                </div>
+                                                <div class="reports-table-wrap">
+                                                    <table class="reports-table">
+                                                        <thead><tr><th>Date</th><th>Order Type</th><th>Order Number</th><th>Customer</th><th>Product</th><th>Revenue Eligible</th><th>Status</th><th>Action</th></tr></thead>
+                                                        <tbody>
+                                                            @forelse(collect($row['orders_preview'] ?? []) as $order)
+                                                                <tr>
+                                                                    <td>{{ $order['order_date'] ?? '' }}</td>
+                                                                    <td>{{ \Illuminate\Support\Str::title((string) ($order['order_type'] ?? '')) }}</td>
+                                                                    <td>{{ $order['order_number'] ?? '' }}</td>
+                                                                    <td>{{ $order['customer_name'] ?? '' }}</td>
+                                                                    <td>{{ $order['products'] ?? '' }}</td>
+                                                                    <td>{{ $currency($order['eligible_revenue'] ?? 0) }}</td>
+                                                                    <td>{{ \Illuminate\Support\Str::headline((string) ($order['status'] ?? '')) }}</td>
+                                                                    <td><a href="{{ $order['url'] ?? '#' }}">Open</a></td>
+                                                                </tr>
+                                                            @empty
+                                                                <tr><td colspan="8"><div class="empty">No linked orders available for this referrer.</div></td></tr>
+                                                            @endforelse
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr><td colspan="10" class="empty">No referral-linked orders found for the current filters.</td></tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="mini-card">
+                    <div class="mini-head">
+                        <div><h2>Referral Source Mix</h2><p>Configured referrers by standardized source type.</p></div>
+                        <span class="badge {{ empty($referrals['migration_ready']) ? 'warn' : 'good' }}">{{ empty($referrals['migration_ready']) ? 'Setup pending' : 'Ready' }}</span>
+                    </div>
+                    <div class="mini-body trend-list">
+                        @php($sourceMix = collect($referrals['source_mix'] ?? $referrals['type_breakdown'] ?? []))
+                        @php($maxSourceMix = max(1, (int) ($sourceMix->max('sources_count') ?: 1)))
+                        @forelse($sourceMix as $row)
+                            @php($sourceTypeLabel = $row['label'] ?? \Illuminate\Support\Str::of((string) ($row['source_type'] ?? $row->source_type ?? 'other'))->replace('_', ' ')->title())
+                            <div class="trend-row">
+                                <strong>{{ $sourceTypeLabel }}</strong>
+                                <span class="bar"><i style="width:{{ min(100, (((int) ($row['sources_count'] ?? $row->sources_count ?? 0)) / $maxSourceMix) * 100) }}%"></i></span>
+                                <span>{{ $number($row['sources_count'] ?? $row->sources_count ?? 0) }} / {{ $currency($row['revenue'] ?? 0) }}</span>
+                            </div>
+                        @empty
+                            <div class="empty">No referral sources configured yet.</div>
+                        @endforelse
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <section class="reports-tab-content profit-tab">
             <div class="metric-strip">
                 <div class="metric"><span>Total Revenue</span><strong>{{ $currency($profitability['total_revenue'] ?? 0) }}</strong><small>Filtered revenue</small></div>
@@ -410,6 +625,16 @@
             tabInput.addEventListener('change', function () {
                 if (tabInput.checked) {
                     activeTabInput.value = tabInput.value;
+                }
+            });
+        });
+
+        document.querySelectorAll('[data-referral-toggle]').forEach(function (row) {
+            row.addEventListener('click', function () {
+                var detailRow = document.getElementById(row.getAttribute('data-referral-toggle'));
+
+                if (detailRow) {
+                    detailRow.hidden = !detailRow.hidden;
                 }
             });
         });

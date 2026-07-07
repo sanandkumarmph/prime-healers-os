@@ -14,6 +14,27 @@
     $overdueInvoices = (int) ($invoiceStats['overdueInvoices'] ?? 0);
     $outstandingAmount = (float) ($invoiceStats['outstandingAmount'] ?? 0);
     $totalBilled = (float) ($invoiceStats['totalBilled'] ?? 0);
+    $collectedThisMonth = (float) ($invoiceStats['collectedThisMonth'] ?? 0);
+    $collectedToday = (float) ($invoiceStats['collectedToday'] ?? 0);
+    $overdueAmount = (float) ($invoiceStats['overdueAmount'] ?? 0);
+    $largestInvoice = (float) ($invoiceStats['largestInvoice'] ?? ($invoices->max('total_amount') ?? 0));
+    $averageInvoiceValue = $totalInvoices > 0 ? ($totalBilled / max(1, $totalInvoices)) : 0;
+    $currency = fn ($value, $decimals = 0) => '&#8377;' . number_format((float) $value, $decimals);
+    $invoiceIcon = function (string $name): string {
+        return match ($name) {
+            'filter' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18"/><path d="M7 12h10"/><path d="M10 19h4"/></svg>',
+            'download' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>',
+            'plus' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>',
+            'eye' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>',
+            'card' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>',
+            'file' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>',
+            'more' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>',
+            'rupee' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12"/><path d="M6 8h12"/><path d="M6 13h5a5 5 0 0 0 0-10"/><path d="m6 13 8 8"/></svg>',
+            'check' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
+            'alert' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+            default => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8"/><path d="M8 11h8"/><path d="M8 15h5"/></svg>',
+        };
+    };
     $invoiceUrl = function (array $overrides = []) use ($search, $status, $customerId, $city, $fromDate, $toDate, $perPage) {
         return route('invoices.index', array_filter(array_merge([
             'search' => $search ?: null,
@@ -34,6 +55,36 @@
         filled($fromDate) ? 'From: ' . $fromDate : null,
         filled($toDate) ? 'To: ' . $toDate : null,
     ])->filter()->values();
+    $comparisonLabel = function (string $key) use ($invoiceStats): string {
+        $value = $invoiceStats[$key] ?? null;
+        if (is_numeric($value)) {
+            $prefix = (float) $value >= 0 ? 'Up ' : 'Down ';
+            return $prefix . number_format(abs((float) $value), 0) . '% vs last month';
+        }
+
+        return 'No prior comparison';
+    };
+    $agingBuckets = collect([
+        '0-30 Days' => ['amount' => 0.0, 'tone' => 'green'],
+        '31-60 Days' => ['amount' => 0.0, 'tone' => 'amber'],
+        '61-90 Days' => ['amount' => 0.0, 'tone' => 'orange'],
+        '90+ Days' => ['amount' => 0.0, 'tone' => 'red'],
+    ]);
+    foreach ($invoices->getCollection() as $agingInvoice) {
+        $balance = (float) ($agingInvoice->balance_amount ?? 0);
+        if ($balance <= 0) {
+            continue;
+        }
+
+        $days = optional($agingInvoice->due_date)->isPast()
+            ? max(0, optional($agingInvoice->due_date)->diffInDays(now()))
+            : 0;
+        $bucket = $days <= 30 ? '0-30 Days' : ($days <= 60 ? '31-60 Days' : ($days <= 90 ? '61-90 Days' : '90+ Days'));
+        $currentBucket = $agingBuckets->get($bucket);
+        $currentBucket['amount'] += $balance;
+        $agingBuckets->put($bucket, $currentBucket);
+    }
+    $agingTotal = max(1, (float) $agingBuckets->sum('amount'));
 @endphp
 
 <div class="invoice-ledger rn-list-page">
@@ -528,6 +579,10 @@
             color: #991b1b;
             border: 1px solid #fecaca;
         }
+        .mobile-list-command,
+        .invoice-mobile-list {
+            display: none;
+        }
 
         @media (max-width: 980px) {
             .invoice-toolbar {
@@ -562,13 +617,106 @@
             }
 
             .invoice-toolbar p,
-            .invoice-summary-strip {
+            .invoice-summary-strip,
+            .invoice-search-shell,
+            .invoice-filter-toggle {
                 display: none;
             }
 
             .invoice-toolbar-actions {
                 justify-content: flex-end;
                 width: 100%;
+            }
+
+            .mobile-list-command {
+                display: grid;
+                gap: 8px;
+                padding: 10px;
+                border: 1px solid var(--ph-color-border);
+                border-radius: 16px;
+                background: #ffffff;
+                box-shadow: var(--ph-shadow-soft);
+            }
+
+            .mobile-command-search {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr);
+                gap: 8px;
+            }
+
+            .mobile-command-search .invoice-input {
+                min-height: 40px;
+                border-radius: 12px;
+                font-size: 16px;
+            }
+
+            .mobile-stat-strip {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 6px;
+            }
+
+            .mobile-stat-strip a {
+                display: grid;
+                gap: 2px;
+                min-width: 0;
+                padding: 8px 9px;
+                border: 1px solid var(--ph-color-border);
+                border-radius: 12px;
+                background: var(--ph-color-surface-soft);
+                color: var(--ph-color-text);
+                text-decoration: none;
+            }
+
+            .mobile-stat-strip span {
+                font-size: 9px;
+                color: var(--ph-color-text-soft);
+                font-weight: 800;
+                text-transform: uppercase;
+                letter-spacing: .05em;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .mobile-stat-strip strong {
+                font-size: clamp(12px, 4vw, 15px);
+                line-height: 1.15;
+                min-width: 0;
+                overflow-wrap: anywhere;
+                word-break: break-word;
+            }
+
+            .invoice-mobile-chip-row {
+                display: flex;
+                gap: 8px;
+                overflow-x: auto;
+                padding: 2px 1px 4px;
+                scrollbar-width: none;
+            }
+
+            .invoice-mobile-chip-row::-webkit-scrollbar { display:none; }
+
+            .invoice-mobile-chip {
+                flex: 0 0 auto;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 34px;
+                padding: 7px 11px;
+                border-radius: 999px;
+                border: 1px solid var(--ph-color-border-strong);
+                background: #fff;
+                color: var(--ph-color-text);
+                text-decoration: none;
+                font-size: 12px;
+                font-weight: 800;
+            }
+
+            .invoice-mobile-chip.is-active {
+                background: var(--ph-color-sidebar);
+                color: #fff;
+                border-color: var(--ph-color-sidebar);
             }
 
             .invoice-filter-card {
@@ -608,12 +756,94 @@
                 flex: 1;
             }
 
-            .invoice-table-wrap {
-                overflow-x: auto;
+            .invoice-table-wrap { display: none; }
+            .invoice-mobile-list { display: grid; gap: 10px; }
+            .invoice-mobile-card {
+                display: grid;
+                gap: 10px;
+                padding: 12px;
+                border: 1px solid var(--ph-color-border);
+                border-radius: 16px;
+                background: #fff;
+                box-shadow: var(--ph-shadow-soft);
             }
-
-            .invoice-table {
-                min-width: 860px;
+            .invoice-mobile-top {
+                width: 100%;
+                display: flex;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .invoice-mobile-check {
+                width: 16px;
+                height: 16px;
+                margin-top: 4px;
+                accent-color: #2563eb;
+                flex: 0 0 auto;
+            }
+            .invoice-mobile-main {
+                min-width: 0;
+                display: grid;
+                gap: 6px;
+                flex: 1 1 auto;
+            }
+            .invoice-mobile-heading {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 10px;
+            }
+            .invoice-mobile-number {
+                color: #0f172a;
+                font-size: 15px;
+                font-weight: 900;
+                text-decoration: none;
+            }
+            .invoice-mobile-customer {
+                color: #64748b;
+                font-size: 12px;
+                line-height: 1.35;
+            }
+            .invoice-mobile-metrics {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 8px;
+            }
+            .invoice-mobile-metric {
+                display: grid;
+                gap: 3px;
+                padding: 8px 10px;
+                border: 1px solid var(--ph-color-border);
+                border-radius: 12px;
+                background: var(--ph-color-surface-soft);
+            }
+            .invoice-mobile-metric span {
+                color: var(--ph-color-text-soft);
+                font-size: 10px;
+                font-weight: 800;
+                text-transform: uppercase;
+                letter-spacing: .06em;
+            }
+            .invoice-mobile-metric strong {
+                color: var(--ph-color-text);
+                font-size: 14px;
+                line-height: 1.2;
+            }
+            .invoice-mobile-meta {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                color: #64748b;
+                font-size: 11px;
+            }
+            .invoice-mobile-actions {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 8px;
+                align-items: start;
+            }
+            .invoice-mobile-actions .invoice-btn {
+                min-height: 38px;
+                border-radius: 12px;
             }
 
             .invoice-table th:nth-child(8),
@@ -636,39 +866,176 @@
                 top: calc(100% + 6px);
             }
         }
-    </style>
+
+        /* Compact invoice command center overrides */
+        .invoice-breadcrumb{display:flex;gap:7px;align-items:center;color:#64748b;font-size:12px;font-weight:800;margin-bottom:6px}
+        .invoice-icon-btn{gap:7px}.invoice-icon-btn svg,.invoice-tile-icon svg,.invoice-row-actions svg,.invoice-side-action svg,.invoice-action-icon svg{width:16px;height:16px;display:block}
+        .invoice-summary-strip{grid-template-columns:repeat(6,minmax(126px,1fr));gap:10px}
+        .invoice-summary-tile{display:grid;grid-template-columns:36px minmax(0,1fr);grid-template-rows:auto auto auto;justify-content:flex-start;align-items:center;padding:10px 12px;min-height:76px;box-shadow:var(--ph-shadow-soft)}
+        .invoice-summary-tile .invoice-tile-icon{grid-row:1/4;width:34px;height:34px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;background:#eef2ff;color:#4f46e5}
+        .invoice-summary-tile strong{font-size:18px}.invoice-summary-tile small{font-size:11px;color:#64748b;font-weight:700}.invoice-summary-tile>span:not(.invoice-tile-icon){font-size:10px}
+        .invoice-summary-tile.tone-green .invoice-tile-icon{background:#dcfce7;color:#16a34a}.invoice-summary-tile.tone-blue .invoice-tile-icon{background:#dbeafe;color:#2563eb}.invoice-summary-tile.tone-red .invoice-tile-icon{background:#fee2e2;color:#dc2626}.invoice-summary-tile.tone-amber .invoice-tile-icon{background:#ffedd5;color:#d97706}.invoice-summary-tile.tone-purple .invoice-tile-icon{background:#ede9fe;color:#7c3aed}
+        .invoice-chip{color:inherit;text-decoration:none}.invoice-chip.active{background:#4f46e5;color:#fff;border-color:#4f46e5}
+        .invoice-workspace-grid{display:grid;grid-template-columns:minmax(0,1fr) 292px;gap:12px;align-items:start;min-width:0}.invoice-workspace-grid>*{min-width:0}
+        .invoice-finance-panel{display:grid;gap:12px;position:sticky;top:88px}.invoice-side-card{padding:12px;border:1px solid var(--ph-color-border);border-radius:16px;background:#fff;box-shadow:var(--ph-shadow-soft)}
+        .invoice-side-head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px}.invoice-side-head strong{font-size:15px;color:#0f172a}.invoice-side-head span{font-size:11px;color:#16a34a;background:#dcfce7;border-radius:999px;padding:4px 8px;font-weight:900}
+        .invoice-side-list{display:grid}.invoice-side-list div{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid #edf2f7;font-size:13px}.invoice-side-list span{color:#64748b}.invoice-side-list strong{color:#0f172a}.invoice-side-list .danger{color:#dc2626}.invoice-side-list .success{color:#16a34a}
+        .invoice-side-actions{display:grid;gap:8px}.invoice-side-action{min-height:38px;border:1px solid var(--ph-color-border);border-radius:12px;background:#fff;color:#334155;text-decoration:none;display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:13px;font-weight:800;cursor:pointer}
+        .invoice-table-wrap{overflow-x:auto;padding-bottom:18px;margin-bottom:0}.invoice-table{min-width:980px;table-layout:auto}.invoice-table td{padding:7px 8px;font-size:12px}.invoice-table th{padding:7px 8px;font-size:10px}.invoice-table td:nth-child(8){white-space:normal}.invoice-table td:nth-child(9){overflow:visible}
+        .invoice-table th:nth-child(8),.invoice-table td:nth-child(8),.invoice-table th:nth-child(9),.invoice-table td:nth-child(9){position:static;right:auto;box-shadow:none;background:inherit;width:auto}.invoice-table td:nth-child(9){background:#fff}
+        .invoice-gst-compact strong{font-size:12px}.invoice-gst-compact .invoice-muted{line-height:1.35}.invoice-row-actions{display:flex;gap:5px;align-items:center;justify-content:flex-end;overflow:visible}
+        .invoice-action-icon{width:32px;height:32px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#334155;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;padding:0;cursor:pointer;flex:0 0 auto}.invoice-action-icon.pay{color:#16a34a;background:#f0fdf4}.invoice-action-icon.pdf{color:#2563eb;background:#eff6ff}
+        .invoice-action-menu summary{width:32px;height:32px;border-radius:10px;font-size:0}.invoice-action-menu summary svg{width:16px;height:16px}
+        @media(max-width:1180px){.invoice-summary-strip{grid-template-columns:repeat(3,minmax(0,1fr))}.invoice-workspace-grid{grid-template-columns:1fr}.invoice-finance-panel{position:static;grid-template-columns:repeat(2,minmax(0,1fr))}}
+        @media(max-width:640px){.invoice-finance-panel{display:none}.invoice-icon-btn span{display:none}.invoice-toolbar-actions{flex-wrap:nowrap}.invoice-btn{min-height:38px}.invoice-chip-row{overflow-x:auto;flex-wrap:nowrap}.invoice-mobile-actions{display:flex;gap:8px;align-items:center}.invoice-mobile-actions .invoice-action-menu{width:auto}.invoice-mobile-actions .invoice-action-panel{right:0;top:calc(100% + 6px)}.invoice-mobile-meta span:nth-child(n+3){display:none}}
+
+        /* Invoice aging and compact rail refinements */
+        .invoice-summary-tile small{display:flex;align-items:center;gap:4px;color:#64748b;font-size:10px;line-height:1.15;white-space:normal}.invoice-summary-tile.tone-red small{color:#dc2626}
+        .invoice-finance-panel{gap:10px;top:74px}.invoice-side-card{padding:10px;border-radius:14px}.invoice-side-list div{padding:6px 0;font-size:12px}.invoice-side-head{margin-bottom:6px}.invoice-side-actions{gap:7px}.invoice-side-action{min-height:36px;padding:8px 10px;font-size:12px;border-radius:10px}
+        .invoice-aging-body{display:grid;grid-template-columns:92px minmax(0,1fr);gap:10px;align-items:center}.invoice-aging-donut{width:86px;height:86px;border-radius:999px;background:conic-gradient(#16a34a 0 var(--p1),#f59e0b var(--p1) var(--p2),#fb7185 var(--p2) var(--p3),#ef4444 var(--p3) 100%);display:grid;place-items:center;position:relative;text-align:center}.invoice-aging-donut:before{content:'';position:absolute;inset:11px;border-radius:999px;background:#fff}.invoice-aging-donut strong,.invoice-aging-donut span{position:relative;z-index:1}.invoice-aging-donut strong{font-size:13px;line-height:1.05}.invoice-aging-donut span{font-size:10px;color:#64748b;font-weight:800}.invoice-aging-list{display:grid;gap:6px}.invoice-aging-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px}.invoice-aging-row span{display:inline-flex;align-items:center;gap:6px;color:#475569}.invoice-aging-row i{width:8px;height:8px;border-radius:999px;background:#16a34a}.invoice-aging-row.tone-amber i{background:#f59e0b}.invoice-aging-row.tone-orange i{background:#fb7185}.invoice-aging-row.tone-red i{background:#ef4444}.invoice-aging-row strong{font-size:11px;color:#0f172a;text-align:right}.invoice-aging-row em{font-style:normal;color:#64748b;font-weight:700}
+        @media(max-width:1180px){.invoice-aging-body{grid-template-columns:80px minmax(0,1fr)}.invoice-aging-donut{width:76px;height:76px}.invoice-finance-panel{grid-template-columns:repeat(3,minmax(0,1fr))}}
+        @media(max-width:820px){.invoice-finance-panel{grid-template-columns:1fr 1fr}.invoice-aging-card{grid-column:1/-1}}</style>
 
     <div class="invoice-toolbar">
         <div>
-            <div class="rx-eyebrow" style="margin-bottom:8px;">Finance Ledger</div>
+            <div class="invoice-breadcrumb">Home <span>/</span> Finance <span>/</span> Invoices</div>
             <h1>Invoices</h1>
-            <p>Compact ledger with bulk selection, quick filters, GST visibility, and row-level actions.</p>
+            <p>Manage invoices, payments, and outstanding balances.</p>
         </div>
         <div class="invoice-toolbar-actions">
-            <a href="{{ route('invoices.export.csv', request()->query()) }}" class="invoice-btn soft">Export CSV</a>
+            <button type="button" class="invoice-btn invoice-icon-btn" data-invoice-filter-trigger title="Filters" aria-label="Open invoice filters">{!! $invoiceIcon('filter') !!}<span>Filters</span></button>
+            <a href="{{ route('invoices.export.csv', request()->query()) }}" class="invoice-btn soft invoice-icon-btn">{!! $invoiceIcon('download') !!}<span>Export CSV</span></a>
             @if($canCreateInvoices)
-                <a href="{{ route('invoices.create') }}" class="invoice-btn primary">+ Create Invoice</a>
+                <a href="{{ route('invoices.create') }}" class="invoice-btn primary invoice-icon-btn">{!! $invoiceIcon('plus') !!}<span>Create Invoice</span></a>
             @endif
         </div>
     </div>
 
+    <div id="invoices-mobile-filters" class="mobile-filter-sheet" data-mobile-filter-sheet hidden>
+        <div class="mobile-filter-sheet-panel">
+            <div class="mobile-filter-sheet-header">
+                <div>
+                    <h3>Invoice Filters</h3>
+                    <p>Keep status, dates, and rows close on mobile.</p>
+                </div>
+                <button type="button" class="mobile-filter-sheet-close" data-mobile-sheet-close="invoices-mobile-filters" aria-label="Close invoice filters">&times;</button>
+            </div>
+            <div class="mobile-filter-sheet-body">
+                <form method="GET" action="{{ route('invoices.index') }}" class="mobile-sheet-form">
+                    <input type="hidden" name="search" value="{{ $search ?? '' }}">
+                    <div class="mobile-sheet-grid">
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_invoice_status">Status</label>
+                            <select id="mobile_invoice_status" class="invoice-select" name="status">
+                                <option value="">All statuses</option>
+                                <option value="draft" @selected(($status ?? '') === 'draft')>Draft</option>
+                                <option value="open" @selected(($status ?? '') === 'open')>Open / Partial / Overdue</option>
+                                <option value="unpaid" @selected(($status ?? '') === 'unpaid')>Unpaid</option>
+                                <option value="partial" @selected(($status ?? '') === 'partial')>Partial</option>
+                                <option value="paid" @selected(($status ?? '') === 'paid')>Paid</option>
+                                <option value="overdue" @selected(($status ?? '') === 'overdue')>Overdue</option>
+                                <option value="cancelled" @selected(($status ?? '') === 'cancelled')>Cancelled</option>
+                            </select>
+                        </div>
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_invoice_customer">Customer</label>
+                            <select id="mobile_invoice_customer" class="invoice-select" name="customer_id">
+                                <option value="">All customers</option>
+                                @foreach($customers as $customer)
+                                    <option value="{{ $customer->id }}" @selected((string) ($customerId ?? '') === (string) $customer->id)>{{ $customer->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_invoice_city">City</label>
+                            <select id="mobile_invoice_city" class="invoice-select" name="city">
+                                <option value="">All cities</option>
+                                @foreach(($cities ?? collect()) as $cityOption)
+                                    <option value="{{ $cityOption }}" @selected(($city ?? '') === $cityOption)>{{ $cityOption }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_invoice_from">From</label>
+                            <input id="mobile_invoice_from" class="invoice-input" type="date" name="from_date" value="{{ $fromDate ?? '' }}">
+                        </div>
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_invoice_to">To</label>
+                            <input id="mobile_invoice_to" class="invoice-input" type="date" name="to_date" value="{{ $toDate ?? '' }}">
+                        </div>
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_invoice_per_page">Show</label>
+                            <select id="mobile_invoice_per_page" class="invoice-select" name="per_page">
+                                @foreach(($perPageOptions ?? [20, 50, 100, 250, 500]) as $option)
+                                    <option value="{{ $option }}" @selected((int) ($perPage ?? 20) === (int) $option)>{{ $option }} per page</option>
+                                @endforeach
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mobile-sheet-actions">
+                        <button type="submit" class="invoice-btn primary">Apply</button>
+                        <a href="{{ route('invoices.index') }}" class="invoice-btn">Reset</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="mobile-list-command" aria-label="Mobile invoice controls">
+        <div class="mobile-search-tools">
+            <form method="GET" action="{{ route('invoices.index') }}" class="mobile-command-search">
+                @foreach(request()->except(['search', 'page']) as $key => $value)
+                    @if(is_scalar($value) && $value !== '')
+                        <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                    @endif
+                @endforeach
+                <input id="mobile-invoice-search" class="invoice-input" type="search" name="search" value="{{ $search ?? '' }}" placeholder="Search invoice, customer, phone">
+            </form>
+            <div class="mobile-action-toolbar {{ $hasActiveFilters ? 'has-active-filters' : '' }}" aria-label="Mobile invoice filters">
+                <button type="button" class="mobile-toolbar-btn" data-mobile-filter-open="invoices-mobile-filters" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" aria-label="Open invoice filters">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16"/><path d="M7 12h10"/><path d="M10 18h4"/></svg>
+                </button>
+            </div>
+        </div>
+        <div class="mobile-stat-strip" aria-label="Invoice summary">
+            <a href="{{ $invoiceUrl(['status' => null]) }}"><span>Total</span><strong>{{ $totalInvoices }}</strong></a>
+            <a href="{{ $invoiceUrl(['status' => 'paid']) }}"><span>Paid</span><strong>{{ $paidInvoices }}</strong></a>
+            <a href="{{ $invoiceUrl(['status' => 'open']) }}"><span>Open</span><strong>{{ $openInvoices }}</strong></a>
+            <a href="{{ $invoiceUrl(['status' => 'overdue']) }}"><span>Overdue</span><strong>{{ $overdueInvoices }}</strong></a>
+        </div>
+        <div class="invoice-mobile-chip-row" aria-label="Invoice quick filters">
+            <a href="{{ $invoiceUrl(['status' => null]) }}" class="invoice-mobile-chip {{ blank($status) ? 'is-active' : '' }}">All</a>
+            <a href="{{ $invoiceUrl(['status' => 'open']) }}" class="invoice-mobile-chip {{ ($status ?? '') === 'open' ? 'is-active' : '' }}">Open</a>
+            <a href="{{ $invoiceUrl(['status' => 'paid']) }}" class="invoice-mobile-chip {{ ($status ?? '') === 'paid' ? 'is-active' : '' }}">Paid</a>
+            <a href="{{ $invoiceUrl(['status' => 'overdue']) }}" class="invoice-mobile-chip {{ ($status ?? '') === 'overdue' ? 'is-active' : '' }}">Overdue</a>
+        </div>
+    </div>
+
     <div class="invoice-summary-strip">
-        <a href="{{ $invoiceUrl(['status' => null]) }}" class="invoice-summary-tile">
-            <span>Total</span>
-            <strong>{{ $totalInvoices }}</strong>
+        <a href="{{ $invoiceUrl(['status' => null]) }}" class="invoice-summary-tile tone-purple">
+            <span class="invoice-tile-icon">{!! $invoiceIcon('file') !!}</span><span>Total Invoices</span>
+            <strong>{{ $totalInvoices }}</strong><small>{{ $comparisonLabel('totalInvoicesChangePercent') }}</small>
         </a>
-        <a href="{{ $invoiceUrl(['status' => 'paid']) }}" class="invoice-summary-tile">
-            <span>Paid</span>
-            <strong>{{ $paidInvoices }}</strong>
+        <a href="{{ $invoiceUrl(['status' => 'paid']) }}" class="invoice-summary-tile tone-green">
+            <span class="invoice-tile-icon">{!! $invoiceIcon('check') !!}</span><span>Paid Invoices</span>
+            <strong>{{ $paidInvoices }}</strong><small>{{ $comparisonLabel('paidInvoicesChangePercent') }}</small>
         </a>
-        <a href="{{ $invoiceUrl(['status' => 'open']) }}" class="invoice-summary-tile">
-            <span>Open / Overdue</span>
-            <strong>{{ $openInvoices }}</strong>
+        <a href="{{ $invoiceUrl(['status' => 'open']) }}" class="invoice-summary-tile tone-blue">
+            <span class="invoice-tile-icon">{!! $invoiceIcon('file') !!}</span><span>Open Invoices</span>
+            <strong>{{ $openInvoices }}</strong><small>{{ $comparisonLabel('openInvoicesChangePercent') }}</small>
         </a>
-        <a href="{{ $invoiceUrl(['status' => 'open']) }}" class="invoice-summary-tile">
-            <span>Outstanding Invoices (All)</span>
-            <strong>@if($canViewFinance)&#8377;{{ number_format($outstandingAmount, 0) }}@else Restricted @endif</strong>
+        <a href="{{ $invoiceUrl(['status' => 'overdue']) }}" class="invoice-summary-tile tone-red">
+            <span class="invoice-tile-icon">{!! $invoiceIcon('alert') !!}</span><span>Overdue</span>
+            <strong>{{ $overdueInvoices }}</strong><small>{{ $comparisonLabel('overdueInvoicesChangePercent') }}</small>
         </a>
+        <a href="{{ $invoiceUrl(['status' => 'open']) }}" class="invoice-summary-tile tone-amber">
+            <span class="invoice-tile-icon">{!! $invoiceIcon('rupee') !!}</span><span>Outstanding</span>
+            <strong>@if($canViewFinance){!! $currency($outstandingAmount) !!}@else Restricted @endif</strong><small>{{ $comparisonLabel('outstandingAmountChangePercent') }}</small>
+        </a>
+        <div class="invoice-summary-tile tone-green">
+            <span class="invoice-tile-icon">{!! $invoiceIcon('card') !!}</span><span>Collected Month</span>
+            <strong>@if($canViewFinance){!! $currency($collectedThisMonth) !!}@else Restricted @endif</strong><small>{{ $comparisonLabel('collectedThisMonthChangePercent') }}</small>
+        </div>
     </div>
 
     <div class="invoice-search-shell">
@@ -681,11 +1048,21 @@
             <input type="hidden" name="per_page" value="{{ $perPage ?? 20 }}">
             <div class="invoice-field">
                 <label for="invoice-search-primary">Search invoices</label>
-                <input id="invoice-search-primary" class="invoice-input" type="search" name="search" value="{{ $search ?? '' }}" placeholder="Search invoice, customer, phone, GSTIN, or reference">
+                <input id="invoice-search-primary" class="invoice-input" type="search" name="search" value="{{ $search ?? '' }}" placeholder="Search invoice, customer, phone, GSTIN, rental, sale, or reference">
             </div>
             <button type="submit" class="invoice-btn primary">Search</button>
             <a href="{{ route('invoices.index') }}" class="invoice-btn" data-filter-clear="invoices-index">Clear Filters</a>
         </form>
+        <div class="invoice-chip-row invoice-quick-chip-row" aria-label="Invoice quick filters">
+            <a href="{{ $invoiceUrl(['status' => null]) }}" class="invoice-chip {{ blank($status) ? 'active' : '' }}">All</a>
+            <a href="{{ $invoiceUrl(['status' => 'open']) }}" class="invoice-chip {{ ($status ?? '') === 'open' ? 'active' : '' }}">Open</a>
+            <a href="{{ $invoiceUrl(['status' => 'overdue']) }}" class="invoice-chip {{ ($status ?? '') === 'overdue' ? 'active' : '' }}">Overdue</a>
+            <a href="{{ $invoiceUrl(['status' => 'paid']) }}" class="invoice-chip {{ ($status ?? '') === 'paid' ? 'active' : '' }}">Paid</a>
+            <a href="{{ $invoiceUrl(['status' => 'partial']) }}" class="invoice-chip {{ ($status ?? '') === 'partial' ? 'active' : '' }}">Partial</a>
+            <a href="{{ $invoiceUrl(['from_date' => now()->toDateString(), 'to_date' => now()->toDateString()]) }}" class="invoice-chip">Today</a>
+            <a href="{{ $invoiceUrl(['from_date' => now()->startOfMonth()->toDateString(), 'to_date' => now()->endOfMonth()->toDateString()]) }}" class="invoice-chip">This Month</a>
+            <a href="{{ $invoiceUrl(['sort' => 'largest']) }}" class="invoice-chip">Largest</a>
+        </div>
         @if($hasActiveFilters)
             <div class="invoice-chip-row">
                 @foreach($activeFilterChips as $chip)
@@ -695,8 +1072,8 @@
         @endif
     </div>
 
-    <details class="invoice-filter-card invoice-filter-toggle" data-filter-panel data-filter-panel-key="invoices-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" @if($hasActiveFilters) open @endif>
-        <summary>Search &amp; Filters <span>{{ $hasActiveFilters ? 'Filters Active · ' . $activeFilterChips->count() : 'Expand advanced filters' }}</span></summary>
+    <details class="invoice-filter-card invoice-filter-toggle" data-filter-panel data-filter-panel-key="invoices-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}">
+        <summary>Filters <span>{{ $hasActiveFilters ? 'Active - ' . $activeFilterChips->count() : 'Advanced' }}</span></summary>
         <form method="GET" action="{{ route('invoices.index') }}">
             <div class="invoice-filter-grid">
                 <div class="invoice-field">
@@ -766,6 +1143,7 @@
         <div class="invoice-alert error">{{ session('error') }}</div>
     @endif
 
+    <div class="invoice-workspace-grid">
     <div class="invoice-list-shell rn-table-shell">
         <form id="invoiceBulkForm" method="POST" action="{{ route('invoices.bulk.print') }}" target="_blank">
             @csrf
@@ -774,7 +1152,7 @@
                     <strong>{{ $totalInvoices }} invoice{{ $totalInvoices === 1 ? '' : 's' }}</strong>
                     <span class="invoice-selected-count" id="invoiceSelectedCount">0 selected</span>
                 </div>
-                <div class="invoice-bulk-actions">
+                <div class="invoice-bulk-actions" id="invoiceBulkActions" hidden>
                     <button type="submit" class="invoice-btn" data-bulk-action="{{ route('invoices.bulk.print') }}">Bulk PDF / Print</button>
                     <button type="submit" class="invoice-btn soft" data-bulk-action="{{ route('invoices.bulk.export.csv') }}">Export Selected CSV</button>
                     @if($canDeleteInvoices)
@@ -786,6 +1164,88 @@
             @if($invoices->isEmpty())
                 <div class="invoice-empty">No invoices match this view right now. Adjust filters or create a new invoice to continue.</div>
             @else
+                <div class="invoice-mobile-list" aria-label="Invoice mobile list">
+                    @foreach($invoices as $invoice)
+                        @php
+                            $statusClass = match ($invoice->payment_status) {
+                                'paid' => 'rn-badge-success',
+                                'partial' => 'rn-badge-warning',
+                                'overdue' => 'rn-badge-danger',
+                                'cancelled' => 'rn-badge-muted',
+                                default => in_array($invoice->status, ['draft'], true) ? 'rn-badge-draft' : 'rn-badge-danger',
+                            };
+                            $statusLabel = $invoice->payment_status === 'partial'
+                                ? 'Partial'
+                                : strtoupper($invoice->payment_status ?: ($invoice->status ?: 'draft'));
+                            $gstTotal = (float) $invoice->cgst_amount + (float) $invoice->sgst_amount + (float) $invoice->igst_amount;
+                        @endphp
+                        <article class="invoice-mobile-card">
+                            <div class="invoice-mobile-top">
+                                <input type="checkbox" class="invoice-mobile-check invoice-row-check" name="invoice_ids[]" value="{{ $invoice->id }}" aria-label="Select invoice {{ $invoice->invoice_number }}">
+                                <div class="invoice-mobile-main">
+                                    <div class="invoice-mobile-heading">
+                                        <div>
+                                            <a href="{{ route('invoices.show', $invoice->id) }}" class="invoice-mobile-number">{{ $invoice->invoice_number }}</a>
+                                            <div class="invoice-mobile-customer">{{ $invoice->bill_to_name ?: ($invoice->customer->name ?? 'N/A') }}{{ ($invoice->bill_to_phone ?: ($invoice->customer->phone ?? '')) ? ' - ' . ($invoice->bill_to_phone ?: ($invoice->customer->phone ?? '')) : '' }}</div>
+                                        </div>
+                                        <span class="invoice-status-badge rn-badge {{ $statusClass }}">{{ $statusLabel }}</span>
+                                    </div>
+                                    <div class="invoice-mobile-metrics">
+                                        <div class="invoice-mobile-metric">
+                                            <span>Date</span>
+                                            <strong>{{ optional($invoice->invoice_date)->format('d/m/Y') ?: 'No date' }}</strong>
+                                        </div>
+                                        <div class="invoice-mobile-metric">
+                                            <span>Due</span>
+                                            <strong>{{ optional($invoice->due_date)->format('d/m/Y') ?: 'N/A' }}</strong>
+                                        </div>
+                                        <div class="invoice-mobile-metric">
+                                            <span>Amount</span>
+                                            <strong>@if($canViewFinance)&#8377;{{ number_format($invoice->total_amount, 2) }}@else Restricted @endif</strong>
+                                        </div>
+                                        <div class="invoice-mobile-metric">
+                                            <span>Balance</span>
+                                            <strong>@if($canViewFinance)&#8377;{{ number_format($invoice->balance_amount, 2) }}@else Restricted @endif</strong>
+                                        </div>
+                                    </div>
+                                    <div class="invoice-mobile-meta">
+                                        <span>GST @if($canViewFinance)&#8377;{{ number_format($gstTotal, 2) }}@else Restricted @endif</span>
+                                        <span>CGST {{ number_format((float) $invoice->cgst_amount, 2) }}</span>
+                                        <span>SGST {{ number_format((float) $invoice->sgst_amount, 2) }}</span>
+                                        <span>IGST {{ number_format((float) $invoice->igst_amount, 2) }}</span>
+                                    </div>
+                                    <div class="invoice-mobile-actions">
+                                        <a href="{{ route('invoices.show', $invoice->id) }}" class="invoice-action-icon" title="View invoice" aria-label="View invoice">{!! $invoiceIcon('eye') !!}</a>
+                                        @if($canCreatePayments && !in_array($invoice->payment_status, ['paid', 'cancelled'], true) && $invoice->status !== 'cancelled')
+                                            <button type="submit" form="markPaidInvoice{{ $invoice->id }}" class="invoice-action-icon pay" title="Record payment" aria-label="Record payment" onclick="return confirm('Mark this invoice as paid?')">{!! $invoiceIcon('card') !!}</button>
+                                        @endif
+                                        <a href="{{ route('invoices.print', $invoice->id) }}" target="_blank" class="invoice-action-icon pdf" title="Download PDF" aria-label="Download PDF">{!! $invoiceIcon('download') !!}</a>
+                                        <details class="invoice-action-menu">
+                                            <summary aria-label="More invoice actions" title="More invoice actions">{!! $invoiceIcon('more') !!}</summary>
+                                            <div class="invoice-action-panel">
+                                                <a href="{{ route('invoices.show', $invoice->id) }}">View</a>
+                                                @if($canUpdateInvoices)
+                                                    <a href="{{ route('invoices.edit', $invoice->id) }}">Edit</a>
+                                                @endif
+                                                <a href="{{ route('invoices.print', $invoice->id) }}" target="_blank">Download / Print PDF</a>
+                                                @if($canCreatePayments && !in_array($invoice->payment_status, ['paid', 'cancelled'], true) && $invoice->status !== 'cancelled')
+                                                    <button type="submit" form="markPaidInvoice{{ $invoice->id }}" onclick="return confirm('Mark this invoice as paid?')">Mark Paid</button>
+                                                @endif
+                                                @if($canUpdateInvoices && $invoice->status !== 'cancelled' && $invoice->payment_status !== 'cancelled')
+                                                    <button type="submit" form="voidInvoice{{ $invoice->id }}" onclick="return confirm('Void this invoice?')">Void Invoice</button>
+                                                @endif
+                                                @if($canDeleteInvoices)
+                                                    <button type="submit" form="deleteInvoice{{ $invoice->id }}" onclick="return confirm('Delete this invoice permanently? Payments will remain as payment records but will be unlinked from this invoice.');">Delete Invoice</button>
+                                                @endif
+                                            </div>
+                                        </details>
+                                    </div>
+                                </div>
+                            </div>
+                        </article>
+                    @endforeach
+                </div>
+
                 <div class="invoice-table-wrap">
                     <table class="invoice-table">
                         <thead>
@@ -797,8 +1257,8 @@
                                 <th>Due Date</th>
                                 <th class="invoice-money">Amount</th>
                                 <th class="invoice-money">Balance</th>
-                                <th style="width:54px;">Actions</th>
                                 <th>GST</th>
+                                <th style="width:142px;">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -833,32 +1293,47 @@
                                     <td class="invoice-money">@if($canViewFinance)&#8377;{{ number_format($invoice->total_amount, 2) }}@else Restricted @endif</td>
                                     <td class="invoice-money">@if($canViewFinance)&#8377;{{ number_format($invoice->balance_amount, 2) }}@else Restricted @endif</td>
                                     <td>
-                                        <details class="invoice-action-menu">
-                                            <summary aria-label="Invoice actions">...</summary>
-                                            <div class="invoice-action-panel">
-                                                <a href="{{ route('invoices.show', $invoice->id) }}">View</a>
-                                                @if($canUpdateInvoices)
-                                                    <a href="{{ route('invoices.edit', $invoice->id) }}">Edit</a>
+                                        <div class="invoice-gst-compact">
+                                            <strong>@if($canViewFinance)GST &#8377;{{ number_format($gstTotal, 2) }}@else Restricted @endif</strong>
+                                            <div class="invoice-muted">
+                                                @if((float) $invoice->cgst_amount > 0 || (float) $invoice->sgst_amount > 0)
+                                                    CGST &#8377;{{ number_format((float) $invoice->cgst_amount, 2) }} / SGST &#8377;{{ number_format((float) $invoice->sgst_amount, 2) }}
                                                 @endif
-                                                <a href="{{ route('invoices.print', $invoice->id) }}" target="_blank">Download / Print PDF</a>
-                                                @if($canCreatePayments && !in_array($invoice->payment_status, ['paid', 'cancelled'], true) && $invoice->status !== 'cancelled')
-                                                    <button type="submit" form="markPaidInvoice{{ $invoice->id }}" onclick="return confirm('Mark this invoice as paid?')">Mark Paid</button>
+                                                @if((float) $invoice->igst_amount > 0)
+                                                    IGST &#8377;{{ number_format((float) $invoice->igst_amount, 2) }}
                                                 @endif
-                                                @if($canUpdateInvoices && $invoice->status !== 'cancelled' && $invoice->payment_status !== 'cancelled')
-                                                    <button type="submit" form="voidInvoice{{ $invoice->id }}" onclick="return confirm('Void this invoice?')">Void Invoice</button>
-                                                @endif
-                                                @if($canDeleteInvoices)
-                                                    <button type="submit" form="deleteInvoice{{ $invoice->id }}" onclick="return confirm('Delete this invoice permanently? Payments will remain as payment records but will be unlinked from this invoice.');">Delete Invoice</button>
+                                                @if($gstTotal <= 0)
+                                                    No GST
                                                 @endif
                                             </div>
-                                        </details>
+                                        </div>
                                     </td>
                                     <td>
-                                        <strong>@if($canViewFinance)&#8377;{{ number_format($gstTotal, 2) }}@else Restricted @endif</strong>
-                                        <div class="invoice-muted">
-                                            CGST {{ number_format((float) $invoice->cgst_amount, 2) }} /
-                                            SGST {{ number_format((float) $invoice->sgst_amount, 2) }} /
-                                            IGST {{ number_format((float) $invoice->igst_amount, 2) }}
+                                        <div class="invoice-row-actions">
+                                            <a href="{{ route('invoices.show', $invoice->id) }}" class="invoice-action-icon" title="View invoice" aria-label="View invoice">{!! $invoiceIcon('eye') !!}</a>
+                                            @if($canCreatePayments && !in_array($invoice->payment_status, ['paid', 'cancelled'], true) && $invoice->status !== 'cancelled')
+                                                <button type="submit" form="markPaidInvoice{{ $invoice->id }}" class="invoice-action-icon pay" title="Record payment" aria-label="Record payment" onclick="return confirm('Mark this invoice as paid?')">{!! $invoiceIcon('card') !!}</button>
+                                            @endif
+                                            <a href="{{ route('invoices.print', $invoice->id) }}" target="_blank" class="invoice-action-icon pdf" title="Download PDF" aria-label="Download PDF">{!! $invoiceIcon('download') !!}</a>
+                                            <details class="invoice-action-menu">
+                                                <summary aria-label="More invoice actions" title="More invoice actions">{!! $invoiceIcon('more') !!}</summary>
+                                                <div class="invoice-action-panel">
+                                                    <a href="{{ route('invoices.show', $invoice->id) }}">View</a>
+                                                    @if($canUpdateInvoices)
+                                                        <a href="{{ route('invoices.edit', $invoice->id) }}">Edit</a>
+                                                    @endif
+                                                    <a href="{{ route('invoices.print', $invoice->id) }}" target="_blank">Download / Print PDF</a>
+                                                    @if($canCreatePayments && !in_array($invoice->payment_status, ['paid', 'cancelled'], true) && $invoice->status !== 'cancelled')
+                                                        <button type="submit" form="markPaidInvoice{{ $invoice->id }}" onclick="return confirm('Mark this invoice as paid?')">Mark Paid</button>
+                                                    @endif
+                                                    @if($canUpdateInvoices && $invoice->status !== 'cancelled' && $invoice->payment_status !== 'cancelled')
+                                                        <button type="submit" form="voidInvoice{{ $invoice->id }}" onclick="return confirm('Void this invoice?')">Void Invoice</button>
+                                                    @endif
+                                                    @if($canDeleteInvoices)
+                                                        <button type="submit" form="deleteInvoice{{ $invoice->id }}" onclick="return confirm('Delete this invoice permanently? Payments will remain as payment records but will be unlinked from this invoice.');">Delete Invoice</button>
+                                                    @endif
+                                                </div>
+                                            </details>
                                         </div>
                                     </td>
                                 </tr>
@@ -868,6 +1343,48 @@
                 </div>
             @endif
         </form>
+    </div>
+
+    <aside class="invoice-finance-panel" aria-label="Invoice finance summary">
+        <div class="invoice-side-card">
+            <div class="invoice-side-head"><strong>Finance Summary</strong><span>Live</span></div>
+            <div class="invoice-side-list">
+                <div><span>Outstanding</span><strong>@if($canViewFinance){!! $currency($outstandingAmount) !!}@else Restricted @endif</strong></div>
+                <div><span>Overdue</span><strong class="danger">@if($canViewFinance){!! $currency($overdueAmount) !!}@else Restricted @endif</strong></div>
+                <div><span>Collected Today</span><strong class="success">@if($canViewFinance){!! $currency($collectedToday) !!}@else Restricted @endif</strong></div>
+                <div><span>Collected Month</span><strong class="success">@if($canViewFinance){!! $currency($collectedThisMonth) !!}@else Restricted @endif</strong></div>
+                <div><span>Largest Invoice</span><strong>@if($canViewFinance){!! $currency($largestInvoice) !!}@else Restricted @endif</strong></div>
+                <div><span>Average Invoice</span><strong>@if($canViewFinance){!! $currency($averageInvoiceValue) !!}@else Restricted @endif</strong></div>
+            </div>
+        </div>
+        <div class="invoice-side-card">
+            <div class="invoice-side-head"><strong>Quick Actions</strong></div>
+            <div class="invoice-side-actions">
+                @if($canCreatePayments)<button type="button" class="invoice-side-action" data-invoice-filter-trigger>{!! $invoiceIcon('card') !!}<span>Find Invoice to Pay</span></button>@endif
+                <a href="{{ route('invoices.export.csv', request()->query()) }}" class="invoice-side-action">{!! $invoiceIcon('download') !!}<span>Export All</span></a>
+                @if($canCreateInvoices)<a href="{{ route('invoices.create') }}" class="invoice-side-action">{!! $invoiceIcon('plus') !!}<span>Create Invoice</span></a>@endif
+                <button type="button" class="invoice-side-action" data-invoice-filter-trigger>{!! $invoiceIcon('filter') !!}<span>Filter Invoices</span></button>
+            </div>
+        </div>
+        <div class="invoice-side-card invoice-aging-card">
+            <div class="invoice-side-head"><strong>Outstanding by Aging</strong><span>Balance</span></div>
+            <div class="invoice-aging-body">
+                <div class="invoice-aging-donut" style="--p1: {{ round(($agingBuckets->get('0-30 Days')['amount'] / $agingTotal) * 100, 1) }}%; --p2: {{ round((($agingBuckets->get('0-30 Days')['amount'] + $agingBuckets->get('31-60 Days')['amount']) / $agingTotal) * 100, 1) }}%; --p3: {{ round((($agingBuckets->get('0-30 Days')['amount'] + $agingBuckets->get('31-60 Days')['amount'] + $agingBuckets->get('61-90 Days')['amount']) / $agingTotal) * 100, 1) }}%;">
+                    <strong>@if($canViewFinance){!! $currency($agingBuckets->sum('amount')) !!}@else -- @endif</strong>
+                    <span>Total</span>
+                </div>
+                <div class="invoice-aging-list">
+                    @foreach($agingBuckets as $label => $bucket)
+                        @php $agingPercent = $agingBuckets->sum('amount') > 0 ? round(($bucket['amount'] / max(1, $agingBuckets->sum('amount'))) * 100) : 0; @endphp
+                        <div class="invoice-aging-row tone-{{ $bucket['tone'] }}">
+                            <span><i></i>{{ $label }}</span>
+                            <strong>@if($canViewFinance){!! $currency($bucket['amount']) !!} <em>{{ $agingPercent }}%</em>@else Restricted @endif</strong>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        </div>
+    </aside>
     </div>
 
     @if(method_exists($invoices, 'links'))
@@ -912,11 +1429,15 @@
             const selectAll = document.getElementById('selectAllInvoices');
             const rowChecks = Array.from(document.querySelectorAll('.invoice-row-check'));
             const countEl = document.getElementById('invoiceSelectedCount');
+            const bulkActions = document.getElementById('invoiceBulkActions');
 
             function updateSelectedCount() {
                 const selected = rowChecks.filter((checkbox) => checkbox.checked).length;
                 if (countEl) {
                     countEl.textContent = selected + ' selected';
+                }
+                if (bulkActions) {
+                    bulkActions.hidden = selected === 0;
                 }
                 if (selectAll) {
                     selectAll.checked = selected > 0 && selected === rowChecks.length;
@@ -931,6 +1452,22 @@
                 updateSelectedCount();
             });
 
+            const invoiceFilterPanel = document.querySelector('[data-filter-panel-key="invoices-index"]');
+            if (invoiceFilterPanel) {
+                invoiceFilterPanel.open = false;
+                try {
+                    localStorage.setItem('rentnexis:filter-panel:invoices-index', 'closed');
+                } catch (error) {}
+            }
+
+            document.querySelectorAll('[data-invoice-filter-trigger]').forEach((button) => {
+                button.addEventListener('click', function () {
+                    const panel = document.querySelector('[data-filter-panel-key="invoices-index"]');
+                    if (!panel) return;
+                    panel.open = !panel.open;
+                    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+            });
             rowChecks.forEach((checkbox) => checkbox.addEventListener('change', updateSelectedCount));
 
             document.querySelectorAll('[data-bulk-action]').forEach((button) => {
@@ -1000,6 +1537,8 @@
                     }
                 });
             });
+
+
 
             updateSelectedCount();
         });

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\BusinessPartner;
+use App\Models\Invoice;
 use App\Models\PartnerClient;
 use App\Support\ActivityLogger;
 use App\Support\ActivityTimelineService;
@@ -29,10 +30,17 @@ class BusinessPartnerController extends Controller
 
         $search = trim((string) $request->query('search', ''));
         $status = trim((string) $request->query('status', ''));
+        $city = trim((string) $request->query('city', ''));
+        $partnerType = trim((string) $request->query('partner_type', ''));
 
         $query = BusinessPartner::query()
             ->where('organization_id', $this->orgId())
-            ->withCount('partnerClients')
+            ->with([
+                'partnerClients' => fn ($clientQuery) => $clientQuery
+                    ->select(PartnerClient::relationSelectColumns())
+                    ->orderBy('client_name'),
+            ])
+            ->withCount(['partnerClients', 'rentals', 'sales'])
             ->orderBy('business_name');
 
         if ($search !== '') {
@@ -51,24 +59,100 @@ class BusinessPartnerController extends Controller
             $query->where('status', $status);
         }
 
+        if ($city !== '') {
+            $query->where('city', $city);
+        }
+
+        if ($partnerType === 'gst_registered') {
+            $query->where('gst_registered', true);
+        } elseif ($partnerType === 'general') {
+            $query->where(function ($innerQuery) {
+                $innerQuery->where('gst_registered', false)->orWhereNull('gst_registered');
+            });
+        }
+
         $businessPartners = $query->paginate(20)->withQueryString();
         $summaryBaseQuery = BusinessPartner::query()->where('organization_id', $this->orgId());
         $totalPartners = (clone $summaryBaseQuery)->count();
         $activePartners = (clone $summaryBaseQuery)->where('status', 'active')->count();
         $totalClients = PartnerClient::query()->where('organization_id', $this->orgId())->count();
         $activeClients = PartnerClient::query()->where('organization_id', $this->orgId())->where('status', 'active')->count();
+        $totalRentals = (int) (clone $summaryBaseQuery)->withCount('rentals')->get()->sum('rentals_count');
+        $cityOptions = (clone $summaryBaseQuery)
+            ->whereNotNull('city')
+            ->where('city', '!=', '')
+            ->distinct()
+            ->orderBy('city')
+            ->pluck('city');
+
+        $rentalInvoiceSummary = Invoice::query()
+            ->where('invoices.organization_id', $this->orgId())
+            ->join('rentals', 'rentals.id', '=', 'invoices.rental_id')
+            ->whereNotNull('rentals.business_partner_id')
+            ->selectRaw('SUM(COALESCE(invoices.balance_amount, 0)) as outstanding_amount, COUNT(invoices.id) as invoice_count')
+            ->first();
+
+        $saleInvoiceSummary = Invoice::query()
+            ->where('invoices.organization_id', $this->orgId())
+            ->join('sales', 'sales.id', '=', 'invoices.sale_id')
+            ->whereNotNull('sales.business_partner_id')
+            ->selectRaw('SUM(COALESCE(invoices.balance_amount, 0)) as outstanding_amount, COUNT(invoices.id) as invoice_count')
+            ->first();
+
+        $totalOutstandingAmount = (float) ($rentalInvoiceSummary->outstanding_amount ?? 0) + (float) ($saleInvoiceSummary->outstanding_amount ?? 0);
+        $totalPartnerInvoices = (int) ($rentalInvoiceSummary->invoice_count ?? 0) + (int) ($saleInvoiceSummary->invoice_count ?? 0);
+        $partnerIds = $businessPartners->getCollection()->pluck('id')->filter()->values();
+        $outstandingByPartner = collect();
+        $invoiceCountByPartner = collect();
+
+        if ($partnerIds->isNotEmpty()) {
+            $rentalInvoiceRows = Invoice::query()
+                ->where('invoices.organization_id', $this->orgId())
+                ->join('rentals', 'rentals.id', '=', 'invoices.rental_id')
+                ->whereIn('rentals.business_partner_id', $partnerIds)
+                ->selectRaw('rentals.business_partner_id as partner_id, SUM(COALESCE(invoices.balance_amount, 0)) as outstanding_amount, COUNT(invoices.id) as invoice_count')
+                ->groupBy('rentals.business_partner_id')
+                ->get();
+
+            $saleInvoiceRows = Invoice::query()
+                ->where('invoices.organization_id', $this->orgId())
+                ->join('sales', 'sales.id', '=', 'invoices.sale_id')
+                ->whereIn('sales.business_partner_id', $partnerIds)
+                ->selectRaw('sales.business_partner_id as partner_id, SUM(COALESCE(invoices.balance_amount, 0)) as outstanding_amount, COUNT(invoices.id) as invoice_count')
+                ->groupBy('sales.business_partner_id')
+                ->get();
+
+            foreach ($rentalInvoiceRows->merge($saleInvoiceRows) as $row) {
+                $partnerId = (int) $row->partner_id;
+                $outstandingByPartner[$partnerId] = (float) ($outstandingByPartner[$partnerId] ?? 0) + (float) $row->outstanding_amount;
+                $invoiceCountByPartner[$partnerId] = (int) ($invoiceCountByPartner[$partnerId] ?? 0) + (int) $row->invoice_count;
+            }
+        }
+
+        $businessPartners->getCollection()->transform(function (BusinessPartner $partner) use ($outstandingByPartner, $invoiceCountByPartner) {
+            $partner->outstanding_amount = (float) ($outstandingByPartner[$partner->id] ?? 0);
+            $partner->linked_invoices_count = (int) ($invoiceCountByPartner[$partner->id] ?? 0);
+
+            return $partner;
+        });
+
 
         return view('business-partners.index', compact(
             'businessPartners',
             'search',
             'status',
+            'city',
+            'partnerType',
             'totalPartners',
             'activePartners',
             'totalClients',
             'activeClients',
+            'totalRentals',
+            'cityOptions',
+            'totalOutstandingAmount',
+            'totalPartnerInvoices',
         ));
     }
-
     public function create()
     {
         $this->authorize('create', BusinessPartner::class);

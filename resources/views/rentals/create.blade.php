@@ -4,7 +4,7 @@
 
 @section('content')
 <div class="container ph-mobile-form-page rental-focused-form-page">
-    <form action="{{ route('rentals.store') }}" method="POST">
+    <form id="rentalCreateForm" action="{{ route('rentals.store') }}" method="POST">
         @csrf
         @include('rentals._form')
     </form>

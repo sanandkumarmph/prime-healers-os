@@ -1,8 +1,9 @@
 @php
     $isEdit = $asset->exists;
+    $selectedMode = old('entry_mode', request('mode') === 'bulk' ? 'bulk' : 'single');
     $selectedStage = old('asset_stage', $asset->asset_stage ?: \App\Models\Asset::STAGE_RENTAL_STOCK);
     $selectedStatus = old('asset_status', $asset->asset_status ?: ($selectedStage === \App\Models\Asset::STAGE_NEW_STOCK ? 'available_for_sale' : 'available'));
-    $selectedCondition = old('condition_status', $asset->condition_status ?: 'good');
+    $selectedCondition = old('condition_status', $asset->condition_status ?: ($isEdit ? 'good' : 'new'));
     $workflowControl = $workflowControl ?? ['locked' => false, 'locks_condition' => false, 'message' => null, 'action_label' => null, 'action_url' => null, 'convert_url' => null];
     $isWorkflowLocked = (bool) ($workflowControl['locked'] ?? false);
     $serialPendingEnabled = (bool) ($serialPendingEnabled ?? old('serial_pending', false));
@@ -19,11 +20,26 @@
 
         return $product->name . ' - ' . $secondary;
     };
+    $conditionLabels = [
+        'new' => 'New',
+        'good' => 'Good',
+        'fair' => 'Fair',
+        'needs_repair' => 'Needs Repair',
+        'damaged' => 'Damaged',
+        'retired' => 'Retired',
+        'repair' => 'Needs Repair (legacy)',
+        'inactive' => 'Retired (legacy)',
+    ];
+    $primaryConditionStatuses = ['new', 'good', 'fair', 'needs_repair', 'damaged', 'retired'];
+    $displayConditionStatuses = collect($primaryConditionStatuses)
+        ->when(!in_array($selectedCondition, $primaryConditionStatuses, true) && filled($selectedCondition), fn ($statuses) => $statuses->push($selectedCondition))
+        ->all();
+    $oldBulkSerials = old('serial_numbers', '');
 @endphp
 
 <style>
     .asset-form-page {
-        max-width: 1080px;
+        max-width: 1320px;
         margin: 0 auto;
     }
     .asset-form-header {
@@ -31,45 +47,210 @@
         justify-content:space-between;
         align-items:flex-start;
         gap:16px;
-        margin-bottom:24px;
+        margin-bottom:8px;
         flex-wrap:wrap;
     }
     .asset-stage-grid {
         display:grid;
         grid-template-columns:repeat(2, minmax(0, 1fr));
-        gap:18px;
+        gap:10px;
     }
     .asset-main-grid {
         display:grid;
-        grid-template-columns:minmax(0, 1.05fr) minmax(0, 0.95fr);
-        gap:20px;
+        grid-template-columns:minmax(0, 1fr) minmax(0, 1fr);
+        gap:14px;
         align-items:start;
     }
     .asset-main-column {
         display:grid;
-        gap:20px;
+        gap:12px;
     }
     .asset-card {
         background:#ffffff;
         border:1px solid #e2e8f0;
-        border-radius:22px;
-        padding:24px;
+        border-radius:14px;
+        padding:12px;
     }
     .asset-field-grid {
         display:grid;
         grid-template-columns:repeat(2, minmax(0, 1fr));
-        gap:18px;
+        gap:12px;
     }
     .asset-form-actions {
         display:flex;
         justify-content:flex-end;
         gap:12px;
+        position:sticky;
+        bottom:12px;
+        z-index:20;
+        padding:10px;
+        border:1px solid #dbeafe;
+        border-radius:18px;
+        background:rgba(255,255,255,.94);
+        box-shadow:0 16px 42px rgba(15,23,42,.12);
+        backdrop-filter:blur(10px);
     }
     .asset-guidance-grid {
         display:grid;
         grid-template-columns:repeat(3, minmax(0, 1fr));
         gap:12px;
-        margin-bottom:18px;
+        margin-bottom:12px;
+    }
+    .asset-form-page input,
+    .asset-form-page select,
+    .asset-form-page textarea {
+        min-height:42px !important;
+        padding:9px 11px !important;
+        border-radius:11px !important;
+        font-size:14px !important;
+    }
+    .asset-form-page textarea {
+        min-height:92px !important;
+    }
+    .asset-form-page label {
+        margin-bottom:5px !important;
+        font-size:12px !important;
+    }
+    .asset-form-page h2 {
+        font-size:17px !important;
+    }
+    .asset-form-page p {
+        line-height:1.35 !important;
+    }
+    .asset-stage-option {
+        padding:9px 12px !important;
+        border-radius:12px !important;
+        align-items:center !important;
+    }
+    .asset-stage-option input {
+        width:18px !important;
+        min-height:18px !important;
+        height:18px !important;
+        margin-top:0 !important;
+        padding:0 !important;
+    }
+    .asset-stage-option-title {
+        font-size:14px !important;
+    }
+    .asset-stage-option-copy {
+        font-size:11px !important;
+        margin-top:1px !important;
+    }
+    .asset-summary-grid {
+        display:grid;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:8px;
+    }
+    .asset-summary-item {
+        padding:10px;
+        border:1px solid #e2e8f0;
+        border-radius:12px;
+        background:#f8fafc;
+    }
+    .asset-summary-label {
+        font-size:10px;
+        color:#64748b;
+        font-weight:800;
+        text-transform:uppercase;
+        letter-spacing:.07em;
+    }
+    .asset-summary-value {
+        margin-top:4px;
+        color:#0f172a;
+        font-size:13px;
+        font-weight:800;
+        white-space:nowrap;
+        overflow:hidden;
+        text-overflow:ellipsis;
+    }
+    .asset-actions-secondary {
+        background:#ffffff !important;
+        color:#0f172a !important;
+        border:1px solid #cbd5e1 !important;
+    }
+    .asset-actions-primary {
+        background:#0f766e !important;
+        color:#ffffff !important;
+        border:1px solid #0f766e !important;
+    }
+    .asset-mode-control {
+        display:inline-grid;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:4px;
+        padding:4px;
+        margin-bottom:10px;
+        border:1px solid #dbeafe;
+        border-radius:14px;
+        background:#ffffff;
+    }
+    .asset-mode-button {
+        border:0;
+        border-radius:10px;
+        background:transparent;
+        color:#475569;
+        cursor:pointer;
+        font-weight:800;
+        padding:8px 12px;
+    }
+    .asset-mode-button.is-active {
+        background:#2563eb;
+        color:#ffffff;
+        box-shadow:0 8px 20px rgba(37,99,235,.22);
+    }
+    .asset-bulk-panel[hidden],
+    .asset-single-panel[hidden] {
+        display:none !important;
+    }
+    .asset-bulk-common-grid {
+        display:grid;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:12px;
+    }
+    .asset-bulk-serial-list {
+        display:grid;
+        gap:6px;
+        max-height:260px;
+        overflow:auto;
+    }
+    .asset-bulk-row {
+        display:grid;
+        grid-template-columns:minmax(0, 1fr) 150px 84px;
+        gap:8px;
+        align-items:center;
+        padding:8px 10px;
+        border:1px solid #e2e8f0;
+        border-radius:12px;
+        background:#f8fafc;
+    }
+    .asset-bulk-status {
+        justify-self:start;
+        padding:4px 8px;
+        border-radius:999px;
+        font-size:11px;
+        font-weight:800;
+        text-transform:uppercase;
+    }
+    .asset-bulk-status.is-ready {
+        background:#dcfce7;
+        color:#166534;
+    }
+    .asset-bulk-status.is-duplicate {
+        background:#fef3c7;
+        color:#92400e;
+    }
+    .asset-bulk-status.is-invalid {
+        background:#fee2e2;
+        color:#b91c1c;
+    }
+    .asset-bulk-row button {
+        min-height:32px !important;
+        padding:6px 8px !important;
+        border:1px solid #cbd5e1;
+        border-radius:9px;
+        background:#ffffff;
+        color:#0f172a;
+        cursor:pointer;
+        font-weight:800;
     }
     @media (max-width: 767px) {
         .asset-form-page {
@@ -120,6 +301,11 @@
         .asset-form-actions {
             display:grid;
             grid-template-columns:1fr;
+            position:static;
+            padding:0;
+            border:none;
+            box-shadow:none;
+            background:transparent;
         }
         .asset-form-actions a,
         .asset-form-actions button {
@@ -131,17 +317,22 @@
             gap:10px;
             margin-bottom:14px;
         }
+        .asset-mode-control,
+        .asset-bulk-common-grid,
+        .asset-bulk-row {
+            grid-template-columns:1fr;
+        }
     }
 </style>
 
 <div class="asset-form-page">
     <div class="asset-form-header">
         <div>
-            <div style="display:inline-flex; padding:6px 10px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">Inventory Unit</div>
-            <h1 style="margin:12px 0 8px; font-size:32px; letter-spacing:-0.03em;">{{ $isEdit ? 'Edit Asset' : 'Add Asset' }}</h1>
-            <p style="margin:0; color:#64748b; max-width:760px;">One asset form creates one physical unit. Use Product Master for catalog and pricing, then use Asset Register for serials, barcodes, warehouse placement, and lifecycle status.</p>
+            <div style="display:inline-flex; padding:4px 9px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.08em;">Inventory Unit</div>
+            <h1 style="margin:5px 0 2px; font-size:24px; letter-spacing:-0.03em;">{{ $isEdit ? 'Edit Asset' : 'Add Stock' }}</h1>
+            <p style="margin:0; color:#64748b; max-width:560px; font-size:14px;">Create one physical unit.</p>
         </div>
-        <a href="{{ route('assets.index') }}" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:600;">
+        <a href="{{ route('assets.index') }}" style="display:inline-flex; align-items:center; justify-content:center; padding:8px 12px; border-radius:11px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:700; font-size:14px;">
             Back to Asset Register
         </a>
     </div>
@@ -163,7 +354,7 @@
         </div>
     @endif
 
-    <div class="asset-guidance-grid">
+    <div class="asset-guidance-grid" style="display:none;">
         <div style="padding:14px 16px; border-radius:18px; background:#ffffff; border:1px solid #e2e8f0;">
             <div style="font-size:11px; color:#64748b; font-weight:800; text-transform:uppercase; letter-spacing:.08em;">Product Master</div>
             <div style="margin-top:6px; color:#0f172a; font-weight:700;">Catalog and pricing live there.</div>
@@ -178,7 +369,148 @@
         </div>
     </div>
 
-    <form method="POST" action="{{ $isEdit ? route('assets.update', $asset) : route('assets.store') }}" style="display:grid; gap:20px;">
+    @unless($isEdit)
+        <div class="asset-mode-control" role="tablist" aria-label="Add stock mode">
+            <button type="button" class="asset-mode-button {{ $selectedMode === 'single' ? 'is-active' : '' }}" data-asset-mode-target="single">Single Unit</button>
+            <button type="button" class="asset-mode-button {{ $selectedMode === 'bulk' ? 'is-active' : '' }}" data-asset-mode-target="bulk">Multi Unit / Bulk Scan</button>
+        </div>
+
+        <form method="POST" action="{{ route('assets.bulk-store') }}" id="assetBulkForm" class="asset-bulk-panel" style="display:grid; gap:12px;" @if($selectedMode !== 'bulk') hidden @endif>
+            @csrf
+            <input type="hidden" name="entry_mode" value="bulk">
+
+            <div class="asset-card">
+                <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+                    <div>
+                        <h2 style="margin:0;">Bulk Stock Details</h2>
+                        <p style="margin:2px 0 0; color:#64748b; font-size:12px;">These values apply to every serial.</p>
+                    </div>
+                    <span id="assetBulkCountBadge" style="display:inline-flex; padding:6px 10px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:11px; font-weight:800;">0 ready</span>
+                </div>
+
+                <div class="asset-bulk-common-grid">
+                    <div style="grid-column:1 / -1;">
+                        <div class="asset-stage-grid">
+                            <label class="asset-stage-option" style="display:flex; gap:10px; align-items:center; padding:9px 12px; border-radius:12px; border:1px solid #fed7aa; background:#fffaf0; cursor:pointer;">
+                                <input type="radio" name="asset_stage" value="{{ \App\Models\Asset::STAGE_NEW_STOCK }}" @checked($selectedStage === \App\Models\Asset::STAGE_NEW_STOCK)>
+                                <span>
+                                    <span class="asset-stage-option-title" style="display:block; font-weight:800; color:#9a3412;">Sale Unit</span>
+                                    <span class="asset-stage-option-copy" style="display:block; color:#9a3412;">Available for sale.</span>
+                                </span>
+                            </label>
+                            <label class="asset-stage-option" style="display:flex; gap:10px; align-items:center; padding:9px 12px; border-radius:12px; border:1px solid #bfdbfe; background:#eff6ff; cursor:pointer;">
+                                <input type="radio" name="asset_stage" value="{{ \App\Models\Asset::STAGE_RENTAL_STOCK }}" @checked($selectedStage === \App\Models\Asset::STAGE_RENTAL_STOCK)>
+                                <span>
+                                    <span class="asset-stage-option-title" style="display:block; font-weight:800; color:#1d4ed8;">Rental Asset</span>
+                                    <span class="asset-stage-option-copy" style="display:block; color:#1d4ed8;">Ready for rental workflow.</span>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label style="display:block; color:#475569; font-weight:700;">Product *</label>
+                        <select name="product_id" required style="{{ $fieldStyle('product_id', 'width:100%; border:1px solid #cbd5e1; background:#ffffff;') }}">
+                            <option value="">Select product</option>
+                            @foreach($products as $product)
+                                <option value="{{ $product->id }}" @selected(old('product_id', $asset->product_id) == $product->id)>{{ $productOptionLabel($product) }}</option>
+                            @endforeach
+                        </select>
+                        @if($fieldError('product_id'))
+                            <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('product_id') }}</div>
+                        @endif
+                    </div>
+
+                    <div>
+                        <label style="display:block; color:#475569; font-weight:700;">Warehouse *</label>
+                        <select name="warehouse_id" required style="{{ $fieldStyle('warehouse_id', 'width:100%; border:1px solid #cbd5e1; background:#ffffff;') }}">
+                            <option value="">Select warehouse</option>
+                            @foreach($warehouses as $warehouse)
+                                <option value="{{ $warehouse->id }}" @selected(old('warehouse_id', $asset->warehouse_id) == $warehouse->id)>{{ $warehouse->name }}</option>
+                            @endforeach
+                        </select>
+                        @if($fieldError('warehouse_id'))
+                            <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('warehouse_id') }}</div>
+                        @endif
+                    </div>
+
+                    <div>
+                        <label style="display:block; color:#475569; font-weight:700;">Condition *</label>
+                        <select name="condition_status" required style="{{ $fieldStyle('condition_status', 'width:100%; border:1px solid #cbd5e1; background:#ffffff;') }}">
+                            @foreach($displayConditionStatuses as $status)
+                                <option value="{{ $status }}" @selected($selectedCondition === $status)>{{ $conditionLabels[$status] ?? ucfirst(str_replace('_', ' ', $status)) }}</option>
+                            @endforeach
+                        </select>
+                        @if($fieldError('condition_status'))
+                            <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('condition_status') }}</div>
+                        @endif
+                    </div>
+
+                    <div>
+                        <label style="display:block; color:#475569; font-weight:700;">Purchase Cost</label>
+                        <input type="number" min="0" step="0.01" name="purchase_cost" value="{{ old('purchase_cost', $asset->purchase_cost) }}" style="{{ $fieldStyle('purchase_cost', 'width:100%; border:1px solid #cbd5e1; background:#ffffff;') }}">
+                    </div>
+
+                    <div>
+                        <label style="display:block; color:#475569; font-weight:700;">Purchase Date</label>
+                        <input type="date" name="purchase_date" value="{{ old('purchase_date', optional($asset->purchase_date)->format('Y-m-d')) }}" style="{{ $fieldStyle('purchase_date', 'width:100%; border:1px solid #cbd5e1; background:#ffffff;') }}">
+                    </div>
+
+                    <div>
+                        <label style="display:block; color:#475569; font-weight:700;">Last Service</label>
+                        <input type="date" name="last_service_date" value="{{ old('last_service_date', optional($asset->last_service_date)->format('Y-m-d')) }}" style="{{ $fieldStyle('last_service_date', 'width:100%; border:1px solid #cbd5e1; background:#ffffff;') }}">
+                    </div>
+
+                    <div>
+                        <label style="display:block; color:#475569; font-weight:700;">Next Service</label>
+                        <input type="date" name="next_service_date" value="{{ old('next_service_date', optional($asset->next_service_date)->format('Y-m-d')) }}" style="{{ $fieldStyle('next_service_date', 'width:100%; border:1px solid #cbd5e1; background:#ffffff;') }}">
+                    </div>
+
+                    <div style="grid-column:1 / -1;">
+                        <label style="display:block; color:#475569; font-weight:700;">Notes</label>
+                        <textarea name="notes" rows="2" style="{{ $fieldStyle('notes', 'width:100%; border:1px solid #cbd5e1; background:#ffffff; resize:vertical;') }}">{{ old('notes', $asset->notes) }}</textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div class="asset-card">
+                <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+                    <div>
+                        <h2 style="margin:0;">Scan or Enter Serial Numbers</h2>
+                        <p style="margin:2px 0 0; color:#64748b; font-size:12px;">Scan barcode or type serial and press Enter.</p>
+                    </div>
+                    <button type="button" id="assetBulkClearButton" class="asset-actions-secondary" style="display:inline-flex; align-items:center; justify-content:center; padding:8px 10px; border-radius:10px; font-weight:800; cursor:pointer;">Clear List</button>
+                </div>
+
+                <div style="display:flex; gap:8px; align-items:stretch; flex-wrap:wrap;">
+                    <input type="text" id="assetBulkSerialInput" autocomplete="off" spellcheck="false" placeholder="Scan or enter serial number" style="flex:1; min-width:240px; border:1px solid #2563eb; background:#ffffff;">
+                    <button type="button" id="assetBulkAddButton" class="asset-actions-primary" style="display:inline-flex; align-items:center; justify-content:center; padding:0 14px; border-radius:11px; font-weight:800; cursor:pointer;">Add Serial</button>
+                    <input type="file" id="assetBulkCameraInput" accept="image/*" capture="environment" style="display:none;">
+                    <button type="button" id="assetBulkCameraButton" class="asset-actions-secondary" style="display:inline-flex; align-items:center; justify-content:center; padding:0 14px; border-radius:11px; font-weight:800; cursor:pointer;">Open Camera</button>
+                </div>
+                <input type="hidden" name="serial_numbers" id="assetBulkSerials" value="{{ $oldBulkSerials }}">
+                @if($fieldError('serial_numbers'))
+                    <div style="margin-top:8px; color:#b91c1c; font-size:12px; font-weight:700;">{{ $fieldError('serial_numbers') }}</div>
+                @endif
+
+                <div id="assetBulkSerialList" class="asset-bulk-serial-list" style="margin-top:10px;"></div>
+                <div id="assetBulkEmptyState" style="margin-top:10px; padding:12px; border:1px dashed #cbd5e1; border-radius:12px; color:#64748b; font-size:13px;">No serials added yet.</div>
+            </div>
+
+            <div class="asset-form-actions">
+                <a href="{{ route('assets.index') }}" class="asset-actions-secondary" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px; text-decoration:none; font-weight:700;">Cancel</a>
+                <button type="button" id="assetBulkClearButtonBottom" class="asset-actions-secondary" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px; font-weight:800; cursor:pointer;">Clear List</button>
+                <button type="submit" name="save_action" value="add_more" id="assetBulkSaveMoreButton" class="asset-actions-secondary" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px; font-weight:800; cursor:pointer;">Save & Add More</button>
+                <button type="submit" name="save_action" value="save" id="assetBulkSaveButton" class="asset-actions-primary" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 18px; border:none; border-radius:12px; font-weight:800; cursor:pointer;">Save 0 Assets</button>
+            </div>
+        </form>
+    @endunless
+
+    <div id="assetSinglePanel" class="asset-single-panel" @if(!$isEdit && $selectedMode === 'bulk') hidden @endif>
+    <form method="POST" action="{{ $isEdit ? route('assets.update', $asset) : route('assets.store') }}" style="display:grid; gap:12px;">
+        @unless($isEdit)
+            <input type="hidden" name="entry_mode" value="single">
+        @endunless
         @csrf
         @if($isEdit)
             @method('PUT')
@@ -192,29 +524,29 @@
         @endif
 
         <div class="asset-card">
-            <div style="display:flex; justify-content:space-between; gap:16px; align-items:flex-start; flex-wrap:wrap; margin-bottom:18px;">
+            <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
                 <div>
-                    <h2 style="margin:0; font-size:22px;">Asset Type / Stage</h2>
-                    <p style="margin:8px 0 0; color:#64748b;">Choose whether this one unit should start as a sale unit or as a rental asset.</p>
+                    <h2 style="margin:0; font-size:22px;">Stock Type</h2>
+                    <p style="margin:2px 0 0; color:#64748b; font-size:12px;">Sale stock or rental asset.</p>
                 </div>
-                <div id="asset-stage-badge" style="display:inline-flex; padding:8px 12px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:12px; font-weight:700;">
+                <div id="asset-stage-badge" style="display:inline-flex; padding:6px 10px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:11px; font-weight:800;">
                     Rental Asset workflow
                 </div>
             </div>
 
             <div class="asset-stage-grid">
-                <label class="asset-stage-option" style="{{ $fieldStyle('asset_stage', 'display:flex; gap:12px; align-items:flex-start; padding:18px; border-radius:18px; border:1px solid #fed7aa; background:#fffaf0; cursor:pointer;') }}">
+                <label class="asset-stage-option" style="{{ $fieldStyle('asset_stage', 'display:flex; gap:10px; align-items:center; padding:9px 12px; border-radius:12px; border:1px solid #fed7aa; background:#fffaf0; cursor:pointer;') }}">
                     <input type="radio" name="asset_stage" value="{{ \App\Models\Asset::STAGE_NEW_STOCK }}" @checked($selectedStage === \App\Models\Asset::STAGE_NEW_STOCK) @disabled($isEdit && $isWorkflowLocked) style="margin-top:4px;">
                     <span>
                         <span class="asset-stage-option-title" style="display:block; font-size:15px; font-weight:800; color:#9a3412;">Sale Unit</span>
-                        <span class="asset-stage-option-copy" style="display:block; margin-top:6px; color:#9a3412; font-size:13px;">Fresh physical unit available for sale now and possible future conversion to rental assets.</span>
+                        <span class="asset-stage-option-copy" style="display:block; margin-top:4px; color:#9a3412; font-size:12px;">Available for sale.</span>
                     </span>
                 </label>
-                <label class="asset-stage-option" style="{{ $fieldStyle('asset_stage', 'display:flex; gap:12px; align-items:flex-start; padding:18px; border-radius:18px; border:1px solid #bfdbfe; background:#eff6ff; cursor:pointer;') }}">
+                <label class="asset-stage-option" style="{{ $fieldStyle('asset_stage', 'display:flex; gap:10px; align-items:center; padding:9px 12px; border-radius:12px; border:1px solid #bfdbfe; background:#eff6ff; cursor:pointer;') }}">
                     <input type="radio" name="asset_stage" value="{{ \App\Models\Asset::STAGE_RENTAL_STOCK }}" @checked($selectedStage === \App\Models\Asset::STAGE_RENTAL_STOCK) @disabled($isEdit && $isWorkflowLocked) style="margin-top:4px;">
                     <span>
                         <span class="asset-stage-option-title" style="display:block; font-size:15px; font-weight:800; color:#1d4ed8;">Rental Asset</span>
-                        <span class="asset-stage-option-copy" style="display:block; margin-top:6px; color:#1d4ed8; font-size:13px;">Unit already intended for rental operations, dispatch, pickup, service, and lifecycle tracking.</span>
+                        <span class="asset-stage-option-copy" style="display:block; margin-top:4px; color:#1d4ed8; font-size:12px;">Ready for rental workflow.</span>
                     </span>
                 </label>
             </div>
@@ -223,13 +555,13 @@
         <div class="asset-main-grid">
             <div class="asset-main-column">
                 <div class="asset-card">
-                    <h2 style="margin:0; font-size:22px;">Asset Identity</h2>
-                    <p style="margin:8px 0 18px; color:#64748b;">Link this unit to a product, then capture the serial and barcode details that identify this physical item.</p>
+                    <h2 style="margin:0; font-size:22px;">Product & Identity</h2>
+                    <p style="margin:4px 0 12px; color:#64748b; font-size:13px;">Required fields are marked with *.</p>
 
                     <div class="asset-field-grid">
                         <div>
-                            <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Product</label>
-                            <select name="product_id" required style="{{ $fieldStyle('product_id', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
+                            <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Product *</label>
+                            <select name="product_id" id="asset_product_id" required style="{{ $fieldStyle('product_id', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
                                 <option value="">Select product</option>
                                 @foreach($products as $product)
                                     <option value="{{ $product->id }}" @selected(old('product_id', $asset->product_id) == $product->id)>{{ $productOptionLabel($product) }}</option>
@@ -253,8 +585,8 @@
                         </div>
 
                         <div>
-                            <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Warehouse</label>
-                            <select name="warehouse_id" required style="{{ $fieldStyle('warehouse_id', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
+                            <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Warehouse *</label>
+                            <select name="warehouse_id" id="asset_warehouse_id" required style="{{ $fieldStyle('warehouse_id', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
                                 <option value="">Select warehouse</option>
                                 @foreach($warehouses as $warehouse)
                                     <option value="{{ $warehouse->id }}" @selected(old('warehouse_id', $asset->warehouse_id) == $warehouse->id)>{{ $warehouse->name }}</option>
@@ -265,45 +597,32 @@
                             @endif
                         </div>
 
-                        <div>
-                            <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Asset Name</label>
-                            <input type="text" name="asset_name" value="{{ old('asset_name', $asset->asset_name) }}"
-                                   style="{{ $fieldStyle('asset_name', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
-                            @if($fieldError('asset_name'))
-                                <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('asset_name') }}</div>
-                            @endif
-                        </div>
+                        <input type="hidden" name="asset_name" id="asset_name" value="{{ old('asset_name', $asset->asset_name) }}">
 
-                        <div>
+                        <div style="grid-column:1 / -1;">
                             <label id="asset-serial-label" style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Serial Number</label>
-                            <input type="text" name="serial_number" id="asset_serial_number" value="{{ old('serial_number', $asset->serial_number) }}" @if(!$serialPendingEnabled) required @endif autofocus autocomplete="off" spellcheck="false"
-                                   style="{{ $fieldStyle('serial_number', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
+                            <div style="display:flex; gap:8px; align-items:stretch; flex-wrap:wrap;">
+                                <input type="text" name="serial_number" id="asset_serial_number" value="{{ old('serial_number', $asset->serial_number) }}" @if(!$serialPendingEnabled) required @endif autofocus autocomplete="off" spellcheck="false"
+                                       style="{{ $fieldStyle('serial_number', 'flex:1; min-width:240px; padding:12px 14px; border:1px solid #2563eb; border-radius:14px; background:#ffffff;') }}">
+                                <input type="hidden" name="barcode_value" id="asset_barcode_value" value="{{ old('barcode_value', $asset->barcode_value) }}">
+                                <input type="file" id="assetBarcodeCameraInput" accept="image/*" capture="environment" style="display:none;">
+                                <button type="button" id="assetBarcodeCameraButton" class="asset-actions-secondary" style="display:inline-flex; align-items:center; justify-content:center; padding:0 14px; border-radius:11px; font-weight:800; cursor:pointer;">
+                                    Scan
+                                </button>
+                            </div>
                             @if($fieldError('serial_number'))
                                 <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('serial_number') }}</div>
+                            @endif
+                            @if($fieldError('barcode_value'))
+                                <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('barcode_value') }}</div>
                             @endif
                             @if(!$isEdit)
                                 <label style="display:flex; gap:10px; align-items:flex-start; margin-top:10px; color:#334155; font-size:12px;">
                                     <input type="checkbox" name="serial_pending" id="asset_serial_pending" value="1" @checked($serialPendingEnabled) style="margin-top:2px;">
-                                    <span><strong>Serial currently unavailable</strong> and will be updated later.</span>
+                                    <span><strong>Serial unavailable</strong></span>
                                 </label>
                             @endif
-                            <div id="asset-serial-helper" style="margin-top:6px; color:#64748b; font-size:12px;">Recommended for every tracked unit. Serial can be added later during Return Verification if currently unavailable.</div>
-                        </div>
-
-                        <div style="grid-column:1 / -1;">
-                            <label id="asset-barcode-label" style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Barcode Value</label>
-                            <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                                <input type="text" name="barcode_value" id="asset_barcode_value" value="{{ old('barcode_value', $asset->barcode_value) }}" autocomplete="off" spellcheck="false"
-                                       style="{{ $fieldStyle('barcode_value', 'flex:1; min-width:220px; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
-                                <input type="file" id="assetBarcodeCameraInput" accept="image/*" capture="environment" style="display:none;">
-                                <button type="button" id="assetBarcodeCameraButton" style="display:inline-flex; align-items:center; justify-content:center; padding:0 16px; min-height:46px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff; color:#0f172a; font-weight:700; cursor:pointer;">
-                                    Scan by Camera
-                                </button>
-                            </div>
-                            @if($fieldError('barcode_value'))
-                                <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('barcode_value') }}</div>
-                            @endif
-                            <div id="asset-barcode-helper" style="margin-top:6px; color:#64748b; font-size:12px;">Optional but recommended for new stock and high-value tracked items. Barcode can be updated later if labels are applied afterward.</div>
+                            <div id="asset-serial-helper" style="margin-top:6px; color:#64748b; font-size:12px;">Scan or enter when available.</div>
                         </div>
                     </div>
                 </div>
@@ -357,14 +676,14 @@
                             <div id="condition-status-group">
                                 <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Condition Status</label>
                                 <select name="condition_status" id="condition_status_select" style="{{ $fieldStyle('condition_status', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
-                                    @foreach($conditionStatuses as $status)
-                                        <option value="{{ $status }}" @selected($selectedCondition === $status)>{{ ucfirst($status) }}</option>
+                                    @foreach($displayConditionStatuses as $status)
+                                        <option value="{{ $status }}" @selected($selectedCondition === $status)>{{ $conditionLabels[$status] ?? ucfirst(str_replace('_', ' ', $status)) }}</option>
                                     @endforeach
                                 </select>
                                 @if($fieldError('condition_status'))
                                     <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('condition_status') }}</div>
                                 @endif
-                                <div id="condition-status-helper" style="margin-top:6px; color:#64748b; font-size:12px;">Used for rental wear-and-tear tracking.</div>
+                                <div id="condition-status-helper" style="margin-top:6px; color:#64748b; font-size:12px;">Current physical condition.</div>
                             </div>
                         </div>
                     @endif
@@ -373,10 +692,35 @@
 
             <div class="asset-main-column">
                 <div class="asset-card">
-                    <h2 style="margin:0; font-size:22px;">Purchase & Service</h2>
-                    <p id="service-helper" style="margin:8px 0 18px; color:#64748b;">Use this for cost control and maintenance planning.</p>
+                    <div style="display:flex; justify-content:space-between; gap:10px; align-items:center; margin-bottom:10px;">
+                        <h2 style="margin:0; font-size:22px;">Live Summary</h2>
+                        <span style="display:inline-flex; padding:5px 9px; border-radius:999px; background:#ecfeff; color:#0f766e; font-size:11px; font-weight:800; text-transform:uppercase;">Ready check</span>
+                    </div>
+                    <div class="asset-summary-grid">
+                        <div class="asset-summary-item">
+                            <div class="asset-summary-label">Product</div>
+                            <div class="asset-summary-value" id="asset_summary_product">Not selected</div>
+                        </div>
+                        <div class="asset-summary-item">
+                            <div class="asset-summary-label">Warehouse</div>
+                            <div class="asset-summary-value" id="asset_summary_warehouse">Not selected</div>
+                        </div>
+                        <div class="asset-summary-item">
+                            <div class="asset-summary-label">Serial</div>
+                            <div class="asset-summary-value" id="asset_summary_serial">Required</div>
+                        </div>
+                        <div class="asset-summary-item">
+                            <div class="asset-summary-label">Condition</div>
+                            <div class="asset-summary-value" id="asset_summary_condition">New</div>
+                        </div>
+                    </div>
+                </div>
 
-                    <div style="display:grid; gap:18px;">
+                <div class="asset-card">
+                    <h2 style="margin:0; font-size:22px;">Purchase & Service</h2>
+                    <p id="service-helper" style="margin:4px 0 12px; color:#64748b; font-size:13px;">Cost and service dates.</p>
+
+                    <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px;">
                         <div>
                             <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Purchase Date</label>
                             <input type="date" name="purchase_date" value="{{ old('purchase_date', optional($asset->purchase_date)->format('Y-m-d')) }}"
@@ -395,7 +739,7 @@
                             @endif
                         </div>
 
-                        <div id="service-date-fields" style="display:grid; gap:18px;">
+                        <div id="service-date-fields" style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; grid-column:1 / -1;">
                             <div>
                                 <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Last Service Date</label>
                                 <input type="date" name="last_service_date" value="{{ old('last_service_date', optional($asset->last_service_date)->format('Y-m-d')) }}"
@@ -417,31 +761,40 @@
                     </div>
                 </div>
 
-                <div class="asset-card">
-                    <h2 style="margin:0; font-size:22px;">Notes</h2>
-                    <p style="margin:8px 0 18px; color:#64748b;">Use this area for stock remarks, conversion context, sale notes, or rental handling instructions.</p>
-
-                    <textarea name="notes" rows="8" style="{{ $fieldStyle('notes', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff; resize:vertical;') }}">{{ old('notes', $asset->notes) }}</textarea>
-                    @if($fieldError('notes'))
-                        <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('notes') }}</div>
-                    @endif
-                </div>
+                <details class="asset-card" @if(filled(old('notes', $asset->notes)) || $fieldError('notes')) open @endif>
+                    <summary style="cursor:pointer; font-size:18px; font-weight:800; color:#0f172a;">Notes</summary>
+                    <div style="margin-top:10px;">
+                        <textarea name="notes" rows="4" style="{{ $fieldStyle('notes', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff; resize:vertical;') }}">{{ old('notes', $asset->notes) }}</textarea>
+                        @if($fieldError('notes'))
+                            <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('notes') }}</div>
+                        @endif
+                    </div>
+                </details>
             </div>
         </div>
 
         <div class="asset-form-actions">
-            <a href="{{ route('assets.index') }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:600;">Cancel</a>
-            <button type="submit" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 18px; border:none; border-radius:12px; background:#0f766e; color:#ffffff; font-weight:700; cursor:pointer;">
-                {{ $isEdit ? 'Update Asset' : 'Save Asset' }}
+            <a href="{{ route('assets.index') }}" class="asset-actions-secondary" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px; text-decoration:none; font-weight:700;">Cancel</a>
+            @unless($isEdit)
+                <button type="submit" name="save_action" value="add_another" class="asset-actions-secondary" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px; font-weight:800; cursor:pointer;">
+                    Save & Add Another
+                </button>
+            @endunless
+            <button type="submit" name="save_action" value="save" class="asset-actions-primary" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 18px; border:none; border-radius:12px; font-weight:800; cursor:pointer;">
+                {{ $isEdit ? 'Update Asset' : 'Save Stock' }}
             </button>
         </div>
     </form>
+    </div>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const serialField = document.getElementById('asset_serial_number');
     const barcodeField = document.getElementById('asset_barcode_value');
+    const productSelect = document.getElementById('asset_product_id');
+    const warehouseSelect = document.getElementById('asset_warehouse_id');
+    const assetNameField = document.getElementById('asset_name');
     const barcodeCameraInput = document.getElementById('assetBarcodeCameraInput');
     const barcodeCameraButton = document.getElementById('assetBarcodeCameraButton');
     const serialPendingToggle = document.getElementById('asset_serial_pending');
@@ -455,6 +808,213 @@ document.addEventListener('DOMContentLoaded', function () {
     const conditionHelper = document.getElementById('condition-status-helper');
     const serviceHelper = document.getElementById('service-helper');
     const serialHelper = document.getElementById('asset-serial-helper');
+    const summaryProduct = document.getElementById('asset_summary_product');
+    const summaryWarehouse = document.getElementById('asset_summary_warehouse');
+    const summarySerial = document.getElementById('asset_summary_serial');
+    const summaryCondition = document.getElementById('asset_summary_condition');
+    let assetNameManuallyEdited = Boolean(assetNameField && assetNameField.value.trim());
+
+    const modeButtons = document.querySelectorAll('[data-asset-mode-target]');
+    const bulkPanel = document.getElementById('assetBulkForm');
+    const singlePanel = document.getElementById('assetSinglePanel');
+    const bulkInput = document.getElementById('assetBulkSerialInput');
+    const bulkAddButton = document.getElementById('assetBulkAddButton');
+    const bulkCameraInput = document.getElementById('assetBulkCameraInput');
+    const bulkCameraButton = document.getElementById('assetBulkCameraButton');
+    const bulkHidden = document.getElementById('assetBulkSerials');
+    const bulkList = document.getElementById('assetBulkSerialList');
+    const bulkEmpty = document.getElementById('assetBulkEmptyState');
+    const bulkCountBadge = document.getElementById('assetBulkCountBadge');
+    const bulkSaveButton = document.getElementById('assetBulkSaveButton');
+    const bulkSaveMoreButton = document.getElementById('assetBulkSaveMoreButton');
+    const bulkClearButtons = [document.getElementById('assetBulkClearButton'), document.getElementById('assetBulkClearButtonBottom')].filter(Boolean);
+    let bulkSerials = bulkHidden && bulkHidden.value
+        ? bulkHidden.value.split(/[\s,]+/).map((serial) => serial.trim()).filter(Boolean)
+        : [];
+
+    const setAssetMode = function (mode) {
+        modeButtons.forEach(function (button) {
+            button.classList.toggle('is-active', button.dataset.assetModeTarget === mode);
+        });
+
+        if (bulkPanel) {
+            bulkPanel.hidden = mode !== 'bulk';
+        }
+
+        if (singlePanel) {
+            singlePanel.hidden = mode === 'bulk';
+        }
+
+        if (mode === 'bulk' && bulkInput) {
+            setTimeout(function () {
+                bulkInput.focus();
+            }, 50);
+        }
+    };
+
+    modeButtons.forEach(function (button) {
+        button.addEventListener('click', function () {
+            setAssetMode(button.dataset.assetModeTarget || 'single');
+        });
+    });
+
+    const parseBulkSerials = function (value) {
+        return (value || '')
+            .split(/[\s,]+/)
+            .map((serial) => serial.trim())
+            .filter(Boolean);
+    };
+
+    const syncBulkSerials = function () {
+        if (!bulkList || !bulkHidden) {
+            return;
+        }
+
+        const counts = bulkSerials.reduce(function (carry, serial) {
+            const key = serial.toLowerCase();
+            carry[key] = (carry[key] || 0) + 1;
+            return carry;
+        }, {});
+        const rows = bulkSerials.map(function (serial, index) {
+            const duplicate = counts[serial.toLowerCase()] > 1;
+            const invalid = !serial || serial.length > 255;
+            const status = invalid ? 'Empty / Invalid' : (duplicate ? 'Duplicate in this batch' : 'Ready');
+            const statusClass = invalid ? 'is-invalid' : (duplicate ? 'is-duplicate' : 'is-ready');
+
+            return { serial, index, status, statusClass, duplicate, invalid };
+        });
+        const readyCount = rows.filter((row) => !row.duplicate && !row.invalid).length;
+        const hasInvalidRows = rows.some((row) => row.duplicate || row.invalid);
+
+        bulkHidden.value = bulkSerials.join("\n");
+        bulkList.innerHTML = '';
+
+        const escapeHtml = function (value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        };
+
+        rows.forEach(function (row) {
+            const item = document.createElement('div');
+            item.className = 'asset-bulk-row';
+            item.innerHTML = `
+                <input type="text" value="${escapeHtml(row.serial)}" data-bulk-edit="${row.index}" aria-label="Edit serial ${row.index + 1}" style="width:100%; border:1px solid #cbd5e1; background:#ffffff;">
+                <span class="asset-bulk-status ${row.statusClass}">${row.status}</span>
+                <button type="button" data-bulk-remove="${row.index}">Remove</button>
+            `;
+            bulkList.appendChild(item);
+        });
+
+        if (bulkEmpty) {
+            bulkEmpty.style.display = rows.length ? 'none' : 'block';
+        }
+
+        if (bulkCountBadge) {
+            bulkCountBadge.textContent = readyCount + ' ready';
+        }
+
+        [bulkSaveButton, bulkSaveMoreButton].forEach(function (button) {
+            if (!button) {
+                return;
+            }
+
+            button.disabled = rows.length === 0 || hasInvalidRows;
+            button.style.opacity = button.disabled ? '0.55' : '1';
+            button.style.cursor = button.disabled ? 'not-allowed' : 'pointer';
+
+            if (button === bulkSaveButton) {
+                button.textContent = 'Save ' + readyCount + (readyCount === 1 ? ' Asset' : ' Assets');
+            }
+        });
+    };
+
+    const addBulkSerials = function (value) {
+        const serials = parseBulkSerials(value);
+
+        if (!serials.length) {
+            syncBulkSerials();
+            return;
+        }
+
+        bulkSerials = bulkSerials.concat(serials);
+        syncBulkSerials();
+    };
+
+    const addBulkInputValue = function () {
+        if (!bulkInput) {
+            return;
+        }
+
+        addBulkSerials(bulkInput.value);
+        bulkInput.value = '';
+        bulkInput.focus();
+    };
+
+    if (bulkInput) {
+        bulkInput.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                addBulkInputValue();
+            }
+        });
+
+        bulkInput.addEventListener('paste', function (event) {
+            const pasted = event.clipboardData ? event.clipboardData.getData('text') : '';
+
+            if (parseBulkSerials(pasted).length > 1) {
+                event.preventDefault();
+                addBulkSerials(pasted);
+                bulkInput.value = '';
+                bulkInput.focus();
+            }
+        });
+    }
+
+    if (bulkAddButton) {
+        bulkAddButton.addEventListener('click', addBulkInputValue);
+    }
+
+    if (bulkList) {
+        bulkList.addEventListener('click', function (event) {
+            const removeButton = event.target.closest('[data-bulk-remove]');
+
+            if (!removeButton) {
+                return;
+            }
+
+            bulkSerials.splice(Number(removeButton.dataset.bulkRemove), 1);
+            syncBulkSerials();
+            bulkInput?.focus();
+        });
+
+        bulkList.addEventListener('change', function (event) {
+            const editInput = event.target.closest('[data-bulk-edit]');
+
+            if (!editInput) {
+                return;
+            }
+
+            bulkSerials[Number(editInput.dataset.bulkEdit)] = editInput.value.trim();
+            syncBulkSerials();
+        });
+    }
+
+    bulkClearButtons.forEach(function (button) {
+        button.addEventListener('click', function () {
+            bulkSerials = [];
+            if (bulkInput) {
+                bulkInput.value = '';
+                bulkInput.focus();
+            }
+            syncBulkSerials();
+        });
+    });
+
+    syncBulkSerials();
 
     if (serialField) {
         serialField.focus();
@@ -470,15 +1030,17 @@ document.addEventListener('DOMContentLoaded', function () {
             serialField.required = false;
             serialField.placeholder = 'Optional now. System will generate a PENDING serial.';
             if (serialHelper) {
-                serialHelper.textContent = 'Serial pending is enabled. A unique placeholder serial will be generated in the format PENDING-{product_code}-{unique_id}. Replace it later when the real serial is confirmed.';
+                serialHelper.textContent = 'A pending serial will be generated.';
             }
         } else {
             serialField.required = true;
             serialField.placeholder = '';
             if (serialHelper) {
-                serialHelper.textContent = 'Recommended for every tracked unit. Serial can be added later during Return Verification if currently unavailable.';
+                serialHelper.textContent = 'Scan or enter when available.';
             }
         }
+
+        syncAssetSummary();
     };
 
     const titleize = function (value) {
@@ -539,7 +1101,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             if (conditionHelper) {
-                conditionHelper.textContent = 'Condition is optional here. Fresh stock usually stays as good unless you want to note damage.';
+                conditionHelper.textContent = 'Current physical condition.';
             }
 
             if (serviceDateFields) {
@@ -547,7 +1109,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             if (serviceHelper) {
-                serviceHelper.textContent = 'Service dates are usually not important for sale units, but you can still keep them if needed.';
+                serviceHelper.textContent = 'Optional for sale units.';
             }
         } else {
             if (stageBadge) {
@@ -565,7 +1127,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             if (conditionHelper) {
-                conditionHelper.textContent = 'Required for rental wear-and-tear tracking.';
+                conditionHelper.textContent = 'Current physical condition.';
             }
 
             if (serviceDateFields) {
@@ -573,13 +1135,15 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             if (serviceHelper) {
-                serviceHelper.textContent = 'Useful for cost control and maintenance planning.';
+                serviceHelper.textContent = 'Useful for maintenance planning.';
             }
         }
 
         if (statusSelect) {
             statusSelect.dataset.selected = statusSelect.value;
         }
+
+        syncAssetSummary();
     };
 
     stageInputs.forEach(function (input) {
@@ -590,6 +1154,84 @@ document.addEventListener('DOMContentLoaded', function () {
         serialPendingToggle.addEventListener('change', syncSerialPendingUi);
     }
 
+    const cleanSelectedText = function (select) {
+        if (!select || !select.selectedOptions || !select.selectedOptions.length) {
+            return '';
+        }
+
+        return (select.selectedOptions[0].textContent || '').trim();
+    };
+
+    const productNameFromOption = function () {
+        const optionText = cleanSelectedText(productSelect);
+
+        if (!optionText || optionText === 'Select product') {
+            return '';
+        }
+
+        return optionText.split(' - ')[0].trim() || optionText;
+    };
+
+    function syncAssetSummary() {
+        const productName = productNameFromOption();
+        const warehouseName = cleanSelectedText(warehouseSelect);
+        const conditionText = cleanSelectedText(conditionSelect);
+        const hasSerial = Boolean(serialField && serialField.value.trim());
+        const serialPending = Boolean(serialPendingToggle && serialPendingToggle.checked);
+
+        if (summaryProduct) {
+            summaryProduct.textContent = productName || 'Not selected';
+        }
+
+        if (summaryWarehouse) {
+            summaryWarehouse.textContent = warehouseName && warehouseName !== 'Select warehouse' ? warehouseName : 'Not selected';
+        }
+
+        if (summarySerial) {
+            summarySerial.textContent = hasSerial ? 'Captured' : (serialPending ? 'Pending' : 'Required');
+        }
+
+        if (summaryCondition) {
+            summaryCondition.textContent = conditionText || 'Not set';
+        }
+
+        if (barcodeField && serialField && !barcodeField.value.trim()) {
+            barcodeField.value = serialField.value.trim();
+        }
+    }
+
+    if (assetNameField) {
+        assetNameField.addEventListener('input', function () {
+            assetNameManuallyEdited = Boolean(assetNameField.value.trim());
+            syncAssetSummary();
+        });
+    }
+
+    if (productSelect) {
+        productSelect.addEventListener('change', function () {
+            const productName = productNameFromOption();
+
+            if (assetNameField && productName && !assetNameManuallyEdited) {
+                assetNameField.value = productName;
+            }
+
+            syncAssetSummary();
+        });
+    }
+
+    [warehouseSelect, conditionSelect, serialField].forEach(function (field) {
+        if (field) {
+            field.addEventListener('input', syncAssetSummary);
+            field.addEventListener('change', syncAssetSummary);
+        }
+    });
+
+    if (serialField && barcodeField) {
+        serialField.addEventListener('input', function () {
+            barcodeField.value = serialField.value.trim();
+        });
+    }
+
     if (statusSelect) {
         statusSelect.addEventListener('change', function () {
             statusSelect.dataset.selected = statusSelect.value;
@@ -598,8 +1240,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     syncStageUi();
     syncSerialPendingUi();
+    syncAssetSummary();
 
-    async function decodeBarcodeFromFile(file) {
+    async function decodeBarcodeFromFile(file, onDecoded) {
         if (!('BarcodeDetector' in window)) {
             alert('Camera capture is available, but barcode decoding is not supported on this browser. Please use Chrome on mobile or type the barcode manually.');
             return;
@@ -617,8 +1260,20 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
 
-            if (barcodeField) {
-                barcodeField.value = barcodes[0].rawValue || '';
+            const decodedValue = barcodes[0].rawValue || '';
+
+            if (typeof onDecoded === 'function') {
+                onDecoded(decodedValue);
+            } else if (serialField) {
+                serialField.value = decodedValue;
+                if (barcodeField) {
+                    barcodeField.value = decodedValue;
+                }
+                syncSerialPendingUi();
+                syncAssetSummary();
+                serialField.focus();
+            } else if (barcodeField) {
+                barcodeField.value = decodedValue;
             }
         } catch (error) {
             alert('Unable to decode barcode from the captured image. Please try again or type it manually.');
@@ -636,6 +1291,28 @@ document.addEventListener('DOMContentLoaded', function () {
             if (file) {
                 decodeBarcodeFromFile(file);
             }
+        });
+    }
+
+    if (bulkCameraButton && bulkCameraInput) {
+        bulkCameraButton.addEventListener('click', function () {
+            bulkCameraInput.click();
+        });
+
+        bulkCameraInput.addEventListener('change', function (event) {
+            const file = event.target.files && event.target.files[0];
+
+            if (file) {
+                decodeBarcodeFromFile(file, function (decodedValue) {
+                    addBulkSerials(decodedValue);
+                    if (bulkInput) {
+                        bulkInput.value = '';
+                        bulkInput.focus();
+                    }
+                });
+            }
+
+            bulkCameraInput.value = '';
         });
     }
 });

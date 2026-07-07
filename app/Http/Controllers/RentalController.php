@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Asset;
+use App\Models\AssetMovement;
 use App\Models\ActivityLog;
 use App\Models\BusinessPartner;
 use App\Models\Customer;
@@ -19,6 +20,7 @@ use App\Models\RentalItem;
 use App\Models\RentalReminderLog;
 use App\Models\RentalRenewal;
 use App\Models\RentalSaleItem;
+use App\Models\ReferralSource;
 use App\Models\Role;
 use App\Models\SaleInventory;
 use App\Models\Sale;
@@ -85,6 +87,7 @@ class RentalController extends Controller
     private ?bool $hasInvoiceRentalColumn = null;
     private ?bool $hasBusinessPartnersTable = null;
     private ?bool $hasPartnerClientsTable = null;
+    private ?bool $hasUserIsActiveColumn = null;
 
     private function rentalMetrics(): RentalMetricsService
     {
@@ -307,18 +310,47 @@ class RentalController extends Controller
 
     private function rentalReferralPayload(Request $request): array
     {
+        $selectedSource = null;
+        $manualName = trim((string) $request->input('referred_by', ''));
+
+        if ($request->filled('referral_source_id')) {
+            $selectedSource = ReferralSource::query()
+                ->forOrganization($this->orgId())
+                ->find((int) $request->input('referral_source_id'));
+        } elseif ($manualName !== '') {
+            $selectedSource = ReferralSource::query()
+                ->forOrganization($this->orgId())
+                ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($manualName)])
+                ->first();
+        }
+
         $payload = [];
 
         if (Schema::hasColumn('rentals', 'referral_source_type')) {
-            $payload['referral_source_type'] = $request->filled('referral_source_type')
-                ? $request->input('referral_source_type')
-                : null;
+            $payload['referral_source_type'] = $selectedSource?->source_type
+                ?: ($request->filled('referral_source_type') ? $request->input('referral_source_type') : null);
+        }
+
+        if (Schema::hasColumn('rentals', 'referral_source_id')) {
+            $payload['referral_source_id'] = $selectedSource?->id;
         }
 
         if (Schema::hasColumn('rentals', 'referred_by')) {
-            $payload['referred_by'] = $request->filled('referred_by')
-                ? $request->input('referred_by')
-                : null;
+            $payload['referred_by'] = $manualName !== ''
+                ? $manualName
+                : $selectedSource?->name;
+        }
+
+        if (Schema::hasColumn('rentals', 'referral_contact')) {
+            $payload['referral_contact'] = $request->filled('referral_contact')
+                ? $request->input('referral_contact')
+                : $selectedSource?->contact;
+        }
+
+        if (Schema::hasColumn('rentals', 'referral_city')) {
+            $payload['referral_city'] = $request->filled('referral_city')
+                ? $request->input('referral_city')
+                : $selectedSource?->city;
         }
 
         if (Schema::hasColumn('rentals', 'referral_incentive_amount')) {
@@ -328,6 +360,23 @@ class RentalController extends Controller
         }
 
         return $payload;
+    }
+
+    private function referralSourceOptions()
+    {
+        return ReferralSource::query()
+            ->forOrganization($this->orgId())
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get()
+            ->map(fn ($source) => [
+                'id' => $source->id,
+                'type' => $source->source_type,
+                'name' => $source->name,
+                'contact' => $source->contact,
+                'city' => $source->city,
+                'label' => trim($source->name . ($source->contact ? ' - ' . $source->contact : '')),
+            ]);
     }
 
     private function deliveryWorkflowService(): DeliveryWorkflowService
@@ -445,9 +494,24 @@ class RentalController extends Controller
         );
     }
 
+    private function hasRentalItemPeriodColumns(): bool
+    {
+        return $this->hasRentalItemPeriodColumns ??= (
+            $this->hasRentalItemsTable()
+            && Schema::hasColumn('rental_items', 'start_date')
+            && Schema::hasColumn('rental_items', 'end_date')
+            && Schema::hasColumn('rental_items', 'duration_days')
+        );
+    }
+
     private function hasInvoiceRentalColumn(): bool
     {
         return $this->hasInvoiceRentalColumn ??= Schema::hasColumn('invoices', 'rental_id');
+    }
+
+    private function hasUserIsActiveColumn(): bool
+    {
+        return $this->hasUserIsActiveColumn ??= Schema::hasColumn('users', 'is_active');
     }
 
     private function vendorOptions()
@@ -455,7 +519,7 @@ class RentalController extends Controller
         return User::query()
             ->with('assignedRole')
             ->where('organization_id', $this->orgId())
-            ->when(Schema::hasColumn('users', 'is_active'), fn ($query) => $query->where('is_active', true))
+            ->when($this->hasUserIsActiveColumn(), fn ($query) => $query->where('is_active', true))
             ->where(function ($query) {
                 $query->where('role', User::ROLE_VENDOR)
                     ->orWhereHas('assignedRole', fn ($roleQuery) => $roleQuery->where('slug', User::ROLE_VENDOR));
@@ -816,10 +880,22 @@ class RentalController extends Controller
         return User::query()
             ->with('assignedRole')
             ->where('organization_id', $this->orgId())
-            ->when(Schema::hasColumn('users', 'is_active'), fn ($query) => $query->where('is_active', true))
+            ->when($this->hasUserIsActiveColumn(), fn ($query) => $query->where('is_active', true))
             ->orderBy('name')
             ->get()
             ->filter(fn (User $user) => $this->userAssignableForRentalDelivery($user))
+            ->values();
+    }
+
+    private function internalPickupAssignableUsers()
+    {
+        return User::query()
+            ->with('assignedRole')
+            ->where('organization_id', $this->orgId())
+            ->when($this->hasUserIsActiveColumn(), fn ($query) => $query->where('is_active', true))
+            ->orderBy('name')
+            ->get()
+            ->filter(fn (User $user) => $this->userAssignableForInternalPickup($user))
             ->values();
     }
 
@@ -846,7 +922,7 @@ class RentalController extends Controller
         $allowedUserIds = User::query()
             ->with('assignedRole')
             ->where('organization_id', $this->orgId())
-            ->when(Schema::hasColumn('users', 'is_active'), fn ($query) => $query->where('is_active', true))
+            ->when($this->hasUserIsActiveColumn(), fn ($query) => $query->where('is_active', true))
             ->orderBy('id')
             ->get(['id', 'role', 'role_id', 'organization_id', 'is_active'])
             ->filter(fn (User $user) => $this->userAssignableForRentalDelivery($user))
@@ -870,7 +946,7 @@ class RentalController extends Controller
             return false;
         }
 
-        if (Schema::hasColumn('users', 'is_active') && !$user->is_active) {
+        if ($this->hasUserIsActiveColumn() && !$user->is_active) {
             return false;
         }
 
@@ -899,6 +975,50 @@ class RentalController extends Controller
             User::ROLE_DELIVERY_EXECUTIVE,
             User::ROLE_OPERATIONS_EXECUTIVE,
         ], true) || $user->canAccessAssignedWork();
+    }
+
+    private function userAssignableForInternalPickup(User $user): bool
+    {
+        if (!$user->organization_id || (int) $user->organization_id !== $this->orgId()) {
+            return false;
+        }
+
+        if ($this->hasUserIsActiveColumn() && !$user->is_active) {
+            return false;
+        }
+
+        $roleSignals = collect([
+            $user->effective_role,
+            $user->role,
+            $user->assignedRole?->slug,
+            $user->assignedRole?->name,
+        ])->filter()->map(function ($value) {
+            return Str::of((string) $value)
+                ->lower()
+                ->replace([' ', '-'], '_')
+                ->value();
+        });
+
+        $blocked = [
+            User::ROLE_SUPER_ADMIN,
+            User::ROLE_ADMIN_OPERATIONS,
+            'admin',
+            User::ROLE_FINANCE,
+            User::ROLE_SALES,
+            User::ROLE_SALES_RENEWALS,
+        ];
+
+        if ($roleSignals->contains(fn ($value) => in_array($value, $blocked, true))) {
+            return false;
+        }
+
+        return $roleSignals->contains(fn ($value) => in_array($value, [
+            User::ROLE_DELIVERY_EXECUTIVE,
+            User::ROLE_OPERATIONS_EXECUTIVE,
+            User::ROLE_DELIVERY,
+            'delivery_staff',
+            'pickup_staff',
+        ], true));
     }
 
     private function parseAssignmentTarget(mixed $value): array
@@ -1002,6 +1122,44 @@ class RentalController extends Controller
             ->unique()
             ->values()
             ->all();
+    }
+
+    private function selectedPrimaryRentalAssetIdsFromRequest(Request $request): array
+    {
+        $values = collect([
+            $request->input('primary_asset_ids'),
+            $request->input('asset_ids', []),
+        ]);
+
+        $rentalItemZero = data_get($request->all(), 'rental_items.0', []);
+        if (is_array($rentalItemZero) && empty($rentalItemZero['product_id'] ?? null)) {
+            $values->push($rentalItemZero['asset_ids'] ?? []);
+        }
+
+        $legacyItemZero = data_get($request->all(), 'items.0', []);
+        if (is_array($legacyItemZero) && empty($legacyItemZero['product_id'] ?? null)) {
+            $values->push($legacyItemZero['asset_ids'] ?? []);
+        }
+
+        $flattened = $values->flatMap(function ($value) {
+            if (is_string($value)) {
+                return preg_split('/[,\s]+/', $value, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            }
+
+            if (is_array($value)) {
+                return collect($value)->flatMap(function ($nestedValue) {
+                    if (is_string($nestedValue)) {
+                        return preg_split('/[,\s]+/', $nestedValue, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+                    }
+
+                    return is_array($nestedValue) ? $nestedValue : [$nestedValue];
+                })->all();
+            }
+
+            return filled($value) ? [$value] : [];
+        });
+
+        return $this->normalizeAssetIds($flattened->all());
     }
 
     private function normalizeStateName(?string $value): ?string
@@ -1249,10 +1407,20 @@ class RentalController extends Controller
             ->get()
             ->keyBy('id');
 
-        return $rows->map(function ($item, $index) use ($products, $recommendedTaxType) {
+        return $rows->map(function ($item, $index) use ($products, $recommendedTaxType, $request) {
             $productId = !empty($item['product_id']) ? (int) $item['product_id'] : null;
             $quantity = max((int) ($item['quantity'] ?? 0), 0);
             $unitRentalAmount = round(max((float) ($item['unit_rental_amount'] ?? 0), 0), 2);
+            $lineStartDate = filled($item['start_date'] ?? null)
+                ? Carbon::parse($item['start_date'])->toDateString()
+                : ($request->filled('start_date') ? Carbon::parse($request->input('start_date'))->toDateString() : null);
+            $lineEndDate = filled($item['end_date'] ?? null)
+                ? Carbon::parse($item['end_date'])->toDateString()
+                : ($request->filled('end_date') ? Carbon::parse($request->input('end_date'))->toDateString() : null);
+            $durationDays = max((int) ($item['duration_days'] ?? 0), 0);
+            if ($durationDays <= 0 && $lineStartDate && $lineEndDate) {
+                $durationDays = max((int) Carbon::parse($lineStartDate)->diffInDays(Carbon::parse($lineEndDate)) + 1, 1);
+            }
 
             if (!$productId || $quantity <= 0) {
                 return null;
@@ -1276,6 +1444,9 @@ class RentalController extends Controller
                 'product_id' => $productId,
                 'asset_ids' => $this->normalizeAssetIds($item['asset_ids'] ?? []),
                 'quantity' => $quantity,
+                'start_date' => $lineStartDate,
+                'end_date' => $lineEndDate,
+                'duration_days' => $durationDays ?: null,
                 'unit_rental_amount' => $unitRentalAmount,
                 'gst_rate' => $commercials['gst_rate'],
                 'gst_mode' => $commercials['gst_mode'],
@@ -1317,8 +1488,11 @@ class RentalController extends Controller
 
             $items[] = [
                 'product_id' => $primaryProductId,
-                'asset_ids' => $this->normalizeAssetIds($request->input('asset_ids', [])),
+                'asset_ids' => $this->selectedPrimaryRentalAssetIdsFromRequest($request),
                 'quantity' => $primaryQuantity,
+                'start_date' => $request->filled('start_date') ? Carbon::parse($request->input('start_date'))->toDateString() : null,
+                'end_date' => $request->filled('end_date') ? Carbon::parse($request->input('end_date'))->toDateString() : null,
+                'duration_days' => ($request->filled('start_date') && $request->filled('end_date')) ? max((int) Carbon::parse($request->input('start_date'))->diffInDays(Carbon::parse($request->input('end_date'))) + 1, 1) : null,
                 'unit_rental_amount' => $primaryQuantity > 0 ? round($commercials['subtotal'] / $primaryQuantity, 2) : $commercials['subtotal'],
                 'gst_rate' => $commercials['gst_rate'],
                 'gst_mode' => $commercials['gst_mode'],
@@ -1339,6 +1513,9 @@ class RentalController extends Controller
                 'product_id' => $item['product_id'],
                 'asset_ids' => $item['asset_ids'],
                 'quantity' => $item['quantity'],
+                'start_date' => $item['start_date'] ?? null,
+                'end_date' => $item['end_date'] ?? null,
+                'duration_days' => $item['duration_days'] ?? null,
                 'unit_rental_amount' => $item['unit_rental_amount'],
                 'gst_rate' => $item['gst_rate'],
                 'gst_mode' => $item['gst_mode'],
@@ -1371,6 +1548,9 @@ class RentalController extends Controller
                 Rule::exists('assets', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
             ],
             'rental_items.*.quantity' => 'nullable|integer|min:0',
+            'rental_items.*.start_date' => 'nullable|date',
+            'rental_items.*.end_date' => 'nullable|date',
+            'rental_items.*.duration_days' => 'nullable|integer|min:1',
             'rental_items.*.unit_rental_amount' => 'nullable|numeric|min:0',
             'rental_items.*.gst_rate' => 'nullable|numeric|min:0|max:100',
             'rental_items.*.gst_mode' => 'nullable|in:exclusive,inclusive',
@@ -1527,9 +1707,10 @@ class RentalController extends Controller
 
             $field = $item['form_asset_field'] ?? 'asset_ids';
             $lineLabel = $item['line_label'] ?? 'rental line';
+            $received = count($assetIds);
 
             throw ValidationException::withMessages([
-                $field => ['Tracked rental products require one assigned asset per unit for the ' . $lineLabel . '. Only existing legacy rentals may remain in serial_pending legacy mode until assets are assigned.'],
+                $field => ['Rental asset required. Quantity is ' . $quantity . ', selected assets received: ' . $received . '.'],
             ]);
         }
     }
@@ -1574,6 +1755,12 @@ class RentalController extends Controller
                 'line_total' => $item['line_total'],
                 'notes' => $item['notes'],
             ];
+
+            if ($this->hasRentalItemPeriodColumns()) {
+                $payload['start_date'] = $item['start_date'] ?? null;
+                $payload['end_date'] = $item['end_date'] ?? null;
+                $payload['duration_days'] = $item['duration_days'] ?? null;
+            }
 
             if ($this->hasRentalItemAssetIdsColumn()) {
                 $payload['asset_ids'] = $item['asset_ids'] ?? [];
@@ -2921,7 +3108,7 @@ class RentalController extends Controller
         $this->markImportedRentalDelivered($rental);
     }
 
-    private function baseRentalQuery(bool $includeRelations = true, bool $applyScope = true)
+    private function baseRentalQuery(bool $includeRelations = true, bool $applyScope = true, bool $includeComputedColumns = true)
     {
         $query = Rental::query()->forOrganization($this->orgId());
 
@@ -2931,35 +3118,37 @@ class RentalController extends Controller
 
         $query->select('rentals.*');
 
-        $outstandingInvoiceBalanceQuery = Invoice::query()
-            ->selectRaw('COALESCE(SUM(invoices.balance_amount), 0)')
-            ->where('invoices.organization_id', $this->orgId())
-            ->whereNotIn('invoices.payment_status', ['paid', 'cancelled'])
-            ->where(function ($invoiceQuery) {
-                if ($this->hasInvoiceRentalColumn()) {
-                    $invoiceQuery->whereColumn('invoices.rental_id', 'rentals.id');
-                }
+        if ($includeComputedColumns) {
+            $outstandingInvoiceBalanceQuery = Invoice::query()
+                ->selectRaw('COALESCE(SUM(invoices.balance_amount), 0)')
+                ->where('invoices.organization_id', $this->orgId())
+                ->whereNotIn('invoices.payment_status', ['paid', 'cancelled'])
+                ->where(function ($invoiceQuery) {
+                    if ($this->hasInvoiceRentalColumn()) {
+                        $invoiceQuery->whereColumn('invoices.rental_id', 'rentals.id');
+                    }
 
-                $invoiceQuery->orWhereIn('invoices.id', function ($itemQuery) {
-                    $itemQuery
-                        ->select('invoice_items.invoice_id')
-                        ->from('invoice_items')
-                        ->whereColumn('invoice_items.source_id', 'rentals.id')
-                        ->where('invoice_items.source_type', 'rental')
-                        ->distinct();
+                    $invoiceQuery->orWhereIn('invoices.id', function ($itemQuery) {
+                        $itemQuery
+                            ->select('invoice_items.invoice_id')
+                            ->from('invoice_items')
+                            ->whereColumn('invoice_items.source_id', 'rentals.id')
+                            ->where('invoice_items.source_type', 'rental')
+                            ->distinct();
+                    });
                 });
-            });
 
-        $query->selectSub($outstandingInvoiceBalanceQuery, 'outstanding_invoice_balance');
+            $query->selectSub($outstandingInvoiceBalanceQuery, 'outstanding_invoice_balance');
 
-        if (Rental::hasReminderLogsTable()) {
-            $query->selectSub(
-                RentalReminderLog::query()
-                    ->selectRaw('MAX(sent_at)')
-                    ->whereColumn('rental_id', 'rentals.id')
-                    ->where('organization_id', $this->orgId()),
-                'latest_reminder_sent_at'
-            );
+            if (Rental::hasReminderLogsTable()) {
+                $query->selectSub(
+                    RentalReminderLog::query()
+                        ->selectRaw('MAX(sent_at)')
+                        ->whereColumn('rental_id', 'rentals.id')
+                        ->where('organization_id', $this->orgId()),
+                    'latest_reminder_sent_at'
+                );
+            }
         }
 
         if ($includeRelations) {
@@ -2975,6 +3164,8 @@ class RentalController extends Controller
                 'pickupStaff',
                 'dispatchWarehouse',
                 'createdBy',
+                'vendor',
+                'vendorOrderDetail.vendor',
             ];
 
             if ($this->hasRentalAssetsTable()) {
@@ -3739,9 +3930,9 @@ class RentalController extends Controller
             ->with('success', 'Latest renewal deleted successfully.');
     }
 
-    private function filteredRentalQuery(Request $request, bool $includeRelations = true, bool $applyScope = true)
+    private function filteredRentalQuery(Request $request, bool $includeRelations = true, bool $applyScope = true, bool $includeComputedColumns = true)
     {
-        return $this->applyLifecycleFilters($this->baseRentalQuery($includeRelations, $applyScope), $request);
+        return $this->applyLifecycleFilters($this->baseRentalQuery($includeRelations, $applyScope, $includeComputedColumns), $request);
     }
 
     private function filteredRentalAggregateQuery(Request $request, bool $applyScope = true)
@@ -4552,9 +4743,9 @@ class RentalController extends Controller
 
         $baseFilterRequest = Request::create('/dashboard', 'GET', $request->query());
 
-        $summaryQuery = $this->filteredRentalQuery($baseFilterRequest, false, false);
-        $recentRentalsQuery = $this->filteredRentalQuery($baseFilterRequest, true, false);
-        $dashboardSummaryQuery = $this->filteredRentalQuery($baseFilterRequest, false, false)
+        $summaryQuery = $this->filteredRentalQuery($baseFilterRequest, false, false, false);
+        $recentRentalsQuery = $this->filteredRentalQuery($baseFilterRequest, true, false, false);
+        $dashboardSummaryQuery = $this->filteredRentalQuery($baseFilterRequest, false, false, false)
             ->with([
                 'customer:id,name,city',
                 'dispatchWarehouse:id,name',
@@ -4751,7 +4942,7 @@ class RentalController extends Controller
         $renewalCenterBaseQuery = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
             'status' => null,
             'filter' => null,
-        ])), false, false)
+        ])), false, false, false)
             ->whereNotIn('status', ['returned', 'cancelled'])
             ->lifecycleStarted();
         if ($restrictDashboardToSelfCreated && Schema::hasColumn('rentals', 'created_by_user_id')) {
@@ -5593,6 +5784,132 @@ class RentalController extends Controller
         return $this->streamRentalsCsv($rentals, 'rental-dashboard-' . now()->format('Ymd-His') . '.csv');
     }
 
+    public function storeRentalStockFromCreate(Request $request)
+    {
+        $this->ensureRentalAccess();
+        $this->authorize('create', Rental::class);
+
+        abort_unless($request->user()?->canAccessModule('assets', 'create'), 403);
+
+        $request->merge([
+            'serial_number' => trim((string) $request->input('serial_number', '')),
+            'barcode_value' => trim((string) $request->input('barcode_value', '')) ?: null,
+            'fulfilment_source' => $request->input('fulfilment_source', VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE),
+        ]);
+
+        $validated = $request->validate([
+            'product_id' => [
+                'required',
+                Rule::exists('products', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+            ],
+            'warehouse_id' => [
+                'required',
+                Rule::exists('warehouses', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+            ],
+            'city_id' => [
+                'nullable',
+                Rule::exists('cities', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+            ],
+            'fulfilment_source' => ['nullable', Rule::in([
+                VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE,
+                VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED,
+            ])],
+            'serial_number' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('assets', 'serial_number')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+            ],
+            'barcode_value' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::unique('assets', 'barcode_value')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+            ],
+            'quantity' => ['nullable', 'integer', 'min:1', 'max:1'],
+            'condition_status' => ['required', Rule::in(Asset::CONDITION_STATUSES)],
+            'asset_status' => ['nullable', Rule::in([Asset::STATUS_AVAILABLE])],
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        if (($validated['fulfilment_source'] ?? VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE) === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED) {
+            throw ValidationException::withMessages([
+                'fulfilment_source' => ['Vendor-supplied rentals do not require PH rental stock. Please continue with vendor fulfilment.'],
+            ]);
+        }
+
+        $product = Product::query()
+            ->where('organization_id', $this->orgId())
+            ->findOrFail((int) $validated['product_id']);
+
+        if (!$product->isRentalEligibleForSelection() || $this->isSaleOnlyProduct($product) || !$product->tracksRentalStock()) {
+            throw ValidationException::withMessages([
+                'product_id' => ['Rental stock can be added only for reusable/rentable equipment.'],
+            ]);
+        }
+
+        $warehouse = Warehouse::query()
+            ->where('organization_id', $this->orgId())
+            ->findOrFail((int) $validated['warehouse_id']);
+
+        if (!empty($validated['city_id']) && (int) ($warehouse->city_id ?? 0) > 0 && (int) $warehouse->city_id !== (int) $validated['city_id']) {
+            throw ValidationException::withMessages([
+                'warehouse_id' => ['Select a warehouse for the selected rental city.'],
+            ]);
+        }
+
+        $asset = DB::transaction(function () use ($validated, $product, $warehouse) {
+            $asset = Asset::create([
+                'organization_id' => $this->orgId(),
+                'product_id' => $product->id,
+                'warehouse_id' => $warehouse->id,
+                'asset_name' => $product->name,
+                'serial_number' => $validated['serial_number'],
+                'barcode_value' => $validated['barcode_value'] ?? null,
+                'asset_stage' => Asset::STAGE_RENTAL_STOCK,
+                'condition_status' => $validated['condition_status'],
+                'asset_status' => Asset::STATUS_AVAILABLE,
+                'notes' => $validated['notes'] ?? null,
+            ]);
+
+            AssetMovement::create([
+                'organization_id' => $asset->organization_id,
+                'asset_id' => $asset->id,
+                'from_warehouse_id' => null,
+                'to_warehouse_id' => $asset->warehouse_id,
+                'movement_type' => StockMovement::TYPE_ADD_STOCK,
+                'remarks' => 'Rental stock added from rental create.',
+                'moved_by' => auth()->id(),
+            ]);
+
+            app(StockMovementRecorder::class)->recordForAsset(
+                $asset,
+                StockMovement::TYPE_ADD_STOCK,
+                1,
+                [
+                    'from_status' => null,
+                    'to_status' => $asset->asset_status,
+                    'from_warehouse_id' => null,
+                    'to_warehouse_id' => $asset->warehouse_id,
+                    'performed_by_user_id' => auth()->id(),
+                    'movement_at' => now(),
+                    'notes' => 'Rental stock added from rental create.',
+                ]
+            );
+
+            SaleInventory::syncFromSaleUnits($this->orgId(), $product->id);
+            $product->refresh();
+            $product->syncLegacyStockFields();
+
+            return $asset->fresh(['warehouse']);
+        });
+
+        return response()->json([
+            'message' => 'Rental stock added and available for selection.',
+            'asset' => $this->rentalAssetPayload($asset),
+        ], 201);
+    }
+
     public function availableAssets(Request $request)
     {
         $this->ensureRentalAccess();
@@ -5660,16 +5977,23 @@ class RentalController extends Controller
             ]);
 
         return response()->json([
-            'data' => $assets->map(fn ($asset) => [
-                'id' => $asset->id,
-                'label' => $asset->asset_name ?: $asset->serial_number,
-                'serial_number' => $asset->serial_number,
-                'barcode_value' => $asset->barcode_value,
-                'asset_status' => $asset->asset_status,
-                'condition_status' => $asset->condition_status,
-                'warehouse' => optional($asset->warehouse)->name,
-            ])->values(),
+            'data' => $assets->map(fn ($asset) => $this->rentalAssetPayload($asset))->values(),
         ]);
+    }
+
+    private function rentalAssetPayload(Asset $asset): array
+    {
+        return [
+            'id' => (int) $asset->id,
+            'product_id' => (int) $asset->product_id,
+            'warehouse_id' => (int) ($asset->warehouse_id ?? 0),
+            'label' => (string) ($asset->asset_name ?: $asset->serial_number ?: ('Asset #' . $asset->id)),
+            'serial_number' => (string) ($asset->serial_number ?? ''),
+            'barcode_value' => (string) ($asset->barcode_value ?? ''),
+            'asset_status' => (string) ($asset->asset_status ?? ''),
+            'condition_status' => (string) ($asset->condition_status ?? ''),
+            'warehouse' => (string) optional($asset->warehouse)->name,
+        ];
     }
 
     public function index(Request $request)
@@ -5868,8 +6192,9 @@ class RentalController extends Controller
         $fulfilmentVendors = $this->vendorMasterOptions();
         $cities = $this->rentalFormCities();
         $primaryRentalAssetIndex = $this->primaryRentalAssetIndex($rentalProducts);
+        $referralSourceOptions = $this->referralSourceOptions();
 
-        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'vendors', 'fulfilmentVendors', 'warehouses', 'organization', 'selectedCustomer', 'cities', 'primaryRentalAssetIndex'));
+        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'vendors', 'fulfilmentVendors', 'warehouses', 'organization', 'selectedCustomer', 'cities', 'primaryRentalAssetIndex', 'referralSourceOptions'));
     }
 
     public function businessPartnerActualClients(BusinessPartner $businessPartner)
@@ -5920,6 +6245,12 @@ class RentalController extends Controller
             $request->merge(['customer_type' => 'direct_customer']);
         }
         $this->hydrateRentalBusinessPartnerInputs($request);
+        $selectedAssetIds = $this->selectedPrimaryRentalAssetIdsFromRequest($request);
+        $request->merge([
+            'asset_ids' => $selectedAssetIds,
+            'primary_asset_ids' => implode(',', $selectedAssetIds),
+        ]);
+
 
         $validationRules = [
             'customer_type' => ['required', Rule::in(['direct_customer', 'business_partner'])],
@@ -5964,7 +6295,13 @@ class RentalController extends Controller
             'delivery_notes' => 'nullable|string',
             'pickup_staff_id' => ['nullable', $this->activeRentalStaffExistsRule()],
             'referral_source_type' => 'nullable|string|max:80',
+            'referral_source_id' => [
+                'nullable',
+                Rule::exists('referral_sources', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+            ],
             'referred_by' => 'nullable|string|max:180',
+            'referral_contact' => 'nullable|string|max:180',
+            'referral_city' => 'nullable|string|max:120',
             'referral_incentive_amount' => 'nullable|numeric|min:0',
             'quantity' => 'required|integer|min:1',
             'start_date' => 'required|date',
@@ -5976,6 +6313,7 @@ class RentalController extends Controller
             'deposit_amount' => 'nullable|numeric|min:0',
             'transport_amount' => 'nullable|numeric|min:0',
             'other_amount' => 'nullable|numeric|min:0',
+            'primary_asset_ids' => 'nullable|string',
             'asset_ids' => 'nullable|array',
             'asset_ids.*' => [
                 'integer',
@@ -5991,41 +6329,45 @@ class RentalController extends Controller
             ];
         }
 
-        $request->validate($validationRules);
-        $fulfilment = $this->normalizedRentalFulfilmentInput($request);
-        $vendorSupplied = $fulfilment['fulfilment_source'] === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED;
-        $deliveryAssignment = $this->validatedAssignmentTarget($request->input('delivery_staff_id'), 'delivery_staff_id');
-        $this->ensureRentalFulfilmentMatchesCity($request, $fulfilment, $deliveryAssignment);
-        if (($deliveryAssignment['type'] ?? null) === 'third_party' && !filled($request->input('third_party_name'))) {
-            throw ValidationException::withMessages([
-                'third_party_name' => ['Enter the third-party delivery partner name.'],
-            ]);
-        }
+        try {
+            $request->validate($validationRules);
+            $fulfilment = $this->normalizedRentalFulfilmentInput($request);
+            $vendorSupplied = $fulfilment['fulfilment_source'] === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED;
+            $deliveryAssignment = $this->validatedAssignmentTarget($request->input('delivery_staff_id'), 'delivery_staff_id');
+            $this->ensureRentalFulfilmentMatchesCity($request, $fulfilment, $deliveryAssignment);
+            if (($deliveryAssignment['type'] ?? null) === 'third_party' && !filled($request->input('third_party_name'))) {
+                throw ValidationException::withMessages([
+                    'third_party_name' => ['Enter the third-party delivery partner name.'],
+                ]);
+            }
 
-        $product = Product::where('organization_id', $this->orgId())->findOrFail($request->product_id);
-        if (!$product->isRentalEligibleForSelection() || $this->isSaleOnlyProduct($product)) {
-            throw ValidationException::withMessages([
-                'product_id' => [$product->name . ' is sale only and cannot be rented.'],
-            ]);
-        }
-        $customerContext = $this->rentalValidatedCustomerContext($request);
-        $saleItems = $this->normalizedSaleItems($request);
-        $rentalItems = $this->combinedRentalItems($request);
-        if ($vendorSupplied) {
-            $rentalItems = $this->sanitizedVendorSuppliedRentalItems($rentalItems);
-            $selectedAssets = collect();
-        } else {
-            $selectedAssets = $this->resolveCombinedRentalAssets(
-                $rentalItems,
-                $request->filled('dispatch_warehouse_id') ? (int) $request->input('dispatch_warehouse_id') : null
-            );
+            $product = Product::where('organization_id', $this->orgId())->findOrFail($request->product_id);
+            if (!$product->isRentalEligibleForSelection() || $this->isSaleOnlyProduct($product)) {
+                throw ValidationException::withMessages([
+                    'product_id' => [$product->name . ' is sale only and cannot be rented.'],
+                ]);
+            }
+            $customerContext = $this->rentalValidatedCustomerContext($request);
+            $saleItems = $this->normalizedSaleItems($request);
+            $rentalItems = $this->combinedRentalItems($request);
+            if ($vendorSupplied) {
+                $rentalItems = $this->sanitizedVendorSuppliedRentalItems($rentalItems);
+                $selectedAssets = collect();
+            } else {
+                $selectedAssets = $this->resolveCombinedRentalAssets(
+                    $rentalItems,
+                    $request->filled('dispatch_warehouse_id') ? (int) $request->input('dispatch_warehouse_id') : null
+                );
 
-            $this->validateCombinedRentalItemStock(
-                $rentalItems,
-                null,
-                $request->filled('dispatch_warehouse_id') ? (int) $request->input('dispatch_warehouse_id') : null
-            );
-            $this->validateTrackedRentalAssetAssignments($rentalItems);
+                $this->validateCombinedRentalItemStock(
+                    $rentalItems,
+                    null,
+                    $request->filled('dispatch_warehouse_id') ? (int) $request->input('dispatch_warehouse_id') : null
+                );
+                $this->validateTrackedRentalAssetAssignments($rentalItems);
+            }
+        } catch (ValidationException $exception) {
+            throw ValidationException::withMessages($exception->errors());
         }
 
         [$rental, $invoice] = DB::transaction(function () use ($request, $product, $customerContext, $selectedAssets, $saleItems, $rentalItems, $deliveryAssignment, $fulfilment, $vendorSupplied) {
@@ -6143,7 +6485,15 @@ class RentalController extends Controller
             'payment_status' => $invoice->payment_status,
         ], 'Rental created and invoice generated.');
 
-        return redirect('/rentals')->with('success', 'Rental added successfully. Invoice ' . $invoice->invoice_number . ' was created automatically.');
+        return redirect()
+            ->route('rentals.index', ['sort_by' => 'latest'])
+            ->with('success', 'Rental added successfully. Invoice ' . $invoice->invoice_number . ' was created automatically.')
+            ->with('created_rental', [
+                'id' => $rental->id,
+                'customer' => $rental->customer?->name ?? $rental->billingContactName(),
+                'amount' => (float) ($rental->rental_amount ?? 0),
+                'invoice_number' => $invoice->invoice_number,
+            ]);
     }
 
     public function importRentalFromPayload(array $attributes): array
@@ -6434,6 +6784,8 @@ class RentalController extends Controller
             'deliveryStaff',
             'pickupStaff',
             'createdBy',
+            'vendor',
+            'vendorOrderDetail.vendor',
             'deliveries.assignedStaff',
             'deliveries.assignedUser',
             'payments.invoice',
@@ -6441,6 +6793,7 @@ class RentalController extends Controller
 
         if ($this->hasRentalAssetsTable()) {
             $load[] = 'activeRentalAssets.asset.warehouse';
+            $load[] = 'rentalAssets.asset.warehouse';
         }
 
         if ($this->hasRentalRenewalsTable()) {
@@ -6466,6 +6819,7 @@ class RentalController extends Controller
 
         if (!$this->hasRentalAssetsTable()) {
             $rental->setRelation('activeRentalAssets', collect());
+            $rental->setRelation('rentalAssets', collect());
         }
 
         if (!$this->hasRentalRenewalsTable()) {
@@ -6485,8 +6839,11 @@ class RentalController extends Controller
         $activityLogs = app(ActivityTimelineService::class)->forSubject($rental, $timelineFilter, 25, 'timeline_page');
 
         $needsAssetAssignment = $this->trackedRentalNeedsAssetAssignment($rental);
+        $pickupAssignableUsers = $this->internalPickupAssignableUsers();
+        $pickupAssignableStaff = $this->assignableStaffMembers();
+        $pickupVendors = $this->vendorMasterOptions();
 
-        return view('rentals.show', compact('rental', 'rentalInvoice', 'activityLogs', 'needsAssetAssignment', 'timelineFilter'));
+        return view('rentals.show', compact('rental', 'rentalInvoice', 'activityLogs', 'needsAssetAssignment', 'timelineFilter', 'pickupAssignableUsers', 'pickupAssignableStaff', 'pickupVendors'));
     }
 
     public function addNote(Request $request, Rental $rental)
@@ -6738,8 +7095,9 @@ class RentalController extends Controller
         $fulfilmentVendors = $this->vendorMasterOptions();
         $cities = $this->rentalFormCities();
         $primaryRentalAssetIndex = $this->primaryRentalAssetIndex($rentalProducts, $rental);
+        $referralSourceOptions = $this->referralSourceOptions();
 
-        return view('rentals.edit', compact('rental', 'products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'vendors', 'fulfilmentVendors', 'warehouses', 'organization', 'cities', 'primaryRentalAssetIndex'));
+        return view('rentals.edit', compact('rental', 'products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'vendors', 'fulfilmentVendors', 'warehouses', 'organization', 'cities', 'primaryRentalAssetIndex', 'referralSourceOptions'));
     }
 
     public function update(Request $request, Rental $rental)
@@ -6755,6 +7113,12 @@ class RentalController extends Controller
             $request->merge(['customer_type' => 'direct_customer']);
         }
         $this->hydrateRentalBusinessPartnerInputs($request);
+        $selectedAssetIds = $this->selectedPrimaryRentalAssetIdsFromRequest($request);
+        $request->merge([
+            'asset_ids' => $selectedAssetIds,
+            'primary_asset_ids' => implode(',', $selectedAssetIds),
+        ]);
+
 
         $validationRules = [
             'customer_type' => ['required', Rule::in(['direct_customer', 'business_partner'])],
@@ -6799,7 +7163,13 @@ class RentalController extends Controller
             'delivery_notes' => 'nullable|string',
             'pickup_staff_id' => ['nullable', $this->activeRentalStaffExistsRule()],
             'referral_source_type' => 'nullable|string|max:80',
+            'referral_source_id' => [
+                'nullable',
+                Rule::exists('referral_sources', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+            ],
             'referred_by' => 'nullable|string|max:180',
+            'referral_contact' => 'nullable|string|max:180',
+            'referral_city' => 'nullable|string|max:120',
             'referral_incentive_amount' => 'nullable|numeric|min:0',
             'quantity' => 'required|integer|min:1',
             'start_date' => 'required|date',
@@ -6811,6 +7181,7 @@ class RentalController extends Controller
             'deposit_amount' => 'nullable|numeric|min:0',
             'transport_amount' => 'nullable|numeric|min:0',
             'other_amount' => 'nullable|numeric|min:0',
+            'primary_asset_ids' => 'nullable|string',
             'asset_ids' => 'nullable|array',
             'asset_ids.*' => [
                 'integer',

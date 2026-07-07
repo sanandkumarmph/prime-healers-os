@@ -1,6 +1,8 @@
 @if(!empty($href))
-    <a href="{{ $href }}" class="mobile-fab" aria-label="{{ $label ?? 'Add record' }}">
+    <a href="{{ $href }}" class="mobile-fab {{ !empty($compact) ? 'is-compact' : '' }}" aria-label="{{ $label ?? 'Add record' }}">
         <span aria-hidden="true">+</span>
-        <strong>{{ $label ?? 'Add' }}</strong>
+        @unless(!empty($compact))
+            <strong>{{ $label ?? 'Add' }}</strong>
+        @endunless
     </a>
 @endif

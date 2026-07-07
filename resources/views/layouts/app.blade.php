@@ -128,6 +128,8 @@
             'items' => [
                 ['key' => 'inventory', 'label' => 'Inventory Overview', 'icon' => 'inventory', 'href' => $safeRoute('inventory.dashboard'), 'active' => request()->routeIs('inventory.dashboard'), 'visible' => $currentUser?->hasPermission('dashboard.inventory') ?? false],
                 ['key' => 'products', 'label' => 'Product Master', 'icon' => 'products', 'href' => $safeRoute('products.index'), 'active' => request()->routeIs('products.*'), 'visible' => $currentUser?->canAccessModule('products', 'read') ?? false],
+                ['key' => 'product_categories', 'label' => 'Category Master', 'icon' => 'products', 'href' => $safeRoute('product-categories.index'), 'active' => request()->routeIs('product-categories.*'), 'visible' => $currentUser?->canAccessModule('products', 'read') ?? false],
+                ['key' => 'product_brands', 'label' => 'Brand Master', 'icon' => 'products', 'href' => $safeRoute('product-brands.index'), 'active' => request()->routeIs('product-brands.*'), 'visible' => $currentUser?->canAccessModule('products', 'read') ?? false],
                 ['key' => 'assets', 'label' => 'Asset Register', 'icon' => 'assets', 'href' => $safeRoute('assets.index'), 'active' => request()->routeIs('assets.*') && !request()->routeIs('assets.pending-verification') && !request()->routeIs('assets.verify-return') && !request()->routeIs('assets.verify-return.store'), 'visible' => $currentUser?->canAccessModule('assets', 'read') ?? false],
                 ['key' => 'return_verification', 'label' => 'Return Verification', 'icon' => 'assets', 'href' => $safeRoute('assets.pending-verification'), 'active' => request()->routeIs('assets.pending-verification') || request()->routeIs('assets.verify-return') || request()->routeIs('assets.verify-return.store'), 'visible' => $currentUser?->canAccessModule('assets', 'read') ?? false],
                 ['key' => 'warehouses', 'label' => 'Warehouses', 'icon' => 'warehouses', 'href' => $safeRoute('warehouses.index'), 'active' => request()->routeIs('warehouses.*'), 'visible' => $currentUser?->canAccessModule('warehouses', 'read') ?? false],
@@ -163,6 +165,7 @@
             'items' => [
                 ['label' => 'Cities', 'icon' => 'cities', 'href' => $safeRoute('cities.index'), 'active' => request()->routeIs('cities.*'), 'visible' => $currentUser?->canAccessModule('cities', 'read') ?? false],
                 ['label' => 'Vendors', 'icon' => 'vendors', 'href' => $safeRoute('vendors.index'), 'active' => request()->routeIs('vendors.*'), 'visible' => $currentUser?->canAccessModule('vendors', 'read') ?? false],
+                ['label' => 'Referral Sources', 'icon' => 'customers', 'href' => $safeRoute('referral-sources.index'), 'active' => request()->routeIs('referral-sources.*'), 'visible' => ($currentUser?->canAccessModule('vendors', 'read') ?? false) || ($currentUser?->canAccessModule('settings', 'read') ?? false)],
             ],
         ],
     ];
@@ -215,6 +218,7 @@
             return $item;
         })
         ->filter(fn ($item) => !empty($item['href']))
+        ->unique('label')
         ->values();
 
     $quickAddItems = collect([
@@ -278,6 +282,8 @@
         'invoices' => 'Invoices',
         'payments' => 'Payments',
         'products' => 'Product Master',
+        'product-categories' => 'Category Master',
+        'product-brands' => 'Brand Master',
         'knowledge' => 'Knowledge Hub',
         'rentals' => 'Rentals',
         'reports' => 'Reports',
@@ -2269,6 +2275,18 @@
             font-size:13px;
             font-weight:800;
         }
+        .mobile-fab.is-compact {
+            width:52px;
+            height:52px;
+            min-height:52px;
+            padding:0;
+            border-radius:999px;
+            justify-content:center;
+            box-shadow:0 18px 36px rgba(79,70,229,.28);
+        }
+        .mobile-fab.is-compact strong {
+            display:none;
+        }
         .mobile-fab span {
             width:22px;
             height:22px;
@@ -2420,35 +2438,105 @@
             font-size:13px;
             line-height:1.55;
         }
-        .mobile-action-toolbar {
+        .mobile-action-toolbar,
+        .ops-mobile-toolbar {
             position:sticky;
             top:10px;
             z-index:45;
-            display:grid;
-            grid-template-columns:repeat(2, minmax(0, 1fr));
+            display:flex;
+            justify-content:flex-end;
+            align-items:center;
             gap:8px;
         }
-        .mobile-toolbar-btn {
+        .mobile-search-tools {
+            display:grid;
+            grid-template-columns:minmax(0, 1fr) auto;
+            align-items:center;
+            gap:8px;
+        }
+        .mobile-search-tools .mobile-action-toolbar {
+            position:static;
+            padding:0;
+            overflow:visible;
+        }
+        .mobile-toolbar-btn,
+        .ops-mobile-toolbar .mobile-toolbar-btn,
+        .ops-mobile-toolbar .mobile-sort-trigger {
+            position:relative;
             display:inline-flex;
             align-items:center;
             justify-content:center;
-            gap:8px;
-            min-height:44px;
-            padding:10px 14px;
+            gap:0;
+            width:40px;
+            min-width:40px;
+            max-width:40px;
+            height:40px;
+            min-height:40px;
+            padding:0;
             border:1px solid #dbe3ef;
-            border-radius:14px;
+            border-radius:13px;
             background:#fff;
             color:#0f172a;
-            font-size:13px;
+            font-size:0;
             font-weight:800;
             line-height:1;
             box-shadow:0 10px 24px rgba(15,23,42,.08);
             cursor:pointer;
+            overflow:visible;
         }
-        .mobile-toolbar-btn svg {
-            width:16px;
-            height:16px;
-            flex:0 0 16px;
+        .mobile-toolbar-btn span,
+        .ops-mobile-toolbar .mobile-toolbar-btn span {
+            position:absolute;
+            width:1px;
+            height:1px;
+            margin:-1px;
+            padding:0;
+            overflow:hidden;
+            clip:rect(0, 0, 0, 0);
+            white-space:nowrap;
+            border:0;
+        }
+        .mobile-toolbar-btn::before {
+            content:"Ã¢Å’â€¢";
+            display:grid;
+            place-items:center;
+            width:18px;
+            height:18px;
+            color:currentColor;
+            font-size:19px;
+            font-weight:900;
+            line-height:1;
+        }
+        .mobile-toolbar-btn[data-mobile-filter-open]::before {
+            content:"Ã¢Å’Â¯";
+            font-size:21px;
+        }
+        .mobile-toolbar-btn[data-mobile-sort-trigger]::before,
+        .mobile-sort-trigger::before {
+            content:"Ã¢â€¡â€¦";
+            font-size:18px;
+        }
+        .mobile-toolbar-btn:has(svg)::before { display:none; }
+        .mobile-toolbar-btn svg,
+        .ops-mobile-toolbar .mobile-toolbar-btn svg {
+            width:17px;
+            height:17px;
+            flex:0 0 17px;
+        }
+        .mobile-toolbar-btn.is-active::after,
+        .mobile-toolbar-btn[aria-pressed="true"]::after,
+        .mobile-toolbar-btn[data-filter-active="true"]::after,
+        .mobile-action-toolbar.has-active-filters [data-mobile-filter-open]::after,
+        .ops-mobile-toolbar.has-active-filters [data-mobile-filter-open]::after {
+            content:"";
+            position:absolute;
+            top:7px;
+            right:7px;
+            width:7px;
+            height:7px;
+            border-radius:999px;
+            background:#2563eb;
+            box-shadow:0 0 0 2px #fff;
         }
         .mobile-sort-anchor {
             position:relative;
@@ -2623,6 +2711,13 @@
             left:8px;
             right:8px;
             max-width:calc(100vw - 16px);
+        }
+        [data-action-toast] {
+            left:10px !important;
+            right:10px !important;
+            bottom:calc(var(--ph-mobile-nav-height, 74px) + 20px + env(safe-area-inset-bottom, 0px)) !important;
+            max-width:calc(100vw - 20px) !important;
+            pointer-events:none;
         }
         .mobile-fab {
             right:12px;
@@ -3067,6 +3162,150 @@
             max-width:100vw !important;
         }
     }
+    /* PHOS premium sidebar refresh */
+    .app-shell-sidebar.rn-sidebar {
+        background:linear-gradient(180deg, #3150FF 0%, #2742D8 48%, #1F338E 100%) !important;
+        color:#ffffff;
+        border-right:0;
+        box-shadow:10px 0 30px rgba(29,51,140,.22);
+    }
+    .app-shell-sidebar.rn-sidebar::before {
+        content:"";
+        position:absolute;
+        inset:0;
+        pointer-events:none;
+        background:linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,0) 22%, rgba(0,0,0,.08) 100%);
+    }
+    .app-shell-sidebar .brand-panel {
+        background:rgba(255,255,255,.94);
+        border-color:rgba(255,255,255,.34);
+        box-shadow:0 16px 34px rgba(12,28,104,.22);
+    }
+    .app-shell-sidebar .sidebar-scroll::-webkit-scrollbar-thumb {
+        background:rgba(255,255,255,.42);
+    }
+    .app-shell-sidebar .sidebar-scroll::-webkit-scrollbar-track {
+        background:rgba(255,255,255,.12);
+    }
+    .app-shell-sidebar .sidebar-section {
+        border-color:rgba(255,255,255,.16);
+    }
+    .app-shell-sidebar .sidebar-section-title,
+    .app-shell-sidebar .sidebar-section-toggle span {
+        color:#ffffff !important;
+        letter-spacing:.14em;
+        text-transform:uppercase;
+        font-weight:900;
+    }
+    .app-shell-sidebar .sidebar-section-title {
+        font-size:10.5px;
+        font-weight:800;
+    }
+    .app-shell-sidebar .sidebar-section-toggle {
+        color:#ffffff;
+        background:transparent;
+        border-color:transparent;
+    }
+    .app-shell-sidebar .sidebar-section-toggle:hover {
+        color:#ffffff;
+        background:rgba(255,255,255,.08);
+        border-color:rgba(255,255,255,.14);
+    }
+    .app-shell-sidebar .sidebar-section-toggle svg {
+        color:#ffffff;
+    }
+    .app-shell-sidebar .sidebar-link {
+        color:#ffffff;
+        background:transparent;
+        border-color:transparent;
+        min-height:38px;
+        padding-top:7px;
+        padding-bottom:7px;
+    }
+    .app-shell-sidebar .sidebar-link .sidebar-label {
+        color:inherit;
+        font-size:13px;
+        font-weight:600;
+    }
+    .app-shell-sidebar .sidebar-link:hover {
+        color:#ffffff;
+        background:rgba(255,255,255,.1);
+        border-color:rgba(255,255,255,.16);
+    }
+    .app-shell-sidebar .sidebar-link.is-active,
+    .app-shell-sidebar .sidebar-link.is-admin-active,
+    .app-shell-sidebar .sidebar-link.is-secondary-active {
+        position:relative;
+        color:#2440D8 !important;
+        background:#ffffff !important;
+        border-color:rgba(255,255,255,.9) !important;
+        min-height:36px;
+        box-shadow:0 12px 24px rgba(13,27,93,.2);
+    }
+    .app-shell-sidebar .sidebar-link.is-active::before,
+    .app-shell-sidebar .sidebar-link.is-admin-active::before,
+    .app-shell-sidebar .sidebar-link.is-secondary-active::before {
+        content:"";
+        position:absolute;
+        left:5px;
+        top:9px;
+        bottom:9px;
+        width:3px;
+        border-radius:999px;
+        background:#3150FF;
+    }
+    .app-shell-sidebar .sidebar-link.is-active .sidebar-label,
+    .app-shell-sidebar .sidebar-link.is-admin-active .sidebar-label,
+    .app-shell-sidebar .sidebar-link.is-secondary-active .sidebar-label {
+        color:#2440D8 !important;
+    }
+    .app-shell-sidebar .sidebar-icon {
+        color:#ffffff;
+        background:rgba(255,255,255,.18);
+        border-color:rgba(255,255,255,.34);
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.18);
+    }
+    .app-shell-sidebar .sidebar-link:hover .sidebar-icon {
+        background:rgba(255,255,255,.2);
+        border-color:rgba(255,255,255,.34);
+    }
+    .app-shell-sidebar .sidebar-link.is-active .sidebar-icon,
+    .app-shell-sidebar .sidebar-link.is-admin-active .sidebar-icon,
+    .app-shell-sidebar .sidebar-link.is-secondary-active .sidebar-icon {
+        color:#2440D8 !important;
+        background:#eef2ff !important;
+        border-color:#c7d2fe !important;
+    }
+    .app-shell-sidebar .sidebar-link-badge {
+        min-width:28px;
+        height:22px;
+        padding:3px 8px;
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        font-size:11.5px;
+        font-weight:900;
+        box-shadow:0 8px 18px rgba(11,23,62,.22);
+        border:1px solid rgba(255,255,255,.72);
+    }
+    .app-shell-sidebar .sidebar-link.is-active .sidebar-link-badge,
+    .app-shell-sidebar .sidebar-link.is-admin-active .sidebar-link-badge,
+    .app-shell-sidebar .sidebar-link.is-secondary-active .sidebar-link-badge {
+        border-color:#ffffff;
+    }
+    .app-shell-sidebar .sidebar-shell-toggle {
+        color:#ffffff;
+        background:rgba(255,255,255,.12);
+        border-color:rgba(255,255,255,.24);
+        box-shadow:0 12px 28px rgba(9,22,81,.24);
+    }
+    .app-shell-sidebar .sidebar-shell-toggle:hover {
+        background:rgba(255,255,255,.2);
+        border-color:rgba(255,255,255,.38);
+    }
+    .app-shell.is-sidebar-collapsed .app-shell-sidebar .sidebar-link {
+        justify-content:center;
+    }
 </style>
 
 <div class="app-shell rn-shell" data-sidebar-shell>
@@ -3355,7 +3594,7 @@
                                 <label class="topbar-bell-switch">
                                     <span class="topbar-bell-switch-copy">
                                         <strong>Voice alerts</strong>
-                                        <span>Speak short safe labels like “New pickup assigned”.</span>
+                                        <span>Speak short safe labels like Ã¢â‚¬Å“New pickup assignedÃ¢â‚¬Â.</span>
                                     </span>
                                     <span class="topbar-bell-toggle">
                                         <input type="checkbox" data-notification-voice-toggle {{ $notificationVoiceEnabled ? 'checked' : '' }}>
@@ -4061,6 +4300,253 @@
                     });
                 }
             });
+        });
+    })();
+</script>
+<div class="delivery-edit-modal" data-delivery-edit-modal aria-hidden="true">
+    <div class="delivery-edit-modal__backdrop" data-delivery-edit-close></div>
+    <section class="delivery-edit-modal__panel" role="dialog" aria-modal="true" aria-label="Edit assignment">
+        <header class="delivery-edit-modal__header">
+            <div>
+                <p>Edit Assignment</p>
+                <span>Update delivery or pickup without leaving this page.</span>
+            </div>
+            <button type="button" class="delivery-edit-modal__close" data-delivery-edit-close aria-label="Close assignment editor">
+                Close
+            </button>
+        </header>
+        <iframe class="delivery-edit-modal__frame" title="Edit assignment" data-delivery-edit-frame src="about:blank"></iframe>
+    </section>
+</div>
+<style>
+    .delivery-edit-modal {
+        position:fixed;
+        inset:0;
+        z-index:1300;
+        display:none;
+        align-items:flex-start;
+        justify-content:center;
+        padding:92px 14px 18px;
+        pointer-events:none;
+    }
+
+    .delivery-edit-modal.is-open {
+        display:flex;
+        pointer-events:auto;
+    }
+
+    .delivery-edit-modal__backdrop {
+        position:absolute;
+        inset:0;
+        background:rgba(15,23,42,.45);
+        backdrop-filter:blur(5px);
+    }
+
+    .delivery-edit-modal__panel {
+        position:relative;
+        width:min(820px, 100%);
+        max-height:calc(100dvh - 116px);
+        display:flex;
+        flex-direction:column;
+        overflow:hidden;
+        border:1px solid #dbe3ef;
+        border-radius:20px;
+        background:#fff;
+        box-shadow:0 28px 90px rgba(15,23,42,.3);
+    }
+
+    .delivery-edit-modal__header {
+        flex:0 0 auto;
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+        padding:10px 12px;
+        border-bottom:1px solid #e2e8f0;
+        background:#fff;
+    }
+
+    .delivery-edit-modal__header p {
+        margin:0;
+        color:#0f172a;
+        font-size:16px;
+        font-weight:800;
+        line-height:1.1;
+    }
+
+    .delivery-edit-modal__header span {
+        display:block;
+        margin-top:2px;
+        color:#64748b;
+        font-size:11.5px;
+        line-height:1.2;
+    }
+
+    .delivery-edit-modal__close {
+        min-height:34px;
+        border:1px solid #cbd5e1;
+        border-radius:10px;
+        padding:7px 11px;
+        background:#fff;
+        color:#334155;
+        font-size:12.5px;
+        font-weight:800;
+        cursor:pointer;
+    }
+
+    .delivery-edit-modal__frame {
+        flex:1 1 auto;
+        width:100%;
+        height:520px;
+        min-height:0;
+        border:0;
+        background:#f8fafc;
+    }
+
+    @media (max-width: 767px) {
+        .delivery-edit-modal {
+            align-items:flex-end;
+            padding:10px 8px;
+        }
+
+        .delivery-edit-modal__panel {
+            max-height:92dvh;
+            border-radius:18px 18px 0 0;
+        }
+    }
+</style>
+<script>
+    (function () {
+        document.addEventListener('DOMContentLoaded', function () {
+            const modal = document.querySelector('[data-delivery-edit-modal]');
+            const frame = document.querySelector('[data-delivery-edit-frame]');
+            const panel = modal?.querySelector('.delivery-edit-modal__panel');
+
+            if (!modal || !frame) {
+                return;
+            }
+
+            let activeEditPath = '';
+            let isClosing = false;
+            let resizeTimer = null;
+
+            const isDeliveryEditLink = function (link) {
+                if (!link || !link.href) {
+                    return false;
+                }
+
+                try {
+                    const url = new URL(link.href, window.location.href);
+                    return url.origin === window.location.origin && /^\/deliveries\/\d+\/edit\/?$/.test(url.pathname);
+                } catch (error) {
+                    return false;
+                }
+            };
+
+            const openModal = function (href) {
+                const url = new URL(href, window.location.href);
+                activeEditPath = url.pathname.replace(/\/$/, '');
+                url.searchParams.set('embedded', '1');
+                isClosing = false;
+                frame.style.height = window.matchMedia('(max-width: 767px)').matches ? '74dvh' : '520px';
+                frame.src = url.toString();
+                modal.classList.add('is-open');
+                modal.setAttribute('aria-hidden', 'false');
+                document.body.style.overflow = 'hidden';
+            };
+
+            const resizeFrameToContent = function () {
+                if (!modal.classList.contains('is-open') || !frame.contentWindow || !panel) {
+                    return;
+                }
+
+                try {
+                    const doc = frame.contentWindow.document;
+                    const contentHeight = Math.ceil(Math.max(
+                        doc.body?.scrollHeight || 0,
+                        doc.documentElement?.scrollHeight || 0
+                    ));
+                    const reservedSpace = window.matchMedia('(max-width: 767px)').matches ? 74 : 128;
+                    const minHeight = window.matchMedia('(max-width: 767px)').matches ? 420 : 360;
+                    const maxHeight = Math.max(minHeight, window.innerHeight - reservedSpace);
+                    const nextHeight = Math.min(Math.max(contentHeight, minHeight), maxHeight);
+
+                    frame.style.height = nextHeight + 'px';
+                } catch (error) {
+                    // Same-origin edit pages are expected; keep the default frame size if measurement fails.
+                }
+            };
+
+            const scheduleResize = function () {
+                window.clearTimeout(resizeTimer);
+                resizeTimer = window.setTimeout(resizeFrameToContent, 60);
+            };
+
+            const closeModal = function (shouldRefresh) {
+                if (isClosing) {
+                    return;
+                }
+
+                isClosing = true;
+                modal.classList.remove('is-open');
+                modal.setAttribute('aria-hidden', 'true');
+                document.body.style.overflow = '';
+                frame.src = 'about:blank';
+                activeEditPath = '';
+
+                if (shouldRefresh) {
+                    window.location.reload();
+                }
+            };
+
+            document.addEventListener('click', function (event) {
+                const link = event.target.closest('a[href]');
+
+                if (!isDeliveryEditLink(link)) {
+                    return;
+                }
+
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || link.target === '_blank') {
+                    return;
+                }
+
+                event.preventDefault();
+                openModal(link.href);
+            });
+
+            document.querySelectorAll('[data-delivery-edit-close]').forEach(function (button) {
+                button.addEventListener('click', function () {
+                    closeModal(false);
+                });
+            });
+
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape' && modal.classList.contains('is-open')) {
+                    closeModal(false);
+                }
+            });
+
+            frame.addEventListener('load', function () {
+                if (!modal.classList.contains('is-open') || !activeEditPath || isClosing) {
+                    return;
+                }
+
+                try {
+                    const current = new URL(frame.contentWindow.location.href);
+                    const currentPath = current.pathname.replace(/\/$/, '');
+
+                    if (currentPath !== activeEditPath && current.protocol !== 'about:') {
+                        closeModal(true);
+                        return;
+                    }
+
+                    scheduleResize();
+                } catch (error) {
+                    // Same-origin edit pages are expected; keep the modal open if the frame cannot be inspected.
+                }
+            });
+
+            window.addEventListener('resize', scheduleResize);
         });
     })();
 </script>

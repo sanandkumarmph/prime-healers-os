@@ -3,11 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Delivery;
+use App\Models\Asset;
 use App\Models\Rental;
 use App\Models\RentalReminderLog;
-use App\Models\Role;
 use App\Models\Staff;
 use App\Models\User;
+use App\Models\Vendor;
+use App\Services\Deliveries\DeliveryWorkflowService;
 use App\Services\Metrics\DashboardMetricsService;
 use App\Support\ActivityLogger;
 use App\Support\WhatsAppHelper;
@@ -16,7 +18,9 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class RenewalCenterController extends Controller
@@ -67,27 +71,14 @@ class RenewalCenterController extends Controller
 
     private function assignableUsers(): Collection
     {
-        $allowedRoles = ['delivery', 'pickup'];
-        $allowedRoleIds = collect();
-
-        if (Schema::hasColumn('users', 'role_id')) {
-            $allowedRoleIds = Role::query()
-                ->whereIn('slug', $allowedRoles)
-                ->pluck('id');
-        }
-
         return User::query()
+            ->with('assignedRole')
             ->where('organization_id', $this->orgId())
             ->when(Schema::hasColumn('users', 'is_active'), fn (Builder $query) => $query->where('is_active', true))
-            ->where(function (Builder $query) use ($allowedRoles, $allowedRoleIds) {
-                $query->whereIn('role', $allowedRoles);
-
-                if ($allowedRoleIds->isNotEmpty()) {
-                    $query->orWhereIn('role_id', $allowedRoleIds);
-                }
-            })
             ->orderBy('name')
-            ->get(['id', 'name', 'role']);
+            ->get()
+            ->filter(fn (User $user) => $this->internalPickupUserIsAssignable((int) $user->id))
+            ->values();
     }
 
     private function assignableStaffMembers(): Collection
@@ -474,40 +465,172 @@ class RenewalCenterController extends Controller
         abort_if((int) $rental->organization_id !== $this->orgId(), 404);
 
         $validated = $request->validate([
+            'pickup_method' => ['required', Rule::in(['internal_pickup', 'vendor_pickup', 'third_party_pickup', 'customer_self_drop'])],
             'pickup_date' => ['required', 'date'],
             'pickup_time_slot' => ['nullable', 'string', 'max:80'],
             'pickup_notes' => ['nullable', 'string', 'max:500'],
-            'assignment_target' => ['nullable', 'string', 'max:40'],
+            'assigned_user_id' => ['nullable', 'integer'],
+            'vendor_id' => ['nullable', 'integer'],
+            'third_party_provider' => ['nullable', 'string', 'max:120'],
+            'third_party_tracking_number' => ['nullable', 'string', 'max:120'],
+            'third_party_contact_person' => ['nullable', 'string', 'max:120'],
+            'third_party_phone' => ['nullable', 'string', 'max:40'],
+            'third_party_pickup_cost' => ['nullable', 'numeric', 'min:0'],
         ]);
 
-        if (Delivery::query()
+        $pickupMethod = (string) $validated['pickup_method'];
+        $isVendorSupplied = $rental->isVendorSupplied();
+
+        if (!$isVendorSupplied && $pickupMethod === 'vendor_pickup') {
+            return redirect()
+                ->back()
+                ->withErrors(['pickup_method' => 'Vendor pickup is available only for vendor-supplied rentals.'])
+                ->withInput();
+        }
+
+        if ($isVendorSupplied && $pickupMethod === 'internal_pickup') {
+            return redirect()
+                ->back()
+                ->withErrors(['pickup_method' => 'Internal pickup is available only for in-house rentals.'])
+                ->withInput();
+        }
+
+        $activePickupQuery = Delivery::query()
             ->where('organization_id', $this->orgId())
             ->where('rental_id', $rental->id)
             ->where('type', 'pickup')
-            ->whereIn('status', ['pending', 'in_progress'])
-            ->exists()) {
+            ->whereIn('status', ['pending', 'in_progress']);
+
+        if ($pickupMethod !== 'customer_self_drop' && $activePickupQuery->exists()) {
             return redirect()
                 ->back()
                 ->with('error', 'A pickup task is already active for this rental.');
         }
 
         $scheduledAt = Carbon::parse($validated['pickup_date'] . ' ' . $this->resolvePickupTimeSlot($validated['pickup_time_slot'] ?? null));
-        $assignmentTarget = (string) ($validated['assignment_target'] ?? '');
         $assignedUserId = null;
         $assignedStaffId = null;
         $assignmentType = 'delivery_team';
+        $thirdPartyName = null;
+        $thirdPartyContact = null;
+        $thirdPartyPhone = null;
+        $methodLabel = match ($pickupMethod) {
+            'internal_pickup' => 'Internal pickup',
+            'vendor_pickup' => 'Vendor pickup',
+            'third_party_pickup' => 'Third party pickup',
+            'customer_self_drop' => 'Customer self drop',
+        };
 
-        if (str_starts_with($assignmentTarget, 'user:')) {
-            $assignedUserId = (int) substr($assignmentTarget, 5);
-        } elseif (str_starts_with($assignmentTarget, 'staff:')) {
-            $assignedStaffId = (int) substr($assignmentTarget, 6);
-            $assignmentType = 'vendor';
+        if ($pickupMethod === 'customer_self_drop') {
+            $redirectAssetId = null;
+
+            DB::transaction(function () use ($rental, $scheduledAt, $validated, $activePickupQuery, &$redirectAssetId, $isVendorSupplied) {
+                $activePickupQuery->update([
+                    'status' => 'cancelled',
+                    'pickup_status' => 'customer_self_drop',
+                    'last_pickup_note' => 'Closed because customer self-dropped the equipment.',
+                    'last_pickup_note_at' => now(),
+                ]);
+
+                if (Schema::hasColumn('rentals', 'pickup_responsibility')) {
+                    $rental->forceFill(['pickup_responsibility' => 'customer_self_drop'])->save();
+                }
+
+                if ($isVendorSupplied) {
+                    $this->deliveryWorkflowService()->finalizePickupCompletionForRental(
+                        $this->orgId(),
+                        $rental->fresh(),
+                        $scheduledAt->toDateTimeString(),
+                        null
+                    );
+                } else {
+                    $this->deliveryWorkflowService()->finalizePickupCompletionForRental(
+                        $this->orgId(),
+                        $rental->fresh(),
+                        $scheduledAt->toDateTimeString(),
+                        null
+                    );
+
+                    $redirectAssetId = $this->singleReturnedAssetAwaitingVerification($rental->fresh())?->id;
+                }
+
+                ActivityLogger::log('rental.customer_self_drop_recorded', $rental->fresh(), [
+                    'scheduled_at' => $scheduledAt->toDateTimeString(),
+                    'pickup_notes' => $validated['pickup_notes'] ?? null,
+                    'vendor_supplied' => $isVendorSupplied,
+                ], $isVendorSupplied
+                    ? 'Customer self drop recorded directly to vendor; PH return verification skipped.'
+                    : 'Customer self drop recorded and rental assets moved to return verification.');
+            });
+
+            if ($isVendorSupplied) {
+                return redirect()
+                    ->back()
+                    ->with('success', 'Customer self drop recorded as returned directly to vendor. PH return verification was skipped.');
+            }
+
+            return redirect()
+                ->to($redirectAssetId ? route('assets.verify-return', $redirectAssetId) : route('assets.pending-verification'))
+                ->with('success', 'Customer self drop recorded. Complete return verification before making assets available.');
         }
+
+        if ($pickupMethod === 'internal_pickup') {
+            $assignedUserId = (int) ($validated['assigned_user_id'] ?? 0);
+
+            if (!$this->internalPickupUserIsAssignable($assignedUserId)) {
+                return redirect()
+                    ->back()
+                    ->withErrors(['assigned_user_id' => 'Choose a delivery or operations executive for internal pickup.'])
+                    ->withInput();
+            }
+        } elseif ($pickupMethod === 'vendor_pickup') {
+            $vendor = Vendor::query()
+                ->where('organization_id', $this->orgId())
+                ->whereKey((int) ($validated['vendor_id'] ?? 0))
+                ->first();
+
+            if (!$vendor) {
+                return redirect()
+                    ->back()
+                    ->withErrors(['vendor_id' => 'Choose an active vendor for vendor pickup.'])
+                    ->withInput();
+            }
+
+            $assignmentType = 'vendor';
+            $thirdPartyName = $vendor->name;
+        } elseif ($pickupMethod === 'third_party_pickup') {
+            if (blank($validated['third_party_provider'] ?? null)) {
+                return redirect()
+                    ->back()
+                    ->withErrors(['third_party_provider' => 'Enter the third-party pickup provider.'])
+                    ->withInput();
+            }
+
+            $assignmentType = 'third_party';
+            $thirdPartyName = trim((string) $validated['third_party_provider']);
+            $thirdPartyContact = trim((string) ($validated['third_party_contact_person'] ?? ''));
+            $thirdPartyPhone = trim((string) ($validated['third_party_phone'] ?? ''));
+        }
+
+        if (Schema::hasColumn('rentals', 'pickup_responsibility')) {
+            $rental->forceFill([
+                'pickup_responsibility' => $pickupMethod === 'internal_pickup' ? 'ph_internal_pickup' : $pickupMethod,
+            ])->save();
+        }
+
+        $metadataNotes = collect([
+            'Pickup method: ' . $methodLabel . '.',
+            !empty($validated['third_party_tracking_number']) ? 'Tracking: ' . trim((string) $validated['third_party_tracking_number']) . '.' : null,
+            array_key_exists('third_party_pickup_cost', $validated) && $validated['third_party_pickup_cost'] !== null
+                ? 'Pickup cost: ' . number_format((float) $validated['third_party_pickup_cost'], 2, '.', '') . '.'
+                : null,
+        ])->filter()->implode(' ');
 
         $notes = trim(collect([
             'Scheduled from Renewal Center.',
-            $validated['pickup_time_slot'] ? 'Preferred slot: ' . $validated['pickup_time_slot'] : null,
-            $validated['pickup_notes'] ?: null,
+            $metadataNotes,
+            !empty($validated['pickup_time_slot']) ? 'Preferred slot: ' . $validated['pickup_time_slot'] : null,
+            $validated['pickup_notes'] ?? null,
             $rental->deliveryContactNotes() ? 'Service notes: ' . $rental->deliveryContactNotes() : null,
         ])->filter()->implode(' '));
 
@@ -517,12 +640,15 @@ class RenewalCenterController extends Controller
             'type' => 'pickup',
             'scheduled_at' => $scheduledAt,
             'status' => 'pending',
-            'pickup_status' => 'requested',
+            'pickup_status' => 'assigned',
             'pickup_time_slot' => $validated['pickup_time_slot'] ?? null,
             'notes' => $notes,
             'assignment_type' => $assignmentType,
             'assigned_user_id' => $assignedUserId,
             'assigned_staff_id' => $assignedStaffId,
+            'third_party_name' => $thirdPartyName,
+            'third_party_contact' => $thirdPartyContact,
+            'third_party_phone' => $thirdPartyPhone,
         ]);
 
         ActivityLogger::log('rental.pickup_scheduled', $rental, [
@@ -530,11 +656,85 @@ class RenewalCenterController extends Controller
             'scheduled_at' => $scheduledAt->toDateTimeString(),
             'assigned_user_id' => $assignedUserId,
             'assigned_staff_id' => $assignedStaffId,
+            'pickup_method' => $pickupMethod,
+            'assignment_type' => $assignmentType,
         ], 'Pickup task scheduled from Renewal Center.');
 
         return redirect()
             ->back()
             ->with('success', 'Pickup task scheduled successfully.');
+    }
+
+    private function deliveryWorkflowService(): DeliveryWorkflowService
+    {
+        return app(DeliveryWorkflowService::class);
+    }
+
+    private function internalPickupUserIsAssignable(int $userId): bool
+    {
+        if ($userId <= 0) {
+            return false;
+        }
+
+        $user = User::query()
+            ->with('assignedRole')
+            ->where('organization_id', $this->orgId())
+            ->when(Schema::hasColumn('users', 'is_active'), fn ($query) => $query->where('is_active', true))
+            ->find($userId);
+
+        if (!$user) {
+            return false;
+        }
+
+        $roleSignals = collect([
+            $user->effective_role,
+            $user->role,
+            $user->assignedRole?->slug,
+            $user->assignedRole?->name,
+        ])->filter()->map(function ($value) {
+            return Str::of((string) $value)
+                ->lower()
+                ->replace([' ', '-'], '_')
+                ->value();
+        });
+
+        $blocked = [
+            User::ROLE_SUPER_ADMIN,
+            User::ROLE_ADMIN_OPERATIONS,
+            'admin',
+            User::ROLE_FINANCE,
+            User::ROLE_SALES,
+            User::ROLE_SALES_RENEWALS,
+        ];
+
+        if ($roleSignals->contains(fn ($value) => in_array($value, $blocked, true))) {
+            return false;
+        }
+
+        return $roleSignals->contains(fn ($value) => in_array($value, [
+            User::ROLE_DELIVERY_EXECUTIVE,
+            User::ROLE_OPERATIONS_EXECUTIVE,
+            User::ROLE_DELIVERY,
+            'delivery_staff',
+            'pickup_staff',
+        ], true));
+    }
+
+    private function singleReturnedAssetAwaitingVerification(Rental $rental): ?Asset
+    {
+        if (!\App\Models\RentalAsset::hasTable()) {
+            return null;
+        }
+
+        $assets = Asset::query()
+            ->where('organization_id', $this->orgId())
+            ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
+            ->where('asset_status', Asset::STATUS_AWAITING_VERIFICATION)
+            ->whereIn('id', $rental->rentalAssets()->whereNotNull('returned_at')->pluck('asset_id')->filter()->values())
+            ->limit(2)
+            ->get();
+
+        return $assets->count() === 1 ? $assets->first() : null;
     }
 
     private function resolvePickupTimeSlot(?string $slot): string

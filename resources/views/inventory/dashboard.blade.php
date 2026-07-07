@@ -1,32 +1,81 @@
 @extends('layouts.app')
 
 @section('content')
+    @php
+        $stockRows = collect($productStockRows ?? []);
+        $sumStock = fn (string $key) => (int) $stockRows->sum(fn ($row) => (int) ($row->{$key} ?? 0));
+        $totalRentalAssets = (int) ($dashboard['total_assets'] ?? $sumStock('effective_rental_assets_total_count'));
+        $rentalAvailable = (int) ($dashboard['available_assets'] ?? $sumStock('effective_rental_available_count'));
+        $rentedOut = $sumStock('rental_out_count');
+        $awaitingVerification = $sumStock('awaiting_verification_count');
+        $underRepair = (int) ($dashboard['maintenance_assets'] ?? $sumStock('under_repair_count'));
+        $saleUnits = $sumStock('effective_sale_units_total_count');
+        $availableToSell = (int) ($dashboard['sale_stock'] ?? $sumStock('effective_sale_available_count'));
+        $saleReserved = $sumStock('sale_reserved_count');
+        $soldUnits = $sumStock('sold_units_count');
+        $retiredUnits = $sumStock('retired_rental_count') + $sumStock('retired_sale_count');
+        $lowStockRows = $stockRows->filter(fn ($row) => collect($row->stock_signals ?? [])->contains(fn ($signal) => in_array($signal['tone'] ?? null, ['warning', 'danger'], true)));
+        $attentionCount = $underRepair + $awaitingVerification + $lowStockRows->count();
+        $rentalDenominator = max($rentalAvailable + $rentedOut + $awaitingVerification, 1);
+        $salesDenominator = max($availableToSell + $soldUnits + $saleReserved, 1);
+        $metricDisplay = fn ($value) => ((int) $value) === 0 ? '–' : number_format((int) $value);
+    @endphp
     <style>
         .inventory-page {
             display:grid;
-            gap:18px;
+            gap:10px;
         }
         .inventory-hero {
             display:flex;
             justify-content:space-between;
             align-items:flex-start;
-            gap:16px;
-            margin-bottom:6px;
+            gap:10px;
+            margin-bottom:0;
             flex-wrap:wrap;
         }
         .inventory-actions {
             display:flex;
-            gap:10px;
+            gap:8px;
             flex-wrap:wrap;
+        }
+        .inventory-hero .inventory-eyebrow {
+            display:inline-flex;
+            padding:4px 9px;
+            border-radius:999px;
+            background:#ccfbf1;
+            color:#0f766e;
+            font-size:10px;
+            font-weight:800;
+            text-transform:uppercase;
+            letter-spacing:.08em;
+        }
+        .inventory-hero h1 {
+            margin:7px 0 4px !important;
+            font-size:30px !important;
+            line-height:1.05;
+            letter-spacing:-.03em;
+        }
+        .inventory-hero p {
+            max-width:880px;
+            margin:0 !important;
+            color:#64748b;
+            font-size:14px;
+            line-height:1.4;
+        }
+        .inventory-actions a {
+            min-height:36px !important;
+            padding:0 12px !important;
+            border-radius:11px !important;
+            font-size:13px;
         }
         .inventory-panel {
             background:#ffffff;
             border:1px solid #e2e8f0;
-            border-radius:22px;
+            border-radius:16px;
             overflow:hidden;
         }
         .inventory-panel-head {
-            padding:20px 22px;
+            padding:12px 14px;
             border-bottom:1px solid #e2e8f0;
         }
         .inventory-panel-copy {
@@ -36,20 +85,56 @@
             line-height:1.5;
         }
         .inventory-scan {
-            padding:20px 22px;
-            border-radius:22px;
+            padding:10px 12px;
+            border-radius:16px;
             background:#ffffff;
             border:1px solid #e2e8f0;
         }
+        .inventory-scan-head {
+            display:flex;
+            justify-content:space-between;
+            align-items:flex-start;
+            gap:12px;
+            margin-bottom:8px;
+        }
+        .inventory-scan-head h2 {
+            margin:0;
+            font-size:17px;
+            line-height:1.15;
+        }
+        .inventory-scan-head .inventory-panel-copy {
+            margin-top:3px;
+            font-size:11.5px;
+        }
+        #inventoryLookupForm {
+            display:grid !important;
+            grid-template-columns:minmax(220px, 1fr) auto auto;
+            gap:8px !important;
+            align-items:center;
+        }
+        #inventoryLookupInput {
+            min-width:0 !important;
+            min-height:38px;
+            padding:8px 11px !important;
+            border-radius:11px !important;
+            font-size:13px !important;
+        }
+        #inventoryLookupCameraButton,
+        #inventoryLookupForm button[type="submit"] {
+            min-height:38px !important;
+            padding:0 12px !important;
+            border-radius:11px !important;
+            font-size:13px;
+        }
         .inventory-cards {
             display:grid;
-            grid-template-columns:repeat(6, minmax(0, 1fr));
-            gap:16px;
+            grid-template-columns:repeat(8, minmax(0, 1fr));
+            gap:8px;
         }
         .inventory-stat-card {
             display:block;
-            padding:20px;
-            border-radius:20px;
+            padding:10px 11px;
+            border-radius:14px;
             border:1px solid #e2e8f0;
             background:#ffffff;
             text-decoration:none;
@@ -59,18 +144,18 @@
         .inventory-layout {
             display:grid;
             grid-template-columns:minmax(0, 1.2fr) minmax(0, 0.8fr);
-            gap:18px;
+            gap:10px;
         }
         .inventory-quick-actions {
             display:grid;
             grid-template-columns:repeat(4, minmax(0, 1fr));
-            gap:14px;
+            gap:8px;
         }
         .inventory-quick-card {
             display:grid;
-            gap:6px;
-            padding:18px;
-            border-radius:20px;
+            gap:2px;
+            padding:8px 10px;
+            border-radius:14px;
             border:1px solid #e2e8f0;
             background:#ffffff;
             text-decoration:none;
@@ -120,31 +205,58 @@
         }
         .inventory-stock-table th,
         .inventory-stock-table td {
-            padding:14px 16px;
+            padding:7px 9px;
             border-top:1px solid #e2e8f0;
             text-align:left;
-            vertical-align:top;
-            font-size:13px;
+            vertical-align:middle;
+            font-size:11.5px;
+        }
+        .inventory-stock-table tbody tr {
+            border-left:4px solid #16a34a;
+        }
+        .inventory-stock-table tbody tr.is-attention {
+            border-left-color:#dc2626;
+            background:#fff7f7;
+        }
+        .inventory-stock-table tbody tr.is-warning {
+            border-left-color:#f59e0b;
+            background:#fffbeb;
+        }
+        .inventory-stock-table tbody tr.is-inactive {
+            border-left-color:#94a3b8;
+        }
+        .inventory-stock-table tbody tr > td:first-child {
+            border-left:4px solid #16a34a;
+        }
+        .inventory-stock-table tbody tr.is-attention > td:first-child {
+            border-left-color:#dc2626;
+        }
+        .inventory-stock-table tbody tr.is-warning > td:first-child {
+            border-left-color:#f59e0b;
+        }
+        .inventory-stock-table tbody tr.is-inactive > td:first-child {
+            border-left-color:#94a3b8;
         }
         .inventory-product-name {
-            font-size:15px;
+            font-size:13px;
             font-weight:800;
             color:#0f172a;
+            line-height:1.2;
         }
         .inventory-product-meta {
-            margin-top:4px;
+            margin-top:2px;
             color:#64748b;
-            font-size:12px;
-            line-height:1.45;
+            font-size:10.5px;
+            line-height:1.25;
         }
         .inventory-type-badge,
         .inventory-signal-badge {
             display:inline-flex;
             align-items:center;
             min-height:24px;
-            padding:4px 8px;
+            padding:3px 7px;
             border-radius:999px;
-            font-size:11px;
+            font-size:9.5px;
             font-weight:700;
             line-height:1;
             white-space:nowrap;
@@ -178,17 +290,29 @@
             color:#166534;
         }
         .inventory-stock-number {
-            display:block;
-            font-size:18px;
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            min-width:22px;
+            font-size:13px;
             font-weight:800;
             color:#0f172a;
         }
+        .inventory-stock-number.is-zero {
+            color:#94a3b8;
+            font-weight:700;
+        }
+        .inventory-stock-number.is-green { color:#15803d; }
+        .inventory-stock-number.is-blue { color:#1d4ed8; }
+        .inventory-stock-number.is-amber { color:#b45309; }
+        .inventory-stock-number.is-red { color:#b91c1c; }
+        .inventory-stock-number.is-grey { color:#64748b; }
         .inventory-stock-caption {
             display:block;
-            margin-top:4px;
+            margin-top:1px;
             color:#64748b;
-            font-size:11px;
-            line-height:1.35;
+            font-size:9.5px;
+            line-height:1.15;
         }
         .inventory-actions-cell {
             display:flex;
@@ -200,7 +324,7 @@
             align-items:center;
             justify-content:center;
             min-height:34px;
-            padding:8px 10px;
+            padding:6px 8px;
             border-radius:10px;
             border:1px solid #dbe3ef;
             background:#fff;
@@ -213,6 +337,136 @@
             display:block;
             color:inherit;
             text-decoration:none;
+        }
+        .inventory-kpi-label {
+            font-size:10px;
+            color:#64748b;
+            font-weight:800;
+            text-transform:uppercase;
+            letter-spacing:.04em;
+            line-height:1.2;
+        }
+        .inventory-kpi-value {
+            margin-top:4px;
+            font-size:22px;
+            font-weight:900;
+            line-height:1;
+        }
+        .inventory-kpi-card {
+            position:relative;
+            overflow:hidden;
+        }
+        .inventory-kpi-card::before {
+            content:"";
+            position:absolute;
+            inset:0 auto 0 0;
+            width:4px;
+            background:#94a3b8;
+        }
+        .inventory-kpi-card.tone-green::before { background:#16a34a; }
+        .inventory-kpi-card.tone-blue::before { background:#2563eb; }
+        .inventory-kpi-card.tone-amber::before { background:#f59e0b; }
+        .inventory-kpi-card.tone-red::before { background:#dc2626; }
+        .inventory-kpi-card.tone-grey::before { background:#94a3b8; }
+        .inventory-decision-grid {
+            display:grid;
+            grid-template-columns:1.1fr .95fr .95fr;
+            gap:8px;
+        }
+        .inventory-decision-card {
+            padding:10px;
+            border:1px solid #e2e8f0;
+            border-radius:14px;
+            background:#fff;
+            display:grid;
+            gap:7px;
+        }
+        .inventory-decision-card h3 {
+            margin:0;
+            font-size:13px;
+            color:#0f172a;
+        }
+        .inventory-decision-card p {
+            margin:0;
+            color:#64748b;
+            font-size:11px;
+            line-height:1.3;
+        }
+        .inventory-bar {
+            height:10px;
+            display:flex;
+            overflow:hidden;
+            border-radius:999px;
+            background:#e2e8f0;
+        }
+        .inventory-bar span { min-width:2px; }
+        .inventory-bar .green { background:#16a34a; }
+        .inventory-bar .blue { background:#2563eb; }
+        .inventory-bar .amber { background:#f59e0b; }
+        .inventory-bar .red { background:#dc2626; }
+        .inventory-readiness-values {
+            display:grid;
+            grid-template-columns:repeat(3, minmax(0, 1fr));
+            gap:5px;
+        }
+        .inventory-readiness-values span {
+            display:grid;
+            gap:2px;
+            padding:5px 7px;
+            border:1px solid #e2e8f0;
+            border-radius:10px;
+            background:#f8fafc;
+            color:#64748b;
+            font-size:9.5px;
+            font-weight:800;
+            text-transform:uppercase;
+        }
+        .inventory-readiness-values strong {
+            color:#0f172a;
+            font-size:14px;
+            line-height:1;
+        }
+        .inventory-stat-group {
+            display:grid;
+            grid-template-columns:repeat(4, minmax(38px, 1fr));
+            gap:4px;
+        }
+        .inventory-stat-chip {
+            min-width:0;
+            padding:5px 6px;
+            border-radius:10px;
+            background:#f8fafc;
+            border:1px solid #e2e8f0;
+            text-align:center;
+            text-decoration:none;
+        }
+        .inventory-stat-chip span {
+            display:block;
+            color:#64748b;
+            font-size:9px;
+            font-weight:800;
+            text-transform:uppercase;
+            line-height:1.1;
+        }
+        .inventory-stat-chip strong {
+            display:block;
+            margin-top:2px;
+            font-size:13px;
+            line-height:1;
+        }
+        .inventory-stat-chip.is-green strong { color:#15803d; }
+        .inventory-stat-chip.is-blue strong { color:#1d4ed8; }
+        .inventory-stat-chip.is-amber strong { color:#b45309; }
+        .inventory-stat-chip.is-red strong { color:#b91c1c; }
+        .inventory-stat-chip.is-grey strong,
+        .inventory-stat-chip.is-zero strong,
+        .inventory-stat-chip strong.is-zero { color:#94a3b8; }
+        .inventory-row-click {
+            color:inherit;
+            text-decoration:none;
+        }
+        .inventory-row-click:hover .inventory-product-name {
+            color:#1d4ed8;
         }
         .inventory-stock-link:hover .inventory-stock-number,
         .inventory-stock-link:hover .inventory-stock-caption {
@@ -264,6 +518,14 @@
             font-size:11px;
             color:#64748b;
         }
+        @media (max-width: 1280px) {
+            .inventory-cards {
+                grid-template-columns:repeat(4, minmax(0, 1fr));
+            }
+            .inventory-decision-grid {
+                grid-template-columns:1fr;
+            }
+        }
         @media (max-width: 767px) {
             .inventory-page {
                 gap:14px;
@@ -297,6 +559,9 @@
             .inventory-cards {
                 grid-template-columns:repeat(2, minmax(0, 1fr));
                 gap:10px;
+            }
+            .inventory-decision-grid {
+                grid-template-columns:1fr;
             }
             .inventory-stat-card {
                 padding:12px;
@@ -360,9 +625,9 @@
     <div class="inventory-page">
     <div class="inventory-hero">
         <div>
-            <div style="display:inline-flex; padding:6px 10px; border-radius:999px; background:#ecfeff; color:#0f766e; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">Inventory Overview</div>
-            <h1 style="margin:12px 0 8px; font-size:34px; letter-spacing:-0.03em;">Inventory Overview</h1>
-            <p style="margin:0; color:#64748b;">Product Master stores catalog and pricing. Add Stock creates physical units. Asset Register tracks serials, barcodes, warehouses, and workflow status.</p>
+            <div class="inventory-eyebrow">Inventory Overview</div>
+            <h1>Inventory Overview</h1>
+            <p>Product catalog, physical stock, serials, barcodes, warehouses, and workflow status.</p>
         </div>
 
         <div class="inventory-actions">
@@ -385,9 +650,9 @@
     @endif
 
     <div class="inventory-scan">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:14px;">
+        <div class="inventory-scan-head">
             <div>
-                <h2 style="margin:0; font-size:22px;">Quick Scan / Search</h2>
+                <h2>Quick Scan / Search</h2>
                 <p class="inventory-panel-copy">Scan or search serial / barcode.</p>
             </div>
         </div>
@@ -409,45 +674,82 @@
         <a href="{{ route('assets.create', ['asset_stage' => 'new_stock']) }}" class="inventory-quick-card" style="background:#fff7ed; border-color:#fed7aa;">
             <div style="font-size:11px; color:#9a3412; font-weight:700; text-transform:uppercase; letter-spacing:.08em;">Add Stock</div>
             <div style="font-size:18px; font-weight:800; color:#0f172a;">Add Sale Unit</div>
-            <div style="font-size:13px; color:#64748b; line-height:1.5;">Create one fresh physical unit for sale stock.</div>
+            <div style="font-size:12px; color:#64748b; line-height:1.25;">Fresh unit for sale stock.</div>
         </a>
         <a href="{{ route('assets.create', ['asset_stage' => 'rental_stock']) }}" class="inventory-quick-card" style="background:#eff6ff; border-color:#bfdbfe;">
             <div style="font-size:11px; color:#1d4ed8; font-weight:700; text-transform:uppercase; letter-spacing:.08em;">Add Stock</div>
             <div style="font-size:18px; font-weight:800; color:#0f172a;">Add Rental Asset</div>
-            <div style="font-size:13px; color:#64748b; line-height:1.5;">Create one rental-ready physical unit for dispatch and return workflows.</div>
+            <div style="font-size:12px; color:#64748b; line-height:1.25;">Rental-ready physical unit.</div>
         </a>
         <a href="{{ route('assets.pending-verification') }}" class="inventory-quick-card" style="background:#fef3c7; border-color:#fde68a;">
             <div style="font-size:11px; color:#b45309; font-weight:700; text-transform:uppercase; letter-spacing:.08em;">Operations Queue</div>
             <div style="font-size:18px; font-weight:800; color:#0f172a;">Return Verification</div>
-            <div style="font-size:13px; color:#64748b; line-height:1.5;">Review returned rental units before they go back into service.</div>
+            <div style="font-size:12px; color:#64748b; line-height:1.25;">Returned units awaiting check.</div>
         </a>
         <a href="{{ route('assets.index') }}" class="inventory-quick-card">
             <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:.08em;">Workspace</div>
             <div style="font-size:18px; font-weight:800; color:#0f172a;">Asset Register</div>
-            <div style="font-size:13px; color:#64748b; line-height:1.5;">Open serials, barcodes, warehouse locations, and unit status.</div>
+            <div style="font-size:12px; color:#64748b; line-height:1.25;">Serials, barcodes, status.</div>
         </a>
     </div>
 
     <div class="inventory-cards">
         @php
             $cards = [
-                ['label' => 'Product Master', 'value' => $dashboard['total_products'], 'color' => '#0f172a', 'url' => route('products.index')],
-                ['label' => 'Sellable Products', 'value' => $dashboard['sellable_products'], 'color' => '#166534', 'url' => route('products.index')],
-                ['label' => 'Rentable Products', 'value' => $dashboard['rentable_products'], 'color' => '#1d4ed8', 'url' => route('products.index')],
-                ['label' => 'Sale Stock Available', 'value' => $dashboard['sale_stock'], 'color' => '#9a3412', 'url' => route('products.index')],
-                ['label' => 'Serialized Sale Units', 'value' => $dashboard['serialized_sale_units'], 'color' => '#b45309', 'url' => route('assets.index', ['asset_stage' => 'new_stock'])],
-                ['label' => 'Rental Assets', 'value' => $dashboard['total_assets'], 'color' => '#6d28d9', 'url' => route('assets.index', ['asset_stage' => 'rental_stock'])],
-                ['label' => 'Rental Available', 'value' => $dashboard['available_assets'], 'color' => '#166534', 'url' => route('assets.index', ['asset_stage' => 'rental_stock', 'asset_status' => 'available'])],
-                ['label' => 'Maintenance', 'value' => $dashboard['maintenance_assets'], 'color' => '#c2410c', 'url' => route('assets.index', ['asset_stage' => 'rental_stock', 'asset_status' => 'maintenance'])],
-                ['label' => 'Warehouses', 'value' => $dashboard['warehouse_count'], 'color' => '#6d28d9', 'url' => route('warehouses.index')],
+                ['label' => 'Total Rental Assets', 'value' => $totalRentalAssets, 'tone' => 'blue', 'url' => route('assets.index', ['asset_stage' => 'rental_stock'])],
+                ['label' => 'Rental Available', 'value' => $rentalAvailable, 'tone' => 'green', 'url' => route('assets.index', ['asset_stage' => 'rental_stock', 'asset_status' => 'available'])],
+                ['label' => 'Rented Out', 'value' => $rentedOut, 'tone' => 'blue', 'url' => route('assets.index', ['asset_stage' => 'rental_stock'])],
+                ['label' => 'Awaiting Verification', 'value' => $awaitingVerification, 'tone' => 'amber', 'url' => route('assets.index', ['asset_stage' => 'rental_stock', 'asset_status' => 'awaiting_verification'])],
+                ['label' => 'Under Repair', 'value' => $underRepair, 'tone' => 'red', 'url' => route('assets.index', ['asset_stage' => 'rental_stock', 'asset_status' => 'maintenance'])],
+                ['label' => 'Sale Units', 'value' => $saleUnits, 'tone' => 'grey', 'url' => route('assets.index', ['asset_stage' => 'new_stock'])],
+                ['label' => 'Available to Sell', 'value' => $availableToSell, 'tone' => 'green', 'url' => route('assets.index', ['asset_stage' => 'new_stock', 'asset_status' => 'available_for_sale'])],
+                ['label' => 'Low Stock / Risk', 'value' => $lowStockRows->count(), 'tone' => 'red', 'url' => route('inventory.dashboard', ['stock_view' => 'low_stock'])],
             ];
         @endphp
         @foreach($cards as $card)
-            <a href="{{ $card['url'] }}" class="inventory-stat-card">
-                <div style="font-size:12px; color:#64748b; font-weight:700; text-transform:uppercase;">{{ $card['label'] }}</div>
-                <div style="margin-top:10px; font-size:30px; font-weight:700; color:{{ $card['color'] }};">{{ $card['value'] }}</div>
+            <a href="{{ $card['url'] }}" class="inventory-stat-card inventory-kpi-card tone-{{ $card['tone'] }}">
+                <div class="inventory-kpi-label">{{ $card['label'] }}</div>
+                <div class="inventory-kpi-value">{{ $metricDisplay($card['value']) }}</div>
             </a>
         @endforeach
+    </div>
+
+    <div class="inventory-decision-grid">
+        <div class="inventory-decision-card" style="border-color:{{ $attentionCount > 0 ? '#fecaca' : '#bbf7d0' }};">
+            <h3>Needs Attention</h3>
+            <p>{{ $attentionCount > 0 ? 'Prioritize exceptions before new dispatch.' : 'No immediate stock exceptions detected.' }}</p>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <span class="inventory-signal-badge is-danger">Repair {{ $metricDisplay($underRepair) }}</span>
+                <span class="inventory-signal-badge is-warning">Verification {{ $metricDisplay($awaitingVerification) }}</span>
+                <span class="inventory-signal-badge is-danger">Low stock {{ $metricDisplay($lowStockRows->count()) }}</span>
+            </div>
+        </div>
+        <div class="inventory-decision-card">
+            <h3>Rental Readiness</h3>
+            <div class="inventory-bar" aria-label="Rental utilization">
+                <span class="green" style="width:{{ round(($rentalAvailable / $rentalDenominator) * 100, 2) }}%;"></span>
+                <span class="blue" style="width:{{ round(($rentedOut / $rentalDenominator) * 100, 2) }}%;"></span>
+                <span class="amber" style="width:{{ round(($awaitingVerification / $rentalDenominator) * 100, 2) }}%;"></span>
+            </div>
+            <div class="inventory-readiness-values">
+                <span>Available <strong style="color:#15803d;">{{ $metricDisplay($rentalAvailable) }}</strong></span>
+                <span>Rented <strong style="color:#1d4ed8;">{{ $metricDisplay($rentedOut) }}</strong></span>
+                <span>Verify <strong style="color:#b45309;">{{ $metricDisplay($awaitingVerification) }}</strong></span>
+            </div>
+        </div>
+        <div class="inventory-decision-card">
+            <h3>Sales Readiness</h3>
+            <div class="inventory-bar" aria-label="Sales stock readiness">
+                <span class="green" style="width:{{ round(($availableToSell / $salesDenominator) * 100, 2) }}%;"></span>
+                <span class="blue" style="width:{{ round(($soldUnits / $salesDenominator) * 100, 2) }}%;"></span>
+                <span class="amber" style="width:{{ round(($saleReserved / $salesDenominator) * 100, 2) }}%;"></span>
+            </div>
+            <div class="inventory-readiness-values">
+                <span>Available <strong style="color:#15803d;">{{ $metricDisplay($availableToSell) }}</strong></span>
+                <span>Sold <strong style="color:#1d4ed8;">{{ $metricDisplay($soldUnits) }}</strong></span>
+                <span>Reserved <strong style="color:#b45309;">{{ $metricDisplay($saleReserved) }}</strong></span>
+            </div>
+        </div>
     </div>
 
     @php
@@ -490,6 +792,9 @@
                 <a href="{{ $stockViewUrl('sales_active') }}" class="inventory-filter-chip {{ ($stockView ?? '') === 'sales_active' ? 'is-active' : '' }}">Sales Active</a>
                 <a href="{{ $stockViewUrl('low_stock') }}" class="inventory-filter-chip {{ ($stockView ?? '') === 'low_stock' ? 'is-active' : '' }}">Low Stock</a>
                 <a href="{{ $stockViewUrl('awaiting_verification') }}" class="inventory-filter-chip {{ ($stockView ?? '') === 'awaiting_verification' ? 'is-active' : '' }}">Awaiting Verification</a>
+                <a href="{{ route('assets.index', ['asset_status' => 'maintenance']) }}" class="inventory-filter-chip">Under Repair</a>
+                <a href="{{ route('assets.index', ['asset_status' => 'available']) }}" class="inventory-filter-chip">Available</a>
+                <a href="{{ $stockViewUrl('low_stock') }}" class="inventory-filter-chip">Attention First</a>
             </div>
         </div>
 
@@ -501,101 +806,75 @@
                     <thead>
                         <tr>
                             <th>Product</th>
-                            <th>Rental Assets</th>
-                            <th>Rental Available</th>
-                            <th>Rented Out</th>
-                            <th>Awaiting Verification</th>
-                            <th>Under Repair</th>
-                            <th>Sale Units</th>
-                            <th>Available to Sell</th>
-                            <th>Reserved for Sale</th>
-                            <th>Sold Units</th>
-                            <th>Retired</th>
-                            <th>Signals</th>
-                            <th>Quick Actions</th>
+                            <th>Rental</th>
+                            <th>Sale</th>
+                            <th>Exceptions</th>
+                            <th>Status</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach($productStockRows as $productRow)
-                            <tr>
+                            @php
+                                $rowSignals = collect($productRow->stock_signals ?? []);
+                                $hasDanger = $rowSignals->contains(fn ($signal) => ($signal['tone'] ?? null) === 'danger') || (int) $productRow->under_repair_count > 0;
+                                $hasWarning = !$hasDanger && ($rowSignals->contains(fn ($signal) => ($signal['tone'] ?? null) === 'warning') || (int) $productRow->awaiting_verification_count > 0 || (int) $productRow->sale_reserved_count > 0);
+                                $inactive = !$hasDanger && !$hasWarning && ((int) $productRow->effective_rental_assets_total_count + (int) $productRow->effective_sale_units_total_count === 0);
+                                $stockClass = fn ($value, $tone) => 'inventory-stock-number ' . (((int) $value) === 0 ? 'is-zero' : 'is-' . $tone);
+                                $stockText = fn ($value) => ((int) $value) === 0 ? '–' : number_format((int) $value);
+                            @endphp
+                            <tr class="{{ $hasDanger ? 'is-attention' : ($hasWarning ? 'is-warning' : ($inactive ? 'is-inactive' : '')) }}">
                                 <td>
-                                    <div class="inventory-product-name">{{ $productRow->name }}</div>
-                                    <div class="inventory-product-meta">
-                                        {{ collect([$productRow->brand, $productRow->model_name])->filter()->join(' | ') ?: 'Brand / model not set' }}
+                                    <a href="{{ route('products.show', $productRow) }}" class="inventory-row-click">
+                                        <div class="inventory-product-name">{{ $productRow->name }}</div>
+                                        <div class="inventory-product-meta">
+                                            {{ collect([$productRow->brand, $productRow->model_name])->filter()->join(' | ') ?: 'Brand / model not set' }}
+                                        </div>
+                                        <div style="display:flex; gap:4px; flex-wrap:wrap; margin-top:5px;">
+                                            @if(filled($productRow->category))
+                                                <span class="inventory-type-badge is-category">{{ $productRow->category }}</span>
+                                            @endif
+                                            @if($productRow->tracksRentalStock())
+                                                <span class="inventory-type-badge is-rental">Rental</span>
+                                            @endif
+                                            @if($productRow->tracksSaleStock())
+                                                <span class="inventory-type-badge is-sale">Sale</span>
+                                            @endif
+                                            @if($productRow->usesUntrackedStock())
+                                                <span class="inventory-type-badge is-category">Untracked</span>
+                                            @endif
+                                        </div>
+                                    </a>
+                                </td>
+                                <td>
+                                    <div class="inventory-stat-group">
+                                        <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock']) }}" class="inventory-stat-chip"><span>Assets</span><strong class="{{ ((int) $productRow->effective_rental_assets_total_count) === 0 ? 'is-zero' : '' }}">{{ $stockText($productRow->effective_rental_assets_total_count) }}</strong></a>
+                                        <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock', 'asset_status' => 'available']) }}" class="inventory-stat-chip is-green"><span>Avail</span><strong>{{ $stockText($productRow->effective_rental_available_count) }}</strong></a>
+                                        <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock']) }}" class="inventory-stat-chip is-blue"><span>Rented</span><strong>{{ $stockText($productRow->rental_out_count) }}</strong></a>
+                                        <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock', 'asset_status' => 'reserved']) }}" class="inventory-stat-chip is-amber"><span>Reserved</span><strong>{{ $stockText($productRow->reserved_rental_count ?? 0) }}</strong></a>
                                     </div>
-                                    <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
-                                        @if(filled($productRow->category))
-                                            <span class="inventory-type-badge is-category">{{ $productRow->category }}</span>
-                                        @endif
-                                        @if($productRow->tracksRentalStock())
-                                            <span class="inventory-type-badge is-rental">Rental Asset</span>
-                                        @endif
-                                        @if($productRow->tracksSaleStock())
-                                            <span class="inventory-type-badge is-sale">Sale Unit</span>
-                                        @endif
-                                        @if($productRow->usesUntrackedStock())
-                                            <span class="inventory-type-badge is-category">Untracked Opening Stock</span>
-                                        @endif
+                                </td>
+                                <td>
+                                    <div class="inventory-stat-group">
+                                        <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'new_stock']) }}" class="inventory-stat-chip"><span>Units</span><strong>{{ $stockText($productRow->effective_sale_units_total_count) }}</strong></a>
+                                        <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'new_stock', 'asset_status' => 'available_for_sale']) }}" class="inventory-stat-chip is-green"><span>Avail</span><strong>{{ $stockText($productRow->effective_sale_available_count) }}</strong></a>
+                                        <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'new_stock', 'asset_status' => 'reserved_for_sale']) }}" class="inventory-stat-chip is-amber"><span>Reserved</span><strong>{{ $stockText($productRow->sale_reserved_count) }}</strong></a>
+                                        <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'new_stock', 'asset_status' => 'sold']) }}" class="inventory-stat-chip is-blue"><span>Sold</span><strong>{{ $stockText($productRow->sold_units_count) }}</strong></a>
                                     </div>
                                 </td>
                                 <td>
-                                    <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock']) }}" class="inventory-stock-link">
-                                        <span class="inventory-stock-number">{{ (int) $productRow->effective_rental_assets_total_count }}</span>
-                                    </a>
+                                    <div class="inventory-stat-group">
+                                        <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock', 'asset_status' => 'awaiting_verification']) }}" class="inventory-stat-chip is-amber"><span>Verify</span><strong>{{ $stockText($productRow->awaiting_verification_count) }}</strong></a>
+                                        <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock', 'asset_status' => 'maintenance']) }}" class="inventory-stat-chip is-red"><span>Repair</span><strong>{{ $stockText($productRow->under_repair_count) }}</strong></a>
+                                        <a href="{{ $productAssetUrl($productRow, ['asset_status' => 'retired']) }}" class="inventory-stat-chip is-grey"><span>Retired</span><strong>{{ $stockText((int) $productRow->retired_rental_count + (int) $productRow->retired_sale_count) }}</strong></a>
+                                    </div>
                                 </td>
                                 <td>
-                                    <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock', 'asset_status' => 'available']) }}" class="inventory-stock-link">
-                                        <span class="inventory-stock-number">{{ (int) $productRow->effective_rental_available_count }}</span>
-                                    </a>
-                                </td>
-                                <td>
-                                    <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock']) }}" class="inventory-stock-link">
-                                        <span class="inventory-stock-number">{{ (int) $productRow->rental_out_count }}</span>
-                                        <span class="inventory-stock-caption">Reserved or with customer</span>
-                                    </a>
-                                </td>
-                                <td>
-                                    <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock', 'asset_status' => 'awaiting_verification']) }}" class="inventory-stock-link">
-                                        <span class="inventory-stock-number">{{ (int) $productRow->awaiting_verification_count }}</span>
-                                    </a>
-                                </td>
-                                <td>
-                                    <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'rental_stock', 'asset_status' => 'maintenance']) }}" class="inventory-stock-link">
-                                        <span class="inventory-stock-number">{{ (int) $productRow->under_repair_count }}</span>
-                                    </a>
-                                </td>
-                                <td>
-                                    <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'new_stock']) }}" class="inventory-stock-link">
-                                        <span class="inventory-stock-number">{{ (int) $productRow->effective_sale_units_total_count }}</span>
-                                    </a>
-                                </td>
-                                <td>
-                                    <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'new_stock', 'asset_status' => 'available_for_sale']) }}" class="inventory-stock-link">
-                                        <span class="inventory-stock-number">{{ (int) $productRow->effective_sale_available_count }}</span>
-                                    </a>
-                                </td>
-                                <td>
-                                    <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'new_stock', 'asset_status' => 'reserved_for_sale']) }}" class="inventory-stock-link">
-                                        <span class="inventory-stock-number">{{ (int) $productRow->sale_reserved_count }}</span>
-                                    </a>
-                                </td>
-                                <td>
-                                    <a href="{{ $productAssetUrl($productRow, ['asset_stage' => 'new_stock', 'asset_status' => 'sold']) }}" class="inventory-stock-link">
-                                        <span class="inventory-stock-number">{{ (int) $productRow->sold_units_count }}</span>
-                                    </a>
-                                </td>
-                                <td>
-                                    <a href="{{ $productAssetUrl($productRow, ['asset_status' => 'retired']) }}" class="inventory-stock-link">
-                                        <span class="inventory-stock-number">{{ (int) $productRow->retired_rental_count + (int) $productRow->retired_sale_count }}</span>
-                                        <span class="inventory-stock-caption">Rental + sale retired</span>
-                                    </a>
-                                </td>
-                                <td>
-                                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                                        @forelse($productRow->stock_signals as $signal)
+                                    <div style="display:flex; gap:4px; flex-wrap:wrap;">
+                                        @forelse($rowSignals as $signal)
                                             <span class="inventory-signal-badge {{ $signalClass($signal['tone'] ?? null) }}">{{ $signal['label'] }}</span>
                                         @empty
-                                            <span class="inventory-stock-caption" style="margin-top:0;">Stable</span>
+                                            <span class="inventory-signal-badge is-success">Healthy</span>
                                         @endforelse
                                     </div>
                                 </td>
@@ -603,6 +882,7 @@
                                     <div class="inventory-actions-cell">
                                         <a href="{{ route('products.show', $productRow) }}">View Product</a>
                                         <a href="{{ route('assets.index', ['product_id' => $productRow->id]) }}">View Assets</a>
+                                        <a href="{{ route('inventory.dashboard', ['stock_view' => 'low_stock']) }}">Reconcile</a>
                                     </div>
                                 </td>
                             </tr>

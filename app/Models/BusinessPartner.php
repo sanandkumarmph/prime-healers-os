@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\Schema;
 
 class BusinessPartner extends Model
 {
+    protected static ?array $tableColumns = null;
+
     protected $fillable = [
         'organization_id',
         'business_name',
@@ -127,6 +129,7 @@ class BusinessPartner extends Model
     public static function relationSelectColumns(array $extra = []): array
     {
         $columns = ['id'];
+        $availableColumns = static::tableColumns();
 
         foreach ([
             'organization_id',
@@ -144,17 +147,22 @@ class BusinessPartner extends Model
             'longitude',
             'status',
         ] as $column) {
-            if (Schema::hasColumn('business_partners', $column)) {
+            if (in_array($column, $availableColumns, true)) {
                 $columns[] = $column;
             }
         }
 
         foreach ($extra as $column) {
-            if ($column !== '' && !in_array($column, $columns, true) && Schema::hasColumn('business_partners', $column)) {
+            if ($column !== '' && !in_array($column, $columns, true) && in_array($column, $availableColumns, true)) {
                 $columns[] = $column;
             }
         }
 
         return $columns;
+    }
+
+    protected static function tableColumns(): array
+    {
+        return static::$tableColumns ??= Schema::getColumnListing('business_partners');
     }
 }

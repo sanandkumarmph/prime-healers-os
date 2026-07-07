@@ -65,11 +65,12 @@ class CommunicationCenterController extends Controller
         $countQuery = $this->applyFilters($countQuery, $request);
 
         $counts = $this->dashboardMetrics()->followUpCounts($countQuery, $today);
+        $counts = array_merge($counts, $this->inboxCounts($countQuery));
 
         $query = $this->applyScopedVisibility($this->baseQuery());
         $query = $this->applyFilters($query, $request);
         $query = $this->applyTab($query, $tab, $today);
-        $query->latest('due_at')->latest('id');
+        $this->applySort($query, (string) $request->get('sort', 'unread_first'));
 
         /** @var LengthAwarePaginator $followUps */
         $followUps = $query->paginate(15)->withQueryString();
@@ -237,21 +238,22 @@ class CommunicationCenterController extends Controller
     private function tabs(): array
     {
         return [
-            'pending' => 'Pending Follow-ups',
-            'today' => 'Today',
-            'overdue' => 'Overdue',
-            'renewals' => 'Renewals',
-            'payments' => 'Payments',
-            'pickups' => 'Pickups',
-            'delivery' => 'Delivery',
-            'notes' => 'Notes',
-            'all' => 'All Communication',
+            'all' => 'All',
+            'unread' => 'Unread',
+            'assigned_me' => 'Assigned to Me',
+            'staff_messages' => 'Staff Messages',
+            'system_alerts' => 'System Alerts',
+            'payments' => 'Payment Follow-ups',
+            'delivery' => 'Delivery / Service',
+            'completed' => 'Completed',
         ];
     }
 
     private function normalizeTab(string $tab): string
     {
-        return array_key_exists($tab, $this->tabs()) ? $tab : 'pending';
+        $legacyTabs = ['pending', 'today', 'overdue', 'renewals', 'pickups', 'notes'];
+
+        return array_key_exists($tab, $this->tabs()) || in_array($tab, $legacyTabs, true) ? $tab : 'all';
     }
 
     private function baseQuery(bool $withRelations = true): Builder
@@ -311,6 +313,7 @@ class CommunicationCenterController extends Controller
         $search = trim((string) $request->get('search', ''));
         $priority = trim((string) $request->get('priority', ''));
         $staff = trim((string) $request->get('staff', ''));
+        $type = trim((string) $request->get('type', ''));
 
         if ($search !== '') {
             $query->where(function (Builder $searchQuery) use ($search): void {
@@ -336,9 +339,15 @@ class CommunicationCenterController extends Controller
             $query->where('priority', $priority);
         }
 
+        if ($type !== '' && array_key_exists($type, FollowUp::TYPES)) {
+            $query->where('followup_type', $type);
+        }
+
         if ($staff !== '') {
             if ($staff === 'unassigned') {
                 $query->whereNull('assigned_user_id');
+            } elseif ($staff === 'me') {
+                $query->where('assigned_user_id', auth()->id());
             } elseif (str_starts_with($staff, 'user:')) {
                 $query->where('assigned_user_id', (int) substr($staff, 5));
             }
@@ -351,6 +360,10 @@ class CommunicationCenterController extends Controller
     {
         return match ($tab) {
             'pending' => $query->whereNotIn('status', [FollowUp::STATUS_COMPLETED, FollowUp::STATUS_CANCELLED]),
+            'unread' => $query->whereNotIn('status', [FollowUp::STATUS_COMPLETED, FollowUp::STATUS_CANCELLED]),
+            'assigned_me' => $query->where('assigned_user_id', auth()->id())->whereNotIn('status', [FollowUp::STATUS_COMPLETED, FollowUp::STATUS_CANCELLED]),
+            'staff_messages' => $query->where('is_system_generated', false)->whereIn('followup_type', [FollowUp::TYPE_GENERAL, FollowUp::TYPE_CALLBACK, FollowUp::TYPE_COMPLAINT, FollowUp::TYPE_ESCALATION]),
+            'system_alerts' => $query->where('is_system_generated', true),
             'today' => $query->whereNotIn('status', [FollowUp::STATUS_COMPLETED, FollowUp::STATUS_CANCELLED])->whereDate('due_at', $today),
             'overdue' => $query->whereNotIn('status', [FollowUp::STATUS_COMPLETED, FollowUp::STATUS_CANCELLED])->where('due_at', '<', now()),
             'renewals' => $query->where('followup_type', FollowUp::TYPE_RENEWAL),
@@ -358,8 +371,42 @@ class CommunicationCenterController extends Controller
             'pickups' => $query->where('followup_type', FollowUp::TYPE_PICKUP),
             'delivery' => $query->whereIn('followup_type', [FollowUp::TYPE_DELIVERY, FollowUp::TYPE_SERVICE]),
             'notes' => $query->whereIn('followup_type', [FollowUp::TYPE_GENERAL, FollowUp::TYPE_CALLBACK, FollowUp::TYPE_COMPLAINT, FollowUp::TYPE_ESCALATION]),
+            'completed' => $query->where('status', FollowUp::STATUS_COMPLETED),
             default => $query,
         };
+    }
+
+    private function applySort(Builder $query, string $sort): Builder
+    {
+        return match ($sort) {
+            'overdue_first' => $query
+                ->orderByRaw('CASE WHEN status NOT IN (?, ?) AND due_at < ? THEN 0 ELSE 1 END', [FollowUp::STATUS_COMPLETED, FollowUp::STATUS_CANCELLED, now()])
+                ->latest('due_at')
+                ->latest('id'),
+            'high_priority' => $query
+                ->orderByRaw("CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END")
+                ->latest('due_at')
+                ->latest('id'),
+            'latest' => $query->latest('created_at')->latest('id'),
+            default => $query
+                ->orderByRaw('CASE WHEN status IN (?, ?) THEN 1 ELSE 0 END', [FollowUp::STATUS_COMPLETED, FollowUp::STATUS_CANCELLED])
+                ->latest('due_at')
+                ->latest('id'),
+        };
+    }
+
+    private function inboxCounts(Builder $query): array
+    {
+        return [
+            'all' => (clone $query)->count(),
+            'unread' => (clone $query)->whereNotIn('status', [FollowUp::STATUS_COMPLETED, FollowUp::STATUS_CANCELLED])->count(),
+            'assigned_me' => (clone $query)->where('assigned_user_id', auth()->id())->whereNotIn('status', [FollowUp::STATUS_COMPLETED, FollowUp::STATUS_CANCELLED])->count(),
+            'staff_messages' => (clone $query)->where('is_system_generated', false)->whereIn('followup_type', [FollowUp::TYPE_GENERAL, FollowUp::TYPE_CALLBACK, FollowUp::TYPE_COMPLAINT, FollowUp::TYPE_ESCALATION])->count(),
+            'system_alerts' => (clone $query)->where('is_system_generated', true)->count(),
+            'payments' => (clone $query)->where('followup_type', FollowUp::TYPE_PAYMENT)->count(),
+            'delivery' => (clone $query)->whereIn('followup_type', [FollowUp::TYPE_DELIVERY, FollowUp::TYPE_SERVICE])->count(),
+            'completed' => (clone $query)->where('status', FollowUp::STATUS_COMPLETED)->count(),
+        ];
     }
 
     private function activeFilters(Request $request): array
@@ -374,8 +421,17 @@ class CommunicationCenterController extends Controller
             $filters[] = 'Priority: ' . ucfirst((string) $request->get('priority'));
         }
 
+        if (filled($request->get('type')) && array_key_exists((string) $request->get('type'), FollowUp::TYPES)) {
+            $filters[] = 'Type: ' . FollowUp::TYPES[(string) $request->get('type')];
+        }
+
         if (filled($request->get('staff'))) {
-            $filters[] = 'Staff: ' . trim((string) $request->get('staff'));
+            $staff = trim((string) $request->get('staff'));
+            $filters[] = $staff === 'me' ? 'Staff: Me' : 'Staff: ' . $staff;
+        }
+
+        if (filled($request->get('sort'))) {
+            $filters[] = 'Sort: ' . str_replace('_', ' ', ucfirst((string) $request->get('sort')));
         }
 
         return $filters;

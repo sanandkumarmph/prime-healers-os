@@ -251,6 +251,84 @@
         ]);
     }
 
+    $customerStatus = \App\Models\Customer::hasStatusColumn()
+        ? ($customer->status ? ucfirst((string) $customer->status) : 'Active')
+        : null;
+    $customerInitials = collect(preg_split('/\s+/', trim($customerName)))
+        ->filter()
+        ->take(2)
+        ->map(fn ($part) => strtoupper(substr((string) $part, 0, 1)))
+        ->implode('');
+    $mobileLocation = collect([$customer->city, $customer->state])->filter()->implode(', ') ?: 'Location not set';
+    $mobileAddress = collect([$customer->address, collect([$customer->city, $customer->state, $customer->pincode])->filter()->implode(', ')])
+        ->filter()
+        ->implode(' • ') ?: '-';
+    $paymentsTotal = (float) $customer->payments->sum('amount');
+    $invoiceOutstandingTotal = (float) $customer->invoices->sum(function ($invoice) {
+        $balance = $invoice->balance_amount ?? null;
+        if ($balance !== null) {
+            return (float) $balance;
+        }
+
+        return max((float) ($invoice->total_amount ?? 0) - (float) ($invoice->paid_amount ?? 0), 0);
+    });
+    $mobileSnapshotChips = collect([
+        ['label' => 'Rentals', 'value' => (int) ($customer->rentals_count ?? 0), 'href' => route('rentals.index', ['customer_id' => $customer->id])],
+        ['label' => 'Sales', 'value' => (int) ($customer->sales_count ?? 0), 'href' => route('sales.index', ['customer_id' => $customer->id])],
+        ['label' => 'Invoices', 'value' => (int) ($customer->invoices_count ?? 0), 'href' => route('invoices.index', ['customer_id' => $customer->id])],
+        ['label' => 'Open Dues', 'value' => $currency($invoiceOutstandingTotal), 'href' => route('invoices.index', ['customer_id' => $customer->id, 'status' => 'unpaid'])],
+    ])->filter(fn ($chip) => filled($chip['href']))->values();
+    $mobileOverviewItems = collect([
+        ['label' => 'Customer Type', 'value' => $customerType],
+        ['label' => 'City', 'value' => $customer->city ?: '-'],
+        ['label' => 'Address', 'value' => $customer->address ?: '-'],
+        ['label' => 'Email', 'value' => $customer->email ?: '-'],
+        ['label' => 'Created', 'value' => optional($customer->created_at)->format('d M Y') ?: '-'],
+        ['label' => 'ID Proof', 'value' => $proofUrl ? 'Available' : 'Not uploaded'],
+    ])->values();
+    $customerMobileQuickActions = collect();
+    if ($customer->phone) {
+        $customerMobileQuickActions->push([
+            'label' => 'Call',
+            'href' => 'tel:' . preg_replace('/\D+/', '', $customer->phone),
+            'icon' => 'phone',
+        ]);
+    }
+    if ($generalWhatsAppUrl) {
+        $customerMobileQuickActions->push([
+            'label' => 'WhatsApp',
+            'href' => $generalWhatsAppUrl,
+            'icon' => 'whatsapp',
+            'target' => '_blank',
+            'rel' => 'noopener',
+        ]);
+    }
+    if ($mapUrl) {
+        $customerMobileQuickActions->push([
+            'label' => 'Maps',
+            'href' => $mapUrl,
+            'icon' => 'map',
+            'target' => '_blank',
+            'rel' => 'noopener',
+        ]);
+    }
+    if ($canUpdateCustomers) {
+        $customerMobileQuickActions->push([
+            'label' => 'Edit',
+            'href' => route('customers.edit', $customer),
+            'icon' => 'edit',
+        ]);
+    }
+    if ($customer->email) {
+        $customerMobileQuickActions->push([
+            'label' => 'Email',
+            'href' => 'mailto:' . $customer->email,
+            'icon' => 'mail',
+        ]);
+    }
+    $customerMobileQuickActions = $customerMobileQuickActions->take(4)->values();
+    $mobileTimelineItems = ($activityTimeline ?? collect())->take(5);
+
     $statusBadge = function (?string $status) {
         return match ($status) {
             'active', 'paid', 'completed', 'delivered' => 'background:#dcfce7;color:#166534;',
@@ -395,6 +473,8 @@
         font-size:13px;
         padding:8px 0;
     }
+    .customer-mobile-view { display:none; }
+    .customer-desktop-view { display:block; }
     @media (max-width: 1100px) {
         .metric-grid { grid-template-columns:repeat(3, minmax(0, 1fr)); }
         .span-4, .span-6, .span-8 { grid-column:span 12; }
@@ -406,6 +486,277 @@
         .profile-actions {
             display:none;
         }
+        .customer-mobile-view {
+            display:grid;
+            gap:10px;
+        }
+        .customer-desktop-view {
+            display:none;
+        }
+        .customer-mobile-hero {
+            display:grid;
+            gap:8px;
+            padding:10px;
+            border:1px solid #dbe3ef;
+            border-radius:16px;
+            background:#fff;
+            box-shadow:0 10px 24px rgba(15,23,42,.05);
+        }
+        .customer-mobile-hero-top {
+            display:grid;
+            grid-template-columns:44px minmax(0, 1fr);
+            gap:8px;
+            align-items:center;
+        }
+        .customer-mobile-avatar {
+            width:44px;
+            height:44px;
+            border-radius:15px;
+            display:grid;
+            place-items:center;
+            background:#eff6ff;
+            border:1px solid #bfdbfe;
+            color:#1d4ed8;
+            font-size:16px;
+            font-weight:900;
+            font-family:var(--ph-font-heading);
+        }
+        .customer-mobile-headline {
+            display:grid;
+            gap:2px;
+            min-width:0;
+        }
+        .customer-mobile-headline h1 {
+            margin:0;
+            font-size:17px;
+            line-height:1.1;
+        }
+        .customer-mobile-subline,
+        .customer-mobile-meta {
+            color:#64748b;
+            font-size:11px;
+            line-height:1.25;
+        }
+        .customer-mobile-badges,
+        .customer-mobile-actions {
+            display:flex;
+            gap:6px;
+            overflow-x:auto;
+            padding-bottom:1px;
+            scrollbar-width:none;
+        }
+        .customer-mobile-badges::-webkit-scrollbar,
+        .customer-mobile-actions::-webkit-scrollbar {
+            display:none;
+        }
+        .customer-mobile-kpis {
+            display:grid;
+            grid-template-columns:repeat(4, minmax(0, 1fr));
+            gap:6px;
+        }
+        .customer-mobile-pill {
+            display:inline-flex;
+            align-items:center;
+            min-height:24px;
+            padding:0 8px;
+            border-radius:999px;
+            border:1px solid #dbe3ef;
+            background:#f8fafc;
+            color:#334155;
+            font-size:10px;
+            font-weight:800;
+            white-space:nowrap;
+        }
+        .customer-mobile-action {
+            display:grid;
+            justify-items:center;
+            gap:0;
+            min-width:40px;
+            text-decoration:none;
+            color:#0f172a;
+        }
+        .customer-mobile-action-icon {
+            width:36px;
+            height:36px;
+            border-radius:12px;
+            border:1px solid #dbe3ef;
+            background:#fff;
+            display:grid;
+            place-items:center;
+            box-shadow:0 4px 12px rgba(15,23,42,.03);
+        }
+        .customer-mobile-action-icon svg {
+            width:16px;
+            height:16px;
+        }
+        .customer-mobile-action span {
+            position:absolute;
+            width:1px;
+            height:1px;
+            margin:-1px;
+            padding:0;
+            overflow:hidden;
+            clip:rect(0,0,0,0);
+            white-space:nowrap;
+            border:0;
+        }
+        .customer-mobile-kpi {
+            display:grid;
+            gap:3px;
+            min-width:0;
+            padding:7px 8px;
+            border-radius:12px;
+            border:1px solid #dbe3ef;
+            background:#fcfdff;
+            text-decoration:none;
+        }
+        .customer-mobile-kpi strong {
+            color:#0f172a;
+            font-size:13px;
+            line-height:1.1;
+            word-break:break-word;
+        }
+        .customer-mobile-kpi span {
+            color:#64748b;
+            font-size:9.5px;
+            font-weight:800;
+            text-transform:uppercase;
+            letter-spacing:.04em;
+            line-height:1.05;
+        }
+        .customer-mobile-section {
+            border:1px solid #dbe3ef;
+            border-radius:16px;
+            background:#fff;
+            overflow:hidden;
+            box-shadow:0 10px 20px rgba(15,23,42,.035);
+        }
+        .customer-mobile-section summary {
+            list-style:none;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:10px;
+            padding:12px;
+            cursor:pointer;
+        }
+        .customer-mobile-section summary::-webkit-details-marker { display:none; }
+        .customer-mobile-section-title {
+            display:grid;
+            gap:2px;
+        }
+        .customer-mobile-section-title strong {
+            font-size:14px;
+            color:#0f172a;
+        }
+        .customer-mobile-section-title span {
+            color:#64748b;
+            font-size:11px;
+        }
+        .customer-mobile-section-body {
+            display:grid;
+            gap:10px;
+            padding:0 12px 12px;
+        }
+        .customer-mobile-overview-grid {
+            display:grid;
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+            gap:8px;
+        }
+        .customer-mobile-overview-item,
+        .customer-mobile-record {
+            border:1px solid #e2e8f0;
+            border-radius:14px;
+            background:#fcfdff;
+            padding:9px 10px;
+        }
+        .customer-mobile-overview-item b {
+            display:block;
+            margin-bottom:4px;
+            color:#64748b;
+            font-size:10.5px;
+            font-weight:800;
+            text-transform:uppercase;
+            letter-spacing:.04em;
+        }
+        .customer-mobile-overview-item span {
+            display:block;
+            color:#0f172a;
+            font-size:13px;
+            line-height:1.35;
+        }
+        .customer-mobile-record-list {
+            display:grid;
+            gap:8px;
+        }
+        .customer-mobile-record-head {
+            display:flex;
+            align-items:flex-start;
+            justify-content:space-between;
+            gap:8px;
+        }
+        .customer-mobile-record-head a {
+            color:#0f172a;
+            text-decoration:none;
+            font-size:14px;
+            font-weight:900;
+            line-height:1.2;
+        }
+        .customer-mobile-record-meta {
+            color:#64748b;
+            font-size:11.5px;
+            line-height:1.35;
+            margin-top:3px;
+        }
+        .customer-mobile-record-actions {
+            display:flex;
+            gap:8px;
+            margin-top:8px;
+        }
+        .customer-mobile-record-link {
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            min-height:34px;
+            padding:0 10px;
+            border-radius:10px;
+            border:1px solid #dbe3ef;
+            color:#1d4ed8;
+            background:#eff6ff;
+            text-decoration:none;
+            font-size:11px;
+            font-weight:800;
+        }
+        .customer-mobile-timeline {
+            display:grid;
+            gap:8px;
+        }
+        .customer-mobile-timeline-item {
+            padding:10px 0;
+            border-top:1px solid #e2e8f0;
+        }
+        .customer-mobile-timeline-item:first-child {
+            border-top:none;
+            padding-top:0;
+        }
+        .customer-mobile-timeline-date {
+            color:#64748b;
+            font-size:11px;
+            font-weight:700;
+            margin-bottom:4px;
+        }
+        .customer-mobile-timeline-title {
+            color:#0f172a;
+            font-size:13px;
+            font-weight:800;
+            line-height:1.3;
+        }
+        .customer-mobile-timeline-copy {
+            margin-top:3px;
+            color:#64748b;
+            font-size:11.5px;
+            line-height:1.35;
+        }
     }
     @media (max-width: 520px) {
         .metric-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
@@ -415,6 +766,271 @@
 </style>
 
 <div class="container profile-page">
+    <div class="customer-mobile-view">
+        <section class="customer-mobile-hero" aria-label="Customer summary">
+            <div class="customer-mobile-hero-top">
+                <div class="customer-mobile-avatar" aria-hidden="true">{{ $customerInitials ?: 'CU' }}</div>
+                <div class="customer-mobile-headline">
+                    <h1>{{ $customerName }}</h1>
+                    <div class="customer-mobile-subline">{{ $customer->phone ?: 'No phone number' }}</div>
+                    <div class="customer-mobile-meta">{{ $mobileLocation }}</div>
+                </div>
+            </div>
+
+            <div class="customer-mobile-badges">
+                <span class="customer-mobile-pill">{{ $customerType }} Customer</span>
+                @if($customerStatus)
+                    <span class="customer-mobile-pill">{{ $customerStatus }}</span>
+                @endif
+            </div>
+
+            <div class="customer-mobile-actions" aria-label="Customer quick actions">
+                @foreach($customerMobileQuickActions as $action)
+                    <a href="{{ $action['href'] }}" class="customer-mobile-action" @if(!empty($action['target'])) target="{{ $action['target'] }}" @endif @if(!empty($action['rel'])) rel="{{ $action['rel'] }}" @endif>
+                        <span class="customer-mobile-action-icon" aria-hidden="true">
+                            @if($action['icon'] === 'phone')
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8l-1.3 1.3a16 16 0 0 0 6.4 6.4l1.3-1.3a2 2 0 0 1 1.8-.6l3 .5A2 2 0 0 1 22 16.9Z"/></svg>
+                            @elseif($action['icon'] === 'whatsapp')
+                                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 11.4c0 4.7-3.9 8.6-8.8 8.6-1.5 0-3-.4-4.2-1.1L3 20l1.2-3.7A8.4 8.4 0 0 1 2.4 11.4C2.4 6.7 6.3 3 11.2 3 16.1 3 20 6.7 20 11.4Zm-4.8 2.2c-.2-.1-1.2-.6-1.4-.7s-.3-.1-.4.1-.5.7-.7.9-.3.2-.5.1a5.9 5.9 0 0 1-1.7-1c-.6-.5-1-1.2-1.1-1.4-.1-.2 0-.3.1-.4l.3-.4.2-.3v-.4c0-.1-.4-1.1-.6-1.6-.2-.4-.3-.4-.4-.4h-.4c-.1 0-.4 0-.6.3-.2.2-.8.8-.8 1.9s.8 2.1 1 2.3c.1.1 1.5 2.3 3.8 3.2.5.2 1 .4 1.3.5.6.2 1.2.2 1.7.1.5-.1 1.2-.5 1.4-1 .2-.5.2-1 .1-1Z"/></svg>
+                            @elseif($action['icon'] === 'mail')
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v12H4z"/><path d="m4 7 8 6 8-6"/></svg>
+                            @elseif($action['icon'] === 'map')
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s6-5.2 6-11a6 6 0 1 0-12 0c0 5.8 6 11 6 11Z"/><circle cx="12" cy="10" r="2.2"/></svg>
+                            @else
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                            @endif
+                        </span>
+                        <span>{{ $action['label'] }}</span>
+                    </a>
+                @endforeach
+            </div>
+
+            <div class="customer-mobile-kpis" aria-label="Customer snapshot">
+                @foreach($mobileSnapshotChips as $chip)
+                    <a href="{{ $chip['href'] }}" class="customer-mobile-kpi">
+                        <span>{{ $chip['label'] }}</span>
+                        <strong>{{ $chip['value'] }}</strong>
+                    </a>
+                @endforeach
+            </div>
+        </section>
+
+        <details class="customer-mobile-section" open>
+            <summary>
+                <div class="customer-mobile-section-title">
+                    <strong>Overview</strong>
+                    <span>Identity, address, and account basics.</span>
+                </div>
+                <span class="customer-mobile-pill">Open</span>
+            </summary>
+            <div class="customer-mobile-section-body">
+                <div class="customer-mobile-overview-grid">
+                    @foreach($mobileOverviewItems as $item)
+                        <div class="customer-mobile-overview-item">
+                            <b>{{ $item['label'] }}</b>
+                            <span>{{ $item['value'] }}</span>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        </details>
+
+        <details class="customer-mobile-section">
+            <summary>
+                <div class="customer-mobile-section-title">
+                    <strong>Rentals</strong>
+                    <span>{{ $customer->rentals_count ?? 0 }} rentals linked to this customer.</span>
+                </div>
+                <span class="customer-mobile-pill">{{ $customer->active_rentals_count ?? 0 }} active</span>
+            </summary>
+            <div class="customer-mobile-section-body">
+                <div class="customer-mobile-record-list">
+                    @forelse($customer->rentals as $rental)
+                        <div class="customer-mobile-record">
+                            <div class="customer-mobile-record-head">
+                                <a href="{{ route('rentals.show', $rental) }}">Rental #{{ $rental->id }}</a>
+                                <span class="badge" style="{{ $statusBadge($rental->status) }}">{{ $rental->status }}</span>
+                            </div>
+                            <div class="customer-mobile-record-meta">{{ $rental->product->name ?? 'Rental item' }}</div>
+                            <div class="customer-mobile-record-meta">{{ optional($rental->start_date)->format('d M Y') ?: '-' }} to {{ optional($rental->end_date)->format('d M Y') ?: '-' }}</div>
+                            <div class="customer-mobile-record-meta">{{ $currency($rental->rental_amount ?? 0) }}</div>
+                            <div class="customer-mobile-record-actions">
+                                <a href="{{ route('rentals.show', $rental) }}" class="customer-mobile-record-link">View</a>
+                            </div>
+                        </div>
+                    @empty
+                        <div class="empty-state">No rentals available.</div>
+                    @endforelse
+                </div>
+            </div>
+        </details>
+
+        <details class="customer-mobile-section">
+            <summary>
+                <div class="customer-mobile-section-title">
+                    <strong>Sales</strong>
+                    <span>{{ $customer->sales_count ?? 0 }} sales recorded.</span>
+                </div>
+                <span class="customer-mobile-pill">{{ $customer->sales_count ?? 0 }}</span>
+            </summary>
+            <div class="customer-mobile-section-body">
+                <div class="customer-mobile-record-list">
+                    @forelse($customer->sales as $sale)
+                        <div class="customer-mobile-record">
+                            <div class="customer-mobile-record-head">
+                                @if(\Illuminate\Support\Facades\Route::has('sales.show'))
+                                    <a href="{{ route('sales.show', $sale) }}">{{ $sale->sale_number ?? 'Sale #' . $sale->id }}</a>
+                                @else
+                                    <a href="{{ route('sales.index', ['customer_id' => $customer->id]) }}">{{ $sale->sale_number ?? 'Sale #' . $sale->id }}</a>
+                                @endif
+                                <span class="badge" style="{{ $statusBadge($sale->payment_status ?? 'pending') }}">{{ $sale->payment_status ?? 'pending' }}</span>
+                            </div>
+                            <div class="customer-mobile-record-meta">{{ $sale->product->name ?? 'Sale item' }}</div>
+                            <div class="customer-mobile-record-meta">{{ optional($sale->created_at)->format('d M Y') ?: '-' }}</div>
+                            <div class="customer-mobile-record-meta">{{ $currency($sale->sale_amount ?? 0) }}</div>
+                            <div class="customer-mobile-record-actions">
+                                @if(\Illuminate\Support\Facades\Route::has('sales.show'))
+                                    <a href="{{ route('sales.show', $sale) }}" class="customer-mobile-record-link">View</a>
+                                @else
+                                    <a href="{{ route('sales.index', ['customer_id' => $customer->id]) }}" class="customer-mobile-record-link">View</a>
+                                @endif
+                            </div>
+                        </div>
+                    @empty
+                        <div class="empty-state">No sales available.</div>
+                    @endforelse
+                </div>
+            </div>
+        </details>
+
+        <details class="customer-mobile-section">
+            <summary>
+                <div class="customer-mobile-section-title">
+                    <strong>Invoices</strong>
+                    <span>{{ $customer->invoices_count ?? 0 }} invoices with {{ $customer->unpaid_invoices_count ?? 0 }} unpaid.</span>
+                </div>
+                <span class="customer-mobile-pill">{{ $customer->unpaid_invoices_count ?? 0 }} due</span>
+            </summary>
+            <div class="customer-mobile-section-body">
+                <div class="customer-mobile-record-list">
+                    @forelse($customer->invoices as $invoice)
+                        <div class="customer-mobile-record">
+                            <div class="customer-mobile-record-head">
+                                <a href="{{ route('invoices.show', $invoice->id) }}">{{ $invoice->invoice_number ?? 'Invoice #' . $invoice->id }}</a>
+                                <span class="badge" style="{{ $statusBadge($invoice->payment_status ?? 'pending') }}">{{ $invoice->payment_status ?? 'pending' }}</span>
+                            </div>
+                            <div class="customer-mobile-record-meta">{{ optional($invoice->invoice_date)->format('d M Y') ?: '-' }}</div>
+                            <div class="customer-mobile-record-meta">{{ $currency($invoice->total_amount ?? 0) }}</div>
+                            <div class="customer-mobile-record-actions">
+                                <a href="{{ route('invoices.show', $invoice->id) }}" class="customer-mobile-record-link">View</a>
+                            </div>
+                        </div>
+                    @empty
+                        <div class="empty-state">No invoices available.</div>
+                    @endforelse
+                </div>
+            </div>
+        </details>
+
+        <details class="customer-mobile-section">
+            <summary>
+                <div class="customer-mobile-section-title">
+                    <strong>Payments</strong>
+                    <span>Total paid {{ $currency($paymentsTotal) }}.</span>
+                </div>
+                <span class="customer-mobile-pill">{{ $currency($invoiceOutstandingTotal) }} due</span>
+            </summary>
+            <div class="customer-mobile-section-body">
+                <div class="customer-mobile-overview-grid">
+                    <div class="customer-mobile-overview-item">
+                        <b>Total Paid</b>
+                        <span>{{ $currency($paymentsTotal) }}</span>
+                    </div>
+                    <div class="customer-mobile-overview-item">
+                        <b>Outstanding</b>
+                        <span>{{ $currency($invoiceOutstandingTotal) }}</span>
+                    </div>
+                </div>
+                <div class="customer-mobile-record-list">
+                    @forelse($customer->payments as $payment)
+                        <div class="customer-mobile-record">
+                            <div class="customer-mobile-record-head">
+                                <a href="{{ $paymentsIndexHref ?: route('invoices.index', ['customer_id' => $customer->id]) }}">{{ $currency($payment->amount ?? 0) }}</a>
+                                <span class="badge" style="{{ $statusBadge('paid') }}">{{ $payment->payment_method ?: 'paid' }}</span>
+                            </div>
+                            <div class="customer-mobile-record-meta">{{ optional($payment->payment_date)->format('d M Y') ?: '-' }}</div>
+                            <div class="customer-mobile-record-meta">{{ $payment->rental->product->name ?? 'Rental Payment' }}</div>
+                        </div>
+                    @empty
+                        <div class="empty-state">No payments recorded yet.</div>
+                    @endforelse
+                </div>
+            </div>
+        </details>
+
+        <details class="customer-mobile-section">
+            <summary>
+                <div class="customer-mobile-section-title">
+                    <strong>Communication</strong>
+                    <span>Direct outreach and follow-up shortcuts.</span>
+                </div>
+                <span class="customer-mobile-pill">{{ $customer->phone ? 'Reachable' : 'No phone' }}</span>
+            </summary>
+            <div class="customer-mobile-section-body">
+                <div class="customer-mobile-overview-grid">
+                    <div class="customer-mobile-overview-item">
+                        <b>WhatsApp</b>
+                        <span>{{ $generalWhatsAppUrl ? 'Available' : 'Unavailable' }}</span>
+                    </div>
+                    <div class="customer-mobile-overview-item">
+                        <b>Email</b>
+                        <span>{{ $customer->email ? 'Available' : 'Unavailable' }}</span>
+                    </div>
+                    <div class="customer-mobile-overview-item">
+                        <b>Map</b>
+                        <span>{{ $mapUrl ? 'Available' : 'Unavailable' }}</span>
+                    </div>
+                    <div class="customer-mobile-overview-item">
+                        <b>Timeline</b>
+                        <span>{{ ($activityTimeline ?? collect())->count() }} recent items</span>
+                    </div>
+                </div>
+            </div>
+        </details>
+
+        <details class="customer-mobile-section">
+            <summary>
+                <div class="customer-mobile-section-title">
+                    <strong>Activity Timeline</strong>
+                    <span>Recent actions linked to this customer.</span>
+                </div>
+                <span class="customer-mobile-pill">{{ ($activityTimeline ?? collect())->count() }}</span>
+            </summary>
+            <div class="customer-mobile-section-body">
+                <div class="customer-mobile-timeline">
+                    @forelse($mobileTimelineItems as $entry)
+                        @php
+                            $eventDate = data_get($entry, 'occurred_at') ?? data_get($entry, 'created_at') ?? data_get($entry, 'date');
+                            $eventTitle = data_get($entry, 'title') ?? data_get($entry, 'label') ?? data_get($entry, 'event') ?? 'Activity';
+                            $eventDescription = data_get($entry, 'description') ?? data_get($entry, 'summary') ?? data_get($entry, 'message') ?? data_get($entry, 'details');
+                            $eventDateLabel = $eventDate ? \Illuminate\Support\Carbon::parse($eventDate)->format('d M Y, h:i A') : 'Recent';
+                        @endphp
+                        <div class="customer-mobile-timeline-item">
+                            <div class="customer-mobile-timeline-date">{{ $eventDateLabel }}</div>
+                            <div class="customer-mobile-timeline-title">{{ $eventTitle }}</div>
+                            @if($eventDescription)
+                                <div class="customer-mobile-timeline-copy">{{ $eventDescription }}</div>
+                            @endif
+                        </div>
+                    @empty
+                        <div class="empty-state">No recent activity yet.</div>
+                    @endforelse
+                </div>
+            </div>
+        </details>
+    </div>
+
+    <div class="customer-desktop-view">
     <div class="profile-header">
         <div>
             <h1>{{ $customerName }}</h1>
@@ -831,11 +1447,12 @@
                 'subtitle' => 'Rentals, sales, invoices, payments, deliveries, reminders, and notes linked to this customer.',
                 'timelineFilter' => $timelineFilter ?? 'all',
                 'timelineRoute' => 'customers.show',
-                'noteAction' => route('customers.notes.store', $customer->id),
-                'noteLabel' => 'Add Note',
-                'anchorId' => 'customer-timeline',
+        'noteAction' => route('customers.notes.store', $customer->id),
+        'noteLabel' => 'Add Note',
+        'anchorId' => 'customer-timeline',
             ])
         </div>
+    </div>
     </div>
 </div>
 

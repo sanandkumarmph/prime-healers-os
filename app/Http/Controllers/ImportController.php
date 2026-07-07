@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\ImportService;
+use App\Support\ImportSetupWizard;
 use App\Http\Controllers\SaleController;
 use App\Models\Asset;
 use App\Models\Customer;
@@ -84,14 +85,19 @@ class ImportController extends Controller
         return view('import.index', compact('modules'));
     }
 
-    public function show(string $module, ImportService $service)
+    public function show(string $module, ImportService $service, ImportSetupWizard $wizard)
     {
         $this->authorize('access', self::class);
         $moduleConfig = $this->authorizeModule($module, $service);
         $upload = $this->currentUploadKey($module) ? $service->loadSnapshot($this->currentUploadKey($module)) : null;
         $preview = $this->currentPreviewKey($module) ? $service->loadSnapshot($this->currentPreviewKey($module)) : null;
 
-        return view('import.show', compact('moduleConfig', 'module', 'upload', 'preview'));
+        $templateCatalog = collect($service->templateCatalog())
+            ->map(fn (array $template, string $key) => $template + ['key' => $key])
+            ->values();
+        $setupItem = $wizard->stateForModule($module, (int) auth()->user()->organization_id, $templateCatalog);
+
+        return view('import.show', compact('moduleConfig', 'module', 'upload', 'preview', 'setupItem'));
     }
 
     public function upload(Request $request, string $module, ImportService $service)

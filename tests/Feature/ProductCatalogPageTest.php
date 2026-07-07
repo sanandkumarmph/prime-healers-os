@@ -4,6 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\Asset;
 use App\Models\Product;
+use App\Models\ProductBrand;
+use App\Models\ProductCategory;
+use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\TestData;
@@ -636,6 +639,101 @@ class ProductCatalogPageTest extends TestCase
         $this->assertSame(0.0, (float) $product->fresh()->cgst_rate);
         $this->assertSame(0.0, (float) $product->fresh()->sgst_rate);
         $this->assertSame(18.0, (float) $product->fresh()->igst_rate);
+    }
+
+    public function test_authorized_user_can_create_category_from_product_create_page(): void
+    {
+        $response = $this->postJson(route('product-categories.quick-store'), [
+            'name' => '  Respiratory   Devices  ',
+            'description' => 'Reusable oxygen and sleep devices',
+            'is_active' => true,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('category.name', 'Respiratory Devices');
+
+        $this->assertDatabaseHas('product_categories', [
+            'organization_id' => $this->organizationId,
+            'name' => 'Respiratory Devices',
+            'normalized_name' => 'respiratory devices',
+        ]);
+
+        $this->get(route('products.create'))
+            ->assertOk()
+            ->assertSee('Respiratory Devices');
+    }
+
+    public function test_authorized_user_can_create_brand_from_product_create_page(): void
+    {
+        $response = $this->postJson(route('product-brands.quick-store'), [
+            'name' => '  Prime   Devices  ',
+            'manufacturer' => 'Prime Healers',
+            'description' => 'Internal brand',
+            'is_active' => true,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('brand.name', 'Prime Devices');
+
+        $this->assertDatabaseHas('product_brands', [
+            'organization_id' => $this->organizationId,
+            'name' => 'Prime Devices',
+            'normalized_name' => 'prime devices',
+        ]);
+
+        $this->get(route('products.create'))
+            ->assertOk()
+            ->assertSee('Prime Devices');
+    }
+
+    public function test_duplicate_category_is_blocked(): void
+    {
+        ProductCategory::create([
+            'organization_id' => $this->organizationId,
+            'name' => 'Respiratory Care',
+            'is_active' => true,
+        ]);
+
+        $this->postJson(route('product-categories.quick-store'), [
+            'name' => ' respiratory   care ',
+            'is_active' => true,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('name')
+            ->assertJsonPath('errors.name.0', 'This category already exists. Please select it from the list.');
+    }
+
+    public function test_duplicate_brand_is_blocked(): void
+    {
+        ProductBrand::create([
+            'organization_id' => $this->organizationId,
+            'name' => 'Philips',
+            'is_active' => true,
+        ]);
+
+        $this->postJson(route('product-brands.quick-store'), [
+            'name' => ' philips ',
+            'is_active' => true,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('name')
+            ->assertJsonPath('errors.name.0', 'This brand already exists. Please select it from the list.');
+    }
+
+    public function test_unauthorized_user_cannot_create_category_or_brand(): void
+    {
+        $staff = TestData::user(
+            \App\Models\Organization::findOrFail($this->organizationId),
+            ['role' => User::ROLE_SALES]
+        );
+
+        $this->actingAs($staff);
+
+        $this->postJson(route('product-categories.quick-store'), ['name' => 'Hidden Category'])
+            ->assertForbidden();
+
+        $this->postJson(route('product-brands.quick-store'), ['name' => 'Hidden Brand'])
+            ->assertForbidden();
     }
 
     private function makeProduct(array $attributes = []): Product

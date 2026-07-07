@@ -184,17 +184,17 @@
             ['index' => 2, 'key' => 'photos', 'label' => 'Photos', 'copy' => 'Capture pickup proof.'],
             ['index' => 3, 'key' => 'condition', 'label' => 'Check', 'copy' => 'Check damage and accessories.'],
             ['index' => 4, 'key' => 'notes', 'label' => 'Notes', 'copy' => 'Add damage or missing items.'],
-            ['index' => 5, 'key' => 'signature', 'label' => 'Sign', 'copy' => 'Capture acknowledgement.'],
+            ['index' => 5, 'key' => 'signature', 'label' => 'Signature', 'copy' => 'Capture acknowledgement.'],
             ...($supportsCollectionStep ? [['index' => 6, 'key' => 'collection', 'label' => 'Collect', 'copy' => 'Record collection or reason.']] : []),
-            ['index' => $supportsCollectionStep ? 7 : 6, 'key' => 'complete', 'label' => 'Complete', 'copy' => 'Review and finish pickup.'],
+            ['index' => $supportsCollectionStep ? 7 : 6, 'key' => 'complete', 'label' => 'Review', 'copy' => 'Review and finish pickup.'],
         ]
         : [
             ['index' => 1, 'key' => 'location', 'label' => 'GPS', 'copy' => 'Capture GPS or add reason.'],
             ['index' => 2, 'key' => 'photos', 'label' => 'Photos', 'copy' => 'Capture delivery proof.'],
             ['index' => 3, 'key' => 'notes', 'label' => 'Notes', 'copy' => 'Add field notes if needed.'],
-            ['index' => 4, 'key' => 'signature', 'label' => 'Sign', 'copy' => 'Capture acknowledgement.'],
+            ['index' => 4, 'key' => 'signature', 'label' => 'Signature', 'copy' => 'Capture acknowledgement.'],
             ...($supportsCollectionStep ? [['index' => 5, 'key' => 'collection', 'label' => 'Collect', 'copy' => 'Record collection or reason.']] : []),
-            ['index' => $supportsCollectionStep ? 6 : 5, 'key' => 'complete', 'label' => 'Complete', 'copy' => 'Review and finish delivery.'],
+            ['index' => $supportsCollectionStep ? 6 : 5, 'key' => 'complete', 'label' => 'Review', 'copy' => 'Review and finish delivery.'],
         ];
     $workflowStepCount = count($completionSteps);
     $workflowDisplayOffset = 1;
@@ -369,6 +369,17 @@
     }
 
     $mobileQuickActions = $mobileQuickActions->values();
+
+    $mobileTaskTone = match ($delivery->status) {
+        'completed' => 'completed',
+        'in_progress' => 'progress',
+        'cancelled' => 'cancelled',
+        default => 'pending',
+    };
+
+    if ($delivery->scheduled_at && $delivery->scheduled_at->isPast() && !in_array($delivery->status, ['completed', 'cancelled'], true)) {
+        $mobileTaskTone = 'pending';
+    }
 @endphp
 
 <style>
@@ -569,6 +580,9 @@
         gap:6px;
         flex-wrap:wrap;
     }
+    .fieldops-mobile-back-inline {
+        display:none;
+    }
     .fieldops-task-meta-grid {
         display:grid;
         grid-template-columns:repeat(2, minmax(0, 1fr));
@@ -625,6 +639,7 @@
         height:15px;
         color:#2563eb;
     }
+    .desktop-note-action { display:none; }
     .fieldops-primary-bar {
         display:grid;
         grid-template-columns:minmax(0, 1fr) auto;
@@ -767,6 +782,9 @@
         display:grid;
         gap:14px;
     }
+    .desktop-workflow-progress {
+        display:none;
+    }
     .mobile-actions-menu {
         position:relative;
         width:100%;
@@ -823,6 +841,26 @@
         border-color:#fecaca;
     }
     .delivery-page-spacer {
+        display:none;
+    }
+    .delivery-mobile-sticky-cta {
+        display:none;
+    }
+    .delivery-mobile-sticky-cta a {
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        min-height:48px;
+        padding:0 14px;
+        border-radius:16px;
+        background:#2563eb;
+        color:#fff;
+        text-decoration:none;
+        font-size:14px;
+        font-weight:900;
+        box-shadow:0 18px 36px rgba(37,99,235,.26);
+    }
+    .delivery-mobile-titlebar {
         display:none;
     }
     .detail-btn, .detail-btn-secondary {
@@ -1452,6 +1490,27 @@
         flex-wrap:wrap;
     }
     .proof-history-body { padding:0 14px 14px; }
+    .desktop-task-header-meta { display:none; }
+    .desktop-secondary-shell {
+        border:1px solid #dbe3ef;
+        border-radius:16px;
+        background:#fff;
+        box-shadow:0 8px 24px rgba(15, 23, 42, 0.04);
+        overflow:hidden;
+    }
+    .desktop-secondary-shell > summary {
+        list-style:none;
+        cursor:pointer;
+        padding:12px 14px;
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+    }
+    .desktop-secondary-shell > summary::-webkit-details-marker { display:none; }
+    .desktop-secondary-shell > summary span { color:#0f172a; font-size:14px; font-weight:800; }
+    .desktop-secondary-shell > summary strong { color:#64748b; font-size:11px; font-weight:700; }
+    .desktop-secondary-shell .detail-support-grid { padding:0 12px 12px; }
     .workflow-proof-history-item {
         display:grid;
         grid-template-columns:minmax(0, 120px) minmax(0, 1fr);
@@ -1491,45 +1550,387 @@
         .workflow-mini-summary,
         .fieldops-kv-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
     }
+    @media (min-width: 1024px) {
+        .delivery-detail {
+            max-width:min(1500px, calc(100vw - 32px));
+            padding:6px 12px 20px;
+            display:grid;
+            grid-template-columns:minmax(320px, 35%) minmax(0, 65%);
+            gap:8px;
+            align-items:start;
+        }
+        .delivery-detail-header {
+            grid-column:1 / -1;
+            position:static;
+            padding:7px 10px;
+            border:1px solid rgba(203,213,225,.9);
+            border-radius:12px;
+            background:#fff;
+            box-shadow:0 6px 16px rgba(15,23,42,.045);
+            backdrop-filter:none;
+            flex-wrap:nowrap;
+            align-items:center;
+        }
+        .delivery-detail-header h1 { font-size:19px; letter-spacing:-.02em; }
+        .delivery-detail-header p,
+        .workflow-preview-shell { display:none; }
+        .desktop-task-header-meta {
+            display:flex;
+            align-items:center;
+            gap:6px;
+            flex-wrap:wrap;
+            margin-top:5px;
+            color:#64748b;
+            font-size:10.5px;
+            font-weight:700;
+        }
+        .desktop-task-header-meta > span:not(.status-badge) {
+            display:inline-flex;
+            align-items:center;
+            gap:4px;
+            min-height:22px;
+            padding:2px 7px;
+            border:1px solid #e2e8f0;
+            border-radius:999px;
+            background:#f8fafc;
+        }
+        .desktop-task-header-meta strong { color:#0f172a; font-weight:800; }
+        .detail-actions { flex-wrap:nowrap; align-items:center; }
+        .detail-actions .detail-btn,
+        .detail-actions .detail-btn-secondary {
+            min-height:30px;
+            padding:6px 10px;
+            border-radius:9px;
+            font-size:11px;
+        }
+        .fieldops-task-shell {
+            grid-column:1;
+            position:sticky;
+            top:90px;
+            align-self:flex-start;
+            padding:10px;
+            border-radius:14px;
+            gap:8px;
+            box-shadow:0 10px 26px rgba(15,23,42,.06);
+        }
+        .fieldops-task-shell-top { grid-template-columns:48px minmax(0, 1fr); gap:10px; }
+        .fieldops-task-shell-ill { width:48px; height:48px; border-radius:14px; }
+        .fieldops-task-shell-copy strong { font-size:17px; }
+        .fieldops-task-shell-copy p { font-size:11px; line-height:1.35; }
+        .fieldops-task-meta-grid,
+        .fieldops-kv-grid,
+        .workflow-mini-summary { gap:5px; }
+        .fieldops-task-meta { padding:7px 8px; border-radius:10px; }
+        .fieldops-task-meta span,
+        .fieldops-kv-label,
+        .label { font-size:9.5px; }
+        .fieldops-task-meta strong,
+        .fieldops-kv-value { font-size:12px; line-height:1.3; }
+        .fieldops-icon-actions { grid-template-columns:repeat(5, minmax(0, 1fr)); gap:5px; }
+        .desktop-note-action { display:grid; }
+        .fieldops-icon-action {
+            min-height:36px;
+            padding:5px;
+            border-radius:10px;
+            font-size:9.5px;
+        }
+        .fieldops-icon-action svg { width:13px; height:13px; }
+        .fieldops-primary-bar { grid-template-columns:1fr; gap:5px; }
+        .fieldops-primary-bar .detail-btn { min-height:34px; border-radius:10px; }
+        .fieldops-primary-note { font-size:10.5px; }
+        .fieldops-overview-card { display:none; }
+        .detail-card {
+            padding:9px;
+            border-radius:14px;
+            box-shadow:0 8px 22px rgba(15,23,42,.045);
+        }
+        .delivery-detail > .detail-card:not(.fieldops-task-shell):not(.fieldops-overview-card) {
+            grid-column:2;
+        }
+        .workflow-mobile-shell {
+            grid-column:2;
+            position:relative;
+            top:auto;
+            max-height:none;
+            overflow:visible;
+            padding:9px;
+            border-radius:14px;
+            border-color:#dbe3ef;
+            box-shadow:0 8px 22px rgba(15,23,42,.045);
+        }
+        .workflow-mobile-shell::before { content:none; }
+        .workflow-mobile-shell-body,
+        .workflow-proof-card { gap:8px; }
+        .desktop-workflow-progress {
+            display:flex;
+            align-items:center;
+            gap:6px;
+            padding:7px 8px;
+            border:1px solid #dbe3ef;
+            border-radius:12px;
+            background:#f8fafc;
+            overflow-x:auto;
+        }
+        .desktop-workflow-progress span {
+            flex:1 0 auto;
+            min-width:70px;
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            min-height:24px;
+            padding:3px 8px;
+            border-radius:999px;
+            background:#fff;
+            color:#475569;
+            border:1px solid #e2e8f0;
+            font-size:10px;
+            font-weight:900;
+            letter-spacing:.04em;
+            text-transform:uppercase;
+        }
+        .desktop-workflow-progress span:first-child {
+            background:#2563eb;
+            border-color:#2563eb;
+            color:#fff;
+        }
+        .workflow-mobile-shell-body > div:first-child h2 { font-size:16px; }
+        .workflow-mobile-shell-body > div:first-child div { font-size:11.5px !important; }
+        .workflow-step,
+        .workflow-start-hero,
+        .workflow-camera-card,
+        .workflow-proof-field,
+        .workflow-review-summary-card,
+        .workflow-review-item { border-radius:12px; }
+        .workflow-proof-grid,
+        .workflow-camera-grid,
+        .workflow-condition-grid { gap:7px; }
+        .workflow-step-copy strong { font-size:14px; }
+        .workflow-step-copy p,
+        .workflow-proof-help,
+        .workflow-camera-status { font-size:11.5px; line-height:1.35; }
+        .workflow-proof-actions .detail-btn,
+        .workflow-proof-actions .detail-btn-secondary,
+        .workflow-step-actions .detail-btn,
+        .workflow-step-actions .detail-btn-secondary {
+            min-height:34px;
+            padding:7px 11px;
+            border-radius:9px;
+            font-size:11.5px;
+        }
+        .progress-card-grid {
+            display:grid;
+            grid-template-columns:1fr;
+            gap:9px;
+            margin-top:8px !important;
+        }
+        .progress-card { padding:8px; border-radius:12px; }
+        .progress-card-head {
+            display:flex;
+            justify-content:space-between;
+            gap:10px;
+            align-items:flex-start;
+        }
+        .progress-card-head strong { font-size:13px; line-height:1.25; }
+        .progress-card-head small { max-width:45%; text-align:right; }
+        .progress-metric-grid {
+            grid-template-columns:repeat(4, minmax(0, 1fr));
+            gap:6px;
+        }
+        .progress-metric { padding:7px; border-radius:9px; }
+        .progress-metric strong { font-size:15px; }
+        .item-progress-form {
+            display:grid;
+            grid-template-columns:96px auto minmax(0, 1fr);
+            gap:8px;
+            align-items:center;
+        }
+        .item-progress-form input[type="number"] { width:96px; }
+        .item-progress-form .detail-btn { justify-self:start; }
+        .workflow-proof-divider { margin:1px 0; }
+        .proof-history-shell { border-radius:12px; }
+        .proof-history-shell > summary { padding:8px 10px; }
+        .proof-history-body { padding:0 10px 10px; }
+        .timeline-shell,
+        .desktop-secondary-shell {
+            grid-column:2;
+            border-radius:14px;
+        }
+        .timeline-shell > summary,
+        .desktop-secondary-shell > summary { padding:10px 12px; }
+        .timeline-summary-copy h2,
+        .timeline-head h2 { font-size:14px; }
+        .timeline-summary-copy p,
+        .timeline-head p { font-size:11px; }
+        .timeline-item { padding:8px; border-radius:12px; }
+        .detail-support-grid { gap:10px; }
+        .asset-grid {
+            grid-template-columns:repeat(3, minmax(0, 1fr));
+            gap:8px;
+        }
+        .asset-box { padding:9px; border-radius:10px; }
+    }
     @media (max-width: 767px) {
-        .delivery-detail { padding:8px 0 16px; }
+        .app-shell-main {
+            padding-top:8px !important;
+        }
+        .mobile-topbar-search,
+        .mobile-back-row {
+            display:none !important;
+        }
+        .delivery-detail {
+            gap:8px;
+            padding:0 0 calc(132px + env(safe-area-inset-bottom, 0px));
+        }
+        .delivery-mobile-titlebar {
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:10px;
+            padding:0 4px 4px;
+        }
+        .delivery-mobile-titlebar a,
+        .delivery-mobile-titlebar button {
+            width:38px;
+            height:38px;
+            display:grid;
+            place-items:center;
+            border-radius:14px;
+            border:1px solid #dbe3ef;
+            background:#fff;
+            color:#0f172a;
+            text-decoration:none;
+        }
+        .delivery-mobile-titlebar strong {
+            min-width:0;
+            overflow:hidden;
+            text-overflow:ellipsis;
+            white-space:nowrap;
+            color:#0f172a;
+            font-size:17px;
+            font-weight:900;
+        }
+        .delivery-mobile-titlebar .status-badge {
+            flex:0 0 auto;
+            padding:4px 8px;
+            font-size:9.5px;
+        }
+        .delivery-mobile-titlebar.is-pending .status-badge {
+            background:#fee2e2 !important;
+            color:#b91c1c !important;
+        }
+        .delivery-mobile-titlebar.is-progress .status-badge {
+            background:#ffedd5 !important;
+            color:#c2410c !important;
+        }
+        .delivery-mobile-titlebar.is-completed .status-badge {
+            background:#dcfce7 !important;
+            color:#166534 !important;
+        }
+        .delivery-detail-header {
+            display:none;
+        }
         .detail-actions { display:none; }
         body.workflow-mobile-open {
             overscroll-behavior:none;
         }
         .workflow-preview-shell { display:none; }
         .fieldops-task-shell {
-            gap:10px;
-            padding:12px;
-            border-radius:18px;
+            gap:8px;
+            padding:10px;
+            border-radius:16px;
+            box-shadow:0 12px 28px rgba(15,23,42,.08);
+        }
+        .fieldops-task-shell--pending {
+            border-color:#fecaca;
+            background:linear-gradient(135deg, #fff1f2 0%, #fff7ed 46%, #ffffff 100%);
+        }
+        .fieldops-task-shell--progress {
+            border-color:#fed7aa;
+            background:linear-gradient(135deg, #fff7ed 0%, #ffffff 100%);
+        }
+        .fieldops-task-shell--completed {
+            border-color:#bbf7d0;
+            background:linear-gradient(135deg, #ecfdf5 0%, #ffffff 100%);
+        }
+        .fieldops-task-shell--cancelled {
+            border-color:#cbd5e1;
+            background:linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+        }
+        .fieldops-task-shell--pending .fieldops-task-shell-ill {
+            background:#fee2e2;
+            border-color:#fecaca;
+        }
+        .fieldops-task-shell--progress .fieldops-task-shell-ill {
+            background:#ffedd5;
+            border-color:#fed7aa;
+        }
+        .fieldops-task-shell--completed .fieldops-task-shell-ill {
+            background:#dcfce7;
+            border-color:#bbf7d0;
+        }
+        .fieldops-task-shell--pending .fieldops-task-shell-chips .status-badge:first-child {
+            background:#fee2e2 !important;
+            color:#b91c1c !important;
+        }
+        .fieldops-task-shell--progress .fieldops-task-shell-chips .status-badge:first-child {
+            background:#ffedd5 !important;
+            color:#c2410c !important;
+        }
+        .fieldops-task-shell--completed .fieldops-task-shell-chips .status-badge:first-child {
+            background:#dcfce7 !important;
+            color:#166534 !important;
+        }
+        .fieldops-mobile-back-inline {
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            gap:5px;
+            justify-self:start;
+            min-height:30px;
+            padding:0 10px;
+            border-radius:999px;
+            border:1px solid #dbe3ef;
+            background:#ffffff;
+            color:#334155;
+            font-size:11px;
+            font-weight:900;
+            text-decoration:none;
+            box-shadow:0 8px 16px rgba(15,23,42,.06);
         }
         .fieldops-task-shell-top {
-            grid-template-columns:56px minmax(0, 1fr);
-            gap:10px;
+            grid-template-columns:48px minmax(0, 1fr);
+            gap:9px;
         }
         .fieldops-task-shell-ill {
-            width:56px;
-            height:56px;
-            border-radius:16px;
+            width:48px;
+            height:48px;
+            border-radius:14px;
         }
         .fieldops-task-shell-copy strong {
-            font-size:18px;
+            font-size:17px;
         }
         .fieldops-task-shell-copy p {
-            font-size:11px;
+            display:none;
         }
         .fieldops-task-meta-grid {
-            gap:7px;
+            gap:6px;
         }
         .fieldops-task-meta {
-            padding:9px 10px;
+            padding:7px 8px;
+            border-radius:11px;
+            background:rgba(255,255,255,.86);
+            border-color:rgba(203,213,225,.82);
+            box-shadow:inset 0 1px 0 rgba(255,255,255,.75);
         }
         .fieldops-task-meta strong {
             font-size:12px;
         }
         .mobile-inline-actions { display:none; }
         .item-progress-form { display:none; }
-        .detail-card { padding:12px; }
+        .detail-card {
+            padding:10px;
+            border-radius:15px;
+        }
         .fieldops-overview-card {
             gap:10px;
         }
@@ -1547,12 +1948,101 @@
             gap:8px;
         }
         .fieldops-primary-bar {
-            grid-template-columns:1fr;
+            display:none;
+        }
+        .fieldops-icon-actions {
+            grid-template-columns:repeat(4, minmax(0, 1fr));
+            gap:6px;
             align-items:stretch;
         }
-        .fieldops-primary-bar .detail-btn,
-        .fieldops-primary-bar .mobile-actions-menu summary {
+        .fieldops-icon-action,
+        .fieldops-icon-actions .mobile-actions-menu summary {
+            min-height:38px;
             width:100%;
+            padding:5px 4px;
+            border-radius:11px;
+            font-size:9.5px;
+            border:1px solid #dbe3ef;
+            background:#fff;
+            color:#0f172a;
+            display:grid;
+            place-items:center;
+            gap:3px;
+            text-align:center;
+        }
+        .fieldops-icon-action svg,
+        .fieldops-icon-actions .mobile-actions-menu summary svg {
+            width:14px;
+            height:14px;
+        }
+        .fieldops-icon-action:nth-child(1) {
+            background:#ecfdf5;
+            border-color:#bbf7d0;
+            color:#047857;
+        }
+        .fieldops-icon-action:nth-child(2) {
+            background:#ecfdf5;
+            border-color:#bbf7d0;
+            color:#047857;
+        }
+        .fieldops-icon-action:nth-child(3) {
+            background:#eff6ff;
+            border-color:#bfdbfe;
+            color:#1d4ed8;
+        }
+        .fieldops-icon-actions .mobile-actions-menu {
+            min-width:0;
+            width:100%;
+            position:relative;
+        }
+        .fieldops-icon-actions .mobile-actions-menu summary {
+            list-style:none;
+            min-height:38px;
+            color:#334155;
+            background:#f8fafc;
+            border-color:#dbe3ef;
+        }
+        .fieldops-icon-actions .mobile-actions-menu summary::-webkit-details-marker {
+            display:none;
+        }
+        .fieldops-icon-actions .mobile-actions-menu summary::before {
+            content:"...";
+            font-size:15px;
+            line-height:1;
+            color:#2563eb;
+        }
+        .fieldops-icon-actions .mobile-actions-menu summary {
+            font-size:0;
+        }
+        .fieldops-icon-actions .mobile-actions-menu summary::after {
+            content:"More";
+            display:block;
+            font-size:9.5px;
+            line-height:1.1;
+            font-weight:800;
+            color:#0f172a;
+        }
+        .fieldops-icon-actions .mobile-actions-menu[open]::before {
+            content:"";
+            position:fixed;
+            inset:0;
+            z-index:39;
+            background:rgba(15,23,42,.28);
+        }
+        .fieldops-icon-actions .mobile-actions-menu .mobile-actions-panel {
+            position:fixed;
+            left:12px;
+            right:12px;
+            bottom:calc(136px + env(safe-area-inset-bottom, 0px));
+            width:auto;
+            max-height:min(52vh, 360px);
+            overflow-y:auto;
+            z-index:40;
+            border-radius:18px;
+            box-shadow:0 24px 48px rgba(15,23,42,.24);
+        }
+        .fieldops-overview-card {
+            display:none;
         }
         .workflow-start-hero {
             grid-template-columns:56px minmax(0, 1fr);
@@ -1863,7 +2353,7 @@
             min-height:0;
             min-width:0;
             overflow-y:auto;
-            padding:12px 12px calc(150px + env(safe-area-inset-bottom, 0px));
+            padding:10px 10px calc(96px + env(safe-area-inset-bottom, 0px));
             -webkit-overflow-scrolling:touch;
             overscroll-behavior:contain;
         }
@@ -1872,16 +2362,16 @@
             display:none;
         }
         .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] [data-workflow-step-panel] {
-            padding-bottom:184px;
+            padding-bottom:112px;
         }
         .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] [data-workflow-step-panel].is-current .workflow-step-actions {
             position:fixed;
             left:12px;
             right:12px;
-            bottom:calc(86px + env(safe-area-inset-bottom, 0px));
-            z-index:30;
-            padding:10px 12px;
-            border-radius:16px;
+            bottom:calc(12px + env(safe-area-inset-bottom, 0px));
+            z-index:1120;
+            padding:8px 10px;
+            border-radius:18px;
             border:1px solid #dbe3ef;
             background:rgba(255,255,255,.96);
             box-shadow:0 16px 36px rgba(15,23,42,.14);
@@ -1893,10 +2383,306 @@
         .detail-support-grid {
             display:none;
         }
+        .desktop-secondary-shell[open] .detail-support-grid {
+            display:grid;
+            grid-template-columns:1fr;
+            gap:8px;
+            padding:0 10px 10px;
+        }
+        .desktop-secondary-shell[open] .detail-support-grid .detail-card {
+            padding:9px;
+            border-radius:12px;
+        }
+        .delivery-mobile-sticky-cta {
+            position:fixed;
+            left:10px;
+            right:10px;
+            bottom:calc(78px + env(safe-area-inset-bottom, 0px));
+            z-index:34;
+            display:block;
+        }
+        .delivery-mobile-sticky-cta.is-pending a {
+            background:#dc2626;
+            box-shadow:0 18px 36px rgba(220,38,38,.28);
+        }
+        .delivery-mobile-sticky-cta.is-progress a {
+            background:#f97316;
+            box-shadow:0 18px 36px rgba(249,115,22,.26);
+        }
+        .delivery-mobile-sticky-cta.is-completed a {
+            background:#16a34a;
+            box-shadow:0 18px 36px rgba(22,163,74,.24);
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] {
+            position:sticky;
+            top:0;
+            z-index:18;
+            margin:-8px -8px 8px;
+            padding:8px 8px 7px;
+            border-bottom:1px solid #e8eef7;
+            background:rgba(255,255,255,.98);
+            box-shadow:0 8px 22px rgba(15,23,42,.06);
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] .workflow-mobile-stepper-bar {
+            display:grid;
+            grid-auto-flow:column;
+            grid-auto-columns:minmax(58px, 1fr);
+            gap:5px;
+            overflow-x:auto;
+            padding:0 2px 1px;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] .workflow-mobile-stepper-tab {
+            min-height:44px;
+            display:grid;
+            justify-items:center;
+            align-content:center;
+            gap:3px;
+            padding:4px 6px;
+            border:0;
+            border-radius:12px;
+            background:transparent;
+            color:#64748b;
+            box-shadow:none;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] .workflow-mobile-stepper-tab-index {
+            width:23px;
+            height:23px;
+            flex-basis:23px;
+            border:1px solid #cbd5e1;
+            background:#fff;
+            color:#64748b;
+            box-shadow:0 4px 12px rgba(15,23,42,.06);
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] .workflow-mobile-stepper-tab span:last-child {
+            max-width:70px;
+            color:inherit;
+            font-size:9.5px;
+            font-weight:850;
+            text-align:center;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] .workflow-mobile-stepper-tab.is-active {
+            color:#1d4ed8;
+            background:#eff6ff;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] .workflow-mobile-stepper-tab.is-active .workflow-mobile-stepper-tab-index {
+            border-color:#2563eb;
+            background:#2563eb;
+            color:#fff;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] .workflow-mobile-stepper-tab.is-complete {
+            color:#15803d;
+            background:#f0fdf4;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-mobile-stepper[data-mobile-workflow-active="true"] .workflow-mobile-stepper-tab.is-complete .workflow-mobile-stepper-tab-index {
+            border-color:#16a34a;
+            background:#16a34a;
+            color:#fff;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-step {
+            border-radius:18px;
+            border-color:#e4ebf5;
+            background:#fff;
+            box-shadow:0 14px 36px rgba(15,23,42,.08);
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-step-head {
+            align-items:center;
+            padding-bottom:2px;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-step-index {
+            width:24px;
+            height:24px;
+            flex-basis:24px;
+            background:#2563eb;
+            color:#fff;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-step-counter {
+            display:none;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-step-copy strong {
+            margin-top:0;
+            font-size:15px;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-step-copy p {
+            margin-top:2px;
+            font-size:11px;
+            line-height:1.35;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-start-hero,
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-step-hero {
+            border-color:#e4ebf5;
+            background:#fbfdff;
+            box-shadow:none;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-proof-status {
+            border-radius:14px;
+            border-style:solid;
+            font-size:11px;
+            line-height:1.4;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-proof-status.is-success::before,
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-item[data-review-ready="true"]::before {
+            content:"✓";
+            display:inline-grid;
+            place-items:center;
+            width:18px;
+            height:18px;
+            margin-right:6px;
+            border-radius:999px;
+            background:#16a34a;
+            color:#fff;
+            font-size:11px;
+            font-weight:900;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-camera-card {
+            min-height:0;
+            padding:10px;
+            border-radius:16px;
+            border-color:#e4ebf5;
+            box-shadow:0 8px 20px rgba(15,23,42,.05);
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-camera-card .workflow-camera-chip {
+            min-height:20px;
+            padding:0 7px;
+            font-size:9px;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-camera-trigger {
+            min-height:34px;
+            border-radius:12px;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-item,
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-summary-card {
+            border-radius:14px;
+            padding:9px 10px;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-coordinate-details {
+            grid-column:span 12;
+            border:1px solid #e2e8f0;
+            border-radius:14px;
+            padding:8px 10px;
+            background:#f8fafc;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-coordinate-details summary {
+            cursor:pointer;
+            color:#475569;
+            font-size:11px;
+            font-weight:800;
+            letter-spacing:.04em;
+            text-transform:uppercase;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-coordinate-details .workflow-proof-status {
+            margin-top:8px;
+            display:grid;
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+            gap:5px;
+            padding:8px;
+            background:#fff;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-coordinate-details .workflow-proof-status div {
+            min-width:0;
+            overflow:hidden;
+            text-overflow:ellipsis;
+            white-space:nowrap;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-proof-field textarea {
+            min-height:68px;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-proof-signature-pad {
+            height:126px;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-proof-signature-preview.is-visible img {
+            max-width:100%;
+            height:92px;
+            object-fit:contain;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-proof-signature-preview.is-visible ~ .workflow-signature-unavailable-block,
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-proof-signature-wrap.has-signature-capture .workflow-signature-unavailable-block {
+            display:none;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-proof-signature-wrap.has-signature-capture .workflow-proof-help[data-signature-hint] {
+            display:none;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-review-step .workflow-proof-field.span-12 {
+            border:1px solid #e2e8f0;
+            border-radius:14px;
+            padding:9px 10px;
+            background:#fff;
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-step-actions .detail-btn {
+            background:#2563eb;
+            border-color:#2563eb;
+            box-shadow:0 12px 24px rgba(37,99,235,.22);
+        }
+        .workflow-mobile-shell[data-mobile-shell-state="open"] .workflow-step-actions .detail-btn-secondary {
+            border-color:#d5deea;
+            color:#334155;
+            background:#fff;
+        }
         .delivery-page-spacer {
             display:block;
-            height:calc(96px + env(safe-area-inset-bottom, 0px));
+            height:calc(132px + env(safe-area-inset-bottom, 0px));
             pointer-events:none;
+        }
+        .workflow-success-screen {
+            position:fixed;
+            inset:0;
+            z-index:1300;
+            display:grid;
+            place-items:center;
+            padding:28px;
+            background:linear-gradient(160deg, #16a34a 0%, #15803d 55%, #047857 100%);
+            color:#fff;
+            text-align:center;
+        }
+        .workflow-success-panel {
+            width:min(100%, 330px);
+            display:grid;
+            justify-items:center;
+            gap:14px;
+        }
+        .workflow-success-check {
+            width:112px;
+            height:112px;
+            border-radius:999px;
+            display:grid;
+            place-items:center;
+            background:#fff;
+            color:#16a34a;
+            font-size:68px;
+            font-weight:900;
+            box-shadow:0 22px 60px rgba(0,0,0,.18);
+        }
+        .workflow-success-title {
+            margin:8px 0 0;
+            font-size:25px;
+            line-height:1.15;
+            font-weight:900;
+        }
+        .workflow-success-meta {
+            display:grid;
+            gap:5px;
+            color:rgba(255,255,255,.9);
+            font-size:14px;
+            line-height:1.35;
+        }
+        .workflow-success-progress {
+            width:100%;
+            height:5px;
+            margin-top:10px;
+            border-radius:999px;
+            overflow:hidden;
+            background:rgba(255,255,255,.25);
+        }
+        .workflow-success-progress span {
+            display:block;
+            height:100%;
+            width:100%;
+            background:#fff;
+            transform-origin:left;
+            animation:workflow-success-return 2.2s linear forwards;
+        }
+        @keyframes workflow-success-return {
+            from { transform:scaleX(0); }
+            to { transform:scaleX(1); }
         }
     }
 
@@ -1909,10 +2695,26 @@
 </style>
 
 <div class="delivery-detail">
+    <div class="delivery-mobile-titlebar is-{{ $mobileTaskTone }}" aria-label="{{ ucfirst($delivery->type) }} task header">
+        <a href="{{ route('deliveries.index') }}" aria-label="Back to deliveries">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+        </a>
+        <strong>{{ ucfirst($delivery->type) }} #{{ $delivery->id }}</strong>
+        <span class="status-badge" style="{{ $statusStyle }}">{{ $displayStatusLabel }}</span>
+    </div>
     <div class="delivery-detail-header">
         <div>
             <h1>{{ ucfirst($delivery->type) }} #{{ $delivery->id }}</h1>
             <p>Compact field summary, guided proof, and one clear action path.</p>
+            <div class="desktop-task-header-meta" aria-label="Task summary">
+                <span class="status-badge" style="{{ $statusStyle }}">{{ $displayStatusLabel }}</span>
+                <span class="status-badge" style="background:#fff7ed;color:#9a3412;">
+                    {{ $delivery->scheduled_at && $delivery->scheduled_at->isPast() && !in_array($delivery->status, ['completed', 'cancelled'], true) ? 'High Priority' : 'Normal Priority' }}
+                </span>
+                <span>Assigned: <strong>{{ $assigneeName }}</strong></span>
+                <span>Customer: <strong>{{ $linkedCustomerName ?: 'Customer' }}</strong></span>
+                <span>Date: <strong>{{ $delivery->scheduled_at ? $delivery->scheduled_at->format('d M h:i A') : 'Not scheduled' }}</strong></span>
+            </div>
         </div>
         <div class="detail-actions">
             <a href="{{ route('deliveries.index') }}" class="detail-btn-secondary">Back</a>
@@ -1929,7 +2731,11 @@
         </div>
     </div>
 
-    <div class="fieldops-task-shell">
+    <div class="fieldops-task-shell fieldops-task-shell--{{ $mobileTaskTone }}">
+        <a href="{{ route('deliveries.index') }}" class="fieldops-mobile-back-inline" aria-label="Back to task list">
+            <span aria-hidden="true">←</span>
+            <span>Tasks</span>
+        </a>
         <div class="fieldops-task-shell-top">
             <div class="fieldops-task-shell-ill" aria-hidden="true">{!! $workflowIllustration('start') !!}</div>
             <div class="fieldops-task-shell-copy">
@@ -1981,9 +2787,13 @@
             @if($linkedMapUrl)
                 <a href="{{ $linkedMapUrl }}" target="_blank" rel="noopener" class="fieldops-icon-action" aria-label="Open map">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-5.1 7-11a7 7 0 1 0-14 0c0 5.9 7 11 7 11Z"/><circle cx="12" cy="10" r="2.5"/></svg>
-                    <span>Map</span>
+                    <span>Navigate</span>
                 </a>
             @endif
+            <a href="#activity-timeline" class="fieldops-icon-action desktop-note-action" aria-label="Add note">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                <span>Note</span>
+            </a>
             <details class="mobile-actions-menu">
                 <summary aria-label="More task actions">More</summary>
                 <div class="mobile-actions-panel">
@@ -2231,6 +3041,13 @@
                 <span class="workflow-proof-badge">Max dimension {{ $proofConfig['max_dimension'] }} px</span>
             </div>
         </div>
+        <div class="desktop-workflow-progress" aria-label="Workflow progress">
+            <span>Item</span>
+            <span>Photo</span>
+            <span>Location</span>
+            <span>Signature</span>
+            <span>Review</span>
+        </div>
         @if($hasWorkflowErrors)
             <div class="workflow-proof-status is-warning" data-workflow-error-summary tabindex="-1">
                 Please complete the required proof fields marked below before continuing this {{ $delivery->type }} task.
@@ -2328,20 +3145,19 @@
                                         <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
                                     @enderror
                                 </div>
-                                <div class="workflow-proof-field">
-                                    <label>Captured coordinates</label>
-                                    <div class="workflow-proof-help">Filled after GPS capture.</div>
+                                <details class="workflow-proof-field workflow-coordinate-details">
+                                    <summary>Technical GPS details</summary>
                                     <div class="workflow-proof-status">
                                         <div>Lat: <span data-location-lat-preview>{{ $defaultWorkflowLatitude !== '' ? $defaultWorkflowLatitude : '-' }}</span></div>
                                         <div>Lng: <span data-location-lng-preview>{{ $defaultWorkflowLongitude !== '' ? $defaultWorkflowLongitude : '-' }}</span></div>
                                         <div>Accuracy: <span data-location-accuracy-preview>{{ $defaultWorkflowAccuracy !== '' ? $defaultWorkflowAccuracy : '-' }}</span></div>
                                         <div>Captured: <span data-location-captured-preview>{{ $defaultWorkflowCapturedAt ?: '-' }}</span></div>
                                     </div>
-                                </div>
+                                </details>
                             </div>
                             <div class="workflow-step-actions">
                                 <button type="button" class="detail-btn-secondary" data-workflow-back>Back</button>
-                                <button type="button" class="detail-btn" data-workflow-next data-workflow-submit-on-next>Next</button>
+                                <button type="button" class="detail-btn" data-workflow-next data-workflow-submit-on-next>Save GPS</button>
                             </div>
                         </section>
                     </div>
@@ -2404,19 +3220,19 @@
                                     <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
                                 @enderror
                             </div>
-                            <div class="workflow-proof-field">
-                                <label>Captured coordinates</label>
+                            <details class="workflow-proof-field workflow-coordinate-details">
+                                <summary>Technical GPS details</summary>
                                 <div class="workflow-proof-status">
                                     <div>Lat: <span data-location-lat-preview>{{ $defaultWorkflowLatitude !== '' ? $defaultWorkflowLatitude : '-' }}</span></div>
                                     <div>Lng: <span data-location-lng-preview>{{ $defaultWorkflowLongitude !== '' ? $defaultWorkflowLongitude : '-' }}</span></div>
                                     <div>Accuracy: <span data-location-accuracy-preview>{{ $defaultWorkflowAccuracy !== '' ? $defaultWorkflowAccuracy : '-' }}</span></div>
                                     <div>Captured: <span data-location-captured-preview>{{ $defaultWorkflowCapturedAt ?: '-' }}</span></div>
                                 </div>
-                            </div>
+                            </details>
                         </div>
                         <div class="workflow-step-actions">
                             <span class="workflow-step-helper">GPS required or reason needed.</span>
-                            <button type="button" class="detail-btn" data-workflow-next>Next</button>
+                            <button type="button" class="detail-btn" data-workflow-next>Continue to Photos</button>
                         </div>
                     </section>
 
@@ -2554,7 +3370,7 @@
                         </div>
                         <div class="workflow-step-actions">
                             <button type="button" class="detail-btn-secondary" data-workflow-back>Back</button>
-                            <button type="button" class="detail-btn" data-workflow-next>Next</button>
+                            <button type="button" class="detail-btn" data-workflow-next>{{ $delivery->type === 'pickup' ? 'Continue to Check' : 'Continue to Notes' }}</button>
                         </div>
                     </section>
 
@@ -2608,7 +3424,7 @@
                             </div>
                             <div class="workflow-step-actions">
                                 <button type="button" class="detail-btn-secondary" data-workflow-back>Back</button>
-                                <button type="button" class="detail-btn" data-workflow-next>Next</button>
+                                <button type="button" class="detail-btn" data-workflow-next>Continue to Notes</button>
                             </div>
                         </section>
                     @endif
@@ -2666,7 +3482,7 @@
                         </div>
                         <div class="workflow-step-actions">
                             <button type="button" class="detail-btn-secondary" data-workflow-back>Back</button>
-                            <button type="button" class="detail-btn" data-workflow-next>Next</button>
+                            <button type="button" class="detail-btn" data-workflow-next>Continue to Signature</button>
                         </div>
                     </section>
 
@@ -2693,7 +3509,7 @@
                                 <label>Acknowledgement</label>
                                 <div class="workflow-proof-signature-wrap">
                                     <div class="workflow-proof-help">{{ $acknowledgementText }}</div>
-                                    <div class="workflow-proof-help">Signature is preferred. If not possible, add a short reason below.</div>
+                                    <div class="workflow-proof-help" data-signature-hint>Signature is preferred. If not possible, add a short reason below.</div>
                                     <canvas class="workflow-proof-signature-pad" data-signature-pad data-target-input="signature_data"></canvas>
                                     <input type="hidden" name="signature_data" value="{{ old('signature_data') }}">
                                     <div class="workflow-proof-signature-preview" data-signature-preview-wrap>
@@ -2704,20 +3520,22 @@
                                         <button type="button" class="workflow-proof-trigger" data-signature-clear>Clear Signature</button>
                                         <div class="workflow-proof-help">Sign with finger or stylus.</div>
                                     </div>
-                                    <label for="signature_unavailable_reason">Unable to sign reason</label>
-                                    <textarea id="signature_unavailable_reason" name="signature_unavailable_reason" placeholder="Add reason if the customer could not sign.">{{ old('signature_unavailable_reason') }}</textarea>
-                                    @error('signature_data')
-                                        <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
-                                    @enderror
-                                    @error('signature_unavailable_reason')
-                                        <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
-                                    @enderror
+                                    <div class="workflow-signature-unavailable-block">
+                                        <label for="signature_unavailable_reason">Unable to sign reason</label>
+                                        <textarea id="signature_unavailable_reason" name="signature_unavailable_reason" placeholder="Add reason if the customer could not sign.">{{ old('signature_unavailable_reason') }}</textarea>
+                                        @error('signature_data')
+                                            <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                                        @enderror
+                                        @error('signature_unavailable_reason')
+                                            <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                                        @enderror
+                                    </div>
                                 </div>
                             </div>
                         </div>
                         <div class="workflow-step-actions">
                             <button type="button" class="detail-btn-secondary" data-workflow-back>Back</button>
-                            <button type="button" class="detail-btn" data-workflow-next>Next</button>
+                            <button type="button" class="detail-btn" data-workflow-next>{{ $supportsCollectionStep ? 'Continue to Collection' : ($delivery->type === 'pickup' ? 'Review Pickup' : 'Review Delivery') }}</button>
                         </div>
                     </section>
 
@@ -2800,7 +3618,7 @@
                         </div>
                         <div class="workflow-step-actions">
                             <button type="button" class="detail-btn-secondary" data-workflow-back>Back</button>
-                            <button type="button" class="detail-btn" data-workflow-next>Next</button>
+                            <button type="button" class="detail-btn" data-workflow-next>{{ $delivery->type === 'pickup' ? 'Review Pickup' : 'Review Delivery' }}</button>
                         </div>
                     </section>
                     @endif
@@ -3033,6 +3851,11 @@
         'subtitle' => 'Assignment, start, completion, and linked order updates for this task.',
     ])
 
+    <details class="desktop-secondary-shell">
+        <summary>
+            <span>Secondary Information</span>
+            <strong>Order, assignee, notes, and linked assets</strong>
+        </summary>
     <div class="detail-grid detail-support-grid">
         <div class="detail-card span-6">
             <h2 style="margin-top:0;">{{ $isSaleTask ? 'Sale Order' : 'Rental' }}</h2>
@@ -3155,7 +3978,45 @@
         </div>
         @endif
     </div>
+    </details>
 </div>
+@if((!$workflowCompleted && $canUpdateTask && in_array($delivery->status, ['pending', 'in_progress'], true)) || $hasProofHistory)
+    <div class="delivery-mobile-sticky-cta is-{{ $mobileTaskTone }}">
+        <a
+            href="{{ (!$workflowCompleted && $canUpdateTask) ? '#' . $workflowProofSectionId : route('deliveries.show', $delivery) . '#delivery-proof-history' }}"
+            @if($workflowCompleted || !(!$workflowCompleted && $canUpdateTask)) data-open-proof-history @endif
+        >
+            {{ (!$workflowCompleted && $canUpdateTask) ? $primaryWorkflowCtaLabel : 'View Proof History' }}
+        </a>
+    </div>
+@endif
+@php
+    $workflowSuccessFlash = (string) session('success', '');
+    $showWorkflowSuccessScreen = $workflowCompleted
+        && $workflowSuccessFlash !== ''
+        && str_contains(strtolower($workflowSuccessFlash), 'marked as completed');
+@endphp
+@if($showWorkflowSuccessScreen)
+    <div
+        class="workflow-success-screen"
+        data-workflow-success-screen
+        data-redirect-url="{{ route('deliveries.index') }}"
+        role="status"
+        aria-live="polite"
+    >
+        <div class="workflow-success-panel">
+            <div class="workflow-success-check" aria-hidden="true">✓</div>
+            <h2 class="workflow-success-title">{{ $delivery->type === 'pickup' ? 'Pickup Completed!' : 'Delivery Completed!' }}</h2>
+            <div class="workflow-success-meta">
+                <strong>{{ ucfirst($delivery->type) }} #{{ $delivery->id }}</strong>
+                <span>{{ $delivery->linkedCustomerName() ?: 'Task' }}</span>
+                <span>{{ $delivery->rental?->product?->name ?? $delivery->sale?->product?->name ?? 'Completed successfully' }}</span>
+                <span>Returning to Taskboard in 2 seconds...</span>
+            </div>
+            <div class="workflow-success-progress" aria-hidden="true"><span></span></div>
+        </div>
+    </div>
+@endif
 <div class="delivery-page-spacer" aria-hidden="true"></div>
 @push('scripts')
 <script>
@@ -3173,6 +4034,49 @@ document.addEventListener('DOMContentLoaded', () => {
     const mobileWorkflowShell = document.querySelector('[data-mobile-workflow-shell]');
     const mobileWorkflowShellBody = mobileWorkflowShell?.querySelector('.workflow-mobile-shell-body');
     const mobileWorkflowCloseButtons = Array.from(document.querySelectorAll('[data-close-mobile-workflow]'));
+    const mobileActionMenus = Array.from(document.querySelectorAll('.fieldops-icon-actions .mobile-actions-menu'));
+    const workflowSuccessScreen = document.querySelector('[data-workflow-success-screen]');
+
+    if (workflowSuccessScreen instanceof HTMLElement) {
+        const redirectUrl = workflowSuccessScreen.dataset.redirectUrl || '/deliveries';
+        window.setTimeout(() => {
+            window.location.assign(redirectUrl);
+        }, 2300);
+    }
+
+    const closeMobileActionMenus = (exceptMenu = null) => {
+        mobileActionMenus.forEach((menu) => {
+            if (menu !== exceptMenu) {
+                menu.removeAttribute('open');
+            }
+        });
+    };
+
+    document.addEventListener('click', (event) => {
+        const activeMenu = event.target.closest?.('.fieldops-icon-actions .mobile-actions-menu');
+        closeMobileActionMenus(activeMenu || null);
+    });
+
+    mobileActionMenus.forEach((menu) => {
+        menu.addEventListener('click', (event) => {
+            if (event.target === menu && menu.open) {
+                event.preventDefault();
+                menu.removeAttribute('open');
+            }
+        });
+
+        menu.addEventListener('toggle', () => {
+            if (menu.open) {
+                closeMobileActionMenus(menu);
+            }
+        });
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            closeMobileActionMenus();
+        }
+    });
 
     const closeMobileWorkflowShell = ({ preserveHash = false } = {}) => {
         if (!(mobileWorkflowShell instanceof HTMLElement)) {
@@ -3924,6 +4828,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const clearButton = form?.querySelector('[data-signature-clear]');
         const previewWrap = form?.querySelector('[data-signature-preview-wrap]');
         const previewImage = form?.querySelector('[data-signature-preview-image]');
+        const signatureWrap = canvas.closest('.workflow-proof-signature-wrap');
         const context = canvas.getContext('2d');
         let drawing = false;
         let hasSignature = false;
@@ -3934,20 +4839,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 syncWorkflowReview(form);
             }
         };
+        const syncSignatureUi = (hasCapturedSignature) => {
+            if (signatureWrap instanceof HTMLElement) {
+                signatureWrap.classList.toggle('has-signature-capture', Boolean(hasCapturedSignature));
+            }
+        };
 
         const drawSignaturePreview = (dataUrl) => {
             if (!(previewWrap instanceof HTMLElement) || !(previewImage instanceof HTMLImageElement)) {
+                syncSignatureUi(Boolean(dataUrl));
                 return;
             }
 
             if (!dataUrl) {
                 previewWrap.classList.remove('is-visible');
                 previewImage.removeAttribute('src');
+                syncSignatureUi(false);
                 return;
             }
 
             previewImage.src = dataUrl;
             previewWrap.classList.add('is-visible');
+            syncSignatureUi(true);
         };
 
         const applyCanvasStyles = () => {
@@ -3975,7 +4888,7 @@ document.addEventListener('DOMContentLoaded', () => {
             pixelRatio = window.devicePixelRatio || 1;
             const bounds = canvas.getBoundingClientRect();
             const width = Math.max(Math.floor(bounds.width), 280);
-            const height = Math.max(Math.floor(bounds.height), 160);
+            const height = Math.max(Math.floor(bounds.height), 118);
             const preservedSignature = currentSignatureData || hiddenInput?.value || '';
 
             canvas.width = Math.max(Math.floor(width * pixelRatio), 1);

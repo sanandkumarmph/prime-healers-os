@@ -1,5 +1,9 @@
 @extends('layouts.app')
 
+@section('breadcrumbs')
+    <span class="import-breadcrumb-suppressed" aria-hidden="true" style="display:none!important"></span>
+@endsection
+
 @section('content')
 <div class="ph-import-page">
     <div class="ph-import-head">
@@ -18,18 +22,27 @@
             <div class="ph-import-section-copy">
                 <span class="ph-import-kicker">Step 1</span>
                 <h2>Upload Sales File</h2>
-                <p>Accepted formats: <strong>CSV</strong> and <strong>XLSX</strong>. The preview reads the first worksheet for Excel files.</p>
+                <p><strong>CSV</strong> or <strong>XLSX</strong>. First worksheet is used.</p>
             </div>
 
             <form method="POST" action="{{ route('imports.sales.preview') }}" enctype="multipart/form-data" class="ph-import-upload-form">
                 @csrf
                 <label for="sales_import_file" class="ph-import-dropzone">
-                    <span class="ph-import-dropzone-icon" aria-hidden="true">+</span>
-                    <span class="ph-import-dropzone-title">Choose sales file</span>
-                    <span class="ph-import-dropzone-copy">Drag and drop is optional. Click to browse your CSV or XLSX file.</span>
+                    <span class="ph-import-dropzone-icon" aria-hidden="true">UP</span>
+                    <span class="ph-import-dropzone-title">Drag CSV/XLSX here</span>
+                    <span class="ph-import-dropzone-copy">or <span class="ph-import-browse-text">Browse Files</span></span>
+                    <span class="ph-import-dropzone-format">CSV | XLSX | Max 10MB</span>
                     <input id="sales_import_file" type="file" name="import_file" accept=".csv,.txt,.xlsx" required class="ph-import-file-input">
                 </label>
-                <div class="ph-import-file-note" id="sales-import-file-name">No file selected yet.</div>
+                <div class="ph-import-file-note ph-import-selected-file" id="sales-import-file-name" hidden>
+                    <span class="ph-import-selected-icon" aria-hidden="true">OK</span>
+                    <span class="ph-import-selected-copy">
+                        <strong data-file-name>No file selected</strong>
+                        <small data-file-meta>Ready for upload</small>
+                    </span>
+                    <button type="button" class="ph-import-file-action" data-file-replace>Replace</button>
+                    <button type="button" class="ph-import-file-action is-danger" data-file-remove>Remove</button>
+                </div>
                 @error('import_file')
                     <div class="ph-import-error">{{ $message }}</div>
                 @enderror
@@ -68,19 +81,4 @@
 
 @include('imports.partials.shared-styles')
 
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    const input = document.getElementById('sales_import_file');
-    const fileName = document.getElementById('sales-import-file-name');
-
-    if (!input || !fileName) {
-        return;
-    }
-
-    input.addEventListener('change', function () {
-        const selected = input.files && input.files[0] ? input.files[0].name : 'No file selected yet.';
-        fileName.textContent = selected;
-    });
-});
-</script>
 @endsection

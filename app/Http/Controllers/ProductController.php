@@ -6,12 +6,17 @@ use App\Models\Asset;
 use App\Models\InventoryConversion;
 use App\Models\InvoiceItem;
 use App\Models\Product;
+use App\Models\ProductBrand;
+use App\Models\ProductCategory;
 use App\Models\RentalItem;
 use App\Models\Sale;
 use App\Models\SaleInventory;
 use App\Models\Warehouse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -62,8 +67,8 @@ class ProductController extends Controller
                         ->orWhere('product_code', 'like', $like);
                 });
             })
-            ->when($category !== '', fn ($query) => $query->where('category', $category))
-            ->when($brand !== '', fn ($query) => $query->where('brand', $brand))
+            ->when($category !== '', fn ($query) => ctype_digit($category) && Schema::hasColumn('products', 'category_id') ? $query->where('category_id', (int) $category) : $query->where('category', $category))
+            ->when($brand !== '', fn ($query) => ctype_digit($brand) && Schema::hasColumn('products', 'brand_id') ? $query->where('brand_id', (int) $brand) : $query->where('brand', $brand))
             ->when($typeFilter !== '', function ($query) use ($typeFilter) {
                 match ($typeFilter) {
                     'rentable' => $query->whereIn('product_type', [Product::TYPE_RENTABLE, Product::TYPE_BOTH]),
@@ -145,6 +150,26 @@ class ProductController extends Controller
 
                 return (int) ($product->available_assets_count ?? 0);
             }),
+            'both' => $products->sum(function (Product $product): int {
+                return $product->canSell() && $product->canRent() ? 1 : 0;
+            }),
+            'rented_assets' => $products->sum(function (Product $product): int {
+                return (int) ($product->rented_assets_count ?? 0);
+            }),
+            'under_repair' => $products->sum(function (Product $product): int {
+                return (int) ($product->maintenance_assets_count ?? 0);
+            }),
+            'low_stock_products' => $products->sum(function (Product $product): int {
+                if (! $product->canSell()) {
+                    return 0;
+                }
+
+                $saleStock = $product->usesUntrackedStock()
+                    ? max((int) ($product->available_quantity ?? 0), 0)
+                    : (int) ($product->sale_stock_quantity ?? 0);
+
+                return $saleStock <= 2 ? 1 : 0;
+            }),
         ];
     }
 
@@ -164,8 +189,22 @@ class ProductController extends Controller
     {
         $organizationId = $this->orgId();
 
+        $categoryIdRules = ['nullable'];
+        if (Schema::hasTable('product_categories')) {
+            $categoryIdRules[] = Rule::exists('product_categories', 'id')
+                ->where(fn ($query) => $query->where('organization_id', $organizationId));
+        }
+
+        $brandIdRules = ['nullable'];
+        if (Schema::hasTable('product_brands')) {
+            $brandIdRules[] = Rule::exists('product_brands', 'id')
+                ->where(fn ($query) => $query->where('organization_id', $organizationId));
+        }
+
         return [
             'name' => 'required|string|max:255',
+            'category_id' => $categoryIdRules,
+            'brand_id' => $brandIdRules,
             'category' => 'nullable|string|max:255',
             'brand' => 'nullable|string|max:255',
             'model_name' => 'nullable|string|max:255',
@@ -185,6 +224,8 @@ class ProductController extends Controller
                     ->where(fn ($query) => $query->where('organization_id', $organizationId))
                     ->ignore($product?->id),
             ],
+            'product_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+            'remove_product_image' => ['nullable', 'boolean'],
             'product_type' => ['required', Rule::in(Product::PRODUCT_TYPES)],
             'price_per_day' => 'nullable|numeric|min:0',
             'rental_price_15_days' => 'nullable|numeric|min:0',
@@ -201,6 +242,27 @@ class ProductController extends Controller
         ];
     }
 
+    private function extractProductImagePayload(Request $request, array &$validated): array
+    {
+        $removeImage = (bool) ($validated['remove_product_image'] ?? false);
+        unset($validated['product_image'], $validated['remove_product_image']);
+
+        return [$removeImage, $request->file('product_image')];
+    }
+
+    private function storeProductImage(UploadedFile $file): string
+    {
+        return $file->store('products', 'public');
+    }
+
+    private function deleteProductImage(?string $path): void
+    {
+        $path = trim((string) $path);
+
+        if ($path !== '' && Str::startsWith($path, 'products/')) {
+            Storage::disk('public')->delete($path);
+        }
+    }
     private function validateProductModePayload(array $validated, ?Product $product = null): array
     {
         $productType = (string) ($validated['product_type'] ?? Product::TYPE_SELLABLE);
@@ -236,6 +298,8 @@ class ProductController extends Controller
         } elseif ($validated['gst_tax_type'] === Product::GST_TAX_TYPE_IGST) {
             $validated['cgst_rate'] = 0;
             $validated['sgst_rate'] = 0;
+        } elseif ($validated['gst_tax_type'] === Product::GST_TAX_TYPE_BOTH) {
+            // Preserve all product-level GST rates for businesses that quote both intra-state and inter-state tax.
         } else {
             $validated['cgst_rate'] = 0;
             $validated['sgst_rate'] = 0;
@@ -303,6 +367,171 @@ class ProductController extends Controller
             ->where('is_active', true)
             ->orderBy('name')
             ->get();
+    }
+
+    private function defaultProductCategories(): array
+    {
+        return [
+            'Respiratory Care',
+            'Sleep Therapy',
+            'Mobility Aids',
+            'Patient Care',
+            'Monitoring Equipment',
+            'ICU Equipment',
+            'Rehabilitation',
+            'Consumables',
+            'Accessories',
+            'Furniture',
+        ];
+    }
+
+    private function defaultProductBrands(): array
+    {
+        return [
+            'Philips',
+            'ResMed',
+            'BMC',
+            'Yuwell',
+            'Omron',
+            'Dr Trust',
+            'KareMed',
+            'Prime Healers',
+            'Generic',
+        ];
+    }
+
+    private function ensureDefaultProductMasters(): void
+    {
+        $organizationId = $this->orgId();
+
+        if (Schema::hasTable('product_categories') && ProductCategory::query()->forOrganization($organizationId)->doesntExist()) {
+            foreach ($this->defaultProductCategories() as $name) {
+                ProductCategory::query()->firstOrCreate(
+                    [
+                        'organization_id' => $organizationId,
+                        'normalized_name' => Str::lower($name),
+                    ],
+                    [
+                        'name' => $name,
+                        'is_active' => true,
+                    ]
+                );
+            }
+        }
+
+        if (Schema::hasTable('product_brands') && ProductBrand::query()->forOrganization($organizationId)->doesntExist()) {
+            foreach ($this->defaultProductBrands() as $name) {
+                ProductBrand::query()->firstOrCreate(
+                    [
+                        'organization_id' => $organizationId,
+                        'normalized_name' => Str::lower($name),
+                    ],
+                    [
+                        'name' => $name,
+                        'is_active' => true,
+                    ]
+                );
+            }
+        }
+    }
+
+    private function productCategoryOptions()
+    {
+        if (! Schema::hasTable('product_categories')) {
+            return collect();
+        }
+
+        $this->ensureDefaultProductMasters();
+
+        return ProductCategory::query()
+            ->forOrganization($this->orgId())
+            ->active()
+            ->orderBy('name')
+            ->get(['id', 'name']);
+    }
+
+    private function productBrandOptions()
+    {
+        if (! Schema::hasTable('product_brands')) {
+            return collect();
+        }
+
+        $this->ensureDefaultProductMasters();
+
+        return ProductBrand::query()
+            ->forOrganization($this->orgId())
+            ->active()
+            ->orderBy('name')
+            ->get(['id', 'name']);
+    }
+
+    private function syncMasterLabels(array $validated): array
+    {
+        $organizationId = $this->orgId();
+        $category = null;
+        $brand = null;
+        $categoryText = filled($validated['category'] ?? null) ? trim((string) $validated['category']) : null;
+        $brandText = filled($validated['brand'] ?? null) ? trim((string) $validated['brand']) : null;
+
+        if (! Schema::hasTable('product_categories')) {
+            $validated['category_id'] = null;
+        } elseif (Schema::hasTable('product_categories')) {
+        if (! empty($validated['category_id'])) {
+            $category = ProductCategory::query()
+                ->forOrganization($organizationId)
+                ->find((int) $validated['category_id']);
+        } elseif ($categoryText !== null) {
+            $categoryName = $categoryText;
+            $category = ProductCategory::query()->firstOrCreate(
+                [
+                    'organization_id' => $organizationId,
+                    'normalized_name' => Str::lower($categoryName),
+                ],
+                [
+                    'name' => $categoryName,
+                    'is_active' => true,
+                ]
+            );
+        }
+        }
+
+        if (! Schema::hasTable('product_brands')) {
+            $validated['brand_id'] = null;
+        } elseif (Schema::hasTable('product_brands')) {
+        if (! empty($validated['brand_id'])) {
+            $brand = ProductBrand::query()
+                ->forOrganization($organizationId)
+                ->find((int) $validated['brand_id']);
+        } elseif ($brandText !== null) {
+            $brandName = $brandText;
+            $brand = ProductBrand::query()->firstOrCreate(
+                [
+                    'organization_id' => $organizationId,
+                    'normalized_name' => Str::lower($brandName),
+                ],
+                [
+                    'name' => $brandName,
+                    'is_active' => true,
+                ]
+            );
+        }
+        }
+
+        if (Schema::hasTable('product_categories')) {
+            $validated['category_id'] = $category?->id;
+            $validated['category'] = $category?->name;
+        } else {
+            $validated['category'] = $categoryText;
+        }
+
+        if (Schema::hasTable('product_brands')) {
+            $validated['brand_id'] = $brand?->id;
+            $validated['brand'] = $brand?->name;
+        } else {
+            $validated['brand'] = $brandText;
+        }
+
+        return $validated;
     }
 
     private function duplicateProductNameGroups()
@@ -384,6 +613,13 @@ class ProductController extends Controller
         $typeFilter = trim((string) $request->query('type', ''));
         $stockStatus = trim((string) $request->query('stock_status', ''));
         $brand = trim((string) $request->query('brand', ''));
+        $perPageOptions = [12, 25, 50, 100];
+        $perPage = (int) $request->query('per_page', 12);
+
+        if (!in_array($perPage, $perPageOptions, true)) {
+            $perPage = 12;
+        }
+
         $allowedSorts = [
             'name' => 'products.name',
             'category' => 'products.category',
@@ -425,24 +661,11 @@ class ProductController extends Controller
         $products = (clone $filteredProductsQuery)
             ->orderBy($allowedSorts[$sort], $direction)
             ->orderBy('products.id', $direction === 'asc' ? 'asc' : 'desc')
-            ->paginate(12)
+            ->paginate($perPage)
             ->withQueryString();
 
-        $categoryOptions = Product::query()
-            ->where('organization_id', $this->orgId())
-            ->whereNotNull('category')
-            ->where('category', '!=', '')
-            ->distinct()
-            ->orderBy('category')
-            ->pluck('category');
-
-        $brandOptions = Product::query()
-            ->where('organization_id', $this->orgId())
-            ->whereNotNull('brand')
-            ->where('brand', '!=', '')
-            ->distinct()
-            ->orderBy('brand')
-            ->pluck('brand');
+        $categoryOptions = $this->productCategoryOptions();
+        $brandOptions = $this->productBrandOptions();
 
         return view('products.index', compact(
             'products',
@@ -455,6 +678,8 @@ class ProductController extends Controller
             'brand',
             'sort',
             'direction',
+            'perPage',
+            'perPageOptions',
             'categoryOptions',
             'brandOptions'
         ));
@@ -554,9 +779,13 @@ class ProductController extends Controller
 
     public function create()
     {
-        return view('products.create', ['product' => new Product([
-            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
-        ])]);
+        return view('products.create', [
+            'product' => new Product([
+                'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            ]),
+            'categoryOptions' => $this->productCategoryOptions(),
+            'brandOptions' => $this->productBrandOptions(),
+        ]);
     }
 
     public function store(Request $request)
@@ -564,7 +793,13 @@ class ProductController extends Controller
         $validated = $this->validateProductModePayload(
             $request->validate($this->productValidationRules())
         );
+        [$removeImage, $productImage] = $this->extractProductImagePayload($request, $validated);
+        $validated = $this->syncMasterLabels($validated);
         $this->validateUniqueProductIdentity($validated);
+
+        if ($productImage) {
+            $validated['product_image_path'] = $this->storeProductImage($productImage);
+        }
 
         $productType = (string) $validated['product_type'];
 
@@ -636,7 +871,11 @@ class ProductController extends Controller
     {
         $product = $this->scopedProduct($product);
 
-        return view('products.edit', compact('product'));
+        return view('products.edit', [
+            'product' => $product,
+            'categoryOptions' => $this->productCategoryOptions(),
+            'brandOptions' => $this->productBrandOptions(),
+        ]);
     }
 
     public function update(Request $request, Product $product)
@@ -647,7 +886,21 @@ class ProductController extends Controller
             $request->validate($this->productValidationRules($product)),
             $product
         );
+        [$removeImage, $productImage] = $this->extractProductImagePayload($request, $validated);
+        $validated = $this->syncMasterLabels($validated);
         $this->validateUniqueProductIdentity($validated, $product);
+
+        if ($removeImage && $product->product_image_path) {
+            $this->deleteProductImage($product->product_image_path);
+            $validated['product_image_path'] = null;
+        }
+
+        if ($productImage) {
+            $oldImagePath = $product->product_image_path;
+            $validated['product_image_path'] = $this->storeProductImage($productImage);
+            $this->deleteProductImage($oldImagePath);
+        }
+
         $productType = (string) $validated['product_type'];
 
         $product->update([

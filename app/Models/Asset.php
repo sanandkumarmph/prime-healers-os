@@ -16,6 +16,8 @@ class Asset extends Model
     public const STATUS_RENTED = 'rented';
     public const STATUS_RESERVED = 'reserved';
     public const STATUS_MAINTENANCE = 'maintenance';
+    public const STATUS_DAMAGED = 'damaged';
+    public const STATUS_AWAITING_RESOLUTION = 'awaiting_resolution';
     public const STATUS_RETIRED = 'retired';
     public const STATUS_AVAILABLE_FOR_SALE = 'available_for_sale';
     public const STATUS_RESERVED_FOR_SALE = 'reserved_for_sale';
@@ -27,7 +29,25 @@ class Asset extends Model
         self::STAGE_RENTAL_STOCK,
     ];
 
-    public const CONDITION_STATUSES = ['good', 'repair', 'damaged', 'inactive'];
+    public const CONDITION_STATUS_NEW = 'new';
+    public const CONDITION_STATUS_GOOD = 'good';
+    public const CONDITION_STATUS_FAIR = 'fair';
+    public const CONDITION_STATUS_NEEDS_REPAIR = 'needs_repair';
+    public const CONDITION_STATUS_DAMAGED = 'damaged';
+    public const CONDITION_STATUS_RETIRED = 'retired';
+    public const CONDITION_STATUS_REPAIR_LEGACY = 'repair';
+    public const CONDITION_STATUS_INACTIVE_LEGACY = 'inactive';
+
+    public const CONDITION_STATUSES = [
+        self::CONDITION_STATUS_NEW,
+        self::CONDITION_STATUS_GOOD,
+        self::CONDITION_STATUS_FAIR,
+        self::CONDITION_STATUS_NEEDS_REPAIR,
+        self::CONDITION_STATUS_DAMAGED,
+        self::CONDITION_STATUS_RETIRED,
+        self::CONDITION_STATUS_REPAIR_LEGACY,
+        self::CONDITION_STATUS_INACTIVE_LEGACY,
+    ];
 
     public const RENTAL_ASSET_STATUSES = [
         self::STATUS_AVAILABLE,
@@ -35,6 +55,8 @@ class Asset extends Model
         self::STATUS_RENTED,
         self::STATUS_RESERVED,
         self::STATUS_MAINTENANCE,
+        self::STATUS_DAMAGED,
+        self::STATUS_AWAITING_RESOLUTION,
         self::STATUS_RETIRED,
     ];
 
@@ -180,7 +202,13 @@ class Asset extends Model
             ->where(function (Builder $conditionQuery) {
                 $conditionQuery
                     ->whereNull('condition_status')
-                    ->orWhereNotIn('condition_status', ['repair', 'damaged', 'inactive']);
+                    ->orWhereNotIn('condition_status', [
+                        self::CONDITION_STATUS_REPAIR_LEGACY,
+                        self::CONDITION_STATUS_NEEDS_REPAIR,
+                        self::CONDITION_STATUS_DAMAGED,
+                        self::CONDITION_STATUS_INACTIVE_LEGACY,
+                        self::CONDITION_STATUS_RETIRED,
+                    ]);
             });
 
         if (RentalAsset::hasTable()) {

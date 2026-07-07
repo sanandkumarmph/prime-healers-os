@@ -83,9 +83,10 @@
         ['key' => 'all', 'label' => 'All'],
         ['key' => 'deliveries', 'label' => 'Deliveries'],
         ['key' => 'pickups', 'label' => 'Pickups'],
-        ['key' => 'completed', 'label' => 'Completed'],
         ['key' => 'today', 'label' => 'Today'],
         ['key' => 'overdue', 'label' => 'Overdue'],
+        ['key' => 'completed', 'label' => 'Completed'],
+        ['key' => 'failed', 'label' => 'Failed', 'href' => $boardHref(['tab' => 'all', 'status' => null, 'workflow' => 'failed'], ['board']), 'active' => $workflowFilter === 'failed'],
     ];
 
     $ownershipTabs = $assignedScopedDeliveryUser
@@ -332,6 +333,16 @@
     };
 
     $todayLabel = now()->format('d M Y');
+    $opsKpiPills = [
+        ['label' => 'My Tasks', 'value' => $activeTasksCount ?? 0, 'href' => $boardHref(['ownership' => 'my', 'tab' => 'all'], ['board']), 'tone' => 'active'],
+        ['label' => 'Active Today', 'value' => $todayTaskCount ?? 0, 'href' => $boardHref(['tab' => 'today'], ['board']), 'tone' => 'success'],
+        ['label' => 'Pickups', 'value' => $pickupTasksCount ?? 0, 'href' => $boardHref(['tab' => 'pickups', 'task_type' => 'pickup'], ['board', 'status']), 'tone' => 'pickup'],
+        ['label' => 'Overdue', 'value' => $overdueTasksCount ?? 0, 'href' => $boardHref(['tab' => 'overdue'], ['board']), 'tone' => 'danger'],
+    ];
+    $attentionTasks = collect($overdueTasks ?? collect())->map(fn ($task) => ['tone' => 'danger', 'label' => ucfirst($task->type) . ' #' . $task->id . ' overdue', 'task' => $task])
+        ->merge(collect($pendingCollections ?? collect())->map(fn ($task) => ['tone' => 'warning', 'label' => 'Pickup #' . $task->id . ' pending', 'task' => $task]))
+        ->take(6)
+        ->values();
 @endphp
 
 <style>
@@ -360,6 +371,14 @@
         width:32px; height:32px; border-radius:12px; display:grid; place-items:center; flex:0 0 32px;
         border:1px solid rgba(23,119,189,.18); background:var(--ph-color-info-soft); color:var(--ph-color-primary);
     }
+    .ops-stat-card.is-active { background:#eff6ff; border-color:#bfdbfe; }
+    .ops-stat-card.is-pickup { background:#fff7ed; border-color:#fed7aa; }
+    .ops-stat-card.is-danger { background:#fff1f2; border-color:#fecdd3; }
+    .ops-stat-card.is-success { background:#ecfdf5; border-color:#bbf7d0; }
+    .ops-stat-card.is-active .ops-stat-value { color:#1d4ed8; }
+    .ops-stat-card.is-pickup .ops-stat-value { color:#c2410c; }
+    .ops-stat-card.is-danger .ops-stat-value { color:#be123c; }
+    .ops-stat-card.is-success .ops-stat-value { color:#047857; }
     .ops-stat-card.is-pickup .ops-stat-icon { background:var(--ph-color-warning-soft); border-color:rgba(183,121,31,.18); color:var(--ph-color-warning); }
     .ops-stat-card.is-danger .ops-stat-icon { background:var(--ph-color-danger-soft); border-color:rgba(179,13,35,.18); color:var(--ph-color-danger); }
     .ops-stat-card.is-success .ops-stat-icon { background:var(--ph-color-success-soft); border-color:rgba(14,159,75,.18); color:var(--ph-color-success); }
@@ -400,7 +419,14 @@
         border-radius:999px; border:1px solid var(--ph-color-border); background:#fff; color:var(--ph-color-text-soft);
         text-decoration:none; font-size:12px; font-weight:800; letter-spacing:.02em;
     }
-    .ops-tab.is-active { background:var(--ph-color-sidebar); border-color:var(--ph-color-sidebar); color:#fff; box-shadow:0 8px 22px rgba(11,35,66,.18); }
+    .ops-tab.is-active,
+    .ops-tab.is-active:visited {
+        background:#4f46e5;
+        border-color:#4f46e5;
+        color:#fff !important;
+        box-shadow:0 8px 22px rgba(79,70,229,.22);
+    }
+    .ops-tab.is-active * { color:#fff !important; }
     .ops-filter-grid {
         display:grid;
         grid-template-columns:minmax(0, 1.2fr) repeat(5, minmax(150px, 1fr)) auto;
@@ -449,6 +475,11 @@
         font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase;
     }
     .ops-table tbody tr { transition:background .16s ease; }
+    .ops-table tbody tr[data-task-href] { cursor:pointer; }
+    .ops-table tbody tr[data-task-href]:focus-visible {
+        outline:3px solid rgba(79,70,229,.28);
+        outline-offset:2px;
+    }
     .ops-table tbody tr:hover { background:#fbfdff; }
     .ops-table tbody tr.is-overdue { background:var(--ph-color-danger-soft); }
     .ops-table td { font-size:13px; color:var(--ph-color-text); line-height:1.5; }
@@ -622,6 +653,23 @@
         color:#2563eb;
         text-decoration:none;
     }
+    .ops-mobile-compact-row {
+        display:flex;
+        align-items:center;
+        gap:8px;
+        flex-wrap:wrap;
+        color:#64748b;
+        font-size:11px;
+        font-weight:800;
+        line-height:1.25;
+    }
+    .ops-mobile-compact-row span {
+        min-width:0;
+        max-width:100%;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+    }
     .ops-mobile-meta-grid {
         display:grid;
         grid-template-columns:repeat(2, minmax(0, 1fr));
@@ -725,6 +773,63 @@
     .ops-flash-success {
         padding:12px 14px; border-radius:14px; background:#ecfdf5; border:1px solid #bbf7d0; color:#166534; font-size:13px; font-weight:700;
     }
+    .ops-stats { grid-template-columns:repeat(6, minmax(0, 1fr)); gap:6px; }
+    .ops-stat-card { min-height:52px; padding:7px 9px; gap:2px; border-radius:11px; align-content:center; }
+    .ops-stat-top { display:block; }
+    .ops-stat-top span { font-size:9.5px; letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .ops-stat-icon, .ops-stat-copy { display:none; }
+    .ops-stat-value { font-size:20px; letter-spacing:0; }
+    .ops-control-strip { display:grid; gap:7px; padding:8px 10px; border:1px solid #dbe3ef; border-radius:13px; background:#fff; box-shadow:var(--ph-shadow-soft); }
+    .ops-control-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .ops-control-head h2 { margin:0; color:#0f172a; font-size:13px; font-weight:900; }
+    .ops-attention-list { display:grid; gap:5px; }
+    .ops-attention-row {
+        display:grid; grid-template-columns:10px minmax(0, 1fr) auto; gap:7px; align-items:center;
+        min-height:30px; padding:4px 7px; border:1px solid #e2e8f0; border-radius:9px; color:#0f172a; text-decoration:none; background:#f8fafc;
+        font-size:11.5px; font-weight:800;
+    }
+    .ops-attention-dot { width:7px; height:7px; border-radius:999px; background:#f59e0b; }
+    .ops-attention-row.is-danger .ops-attention-dot { background:#dc2626; }
+    .ops-attention-row span:nth-child(2) { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ops-attention-row em { color:#64748b; font-size:10.5px; font-style:normal; font-weight:700; }
+    .ops-table-wrap { padding:7px; background:#f8fafc; }
+    .ops-table { min-width:980px; border-collapse:separate; border-spacing:0 6px; }
+    .ops-table thead { display:none; }
+    .ops-table tbody tr { background:#fff; box-shadow:0 4px 14px rgba(15,23,42,.04); }
+    .ops-table tbody tr td:first-child { border-radius:10px 0 0 10px; border-left:4px solid #94a3b8; }
+    .ops-table tbody tr.is-overdue td:first-child { border-left-color:#dc2626; }
+    .ops-table tbody tr td:last-child { border-radius:0 10px 10px 0; }
+    .ops-table th, .ops-table td { padding:7px 8px; border-bottom:1px solid #e8eef6; vertical-align:middle; }
+    .ops-table td { font-size:11.5px; line-height:1.3; }
+    .ops-col-serial { width:34px; min-width:34px; }
+    .ops-col-select { width:34px; min-width:34px; }
+    .ops-col-type { width:84px; }
+    .ops-col-order { width:130px; }
+    .ops-col-schedule { width:128px; }
+    .ops-col-staff { width:120px; }
+    .ops-col-status { width:122px; }
+    .ops-col-actions { width:164px; }
+    .ops-type-badge { padding:3px 7px; gap:4px; font-size:9.5px; letter-spacing:.03em; }
+    .ops-type-badge svg { width:12px; height:12px; }
+    .ops-stack { gap:2px; }
+    .ops-muted, .ops-item-pill { font-size:10.5px; line-height:1.25; }
+    .ops-record-link { font-size:11.5px; }
+    .ops-status-stack { gap:3px; }
+    .ops-progress-copy { font-size:10.5px; line-height:1.25; }
+    .ops-actions { gap:4px; justify-content:flex-end; flex-wrap:nowrap; }
+    .ops-action-btn, .ops-action-btn-primary { min-height:28px; padding:0 8px; border-radius:8px; font-size:10.5px; gap:4px; }
+    .ops-action-btn svg, .ops-action-btn-primary svg { width:12px; height:12px; }
+    .ops-action-menu summary { width:30px; height:28px; min-height:28px; border-radius:8px; }
+    .ops-action-panel { top:32px; min-width:158px; padding:6px; gap:4px; }
+    .ops-action-panel a, .ops-action-panel button { min-height:30px; padding:0 8px; border-radius:8px; font-size:11px; }
+    .ops-widget-stack { gap:8px; }
+    .ops-widget-card { padding:9px; gap:7px; border-radius:13px; }
+    .ops-widget-head h3 { font-size:12px; }
+    .ops-widget-head p { display:none; }
+    .ops-widget-list { gap:5px; }
+    .ops-widget-item { padding:6px 7px; border-radius:9px; gap:1px; }
+    .ops-widget-item strong { font-size:11.5px; line-height:1.25; }
+    .ops-widget-item span { font-size:10.5px; line-height:1.25; }
 
     @media (max-width: 1360px) {
         .ops-filter-grid { grid-template-columns:minmax(0, 1fr) repeat(3, minmax(150px, 1fr)); }
@@ -765,8 +870,8 @@
         .ops-board-title p { font-size:11px; }
         .ops-board-title p,
         .ops-task-head p { display:none; }
-        .ops-stats { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
-        .ops-stat-card { min-height:76px; padding:8px 9px; gap:6px; border-radius:15px; }
+        .ops-stats { grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; }
+        .ops-stat-card { min-height:64px; padding:8px 9px; gap:4px; border-radius:14px; }
         .ops-stat-top span { font-size:10px; }
         .ops-stat-copy { display:none; }
         .ops-stat-value { font-size:19px; }
@@ -775,10 +880,10 @@
         .ops-filters-card { display:none; }
         .ops-mobile-command {
             display:grid;
-            gap:10px;
-            padding:12px 14px;
+            gap:8px;
+            padding:9px 10px;
             border:1px solid var(--ph-color-border);
-            border-radius:18px;
+            border-radius:15px;
             background:#fff;
             box-shadow:var(--ph-shadow-soft);
         }
@@ -788,7 +893,7 @@
             gap:8px;
         }
         .ops-mobile-search-row input {
-            min-height:40px;
+            min-height:38px;
             border-radius:12px;
             border:1px solid var(--ph-color-border-strong);
             padding:0 12px;
@@ -797,19 +902,13 @@
         }
         .ops-mobile-chip-groups {
             display:grid;
-            gap:10px;
+            gap:6px;
         }
         .ops-mobile-chip-group {
             display:grid;
             gap:6px;
         }
-        .ops-mobile-chip-group label {
-            color:var(--ph-color-text-soft);
-            font-size:10px;
-            font-weight:800;
-            letter-spacing:.05em;
-            text-transform:uppercase;
-        }
+        .ops-mobile-chip-group label { display:none; }
         .ops-mobile-chip-row {
             display:flex;
             gap:8px;
@@ -822,14 +921,14 @@
             display:inline-flex;
             align-items:center;
             justify-content:center;
-            min-height:34px;
-            padding:0 12px;
+            min-height:30px;
+            padding:0 10px;
             border-radius:999px;
             border:1px solid var(--ph-color-border);
             background:#fff;
             color:var(--ph-color-text-soft);
             text-decoration:none;
-            font-size:12px;
+            font-size:11px;
             font-weight:800;
             white-space:nowrap;
         }
@@ -839,18 +938,61 @@
             color:#fff;
         }
         .ops-mobile-toolbar {
-            display:grid;
-            grid-template-columns:repeat(4, minmax(0, 1fr));
+            display:flex;
+            align-items:center;
+            justify-content:flex-end;
             gap:8px;
         }
         .ops-mobile-toolbar .mobile-toolbar-btn,
-        .ops-mobile-toolbar .mobile-sort-trigger,
+        .ops-mobile-toolbar .mobile-sort-trigger {
+            position:relative;
+            flex:0 0 auto;
+            width:40px;
+            min-width:40px;
+            max-width:40px;
+            height:40px;
+            min-height:40px;
+            padding:0;
+            border-radius:13px;
+            justify-content:center;
+            font-size:0;
+        }
+        .ops-mobile-search-row .rn-btn-primary {
+            width:40px;
+            min-width:40px;
+            max-width:40px;
+            padding:0;
+            font-size:0;
+            border-radius:13px;
+        }
+        .ops-mobile-search-row .rn-btn-primary::before {
+            content:"Go";
+            font-size:11px;
+            line-height:1;
+        }
         .ops-mobile-toolbar .rn-btn {
             min-height:40px;
-            width:100%;
+            padding-inline:12px;
             justify-content:center;
         }
+        .ops-mobile-toolbar .rn-btn[href] {
+            min-height:34px;
+            padding-inline:10px;
+            font-size:11px;
+            border-radius:11px;
+        }
         .ops-mobile-sort-anchor { position:relative; }
+        .ops-mobile-toolbar.has-active-filters [data-mobile-filter-open]::after {
+            content:"";
+            position:absolute;
+            right:7px;
+            top:7px;
+            width:8px;
+            height:8px;
+            border-radius:999px;
+            background:#2563eb;
+            box-shadow:0 0 0 2px #fff;
+        }
         .ops-mobile-sort-menu {
             position:absolute;
             right:0;
@@ -882,9 +1024,22 @@
             color:#1d4ed8;
         }
         .ops-filter-grid { grid-template-columns:minmax(0, 1fr) 86px; gap:8px; }
-        .ops-mobile-meta-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
-        .ops-mobile-actions { gap:8px; }
-        .ops-mobile-icon-row { align-items:stretch; }
+        .ops-mobile-meta-grid { display:none; }
+        .ops-mobile-actions {
+            grid-template-columns:minmax(0, 1fr) auto;
+            align-items:center;
+            gap:7px;
+        }
+        .ops-mobile-actions .ops-action-btn-primary {
+            order:1;
+        }
+        .ops-mobile-icon-row {
+            order:2;
+            display:flex;
+            justify-content:flex-end;
+            align-items:center;
+            gap:6px;
+        }
         .ops-mobile-actions .ops-action-btn,
         .ops-mobile-actions .ops-action-btn-primary {
             width:100%;
@@ -893,6 +1048,15 @@
             border-radius:10px;
             justify-content:center;
         }
+        .ops-mobile-icon-row .mobile-utility-btn {
+            width:36px;
+            min-width:36px;
+            min-height:36px;
+            padding:0;
+            border-radius:10px;
+        }
+        .ops-mobile-icon-row .mobile-utility-btn span { display:none; }
+        .ops-mobile-icon-row .mobile-utility-btn svg { width:15px; height:15px; }
         .ops-board-actions { width:100%; }
         .ops-board-actions .rn-btn,
         .ops-board-actions .rn-btn-primary {
@@ -906,6 +1070,16 @@
             width:100%;
         }
         .ops-action-panel { position:static; min-width:0; box-shadow:none; margin-top:8px; }
+        .ops-mobile-more .ops-action-panel {
+            position:absolute;
+            right:0;
+            top:40px;
+            z-index:60;
+            width:min(220px, calc(100vw - 32px));
+            min-width:0;
+            margin-top:0;
+            box-shadow:0 18px 42px rgba(15,23,42,.18);
+        }
         .ops-task-checkbox {
             display:none;
         }
@@ -931,6 +1105,13 @@
         .ops-mobile-address {
             font-size:11px;
         }
+        .ops-mobile-phone,
+        .ops-progress-copy {
+            display:none;
+        }
+        .ops-mobile-address {
+            -webkit-line-clamp:1;
+        }
         .ops-mobile-meta span:last-child {
             font-size:12px;
         }
@@ -940,6 +1121,113 @@
         .ops-stats { grid-template-columns:repeat(2, minmax(0, 1fr)); }
         .ops-stat-card { min-height:74px; padding:8px; }
         .ops-stat-value { font-size:18px; }
+    }
+
+    /* Tasks Board compact action-first refinement */
+    .ops-board { gap:10px; }
+    .ops-board-header { align-items:center; padding:2px 0 0; }
+    .ops-board-title { gap:4px; }
+    .ops-board-title h1 { font-size:25px; letter-spacing:-.02em; }
+    .ops-board-title p { font-size:12px; max-width:520px; }
+    .ops-board-actions .rn-btn-primary { min-height:38px; border-radius:11px; padding:0 16px; box-shadow:0 10px 22px rgba(79,70,229,.18); }
+    .ops-stats { grid-template-columns:repeat(4, minmax(0, 1fr)); gap:10px; }
+    .ops-stat-card { min-height:72px; padding:12px 14px; border-radius:14px; align-content:center; background:#fff; }
+    .ops-stat-top span { font-size:11px; letter-spacing:.03em; }
+    .ops-stat-value { font-size:24px; }
+    .ops-control-strip { display:none; }
+    .ops-filters-shell { padding:10px; gap:9px; }
+    .ops-tabs { gap:7px; overflow-x:auto; scrollbar-width:none; flex-wrap:nowrap; padding-bottom:1px; }
+    .ops-tabs::-webkit-scrollbar { display:none; }
+    .ops-tab { min-height:32px; padding:0 12px; font-size:11.5px; white-space:nowrap; }
+    .ops-search-shell { padding:9px; border-radius:13px; }
+    .ops-search-form { grid-template-columns:minmax(0, 1fr) auto auto; }
+    .ops-search-form .rn-btn,
+    .ops-search-form .rn-btn-primary,
+    .ops-filter-actions .rn-btn,
+    .ops-filter-actions .rn-btn-primary { min-height:36px; border-radius:10px; }
+    .ops-filter-toggle summary { min-height:38px; padding:8px 10px; border-radius:12px; }
+    .ops-filter-body { padding-top:9px; }
+    .ops-filter-grid { gap:8px; }
+    .ops-filter-field { gap:4px; }
+    .ops-filter-field input,
+    .ops-filter-field select { min-height:38px; border-radius:10px; font-size:13px; }
+    .ops-board-grid { grid-template-columns:minmax(0, 1fr) minmax(260px, 300px); gap:12px; }
+    .ops-task-head { padding:10px 12px; align-items:center; }
+    .ops-task-head h2 { font-size:15px; }
+    .ops-task-head p { display:none; }
+    .ops-task-count,
+    .ops-selected-count { min-height:30px; padding:6px 10px; }
+    .ops-sort-select { min-height:34px; border-radius:10px; font-size:12px; }
+    .ops-table-wrap { padding:6px; }
+    .ops-table { min-width:960px; border-spacing:0 7px; }
+    .ops-table th,
+    .ops-table td { padding:8px 9px; }
+    .ops-col-actions { width:188px; }
+    .ops-actions { gap:5px; align-items:center; }
+    .ops-actions .ops-action-btn-primary { order:-1; min-width:120px; min-height:32px; }
+    .ops-actions > .ops-action-btn:not(.ops-action-btn-primary) { width:32px; min-width:32px; padding:0; }
+    .ops-actions > .ops-action-btn:not(.ops-action-btn-primary) span { display:none; }
+    .ops-action-menu summary { width:32px; height:32px; min-height:32px; }
+    .ops-action-panel { top:36px; }
+    .ops-widget-stack { position:sticky; top:86px; gap:10px; }
+    .ops-widget-card { padding:12px; border-radius:15px; }
+    .ops-widget-card:nth-child(n+3) { display:none; }
+    .ops-widget-head h3 { font-size:14px; }
+    .ops-widget-list { gap:7px; }
+    .ops-widget-item { padding:8px 9px; border-radius:11px; }
+
+    @media (max-width: 1080px) {
+        .ops-board-grid { grid-template-columns:1fr; }
+        .ops-widget-stack { position:static; grid-template-columns:repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 767px) {
+        .ops-board { gap:9px; padding-bottom:calc(112px + env(safe-area-inset-bottom)); }
+        .ops-board-header { order:1; gap:8px; }
+        .ops-board-title h1 { font-size:22px; }
+        .ops-board-actions { display:none; }
+        .ops-mobile-command { order:2; display:grid; padding:8px; border-radius:14px; gap:8px; }
+        .ops-mobile-search-row { grid-template-columns:minmax(0, 1fr) 38px; gap:7px; }
+        .ops-mobile-search-row input { min-height:38px; border-radius:12px; font-size:13px; }
+        .ops-mobile-search-row .rn-btn-primary { width:38px; min-width:38px; height:38px; border-radius:12px; }
+        .ops-mobile-chip-groups { display:block; overflow-x:auto; scrollbar-width:none; }
+        .ops-mobile-chip-groups::-webkit-scrollbar { display:none; }
+        .ops-mobile-chip-group { display:inline; }
+        .ops-mobile-chip-row { display:inline-flex; margin-right:6px; max-width:100%; vertical-align:top; }
+        .ops-mobile-chip { min-height:30px; padding:0 11px; font-size:11.5px; }
+        .ops-mobile-toolbar { justify-content:flex-start; overflow-x:auto; padding-bottom:1px; scrollbar-width:none; }
+        .ops-mobile-toolbar::-webkit-scrollbar { display:none; }
+        .ops-mobile-toolbar .rn-btn[href] { min-height:36px; white-space:nowrap; }
+        .ops-stats { order:3; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; }
+        .ops-stat-card { min-height:66px; padding:9px 10px; border-radius:14px; }
+        .ops-stat-top span { font-size:10px; }
+        .ops-stat-value { font-size:20px; }
+        .ops-control-strip { order:4; display:grid; padding:9px; border-radius:14px; }
+        .ops-attention-list { max-height:172px; overflow:hidden; }
+        .ops-attention-row { min-height:34px; padding:5px 8px; font-size:11px; }
+        .ops-filters-shell { display:none; }
+        .ops-board-grid { order:5; gap:9px; }
+        .ops-task-shell { border-radius:16px; }
+        .ops-task-head { padding:9px 10px; }
+        .ops-task-head h2 { font-size:14px; }
+        .ops-task-meta { display:none; }
+        .ops-mobile-list { display:grid; gap:9px; padding:8px; background:#f8fafc; }
+        .ops-mobile-card { border:1px solid #dbe3ef; border-left:4px solid #60a5fa; border-radius:14px; background:#fff; padding:10px; box-shadow:0 6px 18px rgba(15,23,42,.05); }
+        .ops-mobile-card.is-overdue { border-left-color:#dc2626; background:linear-gradient(180deg, #fff7f7 0%, #fff 70%); }
+        .ops-mobile-topline { gap:5px; }
+        .ops-mobile-serial { font-size:11px; color:#0f172a; }
+        .ops-mobile-time { margin-left:0; }
+        .ops-mobile-order { font-size:12px; color:#334155; }
+        .ops-mobile-customer { font-size:14px; }
+        .ops-mobile-product,
+        .ops-mobile-address { font-size:11.5px; }
+        .ops-mobile-main { display:none; }
+        .ops-mobile-actions { display:grid; grid-template-columns:1fr; gap:7px; }
+        .ops-mobile-actions .ops-action-btn-primary { order:1; width:100%; min-height:40px; border-radius:11px; }
+        .ops-mobile-icon-row { order:2; display:grid; grid-template-columns:repeat(var(--ops-mobile-action-columns, 3), minmax(0, 1fr)); gap:6px; }
+        .ops-mobile-icon-row .mobile-utility-btn { width:100%; min-width:0; min-height:36px; border-radius:10px; }
+        .ops-mobile-more .ops-action-panel { right:0; top:38px; max-height:260px; overflow:auto; }
+        .ops-widget-stack { display:none; }
     }
 </style>
 
@@ -962,17 +1250,40 @@
     @endif
 
     <div class="ops-stats">
-        @foreach($statCards as $card)
-            <a href="{{ $card['href'] }}" class="ops-stat-card {{ $tab === strtolower(str_replace(' ', '_', $card['label'])) ? 'is-active' : '' }} {{ $card['tone'] === 'pickup' ? 'is-pickup' : ($card['tone'] === 'danger' ? 'is-danger' : ($card['tone'] === 'success' ? 'is-success' : '')) }}">
+        @foreach($opsKpiPills as $card)
+            <a href="{{ $card['href'] }}" class="ops-stat-card {{ !empty($card['tone']) ? 'is-' . $card['tone'] : '' }}">
                 <div class="ops-stat-top">
                     <span>{{ $card['label'] }}</span>
-                    <div class="ops-stat-icon">{!! $navIcon($card['icon']) !!}</div>
                 </div>
                 <strong class="ops-stat-value">{{ $card['value'] }}</strong>
-                <div class="ops-stat-copy">{{ $card['copy'] }}</div>
             </a>
         @endforeach
     </div>
+
+    <section class="ops-control-strip" aria-label="Needs attention">
+        <div class="ops-control-head">
+            <h2>Needs Attention</h2>
+            <span class="rn-badge {{ $attentionTasks->isNotEmpty() ? 'rn-badge-danger' : 'rn-badge-success' }}">{{ $attentionTasks->count() }}</span>
+        </div>
+        <div class="ops-attention-list">
+            @forelse($attentionTasks as $attention)
+                @php
+                    $attentionTask = $attention['task'];
+                @endphp
+                <a href="{{ route('deliveries.show', $attentionTask) }}" class="ops-attention-row {{ $attention['tone'] === 'danger' ? 'is-danger' : '' }}">
+                    <span class="ops-attention-dot" aria-hidden="true"></span>
+                    <span>{{ $attention['label'] }}</span>
+                    <em>{{ $attentionTask->assignedUser->name ?? $attentionTask->assignedStaff->name ?? $attentionTask->third_party_name ?? 'Unassigned' }}</em>
+                </a>
+            @empty
+                <div class="ops-attention-row">
+                    <span class="ops-attention-dot" aria-hidden="true"></span>
+                    <span>No critical tasks right now</span>
+                    <em>Clear</em>
+                </div>
+            @endforelse
+        </div>
+    </section>
 
     <div class="ops-mobile-command" aria-label="Mobile task controls">
         <form method="GET" action="{{ route('deliveries.index') }}" class="ops-mobile-search-row">
@@ -1016,10 +1327,10 @@
             @endif
         </div>
 
-        <div class="ops-mobile-toolbar" aria-label="Mobile task tools">
-            <button type="button" class="mobile-toolbar-btn" data-mobile-filter-open="deliveries-mobile-filters">Filter</button>
+        <div class="ops-mobile-toolbar {{ $hasActiveFilters ? 'has-active-filters' : '' }}" aria-label="Mobile task tools">
+            <button type="button" class="mobile-toolbar-btn" data-mobile-filter-open="deliveries-mobile-filters" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" aria-label="Open task filters">Filter</button>
             <div class="ops-mobile-sort-anchor" data-mobile-sort-root>
-                <button type="button" class="mobile-toolbar-btn mobile-sort-trigger" data-mobile-sort-trigger>Sort</button>
+                <button type="button" class="mobile-toolbar-btn mobile-sort-trigger" data-mobile-sort-trigger aria-label="Sort tasks">Sort</button>
                 <div class="ops-mobile-sort-menu" data-mobile-sort-menu hidden>
                     @foreach($sortOptions as $sortKey => $sortLabel)
                         <a href="{{ $boardHref(['sort_by' => $sortKey, 'sort_dir' => $sortDirection], ['page']) }}" class="{{ $sortBy === $sortKey ? 'is-active' : '' }}">{{ $sortLabel }}</a>
@@ -1034,7 +1345,7 @@
     <div class="ops-filters-shell">
         <div class="ops-tabs" aria-label="Tasks board tabs">
             @foreach($tabs as $boardTab)
-                <a href="{{ $boardHref(['tab' => $boardTab['key']], ['board']) }}" class="ops-tab {{ $tab === $boardTab['key'] ? 'is-active' : '' }}">
+                <a href="{{ $boardTab['href'] ?? $boardHref(['tab' => $boardTab['key']], ['board']) }}" class="ops-tab {{ ($boardTab['active'] ?? ($tab === $boardTab['key'])) ? 'is-active' : '' }}">
                     {{ $boardTab['label'] }}
                 </a>
             @endforeach
@@ -1080,10 +1391,10 @@
             @endif
         </div>
 
-        <details class="ops-filters-card ops-filter-toggle" data-filter-panel data-filter-panel-key="deliveries-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" @if($hasActiveFilters) open @endif>
+        <details class="ops-filters-card ops-filter-toggle" data-filter-panel data-filter-panel-key="deliveries-index" data-filter-active="false">
             <summary>
                 <h2>Search &amp; Filters</h2>
-                <span>{{ $hasActiveFilters ? 'Filters Active · ' . count($activeFilterChips) : 'Expand advanced filters' }}</span>
+                <span>{{ $hasActiveFilters ? 'Filters Active - ' . count($activeFilterChips) : 'Expand advanced filters' }}</span>
             </summary>
             <div class="ops-filter-body">
                 <form method="GET" action="{{ route('deliveries.index') }}" class="ops-filter-grid">
@@ -1183,7 +1494,7 @@
                     <h3>Task Filters</h3>
                     <p>Keep task type, assignee, area, and status within thumb reach.</p>
                 </div>
-                <button type="button" class="mobile-filter-sheet-close" data-mobile-sheet-close="deliveries-mobile-filters" aria-label="Close filters">×</button>
+                <button type="button" class="mobile-filter-sheet-close" data-mobile-sheet-close="deliveries-mobile-filters" aria-label="Close filters">&times;</button>
             </div>
             <div class="mobile-filter-sheet-body">
                 <form method="GET" action="{{ route('deliveries.index') }}" class="mobile-sheet-form">
@@ -1428,7 +1739,14 @@
                                     $showProofHistory = $canViewTask && (int) ($delivery->proofs_count ?? 0) > 0;
                                     $proofHistoryHref = $showProofHistory ? route('deliveries.show', $delivery) . '#delivery-proof-history' : null;
                                 @endphp
-                                <tr class="{{ $isOverdue ? 'is-overdue' : '' }}">
+                                <tr
+                                    class="{{ $isOverdue ? 'is-overdue' : '' }}"
+                                    data-task-card
+                                    data-task-href="{{ route('deliveries.show', $delivery) }}"
+                                    tabindex="0"
+                                    role="link"
+                                    aria-label="Open task {{ $delivery->type === 'pickup' ? 'pickup' : 'delivery' }} {{ $serialNumber }}"
+                                >
                                     <td class="ops-col-serial ops-serial-cell" data-label="No.">{{ $serialNumber }}</td>
                                     <td class="ops-col-select ops-checkbox-cell" data-label="Select">
                                         <input
@@ -1672,6 +1990,8 @@
                                 : null;
                             $scheduleLabel = $delivery->scheduled_at ? $delivery->scheduled_at->format('h:i A') : 'No time';
                             $locationLabel = collect([$delivery->linkedCustomerAddress(), $customerCity])->filter()->implode(', ');
+                            $mobileLocationLabel = $customerCity ?: trim((string) $delivery->linkedCustomerAddress());
+                            $mobileDateLabel = $delivery->scheduled_at ? $delivery->scheduled_at->format('d M') : 'No date';
                         @endphp
                         <article
                             class="ops-mobile-card {{ $isOverdue ? 'is-overdue' : '' }}"
@@ -1707,12 +2027,16 @@
                                             <span class="ops-mobile-phone">{{ $customerPhone }}</span>
                                         @endif
                                         <span class="ops-mobile-product">{{ $items->take(1)->implode(', ') ?: 'No linked items yet' }}</span>
-                                        @if($locationLabel !== '')
-                                            <span class="ops-mobile-address">{{ $locationLabel }}</span>
+                                        @if($mobileLocationLabel !== '')
+                                            <span class="ops-mobile-address">{{ $mobileLocationLabel }}</span>
                                             @if(\Illuminate\Support\Str::length($locationLabel) > 58 && $taskDetailHref)
                                                 <a href="{{ $taskDetailHref }}" class="ops-mobile-address-more">View more</a>
                                             @endif
                                         @endif
+                                        <div class="ops-mobile-compact-row" aria-label="Task schedule and owner">
+                                            <span>{{ $mobileDateLabel }} - {{ $scheduleLabel }}</span>
+                                            <span>{{ $assignedName }}</span>
+                                        </div>
                                     </div>
                                 </div>
                                 <details class="ops-action-menu ops-mobile-more">
@@ -1846,7 +2170,7 @@
             <div class="ops-widget-card">
                 <div class="ops-widget-head">
                     <div>
-                        <h3>Today’s Overview</h3>
+                        <h3>Today's Overview</h3>
                         <p>{{ $todayLabel }} operational pulse.</p>
                     </div>
                     <span class="rn-badge rn-badge-active">{{ $todayTaskCount }} today</span>
@@ -1863,7 +2187,7 @@
                     @forelse($todayOverviewTasks as $overviewTask)
                         <div class="ops-widget-item">
                             <strong>{{ ucfirst($overviewTask->type) }} #{{ $overviewTask->id }}</strong>
-                            <span>{{ $overviewTask->scheduled_at ? $overviewTask->scheduled_at->format('d M h:i A') : 'No schedule' }} • {{ $overviewTask->assignedUser->name ?? $overviewTask->assignedStaff->name ?? $overviewTask->third_party_name ?? 'Unassigned' }}</span>
+                            <span>{{ $overviewTask->scheduled_at ? $overviewTask->scheduled_at->format('d M h:i A') : 'No schedule' }} - {{ $overviewTask->assignedUser->name ?? $overviewTask->assignedStaff->name ?? $overviewTask->third_party_name ?? 'Unassigned' }}</span>
                         </div>
                     @empty
                         <div class="ops-widget-item">
@@ -1886,7 +2210,7 @@
                     @forelse($overdueTasks as $overdueTask)
                         <div class="ops-widget-item">
                             <strong>{{ ucfirst($overdueTask->type) }} #{{ $overdueTask->id }}</strong>
-                            <span>{{ $overdueTask->scheduled_at ? $overdueTask->scheduled_at->format('d M h:i A') : 'No schedule' }} • {{ $overdueTask->assignedUser->name ?? $overdueTask->assignedStaff->name ?? $overdueTask->third_party_name ?? 'Unassigned' }}</span>
+                            <span>{{ $overdueTask->scheduled_at ? $overdueTask->scheduled_at->format('d M h:i A') : 'No schedule' }} - {{ $overdueTask->assignedUser->name ?? $overdueTask->assignedStaff->name ?? $overdueTask->third_party_name ?? 'Unassigned' }}</span>
                         </div>
                     @empty
                         <div class="ops-widget-item">
@@ -1909,7 +2233,7 @@
                     @forelse($pendingCollections as $collectionTask)
                         <div class="ops-widget-item">
                             <strong>Pickup #{{ $collectionTask->id }}</strong>
-                            <span>{{ $collectionTask->scheduled_at ? $collectionTask->scheduled_at->format('d M h:i A') : 'No schedule' }} • {{ $collectionTask->assignedUser->name ?? $collectionTask->assignedStaff->name ?? $collectionTask->third_party_name ?? 'Unassigned' }}</span>
+                            <span>{{ $collectionTask->scheduled_at ? $collectionTask->scheduled_at->format('d M h:i A') : 'No schedule' }} - {{ $collectionTask->assignedUser->name ?? $collectionTask->assignedStaff->name ?? $collectionTask->third_party_name ?? 'Unassigned' }}</span>
                         </div>
                     @empty
                         <div class="ops-widget-item">

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\ImportService;
+use App\Support\ImportSetupWizard;
 
 class ImportTemplateController extends Controller
 {
@@ -22,7 +23,7 @@ class ImportTemplateController extends Controller
         };
     }
 
-    public function index(ImportService $service)
+    public function index(ImportService $service, ImportSetupWizard $wizard)
     {
         $this->authorize('access', ImportController::class);
         abort_unless($this->canAccessDataImport(), 403);
@@ -37,7 +38,16 @@ class ImportTemplateController extends Controller
             })
             ->values();
 
-        return view('import.index', compact('cards'));
+        $setup = $wizard->buildForCatalog($cards, (int) auth()->user()->organization_id);
+        $cards = $cards
+            ->map(function (array $card) use ($setup) {
+                $card['setup'] = $setup['cards'][$card['key']] ?? null;
+
+                return $card;
+            })
+            ->values();
+
+        return view('import.index', compact('cards', 'setup'));
     }
 
     public function download(string $template, ImportService $service)

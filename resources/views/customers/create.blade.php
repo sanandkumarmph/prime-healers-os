@@ -38,6 +38,29 @@
     .error-box ul { margin:0; padding-left:18px; }
     @media (max-width: 720px) {
         .customer-form-page { padding:14px; }
+        .customer-form-header {
+            gap:8px;
+            align-items:flex-start;
+        }
+        .customer-form-header h1 {
+            font-size:22px;
+            line-height:1.1;
+        }
+        .customer-form-header p {
+            margin-top:2px;
+            font-size:11px;
+            line-height:1.4;
+            max-width:28ch;
+        }
+        .customer-form-header .ops-btn-light {
+            min-height:38px;
+            padding:8px 11px;
+            font-size:12px;
+            border-radius:11px;
+        }
+        .form-card-body {
+            padding:12px;
+        }
     }
 </style>
 

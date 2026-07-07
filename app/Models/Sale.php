@@ -42,6 +42,13 @@ class Sale extends Model
         'sale_date',
         'sale_amount',
         'payment_status',
+        'referral_source_type',
+        'referral_source_id',
+        'referral_source_name',
+        'referral_contact',
+        'referral_city',
+        'referral_notes',
+        'referral_commission_amount',
         'notes',
         'organization_id',
         'stock_applied',
@@ -58,6 +65,7 @@ class Sale extends Model
         'shipping_charges' => 'decimal:2',
         'tax_percentage' => 'decimal:2',
         'sale_amount' => 'decimal:2',
+        'referral_commission_amount' => 'decimal:2',
         'stock_applied' => 'boolean',
     ];
 
@@ -136,6 +144,11 @@ class Sale extends Model
     public function organization()
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
     }
 
     public function customerTypeValue(): string

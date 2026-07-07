@@ -60,7 +60,7 @@ class StockHistoryController extends Controller
         $organizationId = (int) $request->user()->organization_id;
         $query = StockMovement::query()
             ->with([
-                'product:id,name,brand,model_name',
+                'product:id,name,brand,model_name,product_image_path',
                 'asset:id,product_id,serial_number,barcode_value,warehouse_id',
                 'fromWarehouse:id,name',
                 'toWarehouse:id,name',
@@ -118,7 +118,7 @@ class StockHistoryController extends Controller
         $products = Product::query()
             ->where('organization_id', $organizationId)
             ->orderBy('name')
-            ->get(['id', 'name', 'brand', 'model_name']);
+            ->get(['id', 'name', 'brand', 'model_name', 'product_image_path']);
         $warehouses = Warehouse::query()
             ->where('organization_id', $organizationId)
             ->orderBy('name')

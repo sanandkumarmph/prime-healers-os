@@ -50,7 +50,11 @@ class DashboardWidgetSettingsRegressionTest extends TestCase
             ->assertSeeText('Dashboard Settings')
             ->assertSeeText('Delivery Team')
             ->assertSeeText('Active Rentals')
-            ->assertSeeText('Today\'s Deliveries');
+            ->assertSeeText('Today\'s Deliveries')
+            ->assertSee('data-section-target="executive"', false)
+            ->assertSee('data-section-target="operations"', false)
+            ->assertSee('data-section-panel="executive"', false)
+            ->assertSee('data-section-panel="operations"', false);
     }
 
     public function test_dashboard_settings_save_can_disable_delivery_widgets(): void

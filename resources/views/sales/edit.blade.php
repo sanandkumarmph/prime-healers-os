@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
-<form action="{{ route('sales.update', $sale->id) }}" method="POST">
+<form id="saleForm" action="{{ route('sales.update', $sale->id) }}" method="POST" novalidate>
     @csrf
     @method('PUT')
     @include('sales.partials.form', ['sale' => $sale])

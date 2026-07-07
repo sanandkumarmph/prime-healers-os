@@ -16,11 +16,12 @@
     $canViewFinance = $currentUser?->canViewFinance() ?? false;
     $canViewFinanceSummary = $currentUser?->isSuperAdmin() ?? false;
     $currency = fn ($value) => "\u{20B9}" . number_format((float) $value, 2);
-    $salesUrl = function (array $overrides = []) use ($search, $customerId, $paymentStatus, $fromDate, $toDate, $sortBy) {
+    $salesUrl = function (array $overrides = []) use ($search, $customerId, $paymentStatus, $fulfilmentSource, $fromDate, $toDate, $sortBy) {
         return route('sales.index', array_filter(array_merge([
             'search' => $search ?: null,
             'customer_id' => $customerId ?: null,
             'payment_status' => $paymentStatus ?: null,
+            'fulfilment_source' => $fulfilmentSource ?: null,
             'from_date' => $fromDate ?: null,
             'to_date' => $toDate ?: null,
             'sort_by' => $sortBy ?: null,
@@ -52,18 +53,23 @@
             || filled($task->third_party_contact ?? null)
             || filled($task->third_party_phone ?? null);
 
+        $assigneeName = $task->assignedUser?->name
+            ?? $task->assignedStaff?->name
+            ?? $task->third_party_name
+            ?? $task->assigned_to
+            ?? null;
+
         if (($task->status ?? null) === 'completed') {
+            if (filled($assigneeName)) {
+                return ($isThirdParty ? 'Third party' : 'Fulfilled by') . ' ' . $assigneeName;
+            }
+
             return $isThirdParty ? 'Third-party completed' : 'Completed';
         }
 
         if ($isThirdParty) {
-            return 'Third-party assigned';
+            return filled($assigneeName) ? 'Third party ' . $assigneeName : 'Third-party assigned';
         }
-
-        $assigneeName = $task->assignedUser?->name
-            ?? $task->assignedStaff?->name
-            ?? $task->assigned_to
-            ?? null;
 
         if (filled($assigneeName)) {
             return 'Assigned to ' . $assigneeName;
@@ -90,22 +96,29 @@
         ['value' => 'priority', 'label' => 'Priority'],
     ];
     $currentMobileSortLabel = collect($mobileSortOptions)->firstWhere('value', $sortBy)['label'] ?? 'Newest First';
-    $hasActiveFilters = filled($search) || filled($customerId) || filled($paymentStatus) || filled($fromDate) || filled($toDate) || $sortBy !== 'priority';
+    $hasActiveFilters = filled($search) || filled($customerId) || filled($paymentStatus) || filled($fulfilmentSource) || filled($fromDate) || filled($toDate) || $sortBy !== 'priority';
     $activeFilterChips = collect([
         filled($search) ? 'Search: ' . $search : null,
         filled($customerId) ? 'Customer selected' : null,
         filled($paymentStatus) ? 'Payment: ' . ucfirst($paymentStatus) : null,
+        filled($fulfilmentSource) ? 'Source: ' . ucfirst(str_replace('_', ' ', $fulfilmentSource)) : null,
         filled($fromDate) ? 'From: ' . $fromDate : null,
         filled($toDate) ? 'To: ' . $toDate : null,
         $sortBy !== 'priority' ? 'Sort: ' . $currentMobileSortLabel : null,
     ])->filter()->values();
+    $salesCollection = method_exists($sales, 'getCollection') ? $sales->getCollection() : collect($sales);
+    $openSales = max($totalSales - $paidSales, 0);
+    $pendingDeliverySales = $salesCollection
+        ->filter(fn ($sale) => !($sale->deliveryRecord && ($sale->deliveryRecord->status ?? null) === 'completed'))
+        ->count();
+    $paymentRiskSales = $pendingSales;
 @endphp
 
 <style>
-    .sales-page { display:grid; gap:12px; width:100%; max-width:100%; min-width:0; margin:0 auto; padding:8px 0 18px; box-sizing:border-box; overflow:visible; }
-    .sales-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; background:#fff; border:1px solid var(--ph-color-border); border-radius:18px; padding:16px 18px; box-shadow:var(--ph-shadow-soft); min-width:0; }
-    .sales-header h1 { margin:0; font-size:28px; color:var(--ph-color-text); font-family: var(--ph-font-heading); }
-    .sales-header p { margin:5px 0 0; color:var(--ph-color-text-soft); font-size:13px; max-width:760px; }
+    .sales-page { display:grid; gap:10px; width:100%; max-width:100%; min-width:0; margin:0 auto; padding:6px 0 18px; box-sizing:border-box; overflow:visible; }
+    .sales-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; background:#fff; border:1px solid var(--ph-color-border); border-radius:16px; padding:12px 16px; box-shadow:var(--ph-shadow-soft); min-width:0; }
+    .sales-header h1 { margin:0; font-size:24px; color:var(--ph-color-text); font-family: var(--ph-font-heading); }
+    .sales-header p { margin:3px 0 0; color:var(--ph-color-text-soft); font-size:12px; max-width:760px; }
     .sales-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; min-width:0; }
     .ops-btn, .ops-btn-light, .ops-btn-wa {
         display:inline-flex; align-items:center; justify-content:center; gap:6px;
@@ -129,18 +142,29 @@
     .ops-card-head span { color:var(--ph-color-text-soft); font-size:12px; }
     .ops-card-body { padding:10px 12px; min-width:0; overflow:visible; }
     .summary-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:8px; }
-    .summary-card {
-        display:grid; gap:5px; padding:10px 12px; border-radius:14px; border:1px solid #dbe3ef;
+    .summary-grid.desktop-priority-panel .summary-card:nth-child(n+5) { display:none; }
+    .sales-page .summary-card {
+        display:grid; gap:4px; min-height:92px; padding:9px 11px; border-radius:12px; border:1px solid #dbe3ef;
         background:#ffffff;
         text-decoration:none; color:inherit; transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
     }
     .summary-card:hover { transform:translateY(-1px); box-shadow:var(--ph-shadow-card); border-color:var(--ph-color-border-strong); }
-    .summary-card span { color:var(--ph-color-text-soft); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; font-family: var(--ph-font-heading); }
-    .summary-card strong { font-size:19px; color:var(--ph-color-text); line-height:1; font-family: var(--ph-font-heading); }
-    .summary-card small { color:var(--ph-color-text-soft); font-size:12px; }
+    .sales-page .summary-card span { color:var(--ph-color-text-soft); font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; line-height:1.2; font-family: var(--ph-font-heading); }
+    .sales-page .summary-card strong { font-size:18px; color:var(--ph-color-text); line-height:1; letter-spacing:0; font-family: var(--ph-font-heading); }
+    .sales-page .summary-card small { color:var(--ph-color-text-soft); font-size:11px; line-height:1.35; }
+    .sales-page .rn-summary-link .rn-summary-icon { width:30px; height:30px; border-radius:10px; margin-bottom:2px; }
+    .sales-page .rn-summary-link .rn-summary-icon svg { width:16px; height:16px; max-width:16px; max-height:16px; }
     .summary-card.success { border-color:rgba(14,159,75,.18); background:var(--ph-color-success-soft); }
     .summary-card.warning { border-color:rgba(183,121,31,.18); background:var(--ph-color-warning-soft); }
     .summary-card.neutral { border-color:rgba(23,119,189,.18); background:var(--ph-color-info-soft); }
+    .sales-decision-tabs { display:flex; gap:8px; flex-wrap:wrap; padding:8px; border:1px solid var(--ph-color-border); border-radius:14px; background:#fff; box-shadow:var(--ph-shadow-soft); }
+    .sales-decision-tab {
+        display:inline-flex; align-items:center; gap:7px; min-height:34px; padding:7px 11px; border-radius:999px;
+        border:1px solid #dbe3ef; color:#334155; background:#f8fafc; font-size:12px; font-weight:800; text-decoration:none;
+    }
+    .sales-decision-tab.is-active { color:#fff; background:var(--ph-color-primary); border-color:var(--ph-color-primary); }
+    .sales-decision-tab b { display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:22px; padding:0 7px; border-radius:999px; background:rgba(255,255,255,.7); color:#1e293b; font-size:11px; }
+    .sales-decision-tab.is-active b { background:rgba(255,255,255,.18); color:#fff; }
     .filter-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; }
     .filter-field { display:grid; gap:5px; }
     .filter-field label { font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:.05em; }
@@ -148,6 +172,7 @@
         display:grid; gap:10px; padding:12px; border:1px solid #dbe3ef; border-radius:16px;
         background:linear-gradient(180deg, #f8fbff 0%, #ffffff 100%); box-shadow:var(--ph-shadow-soft);
     }
+    .desktop-search-shell[hidden] { display:none !important; }
     .desktop-search-form {
         display:grid; grid-template-columns:minmax(0, 1fr) auto auto; gap:8px; align-items:end;
     }
@@ -172,6 +197,8 @@
     }
     .filter-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     .bulk-toolbar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 10px; border:1px solid #e2e8f0; border-radius:12px; background:#f8fafc; margin-bottom:10px; }
+    .bulk-toolbar[hidden] { display:none !important; }
+    .bulk-toolbar { position:sticky; top:8px; z-index:30; box-shadow:0 10px 24px rgba(15,23,42,.08); }
     .bulk-toolbar strong { color:#0f172a; font-size:13px; }
     .bulk-toolbar span { color:#64748b; font-size:12px; font-weight:700; }
     .bulk-actions { display:flex; gap:8px; flex-wrap:wrap; }
@@ -179,6 +206,7 @@
     .bulk-check { width:16px; height:16px; accent-color:#2563eb; }
     .mobile-chip-row { display:none; }
     .mobile-list-command { display:none; }
+    .mobile-sales-analytics { display:none; }
     .table-wrap {
         overflow-x:auto;
         overflow-y:visible;
@@ -202,6 +230,8 @@
         text-transform:uppercase; letter-spacing:.05em; font-weight:800;
     }
     .ops-table td { font-size:13px; color:#0f172a; background:#fff; }
+    .ops-table tbody tr[data-sale-url] { cursor:pointer; }
+    .ops-table tbody tr[data-sale-url]:hover td { background:#f8fbff; }
     .cell-stack { display:grid; gap:4px; }
     .cell-subtle { color:#64748b; font-size:11px; line-height:1.35; }
     .badge {
@@ -243,11 +273,87 @@
     }
     .sale-inline-actions form { margin:0; }
     .ops-action-menu { position:relative; display:inline-block; z-index:20; }
-    .ops-action-menu summary { list-style:none; display:inline-flex; align-items:center; justify-content:center; width:40px; height:36px; border:1px solid var(--ph-color-border-strong); border-radius:999px; background:#fff; color:var(--ph-color-text); font-weight:900; cursor:pointer; user-select:none; }
+    .ops-action-menu summary { list-style:none; display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border:1px solid var(--ph-color-border-strong); border-radius:999px; background:#fff; color:var(--ph-color-text); font-size:18px; line-height:1; font-weight:900; cursor:pointer; user-select:none; letter-spacing:0; }
     .ops-action-menu summary::-webkit-details-marker { display:none; }
+    .ops-action-menu summary::marker { content:""; }
     .ops-action-menu[open] summary { background:var(--ph-color-info-soft); border-color:rgba(23,119,189,.26); color:var(--ph-color-primary); }
     .ops-action-panel { position:absolute; right:0; top:calc(100% + 6px); z-index:999; display:grid; gap:6px; min-width:190px; padding:8px; border:1px solid var(--ph-color-border); border-radius:12px; background:#fff; box-shadow:0 18px 40px rgba(11,35,66,.16); text-align:left; }
+    .sales-filter-title-row { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+    .sales-filter-title-row h2 { margin:0; font-size:15px; color:#0f172a; }
+    .sales-summary-strip { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:8px; }
+    .sales-summary-chip { display:grid; gap:3px; padding:9px 10px; border:1px solid #dbe3ef; border-radius:12px; background:#fff; min-width:0; }
+    .sales-summary-chip span { color:#64748b; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; }
+    .sales-summary-chip strong { color:#0f172a; font-size:15px; line-height:1.15; overflow-wrap:anywhere; }
+    .sales-summary-chip.is-warning { background:#fffbeb; border-color:#fde68a; }
+    .sales-summary-chip.is-good { background:#f0fdf4; border-color:#bbf7d0; }
+    .sales-list-tools { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; color:#64748b; font-size:12px; font-weight:800; }
+    .sales-list-tools label { display:inline-flex; align-items:center; gap:8px; cursor:pointer; }
+    .sales-compact-list { display:grid; gap:8px; }
+    .sale-compact-row {
+        display:grid; grid-template-columns:auto minmax(0, 1fr) auto; gap:10px; align-items:center;
+        padding:9px 10px; border:1px solid #e2e8f0; border-radius:12px; background:#fff; cursor:pointer;
+        transition:border-color .16s ease, box-shadow .16s ease, background .16s ease;
+    }
+    .sale-compact-row:hover { background:#f8fbff; border-color:#bfdbfe; box-shadow:0 8px 22px rgba(15,23,42,.06); }
+    .sale-compact-row.is-action-open { z-index:40; }
+    .sale-check-cell { display:flex; align-items:center; justify-content:center; }
+    .sale-compact-main { display:grid; gap:5px; min-width:0; }
+    .sale-compact-top, .sale-compact-bottom { display:grid; grid-template-columns:minmax(90px,.55fr) minmax(170px,1.1fr) minmax(110px,.55fr) minmax(170px,.9fr); gap:8px; align-items:center; min-width:0; }
+    .sale-compact-bottom { grid-template-columns:minmax(220px,1.35fr) minmax(90px,.4fr) minmax(180px,1fr) minmax(170px,1fr); color:#64748b; font-size:12px; }
+    .sale-compact-id { font-weight:900; color:#1d4ed8; text-decoration:none; }
+    .sale-customer-name { font-weight:800; color:#0f172a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .sale-compact-muted { color:#64748b; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .sale-compact-product { font-weight:800; color:#334155; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .sale-amount-stack { display:grid; justify-items:end; gap:2px; }
+    .sale-amount-stack strong { font-size:15px; color:#0f172a; }
+    .sale-status-stack { display:flex; gap:5px; justify-content:flex-end; flex-wrap:wrap; }
+    .sale-compact-actions { display:flex; align-items:center; gap:7px; justify-content:flex-end; }
+    .sale-compact-actions .ops-btn, .sale-compact-actions .ops-btn-light { min-height:30px; padding:6px 10px; font-size:11px; }
+    .sale-mobile-summary, .sale-mobile-action-row { display:none; }
+    .sale-desktop-primary-action { display:contents; }
     .empty-state { color:var(--ph-color-text-soft); font-size:13px; padding:18px 0; }
+    .created-success-card {
+        display:grid;
+        gap:12px;
+        justify-items:center;
+        text-align:center;
+        padding:18px;
+        border:1px solid #bbf7d0;
+        border-radius:18px;
+        background:linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);
+        box-shadow:var(--ph-shadow-soft);
+    }
+    .created-success-icon {
+        display:grid;
+        place-items:center;
+        width:64px;
+        height:64px;
+        border-radius:999px;
+        background:#dcfce7;
+        color:#16a34a;
+        font-size:34px;
+        font-weight:900;
+    }
+    .created-success-card h2 { margin:0; font-size:18px; color:#0f172a; }
+    .created-success-summary {
+        width:min(100%, 360px);
+        display:grid;
+        gap:8px;
+        padding:14px;
+        border:1px solid #e2e8f0;
+        border-radius:14px;
+        background:#fff;
+        text-align:left;
+    }
+    .created-success-summary strong { font-size:18px; color:#0f172a; }
+    .created-success-summary span { color:#64748b; font-size:12px; font-weight:700; }
+    .created-success-row { display:flex; justify-content:space-between; gap:12px; color:#334155; font-size:13px; }
+    .created-success-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+    @media (max-width: 1100px) {
+        .sales-summary-strip { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+        .sale-compact-top, .sale-compact-bottom { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+        .sale-amount-stack, .sale-status-stack { justify-items:start; justify-content:flex-start; }
+    }
     @media (max-width: 1180px) {
         .ops-table { min-width:1080px; }
     }
@@ -256,24 +362,83 @@
         .sales-header { display:none; }
         .desktop-priority-panel { display:none !important; }
         .desktop-search-shell { display:none; }
+        .sales-summary-strip { display:none; }
+        .sales-list-tools { display:none; }
+        .sale-compact-row { grid-template-columns:auto minmax(0, 1fr); align-items:start; }
+        .sale-compact-actions { grid-column:1 / -1; justify-content:stretch; }
+        .sale-compact-actions > .ops-btn, .sale-compact-actions > .ops-btn-light, .sale-compact-actions > .ops-action-menu { flex:1; }
+        .sale-compact-actions .ops-action-menu { display:block; }
+        .sale-compact-actions .ops-action-menu summary { width:100%; height:38px; border-radius:12px; }
+        .sale-compact-top, .sale-compact-bottom { grid-template-columns:1fr; gap:5px; }
+        .sale-amount-stack { justify-items:start; }
+        .sale-status-stack { justify-content:flex-start; }
         .summary-grid, .filter-grid { grid-template-columns:1fr; }
         .filter-actions, .sales-actions { flex-direction:column; align-items:stretch; }
         .mobile-list-command {
-            display:grid; gap:8px; padding:8px; border:1px solid var(--ph-color-border); border-radius:16px;
+            display:grid; gap:6px; padding:7px; border:1px solid var(--ph-color-border); border-radius:14px;
             background:#fff; box-shadow:var(--ph-shadow-soft);
         }
-        .mobile-search-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
+        .mobile-search-row { display:grid; grid-template-columns:minmax(0,1fr); gap:8px; }
         .mobile-search-row .ops-input { min-height:40px; border-radius:12px; font-size:16px; }
         .mobile-search-row .ops-btn { min-height:40px; border-radius:12px; padding:7px 12px; }
+        .mobile-action-toolbar .mobile-toolbar-btn span { display:none; }
         .mobile-stat-strip {
-            display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:6px;
+            display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:4px;
         }
         .mobile-stat-strip a {
-            display:grid; gap:2px; min-width:0; padding:7px 8px; border:1px solid var(--ph-color-border); border-radius:12px;
+            display:grid; gap:1px; min-width:0; padding:5px 7px; border:1px solid var(--ph-color-border); border-radius:10px;
             background:var(--ph-color-surface-soft); color:var(--ph-color-text); text-decoration:none;
         }
-        .mobile-stat-strip span { font-size:9px; color:var(--ph-color-text-soft); font-weight:800; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        .mobile-stat-strip strong { font-size:clamp(12px, 4vw, 15px); line-height:1.15; min-width:0; overflow-wrap:anywhere; word-break:break-word; }
+        .mobile-stat-strip span { font-size:8px; color:var(--ph-color-text-soft); font-weight:800; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .mobile-stat-strip strong { font-size:13px; line-height:1.05; min-width:0; overflow-wrap:anywhere; word-break:break-word; }
+        .mobile-sales-analytics {
+            display:block;
+            border:1px solid var(--ph-color-border);
+            border-radius:10px;
+            background:#fff;
+            overflow:hidden;
+        }
+        .mobile-sales-analytics summary {
+            list-style:none;
+            min-height:30px;
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:8px;
+            padding:5px 8px;
+            color:#334155;
+            font-size:11px;
+            font-weight:850;
+            cursor:pointer;
+        }
+        .mobile-sales-analytics summary::-webkit-details-marker { display:none; }
+        .mobile-sales-analytics-grid {
+            display:grid;
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+            gap:1px;
+            border-top:1px solid var(--ph-color-border);
+            background:#e2e8f0;
+        }
+        .mobile-sales-analytics-grid span {
+            display:grid;
+            gap:1px;
+            min-width:0;
+            padding:5px 7px;
+            background:#fff;
+            color:#64748b;
+            font-size:9px;
+            font-weight:800;
+            text-transform:uppercase;
+            letter-spacing:.035em;
+        }
+        .mobile-sales-analytics-grid strong {
+            color:#0f172a;
+            font-size:12px;
+            line-height:1.1;
+            text-transform:none;
+            letter-spacing:0;
+            overflow-wrap:anywhere;
+        }
         .mobile-filter-toggle {
             border:1px solid var(--ph-color-border); border-radius:12px; background:var(--ph-color-surface-soft); overflow:hidden;
         }
@@ -291,10 +456,110 @@
         .mobile-chip-row::-webkit-scrollbar { display:none; }
         .mobile-chip {
             flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center;
-            min-height:34px; padding:7px 11px; border-radius:999px; border:1px solid var(--ph-color-border-strong);
-            background:#fff; color:var(--ph-color-text); text-decoration:none; font-size:12px; font-weight:800;
+            min-height:30px; padding:6px 10px; border-radius:999px; border:1px solid var(--ph-color-border-strong);
+            background:#fff; color:var(--ph-color-text); text-decoration:none; font-size:11px; font-weight:800;
         }
         .mobile-chip.is-active { background:var(--ph-color-sidebar); color:#fff; border-color:var(--ph-color-sidebar); }
+        .sales-compact-list { gap:7px; padding-bottom:104px; }
+        .sale-compact-row {
+            display:block;
+            padding:8px 9px 7px;
+            border-radius:14px;
+            box-shadow:0 8px 20px rgba(15,23,42,.07);
+            overflow:visible;
+        }
+        .sale-check-cell { display:none; }
+        .sale-compact-main { gap:0; }
+        .sale-desktop-summary { display:none; }
+        .sale-mobile-summary { display:grid; gap:4px; min-width:0; }
+        .sale-mobile-primary {
+            display:flex; align-items:flex-start; justify-content:space-between; gap:10px;
+        }
+        .sale-mobile-left {
+            display:flex; align-items:center; gap:8px; min-width:0;
+        }
+        .sale-mobile-icon {
+            flex:0 0 32px; width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center;
+            border-radius:10px; background:#eef2ff; color:#4f46e5;
+        }
+        .sale-mobile-icon svg { width:16px; height:16px; }
+        .sale-mobile-title {
+            font-size:15px; line-height:1.1; font-weight:900; color:#0f172a; text-decoration:none;
+            overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+        }
+        .sale-mobile-amount {
+            font-size:14px; line-height:1.1; font-weight:900; color:#0f172a; white-space:nowrap; text-align:right;
+        }
+        .sale-mobile-customer-row {
+            display:flex; align-items:center; justify-content:space-between; gap:8px; min-width:0;
+        }
+        .sale-mobile-customer {
+            color:#0f172a; font-size:13px; font-weight:850; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+        }
+        .sale-mobile-product, .sale-mobile-date {
+            color:#475569; font-size:11px; line-height:1.18; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+        }
+        .sale-mobile-date { color:#0f172a; font-weight:700; }
+        .sale-mobile-chip-row {
+            display:flex; align-items:center; gap:4px; min-width:0; overflow:hidden;
+        }
+        .sale-mobile-chip-row .badge {
+            max-width:32%; padding:3px 6px; font-size:8px; letter-spacing:.015em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        }
+        .sale-mobile-chip-row .badge.is-primary {
+            padding:4px 7px;
+            font-size:9px;
+        }
+        .sale-compact-actions {
+            display:grid;
+            grid-template-columns:repeat(5, minmax(0,1fr));
+            gap:5px;
+            margin-top:6px;
+            padding-top:6px;
+            border-top:1px solid #e2e8f0;
+            align-items:stretch;
+        }
+        .sale-desktop-primary-action { display:none; }
+        .sale-mobile-action-row { display:contents; }
+        .sale-mobile-action-row form { margin:0; display:flex; min-width:0; }
+        .sale-mobile-action-row form .sale-mobile-action { width:100%; }
+        .sale-mobile-action {
+            min-width:0; min-height:30px; display:inline-flex; align-items:center; justify-content:center;
+            padding:5px; border:1px solid var(--ph-color-border); border-radius:10px;
+            background:#fff; color:#0f172a; text-decoration:none; font-size:0; font-weight:850;
+            white-space:nowrap;
+            font-family:inherit;
+            line-height:1;
+            cursor:pointer;
+        }
+        .sale-mobile-action svg { width:15px; height:15px; stroke-width:2; }
+        .sale-mobile-action.is-wa { color:#047857; background:#ecfdf5; border-color:#bbf7d0; }
+        .sale-mobile-action.is-disabled { color:#94a3b8; background:#f8fafc; pointer-events:none; }
+        .sale-compact-actions .ops-action-menu { display:block; width:100%; min-width:0; }
+        .sale-compact-actions .ops-action-menu summary {
+            width:100%; min-height:30px; height:30px; border-radius:10px; font-size:15px;
+            list-style:none;
+        }
+        .sale-compact-actions .ops-action-menu summary::-webkit-details-marker { display:none !important; }
+        .sale-compact-actions .ops-action-menu summary::marker { content:"" !important; }
+        .sales-page .sale-compact-actions .ops-action-menu summary::after {
+            content:none !important;
+            display:none !important;
+        }
+        .sales-page .sale-compact-actions .ops-action-menu summary::before {
+            content:none !important;
+            display:none !important;
+        }
+        .sale-compact-actions .ops-action-menu summary svg { width:16px; height:16px; display:block; }
+        .sale-compact-actions .ops-action-panel {
+            position:absolute;
+            right:0;
+            top:calc(100% + 6px);
+            min-width:min(220px, calc(100vw - 42px));
+            margin-top:0;
+            box-shadow:0 18px 40px rgba(11,35,66,.18);
+        }
+        .mobile-primary-duplicate { display:none !important; }
         .table-wrap { overflow:visible; padding-bottom:0; }
         .ops-table { min-width:0; border-collapse:separate; border-spacing:0 10px; }
         .ops-table thead { display:none; }
@@ -340,8 +605,6 @@
             margin-bottom:0;
         }
         .ops-action-menu { display:block; width:100%; min-width:0; }
-        .ops-action-menu summary { width:100%; justify-content:center; border-radius:12px; height:40px; }
-        .ops-action-panel { position:static; min-width:0; margin-top:7px; box-shadow:none; }
         .row-actions { gap:7px; }
         .row-actions .ops-btn,
         .row-actions .ops-btn-light,
@@ -355,6 +618,32 @@
 </style>
 
 <div class="container sales-page rn-list-page">
+    @if(session('created_sale'))
+        @php
+            $createdSale = session('created_sale');
+        @endphp
+        <section class="created-success-card">
+            <div class="created-success-icon">&#10003;</div>
+            <h2>Sale Created Successfully!</h2>
+            <div class="created-success-summary">
+                <strong>Sale #{{ $createdSale['id'] ?? '' }}</strong>
+                <span>{{ $createdSale['customer'] ?? 'Customer' }}</span>
+                <div class="created-success-row">
+                    <span>Total Amount</span>
+                    <b>Rs. {{ number_format((float) ($createdSale['amount'] ?? 0), 2) }}</b>
+                </div>
+                <div class="created-success-row">
+                    <span>Payment Status</span>
+                    <b>{{ ucfirst(str_replace('_', ' ', $createdSale['payment_status'] ?? 'pending')) }}</b>
+                </div>
+            </div>
+            <div class="created-success-actions">
+                <a href="{{ route('sales.show', $createdSale['id'] ?? 0) }}" class="ops-btn">View Sale</a>
+                <a href="{{ route('sales.create') }}" class="ops-btn-light">Create Another Sale</a>
+            </div>
+        </section>
+    @endif
+
     <div class="sales-header">
         <div>
             <div class="rx-eyebrow">Sales Desk</div>
@@ -363,6 +652,7 @@
         </div>
 
         <div class="sales-actions">
+            <button type="button" class="ops-btn-light" data-sales-search-toggle="salesSearchShell">Search & Filters</button>
             @if($canCreateSales)
                 <a href="{{ route('sales.create') }}" class="ops-btn">+ New Sale</a>
             @endif
@@ -390,7 +680,7 @@
                     <h3>Sales Filters</h3>
                     <p>Keep search, payment state, and dates close on mobile.</p>
                 </div>
-                <button type="button" class="mobile-filter-sheet-close" data-mobile-sheet-close="sales-mobile-filters" aria-label="Close filters">×</button>
+                <button type="button" class="mobile-filter-sheet-close" data-mobile-sheet-close="sales-mobile-filters" aria-label="Close filters">&times;</button>
             </div>
             <div class="mobile-filter-sheet-body">
                 <form method="GET" action="{{ route('sales.index') }}" class="mobile-sheet-form">
@@ -405,6 +695,14 @@
                                 <option value="partial" @selected($paymentStatus === 'partial')>Partial</option>
                                 <option value="paid" @selected($paymentStatus === 'paid')>Paid</option>
                                 <option value="void" @selected($paymentStatus === 'void')>Void</option>
+                            </select>
+                        </div>
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_fulfilment_source">Fulfilment</label>
+                            <select id="mobile_fulfilment_source" class="ops-select" name="fulfilment_source">
+                                <option value="">All Sources</option>
+                                <option value="{{ \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE }}" @selected($fulfilmentSource === \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE)>In-house</option>
+                                <option value="{{ \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED }}" @selected($fulfilmentSource === \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED)>Vendor Supplied</option>
                             </select>
                         </div>
                         <div class="mobile-sheet-field">
@@ -430,24 +728,24 @@
             <span class="rn-summary-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6h15l-2 8H8L6 6Z"/><path d="M6 6 5 3H2"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg>
             </span>
-            <span>Total Sales</span>
-            <strong>{{ $totalSales }}</strong>
-            <small>Current filtered sale records</small>
+            <span>Open Sales</span>
+            <strong>{{ $openSales }}</strong>
+            <small>{{ $paidSales }} completed from {{ $totalSales }} records</small>
         </a>
-        <a href="{{ $salesUrl(['payment_status' => 'paid']) }}" class="summary-card success rn-summary-link">
+        <a href="{{ $salesUrl(['payment_status' => null]) }}" class="summary-card neutral rn-summary-link">
             <span class="rn-summary-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7"/></svg>
             </span>
-            <span>Paid Orders</span>
-            <strong>{{ $paidSales }}</strong>
-            <small>Fully closed sale records</small>
+            <span>Pending Delivery</span>
+            <strong>{{ $pendingDeliverySales }}</strong>
+            <small>Visible sales needing delivery closure</small>
         </a>
         <a href="{{ $salesUrl(['payment_status' => 'pending']) }}" class="summary-card warning rn-summary-link">
             <span class="rn-summary-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v5"/><path d="m12 16 .01 0"/><circle cx="12" cy="12" r="9"/></svg>
             </span>
-            <span>Pending Orders</span>
-            <strong>{{ $pendingSales }}</strong>
+            <span>Payment Risk</span>
+            <strong>{{ $paymentRiskSales }}</strong>
             <small>Need follow-up or collection</small>
         </a>
         @if($canViewFinanceSummary)
@@ -455,7 +753,7 @@
             <span class="rn-summary-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14.5a3.5 3.5 0 0 1 0 7H6"/></svg>
             </span>
-            <span>Sales Value</span>
+            <span>This Month Revenue</span>
             <strong style="font-size:18px;">{{ $currency($totalSalesAmount) }}</strong>
             <small>{{ $currency($paidSalesAmount) }} paid + {{ $currency($pendingSalesAmount) }} pending</small>
         </a>
@@ -486,27 +784,67 @@
         @endif
     </div>
 
+    <div class="sales-decision-tabs desktop-priority-panel" aria-label="Sales decision tabs">
+        <a href="{{ $salesUrl(['payment_status' => 'pending']) }}" class="sales-decision-tab {{ $paymentStatus === 'pending' ? 'is-active' : '' }}">Needs Action <b>{{ $pendingSales }}</b></a>
+        <a href="{{ $salesUrl(['payment_status' => null]) }}" class="sales-decision-tab">Pending Delivery <b>{{ $pendingDeliverySales }}</b></a>
+        <a href="{{ $salesUrl(['payment_status' => 'pending']) }}" class="sales-decision-tab {{ $paymentStatus === 'pending' ? 'is-active' : '' }}">Payment Pending <b>{{ $pendingSales }}</b></a>
+        <a href="{{ $salesUrl(['payment_status' => 'paid']) }}" class="sales-decision-tab {{ $paymentStatus === 'paid' ? 'is-active' : '' }}">Completed <b>{{ $paidSales }}</b></a>
+        <a href="{{ $salesUrl(['payment_status' => null, 'fulfilment_source' => \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED]) }}" class="sales-decision-tab {{ $fulfilmentSource === \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED ? 'is-active' : '' }}">Vendor Supplied <b>{{ $salesCollection->where('fulfilment_source', \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED)->count() }}</b></a>
+        <a href="{{ $salesUrl(['payment_status' => null, 'fulfilment_source' => null]) }}" class="sales-decision-tab {{ blank($paymentStatus) && blank($fulfilmentSource) ? 'is-active' : '' }}">All Sales <b>{{ $totalSales }}</b></a>
+    </div>
+
     <div class="mobile-list-command" aria-label="Mobile sales controls">
-        <form method="GET" action="{{ route('sales.index') }}" class="mobile-search-row">
-            @foreach(request()->except(['search', 'page']) as $key => $value)
-                @if(is_scalar($value) && $value !== '')
-                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
-                @endif
-            @endforeach
-            <input class="ops-input" type="search" name="search" value="{{ $search }}" placeholder="Search customer, phone, product">
-            <button type="submit" class="ops-btn">Search</button>
-        </form>
+        <div class="mobile-search-tools">
+            <form method="GET" action="{{ route('sales.index') }}" class="mobile-search-row">
+                @foreach(request()->except(['search', 'page']) as $key => $value)
+                    @if(is_scalar($value) && $value !== '')
+                        <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                    @endif
+                @endforeach
+                <input class="ops-input" type="search" name="search" value="{{ $search }}" placeholder="Search customer, phone, product">
+            </form>
+
+            <div class="mobile-action-toolbar {{ $hasActiveFilters ? 'has-active-filters' : '' }}" aria-label="Mobile sales filters and sorting">
+                <button type="button" class="mobile-toolbar-btn" data-mobile-filter-open="sales-mobile-filters" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" aria-label="Open sales filters">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16"/><path d="M7 12h10"/><path d="M10 18h4"/></svg>
+                    <span>Filter</span>
+                </button>
+                <div class="mobile-sort-anchor" data-mobile-sort-root>
+                    <button type="button" class="mobile-toolbar-btn" data-mobile-sort-trigger aria-label="Sort sales: {{ $currentMobileSortLabel }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m7 15 5 5 5-5"/><path d="M7 9 12 4l5 5"/></svg>
+                        <span>{{ $currentMobileSortLabel }}</span>
+                    </button>
+                    <div class="mobile-sort-popover" data-mobile-sort-menu hidden>
+                        @foreach($mobileSortOptions as $option)
+                            <a href="{{ $salesUrl(['sort_by' => $option['value']]) }}" class="mobile-sort-option {{ $sortBy === $option['value'] ? 'is-active' : '' }}">{{ $option['label'] }}</a>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <div class="mobile-stat-strip" aria-label="Sales summary">
-            <a href="{{ $salesUrl(['payment_status' => null]) }}"><span>Total</span><strong>{{ $totalSales }}</strong></a>
+            <a href="{{ $salesUrl(['payment_status' => null]) }}"><span>Sales</span><strong>{{ $totalSales }}</strong></a>
             <a href="{{ $salesUrl(['payment_status' => 'paid']) }}"><span>Paid</span><strong>{{ $paidSales }}</strong></a>
-            <a href="{{ route('invoices.index', ['status' => 'unpaid']) }}"><span>Invoice Due</span><strong>{{ $currency($outstandingInvoiceAmount) }}</strong></a>
-            @if($canViewFinanceSummary)
-                <a href="{{ $salesUrl(['payment_status' => null]) }}"><span>Pending</span><strong>{{ $currency($totalPendingSalesAmount) }}</strong></a>
-            @else
-                <a href="{{ $salesUrl(['from_date' => now()->toDateString(), 'to_date' => now()->toDateString()]) }}"><span>Today</span><strong>{{ $sales->count() }}</strong></a>
-            @endif
+            <a href="{{ $salesUrl(['payment_status' => 'pending']) }}"><span>Pending</span><strong>{{ $pendingSales }}</strong></a>
+            <a href="{{ route('invoices.index', ['status' => 'unpaid']) }}"><span>Due</span><strong>{{ $currency($outstandingInvoiceAmount) }}</strong></a>
         </div>
+
+        @if($canViewFinanceSummary || $canViewFinance)
+            <details class="mobile-sales-analytics">
+                <summary>
+                    <span>Sales Analytics</span>
+                    <span aria-hidden="true">v</span>
+                </summary>
+                <div class="mobile-sales-analytics-grid">
+                    <span>Total Value <strong>{{ $currency($totalSaleValue ?? $totalSalesAmount ?? 0) }}</strong></span>
+                    <span>Paid Amount <strong>{{ $currency($paidSalesAmount ?? 0) }}</strong></span>
+                    <span>Pending Amount <strong>{{ $currency($totalPendingSalesAmount ?? $pendingSalesAmount ?? 0) }}</strong></span>
+                    <span>Invoice Ready <strong>{{ max(0, (int) ($totalSales ?? 0) - (int) ($unbilledSalesCount ?? 0)) }}</strong></span>
+                    <span>Pending Invoice <strong>{{ (int) ($unbilledSalesCount ?? 0) }}</strong></span>
+                </div>
+            </details>
+        @endif
 
         <div class="mobile-chip-row" aria-label="Sales quick filters">
             <a href="{{ $salesUrl(['payment_status' => 'pending']) }}" class="mobile-chip {{ $paymentStatus === 'pending' ? 'is-active' : '' }}">Unpaid</a>
@@ -515,26 +853,16 @@
             <a href="{{ $salesUrl(['from_date' => now()->toDateString(), 'to_date' => now()->toDateString()]) }}" class="mobile-chip {{ $fromDate === now()->toDateString() && $toDate === now()->toDateString() ? 'is-active' : '' }}">Today</a>
         </div>
 
-        <div class="mobile-action-toolbar" aria-label="Mobile sales filters and sorting">
-            <button type="button" class="mobile-toolbar-btn" data-mobile-filter-open="sales-mobile-filters">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16"/><path d="M7 12h10"/><path d="M10 18h4"/></svg>
-                <span>Filter</span>
-            </button>
-            <div class="mobile-sort-anchor" data-mobile-sort-root>
-                <button type="button" class="mobile-toolbar-btn" data-mobile-sort-trigger>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m7 15 5 5 5-5"/><path d="M7 9 12 4l5 5"/></svg>
-                    <span>{{ $currentMobileSortLabel }}</span>
-                </button>
-                <div class="mobile-sort-popover" data-mobile-sort-menu hidden>
-                    @foreach($mobileSortOptions as $option)
-                        <a href="{{ $salesUrl(['sort_by' => $option['value']]) }}" class="mobile-sort-option {{ $sortBy === $option['value'] ? 'is-active' : '' }}">{{ $option['label'] }}</a>
-                    @endforeach
-                </div>
-            </div>
-        </div>
     </div>
 
-    <div class="desktop-search-shell">
+    <div id="salesSearchShell" class="desktop-search-shell" hidden>
+        <div class="sales-filter-title-row">
+            <div>
+                <h2>Search & Filters</h2>
+            <span>{{ $hasActiveFilters ? 'Filters Active - ' . $activeFilterChips->count() : 'Expand advanced filters' }}</span>
+            </div>
+            <button type="button" class="ops-btn-light" data-sales-filter-toggle="salesFilterPanel">{{ $hasActiveFilters ? 'Edit filters' : 'Expand filters' }}</button>
+        </div>
         <form method="GET" action="{{ route('sales.index') }}" class="desktop-search-form">
             @foreach(request()->except(['search', 'page']) as $key => $value)
                 @if(is_scalar($value) && $value !== '')
@@ -546,7 +874,7 @@
                 <input id="desktop-sales-search" class="ops-input" type="search" name="search" value="{{ $search }}" placeholder="Search customer, phone, WhatsApp, product, notes">
             </div>
             <button type="submit" class="ops-btn">Search</button>
-            <a href="{{ route('sales.index') }}" class="ops-btn-light" data-filter-clear="sales-index">Clear Filters</a>
+            <a href="{{ route('sales.index') }}" class="ops-btn-light" data-filter-clear="sales-index">Clear filters</a>
         </form>
         @if($hasActiveFilters)
             <div class="desktop-filter-chip-row">
@@ -557,10 +885,10 @@
         @endif
     </div>
 
-    <details class="ops-card desktop-priority-panel desktop-filter-toggle" data-filter-panel data-filter-panel-key="sales-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" @if($hasActiveFilters) open @endif>
+    <details id="salesFilterPanel" class="ops-card desktop-priority-panel desktop-filter-toggle" data-filter-panel data-filter-panel-key="sales-index" data-filter-active="false" @if($hasActiveFilters) open @endif>
         <summary>
             <h2>Search & Filters</h2>
-            <span>{{ $hasActiveFilters ? 'Filters Active · ' . $activeFilterChips->count() : 'Expand advanced filters' }}</span>
+            <span>{{ $hasActiveFilters ? 'Filters Active - ' . $activeFilterChips->count() : 'Expand advanced filters' }}</span>
         </summary>
         <div class="ops-card-body">
             <form method="GET" action="{{ route('sales.index') }}" style="display:grid; gap:12px;">
@@ -592,6 +920,15 @@
                     </div>
 
                     <div class="filter-field">
+                        <label for="fulfilment_source">Fulfilment</label>
+                        <select id="fulfilment_source" class="ops-select" name="fulfilment_source">
+                            <option value="">All Sources</option>
+                            <option value="{{ \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE }}" @selected($fulfilmentSource === \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE)>In-house</option>
+                            <option value="{{ \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED }}" @selected($fulfilmentSource === \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED)>Vendor Supplied</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-field">
                         <label for="from_date">From Date</label>
                         <input id="from_date" class="ops-input" type="date" name="from_date" value="{{ $fromDate }}">
                     </div>
@@ -616,12 +953,37 @@
                 </div>
 
                 <div class="filter-actions">
-                    <button type="submit" class="ops-btn">Apply Filters</button>
-                    <a href="{{ route('sales.index') }}" class="ops-btn-light" data-filter-clear="sales-index">Reset</a>
+                    <button type="submit" class="ops-btn">Apply filters</button>
+                    <a href="{{ route('sales.index') }}" class="ops-btn-light" data-filter-clear="sales-index">Clear filters</a>
                 </div>
             </form>
         </div>
     </details>
+
+    @if($canViewFinanceSummary || $canViewFinance)
+        <div class="sales-summary-strip" aria-label="Sales summary for current filters">
+            <div class="sales-summary-chip">
+                <span>Total sales value</span>
+                <strong>{{ $currency($totalSaleValue ?? $totalSalesAmount ?? 0) }}</strong>
+            </div>
+            <div class="sales-summary-chip is-good">
+                <span>Paid amount</span>
+                <strong>{{ $currency($paidSalesAmount ?? 0) }}</strong>
+            </div>
+            <div class="sales-summary-chip is-warning">
+                <span>Pending amount</span>
+                <strong>{{ $currency($totalPendingSalesAmount ?? $pendingSalesAmount ?? 0) }}</strong>
+            </div>
+            <div class="sales-summary-chip">
+                <span>Invoice ready</span>
+                <strong>{{ max(0, (int) ($totalSales ?? 0) - (int) ($unbilledSalesCount ?? 0)) }}</strong>
+            </div>
+            <div class="sales-summary-chip">
+                <span>Pending invoice</span>
+                <strong>{{ (int) ($unbilledSalesCount ?? 0) }}</strong>
+            </div>
+        </div>
+    @endif
 
     <div class="ops-card rn-table-shell">
         <div class="ops-card-head">
@@ -633,10 +995,17 @@
                 <div class="empty-state">No sales match this view right now. Adjust filters or create a new sale to reopen the pipeline.</div>
             @else
                 @if($canReadInvoices)
-                    <form id="saleInvoiceBulkForm" method="GET" action="{{ route('invoices.bulk.print') }}" target="_blank" class="bulk-toolbar">
+                    <div class="sales-list-tools">
+                        <label>
+                            <input type="checkbox" class="bulk-check" id="selectAllSaleInvoices" aria-label="Select all visible sales">
+                            Select all visible
+                        </label>
+                        <span>Bulk actions appear after selection</span>
+                    </div>
+                    <form id="saleInvoiceBulkForm" method="GET" action="{{ route('invoices.bulk.print') }}" target="_blank" class="bulk-toolbar" hidden>
                         @csrf
                         <div>
-                            <strong>Invoice bulk actions</strong>
+                            <strong>Bulk actions</strong>
                             <span id="saleInvoiceSelectedCount">0 selected</span>
                         </div>
                         <div class="bulk-actions">
@@ -648,208 +1017,258 @@
                     </form>
                 @endif
 
-                <div class="table-wrap">
-                    <table class="ops-table">
-                        <thead>
-                            <tr>
-                                @if($canReadInvoices)
-                                    <th class="bulk-col"><input type="checkbox" class="bulk-check" id="selectAllSaleInvoices" aria-label="Select all sale invoices"></th>
-                                @endif
-                                <th class="order-col">Sales Order</th>
-                                <th class="date-col">Date</th>
-                                <th class="customer-col">Customer</th>
-                                <th class="product-col">Product</th>
-                                <th class="qty-col">Qty</th>
-                                @if($canViewFinance)<th class="amount-col">Amount</th>@endif
-                                <th class="invoice-col">Invoice</th>
-                                <th class="notes-col">Notes</th>
-                                <th class="actions-cell">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($sales as $sale)
-                                @php
-                                    $whatsAppNumber = WhatsAppHelper::resolveCustomerNumber($sale->customer);
-                                    $whatsAppUrl = WhatsAppHelper::chatUrl($whatsAppNumber, WhatsAppHelper::saleFollowUp($sale));
-                                    $paymentBadge = $salePaymentBadge($sale->payment_status);
-                                    $deliverySummary = $deliveryAssignmentLabel($sale->deliveryRecord ?? null);
-                                    $canManagePayments = $canCreatePayments && !in_array($sale->payment_status, ['paid', 'void', 'cancelled'], true);
-                                @endphp
-                                <tr>
-                                    @php($isAutoGeneratedRentalSale = (bool) ($sale->auto_generated_from_rental ?? false))
-                                    @if($canReadInvoices)
-                                        <td class="bulk-col" data-label="Select">
-                                            <input type="checkbox" class="bulk-check sale-invoice-check" value="{{ $sale->id }}" data-invoice-id="{{ $sale->linked_invoice_id }}" aria-label="Select sale #{{ $sale->id }}">
-                                        </td>
-                                    @endif
-                                    <td class="order-col" data-label="Order">
-                                        <div class="cell-stack">
-                                            @if(\Illuminate\Support\Facades\Route::has('sales.show'))
-                                                <a href="{{ route('sales.show', $sale) }}" class="rn-record-link">#{{ $sale->id }}</a>
-                                            @else
-                                                <strong>#{{ $sale->id }}</strong>
-                                            @endif
+                <div class="sales-compact-list">
+                    @foreach($sales as $sale)
+                        @php
+                            $whatsAppNumber = WhatsAppHelper::resolveCustomerNumber($sale->customer);
+                            $whatsAppUrl = WhatsAppHelper::chatUrl($whatsAppNumber, WhatsAppHelper::saleFollowUp($sale));
+                            $paymentBadge = $salePaymentBadge($sale->payment_status);
+                            $deliverySummary = $deliveryAssignmentLabel($sale->deliveryRecord ?? null);
+                            $canManagePayments = $canCreatePayments && !in_array($sale->payment_status, ['paid', 'void', 'cancelled'], true);
+                            $isAutoGeneratedRentalSale = (bool) ($sale->auto_generated_from_rental ?? false);
+                            $customerPhone = $sale->customer->phone ?? null;
+                            $customerPhoneDigits = preg_replace('/\D+/', '', (string) $customerPhone);
+                            $customerCityValue = data_get($sale->customer, 'city');
+                            $customerCity = data_get($sale->customer, 'city.name') ?: data_get($sale->customer, 'city_name') ?: (is_string($customerCityValue) ? $customerCityValue : null);
+                            $fulfilmentLabel = \Illuminate\Support\Str::of((string) ($sale->fulfilment_source ?: 'in_house'))->replace(['_', '-'], ' ')->title();
+                            $deliveryFulfilledByCandidate = trim((string) preg_replace('/^(Fulfilled by|Assigned to|Third party)\s+/i', '', $deliverySummary));
+                            $deliveryFulfilledByCandidate = in_array($deliveryFulfilledByCandidate, ['Completed', 'Third-party completed', 'Third party completed', 'PH Internal', 'Not assigned', 'Assigned', 'In progress', 'Cancelled'], true)
+                                ? null
+                                : $deliveryFulfilledByCandidate;
+                            $fulfilledByLabel = $sale->vendor?->name
+                                ?? $sale->vendorOrderDetail?->vendor?->name
+                                ?? $deliveryFulfilledByCandidate
+                                ?? (string) $fulfilmentLabel;
+                            $productLabel = $sale->product->name ?? $sale->rental?->product?->name ?? 'N/A';
+                            $saleDate = $sale->sale_date ? \Carbon\Carbon::parse($sale->sale_date)->format('d M Y') : '-';
+                            $saleItemsForSummary = $sale->displaySaleItems();
+                            $summaryProducts = $saleItemsForSummary
+                                ->map(fn ($item) => $item->product?->name)
+                                ->filter()
+                                ->values();
+                            $uniqueSummaryProducts = $summaryProducts->unique()->values();
+                            $firstSummaryProduct = $uniqueSummaryProducts->first() ?: $productLabel;
+                            $totalSummaryItems = max((int) $saleItemsForSummary->sum(fn ($item) => max((int) ($item->quantity ?? 0), 1)), (int) ($sale->quantity ?? 1), 1);
+                            $extraSummaryProducts = max($uniqueSummaryProducts->count() - 1, 0);
+                            $productSummary = $firstSummaryProduct
+                                . ($extraSummaryProducts > 0 ? ' + ' . $extraSummaryProducts . ' more' : '')
+                                . ' - ' . $totalSummaryItems . ' ' . \Illuminate\Support\Str::plural('item', $totalSummaryItems);
+                            $deliveryStatusRaw = strtolower((string) data_get($sale, 'deliveryRecord.status', $sale->delivery_status ?? ''));
+                            $deliveryChip = match ($deliveryStatusRaw) {
+                                'completed', 'delivered' => ['label' => 'Delivered', 'tone' => 'background:#dcfce7;color:#166534;', 'class' => 'rn-badge-success'],
+                                'in_progress' => ['label' => 'Delivery Active', 'tone' => 'background:#dbeafe;color:#1d4ed8;', 'class' => 'rn-badge-info'],
+                                'cancelled' => ['label' => 'Cancelled', 'tone' => 'background:#f1f5f9;color:#64748b;', 'class' => 'rn-badge-muted'],
+                                default => ['label' => 'Delivery Pending', 'tone' => 'background:#ffedd5;color:#c2410c;', 'class' => 'rn-badge-warning'],
+                            };
+                            $fulfilmentChip = [
+                                'label' => \Illuminate\Support\Str::of((string) $fulfilmentLabel)->replace('Vendor Supplied', 'Vendor')->replace('In House', 'In-house')->toString(),
+                                'tone' => str_contains(strtolower((string) $fulfilmentLabel), 'vendor')
+                                    ? 'background:#ede9fe;color:#5b21b6;'
+                                    : 'background:#dbeafe;color:#1d4ed8;',
+                                'class' => 'rn-badge-info',
+                            ];
+                        @endphp
+                        <article class="sale-compact-row" data-sale-url="{{ route('sales.show', $sale) }}">
+                            @if($canReadInvoices)
+                                <div class="sale-check-cell">
+                                    <input type="checkbox" class="bulk-check sale-invoice-check" value="{{ $sale->id }}" data-invoice-id="{{ $sale->linked_invoice_id }}" aria-label="Select sale #{{ $sale->id }}">
+                                </div>
+                            @endif
+
+                            <div class="sale-compact-main">
+                                <div class="sale-mobile-summary">
+                                    <div class="sale-mobile-primary">
+                                        <div class="sale-mobile-left">
+                                            <span class="sale-mobile-icon" aria-hidden="true">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l-1 13H7L6 7Z"/><path d="M9 7a3 3 0 0 1 6 0"/><path d="M9 11h6"/></svg>
+                                            </span>
+                                            <a href="{{ route('sales.show', $sale) }}" class="sale-mobile-title">Sale #{{ $sale->id }}</a>
                                         </div>
-                                    </td>
-                                    <td class="date-col" data-label="Date">
-                                        <span class="cell-subtle">{{ $sale->sale_date ? \Carbon\Carbon::parse($sale->sale_date)->format('d M Y') : '-' }}</span>
-                                    </td>
-                                    <td class="customer-col" data-label="Customer">
-                                        <div class="cell-stack">
+                                        @if($canViewFinance)
+                                            <strong class="sale-mobile-amount">{{ $currency($sale->sale_amount) }}</strong>
+                                        @endif
+                                    </div>
+                                    <div class="sale-mobile-customer-row">
+                                        <span class="sale-mobile-customer">{{ $sale->customer->name ?? 'N/A' }}</span>
+                                    </div>
+                                    <div class="sale-mobile-product">{{ $productSummary }}</div>
+                                    <div class="sale-mobile-date">{{ $saleDate }}</div>
+                                    <div class="sale-mobile-chip-row">
+                                        <span class="badge rn-badge is-primary {{ $paymentBadge['class'] }}" style="{{ $paymentBadge['tone'] }}">{{ $paymentBadge['label'] }}</span>
+                                        <span class="badge rn-badge {{ $deliveryChip['class'] }}" style="{{ $deliveryChip['tone'] }}">{{ $deliveryChip['label'] }}</span>
+                                        <span class="badge rn-badge {{ $fulfilmentChip['class'] }}" style="{{ $fulfilmentChip['tone'] }}">{{ $fulfilmentChip['label'] }}</span>
+                                    </div>
+                                </div>
+
+                                <div class="sale-desktop-summary">
+                                    <div class="sale-compact-top">
+                                        <a href="{{ route('sales.show', $sale) }}" class="sale-compact-id">Sale #{{ $sale->id }}</a>
+                                        <div class="sale-customer-name">
                                             @if(\Illuminate\Support\Facades\Route::has('customers.show') && $sale->customer)
                                                 <a href="{{ route('customers.show', $sale->customer) }}" class="rn-record-link">{{ $sale->customer->name }}</a>
                                             @else
-                                                <strong>{{ $sale->customer->name ?? 'N/A' }}</strong>
+                                                {{ $sale->customer->name ?? 'N/A' }}
                                             @endif
-                                            <span class="cell-subtle">{{ $sale->customer->phone ?? 'No phone' }}</span>
-                                            @if($sale->rental)
-                                                <span class="cell-subtle">Rental #{{ $sale->rental->id }} linked</span>
+                                            @if($customerPhone)
+                                                <span class="sale-compact-muted">{{ $customerPhone }}</span>
                                             @endif
                                         </div>
-                                    </td>
-                                    <td class="product-col" data-label="Product">
-                                        <div class="cell-stack">
+                                        @if($canViewFinance)
+                                            <div class="sale-amount-stack">
+                                                <strong>{{ $currency($sale->sale_amount) }}</strong>
+                                                <span class="sale-compact-muted">Rate {{ $currency($sale->unit_price ?? 0) }}</span>
+                                            </div>
+                                        @endif
+                                        <div class="sale-status-stack">
+                                            <span class="badge rn-badge {{ $paymentBadge['class'] }}" style="{{ $paymentBadge['tone'] }}">{{ $paymentBadge['label'] }}</span>
+                                            <span class="badge rn-badge {{ $sale->linked_invoice_id ? 'rn-badge-success' : 'rn-badge-draft' }}" style="{{ $invoiceTone((bool) $sale->linked_invoice_id) }}">{{ $sale->linked_invoice_id ? 'Invoice Ready' : 'No Invoice' }}</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="sale-compact-bottom">
+                                        <span class="sale-compact-product">
                                             @if(\Illuminate\Support\Facades\Route::has('products.show') && $sale->product)
-                                                <a href="{{ route('products.show', $sale->product) }}" class="rn-record-link">{{ $sale->product->name }}</a>
+                                                <a href="{{ route('products.show', $sale->product) }}" class="rn-record-link">{{ $productLabel }}</a>
                                             @else
-                                                <strong>{{ $sale->product->name ?? 'N/A' }}</strong>
+                                                {{ $productLabel }}
                                             @endif
-                                            <div class="badge-row">
-                                                <span class="badge" style="{{ $gstTone($sale->tax_calculation_mode ?? 'exclusive') }}">
-                                                    {{ ($sale->tax_calculation_mode ?? 'exclusive') === 'inclusive' ? 'GST Inc' : 'GST Exc' }}
-                                                </span>
-                                                @if($sale->asset)
-                                                    <span class="badge" style="background:#ecfdf5;color:#166534;">Asset Linked</span>
-                                                @endif
-                                                @if($sale->rental)
-                                                    <span class="badge" style="background:#fff7ed;color:#c2410c;">Rental Linked</span>
-                                                @endif
-                                            </div>
-                                            <span class="cell-subtle">
-                                                @if($sale->asset)
-                                                    @if(\Illuminate\Support\Facades\Route::has('assets.show'))
-                                                        <a href="{{ route('assets.show', $sale->asset) }}" class="rn-record-link-subtle">{{ $sale->asset->serial_number ?: $sale->asset->asset_name ?: ('Asset #' . $sale->asset->id) }}</a>
-                                                    @else
-                                                        {{ $sale->asset->serial_number ?: $sale->asset->asset_name ?: ('Asset #' . $sale->asset->id) }}
-                                                    @endif
-                                                @elseif($sale->rental)
-                                                    Linked to {{ $sale->rental->product?->name ?? ('Rental #' . $sale->rental->id) }}
-                                                @else
-                                                    Product sale entry
-                                                @endif
-                                            </span>
-                                            @if(!$isAutoGeneratedRentalSale && $hasSaleDeliverySupport)
-                                                <span class="cell-subtle">Del: {{ $deliverySummary }}</span>
-                                            @endif
-                                        </div>
-                                    </td>
-                                    <td class="qty-col" data-label="Qty">{{ $sale->quantity }}</td>
-                                    @if($canViewFinance)
-                                    <td class="amount-col" data-label="Amount / Payment">
-                                        <div class="cell-stack">
-                                            <strong>{{ $currency($sale->sale_amount) }}</strong>
-                                            <span class="badge rn-badge {{ $paymentBadge['class'] }}" style="{{ $paymentBadge['tone'] }}">
-                                                {{ $paymentBadge['label'] }}
-                                            </span>
-                                            <span class="cell-subtle">
-                                                Rate {{ $currency($sale->unit_price ?? 0) }}
-                                                @if((float) ($sale->discount_amount ?? 0) > 0)
-                                                    • Disc {{ $currency($sale->discount_amount ?? 0) }}
-                                                @endif
-                                                @if((float) $sale->resolvedShippingCharges() > 0)
-                                                    • Ship {{ $currency($sale->resolvedShippingCharges()) }}
-                                                @endif
-                                            </span>
-                                        </div>
-                                    </td>
-                                    @endif
-                                    <td class="invoice-col" data-label="Invoice">
-                                        <div class="cell-stack">
-                                            <div class="badge-row">
-                                                <span class="badge rn-badge {{ $sale->linked_invoice_id ? 'rn-badge-success' : 'rn-badge-draft' }}" style="{{ $invoiceTone((bool) $sale->linked_invoice_id) }}">
-                                                    {{ $sale->linked_invoice_id ? 'Invoice Ready' : 'No Invoice' }}
-                                                </span>
-                                            </div>
-                                            <span class="cell-subtle">
-                                                GST {{ number_format((float) ($sale->tax_percentage ?? 0), 2) }}%
-                                                @if($sale->linked_invoice_id)
-                                                    • #{{ $sale->linked_invoice_id }}
-                                                @endif
-                                            </span>
-                                        </div>
-                                    </td>
-                                    <td class="notes-col" data-label="Notes">
-                                        <div class="cell-stack">
-                                            <span class="cell-subtle truncate-2">{{ $sale->notes ?: '-' }}</span>
-                                            @if($isAutoGeneratedRentalSale && $sale->rental)
-                                                <span class="cell-subtle">Auto-generated from rental #{{ $sale->rental->id }}</span>
-                                            @elseif($sale->rental)
-                                                <span class="cell-subtle">Customer-linked rental sale</span>
-                                            @endif
-                                        </div>
-                                    </td>
-                                    <td class="actions-cell" data-label="Actions">
-                                        <div class="sale-inline-actions">
-                                            <a href="{{ route('sales.show', $sale) }}" class="ops-btn-light">View</a>
+                                            <span class="sale-compact-muted">Qty {{ $sale->quantity }}</span>
+                                        </span>
+                                        <span class="sale-compact-muted">{{ $saleDate }}</span>
+                                        <span class="sale-compact-muted">Fulfilled by: {{ $fulfilledByLabel }}@if($customerCity) / {{ $customerCity }}@endif</span>
+                                        @if(!$isAutoGeneratedRentalSale && $hasSaleDeliverySupport)
+                                            <span class="sale-compact-muted">Delivery: {{ $deliverySummary }}</span>
+                                        @endif
+                                        <span class="sale-compact-muted">
+                                            GST {{ number_format((float) ($sale->tax_percentage ?? 0), 2) }}%
                                             @if($sale->linked_invoice_id)
-                                                <a href="{{ route('invoices.show', $sale->linked_invoice_id) }}" class="ops-btn-light">Invoice</a>
-                                            @elseif($canUpdateSales)
-                                                <form action="{{ route('sales.invoice', $sale) }}" method="POST" style="margin:0;">
-                                                    @csrf
-                                                    <button type="submit" class="ops-btn-light">Invoice</button>
-                                                </form>
+                                                / Invoice #{{ $sale->linked_invoice_id }}
                                             @endif
-                                            @if($whatsAppUrl)
-                                                <a href="{{ $whatsAppUrl }}" target="_blank" class="ops-btn-wa" title="WhatsApp follow-up" aria-label="WhatsApp follow-up">
-                                                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 11.4c0 4.7-3.9 8.6-8.8 8.6-1.5 0-3-.4-4.2-1.1L3 20l1.2-3.7A8.4 8.4 0 0 1 2.4 11.4C2.4 6.7 6.3 3 11.2 3 16.1 3 20 6.7 20 11.4Zm-4.8 2.2c-.2-.1-1.2-.6-1.4-.7s-.3-.1-.4.1-.5.7-.7.9-.3.2-.5.1a5.9 5.9 0 0 1-1.7-1c-.6-.5-1-1.2-1.1-1.4-.1-.2 0-.3.1-.4l.3-.4.2-.3v-.4c0-.1-.4-1.1-.6-1.6-.2-.4-.3-.4-.4-.4h-.4c-.1 0-.4 0-.6.3-.2.2-.8.8-.8 1.9s.8 2.1 1 2.3c.1.1 1.5 2.3 3.8 3.2.5.2 1 .4 1.3.5.6.2 1.2.2 1.7.1.5-.1 1.2-.5 1.4-1 .2-.5.2-1 .1-1Z"/></svg>
-                                                    <span>WA</span>
-                                                </a>
+                                        </span>
+                                        @if($sale->rental)
+                                            <span class="sale-compact-muted">Rental #{{ $sale->rental->id }}</span>
+                                        @endif
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="sale-compact-actions">
+                                <span class="sale-desktop-primary-action">
+                                    @if($sale->linked_invoice_id)
+                                        <a href="{{ route('invoices.show', $sale->linked_invoice_id) }}" class="ops-btn">Invoice</a>
+                                    @elseif($canUpdateSales)
+                                        <form action="{{ route('sales.invoice', $sale) }}" method="POST" style="margin:0;">
+                                            @csrf
+                                            <button type="submit" class="ops-btn">Invoice</button>
+                                        </form>
+                                    @else
+                                        <a href="{{ route('sales.show', $sale) }}" class="ops-btn">View</a>
+                                    @endif
+                                </span>
+
+                                <span class="sale-mobile-action-row">
+                                    <a href="{{ route('sales.show', $sale) }}" class="sale-mobile-action" aria-label="View sale" title="View">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    </a>
+                                    @if($customerPhone)
+                                        <a href="tel:{{ $customerPhoneDigits }}" class="sale-mobile-action" aria-label="Call customer" title="Call">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7A2 2 0 0 1 22 16.9Z"/></svg>
+                                        </a>
+                                    @else
+                                        <span class="sale-mobile-action is-disabled" aria-label="No phone available" title="Call">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7A2 2 0 0 1 22 16.9Z"/></svg>
+                                        </span>
+                                    @endif
+                                    @if($whatsAppUrl)
+                                        <a href="{{ $whatsAppUrl }}" target="_blank" class="sale-mobile-action is-wa" aria-label="WhatsApp customer" title="WhatsApp">
+                                            <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M12.04 2a9.9 9.9 0 0 0-8.5 15.02L2.45 22l5.1-1.06A9.96 9.96 0 1 0 12.04 2Zm0 1.8a8.15 8.15 0 0 1 6.95 12.42 8.15 8.15 0 0 1-10.94 2.9l-.35-.2-3.02.63.64-2.92-.22-.36A8.14 8.14 0 0 1 12.04 3.8Zm-3.2 3.9c-.18 0-.48.07-.73.34-.25.27-.96.94-.96 2.28 0 1.35.98 2.65 1.12 2.83.14.18 1.9 3.04 4.7 4.14 2.33.92 2.8.74 3.3.7.51-.05 1.65-.67 1.89-1.33.23-.65.23-1.2.16-1.33-.07-.12-.25-.2-.53-.34-.27-.14-1.64-.81-1.9-.9-.25-.09-.44-.14-.62.14-.19.27-.72.9-.88 1.08-.16.18-.32.2-.6.07-.27-.14-1.16-.43-2.22-1.37-.82-.73-1.37-1.63-1.53-1.9-.16-.28-.02-.43.12-.56.12-.12.27-.32.41-.48.14-.16.19-.28.28-.46.09-.18.05-.34-.02-.48-.07-.14-.62-1.5-.86-2.05-.22-.54-.45-.46-.62-.47h-.53Z"/></svg>
+                                        </a>
+                                    @else
+                                        <span class="sale-mobile-action is-disabled" aria-label="WhatsApp unavailable" title="WhatsApp">
+                                            <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M12.04 2a9.9 9.9 0 0 0-8.5 15.02L2.45 22l5.1-1.06A9.96 9.96 0 1 0 12.04 2Zm0 1.8a8.15 8.15 0 0 1 6.95 12.42 8.15 8.15 0 0 1-10.94 2.9l-.35-.2-3.02.63.64-2.92-.22-.36A8.14 8.14 0 0 1 12.04 3.8Z"/></svg>
+                                        </span>
+                                    @endif
+                                    @if($sale->linked_invoice_id)
+                                        <a href="{{ route('invoices.show', $sale->linked_invoice_id) }}" class="sale-mobile-action" aria-label="Open invoice" title="Invoice">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>
+                                        </a>
+                                    @elseif($canUpdateSales)
+                                        <form action="{{ route('sales.invoice', $sale) }}" method="POST" style="margin:0;">
+                                            @csrf
+                                            <button type="submit" class="sale-mobile-action" aria-label="Create invoice" title="Invoice">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>
+                                            </button>
+                                        </form>
+                                    @else
+                                        <span class="sale-mobile-action is-disabled" aria-label="Invoice unavailable" title="Invoice">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>
+                                        </span>
+                                    @endif
+                                </span>
+
+                                <details class="ops-action-menu">
+                                    <summary aria-label="Sale actions">
+                                        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+                                            <circle cx="5" cy="12" r="1.8"></circle>
+                                            <circle cx="12" cy="12" r="1.8"></circle>
+                                            <circle cx="19" cy="12" r="1.8"></circle>
+                                        </svg>
+                                    </summary>
+                                    <div class="ops-action-panel row-actions">
+                                        <a href="{{ route('sales.show', $sale) }}" class="ops-btn-light mobile-primary-duplicate">View</a>
+                                        @if($customerPhone)
+                                            <a href="tel:{{ $customerPhoneDigits }}" class="ops-btn-light mobile-primary-duplicate">Call</a>
+                                        @endif
+                                        @if($sale->linked_invoice_id)
+                                            <a href="{{ route('invoices.show', $sale->linked_invoice_id) }}" class="ops-btn-light mobile-primary-duplicate">Invoice</a>
+                                        @elseif($canUpdateSales)
+                                            <form action="{{ route('sales.invoice', $sale) }}" method="POST" class="mobile-primary-duplicate" style="margin:0;">
+                                                @csrf
+                                                <button type="submit" class="ops-btn-light">Invoice</button>
+                                            </form>
+                                        @endif
+                                        @if($whatsAppUrl)
+                                            <a href="{{ $whatsAppUrl }}" target="_blank" class="ops-btn-light mobile-primary-duplicate">WhatsApp</a>
+                                        @endif
+                                        @if($canManagePayments)
+                                            <form action="{{ route('sales.markPaid', $sale) }}" method="POST" style="margin:0;">
+                                                @csrf
+                                                <button type="submit" class="ops-btn-light">Mark Paid</button>
+                                            </form>
+                                            <a href="{{ route('sales.show', $sale) }}#sale-billing-actions" class="ops-btn-light">Record Payment</a>
+                                        @endif
+                                        @if(!$isAutoGeneratedRentalSale && $canCreateDeliveries && $hasSaleDeliverySupport)
+                                            @if($sale->relationLoaded('deliveryRecord') && $sale->deliveryRecord)
+                                                <a href="{{ route('deliveries.show', $sale->deliveryRecord) }}" class="ops-btn-light">View Delivery</a>
+                                            @else
+                                                <a href="{{ route('deliveries.create', ['sale_id' => $sale->id, 'type' => 'delivery']) }}" class="ops-btn-light">Assign Delivery</a>
                                             @endif
-                                            <details class="ops-action-menu">
-                                                <summary aria-label="Sale actions">More</summary>
-                                            <div class="ops-action-panel row-actions">
-                                            @if(!$isAutoGeneratedRentalSale && $canCreateDeliveries && $hasSaleDeliverySupport)
-                                                @if($sale->relationLoaded('deliveryRecord') && $sale->deliveryRecord)
-                                                    <a href="{{ route('deliveries.show', $sale->deliveryRecord) }}" class="ops-btn-light">View Delivery</a>
-                                                @else
-                                                    <a href="{{ route('deliveries.create', ['sale_id' => $sale->id, 'type' => 'delivery']) }}" class="ops-btn-light">Assign Delivery</a>
-                                                @endif
-                                            @endif
-                                            @if(!$isAutoGeneratedRentalSale && $canUpdateSales)
-                                                <a href="{{ route('sales.edit', $sale) }}" class="ops-btn-light">Edit Sale</a>
-                                            @endif
-                                            @if($sale->rental && $canReadRentals && \Illuminate\Support\Facades\Route::has('rentals.show'))
-                                                <a href="{{ route('rentals.show', $sale->rental) }}" class="ops-btn-light">View Linked Rental</a>
-                                            @endif
-                                            @if($canManagePayments)
-                                                <form action="{{ route('sales.markPaid', $sale) }}" method="POST" style="margin:0;">
-                                                    @csrf
-                                                    <button type="submit" class="ops-btn-light">Mark Paid</button>
-                                                </form>
-                                                <a href="{{ route('sales.show', $sale) }}#sale-billing-actions" class="ops-btn-light">Record Payment</a>
-                                            @endif
-                                            @if(!$isAutoGeneratedRentalSale && $canUpdateSales && $sale->payment_status !== 'void')
-                                                <form action="{{ route('sales.void', $sale) }}" method="POST" style="margin:0;">
-                                                    @csrf
-                                                    @method('PUT')
-                                                    <button type="submit" class="ops-btn-light" onclick="return confirm('Void this sale?')">Void Sale</button>
-                                                </form>
-                                            @endif
-                                            @if(!$isAutoGeneratedRentalSale && $canDeleteSales)
-                                                <form action="{{ route('sales.destroy', $sale) }}" method="POST" style="margin:0;">
-                                                    @csrf
-                                                    @method('DELETE')
-                                                    <button type="submit" class="ops-btn-light" onclick="return confirm('Delete this sale record?')">Delete</button>
-                                                </form>
-                                            @endif
-                                            </div>
-                                            </details>
-                                        </div>
-                                    </td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
+                                        @endif
+                                        @if(!$isAutoGeneratedRentalSale && $canUpdateSales)
+                                            <a href="{{ route('sales.edit', $sale) }}" class="ops-btn-light">Edit Sale</a>
+                                        @endif
+                                        @if($sale->rental && $canReadRentals && \Illuminate\Support\Facades\Route::has('rentals.show'))
+                                            <a href="{{ route('rentals.show', $sale->rental) }}" class="ops-btn-light">View Linked Rental</a>
+                                        @endif
+                                        @if(!$isAutoGeneratedRentalSale && $canUpdateSales && $sale->payment_status !== 'void')
+                                            <form action="{{ route('sales.void', $sale) }}" method="POST" style="margin:0;">
+                                                @csrf
+                                                @method('PUT')
+                                                <button type="submit" class="ops-btn-light" onclick="return confirm('Void this sale?')">Void Sale</button>
+                                            </form>
+                                        @endif
+                                        @if(!$isAutoGeneratedRentalSale && $canDeleteSales)
+                                            <form action="{{ route('sales.destroy', $sale) }}" method="POST" style="margin:0;">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit" class="ops-btn-light" onclick="return confirm('Delete this sale record?')">Delete</button>
+                                            </form>
+                                        @endif
+                                    </div>
+                                </details>
+                            </div>
+                        </article>
+                    @endforeach
                 </div>
 
                 <div style="margin-top:12px;">
@@ -860,7 +1279,7 @@
     </div>
 </div>
 @if($canCreateSales)
-    @include('partials.mobile-fab', ['href' => route('sales.create'), 'label' => 'Add Sale'])
+    @include('partials.mobile-fab', ['href' => route('sales.create'), 'label' => 'Create Sale', 'compact' => true])
 @endif
 @push('scripts')
 <script>
@@ -869,14 +1288,14 @@
             document.querySelectorAll('.sales-page .ops-action-menu[open]').forEach((menu) => {
                 if (menu !== except) {
                     menu.removeAttribute('open');
-                    menu.closest('tr')?.classList.remove('is-action-open');
+                    (menu.closest('.sale-compact-row') || menu.closest('tr'))?.classList.remove('is-action-open');
                 }
             });
         };
 
         document.querySelectorAll('.sales-page .ops-action-menu').forEach((menu) => {
             menu.addEventListener('toggle', () => {
-                const row = menu.closest('tr');
+                const row = menu.closest('.sale-compact-row') || menu.closest('tr');
 
                 if (menu.open) {
                     closeMenus(menu);
@@ -891,6 +1310,19 @@
             if (!event.target.closest('.sales-page .ops-action-menu')) {
                 closeMenus();
             }
+        });
+
+        document.querySelectorAll('.sales-page [data-sale-url]').forEach((row) => {
+            row.addEventListener('click', (event) => {
+                if (event.target.closest('a, button, input, select, textarea, summary, details, form, label')) {
+                    return;
+                }
+
+                const url = row.dataset.saleUrl;
+                if (url) {
+                    window.location.href = url;
+                }
+            });
         });
 
         const bulkForm = document.getElementById('saleInvoiceBulkForm');
@@ -910,6 +1342,10 @@
                 selectAll.checked = selected > 0 && selected === rowChecks.length;
                 selectAll.indeterminate = selected > 0 && selected < rowChecks.length;
             }
+
+            if (bulkForm) {
+                bulkForm.hidden = selected === 0;
+            }
         };
 
         selectAll?.addEventListener('change', () => {
@@ -920,6 +1356,30 @@
         });
 
         rowChecks.forEach((checkbox) => checkbox.addEventListener('change', updateSelectedCount));
+        updateSelectedCount();
+
+        document.querySelectorAll('[data-sales-search-toggle]').forEach((button) => {
+            button.addEventListener('click', () => {
+                const shell = document.getElementById(button.dataset.salesSearchToggle);
+                if (!shell) {
+                    return;
+                }
+
+                shell.hidden = !shell.hidden;
+                if (!shell.hidden) {
+                    shell.querySelector('input[type="search"]')?.focus();
+                }
+            });
+        });
+
+        document.querySelectorAll('[data-sales-filter-toggle]').forEach((button) => {
+            button.addEventListener('click', () => {
+                const panel = document.getElementById(button.dataset.salesFilterToggle);
+                if (panel) {
+                    panel.open = !panel.open;
+                }
+            });
+        });
 
         document.querySelectorAll('[data-sale-bulk-action]').forEach((button) => {
             button.addEventListener('click', (event) => {
