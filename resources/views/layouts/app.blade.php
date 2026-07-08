@@ -4,7 +4,15 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ config('app.name', 'Prime Healers OS') }}</title>
+    @php
+        $releaseEnvForTitle = strtolower((string) config('version.environment', config('app.env', 'production')));
+        $releaseTitlePrefix = match ($releaseEnvForTitle) {
+            'local' => '[LOCAL] ',
+            'uat', 'staging' => '[UAT] ',
+            default => '',
+        };
+    @endphp
+    <title>{{ $releaseTitlePrefix }}{{ config('app.name', 'Prime Healers OS') }}</title>
     <link rel="icon" type="image/png" href="{{ asset('images/prime-healers-favicon.png') }}">
     <link rel="shortcut icon" href="{{ asset('favicon.ico') }}">
     <link rel="apple-touch-icon" href="{{ asset('images/prime-healers-favicon.png') }}">
@@ -2497,7 +2505,7 @@
             border:0;
         }
         .mobile-toolbar-btn::before {
-            content:"Ã¢Å’â€¢";
+            content:"⌕";
             display:grid;
             place-items:center;
             width:18px;
@@ -2508,12 +2516,12 @@
             line-height:1;
         }
         .mobile-toolbar-btn[data-mobile-filter-open]::before {
-            content:"Ã¢Å’Â¯";
+            content:"⌯";
             font-size:21px;
         }
         .mobile-toolbar-btn[data-mobile-sort-trigger]::before,
         .mobile-sort-trigger::before {
-            content:"Ã¢â€¡â€¦";
+            content:"⇅";
             font-size:18px;
         }
         .mobile-toolbar-btn:has(svg)::before { display:none; }
@@ -3594,7 +3602,7 @@
                                 <label class="topbar-bell-switch">
                                     <span class="topbar-bell-switch-copy">
                                         <strong>Voice alerts</strong>
-                                        <span>Speak short safe labels like Ã¢â‚¬Å“New pickup assignedÃ¢â‚¬Â.</span>
+                                        <span>Speak short safe labels like “New pickup assigned”.</span>
                                     </span>
                                     <span class="topbar-bell-toggle">
                                         <input type="checkbox" data-notification-voice-toggle {{ $notificationVoiceEnabled ? 'checked' : '' }}>
@@ -3702,6 +3710,7 @@
         {{ session('error') ?: (session('success') ?: session('status')) }}
     </div>
 @endif
+<x-release-badge />
 <script>
     (function () {
         if (!window.rentnexisModalLock) {

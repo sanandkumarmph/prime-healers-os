@@ -225,10 +225,12 @@ class CommunicationCenterRegressionTest extends TestCase
 
         $this->get(route('dashboard'))
             ->assertOk()
-            ->assertSeeText('Communication Center')
-            ->assertSeeText('Follow-ups Due Today')
-            ->assertSeeText('Overdue Follow-ups')
-            ->assertSeeText('Pending Renewals');
+            ->assertSeeText('Activity & Communication Center')
+            ->assertSeeText('Recent Activity')
+            ->assertSeeText('Notifications Summary')
+            ->assertSeeText('Alerts & Escalations')
+            ->assertSeeText('Communication Queue')
+            ->assertSeeText('Escalation Queue');
     }
 
     private function makeRental(): Rental

@@ -49,7 +49,7 @@ class VendorFulfilmentRegressionTest extends TestCase
                 'delivery_responsibility' => 'vendor_delivery',
                 'pickup_responsibility' => 'vendor_pickup',
             ]))
-            ->assertRedirect(route('rentals.index'));
+            ->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $rental = \App\Models\Rental::query()->latest('id')->first();
         $this->assertNotNull($rental);
@@ -87,7 +87,7 @@ class VendorFulfilmentRegressionTest extends TestCase
                 'delivery_responsibility' => 'vendor_delivery',
                 'pickup_responsibility' => 'vendor_pickup',
             ]))
-            ->assertRedirect(route('rentals.index'));
+            ->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $this->assertDatabaseHas('rentals', [
             'organization_id' => $organization->id,
@@ -136,7 +136,7 @@ class VendorFulfilmentRegressionTest extends TestCase
             ->post(route('rentals.store'), $this->rentalPayload($customer->id, $product->id, [
                 'quantity' => 2,
             ]))
-            ->assertRedirect(route('rentals.index'));
+            ->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $this->assertSame(3, (int) $product->fresh()->available_quantity);
     }
@@ -187,13 +187,13 @@ class VendorFulfilmentRegressionTest extends TestCase
                 'vendor_id' => $vendor->id,
                 'delivery_responsibility' => 'vendor_delivery',
             ]))
-            ->assertRedirect(route('sales.index'));
+            ->assertRedirect(route('sales.index', ['sort_by' => 'latest']));
 
         $this->assertSame(5, (int) $vendorProduct->fresh()->available_quantity);
 
         $this->actingAs($user)
             ->post(route('sales.store'), $this->salePayload($customer->id, $inHouseProduct->id))
-            ->assertRedirect(route('sales.index'));
+            ->assertRedirect(route('sales.index', ['sort_by' => 'latest']));
 
         $this->assertSame(3, (int) $inHouseProduct->fresh()->available_quantity);
     }
@@ -343,7 +343,7 @@ class VendorFulfilmentRegressionTest extends TestCase
                 'vendor_id' => $vendor->id,
                 'delivery_responsibility' => 'vendor_delivery',
             ]))
-            ->assertRedirect(route('rentals.index'));
+            ->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $vendorRental = \App\Models\Rental::query()->latest('id')->firstOrFail();
         $this->assertDatabaseMissing('deliveries', [
@@ -362,7 +362,7 @@ class VendorFulfilmentRegressionTest extends TestCase
             ->post(route('rentals.store'), $this->rentalPayload($customer->id, $internalProduct->id, [
                 'delivery_responsibility' => 'ph_internal_delivery',
             ]))
-            ->assertRedirect(route('rentals.index'));
+            ->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $internalRental = \App\Models\Rental::query()->latest('id')->firstOrFail();
         $this->assertDatabaseHas('deliveries', [
@@ -395,7 +395,7 @@ class VendorFulfilmentRegressionTest extends TestCase
                 'vendor_id' => $vendor->id,
                 'delivery_responsibility' => 'customer_pickup',
             ]))
-            ->assertRedirect(route('rentals.index'));
+            ->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $rental = \App\Models\Rental::query()->latest('id')->firstOrFail();
         $this->assertDatabaseMissing('deliveries', [
@@ -474,7 +474,7 @@ class VendorFulfilmentRegressionTest extends TestCase
 
         $this->actingAs($user)
             ->post(route('rentals.store'), $this->rentalPayload($customer->id, $product->id))
-            ->assertRedirect(route('rentals.index'));
+            ->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $rental = \App\Models\Rental::query()->latest('id')->firstOrFail();
 
@@ -501,9 +501,9 @@ class VendorFulfilmentRegressionTest extends TestCase
         $response = $this->actingAs($user)->get(route('rentals.create'));
 
         $response->assertOk();
-        $response->assertSee('Step 1 · Fulfilment Source', false);
-        $response->assertSee('Step 2 · City', false);
-        $response->assertSee('Step 6 · Delivery Assignment', false);
+        $response->assertSee('Step 1 Â· Fulfilment Source', false);
+        $response->assertSee('Step 2 Â· City', false);
+        $response->assertSee('Step 6 Â· Delivery Assignment', false);
         $response->assertDontSee('Pickup Responsibility', false);
     }
 
@@ -606,7 +606,7 @@ class VendorFulfilmentRegressionTest extends TestCase
                     ],
                 ],
             ]))
-            ->assertRedirect(route('rentals.index'));
+            ->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $this->assertDatabaseHas('rental_items', [
             'organization_id' => $organization->id,
@@ -664,7 +664,7 @@ class VendorFulfilmentRegressionTest extends TestCase
                     ],
                 ],
             ]))
-            ->assertRedirect(route('rentals.index'));
+            ->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
     }
 
     public function test_additional_tracked_rental_quantity_two_requires_two_assets(): void
@@ -828,7 +828,7 @@ class VendorFulfilmentRegressionTest extends TestCase
                 'delivery_assignment_type' => 'customer_pickup',
                 'delivery_staff_id' => '',
             ]))
-            ->assertRedirect(route('rentals.index'));
+            ->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
     }
 
     public function test_warehouse_and_delivery_user_from_another_city_are_rejected(): void

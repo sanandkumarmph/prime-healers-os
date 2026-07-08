@@ -75,7 +75,7 @@ class BatchTwoRegressionTest extends TestCase
             'sale_date' => now()->toDateString(),
             'sale_amount' => 1200,
             'payment_status' => 'pending',
-        ])->assertRedirect(route('sales.index'));
+        ])->assertRedirect(route('sales.index', ['sort_by' => 'latest']));
 
         $sale = Sale::query()->where('organization_id', $organization->id)->firstOrFail();
 
@@ -149,7 +149,7 @@ class BatchTwoRegressionTest extends TestCase
             'sale_date' => now()->toDateString(),
             'sale_amount' => 1500,
             'payment_status' => 'pending',
-        ])->assertRedirect(route('sales.index'));
+        ])->assertRedirect(route('sales.index', ['sort_by' => 'latest']));
 
         $sale = Sale::query()->where('organization_id', $organization->id)->firstOrFail();
 

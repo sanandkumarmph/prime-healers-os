@@ -52,7 +52,7 @@ class TimelineActivityRegressionTest extends TestCase
             'gst_rate' => 18,
             'gst_mode' => 'exclusive',
             'tax_type' => Product::GST_TAX_TYPE_CGST_SGST,
-        ])->assertRedirect(route('rentals.index'));
+        ])->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $rental = Rental::query()->where('organization_id', $this->organizationId)->latest('id')->firstOrFail();
 
@@ -92,7 +92,7 @@ class TimelineActivityRegressionTest extends TestCase
             'gst_rate' => 18,
             'gst_mode' => 'exclusive',
             'tax_type' => Product::GST_TAX_TYPE_CGST_SGST,
-        ])->assertRedirect(route('rentals.index'));
+        ])->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $rental = Rental::query()->where('organization_id', $this->organizationId)->latest('id')->firstOrFail();
 
@@ -131,7 +131,7 @@ class TimelineActivityRegressionTest extends TestCase
                 'tax_calculation_mode' => 'exclusive',
                 'tax_type' => Product::GST_TAX_TYPE_CGST_SGST,
             ]],
-        ])->assertRedirect(route('sales.index'));
+        ])->assertRedirect(route('sales.index', ['sort_by' => 'latest']));
 
         $sale = Sale::query()->where('organization_id', $this->organizationId)->latest('id')->firstOrFail();
 
@@ -182,7 +182,7 @@ class TimelineActivityRegressionTest extends TestCase
             'gst_rate' => 18,
             'gst_mode' => 'exclusive',
             'tax_type' => Product::GST_TAX_TYPE_CGST_SGST,
-        ])->assertRedirect(route('rentals.index'));
+        ])->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $rental = Rental::query()->where('organization_id', $this->organizationId)->latest('id')->firstOrFail();
 

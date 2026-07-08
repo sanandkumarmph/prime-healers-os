@@ -212,7 +212,7 @@ class StockHistoryLedgerRegressionTest extends TestCase
             'notes' => 'Stock history regression sale',
         ]);
 
-        $response->assertRedirect(route('sales.index'));
+        $response->assertRedirect(route('sales.index', ['sort_by' => 'latest']));
 
         $movement = StockMovement::query()
             ->where('organization_id', $organization->id)
