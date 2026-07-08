@@ -1,10 +1,10 @@
 <style>
-    .ph-import-page{max-width:1240px;margin:0 auto;display:grid;gap:20px;overflow-x:hidden}
-    .ph-import-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
-    .ph-import-head-copy{min-width:0;display:grid;gap:8px}
+    .ph-import-page{max-width:1240px;margin:0 auto;display:grid;gap:14px;overflow-x:hidden}
+    .ph-import-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+    .ph-import-head-copy{min-width:0;display:grid;gap:5px}
     .ph-import-back{color:#2563eb;text-decoration:none;font-size:13px;font-weight:800}
-    .ph-import-head h1{margin:0;font-size:34px;letter-spacing:-.04em;color:#0f172a}
-    .ph-import-head p{margin:0;max-width:760px;color:#64748b;line-height:1.65}
+    .ph-import-head h1{margin:0;font-size:28px;letter-spacing:-.035em;color:#0f172a}
+    .ph-import-head p{margin:0;max-width:760px;color:#64748b;font-size:14px;line-height:1.45}
     .ph-import-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .ph-import-actions form{margin:0}
     .ph-import-btn-primary,
@@ -15,28 +15,40 @@
     .ph-import-btn-primary:disabled{border-color:#cbd5e1;background:linear-gradient(180deg,#e2e8f0 0%,#cbd5e1 100%);color:#64748b;box-shadow:none;cursor:not-allowed}
     .ph-import-btn-secondary{border:1px solid #cbd5e1;background:#fff;color:#0f172a;box-shadow:0 8px 18px rgba(15,23,42,.05)}
     .ph-import-btn-secondary:hover{transform:translateY(-1px);border-color:#94a3b8}
-    .ph-import-upload-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(300px,.85fr);gap:18px}
+    .ph-import-upload-grid{display:grid;grid-template-columns:minmax(0,1.28fr) minmax(280px,.72fr);gap:12px}
     .ph-import-layout{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(320px,.8fr);gap:18px}
-    .ph-import-card{min-width:0;background:#fff;border:1px solid #e2e8f0;border-radius:24px;padding:22px;display:grid;gap:16px;box-shadow:0 12px 28px rgba(15,23,42,.04)}
-    .ph-import-side-panel{display:grid;gap:18px}
-    .ph-import-section-copy{display:grid;gap:8px}
-    .ph-import-kicker{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#2563eb}
-    .ph-import-card h2{margin:0;font-size:24px;color:#0f172a}
-    .ph-import-card p{margin:0;color:#64748b;line-height:1.6}
-    .ph-import-upload-form{display:grid;gap:14px}
-    .ph-import-dropzone{display:grid;gap:8px;justify-items:start;padding:24px;border:1.5px dashed #93c5fd;border-radius:22px;background:linear-gradient(180deg,#f8fbff 0%,#eff6ff 100%);cursor:pointer}
-    .ph-import-dropzone:hover{border-color:#60a5fa;background:linear-gradient(180deg,#f0f7ff 0%,#e0efff 100%)}
-    .ph-import-dropzone-icon{display:inline-flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:14px;background:#dbeafe;color:#1d4ed8;font-size:28px;font-weight:500}
-    .ph-import-dropzone-title{font-size:18px;font-weight:800;color:#0f172a}
-    .ph-import-dropzone-copy{font-size:14px;line-height:1.55;color:#64748b}
+    .ph-import-card{min-width:0;background:#fff;border:1px solid #e2e8f0;border-radius:18px;padding:16px;display:grid;gap:12px;box-shadow:0 10px 22px rgba(15,23,42,.035)}
+    .ph-import-side-panel{display:grid;gap:12px}
+    .ph-import-section-copy{display:grid;gap:5px}
+    .ph-import-kicker{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#2563eb}
+    .ph-import-card h2{margin:0;font-size:21px;color:#0f172a}
+    .ph-import-card p{margin:0;color:#64748b;font-size:14px;line-height:1.42}
+    .ph-import-upload-form{display:grid;gap:10px}
+    .ph-import-dropzone{min-height:138px;display:grid;gap:5px;place-items:center;text-align:center;padding:14px 18px;border:1.5px dashed #93c5fd;border-radius:16px;background:linear-gradient(180deg,#f8fbff 0%,#eff6ff 100%);cursor:pointer;transition:border-color .15s ease,background .15s ease,transform .15s ease}
+    .ph-import-dropzone:hover,
+    .ph-import-dropzone.is-dragover{border-color:#2563eb;background:#eff6ff}
+    .ph-import-dropzone.is-dragover{transform:translateY(-1px)}
+    .ph-import-dropzone-icon{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:14px;background:#dbeafe;color:#1d4ed8;font-size:11px;font-weight:900;letter-spacing:.04em}
+    .ph-import-dropzone-title{font-size:17px;font-weight:900;color:#0f172a;line-height:1.2}
+    .ph-import-dropzone-copy{font-size:13px;line-height:1.35;color:#64748b}
+    .ph-import-browse-text{display:inline-flex;align-items:center;min-height:32px;padding:0 12px;margin-left:4px;border-radius:10px;background:#fff;border:1px solid #bfdbfe;color:#1d4ed8;font-weight:900}
+    .ph-import-dropzone-format{font-size:12px;font-weight:800;color:#64748b}
     .ph-import-file-input{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px}
     .ph-import-file-note{font-size:13px;font-weight:700;color:#475569}
+    .ph-import-selected-file{display:grid;grid-template-columns:42px minmax(0,1fr) auto auto;align-items:center;gap:10px;padding:12px;border-radius:16px;background:#f8fafc;border:1px solid #dbe4f0;color:#334155}
+    .ph-import-selected-file[hidden]{display:none!important}
+    .ph-import-selected-icon{width:42px;height:42px;border-radius:13px;background:#dcfce7;color:#15803d;display:grid;place-items:center;font-size:11px;font-weight:900}
+    .ph-import-selected-copy{display:grid;gap:2px;min-width:0}
+    .ph-import-selected-copy strong{font-size:14px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .ph-import-selected-copy small{font-size:12px;color:#64748b}
+    .ph-import-file-action{height:36px;border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:11px;padding:0 12px;font-size:12px;font-weight:900;cursor:pointer}
+    .ph-import-file-action.is-danger{border-color:#fecaca;color:#dc2626;background:#fff7f7}
     .ph-import-error{font-size:13px;font-weight:800;color:#b91c1c}
-    .ph-import-helper-banner{display:grid;gap:4px;padding:14px 16px;border-radius:16px;background:#f8fafc;border:1px solid #e2e8f0;color:#475569}
+    .ph-import-helper-banner{display:grid;gap:3px;padding:10px 12px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0;color:#475569;font-size:12px;line-height:1.35}
     .ph-import-helper-banner strong{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#0f766e}
     .ph-import-field-chips{display:flex;flex-wrap:wrap;gap:8px}
-    .ph-import-field-chips span{display:inline-flex;align-items:center;min-height:32px;padding:0 12px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:12px;font-weight:800}
-    .ph-import-flow{margin:0;padding-left:18px;color:#475569;line-height:1.7}
+    .ph-import-field-chips span{display:inline-flex;align-items:center;min-height:28px;padding:0 10px;border-radius:999px;background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:800}
+    .ph-import-flow{margin:0;padding-left:17px;color:#475569;font-size:13px;line-height:1.5}
     .ph-import-meta{padding:14px 16px;border-radius:16px;background:#f8fafc;border:1px solid #e2e8f0;color:#334155;line-height:1.6}
     .ph-import-meta strong{color:#0f172a}
     .ph-import-preview-helper{padding:12px 16px;border-radius:16px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:13px;font-weight:700;line-height:1.55}
@@ -110,6 +122,78 @@
         .ph-import-btn-primary{width:100%}
         .ph-import-table-wrap{display:none}
         .ph-import-mobile-list{display:grid;gap:12px}
-        .ph-import-card{padding:18px}
+        .ph-import-card{padding:14px}
+        .ph-import-dropzone{min-height:116px;padding:12px 14px;border-radius:14px}
+        .ph-import-dropzone-icon{width:40px;height:40px;border-radius:14px}
+        .ph-import-dropzone-title{font-size:17px}
+        .ph-import-selected-file{grid-template-columns:38px minmax(0,1fr);align-items:start}
+        .ph-import-selected-icon{width:38px;height:38px}
+        .ph-import-file-action{width:100%}
     }
 </style>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('.ph-import-file-input').forEach(function (input) {
+        const form = input.closest('.ph-import-upload-form');
+        const dropzone = input.closest('.ph-import-dropzone');
+        const selectedCard = form ? form.querySelector('.ph-import-selected-file') : null;
+        const nameTarget = selectedCard ? selectedCard.querySelector('[data-file-name]') : null;
+        const metaTarget = selectedCard ? selectedCard.querySelector('[data-file-meta]') : null;
+        const replaceButton = selectedCard ? selectedCard.querySelector('[data-file-replace]') : null;
+        const removeButton = selectedCard ? selectedCard.querySelector('[data-file-remove]') : null;
+
+        const formatSize = function (bytes) {
+            if (!bytes) return '0 KB';
+            const megabytes = bytes / (1024 * 1024);
+            return megabytes >= 1
+                ? megabytes.toFixed(megabytes >= 10 ? 0 : 1) + ' MB'
+                : Math.max(1, Math.round(bytes / 1024)) + ' KB';
+        };
+
+        const updateSelectedState = function () {
+            const file = input.files && input.files[0] ? input.files[0] : null;
+            if (!selectedCard || !dropzone) return;
+
+            if (!file) {
+                selectedCard.hidden = true;
+                dropzone.hidden = false;
+                return;
+            }
+
+            if (nameTarget) nameTarget.textContent = file.name;
+            if (metaTarget) metaTarget.textContent = formatSize(file.size) + ' | Ready for upload';
+            dropzone.hidden = true;
+            selectedCard.hidden = false;
+        };
+
+        input.addEventListener('change', updateSelectedState);
+
+        if (replaceButton) {
+            replaceButton.addEventListener('click', function () {
+                input.click();
+            });
+        }
+
+        if (removeButton) {
+            removeButton.addEventListener('click', function () {
+                input.value = '';
+                updateSelectedState();
+            });
+        }
+
+        if (dropzone) {
+            ['dragenter', 'dragover'].forEach(function (eventName) {
+                dropzone.addEventListener(eventName, function () {
+                    dropzone.classList.add('is-dragover');
+                });
+            });
+
+            ['dragleave', 'drop'].forEach(function (eventName) {
+                dropzone.addEventListener(eventName, function () {
+                    dropzone.classList.remove('is-dragover');
+                });
+            });
+        }
+    });
+});
+</script>

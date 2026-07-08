@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Model;
 
@@ -31,9 +33,11 @@ class Product extends Model
 
     public const GST_TAX_TYPE_CGST_SGST = 'cgst_sgst';
     public const GST_TAX_TYPE_IGST = 'igst';
+    public const GST_TAX_TYPE_BOTH = 'both';
     public const GST_TAX_TYPES = [
         self::GST_TAX_TYPE_CGST_SGST,
         self::GST_TAX_TYPE_IGST,
+        self::GST_TAX_TYPE_BOTH,
     ];
     public const GST_CALCULATION_MODES = [
         'exclusive',
@@ -42,11 +46,14 @@ class Product extends Model
 
     protected $fillable = [
         'name',
+        'category_id',
         'category',
+        'brand_id',
         'brand',
         'model_name',
         'product_code',
         'sku',
+        'product_image_path',
         'product_type',
         'stock_mode',
         'total_quantity',
@@ -62,6 +69,7 @@ class Product extends Model
         'cgst_rate',
         'sgst_rate',
         'igst_rate',
+        'accessory_template_id',
         'is_sellable',
         'is_rentable',
         'organization_id',
@@ -81,6 +89,12 @@ class Product extends Model
         'is_rentable' => 'boolean',
     ];
 
+    public function getProductImageUrlAttribute(): ?string
+    {
+        return $this->product_image_path
+            ? Storage::disk('public')->url($this->product_image_path)
+            : null;
+    }
     public function getDisplayModelAttribute(): ?string
     {
         $modelName = trim((string) ($this->model_name ?? ''));
@@ -117,6 +131,12 @@ class Product extends Model
             $product->gst_calculation_mode = in_array($product->gst_calculation_mode, self::GST_CALCULATION_MODES, true)
                 ? $product->gst_calculation_mode
                 : 'exclusive';
+            if ($product->relationLoaded('categoryMaster') && $product->categoryMaster) {
+                $product->category = $product->categoryMaster->name;
+            }
+            if ($product->relationLoaded('brandMaster') && $product->brandMaster) {
+                $product->brand = $product->brandMaster->name;
+            }
         });
     }
 
@@ -130,9 +150,24 @@ class Product extends Model
         return $this->belongsTo(Organization::class);
     }
 
+    public function categoryMaster(): BelongsTo
+    {
+        return $this->belongsTo(ProductCategory::class, 'category_id');
+    }
+
+    public function brandMaster(): BelongsTo
+    {
+        return $this->belongsTo(ProductBrand::class, 'brand_id');
+    }
+
     public function assets()
     {
         return $this->hasMany(Asset::class);
+    }
+
+    public function accessoryTemplate()
+    {
+        return $this->belongsTo(AccessoryTemplate::class);
     }
 
     public function saleInventories(): HasMany
@@ -265,6 +300,7 @@ class Product extends Model
         return match ($this->gst_tax_type) {
             self::GST_TAX_TYPE_CGST_SGST => 'CGST + SGST',
             self::GST_TAX_TYPE_IGST => 'IGST',
+            self::GST_TAX_TYPE_BOTH => 'CGST + SGST + IGST',
             default => null,
         };
     }
@@ -275,6 +311,9 @@ class Product extends Model
             self::GST_TAX_TYPE_CGST_SGST => 'CGST '.number_format((float) ($this->cgst_rate ?? 0), 2).'%' .
                 ' + SGST '.number_format((float) ($this->sgst_rate ?? 0), 2).'%',
             self::GST_TAX_TYPE_IGST => 'IGST '.number_format((float) ($this->igst_rate ?? 0), 2).'%',
+            self::GST_TAX_TYPE_BOTH => 'CGST '.number_format((float) ($this->cgst_rate ?? 0), 2).'%' .
+                ' + SGST '.number_format((float) ($this->sgst_rate ?? 0), 2).'%' .
+                ' / IGST '.number_format((float) ($this->igst_rate ?? 0), 2).'%',
             default => null,
         };
     }

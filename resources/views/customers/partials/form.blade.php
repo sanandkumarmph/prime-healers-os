@@ -35,11 +35,27 @@
         || filled($fieldValue('id_proof_type'))
         || filled($fieldValue('id_proof_number'))
         || $existingProofUrl !== null;
+    $additionalContactOpen = $errors->has('email')
+        || filled($fieldValue('email'));
+    $addressOpen = $errors->hasAny(['address', 'city', 'state', 'pincode', 'place_of_supply', 'map_location_text', 'map_location_url'])
+        || filled($fieldValue('address'))
+        || filled($fieldValue('city'))
+        || filled($fieldValue('state'))
+        || filled($fieldValue('pincode'))
+        || filled($fieldValue('place_of_supply'))
+        || filled($fieldValue('map_location_text'))
+        || filled($fieldValue('map_location_url'));
+    $notesOpen = $errors->has('notes')
+        || filled($fieldValue('notes'));
+    $identityOpen = $errors->hasAny(['salutation', 'last_name'])
+        || filled($fieldValue('salutation'))
+        || filled($fieldValue('last_name'));
     $sameBillingAsAddress = old('same_as_customer_address', ($customerData?->billing_address ?? null) === ($customerData?->address ?? null) ? '1' : '0') === '1';
 @endphp
 
 <style>
     .customer-form-shell { display:grid; gap:18px; }
+    .mobile-only { display:none !important; }
     .customer-type-switch {
         display:inline-flex;
         gap:6px;
@@ -307,6 +323,65 @@
         flex-wrap:wrap;
         padding-top:4px;
     }
+    .customer-mobile-collapsible-trigger {
+        width:100%;
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+        padding:14px 16px;
+        border:1px solid #e2e8f0;
+        border-radius:16px;
+        background:#fff;
+        color:#0f172a;
+        text-align:left;
+        cursor:pointer;
+    }
+    .customer-mobile-collapsible-trigger strong {
+        display:block;
+        font-size:14px;
+        line-height:1.4;
+    }
+    .customer-mobile-collapsible-trigger span {
+        display:block;
+        margin-top:3px;
+        color:#64748b;
+        font-size:12px;
+        line-height:1.4;
+    }
+    .customer-mobile-collapsible-trigger em,
+    .customer-mobile-inline-toggle em {
+        font-style:normal;
+        color:#475569;
+        font-size:16px;
+        font-weight:700;
+    }
+    .customer-mobile-collapsible-body[hidden],
+    .customer-mobile-advanced[hidden] {
+        display:none !important;
+    }
+    .customer-mobile-inline-toggle {
+        width:100%;
+        display:none;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+        margin-top:4px;
+        padding:11px 12px;
+        border:1px dashed #cbd5e1;
+        border-radius:12px;
+        background:#f8fafc;
+        color:#0f172a;
+        text-align:left;
+        cursor:pointer;
+    }
+    .customer-mobile-inline-toggle strong {
+        font-size:13px;
+    }
+    .customer-mobile-inline-toggle span {
+        color:#64748b;
+        font-size:12px;
+    }
     .ops-btn,
     .ops-btn-light {
         display:inline-flex;
@@ -323,16 +398,123 @@
     }
     .ops-btn { background:#0f172a; color:#fff; }
     .ops-btn-light { background:#fff; color:#334155; border-color:#cbd5e1; }
+    @media (min-width: 721px) {
+        .desktop-only { display:initial !important; }
+    }
     @media (max-width: 1024px) {
         .span-3, .span-4, .span-5, .span-6, .span-7, .span-8 { grid-column:span 12; }
     }
     @media (max-width: 720px) {
-        .customer-section { padding:16px; }
+        .desktop-only { display:none !important; }
+        .mobile-only { display:initial !important; }
+        .customer-form-shell {
+            gap:10px;
+            padding-bottom:104px;
+        }
+        .customer-type-switch {
+            width:100%;
+            justify-content:stretch;
+            padding:3px;
+            gap:4px;
+        }
+        .customer-type-pill {
+            flex:1 1 0;
+            padding:9px 12px;
+            text-align:center;
+            font-size:12px;
+        }
+        .customer-type-help {
+            margin-top:4px;
+            font-size:10px;
+            line-height:1.35;
+        }
+        .customer-sections {
+            gap:8px;
+        }
+        .customer-section {
+            padding:12px;
+            gap:10px;
+            border-radius:14px;
+        }
+        .customer-section-heading h2 {
+            font-size:14px;
+        }
+        .customer-section-heading p,
+        .customer-badge {
+            display:none;
+        }
+        .customer-section-divider {
+            display:none;
+        }
+        .customer-form-grid {
+            gap:10px;
+        }
+        .field label {
+            font-size:10px;
+        }
+        .field input,
+        .field select,
+        .field textarea,
+        .phone-group .country-code-picker__trigger,
+        .phone-group input[data-phone-local] {
+            font-size:15px;
+        }
+        .customer-mobile-inline-toggle {
+            display:flex;
+            margin-top:2px;
+            padding:10px 12px;
+        }
+        .customer-mobile-collapsible-trigger {
+            display:flex !important;
+            padding:12px 14px;
+            border-radius:14px;
+        }
         .inline-grid { grid-template-columns:1fr; }
         .customer-map-tools,
         .form-actions { grid-template-columns:1fr; }
         .customer-map-tools { display:grid; }
-        .form-actions > * { width:100%; }
+        .form-actions {
+            display:grid;
+            grid-template-columns:minmax(0, 1fr) minmax(0, 1fr);
+            position:fixed;
+            left:12px;
+            right:12px;
+            bottom:calc(84px + env(safe-area-inset-bottom, 0px));
+            z-index:60;
+            padding:10px;
+            border:1px solid rgba(203, 213, 225, 0.9);
+            border-radius:16px;
+            background:rgba(255, 255, 255, 0.96);
+            box-shadow:0 18px 40px rgba(15, 23, 42, 0.14);
+            backdrop-filter:blur(8px);
+        }
+        .form-actions > * {
+            width:100%;
+            min-width:0;
+        }
+        .form-actions .ops-btn,
+        .form-actions .ops-btn-light {
+            min-height:46px;
+        }
+        @media (max-width: 380px) {
+            .form-actions {
+                grid-template-columns:1fr;
+                bottom:calc(96px + env(safe-area-inset-bottom, 0px));
+            }
+        }
+        .customer-optional-toggle {
+            padding:11px 14px;
+        }
+        .customer-optional-toggle span span {
+            display:none;
+        }
+        .customer-optional-toggle strong {
+            font-size:12px;
+        }
+        .customer-optional-content {
+            padding:12px;
+            gap:10px;
+        }
     }
 </style>
 
@@ -349,7 +531,7 @@
             @endforeach
         </div>
         <p class="customer-type-help">
-            Keep direct customers simple. Use Business only for institutional or company customers billed directly by your organization.
+            Use Business only for institutional billing.
         </p>
     </div>
 
@@ -372,7 +554,7 @@
                 <div class="span-12">
                     <div class="type-panel {{ $hasFieldError('salutation') || $hasFieldError('first_name') || $hasFieldError('last_name') ? 'is-error' : '' }}" data-type-panel="Individual" {{ $customerTypeValue === 'Individual' ? '' : 'hidden' }}>
                         <div class="inline-grid">
-                            <div class="field {{ $hasFieldError('salutation') ? 'is-error' : '' }}">
+                            <div class="field {{ $hasFieldError('salutation') ? 'is-error' : '' }} customer-mobile-advanced" data-mobile-inline-panel="identity" {{ $identityOpen ? '' : 'hidden' }}>
                                 <label for="salutation">Salutation</label>
                                 <select id="salutation" name="salutation">
                                     <option value="">Select</option>
@@ -385,13 +567,13 @@
                                 @endif
                             </div>
                             <div class="field {{ $hasFieldError('first_name') ? 'is-error' : '' }}">
-                                <label for="first_name">First Name</label>
-                                <input id="first_name" type="text" name="first_name" value="{{ $fieldValue('first_name') }}" placeholder="First name">
+                                <label for="first_name">Customer Name</label>
+                                <input id="first_name" type="text" name="first_name" value="{{ $fieldValue('first_name') }}" placeholder="Customer name">
                                 @if($fieldError('first_name'))
                                     <div class="field-error">{{ $fieldError('first_name') }}</div>
                                 @endif
                             </div>
-                            <div class="field {{ $hasFieldError('last_name') ? 'is-error' : '' }}">
+                            <div class="field {{ $hasFieldError('last_name') ? 'is-error' : '' }} customer-mobile-advanced" data-mobile-inline-panel="identity" {{ $identityOpen ? '' : 'hidden' }}>
                                 <label for="last_name">Last Name</label>
                                 <input id="last_name" type="text" name="last_name" value="{{ $fieldValue('last_name') }}" placeholder="Last name">
                                 @if($fieldError('last_name'))
@@ -399,6 +581,13 @@
                                 @endif
                             </div>
                         </div>
+                        <button type="button" class="customer-mobile-inline-toggle mobile-only" data-mobile-inline-toggle="identity">
+                            <span>
+                                <strong>Optional Fields</strong>
+                                <span>Salutation and last name</span>
+                            </span>
+                            <em data-mobile-inline-icon="identity">{{ $identityOpen ? '−' : '+' }}</em>
+                        </button>
                     </div>
 
                     <div class="type-panel {{ $hasFieldError('company_name') || $hasFieldError('contact_name') ? 'is-error' : '' }}" data-type-panel="Business" {{ $customerTypeValue === 'Business' ? '' : 'hidden' }}>
@@ -471,24 +660,53 @@
                     </div>
                 @endif
 
-                <div class="field span-4 {{ $hasFieldError('email') ? 'is-error' : '' }}">
-                    <label for="email">Email</label>
-                    <input id="email" type="email" name="email" value="{{ $fieldValue('email') }}" placeholder="Email address">
-                    @if($fieldError('email'))
-                        <div class="field-error">{{ $fieldError('email') }}</div>
+                <div class="field span-4 {{ $hasFieldError('city') ? 'is-error' : '' }}">
+                    <label for="city">City</label>
+                    <input id="city" type="text" name="city" value="{{ $fieldValue('city') }}" placeholder="City">
+                    @if($fieldError('city'))
+                        <div class="field-error">{{ $fieldError('city') }}</div>
                     @endif
                 </div>
             </div>
         </section>
 
+        <section class="customer-optional">
+            <button type="button" class="customer-optional-toggle" data-optional-toggle="contact-details">
+                <span>
+                    <strong>Additional Contact Details</strong>
+                    <span>Email and extra communication details.</span>
+                </span>
+                <em data-optional-icon="contact-details">{{ $additionalContactOpen ? '−' : '+' }}</em>
+            </button>
+            <div class="customer-optional-content {{ $hasFieldError('email') ? 'is-error' : '' }}" data-optional-panel="contact-details" {{ $additionalContactOpen ? '' : 'hidden' }}>
+                <div class="customer-form-grid">
+                    <div class="field span-12 {{ $hasFieldError('email') ? 'is-error' : '' }}">
+                        <label for="email">Email</label>
+                        <input id="email" type="email" name="email" value="{{ $fieldValue('email') }}" placeholder="Email address">
+                        @if($fieldError('email'))
+                            <div class="field-error">{{ $fieldError('email') }}</div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <section class="customer-section">
-            <div class="customer-section-heading">
+            <div class="customer-section-heading desktop-only">
                 <div>
                     <h2>Address & Location</h2>
                     <p>Use the delivery address plus map reference so dispatch and field teams can navigate quickly.</p>
                 </div>
             </div>
-            <div class="customer-section-divider"></div>
+            <button type="button" class="customer-mobile-collapsible-trigger mobile-only" data-mobile-toggle="address">
+                <span>
+                    <strong>Address & Location</strong>
+                    <span>Address, state, pincode, GST location, and map.</span>
+                </span>
+                <em data-mobile-icon="address">{{ $addressOpen ? '−' : '+' }}</em>
+            </button>
+            <div class="customer-mobile-collapsible-body" data-mobile-panel="address" {{ $addressOpen ? '' : 'hidden' }}>
+            <div class="customer-section-divider desktop-only"></div>
 
             <div class="customer-form-grid">
                 <div class="field span-6 {{ $hasFieldError('address') ? 'is-error' : '' }}">
@@ -496,22 +714,6 @@
                     <textarea id="address" name="address" placeholder="Street, building, landmark">{{ $fieldValue('address') }}</textarea>
                     @if($fieldError('address'))
                         <div class="field-error">{{ $fieldError('address') }}</div>
-                    @endif
-                </div>
-
-                <div class="field span-6 {{ $hasFieldError('notes') ? 'is-error' : '' }}">
-                    <label for="notes">Notes</label>
-                    <textarea id="notes" name="notes" placeholder="Delivery notes, timing, access, or internal remarks">{{ $fieldValue('notes') }}</textarea>
-                    @if($fieldError('notes'))
-                        <div class="field-error">{{ $fieldError('notes') }}</div>
-                    @endif
-                </div>
-
-                <div class="field span-3 {{ $hasFieldError('city') ? 'is-error' : '' }}">
-                    <label for="city">City</label>
-                    <input id="city" type="text" name="city" value="{{ $fieldValue('city') }}" placeholder="City">
-                    @if($fieldError('city'))
-                        <div class="field-error">{{ $fieldError('city') }}</div>
                     @endif
                 </div>
 
@@ -571,6 +773,7 @@
                     </div>
                 </div>
             </div>
+            </div>
         </section>
 
         <section class="customer-optional">
@@ -622,6 +825,27 @@
                         <textarea id="billing_address" name="billing_address" placeholder="Billing address for GST invoices">{{ $fieldValue('billing_address') }}</textarea>
                         @if($fieldError('billing_address'))
                             <div class="field-error">{{ $fieldError('billing_address') }}</div>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="customer-optional">
+            <button type="button" class="customer-optional-toggle" data-optional-toggle="notes">
+                <span>
+                    <strong>Notes</strong>
+                    <span>Timing, delivery access, and internal context.</span>
+                </span>
+                <em data-optional-icon="notes">{{ $notesOpen ? '−' : '+' }}</em>
+            </button>
+            <div class="customer-optional-content {{ $hasFieldError('notes') ? 'is-error' : '' }}" data-optional-panel="notes" {{ $notesOpen ? '' : 'hidden' }}>
+                <div class="customer-form-grid">
+                    <div class="field span-12 {{ $hasFieldError('notes') ? 'is-error' : '' }}">
+                        <label for="notes">Notes</label>
+                        <textarea id="notes" name="notes" placeholder="Delivery notes, timing, access, or internal remarks">{{ $fieldValue('notes') }}</textarea>
+                        @if($fieldError('notes'))
+                            <div class="field-error">{{ $fieldError('notes') }}</div>
                         @endif
                     </div>
                 </div>
@@ -714,6 +938,8 @@
         const mapPreview = document.querySelector('[data-map-preview]');
         const mapPreviewLabel = document.querySelector('[data-map-preview-label]');
         const mapPreviewUrl = document.querySelector('[data-map-preview-url]');
+        const mobileCollapsibleButtons = document.querySelectorAll('[data-mobile-toggle]');
+        const mobileInlineButtons = document.querySelectorAll('[data-mobile-inline-toggle]');
         const mapCurrentButton = document.querySelector('[data-map-current]');
         const mapOpenButton = document.querySelector('[data-map-open]');
 
@@ -754,6 +980,36 @@
             const nextHidden = forceOpen === undefined ? !panel.hidden : !forceOpen;
             panel.hidden = nextHidden;
             icon.textContent = nextHidden ? '+' : '−';
+        }
+
+        function syncMobilePanel(key, forceOpen) {
+            const panel = document.querySelector('[data-mobile-panel="' + key + '"]');
+            const icon = document.querySelector('[data-mobile-icon="' + key + '"]');
+
+            if (!panel || !icon) {
+                return;
+            }
+
+            const nextHidden = forceOpen === undefined ? !panel.hidden : !forceOpen;
+            panel.hidden = nextHidden;
+            icon.textContent = nextHidden ? '+' : 'âˆ’';
+        }
+
+        function syncInlineOptional(key, forceOpen) {
+            const panels = document.querySelectorAll('[data-mobile-inline-panel="' + key + '"]');
+            const icon = document.querySelector('[data-mobile-inline-icon="' + key + '"]');
+
+            if (!panels.length || !icon) {
+                return;
+            }
+
+            const nextHidden = forceOpen === undefined ? !panels[0].hidden : !forceOpen;
+
+            panels.forEach(function (panel) {
+                panel.hidden = nextHidden;
+            });
+
+            icon.textContent = nextHidden ? '+' : 'âˆ’';
         }
 
         function syncGstFields() {
@@ -822,6 +1078,18 @@
         optionalToggles.forEach(function (button) {
             button.addEventListener('click', function () {
                 syncOptionalPanel(button.getAttribute('data-optional-toggle'));
+            });
+        });
+
+        mobileCollapsibleButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                syncMobilePanel(button.getAttribute('data-mobile-toggle'));
+            });
+        });
+
+        mobileInlineButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                syncInlineOptional(button.getAttribute('data-mobile-inline-toggle'));
             });
         });
 
@@ -898,7 +1166,11 @@
         });
 
         syncType(customerTypeInput.value || 'Individual');
+        syncInlineOptional('identity', {{ $identityOpen ? 'true' : 'false' }});
+        syncMobilePanel('address', {{ $addressOpen ? 'true' : 'false' }});
+        syncOptionalPanel('contact-details', {{ $additionalContactOpen ? 'true' : 'false' }});
         syncOptionalPanel('gst', {{ $gstOpen ? 'true' : 'false' }});
+        syncOptionalPanel('notes', {{ $notesOpen ? 'true' : 'false' }});
         syncOptionalPanel('id-proof', {{ $idProofOpen ? 'true' : 'false' }});
         syncGstFields();
         syncMapPreview();

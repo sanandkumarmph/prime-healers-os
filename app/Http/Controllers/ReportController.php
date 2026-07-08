@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Product;
+use App\Models\ProductCategory;
 use App\Models\Rental;
 use App\Models\RentalAsset;
 use App\Models\Sale;
@@ -31,6 +32,34 @@ class ReportController extends Controller
     private function orgId(): int
     {
         return (int) Auth::user()->organization_id;
+    }
+
+    private function rentalReferralValue(Rental $rental): float
+    {
+        if ($rental->relationLoaded('rentalItems') && $rental->rentalItems->isNotEmpty()) {
+            return round((float) $rental->rentalItems->sum(fn ($item) => (float) ($item->line_total ?? 0)), 2);
+        }
+
+        if (Schema::hasTable('rental_items') && Schema::hasColumn('rental_items', 'line_total') && $rental->exists && $rental->rentalItems()->exists()) {
+            return round((float) $rental->rentalItems()->sum('line_total'), 2);
+        }
+
+        return round((float) ($rental->rental_amount ?? 0), 2);
+    }
+
+    private function saleReferralValue(Sale $sale): float
+    {
+        if ($sale->relationLoaded('saleItems') && $sale->saleItems->isNotEmpty()) {
+            return round((float) $sale->saleItems->sum(fn ($item) => max((float) ($item->line_total ?? 0) - (float) ($item->shipping_charges ?? 0), 0)), 2);
+        }
+
+        if (Schema::hasTable('sale_items') && Schema::hasColumn('sale_items', 'line_total') && $sale->exists && $sale->saleItems()->exists()) {
+            $query = $sale->saleItems();
+
+            return round((float) $query->get()->sum(fn ($item) => max((float) ($item->line_total ?? 0) - (float) ($item->shipping_charges ?? 0), 0)), 2);
+        }
+
+        return round(max((float) ($sale->sale_amount ?? 0) - (float) ($sale->shipping_charges ?? 0), 0), 2);
     }
 
     private function paymentsHaveOrganizationColumn(): bool
@@ -75,6 +104,9 @@ class ReportController extends Controller
             'business_partner_id' => trim((string) $request->get('business_partner_id', '')),
             'staff_user_id' => trim((string) $request->get('staff_user_id', '')),
             'product_id' => trim((string) $request->get('product_id', '')),
+            'referral_source_id' => trim((string) $request->get('referral_source_id', '')),
+            'referral_source_type' => trim((string) $request->get('referral_source_type', '')),
+            'referral_order_type' => trim((string) $request->get('referral_order_type', '')),
             'referred_by' => trim((string) $request->get('referred_by', '')),
             'report' => trim((string) $request->get('report', 'overview')) ?: 'overview',
             'tab' => trim((string) $request->get('tab', 'revenue')) ?: 'revenue',
@@ -114,13 +146,13 @@ class ReportController extends Controller
             ->orderBy('name')
             ->get(['id', 'name']);
 
-        $productCategories = Product::query()
-            ->where('organization_id', $organizationId)
-            ->whereNotNull('category')
-            ->where('category', '!=', '')
-            ->distinct()
-            ->orderBy('category')
-            ->pluck('category');
+        $productCategories = Schema::hasTable('product_categories')
+            ? ProductCategory::query()
+                ->forOrganization($organizationId)
+                ->active()
+                ->orderBy('name')
+                ->get(['id', 'name'])
+            : collect();
 
         $businessPartners = \App\Models\BusinessPartner::query()
             ->where('organization_id', $organizationId)
@@ -133,7 +165,15 @@ class ReportController extends Controller
             ->orderBy('name')
             ->get(['id', 'name']);
 
-        return compact('cities', 'vendors', 'warehouses', 'customers', 'products', 'productCategories', 'businessPartners', 'staffUsers');
+        $referralSources = Schema::hasTable('referral_sources')
+            ? DB::table('referral_sources')
+                ->where('organization_id', $organizationId)
+                ->when(Schema::hasColumn('referral_sources', 'is_active'), fn ($query) => $query->where('is_active', true))
+                ->orderBy('name')
+                ->get(['id', 'name', 'source_type', 'contact', 'city'])
+            : collect();
+
+        return compact('cities', 'vendors', 'warehouses', 'customers', 'products', 'productCategories', 'businessPartners', 'staffUsers', 'referralSources');
     }
 
     private function applyDateRange($query, string $column, array $filters)
@@ -147,6 +187,13 @@ class ReportController extends Controller
         }
 
         return $query;
+    }
+
+    private function applyProductCategoryConstraint($query, string $category)
+    {
+        return ctype_digit($category) && Schema::hasColumn('products', 'category_id')
+            ? $query->where('category_id', (int) $category)
+            : $query->where('category', $category);
     }
 
     private function rentalQuery(array $filters)
@@ -176,7 +223,7 @@ class ReportController extends Controller
         }
 
         if ($filters['product_category'] !== '') {
-            $query->whereHas('product', fn ($productQuery) => $productQuery->where('category', $filters['product_category']));
+            $query->whereHas('product', fn ($productQuery) => $this->applyProductCategoryConstraint($productQuery, $filters['product_category']));
         }
 
         if ($filters['vendor_id'] !== '') {
@@ -203,8 +250,26 @@ class ReportController extends Controller
             $query->where('product_id', (int) $filters['product_id']);
         }
 
+        if ($filters['referral_source_id'] !== '' && Schema::hasColumn('rentals', 'referral_source_id')) {
+            $query->where('referral_source_id', (int) $filters['referral_source_id']);
+        }
+
+        if (($filters['referral_source_type'] ?? '') !== '' && Schema::hasColumn('rentals', 'referral_source_type')) {
+            $query->where('referral_source_type', $filters['referral_source_type']);
+        }
+
         if ($filters['referred_by'] !== '' && Schema::hasColumn('rentals', 'referred_by')) {
-            $query->where('referred_by', 'like', '%' . $filters['referred_by'] . '%');
+            $query->where(function ($inner) use ($filters) {
+                $inner->where('referred_by', 'like', '%' . $filters['referred_by'] . '%');
+
+                if (Schema::hasColumn('rentals', 'referral_contact')) {
+                    $inner->orWhere('referral_contact', 'like', '%' . $filters['referred_by'] . '%');
+                }
+
+                if (Schema::hasColumn('rentals', 'referral_city')) {
+                    $inner->orWhere('referral_city', 'like', '%' . $filters['referred_by'] . '%');
+                }
+            });
         }
 
         return $this->applyDateRange($query, 'start_date', $filters);
@@ -232,7 +297,7 @@ class ReportController extends Controller
             $query->whereHas('items', fn ($itemQuery) => $itemQuery->where('product_id', (int) $filters['product_id']));
         }
 
-        if ($filters['vendor_id'] !== '' || $filters['warehouse_id'] !== '' || $filters['fulfilment_source'] !== '' || $filters['product_category'] !== '' || $filters['business_partner_id'] !== '' || $filters['staff_user_id'] !== '' || $filters['referred_by'] !== '') {
+        if ($filters['vendor_id'] !== '' || $filters['warehouse_id'] !== '' || $filters['fulfilment_source'] !== '' || $filters['product_category'] !== '' || $filters['business_partner_id'] !== '' || $filters['staff_user_id'] !== '' || $filters['referral_source_id'] !== '' || $filters['referred_by'] !== '') {
             $rentalIdQuery = Rental::query()
                 ->select('id')
                 ->forOrganization($this->orgId());
@@ -250,7 +315,7 @@ class ReportController extends Controller
             }
 
             if ($filters['product_category'] !== '') {
-                $rentalIdQuery->whereHas('product', fn ($productQuery) => $productQuery->where('category', $filters['product_category']));
+                $rentalIdQuery->whereHas('product', fn ($productQuery) => $this->applyProductCategoryConstraint($productQuery, $filters['product_category']));
             }
 
             if ($filters['business_partner_id'] !== '') {
@@ -261,8 +326,22 @@ class ReportController extends Controller
                 $rentalIdQuery->where('created_by_user_id', (int) $filters['staff_user_id']);
             }
 
+            if ($filters['referral_source_id'] !== '' && Schema::hasColumn('rentals', 'referral_source_id')) {
+                $rentalIdQuery->where('referral_source_id', (int) $filters['referral_source_id']);
+            }
+
             if ($filters['referred_by'] !== '' && Schema::hasColumn('rentals', 'referred_by')) {
-                $rentalIdQuery->where('referred_by', 'like', '%' . $filters['referred_by'] . '%');
+                $rentalIdQuery->where(function ($inner) use ($filters) {
+                    $inner->where('referred_by', 'like', '%' . $filters['referred_by'] . '%');
+
+                    if (Schema::hasColumn('rentals', 'referral_contact')) {
+                        $inner->orWhere('referral_contact', 'like', '%' . $filters['referred_by'] . '%');
+                    }
+
+                    if (Schema::hasColumn('rentals', 'referral_city')) {
+                        $inner->orWhere('referral_city', 'like', '%' . $filters['referred_by'] . '%');
+                    }
+                });
             }
 
             $saleIdQuery = $this->saleQuery($filters)->select('id');
@@ -328,7 +407,34 @@ class ReportController extends Controller
         }
 
         if ($filters['product_category'] !== '') {
-            $query->whereHas('product', fn ($productQuery) => $productQuery->where('category', $filters['product_category']));
+            $query->whereHas('product', fn ($productQuery) => $this->applyProductCategoryConstraint($productQuery, $filters['product_category']));
+        }
+
+        if ($filters['referral_source_id'] !== '' && Schema::hasColumn('sales', 'referral_source_id')) {
+            $query->where('referral_source_id', (int) $filters['referral_source_id']);
+        }
+
+        if (($filters['referral_source_type'] ?? '') !== '' && Schema::hasColumn('sales', 'referral_source_type')) {
+            $query->where('referral_source_type', $filters['referral_source_type']);
+        }
+
+        if ($filters['referred_by'] !== '') {
+            $query->where(function ($inner) use ($filters) {
+                $hasAny = false;
+
+                if (Schema::hasColumn('sales', 'referred_by')) {
+                    $inner->where('referred_by', 'like', '%' . $filters['referred_by'] . '%');
+                    $hasAny = true;
+                }
+
+                foreach (['referral_source_name', 'referral_contact', 'referral_city'] as $column) {
+                    if (Schema::hasColumn('sales', $column)) {
+                        $method = $hasAny ? 'orWhere' : 'where';
+                        $inner->{$method}($column, 'like', '%' . $filters['referred_by'] . '%');
+                        $hasAny = true;
+                    }
+                }
+            });
         }
 
         return $this->applyDateRange($query, 'sale_date', $filters);
@@ -464,7 +570,7 @@ class ReportController extends Controller
                 }
 
                 if ($filters['product_category'] !== '') {
-                    $rentalQuery->whereHas('product', fn ($productQuery) => $productQuery->where('category', $filters['product_category']));
+                    $rentalQuery->whereHas('product', fn ($productQuery) => $this->applyProductCategoryConstraint($productQuery, $filters['product_category']));
                 }
 
                 if ($filters['business_partner_id'] !== '') {
@@ -522,7 +628,7 @@ class ReportController extends Controller
         }
 
         if ($filters['product_category'] !== '') {
-            $query->whereHas('product', fn ($productQuery) => $productQuery->where('category', $filters['product_category']));
+            $query->whereHas('product', fn ($productQuery) => $this->applyProductCategoryConstraint($productQuery, $filters['product_category']));
         }
 
         return $this->applyDateRange($query, 'purchase_date', $filters);
@@ -656,6 +762,483 @@ class ReportController extends Controller
                 'month' => $row->month_key,
                 'value' => (float) $row->aggregate_value,
             ]);
+    }
+
+    private function referralAnalytics(array $filters): array
+    {
+        $organizationId = $this->orgId();
+        $hasReferralSources = Schema::hasTable('referral_sources');
+        $rentalHasReferralSource = Schema::hasColumn('rentals', 'referral_source_id');
+        $saleHasReferralSource = Schema::hasColumn('sales', 'referral_source_id');
+        $rentalHasReferredBy = Schema::hasColumn('rentals', 'referred_by');
+        $saleHasReferralSourceName = Schema::hasColumn('sales', 'referral_source_name');
+        $rentalHasReferralContact = Schema::hasColumn('rentals', 'referral_contact');
+        $rentalHasReferralCity = Schema::hasColumn('rentals', 'referral_city');
+        $saleHasReferralContact = Schema::hasColumn('sales', 'referral_contact');
+        $saleHasReferralCity = Schema::hasColumn('sales', 'referral_city');
+        $rentalReferralRevenueExpression = $this->rentalReferralRevenueExpression();
+        $saleReferralRevenueExpression = $this->saleReferralRevenueExpression();
+        $orderType = $filters['referral_order_type'] ?? '';
+        $includeRentals = $orderType !== 'sale';
+        $includeSales = $orderType !== 'rental';
+        $linkedRows = collect();
+        $manualRows = collect();
+
+        if ($includeRentals && $hasReferralSources && $rentalHasReferralSource) {
+            $linkedRentalRows = (clone $this->rentalQuery($filters))
+                ->join('referral_sources', 'referral_sources.id', '=', 'rentals.referral_source_id')
+                ->where('referral_sources.organization_id', $organizationId)
+                ->whereNotNull('rentals.referral_source_id')
+                ->selectRaw('referral_sources.id as referral_source_id')
+                ->selectRaw('referral_sources.source_type as type')
+                ->selectRaw('referral_sources.name as name')
+                ->selectRaw('referral_sources.contact as contact')
+                ->selectRaw('referral_sources.city as city')
+                ->selectRaw('COUNT(*) as rental_orders')
+                ->selectRaw('0 as sale_orders')
+                ->selectRaw("SUM({$rentalReferralRevenueExpression}) as rental_revenue")
+                ->selectRaw('0 as sale_revenue')
+                ->groupBy('referral_sources.id', 'referral_sources.source_type', 'referral_sources.name', 'referral_sources.contact', 'referral_sources.city')
+                ->get();
+
+            $linkedRows = $linkedRows->concat($linkedRentalRows);
+        }
+
+        if ($includeSales && $hasReferralSources && $saleHasReferralSource) {
+            $linkedSaleRows = (clone $this->saleQuery($filters))
+                ->join('referral_sources', 'referral_sources.id', '=', 'sales.referral_source_id')
+                ->where('referral_sources.organization_id', $organizationId)
+                ->whereNotNull('sales.referral_source_id')
+                ->selectRaw('referral_sources.id as referral_source_id')
+                ->selectRaw('referral_sources.source_type as type')
+                ->selectRaw('referral_sources.name as name')
+                ->selectRaw('referral_sources.contact as contact')
+                ->selectRaw('referral_sources.city as city')
+                ->selectRaw('0 as rental_orders')
+                ->selectRaw('COUNT(*) as sale_orders')
+                ->selectRaw('0 as rental_revenue')
+                ->selectRaw("SUM({$saleReferralRevenueExpression}) as sale_revenue")
+                ->groupBy('referral_sources.id', 'referral_sources.source_type', 'referral_sources.name', 'referral_sources.contact', 'referral_sources.city')
+                ->get();
+
+            $linkedRows = $linkedRows->concat($linkedSaleRows);
+        }
+
+        if ($includeRentals && $rentalHasReferredBy) {
+            $manualRentalRows = (clone $this->rentalQuery($filters))
+                ->when($rentalHasReferralSource, fn ($query) => $query->whereNull('rentals.referral_source_id'))
+                ->whereNotNull('rentals.referred_by')
+                ->whereRaw("TRIM(rentals.referred_by) != ''")
+                ->selectRaw('LOWER(TRIM(rentals.referred_by)) as manual_key')
+                ->selectRaw('MIN(TRIM(rentals.referred_by)) as name')
+                ->selectRaw(($rentalHasReferralContact ? 'MIN(NULLIF(rentals.referral_contact, \'\'))' : 'NULL') . ' as contact')
+                ->selectRaw(($rentalHasReferralCity ? 'MIN(NULLIF(rentals.referral_city, \'\'))' : 'NULL') . ' as city')
+                ->selectRaw('COUNT(*) as rental_orders')
+                ->selectRaw('0 as sale_orders')
+                ->selectRaw("SUM({$rentalReferralRevenueExpression}) as rental_revenue")
+                ->selectRaw('0 as sale_revenue')
+                ->groupBy('manual_key')
+                ->get();
+
+            $manualRows = $manualRows->concat($manualRentalRows);
+        }
+
+        if ($includeSales && $saleHasReferralSourceName) {
+            $manualSaleRows = (clone $this->saleQuery($filters))
+                ->when($saleHasReferralSource, fn ($query) => $query->whereNull('sales.referral_source_id'))
+                ->whereNotNull('sales.referral_source_name')
+                ->whereRaw("TRIM(sales.referral_source_name) != ''")
+                ->selectRaw('LOWER(TRIM(sales.referral_source_name)) as manual_key')
+                ->selectRaw('MIN(TRIM(sales.referral_source_name)) as name')
+                ->selectRaw(($saleHasReferralContact ? 'MIN(NULLIF(sales.referral_contact, \'\'))' : 'NULL') . ' as contact')
+                ->selectRaw(($saleHasReferralCity ? 'MIN(NULLIF(sales.referral_city, \'\'))' : 'NULL') . ' as city')
+                ->selectRaw('0 as rental_orders')
+                ->selectRaw('COUNT(*) as sale_orders')
+                ->selectRaw('0 as rental_revenue')
+                ->selectRaw("SUM({$saleReferralRevenueExpression}) as sale_revenue")
+                ->groupBy('manual_key')
+                ->get();
+
+            $manualRows = $manualRows->concat($manualSaleRows);
+        }
+
+        $linkedLeaderboard = $linkedRows
+            ->groupBy(fn ($row) => (int) ($row->referral_source_id ?? 0))
+            ->filter(fn ($group, $sourceId) => (int) $sourceId > 0)
+            ->map(function ($group, $sourceId) {
+                $first = collect($group)->first();
+                $rentalRevenue = (float) collect($group)->sum('rental_revenue');
+                $saleRevenue = (float) collect($group)->sum('sale_revenue');
+
+                return [
+                    'referral_source_id' => (int) $sourceId,
+                    'detail_key' => 'source:' . (int) $sourceId,
+                    'type' => $first->type ?: 'Unspecified',
+                    'name' => trim((string) ($first->name ?? '')),
+                    'contact' => collect($group)->pluck('contact')->filter()->first(),
+                    'city' => collect($group)->pluck('city')->filter()->first(),
+                    'rental_orders' => (int) collect($group)->sum('rental_orders'),
+                    'sale_orders' => (int) collect($group)->sum('sale_orders'),
+                    'orders' => (int) collect($group)->sum(fn ($row) => (int) ($row->rental_orders ?? 0) + (int) ($row->sale_orders ?? 0)),
+                    'rental_revenue' => $rentalRevenue,
+                    'sale_revenue' => $saleRevenue,
+                    'revenue' => $rentalRevenue + $saleRevenue,
+                ];
+            });
+
+        $manualLeaderboard = $manualRows
+            ->groupBy(fn ($row) => trim((string) ($row->manual_key ?? '')))
+            ->filter(fn ($group, $manualKey) => $manualKey !== '')
+            ->map(function ($group) {
+                $first = collect($group)->first();
+                $rentalRevenue = (float) collect($group)->sum('rental_revenue');
+                $saleRevenue = (float) collect($group)->sum('sale_revenue');
+
+                return [
+                    'referral_source_id' => null,
+                    'detail_key' => 'manual:' . trim((string) ($first->manual_key ?? '')),
+                    'type' => 'Manual / Unlinked Referrals',
+                    'name' => trim((string) ($first->name ?? '')),
+                    'contact' => collect($group)->pluck('contact')->filter()->first(),
+                    'city' => collect($group)->pluck('city')->filter()->first(),
+                    'rental_orders' => (int) collect($group)->sum('rental_orders'),
+                    'sale_orders' => (int) collect($group)->sum('sale_orders'),
+                    'orders' => (int) collect($group)->sum(fn ($row) => (int) ($row->rental_orders ?? 0) + (int) ($row->sale_orders ?? 0)),
+                    'rental_revenue' => $rentalRevenue,
+                    'sale_revenue' => $saleRevenue,
+                    'revenue' => $rentalRevenue + $saleRevenue,
+                ];
+            });
+
+        $leaderboard = $linkedLeaderboard
+            ->concat($manualLeaderboard)
+            ->filter(fn ($row) => trim((string) ($row['name'] ?? '')) !== '' && (int) ($row['orders'] ?? 0) > 0)
+            ->sortByDesc('revenue')
+            ->values();
+
+        $orderDetails = $this->referralOrderDetails($filters);
+        $trendRows = $this->referralTrendRows($orderDetails);
+        $detailGroups = $orderDetails->groupBy('detail_key');
+        $leaderboard = $leaderboard
+            ->map(function (array $row) use ($detailGroups) {
+                $details = $detailGroups->get($row['detail_key'] ?? '', collect());
+
+                $row['orders_preview'] = $details->take(10)->values()->all();
+                $row['orders_all_count'] = $details->count();
+
+                return $row;
+            })
+            ->values();
+
+        $typeBreakdown = $hasReferralSources
+            ? DB::table('referral_sources')
+                ->where('organization_id', $organizationId)
+                ->when(($filters['referral_source_type'] ?? '') !== '', fn ($query) => $query->where('source_type', $filters['referral_source_type']))
+                ->selectRaw("COALESCE(NULLIF(source_type, ''), 'other') as source_type")
+                ->selectRaw('COUNT(*) as sources_count')
+                ->groupBy('source_type')
+                ->orderByDesc('sources_count')
+                ->get()
+            : collect();
+
+        $sourceMix = $this->referralSourceMixRows($typeBreakdown, $leaderboard);
+        $topByOrders = $leaderboard->sortByDesc('orders')->first();
+        $referredOrders = (int) $leaderboard->sum('orders');
+
+        return [
+            'migration_ready' => true,
+            'total_referrers' => $leaderboard->where('orders', '>', 0)->count(),
+            'referred_orders' => $referredOrders,
+            'rental_orders' => (int) $leaderboard->sum('rental_orders'),
+            'sale_orders' => (int) $leaderboard->sum('sale_orders'),
+            'referred_revenue' => (float) $leaderboard->sum('revenue'),
+            'top_referrer' => $leaderboard->where('orders', '>', 0)->first(),
+            'top_referrer_by_orders' => $topByOrders,
+            'average_revenue_per_order' => $referredOrders > 0 ? round((float) $leaderboard->sum('revenue') / $referredOrders, 2) : 0.0,
+            'manual_referrers' => $leaderboard->filter(fn ($row) => empty($row['referral_source_id']))->count(),
+            'leaderboard' => $leaderboard->take(12)->all(),
+            'order_details' => $orderDetails->take(10)->values()->all(),
+            'order_details_count' => $orderDetails->count(),
+            'trend' => $trendRows,
+            'source_mix' => $sourceMix,
+            'type_breakdown' => $typeBreakdown,
+            'empty_state' => $leaderboard->where('orders', '>', 0)->isEmpty(),
+        ];
+    }
+
+    private function referralOrderDetails(array $filters): Collection
+    {
+        $orderType = $filters['referral_order_type'] ?? '';
+        $rows = collect();
+
+        if ($orderType !== 'sale' && Schema::hasColumn('rentals', 'referred_by')) {
+            $rentals = (clone $this->rentalQuery($filters))
+                ->where(function ($query) {
+                    if (Schema::hasColumn('rentals', 'referral_source_id')) {
+                        $query->whereNotNull('rentals.referral_source_id');
+                    }
+
+                    $method = Schema::hasColumn('rentals', 'referral_source_id') ? 'orWhere' : 'where';
+                    $query->{$method}(function ($manualQuery) {
+                        $manualQuery
+                            ->whereNotNull('rentals.referred_by')
+                            ->whereRaw("TRIM(rentals.referred_by) != ''");
+                    });
+                })
+                ->with(['customer', 'product', 'rentalItems.product', 'invoice', 'createdBy'])
+                ->latest('start_date')
+                ->get();
+
+            $rows = $rows->concat($rentals->map(fn (Rental $rental) => $this->referralRentalDetailRow($rental)));
+        }
+
+        if ($orderType !== 'rental' && Schema::hasColumn('sales', 'referral_source_name')) {
+            $sales = (clone $this->saleQuery($filters))
+                ->where(function ($query) {
+                    if (Schema::hasColumn('sales', 'referral_source_id')) {
+                        $query->whereNotNull('sales.referral_source_id');
+                    }
+
+                    $method = Schema::hasColumn('sales', 'referral_source_id') ? 'orWhere' : 'where';
+                    $query->{$method}(function ($manualQuery) {
+                        $manualQuery
+                            ->whereNotNull('sales.referral_source_name')
+                            ->whereRaw("TRIM(sales.referral_source_name) != ''");
+                    });
+                })
+                ->with(['customer', 'product', 'saleItems.product', 'invoice', 'createdBy'])
+                ->latest('sale_date')
+                ->get();
+
+            $rows = $rows->concat($sales->map(fn (Sale $sale) => $this->referralSaleDetailRow($sale)));
+        }
+
+        return $rows
+            ->filter(fn ($row) => trim((string) ($row['referral_source_name'] ?? '')) !== '')
+            ->sortByDesc('sort_date')
+            ->values();
+    }
+
+    private function referralRentalDetailRow(Rental $rental): array
+    {
+        $sourceId = (int) ($rental->referral_source_id ?? 0);
+        $manualName = trim((string) ($rental->referred_by ?? ''));
+        $manualKey = str($manualName)->lower()->trim()->toString();
+        $detailKey = $sourceId > 0 ? 'source:' . $sourceId : 'manual:' . $manualKey;
+        $revenue = $this->rentalReferralValue($rental);
+
+        return [
+            'detail_key' => $detailKey,
+            'referral_source_id' => $sourceId ?: null,
+            'referral_source_name' => $manualName,
+            'referral_type' => $rental->referral_source_type ?: ($sourceId > 0 ? 'other' : 'Manual / Unlinked Referrals'),
+            'referral_contact' => $rental->referral_contact,
+            'city' => $rental->referral_city ?: ($rental->customer->city ?? null),
+            'order_type' => 'rental',
+            'order_number' => 'Rental #' . $rental->id,
+            'order_id' => $rental->id,
+            'customer_name' => $rental->customer_name ?: ($rental->customer->name ?? 'N/A'),
+            'products' => $this->rentalProductNames($rental),
+            'order_date' => optional($rental->start_date)->format('Y-m-d'),
+            'sort_date' => optional($rental->start_date)->format('Y-m-d') ?: optional($rental->created_at)->format('Y-m-d'),
+            'month' => optional($rental->start_date)->format('Y-m') ?: optional($rental->created_at)->format('Y-m'),
+            'product_revenue' => $revenue,
+            'deposit_excluded' => (float) ($rental->deposit_amount ?? 0),
+            'transport_excluded' => (float) ($rental->transport_amount ?? 0),
+            'other_excluded' => (float) ($rental->other_amount ?? 0),
+            'eligible_revenue' => $revenue,
+            'status' => $rental->status,
+            'payment_status' => $rental->invoice->payment_status ?? '',
+            'invoice_number' => $rental->invoice->invoice_number ?? '',
+            'created_by' => $rental->createdBy->name ?? '',
+            'url' => route('rentals.show', $rental),
+        ];
+    }
+
+    private function referralSaleDetailRow(Sale $sale): array
+    {
+        $sourceId = (int) ($sale->referral_source_id ?? 0);
+        $manualName = trim((string) ($sale->referral_source_name ?? ''));
+        $manualKey = str($manualName)->lower()->trim()->toString();
+        $detailKey = $sourceId > 0 ? 'source:' . $sourceId : 'manual:' . $manualKey;
+        $revenue = $this->saleReferralValue($sale);
+
+        return [
+            'detail_key' => $detailKey,
+            'referral_source_id' => $sourceId ?: null,
+            'referral_source_name' => $manualName,
+            'referral_type' => $sale->referral_source_type ?: ($sourceId > 0 ? 'other' : 'Manual / Unlinked Referrals'),
+            'referral_contact' => $sale->referral_contact,
+            'city' => $sale->referral_city ?: ($sale->customer->city ?? null),
+            'order_type' => 'sale',
+            'order_number' => 'Sale #' . $sale->id,
+            'order_id' => $sale->id,
+            'customer_name' => $sale->customer->name ?? 'N/A',
+            'products' => $this->saleProductNames($sale),
+            'order_date' => optional($sale->sale_date)->format('Y-m-d'),
+            'sort_date' => optional($sale->sale_date)->format('Y-m-d') ?: optional($sale->created_at)->format('Y-m-d'),
+            'month' => optional($sale->sale_date)->format('Y-m') ?: optional($sale->created_at)->format('Y-m'),
+            'product_revenue' => $revenue,
+            'deposit_excluded' => 0.0,
+            'transport_excluded' => (float) ($sale->shipping_charges ?? 0),
+            'other_excluded' => 0.0,
+            'eligible_revenue' => $revenue,
+            'status' => $sale->payment_status ?: 'pending',
+            'payment_status' => $sale->invoice->payment_status ?? $sale->payment_status ?? '',
+            'invoice_number' => $sale->invoice->invoice_number ?? '',
+            'created_by' => $sale->createdBy->name ?? '',
+            'url' => route('sales.show', $sale),
+        ];
+    }
+
+    private function rentalProductNames(Rental $rental): string
+    {
+        if ($rental->relationLoaded('rentalItems') && $rental->rentalItems->isNotEmpty()) {
+            return $rental->rentalItems
+                ->map(fn ($item) => $item->product->name ?? null)
+                ->filter()
+                ->unique()
+                ->join(', ');
+        }
+
+        return $rental->product->name ?? 'N/A';
+    }
+
+    private function saleProductNames(Sale $sale): string
+    {
+        if ($sale->relationLoaded('saleItems') && $sale->saleItems->isNotEmpty()) {
+            return $sale->saleItems
+                ->map(fn ($item) => $item->product->name ?? null)
+                ->filter()
+                ->unique()
+                ->join(', ');
+        }
+
+        return $sale->product->name ?? 'N/A';
+    }
+
+    private function referralTrendRows(Collection $orderDetails): array
+    {
+        return $orderDetails
+            ->filter(fn ($row) => filled($row['month'] ?? null))
+            ->groupBy('month')
+            ->sortKeys()
+            ->map(function (Collection $rows, string $month) {
+                $rentalRows = $rows->where('order_type', 'rental');
+                $saleRows = $rows->where('order_type', 'sale');
+
+                return [
+                    'month' => $month,
+                    'rental_revenue' => round((float) $rentalRows->sum('eligible_revenue'), 2),
+                    'sales_revenue' => round((float) $saleRows->sum('eligible_revenue'), 2),
+                    'total_revenue' => round((float) $rows->sum('eligible_revenue'), 2),
+                    'rental_orders' => $rentalRows->count(),
+                    'sales_orders' => $saleRows->count(),
+                    'total_orders' => $rows->count(),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function referralSourceMixRows(Collection $configuredSources, Collection $leaderboard): array
+    {
+        $standardTypes = [
+            'doctor' => 'Doctor',
+            'hospital' => 'Hospital',
+            'business_partner' => 'Business Partner',
+            'employee' => 'Employee',
+            'customer_referral' => 'Customer Referral',
+            'digital_marketing' => 'Digital Marketing',
+            'walk_in' => 'Walk-in',
+            'other' => 'Other',
+        ];
+
+        $configuredCounts = $configuredSources
+            ->mapWithKeys(fn ($row) => [$this->normalizeReferralTypeKey($row->source_type ?? 'other') => (int) ($row->sources_count ?? 0)]);
+
+        $revenueByType = $leaderboard
+            ->groupBy(fn ($row) => $this->normalizeReferralTypeKey($row['type'] ?? 'other'))
+            ->map(fn ($rows) => round((float) collect($rows)->sum('revenue'), 2));
+
+        return collect($standardTypes)
+            ->map(fn ($label, $key) => [
+                'source_type' => $key,
+                'label' => $label,
+                'sources_count' => (int) ($configuredCounts[$key] ?? 0),
+                'revenue' => (float) ($revenueByType[$key] ?? 0),
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function normalizeReferralTypeKey(?string $type): string
+    {
+        $key = str((string) ($type ?: 'other'))->lower()->replace(['-', ' '], '_')->trim('_')->toString();
+
+        return match ($key) {
+            'businesspartner', 'business_partners' => 'business_partner',
+            'customer', 'customer_referrals' => 'customer_referral',
+            'digital', 'marketing', 'digital_marketing' => 'digital_marketing',
+            'walkin', 'walk_in' => 'walk_in',
+            'manual_/_unlinked_referrals', 'manual', 'unlinked' => 'other',
+            default => array_key_exists($key, [
+                'doctor' => true,
+                'hospital' => true,
+                'business_partner' => true,
+                'employee' => true,
+                'customer_referral' => true,
+                'digital_marketing' => true,
+                'walk_in' => true,
+                'other' => true,
+            ]) ? $key : 'other',
+        };
+    }
+
+    private function rentalReferralRevenueExpression(): string
+    {
+        if (!Schema::hasTable('rental_items') || !Schema::hasColumn('rental_items', 'line_total')) {
+            return 'COALESCE(rentals.rental_amount, 0)';
+        }
+
+        return "CASE
+            WHEN EXISTS (SELECT 1 FROM rental_items referral_rental_items WHERE referral_rental_items.rental_id = rentals.id)
+            THEN COALESCE((SELECT SUM(COALESCE(referral_rental_item_totals.line_total, 0)) FROM rental_items referral_rental_item_totals WHERE referral_rental_item_totals.rental_id = rentals.id), 0)
+            ELSE COALESCE(rentals.rental_amount, 0)
+        END";
+    }
+
+    private function saleReferralRevenueExpression(): string
+    {
+        $saleAmountExpression = 'COALESCE(sales.sale_amount, 0)';
+
+        if (Schema::hasColumn('sales', 'shipping_charges')) {
+            $saleAmountExpression = "CASE
+                WHEN COALESCE(sales.sale_amount, 0) - COALESCE(sales.shipping_charges, 0) < 0 THEN 0
+                ELSE COALESCE(sales.sale_amount, 0) - COALESCE(sales.shipping_charges, 0)
+            END";
+        }
+
+        if (!Schema::hasTable('sale_items') || !Schema::hasColumn('sale_items', 'line_total')) {
+            return $saleAmountExpression;
+        }
+
+        $itemShippingExpression = Schema::hasColumn('sale_items', 'shipping_charges')
+            ? 'COALESCE(referral_sale_item_totals.shipping_charges, 0)'
+            : '0';
+
+        return "CASE
+            WHEN EXISTS (SELECT 1 FROM sale_items referral_sale_items WHERE referral_sale_items.sale_id = sales.id)
+            THEN COALESCE((
+                SELECT SUM(CASE
+                    WHEN COALESCE(referral_sale_item_totals.line_total, 0) - {$itemShippingExpression} < 0 THEN 0
+                    ELSE COALESCE(referral_sale_item_totals.line_total, 0) - {$itemShippingExpression}
+                END)
+                FROM sale_items referral_sale_item_totals
+                WHERE referral_sale_item_totals.sale_id = sales.id
+            ), 0)
+            ELSE {$saleAmountExpression}
+        END";
     }
 
     private function reportGroups(array $filters): array
@@ -834,7 +1417,7 @@ class ReportController extends Controller
         $productUtilization = Product::query()
             ->where('organization_id', $this->orgId())
             ->when($filters['product_id'] !== '', fn ($query) => $query->where('id', (int) $filters['product_id']))
-            ->when($filters['product_category'] !== '', fn ($query) => $query->where('category', $filters['product_category']))
+            ->when($filters['product_category'] !== '', fn ($query) => $this->applyProductCategoryConstraint($query, $filters['product_category']))
             ->withCount([
                 'assets as total_assets' => fn ($assetBase) => $assetBase
                     ->when($filters['warehouse_id'] !== '', fn ($warehouseQuery) => $warehouseQuery->where('warehouse_id', (int) $filters['warehouse_id'])),
@@ -859,7 +1442,7 @@ class ReportController extends Controller
         $lowStockProducts = Product::query()
             ->where('organization_id', $this->orgId())
             ->when($filters['product_id'] !== '', fn ($query) => $query->where('id', (int) $filters['product_id']))
-            ->when($filters['product_category'] !== '', fn ($query) => $query->where('category', $filters['product_category']))
+            ->when($filters['product_category'] !== '', fn ($query) => $this->applyProductCategoryConstraint($query, $filters['product_category']))
             ->whereRaw("available_quantity <= {$lowStockThresholdExpression}")
             ->orderBy('available_quantity')
             ->limit(10)
@@ -1189,6 +1772,7 @@ class ReportController extends Controller
                     'low_margin_vendors' => $lowMarginVendors,
                 ],
             ],
+            'referral_analytics' => $this->referralAnalytics($filters),
             'profitability_reports' => [
                 'total_revenue' => round((float) $totalRevenue, 2),
                 'vendor_cost' => $vendorCost,
@@ -1224,12 +1808,58 @@ class ReportController extends Controller
             'maintenance_assets' => $this->assetsExportDataset((clone $this->assetQuery($filters))->where('asset_status', 'maintenance')->latest()->get(), 'Maintenance Assets'),
             'warehouse_stock_summary' => $this->warehouseStockExportDataset($filters),
             'product_utilization' => $this->productUtilizationExportDataset($filters),
+            'referral_order_details' => $this->referralOrderDetailsExportDataset($filters),
             'unpaid_invoices' => $this->invoicesExportDataset((clone $this->invoiceQuery($filters))->where('payment_status', 'unpaid')->latest('invoice_date')->get(), 'Unpaid Invoices'),
             'partial_invoices' => $this->invoicesExportDataset((clone $this->invoiceQuery($filters))->where('payment_status', 'partial')->latest('invoice_date')->get(), 'Partial Invoices'),
             'paid_invoices' => $this->invoicesExportDataset((clone $this->invoiceQuery($filters))->where('payment_status', 'paid')->latest('invoice_date')->get(), 'Paid Invoices'),
             'invoices_this_month' => $this->invoicesExportDataset((clone $this->invoiceQuery($filters))->whereYear('invoice_date', Carbon::today()->year)->whereMonth('invoice_date', Carbon::today()->month)->latest('invoice_date')->get(), 'Invoices This Month'),
             default => $this->rentalExportDataset((clone $this->rentalQuery($filters))->latest('start_date')->limit(200)->get(), 'Filtered Rentals'),
         };
+    }
+
+    private function referralOrderDetailsExportDataset(array $filters): array
+    {
+        return [
+            'title' => 'Referral Order Details',
+            'columns' => [
+                'Referral Source Name',
+                'Referral Type',
+                'Referral Contact',
+                'City',
+                'Order Type',
+                'Order Number',
+                'Customer Name',
+                'Products',
+                'Order Date',
+                'Product Revenue',
+                'Deposit Excluded',
+                'Transport Excluded',
+                'Other Charges Excluded',
+                'Eligible Referral Revenue',
+                'Payment Status',
+                'Invoice Number',
+                'Created By / Sales Person',
+            ],
+            'rows' => $this->referralOrderDetails($filters)->map(fn ($row) => [
+                $row['referral_source_name'] ?? '',
+                $row['referral_type'] ?? '',
+                $row['referral_contact'] ?? '',
+                $row['city'] ?? '',
+                $row['order_type'] ?? '',
+                $row['order_number'] ?? '',
+                $row['customer_name'] ?? '',
+                $row['products'] ?? '',
+                $row['order_date'] ?? '',
+                number_format((float) ($row['product_revenue'] ?? 0), 2, '.', ''),
+                number_format((float) ($row['deposit_excluded'] ?? 0), 2, '.', ''),
+                number_format((float) ($row['transport_excluded'] ?? 0), 2, '.', ''),
+                number_format((float) ($row['other_excluded'] ?? 0), 2, '.', ''),
+                number_format((float) ($row['eligible_revenue'] ?? 0), 2, '.', ''),
+                $row['payment_status'] ?? '',
+                $row['invoice_number'] ?? '',
+                $row['created_by'] ?? '',
+            ])->all(),
+        ];
     }
 
     private function rentalExportDataset($rentals, string $title): array

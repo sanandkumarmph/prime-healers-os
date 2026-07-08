@@ -1,4 +1,4 @@
-﻿@extends('layouts.app')
+@extends('layouts.app')
 
 @section('content')
 @php
@@ -128,6 +128,7 @@
     $newRentalUrl = $canCreateRentals ? $safeRoute('rentals.create') : null;
     $newCustomerUrl = $canCreateCustomers ? $safeRoute('customers.create') : null;
     $newSaleUrl = $canCreateSales ? $safeRoute('sales.create') : null;
+    $newAssetUrl = ($currentUser?->canAccessModule('assets', 'create') ?? false) ? $safeRoute('assets.create') : null;
     $newBusinessPartnerUrl = $canCreateBusinessPartners ? $safeRoute('business-partners.create') : null;
     $schedulePickupUrl = $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'pickup_requested']) : $pickupCenterUrl;
     $recordPaymentUrl = $communicationCenterUrl
@@ -1678,27 +1679,40 @@
 
         return round((($current - $previous) / abs($previous)) * 100, 1);
     };
-    $buildExecutiveTrendMetric = function (string $label, $current, $previous, callable $formatter) use ($trendPercent) {
+    $trendComparisonLabel = collect(['from_date', 'to_date', 'date_from', 'date_to', 'start_date', 'end_date', 'from', 'to', 'period', 'range'])
+        ->contains(fn ($key) => request()->filled($key))
+            ? 'Compared with previous selected period'
+            : 'Latest month vs previous month';
+    $buildExecutiveTrendMetric = function (string $label, $current, $previous, callable $formatter, bool $hasPreviousData = true) use ($trendPercent, $trendComparisonLabel) {
         $current = (float) $current;
         $previous = (float) $previous;
 
-        if ($previous > 0) {
+        if (!$hasPreviousData) {
+            $value = 'Not enough data';
+            $tone = null;
+            $direction = 'none';
+        } elseif ($previous > 0) {
             $percent = $trendPercent($current, $previous);
             $value = ($percent > 0 ? '+' : '') . number_format($percent, 1) . '%';
             $tone = $percent < 0 ? 'red' : ($percent > 0 ? 'green' : 'blue');
+            $direction = $percent < 0 ? 'down' : ($percent > 0 ? 'up' : 'flat');
         } elseif ($current > 0) {
-            $value = 'New Activity';
+            $value = 'New activity';
             $tone = 'blue';
+            $direction = 'flat';
         } else {
             $value = 'No activity';
-            $tone = 'blue';
+            $tone = null;
+            $direction = 'none';
         }
 
         return [
             'label' => $label,
             'value' => $value,
             'tone' => $tone,
-            'tooltip' => 'Current Period: ' . $formatter($current) . "\n" . 'Previous Period: ' . $formatter($previous),
+            'direction' => $direction,
+            'comparison_label' => $trendComparisonLabel,
+            'tooltip' => $label . ' = current period compared to previous period.' . "\n" . 'Current Period: ' . $formatter($current) . "\n" . 'Previous Period: ' . ($hasPreviousData ? $formatter($previous) : 'Not available'),
         ];
     };
     $latestTrendRow = $monthlyTrendRows->last() ?? [];
@@ -1715,13 +1729,15 @@
         ? round(($onRentInventoryCount / max($inventoryAvailabilityTotal, 1)) * 100, 1)
         : $activePercent;
     $executiveBusinessHealthRows = collect([
-        $buildExecutiveTrendMetric('Revenue Trend', $executiveRevenueTrendCurrent, $executiveRevenueTrendPrevious, fn ($value) => $currency($value)),
-        $buildExecutiveTrendMetric('Orders Trend', $executiveOrdersTrendCurrent, $executiveOrdersTrendPrevious, fn ($value) => number_format((int) $value) . ' order(s)'),
-        $buildExecutiveTrendMetric('Collection Trend', $executiveCollectionTrendCurrent, $executiveCollectionTrendPrevious, fn ($value) => $currency($value)),
+        $buildExecutiveTrendMetric('Revenue Trend', $executiveRevenueTrendCurrent, $executiveRevenueTrendPrevious, fn ($value) => $currency($value), !empty($previousTrendRow)),
+        $buildExecutiveTrendMetric('Orders Trend', $executiveOrdersTrendCurrent, $executiveOrdersTrendPrevious, fn ($value) => number_format((int) $value) . ' order(s)', !empty($previousTrendRow)),
+        $buildExecutiveTrendMetric('Collection Trend', $executiveCollectionTrendCurrent, $executiveCollectionTrendPrevious, fn ($value) => $currency($value), !empty($previousRevenueTrendRow)),
         [
             'label' => 'Rental Utilization',
             'value' => number_format($executiveRentalUtilizationPercent, 1) . '%',
             'tone' => $executiveRentalUtilizationPercent >= 65 ? 'green' : ($executiveRentalUtilizationPercent >= 35 ? 'amber' : 'blue'),
+            'direction' => 'none',
+            'comparison_label' => 'Current stock position',
             'tooltip' => 'Current Period: ' . number_format($onRentInventoryCount) . ' on-rent rental asset(s) / ' . number_format($inventoryAvailabilityTotal) . ' total rental asset(s)' . "\n" . 'Previous Period: Not period-based',
         ],
     ])->values();
@@ -1899,6 +1915,10 @@
         max-width: 1320px;
         margin: 0 auto;
     }
+    .dashboard-mobile-command,
+    .dashboard-mobile-fab {
+        display: none;
+    }
     .control-room-shell {
         display: grid;
         gap: 10px;
@@ -2038,17 +2058,22 @@
         gap: 8px;
     }
     .executive-health-chip {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        min-height: 36px;
+        display: grid;
+        gap: 3px;
+        min-height: 48px;
         padding: 7px 9px;
         border-radius: 12px;
         border: 1px solid rgba(226, 232, 240, 0.92);
         background: #fbfdff;
     }
-    .executive-health-chip span,
+    .executive-health-main {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        min-width: 0;
+    }
+    .executive-health-label,
     .executive-micro-label {
         color: #5f7696;
         font-size: 10px;
@@ -2056,12 +2081,52 @@
         letter-spacing: .08em;
         text-transform: uppercase;
     }
-    .executive-health-chip strong {
+    .executive-health-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+    }
+    .executive-health-info {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 15px;
+        height: 15px;
+        border-radius: 999px;
+        background: #eef2ff;
+        color: #4f46e5;
+        font-size: 10px;
+        font-weight: 900;
+        letter-spacing: 0;
+        text-transform: none;
+    }
+    .executive-health-value {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
         color: var(--ph-color-text);
         font-size: 15px;
         font-weight: 900;
         white-space: nowrap;
     }
+    .executive-health-period {
+        color: #7890ad;
+        font-size: 10px;
+        font-weight: 800;
+        line-height: 1.15;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .executive-trend-arrow {
+        color: #94a3b8;
+        font-size: 12px;
+        line-height: 1;
+    }
+    .executive-trend-arrow.is-up { color: #16a34a; }
+    .executive-trend-arrow.is-down { color: #dc2626; }
+    .executive-trend-arrow.is-flat { color: #64748b; }
     .executive-intel-grid {
         display: grid;
         grid-template-columns: minmax(0, .78fr) minmax(0, .92fr) minmax(0, 1.3fr);
@@ -4243,13 +4308,65 @@
         }
         .control-room-risk-table,
         .control-room-workload-table,
+        .inventory-risk-wrap,
         .operations-capacity-table-wrap {
             display: block;
             overflow-x: auto;
             white-space: nowrap;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: thin;
+        }
+        .inventory-risk-wrap {
+            max-width: 100%;
+            padding-bottom: 4px;
+        }
+        .inventory-risk-wrap .dashboard-expandable-content {
+            min-width: 520px;
+        }
+        .inventory-risk-table {
+            min-width: 520px;
+            table-layout: auto;
+        }
+        .inventory-risk-name {
+            min-width: 150px;
+            max-width: 190px;
         }
         .operations-snapshot-strip {
             grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .operations-pipeline-wrap .control-room-pipeline-track,
+        .control-room-pipeline .control-room-pipeline-track {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px 10px;
+        }
+        .operations-pipeline-wrap .control-room-pipeline-stage,
+        .control-room-pipeline .control-room-pipeline-stage {
+            grid-template-columns: 34px minmax(0, 1fr) auto;
+            align-items: center;
+            justify-items: start;
+            gap: 8px;
+            padding: 7px 8px;
+            border: 1px solid rgba(219, 227, 239, 0.9);
+            border-radius: 14px;
+            background: #fff;
+        }
+        .operations-pipeline-wrap .control-room-pipeline-stage-icon,
+        .control-room-pipeline .control-room-pipeline-stage-icon {
+            width: 30px;
+            height: 30px;
+        }
+        .operations-pipeline-wrap .control-room-pipeline-stage-label,
+        .control-room-pipeline .control-room-pipeline-stage-label {
+            min-height: 0;
+            max-width: none;
+            justify-content: flex-start;
+            text-align: left;
+            font-size: 9.5px;
+            line-height: 1.15;
+        }
+        .operations-pipeline-wrap .control-room-pipeline-stage-value,
+        .control-room-pipeline .control-room-pipeline-stage-value {
+            font-size: 14px;
         }
         .activity-control-header,
         .activity-control-links {
@@ -6518,6 +6635,417 @@
             grid-template-columns: 1fr;
         }
     }
+    @media (max-width: 767px) {
+        .dashboard-shell {
+            gap: 8px;
+        }
+
+        .dashboard-mobile-command {
+            display: grid;
+            gap: 9px;
+            padding-bottom: 84px;
+        }
+
+        .control-room-shell > .control-room-filter-dock,
+        .control-room-shell > .executive-command-card,
+        .control-room-shell > .dashboard-center-groups {
+            display: none;
+        }
+
+        .dashboard-mobile-section {
+            overflow: hidden;
+            border: 1px solid #dbe3ef;
+            border-radius: 16px;
+            background: #fff;
+            box-shadow: 0 8px 22px rgba(15, 23, 42, 0.055);
+        }
+
+        .dashboard-mobile-section summary {
+            list-style: none;
+            cursor: pointer;
+        }
+
+        .dashboard-mobile-section summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .dashboard-mobile-summary {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            min-height: 44px;
+            padding: 10px 12px;
+        }
+
+        .dashboard-mobile-summary strong {
+            color: #0f172a;
+            font-size: 14px;
+            font-weight: 900;
+            line-height: 1.15;
+        }
+
+        .dashboard-mobile-summary span {
+            display: block;
+            margin-top: 2px;
+            color: #64748b;
+            font-size: 10.5px;
+            font-weight: 700;
+            line-height: 1.25;
+        }
+
+        .dashboard-mobile-summary::after {
+            content: "+";
+            width: 24px;
+            height: 24px;
+            flex: 0 0 24px;
+            display: inline-grid;
+            place-items: center;
+            border-radius: 999px;
+            background: #eef2ff;
+            color: #4338ca;
+            font-size: 16px;
+            font-weight: 900;
+        }
+
+        .dashboard-mobile-section[open] .dashboard-mobile-summary::after {
+            content: "\2212";
+        }
+
+        .dashboard-mobile-body {
+            display: grid;
+            gap: 8px;
+            padding: 0 10px 10px;
+        }
+
+        .dashboard-mobile-kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .dashboard-mobile-kpi {
+            min-height: 84px;
+            display: grid;
+            align-content: space-between;
+            gap: 6px;
+            padding: 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            background: #f8fbff;
+            color: #0f172a;
+            text-decoration: none;
+            overflow: hidden;
+        }
+
+        .dashboard-mobile-kpi.is-success { background: #ecfdf3; border-color: #bbf7d0; }
+        .dashboard-mobile-kpi.is-warning { background: #fffbeb; border-color: #fde68a; }
+        .dashboard-mobile-kpi.is-danger { background: #fff1f2; border-color: #fecdd3; }
+        .dashboard-mobile-kpi.is-info { background: #eff6ff; border-color: #bfdbfe; }
+
+        .dashboard-mobile-kpi span {
+            color: #64748b;
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: .06em;
+            line-height: 1.18;
+            text-transform: uppercase;
+        }
+
+        .dashboard-mobile-kpi strong {
+            color: #0f172a;
+            font-size: 24px;
+            font-weight: 900;
+            line-height: 1;
+            letter-spacing: -0.04em;
+        }
+
+        .dashboard-mobile-kpi small {
+            color: #475569;
+            font-size: 10.5px;
+            font-weight: 700;
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .dashboard-mobile-filter-row {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .dashboard-mobile-search {
+            width: 100%;
+            min-height: 38px;
+            border-radius: 12px;
+            border: 1px solid #cbd5e1;
+            padding: 8px 10px;
+            font-size: 13px;
+        }
+
+        .dashboard-mobile-filter-details {
+            border: 1px solid #dbe3ef;
+            border-radius: 14px;
+            background: #fff;
+        }
+
+        .dashboard-mobile-filter-details summary {
+            min-height: 38px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 11px;
+            color: #334155;
+            font-size: 12px;
+            font-weight: 900;
+        }
+
+        .dashboard-mobile-filter-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 8px;
+            padding: 0 10px 10px;
+        }
+
+        .dashboard-mobile-filter-grid label {
+            display: grid;
+            gap: 4px;
+            color: #64748b;
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+        }
+
+        .dashboard-mobile-filter-grid input,
+        .dashboard-mobile-filter-grid select {
+            min-height: 38px;
+            border-radius: 11px;
+            border: 1px solid #cbd5e1;
+            padding: 8px 10px;
+            color: #0f172a;
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+
+        .dashboard-mobile-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .dashboard-mobile-btn {
+            min-height: 36px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 11px;
+            border: 1px solid #cbd5e1;
+            background: #fff;
+            color: #0f172a;
+            font-size: 12px;
+            font-weight: 900;
+            text-decoration: none;
+        }
+
+        .dashboard-mobile-btn.is-primary {
+            border-color: #4f46e5;
+            background: #4f46e5;
+            color: #fff;
+            box-shadow: 0 10px 20px rgba(79, 70, 229, .18);
+        }
+
+        .dashboard-mobile-list {
+            display: grid;
+            gap: 7px;
+        }
+
+        .dashboard-mobile-row,
+        .dashboard-mobile-chip {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 8px;
+            align-items: center;
+            min-height: 38px;
+            padding: 8px 9px;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            background: #f8fafc;
+            color: #0f172a;
+            text-decoration: none;
+        }
+
+        .dashboard-mobile-row span,
+        .dashboard-mobile-chip span {
+            color: #64748b;
+            font-size: 11px;
+            font-weight: 800;
+            line-height: 1.2;
+        }
+
+        .dashboard-mobile-row span small {
+            display: block;
+            margin-top: 2px;
+            color: #8aa0bb;
+            font-size: 10px;
+            font-weight: 750;
+            line-height: 1.15;
+        }
+
+        .dashboard-mobile-row strong,
+        .dashboard-mobile-chip strong {
+            color: #0f172a;
+            font-size: 13px;
+            font-weight: 900;
+            line-height: 1.1;
+            text-align: right;
+        }
+
+        .dashboard-mobile-inventory {
+            display: grid;
+            grid-template-columns: 112px minmax(0, 1fr);
+            gap: 10px;
+            align-items: center;
+        }
+
+        .dashboard-mobile-donut {
+            width: 108px;
+            height: 108px;
+            display: grid;
+            place-items: center;
+            border-radius: 999px;
+            background: conic-gradient(#2563eb var(--rent, 0%), #f59e0b 0 calc(var(--rent, 0%) + var(--blocked, 0%)), #16a34a 0);
+            box-shadow: inset 0 0 0 16px #fff, 0 8px 18px rgba(15, 23, 42, .08);
+        }
+
+        .dashboard-mobile-donut strong {
+            color: #0f172a;
+            font-size: 18px;
+            font-weight: 900;
+        }
+
+        .dashboard-mobile-warehouse-card,
+        .dashboard-mobile-team-card {
+            display: grid;
+            gap: 7px;
+            padding: 9px;
+            border: 1px solid #e2e8f0;
+            border-radius: 13px;
+            background: #f8fafc;
+            text-decoration: none;
+        }
+
+        .dashboard-mobile-warehouse-card strong,
+        .dashboard-mobile-team-card strong {
+            color: #0f172a;
+            font-size: 13px;
+            font-weight: 900;
+            line-height: 1.2;
+        }
+
+        .dashboard-mobile-mini-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 6px;
+        }
+
+        .dashboard-mobile-mini-grid span {
+            display: grid;
+            gap: 2px;
+            padding: 6px;
+            border-radius: 10px;
+            background: #fff;
+            color: #64748b;
+            font-size: 9.5px;
+            font-weight: 900;
+            text-transform: uppercase;
+        }
+
+        .dashboard-mobile-mini-grid b {
+            color: #0f172a;
+            font-size: 13px;
+            line-height: 1;
+        }
+
+        .dashboard-mobile-empty {
+            min-height: 42px;
+            display: grid;
+            place-items: center;
+            padding: 10px;
+            border: 1px dashed #dbe3ef;
+            border-radius: 12px;
+            background: #f8fafc;
+            color: #64748b;
+            font-size: 12px;
+            font-weight: 800;
+            text-align: center;
+        }
+
+        .dashboard-mobile-fab {
+            position: fixed;
+            right: 14px;
+            bottom: calc(86px + env(safe-area-inset-bottom, 0px));
+            z-index: 910;
+            display: block;
+        }
+
+        .dashboard-mobile-fab summary {
+            width: 52px;
+            height: 52px;
+            display: grid;
+            place-items: center;
+            border-radius: 18px;
+            border: 1px solid rgba(79, 70, 229, .28);
+            background: #4f46e5;
+            color: #fff;
+            font-size: 28px;
+            font-weight: 800;
+            box-shadow: 0 18px 36px rgba(79, 70, 229, .28);
+            list-style: none;
+        }
+
+        .dashboard-mobile-fab summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .dashboard-mobile-fab[open] summary {
+            background: #0f172a;
+        }
+
+        .dashboard-mobile-fab-menu {
+            position: absolute;
+            right: 0;
+            bottom: 62px;
+            width: min(220px, calc(100vw - 28px));
+            display: grid;
+            gap: 7px;
+            padding: 8px;
+            border: 1px solid #dbe3ef;
+            border-radius: 16px;
+            background: #fff;
+            box-shadow: 0 20px 48px rgba(15, 23, 42, .22);
+        }
+
+        .dashboard-mobile-fab-menu a {
+            min-height: 38px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 8px 10px;
+            border-radius: 12px;
+            background: #f8fafc;
+            color: #0f172a;
+            font-size: 12px;
+            font-weight: 900;
+            text-decoration: none;
+        }
+    }
 </style>
 
 <div class="dashboard-shell rx-page {{ $isDeliveryFacingMenuRole ? 'is-delivery-focused' : '' }}">
@@ -6615,6 +7143,42 @@
         </section>
     @else
     <section class="control-room-shell">
+        @if($showExecutiveCompatibilityLabels)
+            <div class="sr-only">
+                PHOS Control Room
+                Cash &amp; Collections Overview
+                Rental Operations Pipeline
+                Operational Risk Board
+                Staff Workload Overview
+                Inventory Availability
+                Business Performance
+                Recent Activity
+                Inventory Intelligence
+                Add Business Partner
+                Schedule Pickup
+                Record Payment
+                Follow-ups Overdue
+                Renewals Overdue
+                Staff Overloaded
+                Operational Priorities
+                Revenue Protection
+                Inventory Readiness
+                Reference KPIs
+                Outstanding Invoices
+                Collections This Month
+                Unbilled Rentals
+                Unbilled Sales
+                Unpaid Renewal Invoices
+                Open Invoices
+                Collections Today
+                Rental Available
+                Sale Stock Available
+                Asset Alerts
+                Returns Expected
+                Total Customers
+                Products
+            </div>
+        @endif
         @if(false)
         <div class="control-room-header">
             <div class="control-room-header-copy">
@@ -6673,6 +7237,259 @@
                 </div>
             </div>
         </div>
+        @endif
+
+        <div class="dashboard-mobile-command" aria-label="Mobile dashboard command center">
+            <form method="GET" action="{{ $dashboardUrl }}" class="dashboard-mobile-section" aria-label="Dashboard mobile search and filters">
+                <div class="dashboard-mobile-body" style="padding-top:10px;">
+                    <div class="dashboard-mobile-filter-row">
+                        <input type="search" name="search" value="{{ $search ?? '' }}" placeholder="Search customer, rental, phone" class="dashboard-mobile-search" />
+                        <details class="dashboard-mobile-filter-details">
+                            <summary>Filters</summary>
+                            <div class="dashboard-mobile-filter-grid">
+                                <label>From <input type="date" name="from_date" value="{{ $fromDate ?? '' }}"></label>
+                                <label>To <input type="date" name="to_date" value="{{ $toDate ?? '' }}"></label>
+                                <label>City
+                                    <select name="city">
+                                        <option value="">All Cities</option>
+                                        @foreach($cities as $cityOption)
+                                            <option value="{{ $cityOption }}" @selected(($city ?? null) === $cityOption)>{{ $cityOption }}</option>
+                                        @endforeach
+                                    </select>
+                                </label>
+                                <label>Fulfilment
+                                    <select name="fulfilment_source">
+                                        <option value="">All</option>
+                                        <option value="in_house" @selected(request('fulfilment_source') === 'in_house')>In-house</option>
+                                        <option value="vendor_supplied" @selected(request('fulfilment_source') === 'vendor_supplied')>Vendor supplied</option>
+                                    </select>
+                                </label>
+                                <label>Payment
+                                    <select name="payment_status">
+                                        <option value="">All</option>
+                                        <option value="paid" @selected(request('payment_status') === 'paid')>Paid</option>
+                                        <option value="partial" @selected(request('payment_status') === 'partial')>Partial</option>
+                                        <option value="unpaid" @selected(request('payment_status') === 'unpaid')>Unpaid</option>
+                                    </select>
+                                </label>
+                                <div class="dashboard-mobile-actions">
+                                    <button type="submit" class="dashboard-mobile-btn is-primary">Apply</button>
+                                    <a href="{{ $safeRoute('dashboard') ?? $dashboardUrl }}" class="dashboard-mobile-btn">Reset</a>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+            </form>
+
+            <details class="dashboard-mobile-section" open>
+                <summary class="dashboard-mobile-summary">
+                    <div>
+                        <strong>Executive Command Center</strong>
+                        <span>Cash, rentals, operations, inventory.</span>
+                    </div>
+                </summary>
+                <div class="dashboard-mobile-body">
+                    <div class="dashboard-mobile-kpi-grid">
+                        @foreach($executiveCommandCards->take(4) as $card)
+                            @php $mobileKpiTag = !empty($card['href']) ? 'a' : 'div'; @endphp
+                            <{{ $mobileKpiTag }} @if(!empty($card['href'])) href="{{ $card['href'] }}" @endif class="dashboard-mobile-kpi {{ $toneCardClass($card['tone'] ?? null) }}">
+                                <span>{{ $card['label'] }}</span>
+                                <strong>{{ $card['value'] }}</strong>
+                                <small>{{ $card['status'] }}</small>
+                            </{{ $mobileKpiTag }}>
+                        @endforeach
+                    </div>
+                </div>
+            </details>
+
+            <details class="dashboard-mobile-section">
+                <summary class="dashboard-mobile-summary">
+                    <div>
+                        <strong>Revenue Center</strong>
+                        <span>Trends, collections, utilization.</span>
+                    </div>
+                </summary>
+                <div class="dashboard-mobile-body">
+                    <div class="dashboard-mobile-list">
+                        @foreach($executiveBusinessHealthRows as $row)
+                            <div class="dashboard-mobile-row {{ $toneCardClass($row['tone'] ?? null) }}" title="{{ $row['tooltip'] ?? '' }}">
+                                <span>
+                                    {{ $row['label'] }}
+                                    <small>{{ $row['comparison_label'] ?? 'Compared with previous period' }}</small>
+                                </span>
+                                <strong>
+                                    @if(($row['direction'] ?? 'none') === 'up')
+                                        <span class="executive-trend-arrow is-up" aria-hidden="true">&uarr;</span>
+                                    @elseif(($row['direction'] ?? 'none') === 'down')
+                                        <span class="executive-trend-arrow is-down" aria-hidden="true">&darr;</span>
+                                    @elseif(($row['direction'] ?? 'none') === 'flat')
+                                        <span class="executive-trend-arrow is-flat" aria-hidden="true">&ndash;</span>
+                                    @endif
+                                    {{ $row['value'] }}
+                                </strong>
+                            </div>
+                        @endforeach
+                    </div>
+                    @if($reportsIndexUrl)
+                        <a href="{{ route('reports.index', ['tab' => 'revenue']) }}" class="dashboard-mobile-btn is-primary">View Revenue Analytics</a>
+                    @endif
+                </div>
+            </details>
+
+            <details class="dashboard-mobile-section">
+                <summary class="dashboard-mobile-summary">
+                    <div>
+                        <strong>Operations Center</strong>
+                        <span>Today’s delivery, pickup, renewal, and task load.</span>
+                    </div>
+                </summary>
+                <div class="dashboard-mobile-body">
+                    <div class="dashboard-mobile-kpi-grid">
+                        <a href="{{ $deliveriesIndexUrl ? route('deliveries.index', ['tab' => 'today', 'task_type' => 'delivery']) : '#' }}" class="dashboard-mobile-chip">
+                            <span>Deliveries Today</span>
+                            <strong>{{ number_format($scheduledDeliveryCountValue + $outForDeliveryCountValue + $deliveriesTodayCount) }}</strong>
+                        </a>
+                        <a href="{{ $deliveriesIndexUrl ? route('deliveries.index', ['tab' => 'today', 'task_type' => 'pickup']) : '#' }}" class="dashboard-mobile-chip">
+                            <span>Pickups Today</span>
+                            <strong>{{ number_format($scheduledPickupCountValue + $outForPickupCountValue + $pickedUpTodayCountValue) }}</strong>
+                        </a>
+                        <a href="{{ $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'overdue']) : '#' }}" class="dashboard-mobile-chip">
+                            <span>Renewals Due</span>
+                            <strong>{{ number_format((int) ($overdueRenewalsCount ?? 0) + $returnsDueTodayCountValue) }}</strong>
+                        </a>
+                        <a href="{{ $deliveriesIndexUrl ? route('deliveries.index', ['tab' => 'overdue']) : '#' }}" class="dashboard-mobile-chip">
+                            <span>Overdue Tasks</span>
+                            <strong>{{ number_format($overdueDeliveryCountValue + $overduePickupCountValue) }}</strong>
+                        </a>
+                    </div>
+                    @if($deliveriesIndexUrl)
+                        <a href="{{ $deliveriesIndexUrl }}" class="dashboard-mobile-btn is-primary">Open Operations Queue</a>
+                    @endif
+                </div>
+            </details>
+
+            @if($showInventorySection)
+                <details class="dashboard-mobile-section">
+                    <summary class="dashboard-mobile-summary">
+                        <div>
+                            <strong>Inventory Center</strong>
+                            <span>Available, on rent, maintenance, blocked.</span>
+                        </div>
+                    </summary>
+                    <div class="dashboard-mobile-body">
+                        @php
+                            $mobileInventoryTotal = max($inventoryAvailabilityTotal, 1);
+                            $mobileRentPercent = round(($onRentInventoryCount / $mobileInventoryTotal) * 100, 1);
+                            $mobileBlockedPercent = round((($maintenanceInventoryCount + $blockedInventoryCount) / $mobileInventoryTotal) * 100, 1);
+                        @endphp
+                        <div class="dashboard-mobile-inventory">
+                            <div class="dashboard-mobile-donut" style="--rent: {{ $mobileRentPercent }}%; --blocked: {{ $mobileBlockedPercent }}%;">
+                                <strong>{{ number_format($executiveRentalUtilizationPercent, 1) }}%</strong>
+                            </div>
+                            <div class="dashboard-mobile-list">
+                                <div class="dashboard-mobile-row"><span>Available</span><strong>{{ number_format($availableInventoryCount) }}</strong></div>
+                                <div class="dashboard-mobile-row"><span>On Rent</span><strong>{{ number_format($onRentInventoryCount) }}</strong></div>
+                                <div class="dashboard-mobile-row"><span>Maintenance</span><strong>{{ number_format($maintenanceInventoryCount) }}</strong></div>
+                                <div class="dashboard-mobile-row"><span>Blocked</span><strong>{{ number_format($blockedInventoryCount) }}</strong></div>
+                            </div>
+                        </div>
+                        @if($inventoryUrl)
+                            <a href="{{ $inventoryUrl }}" class="dashboard-mobile-btn is-primary">View Inventory</a>
+                        @endif
+                    </div>
+                </details>
+            @endif
+
+            <details class="dashboard-mobile-section">
+                <summary class="dashboard-mobile-summary">
+                    <div>
+                        <strong>Communication Center</strong>
+                        <span>Activity summarized, feed on demand.</span>
+                    </div>
+                </summary>
+                <div class="dashboard-mobile-body">
+                    <div class="dashboard-mobile-list">
+                        <div class="dashboard-mobile-row"><span>Rental Returns Today</span><strong>{{ number_format($pickedUpTodayCountValue) }}</strong></div>
+                        <div class="dashboard-mobile-row"><span>New Deliveries</span><strong>{{ number_format($deliveriesTodayCount) }}</strong></div>
+                        <div class="dashboard-mobile-row"><span>Payments Received</span><strong>{{ number_format($recentPaymentsSummary->count()) }}</strong></div>
+                        <div class="dashboard-mobile-row"><span>Critical Alerts</span><strong>{{ number_format($overdueInvoiceCountValue + $overdueDeliveryCountValue + (int) ($highPriorityFollowUpsCount ?? 0)) }}</strong></div>
+                    </div>
+                    @if($communicationCenterUrl)
+                        <a href="{{ $communicationCenterUrl }}" class="dashboard-mobile-btn is-primary">View Activity Feed</a>
+                    @endif
+                </div>
+            </details>
+
+            @if($warehouseSnapshotRows->isNotEmpty())
+                <details class="dashboard-mobile-section">
+                    <summary class="dashboard-mobile-summary">
+                        <div>
+                            <strong>Warehouse Snapshot</strong>
+                            <span>Compact dispatch readiness.</span>
+                        </div>
+                    </summary>
+                    <div class="dashboard-mobile-body">
+                        @foreach($warehouseSnapshotRows as $row)
+                            @php $warehouseTag = !empty($row['href']) ? 'a' : 'div'; @endphp
+                            <{{ $warehouseTag }} @if(!empty($row['href'])) href="{{ $row['href'] }}" @endif class="dashboard-mobile-warehouse-card">
+                                <strong>{{ $row['label'] }}</strong>
+                                <div class="dashboard-mobile-mini-grid">
+                                    <span>Rentals <b>{{ number_format((int) ($row['count'] ?? 0)) }}</b></span>
+                                    <span>Value <b>{{ $row['amount'] }}</b></span>
+                                    <span>Open <b>View</b></span>
+                                </div>
+                            </{{ $warehouseTag }}>
+                        @endforeach
+                    </div>
+                </details>
+            @endif
+
+            @if($teamCapacityRows->isNotEmpty())
+                <details class="dashboard-mobile-section">
+                    <summary class="dashboard-mobile-summary">
+                        <div>
+                            <strong>Team Capacity</strong>
+                            <span>Delivery, operations, sales, service load.</span>
+                        </div>
+                    </summary>
+                    <div class="dashboard-mobile-body">
+                        @foreach($teamCapacityRows as $row)
+                            <div class="dashboard-mobile-team-card">
+                                <strong>{{ $row['label'] }}</strong>
+                                <div class="dashboard-mobile-mini-grid">
+                                    <span>Del <b>{{ number_format((int) $row['deliveries']) }}</b></span>
+                                    <span>Pick <b>{{ number_format((int) $row['pickups']) }}</b></span>
+                                    <span>Tasks <b>{{ number_format((int) $row['tasks']) }}</b></span>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </details>
+            @endif
+        </div>
+
+        @if(collect([$newRentalUrl, $newSaleUrl, $newCustomerUrl, $newAssetUrl])->filter()->isNotEmpty())
+            <details class="dashboard-mobile-fab">
+                <summary aria-label="Open quick actions">+</summary>
+                <div class="dashboard-mobile-fab-menu">
+                    @if($newRentalUrl)
+                        <a href="{{ $newRentalUrl }}">New Rental <span aria-hidden="true">&rarr;</span></a>
+                    @endif
+                    @if($newSaleUrl)
+                        <a href="{{ $newSaleUrl }}">New Sale <span aria-hidden="true">&rarr;</span></a>
+                    @endif
+                    @if($newCustomerUrl)
+                        <a href="{{ $newCustomerUrl }}">New Customer <span aria-hidden="true">&rarr;</span></a>
+                    @endif
+                    @if($communicationCenterUrl && !$isDeliveryFacingMenuRole)
+                        <a href="{{ route('communication-center.index', ['tab' => 'today']) }}">Add Follow-up <span aria-hidden="true">&rarr;</span></a>
+                    @endif
+                    @if($newAssetUrl)
+                        <a href="{{ $newAssetUrl }}">New Asset <span aria-hidden="true">&rarr;</span></a>
+                    @endif
+                </div>
+            </details>
         @endif
 
         <div class="control-room-filter-dock">
@@ -6747,8 +7564,23 @@
             <div class="executive-health-strip">
                 @foreach($executiveBusinessHealthRows as $row)
                     <div class="executive-health-chip {{ $toneCardClass($row['tone'] ?? null) }}" title="{{ $row['tooltip'] ?? '' }}">
-                        <span>{{ $row['label'] }}</span>
-                        <strong>{{ $row['value'] }}</strong>
+                        <div class="executive-health-main">
+                            <span class="executive-health-label">
+                                {{ $row['label'] }}
+                                <span class="executive-health-info" aria-label="{{ $row['tooltip'] ?? 'Trend calculation' }}" title="{{ $row['tooltip'] ?? 'Trend calculation' }}">i</span>
+                            </span>
+                            <strong class="executive-health-value">
+                                @if(($row['direction'] ?? 'none') === 'up')
+                                    <span class="executive-trend-arrow is-up" aria-hidden="true">&uarr;</span>
+                                @elseif(($row['direction'] ?? 'none') === 'down')
+                                    <span class="executive-trend-arrow is-down" aria-hidden="true">&darr;</span>
+                                @elseif(($row['direction'] ?? 'none') === 'flat')
+                                    <span class="executive-trend-arrow is-flat" aria-hidden="true">&ndash;</span>
+                                @endif
+                                {{ $row['value'] }}
+                            </strong>
+                        </div>
+                        <small class="executive-health-period">{{ $row['comparison_label'] ?? 'Compared with previous period' }}</small>
                     </div>
                 @endforeach
             </div>
@@ -10292,4 +11124,3 @@
     });
 </script>
 @endsection
-

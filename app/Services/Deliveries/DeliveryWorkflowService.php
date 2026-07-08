@@ -89,11 +89,23 @@ class DeliveryWorkflowService
 
     public function releaseSpecificRentalAssets(int $organizationId, Rental $rental, array $assetIds, ?string $returnedAt = null): void
     {
-        if (!\App\Models\RentalAsset::hasTable() || empty($assetIds)) {
+        $assetIds = array_values(array_unique(array_map('intval', array_filter($assetIds))));
+
+        if (empty($assetIds)) {
             return;
         }
 
         $timestamp = $returnedAt ?: now();
+
+        Asset::query()
+            ->where('organization_id', $organizationId)
+            ->whereIn('id', $assetIds)
+            ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
+            ->update(['asset_status' => Asset::STATUS_AWAITING_VERIFICATION]);
+
+        if (!\App\Models\RentalAsset::hasTable()) {
+            return;
+        }
 
         $assignments = $rental->activeRentalAssets()
             ->with('asset')
@@ -338,6 +350,27 @@ class DeliveryWorkflowService
     {
         $timestamp = $returnedAt ?: now()->toDateTimeString();
         $processedAssetIds = [];
+
+        if ($rental->isVendorSupplied()) {
+            if (\App\Models\RentalAsset::hasTable()) {
+                $rental->activeRentalAssets()->with('asset')->get()->each(function ($assignment) use ($timestamp) {
+                    $assignment->update([
+                        'returned_at' => $timestamp,
+                        'return_condition' => $assignment->asset?->condition_status,
+                        'notes' => trim(($assignment->notes ? $assignment->notes . ' | ' : '') . 'Vendor-supplied rental returned to vendor; PH verification skipped.'),
+                    ]);
+                });
+            }
+
+            if ($rental->status !== 'returned') {
+                $rental->update([
+                    'status' => 'returned',
+                    'returned_at' => $timestamp,
+                ]);
+            }
+
+            return;
+        }
 
         if (!Rental::hasRentalItemsTable()) {
             $activeAssignments = \App\Models\RentalAsset::hasTable()

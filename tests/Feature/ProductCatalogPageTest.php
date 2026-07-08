@@ -4,6 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\Asset;
 use App\Models\Product;
+use App\Models\ProductBrand;
+use App\Models\ProductCategory;
+use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\TestData;
@@ -29,8 +32,12 @@ class ProductCatalogPageTest extends TestCase
     {
         $this->get(route('products.index'))
             ->assertOk()
-            ->assertSee('Healthcare Equipment Catalog')
             ->assertSee('Product Master')
+            ->assertSee('Manage products, pricing and inventory.')
+            ->assertSee('Export CSV')
+            ->assertSee('Add Product')
+            ->assertSee('Available Assets')
+            ->assertSee('Low Stock')
             ->assertSee('Search product name, brand, model, SKU, or product code')
             ->assertDontSee('Filters Active');
     }
@@ -303,11 +310,12 @@ class ProductCatalogPageTest extends TestCase
 
         $content = $response->getContent();
 
-        $this->assertMatchesRegularExpression('/Product Master<\/div>\s*<div class="product-kpi-value">13<\/div>/', $content);
-        $this->assertMatchesRegularExpression('/Sellable<\/div>\s*<div class="product-kpi-value">4<\/div>/', $content);
-        $this->assertMatchesRegularExpression('/Rentable<\/div>\s*<div class="product-kpi-value">9<\/div>/', $content);
-        $this->assertMatchesRegularExpression('/Sale Units<\/div>\s*<div class="product-kpi-value">8<\/div>/', $content);
-        $this->assertMatchesRegularExpression('/Rental Available<\/div>\s*<div class="product-kpi-value">3<\/div>/', $content);
+        $this->assertProductKpiValue($content, 'Products', 13);
+        $this->assertProductKpiValue($content, 'Available Assets', 11);
+        $this->assertProductKpiValue($content, 'Low Stock', 4);
+        $this->assertProductKpiValue($content, 'Out of Stock', 4);
+        $this->assertProductKpiValue($content, 'Under Repair', 0);
+        $this->assertProductKpiValue($content, 'Top Renting', 0);
     }
 
     public function test_catalog_pagination_and_stats_preserve_filter_context(): void
@@ -336,14 +344,11 @@ class ProductCatalogPageTest extends TestCase
         $response = $this->get(route('products.index', ['category' => 'Respiratory', 'page' => 2]));
 
         $response->assertOk()
-            ->assertSee('Showing 13-13 of 13 results')
+            ->assertSee('Showing 13-13 of 13 products')
             ->assertSee('class="ph-pagination', false)
             ->assertSee('?category=Respiratory&amp;page=1', false);
 
-        $this->assertMatchesRegularExpression(
-            '/Product Master<\/div>\s*<div class="product-kpi-value">15<\/div>/',
-            $response->getContent()
-        );
+        $this->assertProductKpiValue($response->getContent(), 'Products', 15);
     }
 
     public function test_clear_filters_link_resets_search_and_filters(): void
@@ -495,13 +500,17 @@ class ProductCatalogPageTest extends TestCase
             ]);
         }
 
-        $response = $this->get(route('assets.index', ['search' => 'PAGE-ASSET', 'page' => 2]));
+        $response = $this->get(route('assets.index', ['search' => 'PAGE-ASSET', 'per_page' => 10, 'page' => 2]));
 
         $response->assertOk()
-            ->assertSee('Serialized Sale Units')
-            ->assertSee('Showing 13-13 of 13 assets')
+            ->assertSee('Asset Register')
+            ->assertSee('Asset Identity')
+            ->assertSee('Current Custody')
+            ->assertSee('Showing 11-13 of 13 assets')
             ->assertSee('class="ph-pagination', false)
-            ->assertSee('?search=PAGE-ASSET&amp;page=1', false);
+            ->assertSee('search=PAGE-ASSET', false)
+            ->assertSee('per_page=10', false)
+            ->assertSee('page=1', false);
     }
 
     public function test_layout_includes_global_double_delete_confirmation_script(): void
@@ -638,6 +647,119 @@ class ProductCatalogPageTest extends TestCase
         $this->assertSame(18.0, (float) $product->fresh()->igst_rate);
     }
 
+    public function test_authorized_user_can_create_category_from_product_create_page(): void
+    {
+        $response = $this->postJson(route('product-categories.quick-store'), [
+            'name' => '  Respiratory   Devices  ',
+            'description' => 'Reusable oxygen and sleep devices',
+            'is_active' => true,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('category.name', 'Respiratory Devices');
+
+        $this->assertDatabaseHas('product_categories', [
+            'organization_id' => $this->organizationId,
+            'name' => 'Respiratory Devices',
+            'normalized_name' => 'respiratory devices',
+        ]);
+
+        $this->get(route('products.create'))
+            ->assertOk()
+            ->assertSee('Respiratory Devices');
+    }
+
+    public function test_authorized_user_can_create_brand_from_product_create_page(): void
+    {
+        $response = $this->postJson(route('product-brands.quick-store'), [
+            'name' => '  Prime   Devices  ',
+            'manufacturer' => 'Prime Healers',
+            'description' => 'Internal brand',
+            'is_active' => true,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('brand.name', 'Prime Devices');
+
+        $this->assertDatabaseHas('product_brands', [
+            'organization_id' => $this->organizationId,
+            'name' => 'Prime Devices',
+            'normalized_name' => 'prime devices',
+        ]);
+
+        $this->get(route('products.create'))
+            ->assertOk()
+            ->assertSee('Prime Devices');
+    }
+
+    public function test_duplicate_category_is_blocked(): void
+    {
+        ProductCategory::create([
+            'organization_id' => $this->organizationId,
+            'name' => 'Respiratory Care',
+            'is_active' => true,
+        ]);
+
+        $this->postJson(route('product-categories.quick-store'), [
+            'name' => ' respiratory   care ',
+            'is_active' => true,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('name')
+            ->assertJsonPath('errors.name.0', 'This category already exists. Please select it from the list.');
+    }
+
+    public function test_duplicate_brand_is_blocked(): void
+    {
+        ProductBrand::create([
+            'organization_id' => $this->organizationId,
+            'name' => 'Philips',
+            'is_active' => true,
+        ]);
+
+        $this->postJson(route('product-brands.quick-store'), [
+            'name' => ' philips ',
+            'is_active' => true,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('name')
+            ->assertJsonPath('errors.name.0', 'This brand already exists. Please select it from the list.');
+    }
+
+    public function test_unauthorized_user_cannot_create_category_or_brand(): void
+    {
+        $staff = TestData::user(
+            \App\Models\Organization::findOrFail($this->organizationId),
+            ['role' => User::ROLE_SALES]
+        );
+
+        $this->actingAs($staff);
+
+        $this->postJson(route('product-categories.quick-store'), ['name' => 'Hidden Category'])
+            ->assertForbidden();
+
+        $this->postJson(route('product-brands.quick-store'), ['name' => 'Hidden Brand'])
+            ->assertForbidden();
+    }
+
+    private function assertProductKpiValue(string $content, string $label, int $expected): void
+    {
+        preg_match_all(
+            '/<div class="product-kpi-label">\s*(.*?)\s*<\/div>\s*<div class="product-kpi-value">\s*(.*?)\s*<\/div>/s',
+            $content,
+            $matches,
+            PREG_SET_ORDER
+        );
+
+        $kpis = [];
+
+        foreach ($matches as $match) {
+            $kpis[trim(strip_tags($match[1]))] = trim(strip_tags($match[2]));
+        }
+
+        $this->assertArrayHasKey($label, $kpis, "Expected the redesigned Product Master KPI [{$label}] to be present.");
+        $this->assertSame((string) $expected, $kpis[$label], "Expected the redesigned Product Master KPI [{$label}] to show [{$expected}].");
+    }
     private function makeProduct(array $attributes = []): Product
     {
         return Product::create(array_merge([
@@ -659,3 +781,4 @@ class ProductCatalogPageTest extends TestCase
         ], $attributes));
     }
 }
+

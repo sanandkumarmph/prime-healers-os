@@ -91,6 +91,10 @@
 
         openButtons.forEach((button) => button.addEventListener('click', openMoreMenu));
         closeButtons.forEach((button) => button.addEventListener('click', closeMoreMenu));
+        backdrop?.querySelectorAll('a[href], form').forEach((node) => {
+            node.addEventListener('click', closeMoreMenu);
+            node.addEventListener('submit', closeMoreMenu);
+        });
 
         backdrop?.addEventListener('click', function (event) {
             if (event.target === backdrop) {
@@ -100,6 +104,13 @@
 
         document.addEventListener('keydown', function (event) {
             if (event.key === 'Escape') {
+                closeMoreMenu();
+            }
+        });
+        window.addEventListener('pagehide', closeMoreMenu);
+        window.addEventListener('pageshow', closeMoreMenu);
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'hidden') {
                 closeMoreMenu();
             }
         });

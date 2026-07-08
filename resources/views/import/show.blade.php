@@ -1,10 +1,20 @@
-@extends('layouts.app')
+﻿@extends('layouts.app')
+
+@section('breadcrumbs')
+    <span class="import-breadcrumb-suppressed" aria-hidden="true" style="display:none!important"></span>
+@endsection
 
 @section('content')
+@php
+    $setupItem = $setupItem ?? ['status' => 'ready', 'missing' => [], 'download_note' => null, 'status_label' => 'Ready to Import'];
+    $isBlockedImport = ($setupItem['status'] ?? 'ready') === 'blocked';
+    $missingDependencies = collect($setupItem['missing'] ?? []);
+@endphp
+
 <div class="ph-import-page">
     <div class="ph-import-head">
         <div class="ph-import-head-copy">
-            <a href="{{ route('imports.index') }}" class="ph-import-back">&larr; Back to Imports</a>
+            <a href="{{ route('imports.index') }}" class="ph-import-back">&larr; Back to Import Setup</a>
             <h1>{{ $moduleConfig['label'] }}</h1>
             <p>{{ $moduleConfig['description'] }}</p>
         </div>
@@ -17,30 +27,67 @@
         <section class="ph-import-card">
             <div class="ph-import-section-copy">
                 <span class="ph-import-kicker">Step 1</span>
-                <h2>Upload {{ $moduleConfig['label'] }} File</h2>
-                <p>Accepted formats: <strong>CSV</strong> and <strong>XLSX</strong>. The importer reads the first worksheet for Excel files.</p>
+                <h2>{{ $isBlockedImport ? 'Import Not Ready Yet' : 'Upload File' }}</h2>
+                <p>{{ $isBlockedImport ? 'Complete the prerequisites below before uploading this template.' : 'CSV or XLSX. First worksheet is used.' }}</p>
             </div>
 
-            <form method="POST" action="{{ route('imports.upload', $module) }}" enctype="multipart/form-data" class="ph-import-upload-form">
-                @csrf
-                <label for="import_file_{{ $module }}" class="ph-import-dropzone">
-                    <span class="ph-import-dropzone-icon" aria-hidden="true">+</span>
-                    <span class="ph-import-dropzone-title">Choose {{ \Illuminate\Support\Str::singular($moduleConfig['label']) }} file</span>
-                    <span class="ph-import-dropzone-copy">Click to browse your CSV or XLSX file, then continue to column mapping and validation preview.</span>
-                    <input id="import_file_{{ $module }}" type="file" name="import_file" accept=".csv,.txt,.xlsx" required class="ph-import-file-input">
-                </label>
-                <div class="ph-import-file-note" id="import-file-note-{{ $module }}">No file selected yet.</div>
-                @error('import_file')
-                    <div class="ph-import-error">{{ $message }}</div>
-                @enderror
-
-                <div class="ph-import-helper-banner">
-                    <strong>Upload only</strong>
-                    <span>The file will be stored for mapping and preview first. No data is inserted at this step.</span>
+            <div class="ph-import-prereq-card {{ $isBlockedImport ? 'is-blocked' : 'is-ready' }}">
+                <div>
+                    <span class="ph-import-prereq-status">{{ $isBlockedImport ? 'Blocked' : 'Ready' }}</span>
+                    <strong>{{ $isBlockedImport ? 'This import is not ready yet.' : 'Prerequisites complete.' }}</strong>
+                    <p>{{ $isBlockedImport ? ($setupItem['download_note'] ?? 'You can download the template now, but import requires completing prerequisites first.') : 'You can upload and validate this import now.' }}</p>
                 </div>
+                @if($missingDependencies->isNotEmpty())
+                    <ul>
+                        @foreach($missingDependencies as $dependency)
+                            <li>
+                                @if(!empty($dependency['href']))
+                                    <a href="{{ $dependency['href'] }}">{{ $dependency['label'] }}</a>
+                                @else
+                                    <span>{{ $dependency['label'] }}</span>
+                                @endif
+                            </li>
+                        @endforeach
+                    </ul>
+                @endif
+            </div>
 
-                <button type="submit" class="ph-import-btn-primary">Upload &amp; Continue</button>
-            </form>
+            @if($isBlockedImport)
+                <div class="ph-import-blocked-actions">
+                    <a href="{{ route('imports.index') }}" class="ph-import-btn-secondary">Open Import Setup</a>
+                    <a href="{{ route('imports.template', $module) }}" class="ph-import-btn-primary">Download Template</a>
+                </div>
+            @else
+                <form method="POST" action="{{ route('imports.upload', $module) }}" enctype="multipart/form-data" class="ph-import-upload-form">
+                    @csrf
+                    <label for="import_file_{{ $module }}" class="ph-import-dropzone">
+                        <span class="ph-import-dropzone-icon" aria-hidden="true">UP</span>
+                        <span class="ph-import-dropzone-title">Drag CSV/XLSX here</span>
+                        <span class="ph-import-dropzone-copy">or <span class="ph-import-browse-text">Browse Files</span></span>
+                        <span class="ph-import-dropzone-format">CSV | XLSX | Max 10MB</span>
+                        <input id="import_file_{{ $module }}" type="file" name="import_file" accept=".csv,.txt,.xlsx" required class="ph-import-file-input">
+                    </label>
+                    <div class="ph-import-file-note ph-import-selected-file" id="import-file-note-{{ $module }}" hidden>
+                        <span class="ph-import-selected-icon" aria-hidden="true">OK</span>
+                        <span class="ph-import-selected-copy">
+                            <strong data-file-name>No file selected</strong>
+                            <small data-file-meta>Ready for upload</small>
+                        </span>
+                        <button type="button" class="ph-import-file-action" data-file-replace>Replace</button>
+                        <button type="button" class="ph-import-file-action is-danger" data-file-remove>Remove</button>
+                    </div>
+                    @error('import_file')
+                        <div class="ph-import-error">{{ $message }}</div>
+                    @enderror
+
+                    <div class="ph-import-helper-banner">
+                        <strong>Upload only</strong>
+                        <span>The file will be stored for mapping and preview first. No data is inserted at this step.</span>
+                    </div>
+
+                    <button type="submit" class="ph-import-btn-primary">Upload &amp; Continue</button>
+                </form>
+            @endif
         </section>
 
         <aside class="ph-import-side-panel">
@@ -83,21 +130,9 @@
     </div>
 </div>
 
+<style>
+.ph-import-prereq-card{display:grid;gap:10px;margin:0 0 14px;padding:12px 14px;border:1px solid #dbe4f0;border-radius:16px;background:#f8fafc}.ph-import-prereq-card.is-ready{border-color:#bbf7d0;background:#f0fdf4}.ph-import-prereq-card.is-blocked{border-color:#fed7aa;background:#fff7ed}.ph-import-prereq-card strong{display:block;margin-top:4px;font-size:16px;color:#0f172a}.ph-import-prereq-card p{margin:4px 0 0;color:#64748b;font-size:13px}.ph-import-prereq-status{display:inline-flex;width:max-content;height:24px;align-items:center;border-radius:999px;background:#fff;color:#475569;padding:0 9px;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.05em}.ph-import-prereq-card ul{margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px;list-style:none}.ph-import-prereq-card li a,.ph-import-prereq-card li span{display:inline-flex;align-items:center;height:30px;border-radius:999px;background:#fff;border:1px solid #e2e8f0;padding:0 10px;color:#4338ca;font-size:12px;font-weight:900;text-decoration:none}.ph-import-blocked-actions{display:flex;gap:10px;flex-wrap:wrap}.ph-import-blocked-actions .ph-import-btn-primary,.ph-import-blocked-actions .ph-import-btn-secondary{min-height:40px}@media(max-width:760px){.ph-import-prereq-card{padding:10px}.ph-import-blocked-actions{display:grid}.ph-import-blocked-actions .ph-import-btn-primary,.ph-import-blocked-actions .ph-import-btn-secondary{width:100%}}
+</style>
 @include('imports.partials.shared-styles')
 
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    const input = document.getElementById('import_file_{{ $module }}');
-    const fileName = document.getElementById('import-file-note-{{ $module }}');
-
-    if (!input || !fileName) {
-        return;
-    }
-
-    input.addEventListener('change', function () {
-        const selected = input.files && input.files[0] ? input.files[0].name : 'No file selected yet.';
-        fileName.textContent = selected;
-    });
-});
-</script>
 @endsection

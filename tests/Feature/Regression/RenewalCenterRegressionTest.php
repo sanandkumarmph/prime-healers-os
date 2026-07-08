@@ -8,7 +8,12 @@ use App\Models\Delivery;
 use App\Models\PartnerClient;
 use App\Models\Product;
 use App\Models\Rental;
+use App\Models\RentalAsset;
 use App\Models\RentalReminderLog;
+use App\Models\Asset;
+use App\Models\User;
+use App\Models\Vendor;
+use App\Models\Warehouse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\TestData;
 use Tests\TestCase;
@@ -166,18 +171,26 @@ class RenewalCenterRegressionTest extends TestCase
         $this->assertSame(now()->addDays(7)->toDateString(), $rental->fresh()->end_date?->toDateString());
     }
 
-    public function test_schedule_pickup_creates_pickup_task_for_rental(): void
+    public function test_internal_pickup_creates_assigned_pickup_task_for_allowed_user(): void
     {
         $rental = $this->makeDirectCustomerRental([
             'end_date' => now()->toDateString(),
         ]);
+        $deliveryUser = User::factory()->create([
+            'organization_id' => $this->organizationId,
+            'role' => User::ROLE_DELIVERY_EXECUTIVE,
+            'is_internal' => true,
+            'is_active' => true,
+            'email_verified_at' => now(),
+        ]);
 
         $this->from(route('renewal-center.index'))
             ->post(route('renewal-center.schedule-pickup', $rental), [
+                'pickup_method' => 'internal_pickup',
                 'pickup_date' => now()->addDay()->toDateString(),
                 'pickup_time_slot' => '12:00-15:00',
                 'pickup_notes' => 'Collect from front desk',
-                'assignment_target' => '',
+                'assigned_user_id' => $deliveryUser->id,
             ])
             ->assertRedirect(route('renewal-center.index'));
 
@@ -186,7 +199,261 @@ class RenewalCenterRegressionTest extends TestCase
             'rental_id' => $rental->id,
             'type' => 'pickup',
             'status' => 'pending',
+            'pickup_status' => 'assigned',
+            'assignment_type' => 'delivery_team',
+            'assigned_user_id' => $deliveryUser->id,
         ]);
+    }
+
+    public function test_internal_pickup_rejects_admin_sales_and_finance_users(): void
+    {
+        $rental = $this->makeDirectCustomerRental([
+            'end_date' => now()->toDateString(),
+        ]);
+        $admin = User::factory()->create([
+            'organization_id' => $this->organizationId,
+            'role' => User::ROLE_SUPER_ADMIN,
+            'is_internal' => true,
+            'is_active' => true,
+            'email_verified_at' => now(),
+        ]);
+
+        $this->from(route('renewal-center.index'))
+            ->post(route('renewal-center.schedule-pickup', $rental), [
+                'pickup_method' => 'internal_pickup',
+                'pickup_date' => now()->addDay()->toDateString(),
+                'assigned_user_id' => $admin->id,
+            ])
+            ->assertSessionHasErrors('assigned_user_id');
+
+        $this->assertDatabaseMissing('deliveries', [
+            'rental_id' => $rental->id,
+            'type' => 'pickup',
+            'assigned_user_id' => $admin->id,
+        ]);
+    }
+
+    public function test_vendor_pickup_creates_vendor_pickup_task(): void
+    {
+        $rental = $this->makeDirectCustomerRental([
+            'end_date' => now()->toDateString(),
+            'fulfilment_source' => 'vendor_supplied',
+        ]);
+        $vendor = Vendor::create([
+            'organization_id' => $this->organizationId,
+            'name' => 'Pickup Vendor',
+            'contact_person' => 'Vendor Desk',
+            'phone' => '9876500000',
+            'city' => 'Bengaluru',
+            'state' => 'Karnataka',
+            'is_active' => true,
+        ]);
+
+        $this->from(route('renewal-center.index'))
+            ->post(route('renewal-center.schedule-pickup', $rental), [
+                'pickup_method' => 'vendor_pickup',
+                'pickup_date' => now()->addDay()->toDateString(),
+                'vendor_id' => $vendor->id,
+            ])
+            ->assertRedirect(route('renewal-center.index'));
+
+        $this->assertDatabaseHas('deliveries', [
+            'rental_id' => $rental->id,
+            'type' => 'pickup',
+            'assignment_type' => 'vendor',
+            'third_party_name' => 'Pickup Vendor',
+        ]);
+    }
+
+    public function test_vendor_pickup_is_rejected_for_in_house_rentals(): void
+    {
+        $rental = $this->makeDirectCustomerRental([
+            'end_date' => now()->toDateString(),
+            'fulfilment_source' => 'in_house',
+        ]);
+        $vendor = Vendor::create([
+            'organization_id' => $this->organizationId,
+            'name' => 'Hidden Pickup Vendor',
+            'is_active' => true,
+        ]);
+
+        $this->from(route('rentals.show', $rental))
+            ->post(route('renewal-center.schedule-pickup', $rental), [
+                'pickup_method' => 'vendor_pickup',
+                'pickup_date' => now()->addDay()->toDateString(),
+                'vendor_id' => $vendor->id,
+            ])
+            ->assertRedirect(route('rentals.show', $rental))
+            ->assertSessionHasErrors('pickup_method');
+
+        $this->assertDatabaseMissing('deliveries', [
+            'rental_id' => $rental->id,
+            'type' => 'pickup',
+            'assignment_type' => 'vendor',
+        ]);
+    }
+
+    public function test_pickup_modal_hides_vendor_pickup_for_in_house_rentals(): void
+    {
+        $rental = $this->makeDirectCustomerRental([
+            'fulfilment_source' => 'in_house',
+        ]);
+
+        $this->get(route('rentals.show', $rental))
+            ->assertOk()
+            ->assertSeeText('Internal Pickup')
+            ->assertSeeText('Third Party Pickup')
+            ->assertSeeText('Customer Self Drop')
+            ->assertDontSeeText('Vendor Pickup')
+            ->assertSee('data-default-pickup-method="internal_pickup"', false)
+            ->assertSee('max-height:min(90vh, calc(100dvh - 120px))', false);
+    }
+
+    public function test_pickup_modal_shows_vendor_pickup_for_vendor_supplied_rentals(): void
+    {
+        $rental = $this->makeDirectCustomerRental([
+            'fulfilment_source' => 'vendor_supplied',
+        ]);
+
+        $this->get(route('rentals.show', $rental))
+            ->assertOk()
+            ->assertSeeText('Vendor Pickup')
+            ->assertSeeText('Third Party Pickup')
+            ->assertSeeText('Customer Self Drop')
+            ->assertDontSeeText('Internal Pickup')
+            ->assertSee('data-default-pickup-method="vendor_pickup"', false);
+    }
+
+    public function test_third_party_pickup_creates_third_party_task_with_provider_details(): void
+    {
+        $rental = $this->makeDirectCustomerRental([
+            'end_date' => now()->toDateString(),
+        ]);
+
+        $this->from(route('renewal-center.index'))
+            ->post(route('renewal-center.schedule-pickup', $rental), [
+                'pickup_method' => 'third_party_pickup',
+                'pickup_date' => now()->addDay()->toDateString(),
+                'third_party_provider' => 'Fast Courier',
+                'third_party_tracking_number' => 'TRK-123',
+                'third_party_contact_person' => 'Raj',
+                'third_party_phone' => '9999999999',
+                'third_party_pickup_cost' => 250,
+            ])
+            ->assertRedirect(route('renewal-center.index'));
+
+        $this->assertDatabaseHas('deliveries', [
+            'rental_id' => $rental->id,
+            'type' => 'pickup',
+            'assignment_type' => 'third_party',
+            'third_party_name' => 'Fast Courier',
+            'third_party_contact' => 'Raj',
+            'third_party_phone' => '9999999999',
+        ]);
+
+        $this->assertStringContainsString('Tracking: TRK-123', Delivery::query()->where('rental_id', $rental->id)->where('type', 'pickup')->latest('id')->value('notes'));
+    }
+
+    public function test_customer_self_drop_skips_pickup_task_and_sends_asset_to_verification(): void
+    {
+        $rental = $this->makeDirectCustomerRental([
+            'end_date' => now()->toDateString(),
+        ]);
+        $asset = $this->attachRentedAssetToRental($rental);
+
+        $this->from(route('renewal-center.index'))
+            ->post(route('renewal-center.schedule-pickup', $rental), [
+                'pickup_method' => 'customer_self_drop',
+                'pickup_date' => now()->toDateString(),
+                'pickup_notes' => 'Customer dropped at front desk.',
+            ])
+            ->assertRedirect(route('assets.verify-return', $asset));
+
+        $this->assertDatabaseMissing('deliveries', [
+            'rental_id' => $rental->id,
+            'type' => 'pickup',
+            'status' => 'pending',
+        ]);
+
+        $this->assertSame(Asset::STATUS_AWAITING_VERIFICATION, $asset->fresh()->asset_status);
+        $this->assertNotNull(RentalAsset::query()->where('rental_id', $rental->id)->where('asset_id', $asset->id)->first()?->returned_at);
+    }
+
+    public function test_customer_self_drop_for_vendor_supplied_rental_skips_ph_verification(): void
+    {
+        $rental = $this->makeDirectCustomerRental([
+            'end_date' => now()->toDateString(),
+            'fulfilment_source' => 'vendor_supplied',
+        ]);
+        $asset = $this->attachRentedAssetToRental($rental);
+
+        $this->from(route('rentals.show', $rental))
+            ->post(route('renewal-center.schedule-pickup', $rental), [
+                'pickup_method' => 'customer_self_drop',
+                'pickup_date' => now()->toDateString(),
+                'pickup_notes' => 'Customer dropped directly at vendor.',
+            ])
+            ->assertRedirect(route('rentals.show', $rental));
+
+        $this->assertSame('returned', $rental->fresh()->status);
+        $this->assertSame(Asset::STATUS_RENTED, $asset->fresh()->asset_status);
+        $this->assertDatabaseMissing('stock_movements', [
+            'asset_id' => $asset->id,
+            'movement_type' => 'pickup_return',
+        ]);
+        $this->assertDatabaseMissing('assets', [
+            'id' => $asset->id,
+            'asset_status' => Asset::STATUS_AWAITING_VERIFICATION,
+        ]);
+    }
+
+    public function test_completed_vendor_pickup_skips_ph_verification(): void
+    {
+        $rental = $this->makeDirectCustomerRental([
+            'end_date' => now()->toDateString(),
+            'fulfilment_source' => 'vendor_supplied',
+        ]);
+        $asset = $this->attachRentedAssetToRental($rental);
+        $vendor = Vendor::create([
+            'organization_id' => $this->organizationId,
+            'name' => 'Vendor Pickup Team',
+            'is_active' => true,
+        ]);
+
+        $this->post(route('renewal-center.schedule-pickup', $rental), [
+            'pickup_method' => 'vendor_pickup',
+            'pickup_date' => now()->toDateString(),
+            'vendor_id' => $vendor->id,
+        ])->assertRedirect();
+
+        $pickup = Delivery::query()->where('rental_id', $rental->id)->where('type', 'pickup')->firstOrFail();
+
+        app(\App\Services\Deliveries\DeliveryWorkflowService::class)
+            ->finalizePickupCompletionForRental($this->organizationId, $rental->fresh(), now()->toDateTimeString(), $pickup->id);
+
+        $this->assertSame('returned', $rental->fresh()->status);
+        $this->assertSame(Asset::STATUS_RENTED, $asset->fresh()->asset_status);
+        $this->assertDatabaseMissing('stock_movements', [
+            'asset_id' => $asset->id,
+            'movement_type' => 'pickup_return',
+        ]);
+    }
+
+    public function test_third_party_pickup_completion_routes_by_fulfilment_source(): void
+    {
+        $inHouseRental = $this->makeDirectCustomerRental(['fulfilment_source' => 'in_house']);
+        $inHouseAsset = $this->attachRentedAssetToRental($inHouseRental);
+        $vendorRental = $this->makeDirectCustomerRental(['fulfilment_source' => 'vendor_supplied']);
+        $vendorAsset = $this->attachRentedAssetToRental($vendorRental);
+
+        app(\App\Services\Deliveries\DeliveryWorkflowService::class)
+            ->finalizePickupCompletionForRental($this->organizationId, $inHouseRental->fresh(), now()->toDateTimeString(), null);
+        app(\App\Services\Deliveries\DeliveryWorkflowService::class)
+            ->finalizePickupCompletionForRental($this->organizationId, $vendorRental->fresh(), now()->toDateTimeString(), null);
+
+        $this->assertSame(Asset::STATUS_AWAITING_VERIFICATION, $inHouseAsset->fresh()->asset_status);
+        $this->assertSame(Asset::STATUS_RENTED, $vendorAsset->fresh()->asset_status);
+        $this->assertSame('returned', $vendorRental->fresh()->status);
     }
 
     public function test_dashboard_shows_renewal_center_summary_cards(): void
@@ -197,10 +464,8 @@ class RenewalCenterRegressionTest extends TestCase
         $this->get(route('dashboard'))
             ->assertOk()
             ->assertSeeText('Renewal Center')
-            ->assertSeeText('Renewals Due Today')
-            ->assertSeeText('Renewals Due This Week')
-            ->assertSeeText('Overdue Renewals')
-            ->assertSeeText('Pickup Requests');
+            ->assertSeeText('Renewals Due')
+            ->assertSeeText('Pickups Pending');
     }
 
     private function makeDirectCustomerRental(array $overrides = []): Rental
@@ -258,6 +523,40 @@ class RenewalCenterRegressionTest extends TestCase
             'available_quantity' => 15,
             'total_quantity' => 15,
         ]);
+    }
+
+    private function attachRentedAssetToRental(Rental $rental): Asset
+    {
+        $warehouse = Warehouse::create([
+            'organization_id' => $this->organizationId,
+            'name' => 'Return Warehouse ' . uniqid(),
+            'code' => 'RW-' . random_int(100, 999),
+            'city' => 'Bengaluru',
+            'state' => 'Karnataka',
+            'pincode' => '560001',
+            'is_active' => true,
+        ]);
+
+        $asset = Asset::create([
+            'organization_id' => $this->organizationId,
+            'product_id' => $rental->product_id,
+            'warehouse_id' => $warehouse->id,
+            'asset_name' => 'Rental Asset ' . uniqid(),
+            'serial_number' => 'RET-' . uniqid(),
+            'barcode_value' => 'RET-' . uniqid(),
+            'asset_stage' => Asset::STAGE_RENTAL_STOCK,
+            'asset_status' => Asset::STATUS_RENTED,
+            'condition_status' => Asset::CONDITION_STATUS_GOOD,
+        ]);
+
+        RentalAsset::create([
+            'organization_id' => $this->organizationId,
+            'rental_id' => $rental->id,
+            'asset_id' => $asset->id,
+            'assigned_at' => now()->subDays(2),
+        ]);
+
+        return $asset;
     }
 
     private function makeBusinessPartnerContext(): array

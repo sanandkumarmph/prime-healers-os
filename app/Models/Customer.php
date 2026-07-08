@@ -20,6 +20,7 @@ class Customer extends Model
     protected static ?bool $hasMapLocationUrlColumn = null;
     protected static ?bool $hasIdProofFilePathColumn = null;
     protected static ?bool $hasIdProofOriginalNameColumn = null;
+    protected static ?array $tableColumns = null;
 
     protected $fillable = [
         'name',
@@ -59,47 +60,47 @@ class Customer extends Model
 
     public static function hasWhatsappNumberColumn(): bool
     {
-        return static::$hasWhatsappNumberColumn ??= Schema::hasColumn('customers', 'whatsapp_number');
+        return static::$hasWhatsappNumberColumn ??= static::hasCachedColumn('whatsapp_number');
     }
 
     public static function hasStatusColumn(): bool
     {
-        return static::$hasStatusColumn ??= Schema::hasColumn('customers', 'status');
+        return static::$hasStatusColumn ??= static::hasCachedColumn('status');
     }
 
     public static function hasCustomerCodeColumn(): bool
     {
-        return static::$hasCustomerCodeColumn ??= Schema::hasColumn('customers', 'customer_code');
+        return static::$hasCustomerCodeColumn ??= static::hasCachedColumn('customer_code');
     }
 
     public static function hasSalutationColumn(): bool
     {
-        return static::$hasSalutationColumn ??= Schema::hasColumn('customers', 'salutation');
+        return static::$hasSalutationColumn ??= static::hasCachedColumn('salutation');
     }
 
     public static function hasContactNameColumn(): bool
     {
-        return static::$hasContactNameColumn ??= Schema::hasColumn('customers', 'contact_name');
+        return static::$hasContactNameColumn ??= static::hasCachedColumn('contact_name');
     }
 
     public static function hasMapLocationTextColumn(): bool
     {
-        return static::$hasMapLocationTextColumn ??= Schema::hasColumn('customers', 'map_location_text');
+        return static::$hasMapLocationTextColumn ??= static::hasCachedColumn('map_location_text');
     }
 
     public static function hasMapLocationUrlColumn(): bool
     {
-        return static::$hasMapLocationUrlColumn ??= Schema::hasColumn('customers', 'map_location_url');
+        return static::$hasMapLocationUrlColumn ??= static::hasCachedColumn('map_location_url');
     }
 
     public static function hasIdProofFilePathColumn(): bool
     {
-        return static::$hasIdProofFilePathColumn ??= Schema::hasColumn('customers', 'id_proof_file_path');
+        return static::$hasIdProofFilePathColumn ??= static::hasCachedColumn('id_proof_file_path');
     }
 
     public static function hasIdProofOriginalNameColumn(): bool
     {
-        return static::$hasIdProofOriginalNameColumn ??= Schema::hasColumn('customers', 'id_proof_original_name');
+        return static::$hasIdProofOriginalNameColumn ??= static::hasCachedColumn('id_proof_original_name');
     }
 
     public static function relationSelectColumns(array $extra = []): array
@@ -108,11 +109,11 @@ class Customer extends Model
 
         $optionalColumns = [
             'whatsapp_number' => self::hasWhatsappNumberColumn(),
-            'email' => Schema::hasColumn('customers', 'email'),
-            'address' => Schema::hasColumn('customers', 'address'),
-            'city' => Schema::hasColumn('customers', 'city'),
-            'state' => Schema::hasColumn('customers', 'state'),
-            'pincode' => Schema::hasColumn('customers', 'pincode'),
+            'email' => self::hasCachedColumn('email'),
+            'address' => self::hasCachedColumn('address'),
+            'city' => self::hasCachedColumn('city'),
+            'state' => self::hasCachedColumn('state'),
+            'pincode' => self::hasCachedColumn('pincode'),
             'map_location_text' => self::hasMapLocationTextColumn(),
             'map_location_url' => self::hasMapLocationUrlColumn(),
         ];
@@ -124,12 +125,22 @@ class Customer extends Model
         }
 
         foreach ($extra as $column) {
-            if ($column !== '' && !in_array($column, $columns, true) && Schema::hasColumn('customers', $column)) {
+            if ($column !== '' && !in_array($column, $columns, true) && self::hasCachedColumn($column)) {
                 $columns[] = $column;
             }
         }
 
         return $columns;
+    }
+
+    protected static function hasCachedColumn(string $column): bool
+    {
+        return in_array($column, static::tableColumns(), true);
+    }
+
+    protected static function tableColumns(): array
+    {
+        return static::$tableColumns ??= Schema::getColumnListing('customers');
     }
 
     public static function indianStates(): array

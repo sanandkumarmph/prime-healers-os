@@ -4,7 +4,7 @@
 <div class="import-shell">
     <div class="import-head">
         <div>
-            <a href="{{ route('imports.module', $module) }}" class="import-back">← Back to Upload</a>
+            <a href="{{ route('imports.module', $module) }}" class="import-back">Back to Upload</a>
             <h1>Map Columns</h1>
             <p>Map each Prime Healers OS field to a column in <strong>{{ $upload['original_name'] ?? 'uploaded file' }}</strong>.</p>
         </div>
@@ -37,6 +37,19 @@
                                 <option value="{{ $header }}" @selected(old('mapping.' . $fieldKey, $suggestedMapping[$fieldKey] ?? null) === $header)>{{ $header }}</option>
                             @endforeach
                         </select>
+                        @if(!empty($field['sample']) || !empty($field['accepted_values']) || !empty($field['description']))
+                            <div class="import-field-guidance">
+                                @if(!empty($field['sample']))
+                                    <span><b>Sample:</b> {{ $field['sample'] }}</span>
+                                @endif
+                                @if(!empty($field['accepted_values']))
+                                    <span><b>Accepted:</b> {{ $field['accepted_values'] }}</span>
+                                @endif
+                                @if(!empty($field['description']))
+                                    <small>{{ $field['description'] }}</small>
+                                @endif
+                            </div>
+                        @endif
                     </label>
                 @endforeach
             </div>
@@ -59,6 +72,7 @@
     .import-map-row span{display:flex;justify-content:space-between;gap:12px;align-items:center}
     .import-map-row strong{font-size:14px}
     .import-map-row small{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#64748b}
+    .import-field-guidance{display:grid;gap:4px;padding-top:2px;color:#64748b;font-size:12px;line-height:1.35}.import-field-guidance b{color:#334155}.import-field-guidance small{font-size:12px;text-transform:none;letter-spacing:0;color:#64748b}
     .import-map-actions{display:flex;justify-content:flex-end}
     .import-error{font-size:13px;color:#b91c1c;font-weight:700}
     .import-primary-btn{

@@ -80,18 +80,23 @@
             || filled($task->third_party_contact ?? null)
             || filled($task->third_party_phone ?? null);
 
+        $assigneeName = $task->assignedUser?->name
+            ?? $task->assignedStaff?->name
+            ?? $task->third_party_name
+            ?? $task->assigned_to
+            ?? null;
+
         if (($task->status ?? null) === 'completed') {
-            return $isThirdParty ? 'Third-party completed' : 'Completed';
+            if (filled($assigneeName)) {
+                return ($isThirdParty ? 'Third party' : 'Fulfilled by') . ' ' . $assigneeName;
+            }
+
+            return $isThirdParty ? 'Third party completed' : 'PH Internal';
         }
 
         if ($isThirdParty) {
-            return 'Third-party assigned';
+            return filled($assigneeName) ? 'Third party ' . $assigneeName : 'Third party assigned';
         }
-
-        $assigneeName = $task->assignedUser?->name
-            ?? $task->assignedStaff?->name
-            ?? $task->assigned_to
-            ?? null;
 
         if (filled($assigneeName)) {
             return 'Assigned to ' . $assigneeName;
@@ -129,6 +134,7 @@
     ])->filter()->values();
     $needsActionCount = (int) $renewalQueueCount + (int) $unpaidRenewalCount;
     $paymentRiskCount = (int) $unpaidRenewalCount;
+    $liveRentals = (int) (($currentRentals ?? 0) + ($overdueCount ?? 0));
 @endphp
 
 <style>
@@ -211,8 +217,10 @@
     .rental-detail-id { display:block; color:#4f46e5; font-size:12px; font-weight:900; margin-bottom:2px; }
     .rental-period-cell strong,
     .rental-period-cell .cell-subtle { display:block; }
+    .desktop-rental-cell { display:block; }
     .product-mini { display:flex; align-items:flex-start; gap:9px; min-width:0; }
-    .product-thumb { width:34px; height:34px; border-radius:10px; background:#eef2ff; color:#4f46e5; display:grid; place-items:center; font-size:12px; font-weight:900; flex:0 0 34px; }
+    .product-thumb { width:34px; height:34px; border-radius:10px; background:#eef2ff; color:#4f46e5; display:grid; place-items:center; font-size:12px; font-weight:900; flex:0 0 34px; overflow:hidden; }
+    .product-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
     .status-stack { display:flex; flex-wrap:wrap; gap:5px; }
     .amount-stack strong { display:block; font-size:14px; }
     .alert-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px; }
@@ -313,10 +321,50 @@
     .ops-action-panel { position:absolute; right:48px; top:0; z-index:999; display:grid; gap:6px; min-width:190px; padding:8px; border:1px solid var(--ph-color-border); border-radius:12px; background:#fff; box-shadow:0 18px 40px rgba(11,35,66,.16); text-align:left; }
     .hotlist-note { color:var(--ph-color-danger); font-size:11px; font-weight:700; }
     .empty-state { color:var(--ph-color-text-soft); font-size:13px; padding:18px 0; }
+    .created-success-card {
+        display:grid;
+        gap:12px;
+        justify-items:center;
+        text-align:center;
+        padding:18px;
+        border:1px solid #bbf7d0;
+        border-radius:18px;
+        background:linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);
+        box-shadow:var(--ph-shadow-soft);
+    }
+    .created-success-icon {
+        display:grid;
+        place-items:center;
+        width:64px;
+        height:64px;
+        border-radius:999px;
+        background:#dcfce7;
+        color:#16a34a;
+        font-size:34px;
+        font-weight:900;
+    }
+    .created-success-card h2 { margin:0; font-size:18px; color:#0f172a; }
+    .created-success-summary {
+        width:min(100%, 360px);
+        display:grid;
+        gap:8px;
+        padding:14px;
+        border:1px solid #e2e8f0;
+        border-radius:14px;
+        background:#fff;
+        text-align:left;
+    }
+    .created-success-summary strong { font-size:18px; color:#0f172a; }
+    .created-success-summary span { color:#64748b; font-size:12px; font-weight:700; }
+    .created-success-row { display:flex; justify-content:space-between; gap:12px; color:#334155; font-size:13px; }
+    .created-success-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
     .rentals-pagination { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-top:12px; color:#64748b; font-size:12px; font-weight:700; }
     .rentals-pagination-links { min-width:0; }
     .rentals-per-page { display:flex; align-items:center; gap:6px; }
     .rentals-per-page .ops-select { width:72px; min-height:32px; padding:4px 8px; }
+    .mobile-list-command,
+    .mobile-chip-row,
+    .mobile-rental-card { display:none; }
     @media (max-width: 1180px) {
         .summary-grid { grid-template-columns:repeat(4, minmax(150px, 1fr)); }
         .rental-smart-filter-main { grid-template-columns:repeat(3, minmax(0, 1fr)); }
@@ -327,78 +375,239 @@
         .ops-table { min-width:920px; }
     }
     @media (max-width: 767px) {
-        .rentals-page { padding:4px 0 16px; gap:8px; }
-        .rentals-header { display:flex; }
+        .rentals-page { padding:4px 0 112px; gap:8px; }
+        .rentals-header,
+        .summary-grid,
+        .rental-smart-filter,
+        .decision-tabs,
         .desktop-priority-panel { display:none !important; }
+        .mobile-list-command {
+            display:grid;
+            gap:8px;
+            padding:8px;
+            border:1px solid var(--ph-color-border);
+            border-radius:20px;
+            background:#fff;
+            box-shadow:var(--ph-shadow-soft);
+        }
+        .mobile-search-tools { display:grid; gap:8px; }
+        .mobile-search-row { display:grid; grid-template-columns:minmax(0,1fr); gap:8px; }
+        .mobile-search-row .ops-input { min-height:40px; border-radius:12px; font-size:16px; }
+        .mobile-stat-strip {
+            display:grid;
+            grid-template-columns:repeat(3, minmax(0,1fr));
+            gap:6px;
+        }
+        .mobile-stat-strip a {
+            display:grid; gap:2px; min-width:0; padding:7px 8px; border:1px solid var(--ph-color-border); border-radius:12px;
+            background:var(--ph-color-surface-soft); color:var(--ph-color-text); text-decoration:none;
+        }
+        .mobile-stat-strip span { font-size:9px; color:var(--ph-color-text-soft); font-weight:800; text-transform:uppercase; letter-spacing:.05em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .mobile-stat-strip strong { font-size:clamp(12px, 4vw, 15px); line-height:1.15; min-width:0; overflow-wrap:anywhere; word-break:break-word; }
+        .mobile-chip-row {
+            display:flex; gap:8px; overflow-x:auto; padding:2px 1px 4px; scrollbar-width:none;
+        }
+        .mobile-chip-row::-webkit-scrollbar { display:none; }
+        .mobile-chip {
+            flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center;
+            min-height:34px; padding:7px 11px; border-radius:999px; border:1px solid var(--ph-color-border-strong);
+            background:#fff; color:var(--ph-color-text); text-decoration:none; font-size:12px; font-weight:800;
+        }
+        .mobile-chip.is-active { background:var(--ph-color-sidebar); color:#fff; border-color:var(--ph-color-sidebar); }
         .summary-grid, .filter-grid { grid-template-columns:1fr; }
         .rental-smart-filter-main,
         .rental-smart-filter-advanced { grid-template-columns:1fr; }
         .filter-actions, .rentals-actions { flex-direction:column; align-items:stretch; }
         .table-wrap { overflow-x:visible; }
-        .ops-table { min-width:0; border-collapse:separate; border-spacing:0 10px; }
+        .ops-table { min-width:0; border-collapse:separate; border-spacing:0 8px; }
         .ops-table thead { display:none; }
         .ops-table, .ops-table tbody, .ops-table tr, .ops-table td { display:block; width:100%; }
         .ops-table tr {
             border:1px solid var(--ph-color-border); border-radius:14px; background:#fff;
-            box-shadow:var(--ph-shadow-soft); overflow:hidden;
+            box-shadow:var(--ph-shadow-soft); overflow:hidden; position:relative;
         }
         .ops-table tbody tr.rental-row td,
         .ops-table tbody tr.rental-row td:first-child,
         .ops-table tbody tr.rental-row td:last-child { border-left:none; border-right:none; border-top:none; border-radius:0; }
-        .ops-table td {
-            display:grid; grid-template-columns:92px minmax(0, 1fr); gap:10px;
-            padding:9px 12px; border-bottom:1px solid var(--ph-color-border); background:#fff;
-        }
+        .ops-table td { padding:0; border-bottom:0; background:#fff; }
         .ops-table td:last-child { border-bottom:none; }
-        .ops-table td::before {
-            color:var(--ph-color-text-soft); font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.06em;
-        }
-        .ops-table td::before { content:attr(data-label); }
-        .actions-cell { position:static; width:auto; min-width:0; text-align:left; box-shadow:none; }
-        .ops-action-menu { display:block; width:100%; }
-        .ops-action-menu summary { width:100%; justify-content:center; border-radius:12px; }
-        .ops-action-panel { position:static; min-width:0; margin-top:7px; box-shadow:none; }
-        .row-actions { gap:7px; }
-        .row-actions-primary {
+        .ops-table td::before { display:none; content:none; }
+        .bulk-col,
+        .serial-col,
+        .rental-id-col,
+        .items-col,
+        .date-col,
+        .status-col,
+        .balance-col,
+        .actions-cell { display:none !important; }
+        .desktop-rental-cell { display:none !important; }
+        .customer-col { display:block !important; width:auto; min-width:0; }
+        .mobile-rental-card {
             display:grid;
-            grid-template-columns:repeat(4, minmax(0, 1fr));
-            gap:7px;
-            width:100%;
+            gap:5px;
+            padding:10px 12px;
         }
-        .row-actions-primary .ops-btn,
-        .row-actions-primary .ops-btn-light,
-        .row-actions-primary .ops-btn-success,
-        .row-actions-primary .ops-btn-danger,
-        .row-actions-primary .ops-btn-wa {
-            min-width:0;
-            width:100%;
-            min-height:44px;
-            padding:0 8px;
-            border-radius:12px;
+        .mobile-rental-card-head {
+            display:flex;
+            align-items:flex-start;
+            justify-content:space-between;
+            gap:10px;
+        }
+        .mobile-rental-card-id {
+            color:#0f172a;
+            font-size:13px;
+            font-weight:900;
+            line-height:1.2;
+        }
+        .mobile-rental-card-amount {
+            text-align:right;
+            font-size:13px;
+            font-weight:900;
+            color:#0f172a;
+            white-space:nowrap;
+        }
+        .mobile-rental-card-customer {
+            display:flex;
+            align-items:flex-start;
+            justify-content:space-between;
+            gap:8px;
+        }
+        .mobile-rental-card-customer strong {
+            display:block;
+            font-size:16px;
+            line-height:1.2;
+            color:#0f172a;
+        }
+        .mobile-rental-card-product,
+        .mobile-rental-card-period {
+            color:#64748b;
+            font-size:12px;
+            line-height:1.3;
+        }
+        .mobile-rental-card-product strong,
+        .mobile-rental-card-period strong { color:#0f172a; }
+        .mobile-rental-chip-row { display:flex; flex-wrap:wrap; gap:5px; }
+        .mobile-rental-chip {
+            display:inline-flex;
+            align-items:center;
+            min-height:22px;
+            padding:3px 7px;
+            border-radius:999px;
+            font-size:9px;
+            font-weight:800;
+            text-transform:uppercase;
+            letter-spacing:.04em;
+        }
+        .mobile-rental-actions {
+            display:flex;
+            align-items:center;
+            gap:6px;
+            overflow-x:auto;
+            padding-top:8px;
+            border-top:1px solid #edf2f7;
+            scrollbar-width:none;
+        }
+        .mobile-rental-actions::-webkit-scrollbar { display:none; }
+        .mobile-rental-actions .mobile-utility-btn,
+        .mobile-rental-actions .ops-action-menu summary {
+            flex:0 0 auto;
+            min-width:34px;
+            min-height:38px;
+            border-radius:14px;
+        }
+        .mobile-rental-actions .mobile-utility-btn {
+            display:inline-flex;
+            align-items:center;
             justify-content:center;
+            gap:8px;
+            padding:0 10px;
+            border:1px solid var(--ph-color-border-strong);
+            background:#fff;
+            color:var(--ph-color-text);
+            font-size:11px;
+            font-weight:800;
+            text-decoration:none;
         }
-        .row-actions-primary .mobile-utility-btn {
-            padding:0;
-            aspect-ratio:1 / 1;
+        .mobile-rental-actions .mobile-utility-btn span { display:inline; }
+        .mobile-rental-actions .mobile-utility-btn svg {
+            display:block;
+            width:16px;
+            height:16px;
+            flex:0 0 16px;
         }
-        .row-actions-primary .mobile-utility-btn span {
+        .mobile-rental-actions .ops-action-menu { display:block; width:auto; }
+        .mobile-rental-actions .ops-action-menu summary {
+            width:auto;
+            min-width:34px;
+            padding:0 10px;
+            justify-content:center;
+            border-radius:14px;
+            height:34px;
+        }
+        .mobile-rental-actions .ops-action-panel {
+            position:fixed;
+            left:12px;
+            right:12px;
+            bottom:90px;
+            top:auto;
+            min-width:0;
+            max-height:50vh;
+            overflow:auto;
+            margin-top:0;
+        }
+        .mobile-selection-toggle {
             display:none;
+            position:absolute;
+            left:10px;
+            top:12px;
+            width:22px;
+            height:22px;
+            z-index:4;
         }
-        .row-actions-primary .mobile-utility-btn svg {
-            width:18px;
-            height:18px;
-            flex:0 0 18px;
+        .mobile-selection-toggle input {
+            width:22px;
+            height:22px;
+            accent-color:#2563eb;
         }
-        .row-actions-primary form,
-        .row-actions-primary > a:not(.mobile-utility-btn) {
-            grid-column:span 2;
+        .rentals-page.is-selection-mode .bulk-toolbar {
+            display:flex !important;
+            position:sticky;
+            top:8px;
+            z-index:14;
         }
-        .row-actions-secondary { display:flex; flex-wrap:wrap; gap:7px; }
-        .serial-col { width:auto; min-width:0; }
+        .rentals-page.is-selection-mode .mobile-selection-toggle { display:block; }
+        .rentals-page.is-selection-mode .mobile-rental-card { padding-left:42px; }
+        .rental-row.is-selected .mobile-rental-card { background:#eff6ff; }
     }
 </style>
 
 <div class="container rentals-page rn-list-page">
+    @if(session('created_rental'))
+        @php
+            $createdRental = session('created_rental');
+        @endphp
+        <section class="created-success-card">
+            <div class="created-success-icon">&check;</div>
+            <h2>Rental Created Successfully!</h2>
+            <div class="created-success-summary">
+                <strong>Rental #{{ $createdRental['id'] ?? '' }}</strong>
+                <span>{{ $createdRental['customer'] ?? 'Customer' }}</span>
+                <div class="created-success-row">
+                    <span>Rental Amount</span>
+                    <b>Rs. {{ number_format((float) ($createdRental['amount'] ?? 0), 2) }}</b>
+                </div>
+                <div class="created-success-row">
+                    <span>Invoice</span>
+                    <b>{{ $createdRental['invoice_number'] ?? 'Created' }}</b>
+                </div>
+            </div>
+            <div class="created-success-actions">
+                <a href="{{ route('rentals.show', $createdRental['id'] ?? 0) }}" class="ops-btn">View Rental</a>
+                <a href="{{ route('rentals.create') }}" class="ops-btn-light">Create Another Rental</a>
+            </div>
+        </section>
+    @endif
+
     <div class="rentals-header">
         <div>
             <div class="rx-eyebrow">Rental Ops</div>
@@ -425,6 +634,130 @@
             {{ session('error') }}
         </div>
     @endif
+
+    <div id="rentals-mobile-filters" class="mobile-filter-sheet" data-mobile-filter-sheet hidden>
+        <div class="mobile-filter-sheet-panel">
+            <div class="mobile-filter-sheet-header">
+                <div>
+                    <h3>Rental Filters</h3>
+                    <p>Keep status, team, and dates close on mobile.</p>
+                </div>
+                <button type="button" class="mobile-filter-sheet-close" data-mobile-sheet-close="rentals-mobile-filters" aria-label="Close rental filters">&times;</button>
+            </div>
+            <div class="mobile-filter-sheet-body">
+                <form method="GET" action="{{ route('rentals.index') }}" class="mobile-sheet-form">
+                    @if($filter)
+                        <input type="hidden" name="filter" value="{{ $filter }}">
+                    @endif
+                    <input type="hidden" name="search" value="{{ $search }}">
+                    <div class="mobile-sheet-grid">
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_rental_status">Rental</label>
+                            <select id="mobile_rental_status" class="ops-select" name="status">
+                                <option value="">All</option>
+                                <option value="live" @selected($status === 'live')>Total</option>
+                                <option value="active" @selected($status === 'active')>Active</option>
+                                <option value="delivery_pending" @selected($status === 'delivery_pending')>Delivery Pending</option>
+                                <option value="returned" @selected($status === 'returned')>Completed</option>
+                                <option value="overdue" @selected($status === 'overdue')>Overdue</option>
+                            </select>
+                        </div>
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_delivery_status">Delivery</label>
+                            <select id="mobile_delivery_status" class="ops-select" name="delivery_status">
+                                <option value="">All</option>
+                                <option value="pending" @selected($deliveryStatus === 'pending')>Pending</option>
+                                <option value="assigned" @selected($deliveryStatus === 'assigned')>Assigned</option>
+                                <option value="in_progress" @selected($deliveryStatus === 'in_progress')>Out for Delivery</option>
+                                <option value="completed" @selected($deliveryStatus === 'completed')>Completed</option>
+                            </select>
+                        </div>
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_pickup_status">Pickup</label>
+                            <select id="mobile_pickup_status" class="ops-select" name="pickup_status">
+                                <option value="">All</option>
+                                <option value="pending" @selected($pickupStatus === 'pending')>Pending</option>
+                                <option value="assigned" @selected($pickupStatus === 'assigned')>Assigned</option>
+                                <option value="in_progress" @selected($pickupStatus === 'in_progress')>Out for Pickup</option>
+                                <option value="completed" @selected($pickupStatus === 'completed')>Completed</option>
+                            </select>
+                        </div>
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_warehouse">Warehouse</label>
+                            <select id="mobile_warehouse" class="ops-select" name="dispatch_warehouse_id">
+                                <option value="">All</option>
+                                @foreach($warehouses as $warehouse)
+                                    <option value="{{ $warehouse->id }}" @selected((string) $warehouseId === (string) $warehouse->id)>{{ $warehouse->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_city">City</label>
+                            <input id="mobile_city" class="ops-input" type="search" name="city" value="{{ $city }}" placeholder="City">
+                        </div>
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_rental_sort">Sort</label>
+                            <select id="mobile_rental_sort" class="ops-select" name="sort_by">
+                                <option value="priority" @selected($sortBy === 'priority')>Priority</option>
+                                <option value="latest" @selected($sortBy === 'latest')>Latest First</option>
+                                <option value="oldest" @selected($sortBy === 'oldest')>Oldest First</option>
+                                <option value="end_date_asc" @selected($sortBy === 'end_date_asc')>End Date: Earliest</option>
+                                <option value="amount_desc" @selected($sortBy === 'amount_desc')>Amount: High to Low</option>
+                                <option value="amount_asc" @selected($sortBy === 'amount_asc')>Amount: Low to High</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mobile-sheet-actions">
+                        <button type="submit" class="ops-btn">Apply</button>
+                        <a href="{{ route('rentals.index') }}" class="ops-btn-light">Reset</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="mobile-list-command" aria-label="Mobile rental controls">
+        <div class="mobile-search-tools">
+            <form method="GET" action="{{ route('rentals.index') }}" class="mobile-search-row">
+                @foreach(request()->except(['search', 'page']) as $key => $value)
+                    @if(is_scalar($value) && $value !== '')
+                        <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                    @endif
+                @endforeach
+                <input class="ops-input" type="search" name="search" value="{{ $search }}" placeholder="Search by rental ID, customer, product...">
+            </form>
+
+            <div class="mobile-action-toolbar {{ $hasActiveFilters ? 'has-active-filters' : '' }}" aria-label="Mobile rental filters and sorting">
+                <button type="button" class="mobile-toolbar-btn" data-mobile-filter-open="rentals-mobile-filters" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" aria-label="Open rental filters">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16"/><path d="M7 12h10"/><path d="M10 18h4"/></svg>
+                </button>
+                <div class="mobile-sort-anchor" data-mobile-sort-root>
+                    <button type="button" class="mobile-toolbar-btn" data-mobile-sort-trigger aria-label="Sort rentals: {{ $currentMobileSortLabel }}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m7 15 5 5 5-5"/><path d="M7 9 12 4l5 5"/></svg>
+                    </button>
+                    <div class="mobile-sort-popover" data-mobile-sort-menu hidden>
+                        @foreach($mobileSortOptions as $option)
+                            <a href="{{ $rentalUrl(['sort_by' => $option['value'], 'page' => null]) }}" class="mobile-sort-option {{ $sortBy === $option['value'] ? 'is-active' : '' }}">{{ $option['label'] }}</a>
+                        @endforeach
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mobile-stat-strip" aria-label="Rental summary">
+            <a href="{{ $rentalUrl(['status' => null, 'filter' => null]) }}"><span>Total</span><strong>{{ $liveRentals }}</strong></a>
+            <a href="{{ $rentalUrl(['status' => 'active', 'filter' => null]) }}"><span>Active</span><strong>{{ $currentRentals }}</strong></a>
+            <a href="{{ $rentalUrl(['status' => null, 'filter' => 'overdue']) }}"><span>Overdue</span><strong>{{ $overdueCount }}</strong></a>
+        </div>
+
+        <div class="mobile-chip-row" aria-label="Rental quick filters">
+            <a href="{{ $rentalUrl(['status' => null, 'filter' => null]) }}" class="mobile-chip {{ blank($status) && blank($filter) ? 'is-active' : '' }}">All</a>
+            <a href="{{ $rentalUrl(['status' => null, 'filter' => 'ending_soon']) }}" class="mobile-chip {{ $filter === 'ending_soon' ? 'is-active' : '' }}">Ending Soon</a>
+            <a href="{{ $rentalUrl(['status' => null, 'filter' => 'overdue']) }}" class="mobile-chip {{ $filter === 'overdue' || $status === 'overdue' ? 'is-active' : '' }}">Overdue</a>
+            <a href="{{ $rentalUrl(['status' => 'active', 'filter' => null]) }}" class="mobile-chip {{ $status === 'active' ? 'is-active' : '' }}">Active</a>
+            <a href="{{ $rentalUrl(['status' => 'returned', 'filter' => null]) }}" class="mobile-chip {{ $status === 'returned' ? 'is-active' : '' }}">Completed</a>
+        </div>
+    </div>
 
     <div class="summary-grid">
         <a href="{{ $rentalUrl(['status' => 'live', 'filter' => null]) }}" class="summary-card accent-active rn-summary-link">
@@ -474,7 +807,7 @@
                 <label for="smart_status">Status</label>
                 <select id="smart_status" class="ops-select" name="status">
                     <option value="">All</option>
-                    <option value="live" @selected($status === 'live')>Live</option>
+                    <option value="live" @selected($status === 'live')>Total</option>
                     <option value="active" @selected($status === 'active')>Active</option>
                     <option value="delivery_pending" @selected($status === 'delivery_pending')>Delivery Pending</option>
                     <option value="returned" @selected($status === 'returned')>Completed</option>
@@ -656,6 +989,15 @@
                                     $pickupAssignUrl = route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'pickup']);
                                     $deliveryAssignee = $taskAssignmentLabel($rental->deliveryRecord, $rental->deliveryStaff->name ?? 'Not assigned');
                                     $pickupAssignee = $taskAssignmentLabel($rental->pickupRecord, $rental->pickupStaff->name ?? 'Not assigned');
+                                    $fulfilmentSourceLabel = \Illuminate\Support\Str::of((string) ($rental->fulfilment_source ?: 'in_house'))->replace(['_', '-'], ' ')->title();
+                                    $deliveryFulfilledByCandidate = trim((string) preg_replace('/^(Fulfilled by|Assigned to|Third party)\s+/i', '', $deliveryAssignee));
+                                    $deliveryFulfilledByCandidate = in_array($deliveryFulfilledByCandidate, ['Completed', 'Third-party completed', 'Third party completed', 'PH Internal', 'Not assigned', 'Assigned', 'In progress', 'Cancelled'], true)
+                                        ? null
+                                        : $deliveryFulfilledByCandidate;
+                                    $fulfilledByLabel = $rental->vendor?->name
+                                        ?? $rental->vendorOrderDetail?->vendor?->name
+                                        ?? ($deliveryStatusValue === 'completed' ? $deliveryFulfilledByCandidate : null)
+                                        ?? (string) $fulfilmentSourceLabel;
                                     $hasOpenDeliveryTask = in_array($deliveryStatusValue, ['pending', 'in_progress'], true);
                                     $hasOpenPickupTask = in_array($pickupStatusValue, ['pending', 'in_progress'], true);
                                     $rowNumber = method_exists($rentals, 'firstItem') && $rentals->firstItem()
@@ -677,12 +1019,16 @@
                                         ? $rentalItems->map(function ($item) {
                                             $name = $item->product?->name ?? 'Rental item';
                                             $qty = (int) ($item->quantity ?? 1);
+                                            $imageUrl = $item->product?->product_image_url;
 
-                                            return ['name' => $name, 'qty' => $qty];
+                                            return ['name' => $name, 'qty' => $qty, 'image_url' => $imageUrl];
                                         })
-                                        : collect([['name' => $rental->product->name ?? 'Product not linked', 'qty' => (int) ($rental->quantity ?? 1)]]);
+                                        : collect([['name' => $rental->product->name ?? 'Product not linked', 'qty' => (int) ($rental->quantity ?? 1), 'image_url' => $rental->product?->product_image_url]]);
                                     $primaryItem = $displayItems->first();
                                     $extraItemCount = max(0, $displayItems->count() - 1);
+                                    $productSummary = $extraItemCount > 0
+                                        ? ($primaryItem['name'] . ' + ' . $extraItemCount . ' more - ' . $displayItems->count() . ' items')
+                                        : ($primaryItem['name'] . ' - ' . $primaryItem['qty'] . ' item' . ($primaryItem['qty'] === 1 ? '' : 's'));
                                     $linkedInvoiceId = (int) ($rental->linked_invoice_id ?? 0);
                                     $linkedInvoiceStatus = $rental->linked_invoice_payment_status ?? null;
                                     $outstandingBalance = (float) ($rental->linked_invoice_balance_amount ?? $rental->outstanding_invoice_balance ?? 0);
@@ -691,6 +1037,22 @@
                                     $balanceDisplay = $paymentBadge['label'] === 'Paid'
                                         ? 0
                                         : max(0, $linkedInvoiceId > 0 ? $outstandingBalance : $totalAmount);
+                                    $financeHeadline = $balanceDisplay > 0
+                                        ? $currency($balanceDisplay) . ' due'
+                                        : 'No dues';
+                                    $deliveryStatusText = ucfirst(str_replace('_', ' ', $deliveryStatusValue ?: 'pending'));
+                                    $pickupStatusText = ucfirst(str_replace('_', ' ', $pickupStatusValue ?: 'pending'));
+                                    $showPickupMeta = $hasOpenPickupTask || $pickupStatusValue === 'completed' || !in_array($pickupAssignee, ['Not assigned', 'Assigned'], true);
+                                    $mobileStatusChips = [
+                                        ['label' => 'Delivery ' . $deliveryStatusText, 'tone' => $statusBadge($deliveryStatusValue)],
+                                        ['label' => 'Pay ' . $paymentBadge['label'], 'tone' => $paymentBadge['tone']],
+                                        ['label' => $rental->fulfilment_source === 'vendor' ? 'Vendor' : 'In-house', 'tone' => 'background:#eef2ff;color:#4338ca;'],
+                                    ];
+                                    if ($pickupStatusValue === 'pending' || $pickupStatusValue === 'in_progress' || $isOverdueDate) {
+                                        $mobileStatusChips[] = ['label' => 'Pickup ' . $pickupStatusText, 'tone' => $statusBadge($pickupStatusValue)];
+                                    }
+                                    $mobileVisibleStatusChips = array_slice($mobileStatusChips, 0, 3);
+                                    $mobileExtraStatusCount = max(0, count($mobileStatusChips) - count($mobileVisibleStatusChips));
                                 @endphp
                                 <tr class="rental-row {{ $isOverdueDate ? 'row-overdue' : ($isDueToday ? 'row-due-today' : ($isEndingSoonDate ? 'row-due-soon' : '')) }}">
                                     <td class="bulk-col" data-label="Select">
@@ -704,7 +1066,7 @@
                                             @if(\Illuminate\Support\Facades\Route::has('rentals.show'))
                                                 <a href="{{ route('rentals.show', $rental) }}" class="rental-open-link" aria-label="Open rental #{{ $rental->id }}" data-row-click-ignore>
                                                     <span>Rental #{{ $rental->id }}</span>
-                                                    <span class="rental-open-icon" aria-hidden="true">👁</span>
+                                                    <span class="rental-open-icon" aria-hidden="true"><svg class="rental-open-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.06 12.35a1 1 0 0 1 0-.7C3.49 7.75 7.23 5 12 5s8.51 2.75 9.94 6.65a1 1 0 0 1 0 .7C20.51 16.25 16.77 19 12 19s-8.51-2.75-9.94-6.65Z"/><circle cx="12" cy="12" r="3"/></svg></span>
                                                 </a>
                                             @else
                                                 <strong>#{{ $rental->id }}</strong>
@@ -712,39 +1074,148 @@
                                         </div>
                                     </td>
                                     <td class="customer-col" data-label="Customer">
-                                        <div class="cell-title has-wa">
-                                            <div style="min-width:0;">
-                                                <a href="{{ route('rentals.show', $rental) }}" class="rental-detail-id rental-open-link" aria-label="Open rental #{{ $rental->id }}" data-row-click-ignore>
-                                                    <span>Rental #{{ $rental->id }}</span>
-                                                    <span class="rental-open-icon" aria-hidden="true">👁</span>
-                                                </a>
-                                                @if(\Illuminate\Support\Facades\Route::has('customers.show') && $rental->customer)
-                                                    <a href="{{ route('customers.show', $rental->customer) }}" class="rn-record-link">{{ $rental->customer_name }}</a>
-                                                @else
-                                                    <strong>{{ $rental->customer_name }}</strong>
-                                                @endif
-                                                <span class="cell-subtle">
-                                                    @if($rental->customer?->city)
-                                                        {{ $rental->customer->city }}
-                                                    @else
-                                                        City not set
-                                                    @endif
-                                                </span>
-                                                <span class="cell-subtle">{{ $rental->phone ?: 'No phone' }}</span>
+                                        <label class="mobile-selection-toggle" data-row-click-ignore>
+                                            <input type="checkbox" class="bulk-check mobile-rental-select-proxy" value="{{ $rental->id }}" aria-label="Select rental #{{ $rental->id }}">
+                                        </label>
+                                        <div class="mobile-rental-card" data-mobile-rental-card data-open-url="{{ route('rentals.show', $rental) }}">
+                                            <div class="mobile-rental-card-head">
+                                                <div class="mobile-rental-card-id">Rental #{{ $rental->id }}</div>
+                                                <div class="mobile-rental-card-amount">{{ $financeHeadline }}</div>
                                             </div>
-                                            @if(WhatsAppHelper::resolveCustomerNumber($rental->customer))
-                                                <div class="customer-contact-actions">
-                                                <a href="{{ $whatsAppUrl }}" target="_blank" class="rn-wa-action" title="WhatsApp {{ $rental->customer_name }}" aria-label="WhatsApp {{ $rental->customer_name }}">
-                                                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 11.4c0 4.7-3.9 8.6-8.8 8.6-1.5 0-3-.4-4.2-1.1L3 20l1.2-3.7A8.4 8.4 0 0 1 2.4 11.4C2.4 6.7 6.3 3 11.2 3 16.1 3 20 6.7 20 11.4Zm-4.8 2.2c-.2-.1-1.2-.6-1.4-.7s-.3-.1-.4.1-.5.7-.7.9-.3.2-.5.1a5.9 5.9 0 0 1-1.7-1c-.6-.5-1-1.2-1.1-1.4-.1-.2 0-.3.1-.4l.3-.4.2-.3v-.4c0-.1-.4-1.1-.6-1.6-.2-.4-.3-.4-.4-.4h-.4c-.1 0-.4 0-.6.3-.2.2-.8.8-.8 1.9s.8 2.1 1 2.3c.1.1 1.5 2.3 3.8 3.2.5.2 1 .4 1.3.5.6.2 1.2.2 1.7.1.5-.1 1.2-.5 1.4-1 .2-.5.2-1 .1-1Z"/></svg>
-                                                    <span class="rn-wa-action-label">WhatsApp</span>
-                                                </a>
+                                            <div class="mobile-rental-card-customer">
+                                                <div style="min-width:0;">
+                                                    <strong>{{ $rental->customer_name }}</strong>
                                                 </div>
-                                            @endif
+                                                <span class="badge rn-badge {{ $paymentBadge['class'] }}" style="{{ $paymentBadge['tone'] }}">{{ $paymentBadge['label'] }}</span>
+                                            </div>
+                                            <div class="mobile-rental-card-product">
+                                                {{ $productSummary }}
+                                            </div>
+                                            <div class="mobile-rental-card-period">
+                                                <strong>{{ optional($rental->start_date)->format('d M') }} - {{ optional($rental->end_date)->format('d M') }}</strong>
+                                                <span>- {{ $periodSignal }}</span>
+                                            </div>
+                                            <div class="mobile-rental-chip-row">
+                                                @foreach($mobileVisibleStatusChips as $chip)
+                                                    <span class="mobile-rental-chip" style="{{ $chip['tone'] }}">{{ $chip['label'] }}</span>
+                                                @endforeach
+                                                @if($mobileExtraStatusCount > 0)
+                                                    <span class="mobile-rental-chip" style="background:#f8fafc;color:#475569;">+{{ $mobileExtraStatusCount }} more</span>
+                                                @endif
+                                            </div>
+                                            <div class="mobile-rental-actions">
+                                                <a href="{{ route('rentals.show', $rental) }}" class="ops-btn-light mobile-utility-btn" title="View rental" aria-label="View rental" data-row-click-ignore>
+                                                    <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.06 12.35a1 1 0 0 1 0-.7C3.49 7.75 7.23 5 12 5s8.51 2.75 9.94 6.65a1 1 0 0 1 0 .7C20.51 16.25 16.77 19 12 19s-8.51-2.75-9.94-6.65Z"/><circle cx="12" cy="12" r="3"/></svg>
+                                                    <span>View</span>
+                                                </a>
+                                                @if($customerPhoneHref)
+                                                    <a href="{{ $customerPhoneHref }}" class="ops-btn-light mobile-utility-btn" title="Call customer" aria-label="Call customer" data-row-click-ignore>
+                                                        <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.89.33 1.77.63 2.62a2 2 0 0 1-.45 2.11L8 9.91a16 16 0 0 0 6.09 6.09l1.46-1.29a2 2 0 0 1 2.11-.45c.85.3 1.73.51 2.62.63A2 2 0 0 1 22 16.92z"/></svg>
+                                                        <span>Call</span>
+                                                    </a>
+                                                @endif
+                                                @if(WhatsAppHelper::resolveCustomerNumber($rental->customer))
+                                                    <a href="{{ $whatsAppUrl }}" target="_blank" class="ops-btn-wa mobile-utility-btn" title="WhatsApp {{ $rental->customer_name }}" aria-label="WhatsApp {{ $rental->customer_name }}" data-row-click-ignore>
+                                                        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 11.4c0 4.7-3.9 8.6-8.8 8.6-1.5 0-3-.4-4.2-1.1L3 20l1.2-3.7A8.4 8.4 0 0 1 2.4 11.4C2.4 6.7 6.3 3 11.2 3 16.1 3 20 6.7 20 11.4Zm-4.8 2.2c-.2-.1-1.2-.6-1.4-.7s-.3-.1-.4.1-.5.7-.7.9-.3.2-.5.1a5.9 5.9 0 0 1-1.7-1c-.6-.5-1-1.2-1.1-1.4-.1-.2 0-.3.1-.4l.3-.4.2-.3v-.4c0-.1-.4-1.1-.6-1.6-.2-.4-.3-.4-.4-.4h-.4c-.1 0-.4 0-.6.3-.2.2-.8.8-.8 1.9s.8 2.1 1 2.3c.1.1 1.5 2.3 3.8 3.2.5.2 1 .4 1.3.5.6.2 1.2.2 1.7.1.5-.1 1.2-.5 1.4-1 .2-.5.2-1 .1-1Z"/></svg>
+                                                        <span>WhatsApp</span>
+                                                    </a>
+                                                @endif
+                                                @if($canUpdateRentals && $rental->canRenew())
+                                                    <a href="{{ route('rentals.show', $rental) }}#renewal-workspace" class="ops-btn mobile-utility-btn" data-row-click-ignore>Extend</a>
+                                                @endif
+                                                <details class="ops-action-menu" data-row-click-ignore>
+                                                    <summary aria-label="Rental actions">...</summary>
+                                                    <div class="ops-action-panel row-actions">
+                                                        <button type="button" class="ops-btn-light" data-rental-select-toggle="{{ $rental->id }}">Select</button>
+                                                        @if($canCreateDeliveries && $rental->status !== 'cancelled' && !$hasOpenDeliveryTask)
+                                                            <a href="{{ route('deliveries.create', ['rental_id' => $rental->id]) }}" class="ops-btn-light">Assign</a>
+                                                        @endif
+                                                        @if($canUpdateDeliveries && $deliveryStatusValue === 'pending' && $rental->deliveryRecord)
+                                                            <form method="POST" action="{{ route('deliveries.in_progress', $rental->deliveryRecord) }}" style="margin:0;">
+                                                                @csrf
+                                                                @method('PUT')
+                                                                <button type="submit" class="ops-btn-light">Start D</button>
+                                                            </form>
+                                                        @elseif($canUpdateDeliveries && $deliveryStatusValue === 'in_progress' && $rental->deliveryRecord)
+                                                            <form method="POST" action="{{ route('deliveries.complete', $rental->deliveryRecord) }}" style="margin:0;">
+                                                                @csrf
+                                                                @method('PUT')
+                                                                <button type="submit" class="ops-btn-success">Complete D</button>
+                                                            </form>
+                                                        @endif
+                                                        @if($canUpdateDeliveries && $pickupStatusValue === 'pending' && $rental->pickupRecord)
+                                                            <form method="POST" action="{{ route('deliveries.in_progress', $rental->pickupRecord) }}" style="margin:0;">
+                                                                @csrf
+                                                                @method('PUT')
+                                                                <button type="submit" class="ops-btn-light">Start P</button>
+                                                            </form>
+                                                        @elseif($canUpdateDeliveries && $pickupStatusValue === 'in_progress' && $rental->pickupRecord)
+                                                            <form method="POST" action="{{ route('deliveries.complete', $rental->pickupRecord) }}" style="margin:0;">
+                                                                @csrf
+                                                                @method('PUT')
+                                                                <button type="submit" class="ops-btn-success">Complete P</button>
+                                                            </form>
+                                                        @elseif($isHotlisted && $canCreateDeliveries && !$hasOpenPickupTask && $deliveryStatusValue === 'completed')
+                                                            <a href="{{ $pickupAssignUrl }}" class="ops-btn-danger">Initiate Pickup</a>
+                                                        @endif
+                                                        @if($canUpdateRentals && $rental->canRenew())
+                                                            <form method="POST" action="{{ route('rentals.quick-renew', $rental) }}" style="margin:0;" data-quick-renew-form data-renewal-days="{{ $rental->suggestedRenewalDays() }}">
+                                                                @csrf
+                                                                <button type="submit" class="ops-btn-light">Quick Renew</button>
+                                                            </form>
+                                                        @endif
+                                                        @if(WhatsAppHelper::resolveCustomerNumber($rental->customer))
+                                                            <a href="{{ $renewalWhatsAppUrl }}" target="_blank" class="ops-btn-wa">Renewal WA</a>
+                                                        @endif
+                                                        @if($canUpdateRentals && !in_array($rental->status, ['returned', 'cancelled'], true))
+                                                            <a href="{{ route('rentals.edit', $rental) }}" class="ops-btn-light">Edit</a>
+                                                        @endif
+                                                        @if($canUpdateRentals && !in_array($rental->status, ['returned', 'cancelled'], true))
+                                                            <form method="POST" action="{{ route('rentals.cancel', $rental) }}" style="margin:0;">
+                                                                @csrf
+                                                                @method('PUT')
+                                                                <button type="submit" class="ops-btn-danger" onclick="return confirm('Cancel this rental? This keeps the record for audit history.');">Cancel</button>
+                                                            </form>
+                                                        @endif
+                                                    </div>
+                                                </details>
+                                            </div>
+                                        </div>
+                                        <div class="desktop-rental-cell">
+                                            <div class="cell-title has-wa">
+                                                <div style="min-width:0;">
+                                                    <a href="{{ route('rentals.show', $rental) }}" class="rental-detail-id rental-open-link" aria-label="Open rental #{{ $rental->id }}" data-row-click-ignore>
+                                                        <span>Rental #{{ $rental->id }}</span>
+                                                        <span class="rental-open-icon" aria-hidden="true"><svg class="rental-open-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.06 12.35a1 1 0 0 1 0-.7C3.49 7.75 7.23 5 12 5s8.51 2.75 9.94 6.65a1 1 0 0 1 0 .7C20.51 16.25 16.77 19 12 19s-8.51-2.75-9.94-6.65Z"/><circle cx="12" cy="12" r="3"/></svg></span>
+                                                    </a>
+                                                    @if(\Illuminate\Support\Facades\Route::has('customers.show') && $rental->customer)
+                                                        <a href="{{ route('customers.show', $rental->customer) }}" class="rn-record-link">{{ $rental->customer_name }}</a>
+                                                    @else
+                                                        <strong>{{ $rental->customer_name }}</strong>
+                                                    @endif
+                                                    <span class="cell-subtle">
+                                                        @if($rental->customer?->city)
+                                                            {{ $rental->customer->city }}
+                                                        @else
+                                                            City not set
+                                                        @endif
+                                                    </span>
+                                                    <span class="cell-subtle">{{ $rental->phone ?: 'No phone' }}</span>
+                                                </div>
+                                                @if(WhatsAppHelper::resolveCustomerNumber($rental->customer))
+                                                    <div class="customer-contact-actions">
+                                                    <a href="{{ $whatsAppUrl }}" target="_blank" class="rn-wa-action" title="WhatsApp {{ $rental->customer_name }}" aria-label="WhatsApp {{ $rental->customer_name }}">
+                                                        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 11.4c0 4.7-3.9 8.6-8.8 8.6-1.5 0-3-.4-4.2-1.1L3 20l1.2-3.7A8.4 8.4 0 0 1 2.4 11.4C2.4 6.7 6.3 3 11.2 3 16.1 3 20 6.7 20 11.4Zm-4.8 2.2c-.2-.1-1.2-.6-1.4-.7s-.3-.1-.4.1-.5.7-.7.9-.3.2-.5.1a5.9 5.9 0 0 1-1.7-1c-.6-.5-1-1.2-1.1-1.4-.1-.2 0-.3.1-.4l.3-.4.2-.3v-.4c0-.1-.4-1.1-.6-1.6-.2-.4-.3-.4-.4-.4h-.4c-.1 0-.4 0-.6.3-.2.2-.8.8-.8 1.9s.8 2.1 1 2.3c.1.1 1.5 2.3 3.8 3.2.5.2 1 .4 1.3.5.6.2 1.2.2 1.7.1.5-.1 1.2-.5 1.4-1 .2-.5.2-1 .1-1Z"/></svg>
+                                                        <span class="rn-wa-action-label">WhatsApp</span>
+                                                    </a>
+                                                    </div>
+                                                @endif
+                                            </div>
                                         </div>
                                     </td>
                                     <td class="items-col items-cell" data-label="Items">
                                         <div class="product-mini">
-                                            <div class="product-thumb">{{ strtoupper(substr((string) ($primaryItem['name'] ?? 'P'), 0, 1)) }}</div>
+                                            <div class="product-thumb">@if(!empty($primaryItem['image_url']))<img src="{{ $primaryItem['image_url'] }}" alt="">@else{{ strtoupper(substr((string) ($primaryItem['name'] ?? 'P'), 0, 1)) }}@endif</div>
                                             <div class="cell-stack compact" style="min-width:0;">
                                                 <div class="items-line">
                                                     @if(\Illuminate\Support\Facades\Route::has('products.show') && $rental->product)
@@ -763,8 +1234,8 @@
                                     </td>
                                     <td class="date-col rental-period-cell" data-label="Rental Period">
                                         <div class="cell-stack compact">
-                                            <strong>{{ optional($rental->start_date)->format('d M Y') }} - {{ optional($rental->end_date)->format('d M Y') }}</strong>
-                                            <span class="cell-subtle {{ $isOverdueDate ? 'is-danger' : ($isEndingSoonDate || $isDueToday ? 'is-warning' : '') }}">{{ $periodSignal }}</span>
+                                                <strong>{{ optional($rental->start_date)->format('d M') }} - {{ optional($rental->end_date)->format('d M') }}</strong>
+                                                <span>- {{ $periodSignal }}</span>
                                         </div>
                                     </td>
                                     <td class="date-col due-date-col" data-label="Due Date">
@@ -797,8 +1268,8 @@
                                                     Pay {{ $paymentBadge['label'] }}
                                                 </span>
                                             </div>
-                                            <span class="cell-subtle">Del: {{ $deliveryAssignee }}</span>
-                                            <span class="cell-subtle">Pick: {{ $pickupAssignee }}</span>
+                                            <span class="cell-subtle"><strong>Fulfilled by:</strong> {{ $fulfilledByLabel }}</span>
+                                            <span class="cell-subtle">Del: {{ $deliveryAssignee }} - Pick: {{ $pickupAssignee }}</span>
                                             @if($isHotlisted)
                                                 <span class="hotlist-note">Overdue more than 5 days with unpaid dues. Prioritize pickup.</span>
                                             @endif
@@ -870,73 +1341,35 @@
                                                 <details class="ops-action-menu">
                                                     <summary aria-label="Rental actions">...</summary>
                                                     <div class="ops-action-panel row-actions">
-
-                                            @if($canUpdateRentals && !in_array($rental->status, ['returned', 'cancelled'], true))
-                                                <a href="{{ route('rentals.edit', $rental) }}" class="ops-btn-light">Edit</a>
-                                            @endif
-
-                                            @if($canUpdateRentals && !in_array($rental->status, ['returned', 'cancelled'], true))
-                                                <form method="POST" action="{{ route('rentals.cancel', $rental) }}" style="margin:0;">
-                                                    @csrf
-                                                    @method('PUT')
-                                                    <button type="submit" class="ops-btn-danger" onclick="return confirm('Cancel this rental? This keeps the record for audit history.');">Cancel</button>
-                                                </form>
-                                            @endif
-
-                                            @if($canDeleteRentals)
-                                                <form method="POST" action="{{ route('rentals.destroy', $rental) }}" style="margin:0;">
-                                                    @csrf
-                                                    @method('DELETE')
-                                                    <button type="submit" class="ops-btn-danger" onclick="return confirm('Delete this rental order permanently? This will be blocked if invoices, payments, deliveries, renewals, or linked sales exist.');">Delete</button>
-                                                </form>
-                                            @endif
-
-                                            @if($canCreateDeliveries && $rental->status !== 'cancelled' && !$hasOpenDeliveryTask)
-                                                <a href="{{ route('deliveries.create', ['rental_id' => $rental->id]) }}" class="ops-btn-light">Assign</a>
-                                            @endif
-
-                                            @if($canUpdateRentals && $rental->canRenew())
-                                                <form method="POST" action="{{ route('rentals.quick-renew', $rental) }}" style="margin:0;" data-quick-renew-form data-renewal-days="{{ $rental->suggestedRenewalDays() }}">
-                                                    @csrf
-                                                    <button type="submit" class="ops-btn-light">Quick Renew</button>
-                                                </form>
-                                            @endif
-
-                                            @if(WhatsAppHelper::resolveCustomerNumber($rental->customer))
-                                                <a href="{{ $renewalWhatsAppUrl }}" target="_blank" class="ops-btn-wa">Renewal WA</a>
-                                            @endif
-
-                                            @if($isHotlisted && $canCreateDeliveries && !$hasOpenPickupTask && $deliveryStatusValue === 'completed')
-                                                <a href="{{ $pickupAssignUrl }}" class="ops-btn-danger">Initiate Pickup</a>
-                                            @endif
-
-                                            @if($canUpdateDeliveries && $deliveryStatusValue === 'pending' && $rental->deliveryRecord)
-                                                <form method="POST" action="{{ route('deliveries.in_progress', $rental->deliveryRecord) }}" style="margin:0;">
-                                                    @csrf
-                                                    @method('PUT')
-                                                    <button type="submit" class="ops-btn-light">Start D</button>
-                                                </form>
-                                            @elseif($canUpdateDeliveries && $deliveryStatusValue === 'in_progress' && $rental->deliveryRecord)
-                                                <form method="POST" action="{{ route('deliveries.complete', $rental->deliveryRecord) }}" style="margin:0;">
-                                                    @csrf
-                                                    @method('PUT')
-                                                    <button type="submit" class="ops-btn-success">Complete D</button>
-                                                </form>
-                                            @endif
-
-                                            @if($canUpdateDeliveries && $pickupStatusValue === 'pending' && $rental->pickupRecord)
-                                                <form method="POST" action="{{ route('deliveries.in_progress', $rental->pickupRecord) }}" style="margin:0;">
-                                                    @csrf
-                                                    @method('PUT')
-                                                    <button type="submit" class="ops-btn-light">Start P</button>
-                                                </form>
-                                            @elseif($canUpdateDeliveries && $pickupStatusValue === 'in_progress' && $rental->pickupRecord)
-                                                <form method="POST" action="{{ route('deliveries.complete', $rental->pickupRecord) }}" style="margin:0;">
-                                                    @csrf
-                                                    @method('PUT')
-                                                    <button type="submit" class="ops-btn-success">Complete P</button>
-                                                </form>
-                                            @endif
+                                                        @if($canUpdateRentals && !in_array($rental->status, ['returned', 'cancelled'], true))
+                                                            <a href="{{ route('rentals.edit', $rental) }}" class="ops-btn-light">Edit</a>
+                                                        @endif
+                                                        @if($canUpdateRentals && !in_array($rental->status, ['returned', 'cancelled'], true))
+                                                            <form method="POST" action="{{ route('rentals.cancel', $rental) }}" style="margin:0;">
+                                                                @csrf
+                                                                @method('PUT')
+                                                                <button type="submit" class="ops-btn-danger" onclick="return confirm('Cancel this rental? This keeps the record for audit history.');">Cancel</button>
+                                                            </form>
+                                                        @endif
+                                                        @if($canDeleteRentals)
+                                                            <form method="POST" action="{{ route('rentals.destroy', $rental) }}" style="margin:0;">
+                                                                @csrf
+                                                                @method('DELETE')
+                                                                <button type="submit" class="ops-btn-danger" onclick="return confirm('Delete this rental order permanently? This will be blocked if invoices, payments, deliveries, renewals, or linked sales exist.');">Delete</button>
+                                                            </form>
+                                                        @endif
+                                                        @if($canCreateDeliveries && $rental->status !== 'cancelled' && !$hasOpenDeliveryTask)
+                                                            <a href="{{ route('deliveries.create', ['rental_id' => $rental->id]) }}" class="ops-btn-light">Assign</a>
+                                                        @endif
+                                                        @if($canUpdateRentals && $rental->canRenew())
+                                                            <form method="POST" action="{{ route('rentals.quick-renew', $rental) }}" style="margin:0;" data-quick-renew-form data-renewal-days="{{ $rental->suggestedRenewalDays() }}">
+                                                                @csrf
+                                                                <button type="submit" class="ops-btn-light">Quick Renew</button>
+                                                            </form>
+                                                        @endif
+                                                        @if(WhatsAppHelper::resolveCustomerNumber($rental->customer))
+                                                            <a href="{{ $renewalWhatsAppUrl }}" target="_blank" class="ops-btn-wa">Renewal WA</a>
+                                                        @endif
                                                     </div>
                                                 </details>
                                             </div>
@@ -963,7 +1396,11 @@
     </div>
 </div>
 @if($canCreateRentals)
-    @include('partials.mobile-fab', ['href' => route('rentals.create'), 'label' => 'Add Rental'])
+    @include('partials.mobile-fab', [
+        'href' => route('rentals.create'),
+        'label' => 'Add Rental',
+        'compact' => true,
+    ])
 @endif
 <script>
     document.addEventListener('DOMContentLoaded', function () {
@@ -1021,6 +1458,7 @@
 @push('scripts')
 <script>
     (() => {
+        const rentalsPage = document.querySelector('.rentals-page');
         document.querySelectorAll('[data-quick-renew-form]').forEach((form) => {
             form.addEventListener('submit', (event) => {
                 const days = form.dataset.renewalDays || '';
@@ -1038,13 +1476,27 @@
         const selectAll = document.getElementById('selectAllRentalRows');
         const rowChecks = Array.from(document.querySelectorAll('.rental-row-check'));
         const invoiceChecks = rowChecks.filter((checkbox) => checkbox.classList.contains('rental-invoice-check'));
+        const proxyChecks = Array.from(document.querySelectorAll('.mobile-rental-select-proxy'));
         const countEl = document.getElementById('rentalInvoiceSelectedCount');
+
+        const syncSelectionUi = () => {
+            rowChecks.forEach((checkbox) => {
+                const row = checkbox.closest('.rental-row');
+                row?.classList.toggle('is-selected', checkbox.checked);
+
+                const proxy = row?.querySelector('.mobile-rental-select-proxy');
+                if (proxy) {
+                    proxy.checked = checkbox.checked;
+                }
+            });
+        };
 
         const updateSelectedCount = () => {
             const selected = rowChecks.filter((checkbox) => checkbox.checked).length;
             const invoiceEligible = invoiceChecks.filter((checkbox) => checkbox.checked && checkbox.dataset.invoiceId).length;
 
             bulkForm?.classList.toggle('is-hidden', selected === 0);
+            rentalsPage?.classList.toggle('is-selection-mode', selected > 0);
 
             if (countEl) {
                 countEl.textContent = `${selected} selected`;
@@ -1057,6 +1509,8 @@
                 selectAll.checked = selected > 0 && selected === rowChecks.length;
                 selectAll.indeterminate = selected > 0 && selected < rowChecks.length;
             }
+
+            syncSelectionUi();
         };
 
         selectAll?.addEventListener('change', () => {
@@ -1068,11 +1522,67 @@
 
         rowChecks.forEach((checkbox) => checkbox.addEventListener('change', updateSelectedCount));
 
+        proxyChecks.forEach((proxy) => {
+            proxy.addEventListener('change', () => {
+                const matchingCheckbox = rowChecks.find((checkbox) => checkbox.value === proxy.value);
+
+                if (!matchingCheckbox) {
+                    return;
+                }
+
+                matchingCheckbox.checked = proxy.checked;
+                updateSelectedCount();
+            });
+        });
+
         document.querySelector('[data-rental-clear-selection]')?.addEventListener('click', () => {
             rowChecks.forEach((checkbox) => {
                 checkbox.checked = false;
             });
             updateSelectedCount();
+        });
+
+        document.querySelectorAll('[data-rental-select-toggle]').forEach((button) => {
+            button.addEventListener('click', () => {
+                const rentalId = button.dataset.rentalSelectToggle;
+                const checkbox = rowChecks.find((item) => item.value === rentalId);
+
+                if (!checkbox) {
+                    return;
+                }
+
+                checkbox.checked = !checkbox.checked;
+                updateSelectedCount();
+            });
+        });
+
+        document.querySelectorAll('[data-mobile-rental-card]').forEach((card) => {
+            let pressTimer = null;
+
+            const startPress = () => {
+                pressTimer = window.setTimeout(() => {
+                    const row = card.closest('.rental-row');
+                    const checkbox = row?.querySelector('.rental-row-check');
+
+                    if (!checkbox) {
+                        return;
+                    }
+
+                    checkbox.checked = true;
+                    updateSelectedCount();
+                }, 450);
+            };
+
+            const clearPress = () => {
+                if (pressTimer) {
+                    window.clearTimeout(pressTimer);
+                    pressTimer = null;
+                }
+            };
+
+            card.addEventListener('touchstart', startPress, { passive: true });
+            card.addEventListener('touchend', clearPress, { passive: true });
+            card.addEventListener('touchcancel', clearPress, { passive: true });
         });
 
         document.querySelectorAll('[data-rental-bulk-action]').forEach((button) => {

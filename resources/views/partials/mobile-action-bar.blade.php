@@ -1,6 +1,9 @@
 @php
-    $actions = collect($actions ?? [])->filter(fn ($action) => filled($action['label'] ?? null))->take(2)->values();
-    $moreActions = collect($moreActions ?? [])->filter(fn ($action) => filled($action['label'] ?? null))->values();
+    $primaryActionCandidates = collect($actions ?? [])->filter(fn ($action) => filled($action['label'] ?? null))->values();
+    $actions = $primaryActionCandidates->take(1)->values();
+    $moreActions = $primaryActionCandidates->skip(1)
+        ->merge(collect($moreActions ?? [])->filter(fn ($action) => filled($action['label'] ?? null)))
+        ->values();
     $hasBar = $actions->isNotEmpty() || $moreActions->isNotEmpty();
     $label = $label ?? 'Mobile quick actions';
     $moreLabel = $moreLabel ?? 'More actions';
@@ -218,7 +221,7 @@
 
         @if($moreActions->isNotEmpty())
             <details class="ph-mobile-action-menu" data-mobile-action-menu>
-                <summary class="ph-mobile-action-button">More</summary>
+                <summary class="ph-mobile-action-button ph-mobile-action-button-more" aria-label="{{ $moreLabel }}">More</summary>
                 <div class="ph-mobile-action-sheet" role="menu" aria-label="{{ $moreLabel }}">
                     @foreach($moreActions as $action)
                         @php

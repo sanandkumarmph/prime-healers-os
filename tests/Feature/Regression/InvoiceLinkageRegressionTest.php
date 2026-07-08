@@ -37,7 +37,7 @@ class InvoiceLinkageRegressionTest extends TestCase
             'other_amount' => 0,
         ]);
 
-        $response->assertRedirect('/rentals');
+        $response->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $rental = Rental::query()->where('organization_id', $organization->id)->firstOrFail();
         $invoice = Invoice::query()->where('organization_id', $organization->id)->firstOrFail();
@@ -76,7 +76,7 @@ class InvoiceLinkageRegressionTest extends TestCase
             'notes' => 'Invoice linkage regression',
         ]);
 
-        $response->assertRedirect(route('sales.index'));
+        $response->assertRedirect(route('sales.index', ['sort_by' => 'latest']));
 
         $sale = Sale::query()->where('organization_id', $organization->id)->firstOrFail();
         $invoice = Invoice::query()->where('organization_id', $organization->id)->firstOrFail();
@@ -103,7 +103,7 @@ class InvoiceLinkageRegressionTest extends TestCase
             'deposit_amount' => 500,
             'transport_amount' => 0,
             'other_amount' => 0,
-        ])->assertRedirect('/rentals');
+        ])->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $invoice = Invoice::query()->where('organization_id', $organization->id)->firstOrFail();
 
@@ -128,7 +128,7 @@ class InvoiceLinkageRegressionTest extends TestCase
             'deposit_amount' => 500,
             'transport_amount' => 0,
             'other_amount' => 0,
-        ])->assertRedirect('/rentals');
+        ])->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $rental = Rental::query()->where('organization_id', $organization->id)->firstOrFail();
         $invoice = Invoice::query()->where('organization_id', $organization->id)->firstOrFail();
@@ -221,7 +221,7 @@ class InvoiceLinkageRegressionTest extends TestCase
                     'unit_price' => 700,
                 ],
             ],
-        ])->assertRedirect('/rentals');
+        ])->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $invoice = Invoice::query()
             ->where('organization_id', $organization->id)
@@ -276,7 +276,7 @@ class InvoiceLinkageRegressionTest extends TestCase
                     'unit_price' => 750,
                 ],
             ],
-        ])->assertRedirect('/rentals');
+        ])->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $invoice = Invoice::query()->where('organization_id', $organization->id)->firstOrFail();
 
@@ -303,7 +303,7 @@ class InvoiceLinkageRegressionTest extends TestCase
             'deposit_amount' => 0,
             'transport_amount' => 0,
             'other_amount' => 0,
-        ])->assertRedirect('/rentals');
+        ])->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $invoice = Invoice::query()->where('organization_id', $organization->id)->firstOrFail();
 
@@ -348,7 +348,7 @@ class InvoiceLinkageRegressionTest extends TestCase
                     'unit_price' => 180,
                 ],
             ],
-        ])->assertRedirect('/rentals');
+        ])->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $rental = Rental::query()->where('organization_id', $organization->id)->firstOrFail();
         $invoice = Invoice::query()->where('organization_id', $organization->id)->firstOrFail();
@@ -412,7 +412,7 @@ class InvoiceLinkageRegressionTest extends TestCase
                     'unit_price' => 700,
                 ],
             ],
-        ])->assertRedirect('/rentals');
+        ])->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         config([
             'pdf.engine' => 'dompdf',
@@ -465,7 +465,7 @@ class InvoiceLinkageRegressionTest extends TestCase
             'deposit_amount' => 0,
             'transport_amount' => 0,
             'other_amount' => 0,
-        ])->assertRedirect('/rentals');
+        ])->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $rental = Rental::query()->where('organization_id', $organization->id)->firstOrFail();
         $invoice = Invoice::query()->where('organization_id', $organization->id)->firstOrFail();
@@ -526,7 +526,7 @@ class InvoiceLinkageRegressionTest extends TestCase
             'deposit_amount' => 500,
             'transport_amount' => 0,
             'other_amount' => 0,
-        ])->assertRedirect('/rentals');
+        ])->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $rental = Rental::query()->where('organization_id', $organization->id)->firstOrFail();
         $invoice = Invoice::query()->where('organization_id', $organization->id)->firstOrFail();

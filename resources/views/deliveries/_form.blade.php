@@ -2,7 +2,21 @@
     $isEdit = isset($delivery);
     $selectedAssignmentType = old('assignment_type', $isEdit ? ($delivery->assignment_type ?? 'delivery_team') : 'delivery_team');
     $selectedTypeValue = old('type', $isEdit ? $delivery->type : ($selectedType ?? 'delivery'));
-    $selectedStatusValue = old('status', $isEdit ? $delivery->status : 'pending');
+    $effectiveDeliveryStatus = $isEdit ? ($delivery->status ?? 'pending') : 'pending';
+    $linkedRental = $isEdit ? ($delivery->relationLoaded('rental') ? $delivery->getRelation('rental') : $delivery->rental) : null;
+    $isEffectivelyClosedDelivery = $isEdit
+        && $delivery->type === 'delivery'
+        && (
+            $delivery->status === 'completed'
+            || filled($delivery->completed_at)
+            || ($linkedRental && in_array($linkedRental->deliveryStatus(), ['completed', 'delivered'], true))
+        );
+
+    if ($isEffectivelyClosedDelivery) {
+        $effectiveDeliveryStatus = 'completed';
+    }
+
+    $selectedStatusValue = old('status', $effectiveDeliveryStatus);
     $selectedCancellationReason = old('cancellation_reason', $isEdit ? $delivery->cancellation_reason : '');
     $selectedCancellationNotes = old('cancellation_notes', $isEdit ? $delivery->cancellation_notes : '');
     $selectedReopenConfirmation = old('reopen_confirmation');
@@ -35,7 +49,7 @@
     };
     $thirdPartyPhoneParts = \App\Support\PhoneNumber::split(old('third_party_phone', $isEdit ? $delivery->third_party_phone : ''));
     $countryCodeOptions = \App\Support\PhoneNumber::countryCodeOptions();
-    $requiresDeliveryReopenConsent = $isEdit && $delivery->type === 'delivery' && $delivery->status === 'completed';
+    $requiresDeliveryReopenConsent = $isEffectivelyClosedDelivery;
 @endphp
 
 <style>

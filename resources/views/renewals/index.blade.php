@@ -21,7 +21,7 @@
     };
 
     $clearUrl = route('renewal-center.index', ['tab' => $tab]);
-    $currency = fn ($value) => '₹' . number_format((float) $value, 2);
+    $currency = fn ($value) => 'Rs. ' . number_format((float) $value, 2);
     $activeChipMap = [
         'search' => fn ($value) => 'Search: ' . $value,
         'city' => fn ($value) => 'City: ' . $value,
@@ -200,6 +200,48 @@
         text-decoration: none;
         font-weight: 800;
         font-size: 11px;
+    }
+    .renewal-stat {
+        position: relative;
+        color: inherit;
+        text-decoration: none;
+        transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+    }
+    .renewal-stat:hover,
+    .renewal-stat:focus-visible {
+        transform: translateY(-1px);
+        border-color: #b8c7ff;
+        box-shadow: 0 14px 30px rgba(49, 80, 255, .10);
+        outline: none;
+    }
+    .renewal-stat-chevron {
+        grid-column: 2;
+        justify-self: end;
+        align-self: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 999px;
+        display: inline-grid;
+        place-items: center;
+        background: #f1f5f9;
+        color: #334155;
+        font-size: 13px;
+        font-weight: 900;
+    }
+    .renewal-action-icon {
+        width: 18px;
+        height: 18px;
+        display: inline-grid;
+        place-items: center;
+        flex: 0 0 auto;
+    }
+    .renewal-action-icon svg {
+        width: 18px;
+        height: 18px;
+        stroke: currentColor;
+    }
+    .renewal-icon-action {
+        gap: 7px;
     }
     .renewal-tab.is-active {
         background: #0f172a;
@@ -418,7 +460,7 @@
     .renewal-modal-backdrop {
         position: fixed;
         inset: 0;
-        z-index: 70;
+        z-index: 1600;
         background: rgba(15, 23, 42, 0.55);
         display: flex;
         align-items: flex-end;
@@ -432,7 +474,7 @@
         background: #fff;
         box-shadow: 0 28px 60px rgba(15, 23, 42, 0.22);
         display: grid;
-        grid-template-rows: auto 1fr auto;
+        grid-template-rows: auto minmax(0, 1fr) auto;
         overflow: hidden;
     }
     .renewal-modal-header,
@@ -450,7 +492,9 @@
         flex-wrap: wrap;
     }
     .renewal-modal-body {
+        min-height: 0;
         overflow: auto;
+        -webkit-overflow-scrolling: touch;
         padding: 18px;
         display: grid;
         gap: 14px;
@@ -515,15 +559,527 @@
             display: grid;
         }
         .renewal-modal-backdrop {
-            padding: 0;
+            align-items: stretch;
+            padding: 10px;
+            padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
         }
         .renewal-modal {
             width: 100%;
-            max-height: 100vh;
-            border-radius: 22px 22px 0 0;
+            max-height: calc(100dvh - 20px - env(safe-area-inset-bottom, 0px));
+            min-height: 0;
+            border-radius: 18px;
+            grid-template-rows: auto minmax(0, 1fr) auto;
+        }
+        .renewal-modal-body {
+            min-height: 0;
+            overflow-y: auto;
+            padding: 12px;
+        }
+        .renewal-modal-footer {
+            flex-shrink: 0;
+            padding: 10px 12px;
+            gap: 8px;
+        }
+        .renewal-modal-footer > div,
+        .renewal-modal-footer form,
+        .renewal-modal-footer .renewal-btn,
+        .renewal-modal-footer .renewal-btn-secondary,
+        .renewal-modal-footer .renewal-btn-ghost {
+            width: 100%;
         }
         .renewal-pagination {
             justify-content: center;
+        }
+    }
+
+    /* Renewal Center command-center refinement */
+    .renewal-center-shell { max-width:1360px; padding:0 4px 20px; }
+    .renewal-hero { padding:16px; gap:12px; box-shadow:0 12px 28px rgba(15,23,42,.045); }
+    .renewal-title { font-size:clamp(24px,2.1vw,28px); letter-spacing:-.03em; }
+    .renewal-copy { margin:0; max-width:680px; }
+    .renewal-chip-icon { width:18px; height:18px; border-radius:999px; display:inline-grid; place-items:center; background:#2563eb; color:#fff; font-size:11px; font-weight:900; }
+    .renewal-stat { min-height:88px; grid-template-columns:auto minmax(0,1fr); align-items:center; gap:2px 10px; background:#fff; }
+    .renewal-stat-icon { grid-row:1 / span 3; width:36px; height:36px; border-radius:12px; display:grid; place-items:center; font-weight:900; }
+    .renewal-stat.is-today .renewal-stat-icon { background:#dcfce7; color:#047857; }
+    .renewal-stat.is-soon .renewal-stat-icon { background:#dbeafe; color:#1d4ed8; }
+    .renewal-stat.is-overdue .renewal-stat-icon { background:#ffedd5; color:#c2410c; }
+    .renewal-stat.is-pickup .renewal-stat-icon { background:#ede9fe; color:#5b21b6; }
+    .renewal-stat-label { text-transform:none; letter-spacing:0; font-size:13px; color:#334155; }
+    .renewal-stat-value { font-size:26px; line-height:1; }
+    .renewal-stat-value::after { content:'Rentals'; display:block; margin-top:6px; color:#64748b; font-size:12px; font-weight:700; letter-spacing:0; }
+    .renewal-tabs { overflow-x:auto; flex-wrap:nowrap; padding:2px 1px 4px; scrollbar-width:none; }
+    .renewal-tabs::-webkit-scrollbar { display:none; }
+    .renewal-tab { flex:0 0 auto; min-height:36px; }
+    .renewal-card { padding:12px; border-radius:18px; }
+    .renewal-toolbar { display:block; }
+    .renewal-filter-panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; overflow:hidden; }
+    .renewal-filter-panel summary { display:none; align-items:center; gap:10px; padding:13px 14px; cursor:pointer; user-select:none; color:#0f172a; font-weight:900; list-style:none; }
+    .renewal-filter-panel summary::-webkit-details-marker { display:none; }
+    .renewal-filter-summary-icon { width:28px; height:28px; border-radius:10px; display:inline-grid; place-items:center; background:#eef2ff; color:#3150ff; }
+    .renewal-filter-panel summary b { margin-left:auto; color:#64748b; transition:transform .15s ease; }
+    .renewal-filter-panel[open] summary b { transform:rotate(180deg); }
+    .renewal-filter-body { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(180px,.58fr) minmax(150px,.46fr) auto; gap:10px; align-items:end; padding:12px; }
+    .renewal-filter-grid { grid-column:1 / -1; display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; }
+    .renewal-input, .renewal-select { min-height:40px; padding:9px 12px; border-radius:12px; }
+    .renewal-btn, .renewal-btn-secondary, .renewal-btn-ghost { min-height:38px; padding:9px 12px; border-radius:12px; font-size:13px; }
+    .renewal-list { border-radius:16px; overflow:visible; border:0; display:grid; gap:10px; }
+    .renewal-table { border-collapse:separate; border-spacing:0 10px; background:transparent; }
+    .renewal-table thead th { background:#f8fafc; border-top:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0; padding:11px 12px; font-size:11px; }
+    .renewal-table thead th:first-child { border-left:1px solid #e2e8f0; border-radius:14px 0 0 14px; }
+    .renewal-table thead th:last-child { border-right:1px solid #e2e8f0; border-radius:0 14px 14px 0; }
+    .renewal-table tbody tr { box-shadow:0 10px 24px rgba(15,23,42,.04); }
+    .renewal-table td { background:#fff; border-top:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0; padding:14px 12px; }
+    .renewal-table td:first-child { border-left:1px solid #e2e8f0; border-radius:16px 0 0 16px; }
+    .renewal-table td:last-child { border-right:1px solid #e2e8f0; border-radius:0 16px 16px 0; }
+    .renewal-row-title { font-size:15px; }
+    .renewal-row-copy { font-size:12.5px; line-height:1.38; }
+    .renewal-muted { font-size:11.5px; line-height:1.4; }
+    .renewal-action-set { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; min-width:210px; }
+    .renewal-action-set [data-reminder-trigger] { grid-column:1 / -1; background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8; }
+    .renewal-action-set [data-renew-trigger] { background:#ecfdf5; border-color:#bbf7d0; color:#047857; }
+    .renewal-action-set [data-pickup-trigger] { background:#eef2ff; border-color:#c7d2fe; color:#4338ca; }
+    .renewal-action-set .renewal-btn-secondary, .renewal-action-set .renewal-btn-ghost { width:100%; min-height:34px; padding:7px 9px; }
+    .renewal-mobile-card { box-shadow:0 12px 26px rgba(15,23,42,.055); }
+    .renewal-mobile-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .renewal-mobile-actions [data-reminder-trigger], .renewal-mobile-actions [data-pickup-trigger] { grid-column:span 2; }
+    .renewal-pagination { align-items:center; justify-content:space-between; gap:12px; color:#64748b; font-size:12px; }
+    @media (max-width: 768px) {
+        .renewal-center-shell { padding:0 10px 110px; gap:10px; }
+        .renewal-hero { border-radius:18px; padding:14px; }
+        .renewal-hero-top { gap:10px; }
+        .renewal-eyebrow { font-size:11px; }
+        .renewal-title { margin-top:4px; font-size:24px; }
+        .renewal-copy { font-size:12px; line-height:1.45; }
+        .renewal-meta-strip { display:grid; grid-template-columns:1fr; gap:8px; }
+        .renewal-stat-strip { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+        .renewal-stat { min-height:86px; padding:11px; }
+        .renewal-stat-icon { width:34px; height:34px; }
+        .renewal-stat-value { font-size:25px; }
+        .renewal-tabs { margin:0 -2px; padding-bottom:6px; }
+        .renewal-tab { min-height:38px; padding:8px 12px; }
+        .renewal-card { padding:10px; background:transparent; border:0; box-shadow:none; }
+        .renewal-filter-panel summary { display:flex; background:#fff; }
+        .renewal-filter-panel:not([open]) .renewal-filter-body { display:none; }
+        .renewal-filter-body { grid-template-columns:1fr; padding:14px; }
+        .renewal-filter-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .renewal-filter-grid .renewal-field:first-child { grid-column:1 / -1; }
+        .renewal-list-actions { grid-template-columns:1fr; }
+        .renewal-list-actions .renewal-btn, .renewal-list-actions .renewal-btn-secondary { width:100%; }
+        .renewal-mobile-card { border-radius:18px; padding:14px; gap:11px; }
+        .renewal-mobile-grid { grid-template-columns:1fr; gap:8px; }
+        .renewal-row-title { font-size:18px; }
+        .renewal-row-copy { font-size:13px; }
+        .renewal-muted { font-size:12px; }
+        .renewal-mobile-card > .renewal-muted { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+        .renewal-mobile-actions .renewal-btn-secondary, .renewal-mobile-actions .renewal-btn-ghost { min-height:42px; }
+        .renewal-pagination { justify-content:center; padding-bottom:12px; }
+    }
+
+    /* Renewal Center mobile overflow fix */
+    @media (max-width: 640px) {
+        .renewal-center-shell,
+        .renewal-center-shell * {
+            box-sizing: border-box;
+        }
+
+        .renewal-center-shell {
+            width: 100%;
+            max-width: 100vw;
+            margin: 0;
+            padding: 0 8px calc(92px + env(safe-area-inset-bottom, 0px));
+            gap: 10px;
+            overflow-x: hidden;
+        }
+
+        .renewal-hero,
+        .renewal-card,
+        .renewal-filter-panel,
+        .renewal-filter-body,
+        .renewal-mobile-card {
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+        }
+
+        .renewal-hero {
+            padding: 12px;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        .renewal-title {
+            font-size: 22px;
+            letter-spacing: -.025em;
+        }
+
+        .renewal-copy {
+            font-size: 12px;
+        }
+
+        .renewal-meta-strip {
+            grid-template-columns: 1fr;
+        }
+
+        .renewal-chip {
+            max-width: 100%;
+            min-width: 0;
+            white-space: normal;
+            align-items: flex-start;
+            line-height: 1.25;
+        }
+
+        .renewal-stat-strip {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .renewal-stat {
+            min-width: 0;
+            min-height: 78px;
+            padding: 10px;
+        }
+
+        .renewal-stat-label {
+            font-size: 11px;
+            line-height: 1.15;
+        }
+
+        .renewal-stat-value {
+            font-size: 22px;
+        }
+
+        .renewal-tabs {
+            width: 100%;
+            max-width: 100%;
+            margin: 0;
+            padding: 0 0 6px;
+            overflow-x: auto;
+            overscroll-behavior-x: contain;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .renewal-tab {
+            max-width: 78vw;
+            white-space: nowrap;
+        }
+
+        .renewal-card {
+            padding: 0;
+            background: transparent;
+            border: 0;
+            box-shadow: none;
+            overflow: visible;
+        }
+
+        .renewal-filter-panel {
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        .renewal-filter-body {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 12px;
+            overflow: hidden;
+        }
+
+        .renewal-filter-grid {
+            order: 2;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+        }
+
+        .renewal-list-actions {
+            order: 3;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 8px;
+            width: 100%;
+            min-width: 0;
+        }
+
+        .renewal-field,
+        .renewal-input,
+        .renewal-select,
+        .renewal-btn,
+        .renewal-btn-secondary,
+        .renewal-btn-ghost {
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+        }
+
+        .renewal-input,
+        .renewal-select {
+            height: 42px;
+            font-size: 14px;
+            padding: 9px 11px;
+        }
+
+        .renewal-input::placeholder {
+            text-overflow: ellipsis;
+        }
+
+        .renewal-mobile-list {
+            width: 100%;
+            max-width: 100%;
+            overflow: hidden;
+        }
+
+        .renewal-mobile-card {
+            padding: 12px;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        .renewal-mobile-actions {
+            grid-template-columns: 1fr;
+        }
+
+        .renewal-mobile-actions [data-reminder-trigger],
+        .renewal-mobile-actions [data-pickup-trigger] {
+            grid-column: auto;
+        }
+    }
+
+    /* Renewal Center final mobile containment */
+    @media (max-width: 768px) {
+        html,
+        body {
+            max-width: 100%;
+            overflow-x: hidden;
+        }
+
+        .renewal-center-shell {
+            width: 100% !important;
+            max-width: 100% !important;
+            padding-left: 8px !important;
+            padding-right: 8px !important;
+            padding-bottom: calc(118px + env(safe-area-inset-bottom, 0px)) !important;
+            overflow-x: hidden !important;
+        }
+
+        .renewal-list,
+        .renewal-table {
+            display: none !important;
+        }
+
+        .renewal-mobile-list {
+            display: grid !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            overflow: visible !important;
+            gap: 10px !important;
+            padding-bottom: 16px;
+        }
+
+        .renewal-mobile-card,
+        .renewal-mobile-card * {
+            min-width: 0 !important;
+            max-width: 100%;
+            overflow-wrap: anywhere;
+            word-break: normal;
+        }
+
+        .renewal-mobile-card {
+            width: 100% !important;
+            padding: 12px !important;
+            border-radius: 16px !important;
+        }
+
+        .renewal-row-title,
+        .renewal-row-copy,
+        .renewal-muted {
+            white-space: normal !important;
+            overflow-wrap: anywhere;
+        }
+
+        .renewal-filter-panel,
+        .renewal-filter-body,
+        .renewal-filter-grid,
+        .renewal-field {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+        }
+
+        .renewal-filter-body {
+            padding: 10px !important;
+            gap: 9px !important;
+        }
+
+        .renewal-input,
+        .renewal-select {
+            min-width: 0 !important;
+            max-width: 100% !important;
+            height: 40px !important;
+        }
+    }
+
+    /* Renewal Center mobile filter and card action refinement */
+    .renewal-filter-count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 22px;
+        height: 22px;
+        padding: 0 6px;
+        border-radius: 999px;
+        background: #e2e8f0;
+        color: #334155;
+        font-size: 11px;
+        font-weight: 900;
+    }
+
+    .renewal-filter-panel summary small {
+        min-width: 0;
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .renewal-mobile-more {
+        grid-column: 1 / -1;
+        min-width: 0;
+    }
+
+    .renewal-mobile-more summary {
+        list-style: none;
+        cursor: pointer;
+    }
+
+    .renewal-mobile-more summary::-webkit-details-marker { display: none; }
+
+    .renewal-mobile-more-panel {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 8px;
+    }
+
+    @media (max-width: 768px) {
+        .renewal-filter-panel:not([open]) .renewal-filter-body { display: none !important; }
+        .renewal-filter-panel[open] .renewal-filter-body {
+            display: grid !important;
+            max-height: min(68vh, 620px);
+            overflow-y: auto;
+            padding-bottom: 84px !important;
+        }
+        .renewal-filter-panel summary {
+            display: grid !important;
+            grid-template-columns: auto minmax(0, max-content) auto minmax(0, 1fr) auto;
+            gap: 8px;
+            align-items: center;
+            min-height: 48px;
+        }
+        .renewal-filter-panel[open] {
+            position: relative;
+            box-shadow: 0 16px 36px rgba(15,23,42,.12);
+        }
+        .renewal-filter-body .renewal-field { gap: 4px; }
+        .renewal-filter-body .renewal-field label { font-size: 10px; line-height: 1.1; }
+        .renewal-filter-body .renewal-input,
+        .renewal-filter-body .renewal-select { min-height: 38px !important; padding: 8px 10px !important; border-radius: 11px !important; }
+        .renewal-filter-body .renewal-list-actions {
+            position: sticky;
+            bottom: 0;
+            z-index: 4;
+            display: grid !important;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin: 6px -10px -10px;
+            padding: 10px;
+            background: linear-gradient(180deg, rgba(255,255,255,.88), #fff 42%);
+            border-top: 1px solid #e2e8f0;
+        }
+        .renewal-filter-body .renewal-list-actions .renewal-btn,
+        .renewal-filter-body .renewal-list-actions .renewal-btn-secondary { width: 100%; min-height: 38px; }
+        .renewal-mobile-card { padding: 12px !important; gap: 8px !important; }
+        .renewal-mobile-grid { gap: 7px !important; }
+        .renewal-mobile-actions { gap: 7px !important; }
+        .renewal-mobile-actions [data-reminder-trigger],
+        .renewal-mobile-actions [data-renew-trigger],
+        .renewal-mobile-actions [data-pickup-trigger] { min-height: 38px !important; padding: 8px 10px !important; }
+        .renewal-mobile-actions [data-reminder-trigger],
+        .renewal-mobile-actions [data-pickup-trigger] { grid-column: span 2; }
+        .renewal-mobile-more-panel .renewal-btn-ghost { min-height: 36px !important; padding: 8px 10px !important; font-size: 12px; }
+        .renewal-pagination { padding-bottom: calc(130px + env(safe-area-inset-bottom, 0px)) !important; }
+    }
+
+        .renewal-mobile-actions {
+            grid-template-columns: repeat(5, minmax(40px, 1fr)) !important;
+            align-items: stretch;
+        }
+        .renewal-mobile-actions .renewal-icon-action {
+            min-height: 40px !important;
+            padding: 8px !important;
+            border-radius: 12px !important;
+            font-size: 12px;
+        }
+        .renewal-mobile-actions .renewal-action-label {
+            display: none;
+        }
+        .renewal-mobile-actions [data-reminder-trigger],
+        .renewal-mobile-actions [data-renew-trigger],
+        .renewal-mobile-actions [data-pickup-trigger],
+        .renewal-mobile-actions .renewal-mobile-secondary,
+        .renewal-mobile-actions .renewal-mobile-more {
+            grid-column: auto !important;
+        }
+        .renewal-mobile-actions [data-reminder-trigger] { background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8; }
+        .renewal-mobile-actions [data-renew-trigger] { background:#ecfdf5; border-color:#bbf7d0; color:#047857; }
+        .renewal-mobile-actions [data-pickup-trigger] { background:#fff7ed; border-color:#fed7aa; color:#c2410c; }
+        .renewal-mobile-actions .renewal-mobile-secondary { background:#f8fafc; color:#2563eb; }
+        .renewal-mobile-actions .renewal-mobile-secondary.is-whatsapp { background:#ecfdf5; color:#059669; }
+        .renewal-mobile-more summary {
+            width: 100%;
+            height: 100%;
+        }
+    @media (max-width: 430px) {
+        .renewal-filter-panel summary {
+            grid-template-columns: auto minmax(0, 1fr) auto auto;
+        }
+        .renewal-filter-panel summary small { grid-column: 2 / -1; width: 100%; }
+        .renewal-mobile-more-panel { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 768px) {
+        .renewal-mobile-more[open] {
+            grid-column: 1 / -1 !important;
+        }
+        .renewal-mobile-more[open] summary {
+            width: 40px !important;
+            min-width: 40px !important;
+            height: 40px !important;
+            margin-left: auto;
+        }
+        .renewal-mobile-more[open] .renewal-mobile-more-panel {
+            display: grid !important;
+            width: 100% !important;
+            max-width: none !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            margin-top: 8px;
+            padding: 8px;
+            border: 1px solid #e2e8f0;
+            border-radius: 14px;
+            background: #f8fafc;
+        }
+        .renewal-mobile-more[open] .renewal-mobile-more-panel .renewal-btn-ghost {
+            display: inline-flex !important;
+            width: 100% !important;
+            min-height: 38px !important;
+            padding: 8px 10px !important;
+            font-size: 12px !important;
+            white-space: normal;
         }
     }
 </style>
@@ -532,33 +1088,41 @@
     <section class="renewal-hero">
         <div class="renewal-hero-top">
             <div>
-                <div class="renewal-eyebrow">Phase 1B</div>
+                <div class="renewal-eyebrow">RENEWALS</div>
                 <h1 class="renewal-title">Renewal Center</h1>
-                <p class="renewal-copy">Keep every renewal in one place so the team can quickly decide whether to follow up, renew, or schedule pickup without losing track of reminder contact versus service location.</p>
+                <p class="renewal-copy">Keep every renewal in one place so the team can act early and avoid service disruption.</p>
             </div>
             <div class="renewal-meta-strip">
-                <span class="renewal-chip">Reminder contact follows billing logic</span>
-                <span class="renewal-chip">Service location follows delivery logic</span>
+                <span class="renewal-chip"><span class="renewal-chip-icon">i</span>Reminder contact follows billing logic</span>
+                <span class="renewal-chip"><span class="renewal-chip-icon">i</span>Service location follows delivery logic</span>
             </div>
         </div>
 
         <div class="renewal-stat-strip">
-            <div class="renewal-stat">
+            <a href="{{ $tabUrl('due_today') }}" class="renewal-stat is-today" aria-label="Show due today renewals">
+                <span class="renewal-stat-icon">D</span>
                 <span class="renewal-stat-label">Due Today</span>
                 <strong class="renewal-stat-value">{{ number_format((int) ($counts['due_today'] ?? 0)) }}</strong>
-            </div>
-            <div class="renewal-stat">
-                <span class="renewal-stat-label">Due This Week</span>
+                <span class="renewal-stat-chevron" aria-hidden="true">&gt;</span>
+            </a>
+            <a href="{{ $tabUrl('next_7_days') }}" class="renewal-stat is-soon" aria-label="Show renewals due in the next 7 days">
+                <span class="renewal-stat-icon">7</span>
+                <span class="renewal-stat-label">Due in Next 7 Days</span>
                 <strong class="renewal-stat-value">{{ number_format((int) ($counts['next_7_days'] ?? 0)) }}</strong>
-            </div>
-            <div class="renewal-stat">
+                <span class="renewal-stat-chevron" aria-hidden="true">&gt;</span>
+            </a>
+            <a href="{{ $tabUrl('overdue') }}" class="renewal-stat is-overdue" aria-label="Show overdue renewals">
+                <span class="renewal-stat-icon">!</span>
                 <span class="renewal-stat-label">Overdue</span>
                 <strong class="renewal-stat-value">{{ number_format((int) ($counts['overdue'] ?? 0)) }}</strong>
-            </div>
-            <div class="renewal-stat">
+                <span class="renewal-stat-chevron" aria-hidden="true">&gt;</span>
+            </a>
+            <a href="{{ $tabUrl('pickup_requested') }}" class="renewal-stat is-pickup" aria-label="Show pickup requested renewals">
+                <span class="renewal-stat-icon">P</span>
                 <span class="renewal-stat-label">Pickup Requested</span>
                 <strong class="renewal-stat-value">{{ number_format((int) ($counts['pickup_requested'] ?? 0)) }}</strong>
-            </div>
+                <span class="renewal-stat-chevron" aria-hidden="true">&gt;</span>
+            </a>
         </div>
 
         <div class="renewal-tabs">
@@ -573,6 +1137,9 @@
 
     <section class="renewal-card">
         <form method="GET" action="{{ route('renewal-center.index') }}" class="renewal-toolbar">
+            <details class="renewal-filter-panel">
+                <summary aria-expanded="false"><span class="renewal-filter-summary-icon">F</span><span>Filters &amp; Search</span><span class="renewal-filter-count">{{ $activeFilters->count() }}</span><small>{{ Str::headline((string) request('sort_by', 'action_priority')) }} - {{ request('city') ?: 'Any City' }}</small><b aria-hidden="true">v</b></summary>
+                <div class="renewal-filter-body">
             <input type="hidden" name="tab" value="{{ $tab }}">
             <div class="renewal-field">
                 <label for="renewal-search">Search</label>
@@ -609,7 +1176,7 @@
                 <a href="{{ $clearUrl }}" class="renewal-btn-secondary">Clear Filters</a>
             </div>
 
-            <div class="renewal-filter-grid" style="grid-column:1 / -1;">
+            <div class="renewal-filter-grid">
                 <div class="renewal-field">
                     <label for="renewal-city">City</label>
                     <input id="renewal-city" type="text" name="city" value="{{ request('city') }}" class="renewal-input" placeholder="Delivery city">
@@ -673,6 +1240,8 @@
                     </select>
                 </div>
             </div>
+                        </div>
+            </details>
         </form>
 
         @if($activeFilters->isNotEmpty())
@@ -728,10 +1297,10 @@
                                 </td>
                                 <td>
                                     <div class="renewal-row-copy">
-                                        <strong>Reminder To:</strong> {{ $rental->reminderContactName() }} • {{ $rental->reminderContactPhone() ?: 'No phone' }}
+                                        <strong>Reminder To:</strong> {{ $rental->reminderContactName() }} - {{ $rental->reminderContactPhone() ?: 'No phone' }}
                                     </div>
                                     <div class="renewal-row-copy">
-                                        <strong>Service Location:</strong> {{ $rental->deliveryContactName() }} • {{ $rental->deliveryContactPhone() ?: 'No phone' }}
+                                        <strong>Service Location:</strong> {{ $rental->deliveryContactName() }} - {{ $rental->deliveryContactPhone() ?: 'No phone' }}
                                     </div>
                                     <div class="renewal-muted">{{ collect([$rental->deliveryContactAddress(), $rental->deliveryContactCity(), $rental->deliveryContactState(), $rental->deliveryContactPincode()])->filter()->join(', ') ?: 'No address' }}</div>
                                     @if($rental->deliveryContactMapUrl())
@@ -757,7 +1326,9 @@
                                     <div class="renewal-action-set">
                                         <button
                                             type="button"
-                                            class="renewal-btn-secondary"
+                                            class="renewal-btn-secondary renewal-icon-action"
+                                            aria-label="Send reminder"
+                                            title="Send Reminder"
                                             data-reminder-trigger
                                             data-action="{{ route('renewal-center.mark-reminder-sent', $rental) }}"
                                             data-title="Send Reminder for Rental #{{ $rental->id }}"
@@ -769,30 +1340,34 @@
                                             data-amount="{{ $currency($rental->rental_amount ?? 0) }}"
                                             data-message="{{ $reminderMessage }}"
                                             data-whatsapp-url="{{ $whatsAppUrl }}"
-                                        >Send Reminder</button>
+                                        ><span class="renewal-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 7 3 9H3c0-2 3-2 3-9"/><path d="M10 21h4"/></svg></span><span class="renewal-action-label">Reminder</span></button>
 
                                         <button
                                             type="button"
-                                            class="renewal-btn-secondary"
+                                            class="renewal-btn-secondary renewal-icon-action"
+                                            aria-label="Mark renewed"
+                                            title="Mark Renewed"
                                             data-renew-trigger
                                             data-action="{{ route('rentals.renew', $rental) }}"
                                             data-title="Mark Rental #{{ $rental->id }} Renewed"
                                             data-current-end="{{ optional($rental->end_date)->format('d M Y') }}"
                                             data-new-end="{{ optional($rental->end_date)->copy()?->addDays($rental->suggestedRenewalDays())->format('Y-m-d') }}"
                                             data-rental-amount="{{ number_format($rental->suggestedRenewalAmount(), 2, '.', '') }}"
-                                        >Mark Renewed</button>
+                                        ><span class="renewal-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg></span><span class="renewal-action-label">Renew</span></button>
 
                                         @if(!$pickupOpen)
                                             <button
                                                 type="button"
-                                                class="renewal-btn-secondary"
+                                                class="renewal-btn-secondary renewal-icon-action"
+                                                aria-label="Schedule pickup"
+                                                title="Schedule Pickup"
                                                 data-pickup-trigger
                                                 data-action="{{ route('renewal-center.schedule-pickup', $rental) }}"
                                                 data-title="Schedule Pickup for Rental #{{ $rental->id }}"
                                                 data-pickup-date="{{ optional($rental->end_date)->format('Y-m-d') ?: now()->toDateString() }}"
                                                 data-pickup-address="{{ collect([$rental->deliveryContactAddress(), $rental->deliveryContactCity(), $rental->deliveryContactState(), $rental->deliveryContactPincode()])->filter()->join(', ') }}"
                                                 data-pickup-notes="{{ $rental->deliveryContactNotes() ?? '' }}"
-                                            >Schedule Pickup</button>
+                                            ><span class="renewal-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M10 17h4V5H2v12h3"/><path d="M14 8h4l4 4v5h-3"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg></span><span class="renewal-action-label">Pickup</span></button>
                                         @endif
 
                                         @if($rental->reminderContactPhone())
@@ -859,8 +1434,10 @@
                         <div class="renewal-mobile-actions">
                             <button
                                 type="button"
-                                class="renewal-btn-secondary"
-                                data-reminder-trigger
+                                class="renewal-btn-secondary renewal-icon-action"
+                                            aria-label="Send reminder"
+                                            title="Send Reminder"
+                                            data-reminder-trigger
                                 data-action="{{ route('renewal-center.mark-reminder-sent', $rental) }}"
                                 data-title="Send Reminder for Rental #{{ $rental->id }}"
                                 data-reminder-name="{{ $rental->reminderContactName() }}"
@@ -871,33 +1448,51 @@
                                 data-amount="{{ $currency($rental->rental_amount ?? 0) }}"
                                 data-message="{{ $reminderMessage }}"
                                 data-whatsapp-url="{{ $whatsAppUrl }}"
-                            >Send Reminder</button>
+                            ><span class="renewal-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 7 3 9H3c0-2 3-2 3-9"/><path d="M10 21h4"/></svg></span><span class="renewal-action-label">Reminder</span></button>
                             <button
                                 type="button"
-                                class="renewal-btn-secondary"
-                                data-renew-trigger
+                                class="renewal-btn-secondary renewal-icon-action"
+                                            aria-label="Mark renewed"
+                                            title="Mark Renewed"
+                                            data-renew-trigger
                                 data-action="{{ route('rentals.renew', $rental) }}"
                                 data-title="Mark Rental #{{ $rental->id }} Renewed"
                                 data-current-end="{{ optional($rental->end_date)->format('d M Y') }}"
                                 data-new-end="{{ optional($rental->end_date)->copy()?->addDays($rental->suggestedRenewalDays())->format('Y-m-d') }}"
                                 data-rental-amount="{{ number_format($rental->suggestedRenewalAmount(), 2, '.', '') }}"
-                            >Mark Renewed</button>
+                            ><span class="renewal-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="m9 16 2 2 4-4"/></svg></span><span class="renewal-action-label">Renew</span></button>
                             @if(!$pickupOpen)
                                 <button
                                     type="button"
-                                    class="renewal-btn-secondary"
-                                    data-pickup-trigger
+                                    class="renewal-btn-secondary renewal-icon-action"
+                                                aria-label="Schedule pickup"
+                                                title="Schedule Pickup"
+                                                data-pickup-trigger
                                     data-action="{{ route('renewal-center.schedule-pickup', $rental) }}"
                                     data-title="Schedule Pickup for Rental #{{ $rental->id }}"
                                     data-pickup-date="{{ optional($rental->end_date)->format('Y-m-d') ?: now()->toDateString() }}"
                                     data-pickup-address="{{ collect([$rental->deliveryContactAddress(), $rental->deliveryContactCity(), $rental->deliveryContactState(), $rental->deliveryContactPincode()])->filter()->join(', ') }}"
                                     data-pickup-notes="{{ $rental->deliveryContactNotes() ?? '' }}"
-                                >Schedule Pickup</button>
+                                ><span class="renewal-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M10 17h4V5H2v12h3"/><path d="M14 8h4l4 4v5h-3"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg></span><span class="renewal-action-label">Pickup</span></button>
                             @endif
-                            <a href="{{ route('rentals.show', $rental) }}" class="renewal-btn-ghost">View Rental</a>
-                            @if($invoice)
-                                <a href="{{ route('invoices.show', $invoice) }}" class="renewal-btn-ghost">View Invoice</a>
+                            @if($rental->reminderContactPhone())
+                                <a href="tel:{{ preg_replace('/\s+/', '', $rental->reminderContactPhone()) }}" class="renewal-btn-ghost renewal-icon-action renewal-mobile-secondary" aria-label="Call customer" title="Call"><span class="renewal-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.7.6 2.5a2 2 0 0 1-.5 2.1L8 9.5a16 16 0 0 0 6.5 6.5l1.2-1.2a2 2 0 0 1 2.1-.5c.8.3 1.6.5 2.5.6A2 2 0 0 1 22 16.9Z"/></svg></span><span class="renewal-action-label">Call</span></a>
                             @endif
+                            @if($whatsAppUrl)
+                                <a href="{{ $whatsAppUrl }}" target="_blank" class="renewal-btn-ghost renewal-icon-action renewal-mobile-secondary is-whatsapp" aria-label="Open WhatsApp" title="WhatsApp"><span class="renewal-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M20 11.5a8 8 0 0 1-11.8 7L4 20l1.5-4.1A8 8 0 1 1 20 11.5Z"/><path d="M9 9c.5 2 2 3.5 4 4l1.2-.9"/></svg></span><span class="renewal-action-label">WhatsApp</span></a>
+                            @endif
+                            <details class="renewal-mobile-more">
+                                <summary class="renewal-btn-ghost renewal-icon-action" aria-label="More actions" title="More Actions"><span class="renewal-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span><span class="renewal-action-label">More</span></summary>
+                                <div class="renewal-mobile-more-panel">
+                                    @if($rental->deliveryContactMapUrl())
+                                        <a href="{{ $rental->deliveryContactMapUrl() }}" target="_blank" class="renewal-btn-ghost">Open Map</a>
+                                    @endif
+                                    <a href="{{ route('rentals.show', $rental) }}" class="renewal-btn-ghost">View Rental</a>
+                                    @if($invoice)
+                                        <a href="{{ route('invoices.show', $invoice) }}" class="renewal-btn-ghost">View Invoice</a>
+                                    @endif
+                                </div>
+                            </details>
                         </div>
                     </article>
                 @endforeach
@@ -923,7 +1518,7 @@
                 <div><strong>Reminder To:</strong> <span data-reminder-contact></span></div>
                 <div><strong>Client:</strong> <span data-reminder-client></span></div>
                 <div><strong>Product:</strong> <span data-reminder-product></span></div>
-                <div><strong>Renewal Date:</strong> <span data-reminder-date></span> • <strong>Amount:</strong> <span data-reminder-amount></span></div>
+                <div><strong>Renewal Date:</strong> <span data-reminder-date></span> - <strong>Amount:</strong> <span data-reminder-amount></span></div>
             </div>
             <div class="renewal-section-card">
                 <div class="renewal-helper">Preview the message, then copy it or open WhatsApp. Mark it sent once the reminder is actually dispatched.</div>
@@ -1001,6 +1596,7 @@
         </div>
         <form method="POST" data-pickup-form class="renewal-modal" style="box-shadow:none; width:100%; max-height:none; border-radius:0; background:transparent; grid-template-rows:1fr auto;">
             @csrf
+            <input type="hidden" name="pickup_method" value="internal_pickup">
             <div class="renewal-modal-body">
                 <div class="renewal-summary-strip">
                     <div><strong>Pickup Address:</strong> <span data-pickup-address></span></div>
@@ -1024,21 +1620,12 @@
                         </div>
                         <div class="renewal-field">
                             <label for="pickup-assignment">Assign To</label>
-                            <select id="pickup-assignment" name="assignment_target" class="renewal-select">
-                                <option value="">Leave Unassigned</option>
+                            <select id="pickup-assignment" name="assigned_user_id" class="renewal-select" required>
+                                <option value="">Choose delivery / operations executive</option>
                                 @if($assignableUsers->isNotEmpty())
-                                    <optgroup label="Users">
-                                        @foreach($assignableUsers as $user)
-                                            <option value="user:{{ $user->id }}">{{ $user->name }}</option>
-                                        @endforeach
-                                    </optgroup>
-                                @endif
-                                @if($assignableStaff->isNotEmpty())
-                                    <optgroup label="Staff / Vendors">
-                                        @foreach($assignableStaff as $staffMember)
-                                            <option value="staff:{{ $staffMember->id }}">{{ $staffMember->name }}</option>
-                                        @endforeach
-                                    </optgroup>
+                                    @foreach($assignableUsers as $user)
+                                        <option value="{{ $user->id }}">{{ $user->name }}</option>
+                                    @endforeach
                                 @endif
                             </select>
                         </div>
@@ -1084,6 +1671,31 @@
             });
         });
 
+        const mobileFilterQuery = window.matchMedia('(max-width: 768px)');
+        const syncRenewalMobileFilters = () => {
+            document.querySelectorAll('.renewal-filter-panel').forEach((panel) => {
+                const summary = panel.querySelector('summary');
+                if (mobileFilterQuery.matches) {
+                    panel.removeAttribute('open');
+                    summary?.setAttribute('aria-expanded', 'false');
+                } else {
+                    panel.setAttribute('open', 'open');
+                    summary?.setAttribute('aria-expanded', 'true');
+                }
+            });
+        };
+
+        syncRenewalMobileFilters();
+        if (typeof mobileFilterQuery.addEventListener === 'function') {
+            mobileFilterQuery.addEventListener('change', syncRenewalMobileFilters);
+        }
+
+        document.querySelectorAll('.renewal-filter-panel').forEach((panel) => {
+            panel.addEventListener('toggle', () => {
+                panel.querySelector('summary')?.setAttribute('aria-expanded', panel.open ? 'true' : 'false');
+            });
+        });
+
         const reminderModal = document.getElementById('renewalReminderModal');
         const reminderForm = reminderModal?.querySelector('[data-reminder-form]');
         const reminderMessage = reminderModal?.querySelector('[data-reminder-message]');
@@ -1092,7 +1704,7 @@
         document.querySelectorAll('[data-reminder-trigger]').forEach((button) => {
             button.addEventListener('click', () => {
                 reminderModal.querySelector('#renewalReminderTitle').textContent = button.dataset.title || 'Send Reminder';
-                reminderModal.querySelector('[data-reminder-contact]').textContent = `${button.dataset.reminderName || ''} • ${button.dataset.reminderPhone || 'No phone'}`;
+                reminderModal.querySelector('[data-reminder-contact]').textContent = `${button.dataset.reminderName || ''} - ${button.dataset.reminderPhone || 'No phone'}`;
                 reminderModal.querySelector('[data-reminder-client]').textContent = button.dataset.clientName || '-';
                 reminderModal.querySelector('[data-reminder-product]').textContent = button.dataset.productName || '-';
                 reminderModal.querySelector('[data-reminder-date]').textContent = button.dataset.renewalDate || '-';

@@ -18,9 +18,12 @@ use App\Http\Controllers\OrganizationSettingsController;
 use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PartnerClientController;
 use App\Http\Controllers\PickupCenterController;
+use App\Http\Controllers\ProductBrandController;
+use App\Http\Controllers\ProductCategoryController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\ReferralSourceController;
 use App\Http\Controllers\RentalController;
 use App\Http\Controllers\RenewalCenterController;
 use App\Http\Controllers\RoleController;
@@ -105,6 +108,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/rentals/available-assets', [RentalController::class, 'availableAssets'])
         ->middleware('module:rentals,read')
         ->name('rentals.available-assets');
+    Route::post('/rentals/rental-stock', [RentalController::class, 'storeRentalStockFromCreate'])
+        ->middleware('module:assets,create')
+        ->name('rentals.rental-stock.store');
     Route::get('/rentals/business-partners/{business_partner}/actual-clients', [RentalController::class, 'businessPartnerActualClients'])
         ->middleware('module:rentals,read')
         ->name('rentals.business-partners.actual-clients');
@@ -181,6 +187,18 @@ Route::middleware('auth')->group(function () {
     Route::get('/organization/vendors/export/csv', [VendorController::class, 'exportCsv'])
         ->middleware('permission:vendors.export')
         ->name('vendors.export.csv');
+    Route::get('/organization/referral-sources', [ReferralSourceController::class, 'index'])
+        ->name('referral-sources.index');
+    Route::get('/organization/referral-sources/create', [ReferralSourceController::class, 'create'])
+        ->name('referral-sources.create');
+    Route::post('/organization/referral-sources', [ReferralSourceController::class, 'store'])
+        ->name('referral-sources.store');
+    Route::post('/organization/referral-sources/quick-store', [ReferralSourceController::class, 'quickStore'])
+        ->name('referral-sources.quick-store');
+    Route::get('/organization/referral-sources/{referralSource}/edit', [ReferralSourceController::class, 'edit'])
+        ->name('referral-sources.edit');
+    Route::put('/organization/referral-sources/{referralSource}', [ReferralSourceController::class, 'update'])
+        ->name('referral-sources.update');
     Route::put('/rentals/{rental}/return', [RentalController::class, 'returnRental'])
         ->middleware('module:rentals,update')
         ->name('rentals.return');
@@ -356,6 +374,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/assets/pending-verification', [AssetController::class, 'pendingVerification'])
         ->middleware('module:assets,read')
         ->name('assets.pending-verification');
+    Route::post('/assets/bulk-store', [AssetController::class, 'bulkStore'])
+        ->middleware('module:assets,create')
+        ->name('assets.bulk-store');
     Route::get('/assets/{asset}/verify-return', [AssetController::class, 'verifyReturn'])
         ->middleware('module:assets,update')
         ->name('assets.verify-return');
@@ -399,6 +420,28 @@ Route::middleware('auth')->group(function () {
     $products->middlewareFor(['create', 'store'], 'module:products,create');
     $products->middlewareFor(['edit', 'update'], 'module:products,update');
     $products->middlewareFor('destroy', 'module:products,delete');
+
+    $productCategories = Route::resource('/organization/product-categories', ProductCategoryController::class)
+        ->parameters(['product-categories' => 'productCategory'])
+        ->names('product-categories')
+        ->except(['show'])
+        ->middleware('module:products,read');
+    $productCategories->middlewareFor(['create', 'store'], 'module:products,create');
+    $productCategories->middlewareFor(['edit', 'update', 'destroy'], 'module:products,update');
+    Route::post('/product-categories', [ProductCategoryController::class, 'store'])
+        ->name('product-categories.quick-store')
+        ->middleware('module:products,create');
+
+    $productBrands = Route::resource('/organization/product-brands', ProductBrandController::class)
+        ->parameters(['product-brands' => 'productBrand'])
+        ->names('product-brands')
+        ->except(['show'])
+        ->middleware('module:products,read');
+    $productBrands->middlewareFor(['create', 'store'], 'module:products,create');
+    $productBrands->middlewareFor(['edit', 'update', 'destroy'], 'module:products,update');
+    Route::post('/product-brands', [ProductBrandController::class, 'store'])
+        ->name('product-brands.quick-store')
+        ->middleware('module:products,create');
 
     $customers = Route::resource('customers', CustomerController::class)
         ->middleware('module:customers,read');

@@ -37,7 +37,7 @@ class RentalTaxInvoiceSyncRegressionTest extends TestCase
             'deposit_amount' => 0,
             'transport_amount' => 0,
             'other_amount' => 0,
-        ])->assertRedirect('/rentals');
+        ])->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $invoice = Invoice::query()->where('organization_id', $organization->id)->with('items')->firstOrFail();
         $rental = Rental::query()->where('organization_id', $organization->id)->with('rentalItems')->firstOrFail();
@@ -78,7 +78,7 @@ class RentalTaxInvoiceSyncRegressionTest extends TestCase
             'deposit_amount' => 0,
             'transport_amount' => 0,
             'other_amount' => 0,
-        ])->assertRedirect('/rentals');
+        ])->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $invoice = Invoice::query()->where('organization_id', $organization->id)->with('items')->firstOrFail();
         $line = $invoice->items->firstWhere('source_type', 'rental');
@@ -114,7 +114,7 @@ class RentalTaxInvoiceSyncRegressionTest extends TestCase
             'deposit_amount' => 0,
             'transport_amount' => 0,
             'other_amount' => 0,
-        ])->assertRedirect('/rentals');
+        ])->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $rental = Rental::query()->where('organization_id', $organization->id)->with('rentalItems')->firstOrFail();
         $invoice = Invoice::query()->where('organization_id', $organization->id)->with('items')->firstOrFail();
@@ -197,7 +197,7 @@ class RentalTaxInvoiceSyncRegressionTest extends TestCase
                 'gst_mode' => 'inclusive',
                 'tax_type' => Product::GST_TAX_TYPE_CGST_SGST,
             ]],
-        ])->assertRedirect('/rentals');
+        ])->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $invoice = Invoice::query()->where('organization_id', $organization->id)->with('items')->firstOrFail();
         $saleLine = $invoice->items->firstWhere('source_type', 'rental_sale');
@@ -244,3 +244,4 @@ class RentalTaxInvoiceSyncRegressionTest extends TestCase
         return [$organization, $customer, $product];
     }
 }
+

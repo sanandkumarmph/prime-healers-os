@@ -220,10 +220,8 @@ class PickupCenterRegressionTest extends TestCase
         $this->get(route('dashboard'))
             ->assertOk()
             ->assertSeeText('Pickup Center')
-            ->assertSeeText('Pickups Scheduled Today')
-            ->assertSeeText('Overdue Pickups')
-            ->assertSeeText('Failed Pickups')
-            ->assertSeeText('Awaiting Return Verification');
+            ->assertSeeText('Pickups Pending')
+            ->assertSeeText('Pickup queue');
     }
 
     private function makePickupTask(array $deliveryOverrides = [], array $rentalOverrides = []): Delivery

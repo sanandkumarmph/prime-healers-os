@@ -13,6 +13,7 @@ use App\Models\PartnerClient;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Rental;
+use App\Models\ReferralSource;
 use App\Models\SaleInventory;
 use App\Models\SaleItem;
 use App\Models\StockMovement;
@@ -90,6 +91,23 @@ class SaleController extends Controller
             ->where('is_active', true)
             ->orderBy('name')
             ->get();
+    }
+
+    private function referralSourceOptions()
+    {
+        return ReferralSource::query()
+            ->forOrganization($this->orgId())
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get()
+            ->map(fn ($source) => [
+                'id' => $source->id,
+                'type' => $source->source_type,
+                'name' => $source->name,
+                'contact' => $source->contact,
+                'city' => $source->city,
+                'label' => trim($source->name . ($source->contact ? ' - ' . $source->contact : '')),
+            ]);
     }
 
     private function vendorFulfilmentService(): VendorFulfilmentService
@@ -301,7 +319,7 @@ class SaleController extends Controller
             ->where('organization_id', $this->orgId());
 
         if ($includeRelations) {
-            $relations = ['customer', 'product', 'asset.warehouse', 'rental'];
+            $relations = ['customer', 'product', 'asset.warehouse', 'rental', 'vendor', 'vendorOrderDetail.vendor'];
 
             if ($this->hasDeliverySaleColumn()) {
                 $relations[] = 'deliveryRecord.assignedStaff';
@@ -402,7 +420,7 @@ class SaleController extends Controller
                 ->select('sales.*')
                 ->orderByDesc('customers.name')
                 ->orderByDesc('sales.sale_date'),
-            default => $query->orderByDesc('sale_date')->orderByDesc('id'),
+            default => $query->orderByDesc('created_at')->orderByDesc('id'),
         };
     }
 
@@ -767,8 +785,66 @@ class SaleController extends Controller
             'organization_id' => $this->orgId(),
         ];
 
+        foreach ($this->saleReferralPayload($request) as $column => $value) {
+            $payload[$column] = $value;
+        }
+
         if ($this->hasWarehouseColumn()) {
             $payload['warehouse_id'] = $primaryLine['warehouse_id'];
+        }
+
+        return $payload;
+    }
+
+    private function saleReferralPayload(Request $request): array
+    {
+        $selectedSource = null;
+        $manualName = trim((string) $request->input('referral_source_name', ''));
+
+        if ($request->filled('referral_source_id')) {
+            $selectedSource = ReferralSource::query()
+                ->forOrganization($this->orgId())
+                ->find((int) $request->input('referral_source_id'));
+        } elseif ($manualName !== '') {
+            $selectedSource = ReferralSource::query()
+                ->forOrganization($this->orgId())
+                ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($manualName)])
+                ->first();
+        }
+
+        $payload = [];
+
+        if (Schema::hasColumn('sales', 'referral_source_type')) {
+            $payload['referral_source_type'] = $selectedSource?->source_type
+                ?: ($request->filled('referral_source_type') ? $request->input('referral_source_type') : null);
+        }
+
+        if (Schema::hasColumn('sales', 'referral_source_id')) {
+            $payload['referral_source_id'] = $selectedSource?->id;
+        }
+
+        if (Schema::hasColumn('sales', 'referral_source_name')) {
+            $payload['referral_source_name'] = $manualName !== ''
+                ? $manualName
+                : $selectedSource?->name;
+        }
+
+        if (Schema::hasColumn('sales', 'referral_contact')) {
+            $payload['referral_contact'] = $request->filled('referral_contact')
+                ? $request->input('referral_contact')
+                : $selectedSource?->contact;
+        }
+
+        if (Schema::hasColumn('sales', 'referral_city')) {
+            $payload['referral_city'] = $request->filled('referral_city')
+                ? $request->input('referral_city')
+                : $selectedSource?->city;
+        }
+
+        foreach (['referral_notes', 'referral_commission_amount'] as $column) {
+            if (Schema::hasColumn('sales', $column)) {
+                $payload[$column] = $request->input($column);
+            }
         }
 
         return $payload;
@@ -1131,6 +1207,16 @@ class SaleController extends Controller
             'sale_date' => 'required|date',
             'sale_amount' => 'nullable|numeric|min:0',
             'payment_status' => 'required|in:pending,paid,partial,void',
+            'referral_source_type' => 'nullable|string|max:80',
+            'referral_source_id' => [
+                'nullable',
+                Rule::exists('referral_sources', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+            ],
+            'referral_source_name' => 'nullable|string|max:180',
+            'referral_contact' => 'nullable|string|max:180',
+            'referral_city' => 'nullable|string|max:120',
+            'referral_notes' => 'nullable|string',
+            'referral_commission_amount' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
             'sale_items' => 'nullable|array',
             'sale_items.*.product_id' => [
@@ -1864,17 +1950,22 @@ class SaleController extends Controller
         $search = trim((string) $request->get('search', ''));
         $customerId = $request->get('customer_id', '');
         $paymentStatus = (string) $request->get('payment_status', '');
+        $fulfilmentSource = (string) $request->get('fulfilment_source', '');
         $fromDate = trim((string) $request->get('from_date', $request->get('date', '')));
         $toDate = trim((string) $request->get('to_date', $request->get('date', '')));
         $sortBy = (string) $request->get('sort_by', 'latest');
 
-        $applyIndexFilters = function ($query) use ($customerId, $paymentStatus, $search, $fromDate, $toDate) {
+        $applyIndexFilters = function ($query) use ($customerId, $paymentStatus, $fulfilmentSource, $search, $fromDate, $toDate) {
             $query
                 ->when($customerId !== '', fn ($innerQuery) => $innerQuery->where('customer_id', $customerId))
                 ->when($paymentStatus !== '', fn ($innerQuery) => $innerQuery->where('payment_status', $paymentStatus))
+                ->when($fulfilmentSource !== '', fn ($innerQuery) => $innerQuery->where('fulfilment_source', $fulfilmentSource))
                 ->when($search !== '', function ($innerQuery) use ($search) {
                     $innerQuery->where(function ($nestedQuery) use ($search) {
-                        $nestedQuery->whereHas('customer', function ($customerQuery) use ($search) {
+                        $normalizedSaleId = ltrim(preg_replace('/[^0-9]/', '', $search) ?? '', '0');
+
+                        $nestedQuery->when($normalizedSaleId !== '', fn ($saleQuery) => $saleQuery->orWhere('id', (int) $normalizedSaleId))
+                        ->whereHas('customer', function ($customerQuery) use ($search) {
                             $customerQuery->where('name', 'like', '%' . $search . '%')
                                 ->orWhere('phone', 'like', '%' . $search . '%')
                                 ->orWhere('email', 'like', '%' . $search . '%');
@@ -1883,7 +1974,11 @@ class SaleController extends Controller
                                 $customerQuery->orWhere('whatsapp_number', 'like', '%' . $search . '%');
                             }
                         })->orWhereHas('product', function ($productQuery) use ($search) {
-                            $productQuery->where('name', 'like', '%' . $search . '%');
+                            $productQuery->where('name', 'like', '%' . $search . '%')
+                                ->orWhere('brand', 'like', '%' . $search . '%')
+                                ->orWhere('model_name', 'like', '%' . $search . '%')
+                                ->orWhere('sku', 'like', '%' . $search . '%')
+                                ->orWhere('product_code', 'like', '%' . $search . '%');
                         })->orWhere('notes', 'like', '%' . $search . '%');
                     });
                 });
@@ -1931,6 +2026,7 @@ class SaleController extends Controller
             'search',
             'customerId',
             'paymentStatus',
+            'fulfilmentSource',
             'fromDate',
             'toDate',
             'sortBy',
@@ -1954,7 +2050,7 @@ class SaleController extends Controller
     {
         $sale = $this->scopedSale($sale);
         $this->authorize('view', $sale);
-        $relations = ['customer', 'businessPartner', 'partnerClient', 'product', 'asset.warehouse', 'rental.customer', 'rental.businessPartner', 'rental.partnerClient', 'rental.product'];
+        $relations = ['customer', 'businessPartner', 'partnerClient', 'product', 'asset.warehouse', 'vendor', 'vendorOrderDetail.vendor', 'rental.customer', 'rental.businessPartner', 'rental.partnerClient', 'rental.product'];
 
         if ($this->hasSaleItemsTable()) {
             $relations[] = 'saleItems.product';
@@ -2031,8 +2127,9 @@ class SaleController extends Controller
             ->latest('id')
             ->get();
         $fulfilmentVendors = $this->vendorMasterOptions();
+        $referralSourceOptions = $this->referralSourceOptions();
 
-        return view('sales.create', compact('customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'rentals', 'fulfilmentVendors'));
+        return view('sales.create', compact('customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'rentals', 'fulfilmentVendors', 'referralSourceOptions'));
     }
 
     public function businessPartnerActualClients(BusinessPartner $businessPartner)
@@ -2128,8 +2225,15 @@ class SaleController extends Controller
         ], 'Sale created and invoice generated.');
 
         return redirect()
-            ->route('sales.index')
-            ->with('success', 'Sale created successfully. Invoice ' . $invoice->invoice_number . ' was created automatically.');
+            ->route('sales.index', ['sort_by' => 'latest'])
+            ->with('success', 'Sale created successfully. Invoice ' . $invoice->invoice_number . ' was created automatically.')
+            ->with('created_sale', [
+                'id' => $sale->id,
+                'customer' => $sale->customer?->name ?? $sale->referral_source_name ?? 'Customer',
+                'amount' => (float) ($sale->sale_amount ?? 0),
+                'payment_status' => $sale->payment_status ?? 'pending',
+                'invoice_number' => $invoice->invoice_number,
+            ]);
     }
 
     public function importSaleFromPayload(array $attributes): array
@@ -2469,12 +2573,13 @@ class SaleController extends Controller
             ->latest('id')
             ->get();
         $fulfilmentVendors = $this->vendorMasterOptions();
+        $referralSourceOptions = $this->referralSourceOptions();
 
         if ($this->hasSaleItemsTable()) {
             $sale->loadMissing(['saleItems.product', 'saleItems.asset.warehouse', 'saleItems.warehouse']);
         }
 
-        return view('sales.edit', compact('sale', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'rentals', 'fulfilmentVendors'));
+        return view('sales.edit', compact('sale', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'rentals', 'fulfilmentVendors', 'referralSourceOptions'));
     }
 
     public function update(Request $request, Sale $sale)

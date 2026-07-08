@@ -44,7 +44,7 @@ class SalesMultiItemRegressionTest extends TestCase
                     'tax_calculation_mode' => 'exclusive',
                 ],
             ],
-        ])->assertRedirect(route('sales.index'));
+        ])->assertRedirect(route('sales.index', ['sort_by' => 'latest']));
 
         $sale = Sale::query()
             ->where('organization_id', $organization->id)
@@ -105,7 +105,7 @@ class SalesMultiItemRegressionTest extends TestCase
             ],
         ]);
 
-        $response->assertRedirect(route('sales.index'));
+        $response->assertRedirect(route('sales.index', ['sort_by' => 'latest']));
 
         $sale = Sale::query()->where('organization_id', $organization->id)->with('saleItems')->firstOrFail();
         $invoice = Invoice::query()->where('organization_id', $organization->id)->with('items')->firstOrFail();
@@ -143,7 +143,7 @@ class SalesMultiItemRegressionTest extends TestCase
                     'tax_calculation_mode' => 'exclusive',
                 ],
             ],
-        ])->assertRedirect(route('sales.index'));
+        ])->assertRedirect(route('sales.index', ['sort_by' => 'latest']));
 
         $sale = Sale::query()->where('organization_id', $organization->id)->firstOrFail();
 
@@ -223,7 +223,7 @@ class SalesMultiItemRegressionTest extends TestCase
                     'tax_calculation_mode' => 'exclusive',
                 ],
             ],
-        ])->assertRedirect(route('sales.index'));
+        ])->assertRedirect(route('sales.index', ['sort_by' => 'latest']));
 
         $sale = Sale::query()->where('organization_id', $organization->id)->latest('id')->firstOrFail();
         $invoice = Invoice::query()->where('organization_id', $organization->id)->latest('id')->with('items')->firstOrFail();

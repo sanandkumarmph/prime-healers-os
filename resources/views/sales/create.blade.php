@@ -2,7 +2,7 @@
 
 @section('content')
 <div class="ph-mobile-form-page">
-    <form action="{{ route('sales.store') }}" method="POST">
+    <form id="saleForm" action="{{ route('sales.store') }}" method="POST" novalidate>
         @csrf
         @include('sales.partials.form', ['sale' => null])
     </form>

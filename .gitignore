@@ -1,4 +1,4 @@
-*.log
+﻿*.log
 .DS_Store
 .env
 .env.backup
@@ -16,6 +16,7 @@
 /public/build
 /public/hot
 /public/storage
+/public/storage_stale_backup_*/
 /storage/*.key
 /storage/pail
 /vendor

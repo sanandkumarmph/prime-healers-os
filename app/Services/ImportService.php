@@ -121,7 +121,7 @@ class ImportService
                 'description' => 'Import product master rows with sellable, rentable, or both product structures.',
                 'priority' => 3,
                 'fields' => [
-                    'name' => ['label' => 'Product Name', 'required' => true, 'aliases' => ['name', 'product_name', 'product', 'product name']],
+                    'name' => ['label' => 'Product Name', 'required' => true, 'aliases' => ['name', 'product_name', 'product name']],
                     'category' => ['label' => 'Category', 'aliases' => ['category']],
                     'brand' => ['label' => 'Brand', 'aliases' => ['brand']],
                     'model_name' => ['label' => 'Model Name', 'aliases' => ['model', 'model_name']],
@@ -132,7 +132,7 @@ class ImportService
                     'rentable' => ['label' => 'Rentable', 'aliases' => ['rentable', 'is_rentable']],
                     'stock_mode' => ['label' => 'Stock Mode', 'required' => true, 'aliases' => ['stock_mode', 'tracking_mode']],
                     'quantity' => ['label' => 'Quantity', 'aliases' => ['quantity', 'qty', 'total_quantity']],
-                    'price_per_day' => ['label' => 'Price Per Day', 'aliases' => ['price_per_day', 'daily_rate', 'rental_price']],
+                    'price_per_day' => ['label' => 'Price Per Day', 'aliases' => ['price_per_day', 'daily_rate']],
                     'rental_price_15_days' => ['label' => 'Rental Price 15 Days', 'aliases' => ['rental_price_15_days', 'rental_15_days']],
                     'rental_price_30_days' => ['label' => 'Rental Price 30 Days', 'aliases' => ['rental_price_30_days', 'monthly_rental_price']],
                     'rental_price_3_months' => ['label' => 'Rental Price 3 Months', 'aliases' => ['rental_price_3_months', 'quarterly_rental_price']],
@@ -303,6 +303,8 @@ class ImportService
             throw new RuntimeException('Unsupported import module.');
         }
 
+        $config['fields'] = $this->enrichFields($module, $config['fields'] ?? []);
+
         return $config + ['key' => $module];
     }
 
@@ -316,15 +318,23 @@ class ImportService
         return $this->module($module)['fields'];
     }
 
+    public function fieldGuidance(string $module): array
+    {
+        return array_values($this->fieldOptions($module));
+    }
+
     public function templateCatalog(): array
     {
         $cards = collect($this->modules())
             ->map(function (array $config, string $key) {
+                $fieldDetails = array_values($this->enrichFields($key, $config['fields'] ?? []));
+
                 return [
                     'key' => $key,
                     'label' => $config['label'],
                     'download_label' => 'Download ' . Str::headline($config['label']) . ' Template',
-                    'fields' => array_values(array_map(fn ($field) => $field['label'] ?? '', $config['fields'] ?? [])),
+                    'fields' => array_column($fieldDetails, 'label'),
+                    'field_details' => $fieldDetails,
                     'note' => 'Includes template rows plus a guidance sheet with required fields, accepted values, and sample data.',
                     'upload_available' => true,
                     'filename' => Str::slug($config['label']) . '-template.xlsx',
@@ -337,6 +347,7 @@ class ImportService
             'label' => 'Sales Import',
             'download_label' => 'Download Sales Import Template',
             'fields' => ['Customer Type', 'Business Partner', 'Actual Client', 'City', 'Fulfilment Source', 'Vendor', 'Delivery Responsibility', 'Warehouse', 'Quantity', 'Sale Amount', 'Payment Status'],
+            'field_details' => $this->fieldDetailsFromGuidanceRows('sales', $this->templateDefinition('sales')['guidance_rows']),
             'note' => 'Includes city-first fulfilment and business partner guidance.',
             'upload_available' => true,
             'filename' => 'sales-import-template.xlsx',
@@ -347,6 +358,7 @@ class ImportService
             'label' => 'Opening Balance Import',
             'download_label' => 'Download Opening Balance Template',
             'fields' => ['Customer Phone', 'Opening Balance', 'Balance Type', 'Notes'],
+            'field_details' => $this->fieldDetailsFromGuidanceRows('opening-balances', $this->templateDefinition('opening-balances')['guidance_rows']),
             'note' => 'Legacy opening balance import with guidance sheet.',
             'upload_available' => true,
             'filename' => 'opening-balance-import-template.xlsx',
@@ -935,7 +947,7 @@ class ImportService
             ->values()
             ->all();
 
-        return $parts === [] ? 'Row data' : implode(' • ', $parts);
+        return $parts === [] ? 'Row data' : implode(' ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ ', $parts);
     }
 
     private function exceptionMessages(\Throwable $exception): array
@@ -1033,19 +1045,57 @@ class ImportService
         $fields = $this->fieldOptions($module);
         $mapping = [];
         $usedHeaders = [];
+        $headerMeta = collect($headers)->map(fn ($header) => [
+            'raw' => $header,
+            'slug' => $this->slugKey($header),
+            'compact' => $this->compactKey($header),
+        ])->values();
 
         foreach ($fields as $fieldKey => $field) {
-            $aliases = collect($field['aliases'] ?? [])->prepend($fieldKey)->map(fn ($value) => $this->slugKey($value))->values();
+            $aliases = $this->fieldAliases($fieldKey, $field);
             $matchedHeader = null;
 
             foreach ($aliases as $alias) {
-                $matchedHeader = collect($headers)->first(function ($header) use ($alias, $usedHeaders) {
-                    return !in_array($header, $usedHeaders, true)
-                        && $this->slugKey($header) === $alias;
+                $matched = $headerMeta->first(function (array $header) use ($alias, $usedHeaders) {
+                    return !in_array($header['raw'], $usedHeaders, true)
+                        && $header['slug'] === $alias['slug'];
                 });
 
-                if ($matchedHeader !== null) {
+                if ($matched) {
+                    $matchedHeader = $matched['raw'];
                     break;
+                }
+            }
+
+            if ($matchedHeader === null) {
+                foreach ($aliases as $alias) {
+                    $matched = $headerMeta->first(function (array $header) use ($alias, $usedHeaders) {
+                        return !in_array($header['raw'], $usedHeaders, true)
+                            && $header['compact'] === $alias['compact'];
+                    });
+
+                    if ($matched) {
+                        $matchedHeader = $matched['raw'];
+                        break;
+                    }
+                }
+            }
+
+            if ($matchedHeader === null) {
+                foreach ($aliases as $alias) {
+                    if (strlen($alias['compact']) <= 4) {
+                        continue;
+                    }
+
+                    $matched = $headerMeta->first(function (array $header) use ($alias, $usedHeaders) {
+                        return !in_array($header['raw'], $usedHeaders, true)
+                            && str_contains($header['compact'], $alias['compact']);
+                    });
+
+                    if ($matched) {
+                        $matchedHeader = $matched['raw'];
+                        break;
+                    }
                 }
             }
 
@@ -3079,17 +3129,25 @@ class ImportService
         $details = collect($errors)
             ->map(function ($error) {
                 if (is_array($error)) {
+                    $field = (string) ($error['field'] ?? 'general');
+                    $reason = trim((string) ($error['reason'] ?? ''));
+
                     return [
-                        'field' => (string) ($error['field'] ?? 'general'),
-                        'reason' => (string) ($error['reason'] ?? ''),
+                        'field' => $field,
+                        'column' => (string) ($error['column'] ?? $this->fieldDisplayName($field)),
+                        'reason' => $reason,
+                        'suggestion' => (string) ($error['suggestion'] ?? $this->suggestionForError($field, $reason)),
                     ];
                 }
 
                 $reason = trim((string) $error);
+                $field = $this->inferErrorField($reason);
 
                 return [
-                    'field' => $this->inferErrorField($reason),
+                    'field' => $field,
+                    'column' => $this->fieldDisplayName($field),
                     'reason' => $reason,
+                    'suggestion' => $this->suggestionForError($field, $reason),
                 ];
             })
             ->filter(fn (array $detail) => $detail['reason'] !== '')
@@ -3101,9 +3159,13 @@ class ImportService
 
     private function errorDetail(?string $field, string $reason): array
     {
+        $field = $field ?: 'general';
+
         return [
-            'field' => $field ?: 'general',
+            'field' => $field,
+            'column' => $this->fieldDisplayName($field),
             'reason' => $reason,
+            'suggestion' => $this->suggestionForError($field, $reason),
         ];
     }
 
@@ -3135,6 +3197,116 @@ class ImportService
         };
     }
 
+    private function enrichFields(string $module, array $fields): array
+    {
+        return collect($fields)
+            ->map(function (array $field, string $key) use ($module) {
+                return ['key' => $key]
+                    + $field
+                    + [
+                        'sample' => $this->templateSampleValue($module, $key),
+                        'accepted_values' => $this->templateAcceptedValues($module, $key),
+                        'description' => $this->templateFieldDescription($module, $key),
+                    ];
+            })
+            ->all();
+    }
+
+    private function fieldDetailsFromGuidanceRows(string $module, array $guidanceRows): array
+    {
+        return collect($guidanceRows)
+            ->skip(1)
+            ->map(function (array $row) use ($module) {
+                $label = (string) ($row[0] ?? '');
+                $key = Str::snake(Str::lower($label));
+
+                return [
+                    'key' => $key,
+                    'label' => $label,
+                    'required' => Str::lower((string) ($row[1] ?? '')) === 'required',
+                    'sample' => (string) ($row[2] ?? ''),
+                    'accepted_values' => (string) ($row[3] ?? ''),
+                    'description' => (string) ($row[4] ?? ''),
+                    'aliases' => [$label, $key, Str::of($label)->replace([' ', '-'], '_')->lower()->toString()],
+                ];
+            })
+            ->filter(fn (array $field) => $field['label'] !== '')
+            ->values()
+            ->all();
+    }
+
+    private function fieldAliases(string $fieldKey, array $field): array
+    {
+        return collect($field['aliases'] ?? [])
+            ->push($fieldKey)
+            ->push($field['label'] ?? $fieldKey)
+            ->filter()
+            ->unique(fn ($value) => $this->compactKey($value))
+            ->map(fn ($value) => [
+                'slug' => $this->slugKey($value),
+                'compact' => $this->compactKey($value),
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function compactKey(mixed $value): string
+    {
+        return preg_replace('/[^a-z0-9]+/', '', Str::lower((string) $value)) ?: '';
+    }
+
+    private function fieldDisplayName(?string $field): string
+    {
+        if (!$field || $field === 'general') {
+            return 'General';
+        }
+
+        return Str::of($field)->replace('_', ' ')->title()->toString();
+    }
+
+    private function suggestionForError(?string $field, string $reason): string
+    {
+        $fieldName = $this->fieldDisplayName($field);
+        $reasonKey = Str::lower($reason);
+
+        if (str_contains($reasonKey, 'required')) {
+            return "Enter a value for {$fieldName}.";
+        }
+
+        if (str_contains($reasonKey, 'date')) {
+            return 'Use a valid date such as 2026-07-01.';
+        }
+
+        if (str_contains($reasonKey, 'city')) {
+            return 'Use an existing PHOS city name exactly as configured.';
+        }
+
+        if (str_contains($reasonKey, 'warehouse')) {
+            return 'Use an active warehouse linked to the selected city.';
+        }
+
+        if (str_contains($reasonKey, 'vendor')) {
+            return 'Use an active vendor name from Vendor Master.';
+        }
+
+        if (str_contains($reasonKey, 'product')) {
+            return 'Use an existing Product Master name, code, SKU, brand, or model.';
+        }
+
+        if (str_contains($reasonKey, 'asset') || str_contains($reasonKey, 'serial')) {
+            return 'Use available asset serials/barcodes that match the product and warehouse.';
+        }
+
+        if (str_contains($reasonKey, 'phone')) {
+            return 'Use a valid customer or partner phone number.';
+        }
+
+        if (str_contains($reasonKey, 'email')) {
+            return 'Use a valid email address.';
+        }
+
+        return "Review {$fieldName} and update the source file before importing.";
+    }
     private function templateSampleValue(string $module, ?string $field): string
     {
         return match ($module . ':' . $field) {
@@ -3327,7 +3499,7 @@ class ImportService
 
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             . '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-            . '<sheetViews><sheetView workbookViewId="0"/></sheetViews>'
+            . '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
             . '<sheetFormatPr defaultRowHeight="18"/>'
             . '<sheetData>'.$xmlRows.'</sheetData>'
             . '</worksheet>';

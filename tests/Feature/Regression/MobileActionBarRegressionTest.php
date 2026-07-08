@@ -191,6 +191,41 @@ class MobileActionBarRegressionTest extends TestCase
             ->assertSee('verify-return-form-actions', false);
     }
 
+    public function test_asset_register_mobile_view_uses_collapsed_controls_and_compact_clickable_cards(): void
+    {
+        $warehouse = Warehouse::create([
+            'organization_id' => $this->organizationId,
+            'name' => 'Bengaluru Warehouse',
+            'code' => 'BNG',
+            'city' => 'Bengaluru',
+            'is_active' => true,
+        ]);
+
+        $asset = Asset::create([
+            'organization_id' => $this->organizationId,
+            'product_id' => $this->product->id,
+            'warehouse_id' => $warehouse->id,
+            'asset_name' => 'BiPAP Mobile Unit',
+            'serial_number' => 'MOBILE-ASSET-001',
+            'barcode_value' => 'MOBILE-ASSET-001',
+            'asset_stage' => Asset::STAGE_RENTAL_STOCK,
+            'asset_status' => Asset::STATUS_AVAILABLE,
+            'condition_status' => Asset::CONDITION_STATUS_GOOD,
+        ]);
+
+        $page = $this->get(route('assets.index'));
+
+        $page->assertOk()
+            ->assertSee('Search Assets', false)
+            ->assertSee('Filters', false)
+            ->assertSee('name="city"', false)
+            ->assertSee('name="custody"', false)
+            ->assertSee('asset-mobile-card', false)
+            ->assertSee('data-href="' . route('assets.show', $asset) . '"', false)
+            ->assertSeeText('MOBILE-ASSET-001')
+            ->assertSeeText('History');
+    }
+
     public function test_delivery_taskboard_includes_compact_mobile_command_toolbar_and_clickable_task_cards(): void
     {
         $delivery = Delivery::create([

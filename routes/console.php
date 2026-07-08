@@ -19,6 +19,162 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+Artisan::command('phos:sync-referral-links {--organization= : Limit sync to one organization id} {--apply : Update matching rows; dry-run by default}', function () {
+    if (! Schema::hasTable('referral_sources')) {
+        $this->error('The referral_sources table does not exist yet.');
+
+        return self::FAILURE;
+    }
+
+    $organizationId = $this->option('organization');
+    $apply = (bool) $this->option('apply');
+    $now = now();
+
+    $sourceQuery = DB::table('referral_sources')
+        ->select('id', 'organization_id', 'source_type', 'name', 'contact', 'city')
+        ->when($organizationId, fn ($query) => $query->where('organization_id', (int) $organizationId))
+        ->whereNotNull('name')
+        ->where('name', '!=', '');
+
+    if (Schema::hasColumn('referral_sources', 'is_active')) {
+        $sourceQuery->where('is_active', true);
+    }
+
+    $sourcesByOrgName = $sourceQuery->get()
+        ->groupBy(fn ($source) => (int) $source->organization_id)
+        ->map(fn ($sources) => $sources->keyBy(fn ($source) => mb_strtolower(trim((string) $source->name))));
+
+    $matchedRentals = collect();
+    $matchedSales = collect();
+
+    if (Schema::hasTable('rentals')
+        && Schema::hasColumn('rentals', 'referral_source_id')
+        && Schema::hasColumn('rentals', 'referred_by')) {
+        $rentals = DB::table('rentals')
+            ->select('id', 'organization_id', 'referred_by')
+            ->whereNull('referral_source_id')
+            ->whereNotNull('referred_by')
+            ->where('referred_by', '!=', '')
+            ->when($organizationId, fn ($query) => $query->where('organization_id', (int) $organizationId))
+            ->orderBy('id')
+            ->get();
+
+        $matchedRentals = $rentals->map(function ($rental) use ($sourcesByOrgName) {
+            $source = $sourcesByOrgName
+                ->get((int) $rental->organization_id, collect())
+                ->get(mb_strtolower(trim((string) $rental->referred_by)));
+
+            return $source ? [
+                'id' => $rental->id,
+                'organization_id' => $rental->organization_id,
+                'text' => $rental->referred_by,
+                'source_id' => $source->id,
+                'source_name' => $source->name,
+                'source_type' => $source->source_type,
+                'contact' => $source->contact,
+                'city' => $source->city,
+            ] : null;
+        })->filter()->values();
+    }
+
+    if (Schema::hasTable('sales')
+        && Schema::hasColumn('sales', 'referral_source_id')
+        && Schema::hasColumn('sales', 'referral_source_name')) {
+        $sales = DB::table('sales')
+            ->select('id', 'organization_id', 'referral_source_name')
+            ->whereNull('referral_source_id')
+            ->whereNotNull('referral_source_name')
+            ->where('referral_source_name', '!=', '')
+            ->when($organizationId, fn ($query) => $query->where('organization_id', (int) $organizationId))
+            ->orderBy('id')
+            ->get();
+
+        $matchedSales = $sales->map(function ($sale) use ($sourcesByOrgName) {
+            $source = $sourcesByOrgName
+                ->get((int) $sale->organization_id, collect())
+                ->get(mb_strtolower(trim((string) $sale->referral_source_name)));
+
+            return $source ? [
+                'id' => $sale->id,
+                'organization_id' => $sale->organization_id,
+                'text' => $sale->referral_source_name,
+                'source_id' => $source->id,
+                'source_name' => $source->name,
+                'source_type' => $source->source_type,
+                'contact' => $source->contact,
+                'city' => $source->city,
+            ] : null;
+        })->filter()->values();
+    }
+
+    $this->info($apply ? 'Applying referral source link sync' : 'Dry-run: referral source link sync');
+    $this->components->twoColumnDetail('Matching rentals', $matchedRentals->count());
+    if ($matchedRentals->isNotEmpty()) {
+        $this->table(['rental_id', 'organization_id', 'text', 'source_id', 'source_name'], $matchedRentals->map(fn ($row) => [
+            $row['id'],
+            $row['organization_id'],
+            $row['text'],
+            $row['source_id'],
+            $row['source_name'],
+        ])->all());
+    }
+
+    $this->components->twoColumnDetail('Matching sales', $matchedSales->count());
+    if ($matchedSales->isNotEmpty()) {
+        $this->table(['sale_id', 'organization_id', 'text', 'source_id', 'source_name'], $matchedSales->map(fn ($row) => [
+            $row['id'],
+            $row['organization_id'],
+            $row['text'],
+            $row['source_id'],
+            $row['source_name'],
+        ])->all());
+    }
+
+    if (! $apply) {
+        $this->comment('No changes written. Re-run with --apply to fill referral_source_id for the exact matches shown above.');
+
+        return self::SUCCESS;
+    }
+
+    DB::transaction(function () use ($matchedRentals, $matchedSales, $now) {
+        foreach ($matchedRentals as $row) {
+            $payload = ['referral_source_id' => $row['source_id'], 'updated_at' => $now];
+
+            if (Schema::hasColumn('rentals', 'referral_source_type')) {
+                $payload['referral_source_type'] = $row['source_type'];
+            }
+            if (Schema::hasColumn('rentals', 'referral_contact')) {
+                $payload['referral_contact'] = DB::raw('COALESCE(referral_contact, ' . DB::getPdo()->quote((string) ($row['contact'] ?? '')) . ')');
+            }
+            if (Schema::hasColumn('rentals', 'referral_city')) {
+                $payload['referral_city'] = DB::raw('COALESCE(referral_city, ' . DB::getPdo()->quote((string) ($row['city'] ?? '')) . ')');
+            }
+
+            DB::table('rentals')->where('id', $row['id'])->update($payload);
+        }
+
+        foreach ($matchedSales as $row) {
+            $payload = ['referral_source_id' => $row['source_id'], 'updated_at' => $now];
+
+            if (Schema::hasColumn('sales', 'referral_source_type')) {
+                $payload['referral_source_type'] = $row['source_type'];
+            }
+            if (Schema::hasColumn('sales', 'referral_contact')) {
+                $payload['referral_contact'] = DB::raw('COALESCE(referral_contact, ' . DB::getPdo()->quote((string) ($row['contact'] ?? '')) . ')');
+            }
+            if (Schema::hasColumn('sales', 'referral_city')) {
+                $payload['referral_city'] = DB::raw('COALESCE(referral_city, ' . DB::getPdo()->quote((string) ($row['city'] ?? '')) . ')');
+            }
+
+            DB::table('sales')->where('id', $row['id'])->update($payload);
+        }
+    });
+
+    $this->info('Referral source links synced. Original text fields were preserved.');
+
+    return self::SUCCESS;
+})->purpose('Safely backfill referral_source_id from exact referral source name matches');
+
 Artisan::command('rentnexis:audit-data {--organization= : Limit checks to one organization id} {--json : Output machine-readable JSON}', function () {
     $organizationId = $this->option('organization');
     $issues = [];

@@ -41,10 +41,10 @@ class SectionNavRegressionTest extends TestCase
 
         $this->get(route('sales.create'))
             ->assertOk()
-            ->assertSee('data-section-nav', false)
-            ->assertSee('Sale form sections')
-            ->assertSee('href="#sale-details-section"', false)
-            ->assertSee('href="#sale-pricing-section"', false);
+            ->assertSee('Create sale steps')
+            ->assertSee('data-sale-step-button="customer"', false)
+            ->assertSee('data-sale-step-button="review"', false)
+            ->assertSee('id="sale-pricing-section"', false);
     }
 
     public function test_show_pages_render_section_navigation_with_real_targets(): void

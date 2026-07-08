@@ -33,7 +33,7 @@ class AmountReductionGuardRegressionTest extends TestCase
             'deposit_amount' => 500,
             'transport_amount' => 0,
             'other_amount' => 0,
-        ])->assertRedirect('/rentals');
+        ])->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $rental = Rental::query()->where('organization_id', $organization->id)->firstOrFail();
         $invoice = Invoice::query()->where('organization_id', $organization->id)->firstOrFail();
@@ -87,7 +87,7 @@ class AmountReductionGuardRegressionTest extends TestCase
             'sale_date' => '2026-05-01',
             'sale_amount' => 1500,
             'payment_status' => 'pending',
-        ])->assertRedirect(route('sales.index'));
+        ])->assertRedirect(route('sales.index', ['sort_by' => 'latest']));
 
         $sale = Sale::query()->where('organization_id', $organization->id)->firstOrFail();
         $invoice = Invoice::query()->where('organization_id', $organization->id)->firstOrFail();
@@ -283,3 +283,4 @@ class AmountReductionGuardRegressionTest extends TestCase
         return [$organization, $user, $customer];
     }
 }
+

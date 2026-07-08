@@ -39,6 +39,64 @@
     if ($productIdentitySecondary === '') {
         $productIdentitySecondary = 'No model assigned';
     }
+    $conditionLabel = fn (?string $condition) => match((string) $condition) {
+        'new' => 'New',
+        'good' => 'Good',
+        'fair' => 'Fair',
+        'needs_repair', 'repair' => 'Needs Repair',
+        'damaged' => 'Damaged',
+        'retired', 'inactive' => 'Retired',
+        default => 'Not recorded',
+    };
+    $conditionBadge = fn (?string $condition) => match((string) $condition) {
+        'new', 'good' => ['#ecfdf5', '#047857'],
+        'fair' => ['#fffbeb', '#b45309'],
+        'needs_repair', 'repair', 'damaged' => ['#fef2f2', '#b91c1c'],
+        'retired', 'inactive' => ['#f8fafc', '#475569'],
+        default => ['#f8fafc', '#475569'],
+    };
+    $conditionTone = $conditionBadge($asset->condition_status);
+    $latestMovement = $asset->movements->first();
+    $rentalCount = $asset->rentalAssignments->pluck('rental_id')->filter()->unique()->count();
+    $assetAge = $asset->purchase_date ? $asset->purchase_date->diffForHumans(['parts' => 1, 'short' => true]) : null;
+    $lastServiceAgo = $asset->last_service_date ? $asset->last_service_date->diffForHumans(['parts' => 1, 'short' => true]) : null;
+    $lastMovementAgo = optional($latestMovement?->created_at ?? $asset->updated_at)->diffForHumans();
+    $isOverdueReturn = $activeRental?->end_date
+        && optional($activeRental->end_date)->lt(now()->startOfDay())
+        && ! in_array((string) $activeRental->status, ['returned', 'cancelled'], true);
+    $isServiceDue = $asset->next_service_date && optional($asset->next_service_date)->lte(now()->endOfDay());
+    $isRepairDelayed = $asset->asset_status === 'maintenance' && optional($asset->updated_at)->lt(now()->subDays(30));
+    $isNoMovement90 = optional($asset->updated_at)->lt(now()->subDays(90));
+    $attentionFlags = collect([
+        $isOverdueReturn ? 'Overdue Rental' : null,
+        $asset->asset_status === \App\Models\Asset::STATUS_AWAITING_VERIFICATION ? 'Verification Pending' : null,
+        $isRepairDelayed ? 'Repair Delayed' : null,
+        $isServiceDue ? 'Service Due' : null,
+        $isNoMovement90 ? 'No Movement > 90 Days' : null,
+    ])->filter();
+    $custodyType = 'Warehouse';
+    $custodyMain = optional($asset->warehouse)->name ?: 'Not assigned';
+    $custodySub = 'Available custody';
+    $custodyUrl = null;
+    if ($activeRental) {
+        $custodyType = 'Customer';
+        $custodyMain = $activeCustomer?->name ?: 'Customer linked';
+        $custodySub = 'Rental #' . $activeRental->id;
+        $custodyUrl = route('rentals.show', $activeRental);
+    } elseif ($activeSale) {
+        $custodyType = 'Customer';
+        $custodyMain = $activeCustomer?->name ?: 'Customer linked';
+        $custodySub = 'Sale #' . $activeSale->id;
+        $custodyUrl = route('sales.show', $activeSale);
+    } elseif ($asset->asset_status === \App\Models\Asset::STATUS_MAINTENANCE) {
+        $custodyType = 'Repair Vendor';
+        $custodyMain = 'Service Desk';
+        $custodySub = 'Under repair';
+    } elseif ($asset->asset_status === \App\Models\Asset::STATUS_AWAITING_VERIFICATION) {
+        $custodyType = 'Awaiting Verification';
+        $custodyMain = optional($asset->warehouse)->name ?: 'Return queue';
+        $custodySub = 'Post-return check';
+    }
 @endphp
 
 @section('content')
@@ -105,6 +163,271 @@
             border: 1px solid #e2e8f0;
             min-width: 0;
         }
+        .asset-command-layout {
+            display:grid;
+            grid-template-columns:minmax(280px, 35%) minmax(0, 1fr);
+            gap:16px;
+            align-items:start;
+        }
+        .asset-command-panel {
+            position:sticky;
+            top:88px;
+            display:grid;
+            gap:12px;
+            padding:16px;
+            border-radius:18px;
+            border:1px solid #dbe4f0;
+            background:#ffffff;
+            box-shadow:0 18px 44px rgba(15, 23, 42, .08);
+        }
+        .asset-command-title {
+            margin:0;
+            color:#0f172a;
+            font-size:24px;
+            line-height:1.08;
+            letter-spacing:-.02em;
+            font-family:var(--ph-font-heading);
+        }
+        .asset-command-subtitle {
+            margin:4px 0 0;
+            color:#64748b;
+            font-size:13px;
+            line-height:1.35;
+        }
+        .asset-mini-badge {
+            display:inline-flex;
+            width:max-content;
+            align-items:center;
+            padding:5px 9px;
+            border-radius:999px;
+            font-size:11px;
+            font-weight:900;
+            text-transform:uppercase;
+            letter-spacing:.04em;
+        }
+        .asset-custody-box {
+            display:grid;
+            gap:4px;
+            padding:11px 12px;
+            border-radius:14px;
+            border:1px solid #bfdbfe;
+            background:#eff6ff;
+        }
+        .asset-custody-label,
+        .asset-section-label {
+            color:#64748b;
+            font-size:10px;
+            font-weight:900;
+            letter-spacing:.08em;
+            text-transform:uppercase;
+            font-family:var(--ph-font-heading);
+        }
+        .asset-custody-main {
+            color:#0f172a;
+            font-size:17px;
+            font-weight:900;
+            line-height:1.2;
+            text-decoration:none;
+        }
+        .asset-custody-sub {
+            color:#475569;
+            font-size:13px;
+            font-weight:700;
+        }
+        .asset-health-strip {
+            display:grid;
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+            gap:8px;
+        }
+        .asset-health-item {
+            padding:9px 10px;
+            border-radius:12px;
+            border:1px solid #e2e8f0;
+            background:#f8fafc;
+        }
+        .asset-health-value {
+            margin-top:3px;
+            color:#0f172a;
+            font-size:14px;
+            font-weight:900;
+            line-height:1.2;
+        }
+        .asset-primary-action {
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            min-height:42px;
+            padding:10px 13px;
+            border-radius:13px;
+            background:#4f46e5;
+            color:#ffffff;
+            text-decoration:none;
+            font-weight:900;
+            box-shadow:0 14px 30px rgba(79, 70, 229, .24);
+        }
+        .asset-secondary-actions {
+            display:grid;
+            grid-template-columns:repeat(2, minmax(0, 1fr));
+            gap:8px;
+        }
+        .asset-soft-action,
+        .asset-more-actions summary {
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            min-height:38px;
+            padding:9px 11px;
+            border-radius:12px;
+            border:1px solid #cbd5e1;
+            background:#ffffff;
+            color:#0f172a;
+            text-decoration:none;
+            font-size:13px;
+            font-weight:850;
+            cursor:pointer;
+        }
+        .asset-more-actions { position:relative; }
+        .asset-more-actions summary { list-style:none; }
+        .asset-more-actions summary::-webkit-details-marker { display:none; }
+        .asset-more-menu {
+            position:absolute;
+            right:0;
+            top:calc(100% + 6px);
+            z-index:20;
+            min-width:190px;
+            padding:8px;
+            border:1px solid #dbe4f0;
+            border-radius:14px;
+            background:#ffffff;
+            box-shadow:0 18px 40px rgba(15, 23, 42, .16);
+        }
+        .asset-more-menu a,
+        .asset-more-menu button {
+            display:block;
+            width:100%;
+            padding:9px 10px;
+            border:0;
+            border-radius:10px;
+            background:transparent;
+            color:#0f172a;
+            text-align:left;
+            text-decoration:none;
+            font-weight:800;
+            cursor:pointer;
+        }
+        .asset-more-menu a:hover,
+        .asset-more-menu button:hover { background:#f8fafc; }
+        .asset-content-stack {
+            display:grid;
+            gap:12px;
+            min-width:0;
+        }
+        .asset-compact-section {
+            padding:14px;
+            border-radius:18px;
+            border:1px solid #dbe4f0;
+            background:#ffffff;
+        }
+        .asset-section-head {
+            display:flex;
+            justify-content:space-between;
+            align-items:flex-start;
+            gap:10px;
+            margin-bottom:10px;
+        }
+        .asset-section-head h2 {
+            margin:0;
+            color:#0f172a;
+            font-size:18px;
+            font-family:var(--ph-font-heading);
+        }
+        .asset-compact-grid {
+            display:grid;
+            grid-template-columns:repeat(3, minmax(0, 1fr));
+            gap:8px;
+        }
+        .asset-compact-tile {
+            padding:9px 10px;
+            border-radius:12px;
+            border:1px solid #e2e8f0;
+            background:#f8fafc;
+            min-width:0;
+        }
+        .asset-compact-value {
+            margin-top:3px;
+            color:#0f172a;
+            font-size:14px;
+            font-weight:900;
+            overflow:hidden;
+            text-overflow:ellipsis;
+            white-space:nowrap;
+        }
+        .asset-attention-panel {
+            display:flex;
+            flex-wrap:wrap;
+            gap:7px;
+            padding:10px;
+            border-radius:14px;
+            border:1px solid #fed7aa;
+            background:#fff7ed;
+        }
+        .asset-attention-chip {
+            display:inline-flex;
+            padding:5px 8px;
+            border-radius:999px;
+            background:#fee2e2;
+            color:#b91c1c;
+            font-size:11px;
+            font-weight:900;
+            text-transform:uppercase;
+        }
+        .asset-timeline {
+            display:grid;
+            gap:8px;
+        }
+        .asset-timeline-item {
+            display:grid;
+            grid-template-columns:88px minmax(0, 1fr);
+            gap:10px;
+            padding:9px 0;
+            border-top:1px solid #edf2f7;
+        }
+        .asset-timeline-item:first-child { border-top:0; padding-top:0; }
+        .asset-timeline-date {
+            color:#64748b;
+            font-size:12px;
+            font-weight:850;
+        }
+        .asset-timeline-title {
+            color:#0f172a;
+            font-size:14px;
+            font-weight:900;
+            text-transform:capitalize;
+        }
+        .asset-timeline-meta {
+            margin-top:2px;
+            color:#64748b;
+            font-size:12px;
+            line-height:1.35;
+        }
+        .asset-compact-table {
+            width:100%;
+            border-collapse:collapse;
+        }
+        .asset-compact-table th,
+        .asset-compact-table td {
+            padding:9px 8px;
+            border-top:1px solid #edf2f7;
+            text-align:left;
+            font-size:13px;
+        }
+        .asset-compact-table th {
+            color:#64748b;
+            font-size:10px;
+            font-weight:900;
+            letter-spacing:.08em;
+            text-transform:uppercase;
+        }
         .asset-copy-row {
             display: flex;
             align-items: center;
@@ -147,6 +470,23 @@
             .asset-detail-page {
                 gap: 12px;
                 padding-bottom: calc(188px + env(safe-area-inset-bottom, 0px));
+            }
+            .asset-command-layout {
+                grid-template-columns:1fr;
+            }
+            .asset-command-panel {
+                position:static;
+                padding:14px;
+            }
+            .asset-compact-grid {
+                grid-template-columns:1fr;
+            }
+            .asset-health-strip {
+                grid-template-columns:repeat(2, minmax(0, 1fr));
+            }
+            .asset-timeline-item {
+                grid-template-columns:1fr;
+                gap:3px;
             }
             .asset-detail-card {
                 padding: 16px;
@@ -242,253 +582,285 @@
     </style>
 
     <div class="asset-detail-page">
-        <div class="asset-detail-card">
-            <div class="asset-detail-header">
-                <div>
-                    <div style="display:inline-flex; padding:6px 10px; border-radius:999px; background:{{ $isNewStock ? '#fff7ed' : '#eff6ff' }}; color:{{ $isNewStock ? '#9a3412' : '#1d4ed8' }}; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">
-                        {{ $unitLabel }}
-                    </div>
-                    <h1 style="margin:12px 0 8px; font-size:34px; letter-spacing:-0.03em; word-break:normal; overflow-wrap:anywhere;">{{ $productName }}</h1>
-                    <p style="margin:0; color:#64748b; word-break:normal; overflow-wrap:anywhere;">{{ $productIdentitySecondary }}</p>
-                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
-                        <span style="display:inline-flex; padding:7px 12px; border-radius:999px; background:{{ $isNewStock ? '#fff7ed' : '#eff6ff' }}; color:{{ $isNewStock ? '#9a3412' : '#1d4ed8' }}; font-size:11px; font-weight:700; text-transform:uppercase;">{{ $unitLabel }}</span>
-                        <span style="display:inline-flex; padding:7px 12px; border-radius:999px; background:{{ $badge[0] }}; color:{{ $badge[1] }}; font-size:11px; font-weight:700; text-transform:uppercase;">{{ str_replace('_', ' ', $asset->asset_status) }}</span>
-                        @if($asset->isSerialPending())
-                            <span style="display:inline-flex; padding:7px 12px; border-radius:999px; background:#fff7ed; color:#9a3412; font-size:11px; font-weight:700; text-transform:uppercase;">Serial Pending</span>
-                        @endif
-                    </div>
-                </div>
-
-                <div class="asset-detail-actions page-header-actions">
-                    <a href="{{ route('assets.index') }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:600;">Back to Asset Register</a>
-                    @if($canViewAssetStockHistory)
-                        <a href="{{ route('stock-history.index', ['asset_id' => $asset->id]) }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; border:1px solid #bfdbfe; background:#eff6ff; color:#1d4ed8; text-decoration:none; font-weight:700;">Stock History</a>
-                    @endif
-                    @if($canUpdateAssets)
-                        @if(!empty($workflowControl['action_label']) && !empty($workflowControl['action_url']))
-                            <a href="{{ $workflowControl['action_url'] }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; background:#fef3c7; color:#b45309; text-decoration:none; font-weight:800;">{{ $workflowControl['action_label'] }}</a>
-                        @elseif(!empty($workflowControl['convert_url']))
-                            <a href="{{ $workflowControl['convert_url'] }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; background:#ecfeff; color:#0f766e; text-decoration:none; font-weight:700;">Convert Stock</a>
-                        @endif
-                        <a href="{{ route('assets.transfer', $asset) }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; background:#ecfeff; color:#0f766e; text-decoration:none; font-weight:700;">Transfer Warehouse</a>
-                        <a href="{{ route('assets.edit', $asset) }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:600;">Edit Metadata</a>
-                    @endif
-                </div>
-            </div>
-        </div>
-
         @if(session('success'))
-            <div style="padding:14px 16px; border-radius:16px; background:#ecfdf5; border:1px solid #bbf7d0; color:#166534;">{{ session('success') }}</div>
+            <div style="padding:12px 14px; border-radius:14px; background:#ecfdf5; border:1px solid #bbf7d0; color:#166534;">{{ session('success') }}</div>
         @endif
 
         @if(session('error'))
-            <div style="padding:14px 16px; border-radius:16px; background:#fff1f2; border:1px solid #fecaca; color:#991b1b;">{{ session('error') }}</div>
+            <div style="padding:12px 14px; border-radius:14px; background:#fff1f2; border:1px solid #fecaca; color:#991b1b;">{{ session('error') }}</div>
         @endif
 
         @if(!empty($workflowControl['locked']) && !empty($workflowControl['message']))
-            <div style="padding:14px 16px; border-radius:16px; background:#fffbeb; border:1px solid #fde68a; color:#92400e;">
+            <div style="padding:12px 14px; border-radius:14px; background:#fffbeb; border:1px solid #fde68a; color:#92400e;">
                 {{ $workflowControl['message'] }}
             </div>
         @endif
 
-        <div class="asset-detail-grid">
-            <div class="asset-detail-card">
-                <h2 style="margin:0;">Identity</h2>
-                <p style="margin:8px 0 0; color:#64748b;">Core reference details for this physical unit.</p>
+        <div class="asset-command-layout">
+            <aside class="asset-command-panel">
+                <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+                    <div style="min-width:0;">
+                        <span class="asset-mini-badge" style="background:{{ $isNewStock ? '#fff7ed' : '#eff6ff' }}; color:{{ $isNewStock ? '#9a3412' : '#1d4ed8' }};">{{ $unitLabel }}</span>
+                        <h1 class="asset-command-title">{{ $productName }}</h1>
+                        <p class="asset-command-subtitle">{{ $productIdentitySecondary }}</p>
+                    </div>
+                    <a href="{{ route('assets.index') }}" class="asset-soft-action" style="flex:0 0 auto;">Back</a>
+                </div>
 
-                <div class="asset-detail-info-grid">
-                    <div class="asset-detail-info-item">
-                        <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Serial Number</div>
-                        <div class="asset-copy-row">
-                            <div class="asset-copy-value" title="{{ $asset->serial_number }}">{{ $asset->serial_number }}</div>
+                <div style="display:flex; gap:7px; flex-wrap:wrap;">
+                    <span class="asset-mini-badge" style="background:{{ $badge[0] }}; color:{{ $badge[1] }};">{{ str_replace('_', ' ', $asset->asset_status) }}</span>
+                    <span class="asset-mini-badge" style="background:{{ $conditionTone[0] }}; color:{{ $conditionTone[1] }};">{{ $conditionLabel($asset->condition_status) }}</span>
+                    @if($asset->isSerialPending())
+                        <span class="asset-mini-badge" style="background:#fff7ed; color:#9a3412;">Serial Pending</span>
+                    @endif
+                </div>
+
+                <div>
+                    <div class="asset-section-label">Asset ID</div>
+                    <div class="asset-copy-row">
+                        <div class="asset-copy-value" title="{{ $asset->serial_number }}">{{ $asset->serial_number ?: '—' }}</div>
+                        @if($asset->serial_number)
                             <button type="button" class="asset-copy-btn" data-copy-text="{{ $asset->serial_number }}">Copy</button>
-                        </div>
-                        @if($asset->isSerialPending())
-                            <div style="margin-top:8px; color:#9a3412; font-size:12px; font-weight:700;">Temporary placeholder serial. Update this when the real unit serial is confirmed.</div>
                         @endif
                     </div>
-                    <div class="asset-detail-info-item">
-                        <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Barcode</div>
-                        @if($asset->barcode_value)
-                            <div class="asset-copy-row">
-                                <div class="asset-copy-value" title="{{ $asset->barcode_value }}">{{ $asset->barcode_value }}</div>
-                                <button type="button" class="asset-copy-btn" data-copy-text="{{ $asset->barcode_value }}">Copy</button>
-                            </div>
-                        @else
-                            <div style="margin-top:6px; font-size:16px; font-weight:700; color:#0f172a;">N/A</div>
-                        @endif
-                    </div>
-                    <div class="asset-detail-info-item">
-                        <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Batch Number</div>
-                        <div style="margin-top:6px; font-size:16px; font-weight:700; color:#0f172a;">{{ $asset->batch_number ?: 'N/A' }}</div>
-                    </div>
-                    <div class="asset-detail-info-item">
-                        <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Warehouse</div>
-                        <div style="margin-top:6px; font-size:16px; font-weight:700; color:#0f172a;">{{ optional($asset->warehouse)->name ?: 'N/A' }}</div>
-                    </div>
-                    <div class="asset-detail-info-item">
-                        <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Purchase Date</div>
-                        <div style="margin-top:6px; font-size:16px; font-weight:700; color:#0f172a;">{{ optional($asset->purchase_date)->format('d M Y') ?: 'N/A' }}</div>
-                    </div>
-                    <div class="asset-detail-info-item">
-                        <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Purchase Cost</div>
-                        <div style="margin-top:6px; font-size:16px; font-weight:700; color:#0f172a;">{{ $asset->purchase_cost !== null ? $rupee . ' ' . number_format($asset->purchase_cost, 2) : 'N/A' }}</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="asset-detail-card">
-                <h2 style="margin:0;">Operational Status</h2>
-                <p style="margin:8px 0 0; color:#64748b;">Lifecycle state and workflow position for this unit.</p>
-
-                <div class="asset-detail-info-grid">
-                    <div class="asset-detail-info-item">
-                        <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Unit Type</div>
-                        <div style="margin-top:6px; font-size:16px; font-weight:700; color:#0f172a;">{{ $unitLabel }}</div>
-                    </div>
-                    <div class="asset-detail-info-item">
-                        <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Status</div>
-                        <div style="margin-top:10px;">
-                            <span style="display:inline-flex; padding:7px 12px; border-radius:999px; background:{{ $badge[0] }}; color:{{ $badge[1] }}; font-size:12px; font-weight:700; text-transform:uppercase;">{{ str_replace('_', ' ', $asset->asset_status) }}</span>
-                        </div>
-                    </div>
-                    <div class="asset-detail-info-item">
-                        <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Condition</div>
-                        <div style="margin-top:6px; font-size:16px; font-weight:700; text-transform:capitalize; color:#0f172a;">{{ $isNewStock ? 'Fresh stock' : ($asset->condition_status ?: 'Not recorded') }}</div>
-                    </div>
-                    <div class="asset-detail-info-item">
-                        <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Workflow</div>
-                        <div style="margin-top:6px; color:#0f172a; font-weight:700;">
-                            @if($asset->asset_status === \App\Models\Asset::STATUS_AWAITING_VERIFICATION)
-                                Waiting for return verification
-                            @elseif($asset->asset_status === \App\Models\Asset::STATUS_RENTED)
-                                With customer
-                            @elseif($asset->asset_status === \App\Models\Asset::STATUS_SOLD)
-                                Sold through sale workflow
-                            @elseif($asset->asset_status === \App\Models\Asset::STATUS_MAINTENANCE)
-                                Under repair / maintenance
-                            @else
-                                Available for the next workflow step
-                            @endif
-                        </div>
-                    </div>
+                    @if($asset->barcode_value)
+                        <div class="asset-command-subtitle">Barcode: {{ $asset->barcode_value }}</div>
+                    @endif
                 </div>
 
-                <div style="margin-top:18px; padding:16px; border-radius:18px; background:{{ $isNewStock ? '#fffaf0' : '#eff6ff' }}; border:1px solid {{ $isNewStock ? '#fed7aa' : '#bfdbfe' }};">
-                    <div style="font-size:11px; color:{{ $isNewStock ? '#9a3412' : '#1d4ed8' }}; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">Operational Note</div>
-                    <div style="margin-top:8px; color:{{ $isNewStock ? '#9a3412' : '#1e3a8a' }}; line-height:1.6;">
-                        @if($isNewStock)
-                            Fresh physical unit currently treated as a sale unit. It may later be sold directly or converted into rental assets.
-                        @else
-                            {{ $conversionHint ?: 'Operational rental unit intended for dispatch, pickup, maintenance, and lifecycle tracking.' }}
-                        @endif
-                    </div>
+                <div class="asset-custody-box">
+                    <div class="asset-custody-label">{{ $custodyType }}</div>
+                    @if($custodyUrl)
+                        <a href="{{ $custodyUrl }}" class="asset-custody-main">{{ $custodyMain }}</a>
+                    @else
+                        <div class="asset-custody-main">{{ $custodyMain }}</div>
+                    @endif
+                    <div class="asset-custody-sub">{{ $custodySub }}</div>
                 </div>
-            </div>
-        </div>
 
-        <div class="asset-detail-grid">
-            <div class="asset-detail-card">
-                <h2 style="margin:0;">Current Link</h2>
-                <p style="margin:8px 0 0; color:#64748b;">Only shown when this unit is currently tied to a rental, sale, or verification step.</p>
-
-                @if($activeRental || $activeSale || $asset->asset_status === \App\Models\Asset::STATUS_AWAITING_VERIFICATION)
-                    <div class="asset-detail-info-grid">
-                        @if($activeRental)
-                            <div class="asset-detail-info-item">
-                                <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Current Rental</div>
-                                <div style="margin-top:6px; font-size:16px; font-weight:700;">
-                                    <a href="{{ route('rentals.show', $activeRental) }}" style="color:#1d4ed8; text-decoration:none;">Rental #{{ $activeRental->id }}</a>
-                                </div>
-                            </div>
-                        @endif
-                        @if($activeSale)
-                            <div class="asset-detail-info-item">
-                                <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Current Sale</div>
-                                <div style="margin-top:6px; font-size:16px; font-weight:700;">
-                                    <a href="{{ route('sales.show', $activeSale) }}" style="color:#1d4ed8; text-decoration:none;">Sale #{{ $activeSale->id }}</a>
-                                </div>
-                            </div>
-                        @endif
-                        @if($activeCustomer)
-                            <div class="asset-detail-info-item">
-                                <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Current Customer</div>
-                                <div style="margin-top:6px; font-size:16px; font-weight:700; color:#0f172a;">{{ $activeCustomer->name }}</div>
-                            </div>
-                        @endif
-                        @if($asset->asset_status === \App\Models\Asset::STATUS_AWAITING_VERIFICATION)
-                            <div class="asset-detail-info-item">
-                                <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase;">Return Verification</div>
-                                <div style="margin-top:10px;">
-                                    <a href="{{ route('assets.verify-return', $asset) }}" style="display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border-radius:12px; background:#fef3c7; color:#b45309; text-decoration:none; font-weight:800;">Verify Return</a>
-                                </div>
-                            </div>
-                        @endif
-                    </div>
-                @else
-                    <div style="margin-top:18px; padding:16px; border-radius:18px; border:1px dashed #cbd5e1; background:#f8fafc; color:#475569;">
-                        This unit is not currently linked to an active rental, active sale, or return verification step.
+                @if($attentionFlags->isNotEmpty())
+                    <div class="asset-attention-panel" aria-label="Asset attention flags">
+                        @foreach($attentionFlags as $flag)
+                            <span class="asset-attention-chip">{{ $flag }}</span>
+                        @endforeach
                     </div>
                 @endif
-            </div>
 
-            <div class="asset-detail-card">
-                <h2 style="margin:0;">Notes &amp; Movement History</h2>
-                <p style="margin:8px 0 0; color:#64748b;">Notes, warehouse changes, and operational trace for this physical unit.</p>
-
-                <div style="margin-top:18px; padding:16px; border-radius:18px; background:#ffffff; border:1px solid #e2e8f0;">
-                    <div style="font-size:11px; color:#64748b; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">Notes</div>
-                    <div style="margin-top:8px; color:#475569; line-height:1.7;">{{ $asset->notes ?: 'No notes added.' }}</div>
+                <div class="asset-health-strip">
+                    <div class="asset-health-item">
+                        <div class="asset-section-label">Age</div>
+                        <div class="asset-health-value">{{ $assetAge ?: '—' }}</div>
+                    </div>
+                    <div class="asset-health-item">
+                        <div class="asset-section-label">Rentals</div>
+                        <div class="asset-health-value">{{ $rentalCount }}</div>
+                    </div>
+                    <div class="asset-health-item">
+                        <div class="asset-section-label">Last Service</div>
+                        <div class="asset-health-value">{{ $lastServiceAgo ?: '—' }}</div>
+                    </div>
+                    <div class="asset-health-item">
+                        <div class="asset-section-label">Last Movement</div>
+                        <div class="asset-health-value">{{ $lastMovementAgo ?: '—' }}</div>
+                    </div>
                 </div>
 
-                <div class="responsive-table-shell" style="margin-top:18px;">
-                    <div class="responsive-table-scroll">
-                    <table style="width:100%; border-collapse:collapse;">
-                        <thead style="background:#f8fafc;">
+                @if($canUpdateAssets)
+                    @if(!empty($workflowControl['action_label']) && !empty($workflowControl['action_url']))
+                        <a href="{{ $workflowControl['action_url'] }}" class="asset-primary-action">{{ $workflowControl['action_label'] }}</a>
+                    @elseif($asset->asset_status === \App\Models\Asset::STATUS_RENTED && $activeRental)
+                        <a href="{{ route('rentals.show', $activeRental) }}" class="asset-primary-action">View Rental</a>
+                    @elseif(!empty($workflowControl['convert_url']))
+                        <a href="{{ $workflowControl['convert_url'] }}" class="asset-primary-action">Convert Stock</a>
+                    @else
+                        <a href="{{ route('assets.edit', $asset) }}" class="asset-primary-action">Edit Asset</a>
+                    @endif
+                @elseif($activeRental)
+                    <a href="{{ route('rentals.show', $activeRental) }}" class="asset-primary-action">View Rental</a>
+                @endif
+
+                <div class="asset-secondary-actions">
+                    @if($canUpdateAssets)
+                        <a href="{{ route('assets.transfer', $asset) }}" class="asset-soft-action">Move Asset</a>
+                        <a href="{{ route('assets.edit', $asset) }}" class="asset-soft-action">Edit</a>
+                    @endif
+                    <details class="asset-more-actions">
+                        <summary>More</summary>
+                        <div class="asset-more-menu">
+                            <a href="{{ route('assets.index') }}">Asset Register</a>
+                            @if($canViewAssetStockHistory)
+                                <a href="{{ route('stock-history.index', ['asset_id' => $asset->id]) }}">Stock History</a>
+                            @endif
+                            @if($activeRental)
+                                <a href="{{ route('rentals.show', $activeRental) }}">Current Rental</a>
+                            @endif
+                            @if($activeSale)
+                                <a href="{{ route('sales.show', $activeSale) }}">Current Sale</a>
+                            @endif
+                            @if($canDeleteAssets)
+                                <form method="POST" action="{{ route('assets.destroy', $asset) }}" style="margin:0;" onsubmit="return confirm('Delete this asset? This will be blocked if dependencies exist.');">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button type="submit" style="color:#be123c;">Delete Asset</button>
+                                </form>
+                            @endif
+                        </div>
+                    </details>
+                </div>
+            </aside>
+
+            <main class="asset-content-stack">
+                <section class="asset-compact-section">
+                    <div class="asset-section-head">
+                        <div>
+                            <div class="asset-section-label">Priority</div>
+                            <h2>Current Assignment</h2>
+                        </div>
+                    </div>
+                    @if($activeRental || $activeSale || $asset->asset_status === \App\Models\Asset::STATUS_AWAITING_VERIFICATION)
+                        <div class="asset-compact-grid">
+                            @if($activeRental)
+                                <div class="asset-compact-tile">
+                                    <div class="asset-section-label">Rental</div>
+                                    <div class="asset-compact-value"><a href="{{ route('rentals.show', $activeRental) }}" style="color:#1d4ed8; text-decoration:none;">Rental #{{ $activeRental->id }}</a></div>
+                                </div>
+                                <div class="asset-compact-tile">
+                                    <div class="asset-section-label">Customer</div>
+                                    <div class="asset-compact-value">{{ $activeCustomer?->name ?: '—' }}</div>
+                                </div>
+                                <div class="asset-compact-tile">
+                                    <div class="asset-section-label">Expected Return</div>
+                                    <div class="asset-compact-value">{{ optional($activeRental->end_date)->format('d M Y') ?: '—' }}</div>
+                                </div>
+                            @endif
+                            @if($activeSale)
+                                <div class="asset-compact-tile">
+                                    <div class="asset-section-label">Sale</div>
+                                    <div class="asset-compact-value"><a href="{{ route('sales.show', $activeSale) }}" style="color:#1d4ed8; text-decoration:none;">Sale #{{ $activeSale->id }}</a></div>
+                                </div>
+                                <div class="asset-compact-tile">
+                                    <div class="asset-section-label">Customer</div>
+                                    <div class="asset-compact-value">{{ $activeCustomer?->name ?: '—' }}</div>
+                                </div>
+                                <div class="asset-compact-tile">
+                                    <div class="asset-section-label">Sale Date</div>
+                                    <div class="asset-compact-value">{{ optional($activeSale->sale_date ?? $activeSale->created_at)->format('d M Y') ?: '—' }}</div>
+                                </div>
+                            @endif
+                            <div class="asset-compact-tile">
+                                <div class="asset-section-label">Location</div>
+                                <div class="asset-compact-value">{{ optional($asset->warehouse)->name ?: ($activeCustomer?->city ?: '—') }}</div>
+                            </div>
+                            <div class="asset-compact-tile">
+                                <div class="asset-section-label">Status</div>
+                                <div class="asset-compact-value">{{ str_replace('_', ' ', $asset->asset_status) }}</div>
+                            </div>
+                            @if($asset->asset_status === \App\Models\Asset::STATUS_AWAITING_VERIFICATION)
+                                <div class="asset-compact-tile">
+                                    <div class="asset-section-label">Return Check</div>
+                                    <div class="asset-compact-value"><a href="{{ route('assets.verify-return', $asset) }}" style="color:#b45309; text-decoration:none;">Verify Return</a></div>
+                                </div>
+                            @endif
+                        </div>
+                    @else
+                        <div class="asset-compact-tile">
+                            <div class="asset-section-label">Current State</div>
+                            <div class="asset-compact-value">No active rental, sale, or verification link.</div>
+                        </div>
+                    @endif
+                </section>
+
+                <section class="asset-compact-section">
+                    <div class="asset-section-head">
+                        <div>
+                            <div class="asset-section-label">Trace</div>
+                            <h2>Recent Movement</h2>
+                        </div>
+                    </div>
+                    <div class="asset-timeline">
+                        @forelse($asset->movements->take(6) as $movement)
+                            <div class="asset-timeline-item">
+                                <div class="asset-timeline-date">{{ $movement->created_at->diffForHumans() }}</div>
+                                <div>
+                                    <div class="asset-timeline-title">{{ str_replace('_', ' ', $movement->movement_type) }}</div>
+                                    <div class="asset-timeline-meta">
+                                        {{ optional($movement->fromWarehouse)->name ?: '—' }} → {{ optional($movement->toWarehouse)->name ?: '—' }}
+                                        @if($movement->movedBy)
+                                            · {{ $movement->movedBy->name }}
+                                        @endif
+                                    </div>
+                                    @if($movement->remarks)
+                                        <div class="asset-timeline-meta">{{ $movement->remarks }}</div>
+                                    @endif
+                                </div>
+                            </div>
+                        @empty
+                            <div class="asset-timeline-meta">No movement history available yet.</div>
+                        @endforelse
+                    </div>
+                </section>
+
+                <section class="asset-compact-section">
+                    <div class="asset-section-head">
+                        <div>
+                            <div class="asset-section-label">Service</div>
+                            <h2>Service History</h2>
+                        </div>
+                    </div>
+                    <table class="asset-compact-table">
+                        <thead>
                             <tr>
-                                <th style="text-align:left; padding:14px 18px; font-size:12px; color:#64748b; text-transform:uppercase;">Date</th>
-                                <th style="text-align:left; padding:14px 18px; font-size:12px; color:#64748b; text-transform:uppercase;">Type</th>
-                                <th style="text-align:left; padding:14px 18px; font-size:12px; color:#64748b; text-transform:uppercase;">From</th>
-                                <th style="text-align:left; padding:14px 18px; font-size:12px; color:#64748b; text-transform:uppercase;">To</th>
-                                <th style="text-align:left; padding:14px 18px; font-size:12px; color:#64748b; text-transform:uppercase;">Remarks</th>
+                                <th>Date</th>
+                                <th>Service Type</th>
+                                <th>Technician</th>
+                                <th>Status</th>
                             </tr>
                         </thead>
                         <tbody>
-                        @forelse($asset->movements as $movement)
-                            <tr style="border-top:1px solid #e2e8f0;">
-                                <td data-label="Date" style="padding:16px 18px;">{{ $movement->created_at->format('d M Y, h:i A') }}</td>
-                                <td data-label="Type" style="padding:16px 18px; text-transform:capitalize;">{{ $movement->movement_type }}</td>
-                                <td data-label="From" style="padding:16px 18px;">{{ optional($movement->fromWarehouse)->name ?: 'N/A' }}</td>
-                                <td data-label="To" style="padding:16px 18px;">{{ optional($movement->toWarehouse)->name ?: 'N/A' }}</td>
-                                <td data-label="Remarks" style="padding:16px 18px;">{{ $movement->remarks ?: 'N/A' }}</td>
-                            </tr>
-                        @empty
                             <tr>
-                                <td colspan="5" style="padding:22px 18px; color:#64748b;">No movement history available yet.</td>
+                                <td>{{ optional($asset->last_service_date)->format('d M Y') ?: '—' }}</td>
+                                <td>Last service</td>
+                                <td>—</td>
+                                <td>{{ $asset->last_service_date ? 'Recorded' : 'Not recorded' }}</td>
                             </tr>
-                        @endforelse
+                            <tr>
+                                <td>{{ optional($asset->next_service_date)->format('d M Y') ?: '—' }}</td>
+                                <td>Next service</td>
+                                <td>—</td>
+                                <td>{{ $isServiceDue ? 'Due' : 'Scheduled' }}</td>
+                            </tr>
                         </tbody>
                     </table>
-                    </div>
-                </div>
-            </div>
-        </div>
+                </section>
 
-        @if($canDeleteAssets)
-            <div class="asset-detail-card">
-                <h2 style="margin:0;">Actions</h2>
-                <p style="margin:8px 0 0; color:#64748b;">Delete remains available here when dependencies allow it.</p>
-                <div style="margin-top:18px;">
-                    <form method="POST" action="{{ route('assets.destroy', $asset) }}" onsubmit="return confirm('Delete this asset? This will be blocked if dependencies exist.');">
-                        @csrf
-                        @method('DELETE')
-                        <button type="submit" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border:none; border-radius:12px; background:#fff1f2; color:#be123c; font-weight:700; cursor:pointer;">
-                            Delete Asset
-                        </button>
-                    </form>
-                </div>
-            </div>
-        @endif
+                <section class="asset-compact-section">
+                    <div class="asset-section-head">
+                        <div>
+                            <div class="asset-section-label">Audit</div>
+                            <h2>Asset Details</h2>
+                        </div>
+                    </div>
+                    <div class="asset-compact-grid">
+                        <div class="asset-compact-tile">
+                            <div class="asset-section-label">Batch</div>
+                            <div class="asset-compact-value">{{ $asset->batch_number ?: '—' }}</div>
+                        </div>
+                        <div class="asset-compact-tile">
+                            <div class="asset-section-label">Purchase Date</div>
+                            <div class="asset-compact-value">{{ optional($asset->purchase_date)->format('d M Y') ?: '—' }}</div>
+                        </div>
+                        <div class="asset-compact-tile">
+                            <div class="asset-section-label">Purchase Cost</div>
+                            <div class="asset-compact-value">{{ $asset->purchase_cost !== null ? $rupee . ' ' . number_format($asset->purchase_cost, 2) : '—' }}</div>
+                        </div>
+                        <div class="asset-compact-tile" style="grid-column:1 / -1;">
+                            <div class="asset-section-label">Notes</div>
+                            <div style="margin-top:4px; color:#475569; font-size:13px; line-height:1.45;">{{ $asset->notes ?: 'No notes added.' }}</div>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
     </div>
 @endsection
 

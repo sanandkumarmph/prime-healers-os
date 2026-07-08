@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Role;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -53,14 +54,28 @@ class RoleController extends Controller
     public function index(Request $request)
     {
         $search = trim((string) $request->get('search', ''));
+        $organizationId = $this->orgId();
+        $roleSummaryQuery = Role::query()->forOrganization($organizationId);
+
+        $summary = [
+            'total_roles' => (clone $roleSummaryQuery)->count(),
+            'system_roles' => (clone $roleSummaryQuery)->where('is_system', true)->count(),
+            'custom_roles' => (clone $roleSummaryQuery)->where('is_system', false)->count(),
+            'assigned_users' => User::query()
+                ->where('organization_id', $organizationId)
+                ->whereNotNull('role_id')
+                ->count(),
+        ];
+
         $roles = Role::query()
-            ->forOrganization($this->orgId())
+            ->forOrganization($organizationId)
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($innerQuery) use ($search) {
                     $innerQuery->where('name', 'like', "%{$search}%")
                         ->orWhere('slug', 'like', "%{$search}%");
                 });
             })
+            ->with(['users:id,role_id,name,email,phone,is_active'])
             ->withCount('users')
             ->orderByDesc('is_system')
             ->orderBy('name')
@@ -70,6 +85,7 @@ class RoleController extends Controller
         return view('roles.index', [
             'roles' => $roles,
             'search' => $search,
+            'summary' => $summary,
             'permissionModules' => Role::moduleOptions(),
             'permissionActions' => Role::actionOptions(),
             'specialPermissions' => Role::specialPermissionOptions(),

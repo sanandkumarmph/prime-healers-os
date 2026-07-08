@@ -218,7 +218,7 @@ class BusinessPartnerFlowRegressionTest extends TestCase
                 'tax_calculation_mode' => 'exclusive',
                 'tax_type' => Product::GST_TAX_TYPE_IGST,
             ]],
-        ])->assertRedirect(route('sales.index'));
+        ])->assertRedirect(route('sales.index', ['sort_by' => 'latest']));
 
         $invoice = Invoice::query()->where('organization_id', $this->organizationId)->latest('id')->firstOrFail();
 
@@ -265,7 +265,7 @@ class BusinessPartnerFlowRegressionTest extends TestCase
             'gst_rate' => 18,
             'gst_mode' => 'exclusive',
             'tax_type' => Product::GST_TAX_TYPE_IGST,
-        ])->assertRedirect(route('rentals.index'));
+        ])->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $rental = Rental::query()
             ->where('organization_id', $this->organizationId)
@@ -310,7 +310,7 @@ class BusinessPartnerFlowRegressionTest extends TestCase
                 'tax_calculation_mode' => 'exclusive',
                 'tax_type' => Product::GST_TAX_TYPE_IGST,
             ]],
-        ])->assertRedirect(route('sales.index'));
+        ])->assertRedirect(route('sales.index', ['sort_by' => 'latest']));
 
         $sale = Sale::query()
             ->where('organization_id', $this->organizationId)
@@ -349,7 +349,7 @@ class BusinessPartnerFlowRegressionTest extends TestCase
             'gst_rate' => 18,
             'gst_mode' => 'exclusive',
             'tax_type' => Product::GST_TAX_TYPE_IGST,
-        ])->assertRedirect(route('rentals.index'));
+        ])->assertRedirect(route('rentals.index', ['sort_by' => 'latest']));
 
         $rental = Rental::query()->where('organization_id', $this->organizationId)->latest('id')->firstOrFail();
 

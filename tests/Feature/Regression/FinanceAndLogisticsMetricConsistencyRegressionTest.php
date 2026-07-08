@@ -471,7 +471,7 @@ class FinanceAndLogisticsMetricConsistencyRegressionTest extends TestCase
         $assetRegister = $this->get(route('assets.index'));
         $assetRegister->assertOk();
         $this->assertSame(0, (int) data_get($assetRegister->viewData('summary'), 'sale_stock'));
-        $assetRegister->assertSee('Serialized Sale Units');
+        $assetRegister->assertSee('Asset Register')->assertSee('Asset Identity')->assertSee('Quick Summary');
 
         $inventoryDashboard = $this->get(route('inventory.dashboard'));
         $inventoryDashboard->assertOk()
