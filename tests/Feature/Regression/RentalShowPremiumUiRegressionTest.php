@@ -83,7 +83,7 @@ class RentalShowPremiumUiRegressionTest extends TestCase
             ->assertSee('1,500.00');
     }
 
-    public function test_rental_show_separates_partner_contacts_and_hides_finance_amounts_for_sales_user(): void
+    public function test_rental_show_separates_partner_contacts_and_shows_record_finance_for_sales_user(): void
     {
         $salesUser = TestData::user(organization: null, attributes: [
             'organization_id' => $this->organizationId,
@@ -148,10 +148,50 @@ class RentalShowPremiumUiRegressionTest extends TestCase
             ->assertSee('Customer Summary')
             ->assertSee('Partner:')
             ->assertSee('Actual client:')
-            ->assertSee('Finance amounts are hidden for your role.')
-            ->assertDontSee('Finance Workspace')
-            ->assertDontSee('2,500.00')
-            ->assertDontSee('800.00');
+            ->assertSee('Finance Workspace')
+            ->assertSee('2,500.00')
+            ->assertSee('800.00')
+            ->assertDontSee('Finance amounts are hidden for your role.');
+    }
+
+    public function test_record_finance_visibility_is_separate_from_dashboard_finance_for_core_roles(): void
+    {
+        $superAdmin = TestData::user(organization: null, attributes: [
+            'organization_id' => $this->organizationId,
+            'role' => User::ROLE_SUPER_ADMIN,
+        ]);
+        $finance = TestData::user(organization: null, attributes: [
+            'organization_id' => $this->organizationId,
+            'role' => User::ROLE_FINANCE,
+        ]);
+        $sales = TestData::user(organization: null, attributes: [
+            'organization_id' => $this->organizationId,
+            'role' => User::ROLE_SALES,
+        ]);
+        $operations = TestData::user(organization: null, attributes: [
+            'organization_id' => $this->organizationId,
+            'role' => User::ROLE_ADMIN_OPERATIONS,
+        ]);
+        $delivery = TestData::user(organization: null, attributes: [
+            'organization_id' => $this->organizationId,
+            'role' => User::ROLE_DELIVERY_EXECUTIVE,
+        ]);
+        $vendor = TestData::user(organization: null, attributes: [
+            'organization_id' => $this->organizationId,
+            'role' => User::ROLE_VENDOR,
+        ]);
+
+        $this->assertTrue($superAdmin->canViewFinance());
+        $this->assertTrue($finance->canViewFinance());
+        $this->assertFalse($sales->canViewFinance());
+        $this->assertFalse($operations->canViewFinance());
+
+        $this->assertTrue($superAdmin->canViewRecordFinance());
+        $this->assertTrue($finance->canViewRecordFinance());
+        $this->assertTrue($sales->canViewRecordFinance());
+        $this->assertTrue($operations->canViewRecordFinance());
+        $this->assertFalse($delivery->canViewRecordFinance());
+        $this->assertFalse($vendor->canViewRecordFinance());
     }
 
     private function makeRentalProduct(string $name = 'Wheelchair'): Product

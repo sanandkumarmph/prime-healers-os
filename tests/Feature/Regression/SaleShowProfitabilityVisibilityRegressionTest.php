@@ -33,16 +33,22 @@ class SaleShowProfitabilityVisibilityRegressionTest extends TestCase
             ->assertSee('Margin %');
     }
 
-    public function test_sales_user_cannot_see_sale_profitability_or_sensitive_margin_values(): void
+    public function test_sales_user_sees_record_finance_but_not_profitability_or_sensitive_margin_values(): void
     {
         [$sale, $organization] = $this->saleFixture();
         $salesUser = TestData::user($organization, [
             'role' => User::ROLE_SALES,
         ]);
 
+        $this->assertFalse($salesUser->canViewFinance());
+        $this->assertTrue($salesUser->canSeeSalesFinance());
+
         $this->actingAs($salesUser)
             ->get(route('sales.show', $sale))
             ->assertOk()
+            ->assertSee('Sale Amount')
+            ->assertSee('13,000.00')
+            ->assertSee('Due Amount')
             ->assertDontSee('Profitability')
             ->assertDontSee('Vendor Cost')
             ->assertDontSee('Gross Margin')
@@ -73,6 +79,32 @@ class SaleShowProfitabilityVisibilityRegressionTest extends TestCase
             ->assertDontSee('Vendor Cost')
             ->assertDontSee('Gross Margin')
             ->assertDontSee('Margin %');
+    }
+    public function test_vendor_sales_reader_cannot_see_sale_record_finance_amounts(): void
+    {
+        [$sale, $organization] = $this->saleFixture();
+        $vendorRole = Role::create([
+            'organization_id' => $organization->id,
+            'name' => 'Vendor Sale Reader',
+            'slug' => User::ROLE_VENDOR,
+            'permissions' => [
+                'sales' => ['read'],
+            ],
+            'is_active' => true,
+        ]);
+        $vendorUser = TestData::user($organization, [
+            'role' => 'staff',
+            'role_id' => $vendorRole->id,
+        ]);
+
+        $this->assertFalse($vendorUser->canSeeSalesFinance());
+
+        $this->actingAs($vendorUser)
+            ->get(route('sales.show', $sale))
+            ->assertOk()
+            ->assertSee('Hidden')
+            ->assertDontSee('13,000.00')
+            ->assertDontSee('Vendor Cost');
     }
 
     private function saleFixture(): array

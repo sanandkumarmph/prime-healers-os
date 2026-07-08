@@ -147,8 +147,42 @@ class User extends Authenticatable
 
     public function canSeeRentalFinance(): bool
     {
-        return $this->canAccessModule('payments', 'read')
-            || $this->canAccessModule('invoices', 'read');
+        return $this->canViewRecordFinance();
+    }
+
+    public function canSeeSalesFinance(): bool
+    {
+        return $this->canViewRecordFinance();
+    }
+
+    public function canViewRecordFinance(): bool
+    {
+        return $this->canViewOperationalFinance();
+    }
+
+    public function canViewOperationalFinance(): bool
+    {
+        if ($this->isSuperAdmin() || $this->canViewFinance()) {
+            return true;
+        }
+
+        if ($this->matchesLegacyRoles([
+            self::ROLE_VENDOR,
+            self::ROLE_THIRD_PARTY,
+            self::ROLE_DELIVERY,
+            self::ROLE_DELIVERY_EXECUTIVE,
+        ])) {
+            return false;
+        }
+
+        return $this->matchesLegacyRoles([
+            self::ROLE_ADMIN_OPERATIONS,
+            self::ROLE_SALES,
+            self::ROLE_SALES_RENEWALS,
+            self::ROLE_OPERATIONS_EXECUTIVE,
+            'admin',
+            'operations',
+        ]);
     }
 
     public function canSeeLimitedDashboardCards(): bool

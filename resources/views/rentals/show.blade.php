@@ -546,7 +546,7 @@
     }
 
     $viewer = auth()->user();
-    $canViewFinanceAmounts = $viewer?->canViewFinanceDashboard() ?? false;
+    $canViewFinanceAmounts = $viewer?->canViewRecordFinance() ?? false;
     $canSeeRentalFinance = $canViewFinanceAmounts;
     if (!$canViewFinanceAmounts) {
         $rentalInvoiceDue = 0.0;
