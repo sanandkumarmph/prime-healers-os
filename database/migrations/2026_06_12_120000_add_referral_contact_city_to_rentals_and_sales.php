@@ -8,37 +8,41 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('rentals', function (Blueprint $table) {
-            if (!Schema::hasColumn('rentals', 'referral_contact')) {
-                $table->string('referral_contact', 180)->nullable()->after('referred_by');
-            }
+        $this->addReferralColumnIfMissing('rentals', 'referral_contact', 180);
+        $this->addReferralColumnIfMissing('rentals', 'referral_city', 120);
 
-            if (!Schema::hasColumn('rentals', 'referral_city')) {
-                $table->string('referral_city', 120)->nullable()->after('referral_contact');
-            }
-        });
-
-        Schema::table('sales', function (Blueprint $table) {
-            if (!Schema::hasColumn('sales', 'referral_city')) {
-                $table->string('referral_city', 120)->nullable()->after('referral_contact');
-            }
-        });
+        $this->addReferralColumnIfMissing('sales', 'referral_contact', 180);
+        $this->addReferralColumnIfMissing('sales', 'referral_city', 120);
     }
 
     public function down(): void
     {
-        Schema::table('sales', function (Blueprint $table) {
-            if (Schema::hasColumn('sales', 'referral_city')) {
-                $table->dropColumn('referral_city');
-            }
-        });
+        $this->dropReferralColumnIfExists('sales', 'referral_city');
+        $this->dropReferralColumnIfExists('sales', 'referral_contact');
 
-        Schema::table('rentals', function (Blueprint $table) {
-            foreach (['referral_city', 'referral_contact'] as $column) {
-                if (Schema::hasColumn('rentals', $column)) {
-                    $table->dropColumn($column);
-                }
-            }
+        $this->dropReferralColumnIfExists('rentals', 'referral_city');
+        $this->dropReferralColumnIfExists('rentals', 'referral_contact');
+    }
+
+    private function addReferralColumnIfMissing(string $tableName, string $columnName, int $length): void
+    {
+        if (! Schema::hasTable($tableName) || Schema::hasColumn($tableName, $columnName)) {
+            return;
+        }
+
+        Schema::table($tableName, function (Blueprint $table) use ($columnName, $length) {
+            $table->string($columnName, $length)->nullable();
+        });
+    }
+
+    private function dropReferralColumnIfExists(string $tableName, string $columnName): void
+    {
+        if (! Schema::hasTable($tableName) || ! Schema::hasColumn($tableName, $columnName)) {
+            return;
+        }
+
+        Schema::table($tableName, function (Blueprint $table) use ($columnName) {
+            $table->dropColumn($columnName);
         });
     }
 };
