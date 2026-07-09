@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 
 return [
     'application_name' => env('APP_DISPLAY_NAME', 'Prime Healers OS'),
@@ -8,6 +8,9 @@ return [
     'environment' => env('APP_RELEASE_ENV', env('APP_ENV', 'production')),
     'git_commit' => env('APP_GIT_COMMIT'),
     'branch' => env('APP_GIT_BRANCH'),
+    'company' => env('APP_COMPANY_NAME', 'Prime Healers'),
+    'support_email' => env('APP_SUPPORT_EMAIL', env('MAIL_FROM_ADDRESS')),
+    'website' => env('APP_WEBSITE'),
     'whats_new' => [
         'Current Release',
         'UI Stabilization',

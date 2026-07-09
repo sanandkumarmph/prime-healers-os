@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @php
-        $releaseEnvForTitle = strtolower((string) config('version.environment', config('app.env', 'production')));
+        $releaseEnvForTitle = strtolower((string) config('app.env', 'production'));
         $releaseTitlePrefix = match ($releaseEnvForTitle) {
             'local' => '[LOCAL] ',
             'uat', 'staging' => '[UAT] ',
