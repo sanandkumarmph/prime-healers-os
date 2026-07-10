@@ -109,10 +109,29 @@
     .ph-import-guidance-tags span{display:inline-flex;align-items:center;min-height:28px;padding:0 10px;border-radius:999px;background:#ffedd5;color:#9a3412;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
     .ph-import-guidance-btn{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 14px;border-radius:12px;border:1px solid #fdba74;background:#fff7ed;color:#9a3412;font-size:13px;font-weight:800;text-decoration:none;justify-self:start}
     .ph-import-guidance-btn:hover{background:#ffedd5}
+    .ph-import-completion-card{gap:12px}
+    .ph-import-completion-grid{display:grid;grid-template-columns:150px minmax(220px,1fr) repeat(3,minmax(110px,140px));gap:10px;align-items:stretch}
+    .ph-import-completion-metric,.ph-import-completion-mix{min-width:0;border:1px solid #dbe4f0;background:#f8fafc;border-radius:16px;padding:12px;display:grid;gap:6px}
+    .ph-import-completion-metric.success{background:#f0fdf4;border-color:#bbf7d0}
+    .ph-import-completion-metric.warning{background:#fffbeb;border-color:#fde68a}
+    .ph-import-completion-metric.danger{background:#fef2f2;border-color:#fecaca}
+    .ph-import-completion-metric span,.ph-import-completion-mix>span{font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:#64748b}
+    .ph-import-completion-metric strong{font-size:26px;line-height:1;color:#0f172a}
+    .ph-import-entity-list{display:grid;gap:6px}
+    .ph-import-entity-row{display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:center;gap:8px;font-size:13px;font-weight:800;color:#334155}
+    .ph-import-entity-row strong{font-size:16px;color:#0f172a}
+    .ph-import-check{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;background:#dcfce7;color:#15803d;font-size:9px;font-weight:900;letter-spacing:.02em}
+    .ph-import-result-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .ph-import-result-actions .ph-import-btn-secondary{min-height:36px;padding:0 12px;border-radius:12px;font-size:12px}
+    .ph-import-entity-chip{display:inline-flex;align-items:center;min-height:28px;border-radius:999px;padding:0 10px;font-size:11px;font-weight:900;letter-spacing:.04em;white-space:nowrap}
+    .ph-import-entity-chip.is-direct{background:#ecfdf5;color:#047857;border:1px solid #bbf7d0}
+    .ph-import-entity-chip.is-partner{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe}
+    .ph-import-entity-chip.is-client{background:#f5f3ff;color:#6d28d9;border:1px solid #ddd6fe}
     @media (max-width:980px){
         .ph-import-layout,
         .ph-import-upload-grid,
-        .ph-import-stats{grid-template-columns:1fr}
+        .ph-import-stats,
+        .ph-import-completion-grid{grid-template-columns:1fr}
     }
     @media (max-width:760px){
         .ph-import-head h1{font-size:28px}
@@ -129,6 +148,10 @@
         .ph-import-selected-file{grid-template-columns:38px minmax(0,1fr);align-items:start}
         .ph-import-selected-icon{width:38px;height:38px}
         .ph-import-file-action{width:100%}
+        .ph-import-completion-metric,.ph-import-completion-mix{padding:10px;border-radius:14px}
+        .ph-import-completion-metric strong{font-size:22px}
+        .ph-import-result-actions{display:grid}
+        .ph-import-result-actions .ph-import-btn-secondary{width:100%}
     }
 </style>
 <script>

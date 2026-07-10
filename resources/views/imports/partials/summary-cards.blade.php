@@ -8,7 +8,7 @@
         <strong>{{ $invalidCount }}</strong>
     </article>
     <article class="ph-import-stat">
-        <span>Total Rows</span>
+        <span>Uploaded Rows</span>
         <strong>{{ $totalRows }}</strong>
     </article>
 </div>

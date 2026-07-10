@@ -879,9 +879,9 @@
                         <div class="customer-mobile-record">
                             <div class="customer-mobile-record-head">
                                 @if(\Illuminate\Support\Facades\Route::has('sales.show'))
-                                    <a href="{{ route('sales.show', $sale) }}">{{ $sale->sale_number ?? 'Sale #' . $sale->id }}</a>
+                                    <a href="{{ route('sales.show', $sale) }}">Sale #{{ $sale->id }}</a>
                                 @else
-                                    <a href="{{ route('sales.index', ['customer_id' => $customer->id]) }}">{{ $sale->sale_number ?? 'Sale #' . $sale->id }}</a>
+                                    <a href="{{ route('sales.index', ['customer_id' => $customer->id]) }}">Sale #{{ $sale->id }}</a>
                                 @endif
                                 <span class="badge" style="{{ $statusBadge($sale->payment_status ?? 'pending') }}">{{ $sale->payment_status ?? 'pending' }}</span>
                             </div>

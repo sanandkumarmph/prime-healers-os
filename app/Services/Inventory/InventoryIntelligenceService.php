@@ -413,7 +413,7 @@ class InventoryIntelligenceService
                 'performedBy:id,name',
                 'rental:id,customer_id,customer_name',
                 'rental.customer:id,name,phone,city',
-                'sale:id,customer_id,sale_number',
+                'sale:id,customer_id',
                 'sale.customer:id,name,phone,city',
                 'delivery:id,type,status',
             ])

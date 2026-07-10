@@ -632,7 +632,7 @@
                             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px; font-size:13px; color:#334155;">
                                 <div><strong>From - To:</strong> {{ $movement->from_status ?: '-' }} - {{ $movement->to_status ?: '-' }}</div>
                                 <div><strong>Warehouse:</strong> {{ $movement->fromWarehouse?->name ?: '-' }} - {{ $movement->toWarehouse?->name ?: '-' }}</div>
-                                <div><strong>Rental / Sale:</strong> {{ $movement->rental ? 'Rental #' . $movement->rental->id : ($movement->rental_id ? 'Rental #' . $movement->rental_id : '-') }} / {{ $movement->sale?->sale_number ?: ($movement->sale_id ? 'Sale #' . $movement->sale_id : '-') }}</div>
+                                <div><strong>Rental / Sale:</strong> {{ $movement->rental ? 'Rental #' . $movement->rental->id : ($movement->rental_id ? 'Rental #' . $movement->rental_id : '-') }} / {{ $movement->sale ? 'Sale #' . $movement->sale->id : ($movement->sale_id ? 'Sale #' . $movement->sale_id : '-') }}</div>
                                 <div><strong>Delivery:</strong> {{ $movement->delivery_id ?: '-' }}</div>
                                 <div><strong>Customer:</strong> {{ $movement->rental?->customer?->name ?: $movement->sale?->customer?->name ?: $movement->rental?->customer_name ?: '-' }}</div>
                                 <div><strong>Asset:</strong> {{ $movement->asset?->serial_number ?: $movement->asset?->barcode_value ?: '-' }}</div>

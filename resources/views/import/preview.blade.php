@@ -10,6 +10,32 @@
     $executionSkippedRows = collect($lastResult['skipped_rows'] ?? []);
     $executionFailedRows = collect($lastResult['failed_rows'] ?? []);
     $reasonGroups = collect($lastResult['reason_groups'] ?? []);
+    $customerEntityMeta = [
+        'direct_customer' => ['label' => 'Direct Customer', 'plural' => 'Direct Customers', 'class' => 'is-direct'],
+        'business_partner' => ['label' => 'Business Partner', 'plural' => 'Business Partners', 'class' => 'is-partner'],
+        'actual_client' => ['label' => 'Actual Client', 'plural' => 'Actual Clients', 'class' => 'is-client'],
+    ];
+    $customerEntityKey = function (array $row): string {
+        return (string) data_get($row, 'payload.import_entity', data_get($row, 'payload.customer_type', 'direct_customer'));
+    };
+    $runtimeBlockedRowNumbers = $executionSkippedRows
+        ->merge($executionFailedRows)
+        ->pluck('row_number')
+        ->filter()
+        ->map(fn ($rowNumber) => (int) $rowNumber)
+        ->unique()
+        ->values();
+    $customerRowsForResult = $module === 'customers'
+        ? $validRows->reject(fn ($row) => $runtimeBlockedRowNumbers->contains((int) ($row['row_number'] ?? 0)))
+        : collect();
+    $customerEntityCounts = $module === 'customers'
+        ? $customerRowsForResult
+            ->groupBy(fn ($row) => $customerEntityKey($row))
+            ->map->count()
+            ->filter()
+        : collect();
+    $hasCustomerEntityBreakdown = $customerEntityCounts->isNotEmpty();
+    $customerEntityLabel = fn (array $row): array => $customerEntityMeta[$customerEntityKey($row)] ?? $customerEntityMeta['direct_customer'];
     $reasonLabel = function (?string $category): string {
         return match ($category) {
             'duplicate' => 'Duplicate',
@@ -50,7 +76,7 @@
 
     @if($lastResult)
         <div class="ph-import-result-banner">
-            <strong>Import finished.</strong>
+            <strong>Import Completed Successfully.</strong>
             Processed {{ $lastResult['processed'] ?? 0 }}, created {{ $lastResult['created'] ?? 0 }}, updated {{ $lastResult['updated'] ?? 0 }}, skipped {{ $lastResult['skipped'] ?? 0 }}, failed {{ $lastResult['failed'] ?? 0 }}.
         </div>
     @elseif($alreadyImported)
@@ -128,6 +154,81 @@
     @endif
 
     @if($lastResult)
+        <section class="ph-import-card ph-import-completion-card">
+            <div class="ph-import-panel-head">
+                <div>
+                    <h2>Import Summary</h2>
+                    <p>Uploaded rows can become different PHOS records after import.</p>
+                </div>
+            </div>
+            <div class="ph-import-completion-grid">
+                <div class="ph-import-completion-metric">
+                    <span>Uploaded Rows</span>
+                    <strong>{{ $preview['row_count'] ?? 0 }}</strong>
+                </div>
+                @if($hasCustomerEntityBreakdown)
+                    <div class="ph-import-completion-mix">
+                        <span>Imported</span>
+                        <div class="ph-import-entity-list">
+                            @foreach($customerEntityMeta as $entityKey => $entity)
+                                @if(($customerEntityCounts[$entityKey] ?? 0) > 0)
+                                    <div class="ph-import-entity-row">
+                                        <span class="ph-import-check" aria-hidden="true">OK</span>
+                                        <span>{{ $entity['plural'] }}</span>
+                                        <strong>{{ $customerEntityCounts[$entityKey] }}</strong>
+                                    </div>
+                                @endif
+                            @endforeach
+                        </div>
+                    </div>
+                @else
+                    <div class="ph-import-completion-metric success">
+                        <span>Imported</span>
+                        <strong>{{ $lastResult['created'] ?? 0 }}</strong>
+                    </div>
+                @endif
+                @if(($lastResult['updated'] ?? 0) > 0)
+                    <div class="ph-import-completion-metric warning">
+                        <span>Updated</span>
+                        <strong>{{ $lastResult['updated'] }}</strong>
+                    </div>
+                @endif
+                @if(($lastResult['skipped'] ?? 0) > 0)
+                    <div class="ph-import-completion-metric danger">
+                        <span>Skipped</span>
+                        <strong>{{ $lastResult['skipped'] }}</strong>
+                    </div>
+                @endif
+                @if(($lastResult['failed'] ?? 0) > 0)
+                    <div class="ph-import-completion-metric danger">
+                        <span>Failed</span>
+                        <strong>{{ $lastResult['failed'] }}</strong>
+                    </div>
+                @endif
+            </div>
+
+            @if($hasCustomerEntityBreakdown)
+                <div class="ph-import-result-actions">
+                    @if(($customerEntityCounts['direct_customer'] ?? 0) > 0 && \Illuminate\Support\Facades\Route::has('customers.index'))
+                        <a href="{{ route('customers.index') }}" class="ph-import-btn-secondary">View Customers</a>
+                    @endif
+                    @if(($customerEntityCounts['business_partner'] ?? 0) > 0 && \Illuminate\Support\Facades\Route::has('business-partners.index'))
+                        <a href="{{ route('business-partners.index') }}" class="ph-import-btn-secondary">View Business Partners</a>
+                    @endif
+                    @if(($customerEntityCounts['actual_client'] ?? 0) > 0 && \Illuminate\Support\Facades\Route::has('business-partners.index'))
+                        <a href="{{ route('business-partners.index') }}" class="ph-import-btn-secondary">View Actual Clients</a>
+                    @endif
+                    @if((($lastResult['skipped'] ?? 0) > 0 || ($lastResult['failed'] ?? 0) > 0) && $errorReportAvailable)
+                        <a href="{{ route('imports.error-report', $module) }}" class="ph-import-btn-secondary">View Details</a>
+                    @endif
+                </div>
+            @elseif((($lastResult['skipped'] ?? 0) > 0 || ($lastResult['failed'] ?? 0) > 0) && $errorReportAvailable)
+                <div class="ph-import-result-actions">
+                    <a href="{{ route('imports.error-report', $module) }}" class="ph-import-btn-secondary">View Details</a>
+                </div>
+            @endif
+        </section>
+
         <div class="ph-import-stats">
             <div class="ph-import-stat info">
                 <span>Processed</span>
@@ -175,7 +276,7 @@
                 <div class="ph-import-reason-chip-row">
                     @foreach($reasonGroups as $group)
                         <span class="ph-import-reason-chip">
-                            {{ $reasonLabel($group['reason_category'] ?? null) }} Â· {{ $group['count'] }}
+                            {{ $reasonLabel($group['reason_category'] ?? null) }} - {{ $group['count'] }}
                         </span>
                     @endforeach
                 </div>
@@ -288,9 +389,16 @@
                         </thead>
                         <tbody>
                             @forelse($validRows->take(20) as $row)
+                                @php($entity = $customerEntityLabel($row))
                                 <tr>
                                     <td>#{{ $row['row_number'] }}</td>
-                                    <td>{{ $row['mapped']['import_action'] ?? ($row['payload']['import_action'] ?? 'Create') }}</td>
+                                    <td>
+                                        @if($module === 'customers')
+                                            <span class="ph-import-entity-chip {{ $entity['class'] }}">{{ $entity['label'] }}</span>
+                                        @else
+                                            {{ $row['mapped']['import_action'] ?? ($row['payload']['import_action'] ?? 'Create') }}
+                                        @endif
+                                    </td>
                                     <td><pre>{{ json_encode($row['mapped'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) }}</pre></td>
                                 </tr>
                             @empty
@@ -305,11 +413,18 @@
 
             <div class="ph-import-mobile-list">
                 @forelse($validRows->take(20) as $row)
+                    @php($entity = $customerEntityLabel($row))
                     <article class="ph-import-mobile-card">
                         <div class="ph-import-mobile-row">Row #{{ $row['row_number'] }}</div>
                         <div class="ph-import-mobile-meta">
                             <span>Action</span>
-                            <strong>{{ $row['mapped']['import_action'] ?? ($row['payload']['import_action'] ?? 'Create') }}</strong>
+                            <strong>
+                                @if($module === 'customers')
+                                    <span class="ph-import-entity-chip {{ $entity['class'] }}">{{ $entity['label'] }}</span>
+                                @else
+                                    {{ $row['mapped']['import_action'] ?? ($row['payload']['import_action'] ?? 'Create') }}
+                                @endif
+                            </strong>
                         </div>
                         <div class="ph-import-mobile-meta">
                             <span>Mapped Data</span>

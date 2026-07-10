@@ -3080,14 +3080,15 @@ body {
 }
 
 .ph-section-nav-shell {
-    top: 70px;
+    position: relative;
+    top: auto;
     padding: 7px 10px;
     border-radius: 16px;
     border: 1px solid var(--ph-color-border);
     background: rgba(255, 255, 255, 0.94);
     backdrop-filter: blur(10px);
     box-shadow: 0 10px 24px rgba(11, 35, 66, 0.08);
-    z-index: var(--ph-z-sticky-nav);
+    z-index: 1;
 }
 
 .ph-section-nav {
@@ -3209,7 +3210,9 @@ body {
     }
 
     .ph-section-nav-shell {
-        top: 62px;
+        position: relative;
+        top: auto;
+        z-index: 1;
         padding: 6px 8px;
         border-radius: 14px;
     }

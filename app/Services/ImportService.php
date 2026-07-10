@@ -512,6 +512,8 @@ class ImportService
             'untracked_products' => [],
         ];
         $productIdentityRows = [];
+        $customerIdentityRows = [];
+        $vendorIdentityRows = [];
         $customerPreviewPartners = [];
 
         if (empty($upload['rows'] ?? [])) {
@@ -574,6 +576,55 @@ class ImportService
                     }
 
                     $productIdentityRows[$identityKey] = $rowNumber;
+                }
+            }
+
+            if ($module === self::CUSTOMER) {
+                $identityKey = $this->customerImportIdentityKey($normalized);
+
+                if ($identityKey !== null) {
+                    $existingRowNumber = $customerIdentityRows[$identityKey] ?? null;
+
+                    if ($existingRowNumber !== null) {
+                        $invalidRows[] = [
+                            'row_number' => $rowNumber,
+                            'source' => $row,
+                            'mapped' => $mapped,
+                            'errors' => ['Duplicate customer identity: this file contains another customer row with the same identity (row '.$existingRowNumber.').'],
+                            'error_details' => [$this->errorDetail('phone', 'Duplicate customer identity: this file contains another customer row with the same identity (row '.$existingRowNumber.').')],
+                            'guidance' => $guidance,
+                        ];
+                        continue;
+                    }
+
+                    $customerIdentityRows[$identityKey] = $rowNumber;
+                }
+            }
+
+            if ($module === self::VENDOR) {
+                $identityKey = $this->vendorImportIdentityKey($normalized);
+
+                if ($identityKey !== null) {
+                    $existingRowNumber = $vendorIdentityRows[$identityKey] ?? null;
+
+                    if ($existingRowNumber !== null) {
+                        $identityField = Str::contains($identityKey, '|phone|')
+                            ? 'phone'
+                            : (Str::contains($identityKey, '|email|') ? 'email' : 'name');
+                        $message = 'Duplicate vendor identity: this file contains another vendor row with the same identity (row '.$existingRowNumber.').';
+
+                        $invalidRows[] = [
+                            'row_number' => $rowNumber,
+                            'source' => $row,
+                            'mapped' => $mapped,
+                            'errors' => [$message],
+                            'error_details' => [$this->errorDetail($identityField, $message)],
+                            'guidance' => $guidance,
+                        ];
+                        continue;
+                    }
+
+                    $vendorIdentityRows[$identityKey] = $rowNumber;
                 }
             }
 
@@ -947,7 +998,7 @@ class ImportService
             ->values()
             ->all();
 
-        return $parts === [] ? 'Row data' : implode(' ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ ', $parts);
+        return $parts === [] ? 'Row data' : implode(' - ', $parts);
     }
 
     private function exceptionMessages(\Throwable $exception): array
@@ -3084,6 +3135,72 @@ class ImportService
             Str::lower($this->cleanText($payload['brand'] ?? null)),
             Str::lower($this->cleanText($payload['model_name'] ?? null)),
         ]);
+    }
+
+    private function customerImportIdentityKey(array $payload): ?string
+    {
+        $entity = (string) ($payload['import_entity'] ?? 'direct_customer');
+
+        if ($entity === 'business_partner') {
+            $code = Str::lower($this->cleanText($payload['partner_code'] ?? null));
+            $phone = $this->normalizePhone($payload['phone'] ?? null);
+            $email = $this->normalizeEmail($payload['email'] ?? null);
+            $name = Str::lower($this->cleanText($payload['business_name'] ?? null));
+
+            return match (true) {
+                $code !== '' => 'business_partner|code|'.$code,
+                $phone !== null => 'business_partner|phone|'.$phone,
+                $email !== null => 'business_partner|email|'.$email,
+                $name !== '' => 'business_partner|name|'.$name,
+                default => null,
+            };
+        }
+
+        if ($entity === 'actual_client') {
+            $phone = $this->normalizePhone($payload['phone'] ?? null);
+            $alternatePhone = $this->normalizePhone($payload['alternate_phone'] ?? null);
+            $parent = (string) ((int) ($payload['business_partner_id'] ?? 0));
+
+            if ($parent === '0') {
+                $parent = Str::lower($this->cleanText($payload['business_partner_code'] ?? null))
+                    ?: Str::lower($this->cleanText($payload['parent_business_partner'] ?? null));
+            }
+
+            $name = Str::lower($this->cleanText($payload['client_name'] ?? null));
+
+            return match (true) {
+                $phone !== null => 'actual_client|phone|'.$parent.'|'.$phone,
+                $alternatePhone !== null => 'actual_client|phone|'.$parent.'|'.$alternatePhone,
+                $name !== '' && $parent !== '' => 'actual_client|name|'.$parent.'|'.$name,
+                $name !== '' => 'actual_client|name|'.$name,
+                default => null,
+            };
+        }
+
+        $phone = $this->normalizePhone($payload['phone'] ?? null);
+        $email = $this->normalizeEmail($payload['email'] ?? null);
+        $name = Str::lower($this->cleanText($payload['name'] ?? null));
+
+        return match (true) {
+            $phone !== null => 'direct_customer|phone|'.$phone,
+            $email !== null => 'direct_customer|email|'.$email,
+            $name !== '' => 'direct_customer|name|'.$name,
+            default => null,
+        };
+    }
+    private function vendorImportIdentityKey(array $payload): ?string
+    {
+        $phone = $this->normalizePhone($payload['phone'] ?? null);
+        $email = $this->normalizeEmail($payload['email'] ?? null);
+        $name = Str::lower($this->cleanText($payload['name'] ?? null));
+        $city = Str::lower($this->cleanText($payload['city'] ?? null));
+
+        return match (true) {
+            $phone !== null => 'vendor|phone|'.$phone,
+            $email !== null => 'vendor|email|'.$email,
+            $name !== '' => 'vendor|name_city|'.$name.'|'.$city,
+            default => null,
+        };
     }
 
     private function pendingSerialPrefix(Product $product): string

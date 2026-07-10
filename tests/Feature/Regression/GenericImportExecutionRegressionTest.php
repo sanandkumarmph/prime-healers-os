@@ -349,6 +349,97 @@ class GenericImportExecutionRegressionTest extends TestCase
         $this->assertSame('Aarav Sharma', $preview['valid_rows'][0]['payload']['name'] ?? null);
     }
 
+    public function test_customer_import_with_three_valid_direct_customer_rows_creates_three_customers(): void
+    {
+        $organization = TestData::organization();
+        $user = TestData::user($organization);
+        $this->actingAs($user);
+
+        [$service, $preview] = $this->buildPreview('customers', [
+            'Customer Name,Customer Type,Phone,Email,City,State,Pincode,Address',
+            'Aarav Sharma,direct_customer,9876503001,aarav@example.com,Bengaluru,Karnataka,560001,MG Road',
+            'Deepa Raj,direct_customer,9876503034,deepa@example.com,Bengaluru,Karnataka,560002,Indiranagar',
+            'Arjun Nair,direct_customer,9876503005,arjun@example.com,Bengaluru,Karnataka,560003,Jayanagar',
+        ]);
+
+        $this->assertSame(3, $preview['row_count']);
+        $this->assertSame(3, $preview['valid_count']);
+        $this->assertCount(3, $preview['valid_rows']);
+        $this->assertCount(0, $preview['invalid_rows']);
+
+        $result = $service->executePreview('customers', $preview['key'], $organization->id, $user->id);
+
+        $this->assertSame(3, $result['processed']);
+        $this->assertSame(3, $result['created']);
+        $this->assertSame(0, $result['updated']);
+        $this->assertSame(0, $result['skipped']);
+        $this->assertSame(0, $result['failed']);
+        $this->assertSame(3, Customer::query()->where('organization_id', $organization->id)->count());
+
+        $response = $this->get(route('customers.index'));
+
+        $response->assertOk();
+        $response->assertSee('Aarav Sharma');
+        $response->assertSee('Deepa Raj');
+        $response->assertSee('Arjun Nair');
+    }
+
+    public function test_customer_import_duplicate_phone_rows_are_skipped_with_visible_reason(): void
+    {
+        $organization = TestData::organization();
+        $user = TestData::user($organization);
+        $this->actingAs($user);
+
+        [$service, $preview] = $this->buildPreview('customers', [
+            'Customer Name,Customer Type,Phone,Email,City,State,Pincode,Address',
+            'Aarav Sharma,direct_customer,9876503001,aarav@example.com,Bengaluru,Karnataka,560001,MG Road',
+            'Aarav Sharma Duplicate,direct_customer,9876503001,aarav.duplicate@example.com,Bengaluru,Karnataka,560001,MG Road',
+            'Deepa Raj,direct_customer,9876503034,deepa@example.com,Bengaluru,Karnataka,560002,Indiranagar',
+        ]);
+
+        $this->assertSame(3, $preview['row_count']);
+        $this->assertSame(2, $preview['valid_count']);
+        $this->assertCount(2, $preview['valid_rows']);
+        $this->assertCount(1, $preview['invalid_rows']);
+        $this->assertSame(3, $preview['invalid_rows'][0]['row_number']);
+        $this->assertStringContainsString(
+            'Duplicate customer identity: this file contains another customer row with the same identity (row 2).',
+            implode(' | ', $preview['invalid_rows'][0]['errors'] ?? [])
+        );
+
+        $result = $service->executePreview('customers', $preview['key'], $organization->id, $user->id);
+
+        $this->assertSame(2, $result['processed']);
+        $this->assertSame(2, $result['created']);
+        $this->assertSame(1, $result['skipped']);
+        $this->assertSame(1, $result['duplicate_rows_skipped']);
+        $this->assertSame(0, $result['failed']);
+        $this->assertSame(2, Customer::query()->where('organization_id', $organization->id)->count());
+        $this->assertSame(1, Customer::query()->where('organization_id', $organization->id)->where('phone', '+919876503001')->count());
+    }
+
+    public function test_customer_import_invalid_rows_show_row_level_errors(): void
+    {
+        $organization = TestData::organization();
+        $user = TestData::user($organization);
+        $this->actingAs($user);
+
+        [$service, $preview] = $this->buildPreview('customers', [
+            'Customer Name,Customer Type,Phone,Email,City,State,Pincode,Address',
+            ',direct_customer,9876503001,missing-name@example.com,Bengaluru,Karnataka,560001,MG Road',
+            'Deepa Raj,direct_customer,9876503034,deepa@example.com,Bengaluru,Karnataka,560002,Indiranagar',
+        ]);
+
+        $this->assertSame(2, $preview['row_count']);
+        $this->assertSame(1, $preview['valid_count']);
+        $this->assertCount(1, $preview['valid_rows']);
+        $this->assertCount(1, $preview['invalid_rows']);
+        $this->assertSame(2, $preview['invalid_rows'][0]['row_number']);
+        $this->assertStringContainsString(
+            'Customer name is required.',
+            implode(' | ', $preview['invalid_rows'][0]['errors'] ?? [])
+        );
+    }
     public function test_vendor_import_creates_city_aware_vendor(): void
     {
         $organization = TestData::organization();
@@ -379,6 +470,87 @@ class GenericImportExecutionRegressionTest extends TestCase
             'city' => 'Bengaluru',
         ]);
     }
+
+    public function test_vendor_import_with_three_valid_rows_creates_three_vendors(): void
+    {
+        $organization = TestData::organization();
+        $user = TestData::user($organization);
+        $this->actingAs($user);
+
+        City::create([
+            'organization_id' => $organization->id,
+            'name' => 'Bengaluru',
+            'state' => 'Karnataka',
+            'country' => 'India',
+            'is_active' => true,
+        ]);
+
+        [$service, $preview] = $this->buildPreview('vendors', [
+            'Vendor Name,Contact Name,Phone,WhatsApp Number,Email,City,Address,State,Pincode,GST Number,Delivery Supported,Pickup Supported,Vendor Type,Notes',
+            'KR Healthcare,Kiran Rao,9000001111,9000001111,ops@krhealthcare.test,Bengaluru,Indiranagar,Karnataka,560001,29ABCDE1234F1Z5,Yes,Yes,supplier,Supports vendor supplied rentals',
+            'Metro Med,Arjun Das,9000001112,9000001112,ops@metromed.test,Bengaluru,Whitefield,Karnataka,560066,29ABCDE1234F1Z6,Yes,No,supplier,Delivery only',
+            'Pulse Care,Neha Iyer,9000001113,9000001113,ops@pulsecare.test,Bengaluru,HSR Layout,Karnataka,560102,29ABCDE1234F1Z7,No,Yes,supplier,Pickup only',
+        ]);
+
+        $this->assertSame(3, $preview['row_count']);
+        $this->assertSame(3, $preview['valid_count']);
+        $this->assertCount(3, $preview['valid_rows']);
+        $this->assertCount(0, $preview['invalid_rows']);
+
+        $result = $service->executePreview('vendors', $preview['key'], $organization->id, $user->id);
+
+        $this->assertSame(3, $result['processed']);
+        $this->assertSame(3, $result['created']);
+        $this->assertSame(0, $result['updated']);
+        $this->assertSame(0, $result['skipped']);
+        $this->assertSame(0, $result['failed']);
+        $this->assertDatabaseHas('vendors', ['organization_id' => $organization->id, 'name' => 'KR Healthcare']);
+        $this->assertDatabaseHas('vendors', ['organization_id' => $organization->id, 'name' => 'Metro Med']);
+        $this->assertDatabaseHas('vendors', ['organization_id' => $organization->id, 'name' => 'Pulse Care']);
+    }
+
+    public function test_vendor_import_duplicate_rows_are_skipped_with_visible_reason(): void
+    {
+        $organization = TestData::organization();
+        $user = TestData::user($organization);
+        $this->actingAs($user);
+
+        City::create([
+            'organization_id' => $organization->id,
+            'name' => 'Bengaluru',
+            'state' => 'Karnataka',
+            'country' => 'India',
+            'is_active' => true,
+        ]);
+
+        [$service, $preview] = $this->buildPreview('vendors', [
+            'Vendor Name,Contact Name,Phone,WhatsApp Number,Email,City,Address,State,Pincode,GST Number,Delivery Supported,Pickup Supported,Vendor Type,Notes',
+            'KR Healthcare,Kiran Rao,9000001111,9000001111,ops@krhealthcare.test,Bengaluru,Indiranagar,Karnataka,560001,29ABCDE1234F1Z5,Yes,Yes,supplier,Primary row',
+            'KR Healthcare Duplicate,Kiran Rao,9000001111,9000001111,ops.duplicate@krhealthcare.test,Bengaluru,Indiranagar,Karnataka,560001,29ABCDE1234F1Z5,Yes,Yes,supplier,Duplicate phone row',
+            'Metro Med,Arjun Das,9000001112,9000001112,ops@metromed.test,Bengaluru,Whitefield,Karnataka,560066,29ABCDE1234F1Z6,Yes,No,supplier,Delivery only',
+        ]);
+
+        $this->assertSame(3, $preview['row_count']);
+        $this->assertSame(2, $preview['valid_count']);
+        $this->assertCount(2, $preview['valid_rows']);
+        $this->assertCount(1, $preview['invalid_rows']);
+        $this->assertSame(3, $preview['invalid_rows'][0]['row_number']);
+        $this->assertStringContainsString(
+            'Duplicate vendor identity: this file contains another vendor row with the same identity (row 2).',
+            implode(' | ', $preview['invalid_rows'][0]['errors'] ?? [])
+        );
+
+        $result = $service->executePreview('vendors', $preview['key'], $organization->id, $user->id);
+
+        $this->assertSame(2, $result['processed']);
+        $this->assertSame(2, $result['created']);
+        $this->assertSame(1, $result['skipped']);
+        $this->assertSame(1, $result['duplicate_rows_skipped']);
+        $this->assertSame(0, $result['failed']);
+        $this->assertSame(2, Vendor::query()->where('organization_id', $organization->id)->count());
+        $this->assertSame(1, Vendor::query()->where('organization_id', $organization->id)->where('phone', '+919000001111')->count());
+    }
+
 
     public function test_vendor_csv_with_three_rows_parses_as_three_valid_rows(): void
     {

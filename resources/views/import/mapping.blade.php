@@ -15,7 +15,7 @@
         <div class="import-panel">
             <div class="import-map-summary">
                 <div><strong>Headers:</strong> {{ count($upload['headers'] ?? []) }}</div>
-                <div><strong>Rows:</strong> {{ $upload['row_count'] ?? 0 }}</div>
+                <div><strong>Uploaded rows:</strong> {{ $upload['row_count'] ?? 0 }}</div>
             </div>
             @error('mapping')
                 <div class="import-error">{{ $message }}</div>

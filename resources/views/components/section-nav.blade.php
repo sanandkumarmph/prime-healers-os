@@ -31,9 +31,9 @@
     <style>
         .ph-section-nav-shell {
             --ph-section-nav-top: 96px;
-            position: sticky;
-            top: var(--ph-section-nav-top);
-            z-index: var(--ph-z-sticky-nav, 30);
+            position: relative;
+            top: auto;
+            z-index: 1;
             margin: 0 0 14px;
             pointer-events: none;
         }
@@ -108,6 +108,9 @@
         @media (max-width: 768px) {
             .ph-section-nav-shell {
                 --ph-section-nav-top: 74px;
+                position: relative;
+                top: auto;
+                z-index: 1;
                 margin-bottom: 14px;
             }
             .ph-section-nav-shell.ph-section-nav-static-mobile {
