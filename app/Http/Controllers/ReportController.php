@@ -156,8 +156,8 @@ class ReportController extends Controller
 
         $businessPartners = \App\Models\BusinessPartner::query()
             ->where('organization_id', $organizationId)
-            ->orderBy('name')
-            ->get(['id', 'name']);
+            ->orderBy('business_name')
+            ->get(['id', 'business_name as name']);
 
         $staffUsers = User::query()
             ->where('organization_id', $organizationId)
