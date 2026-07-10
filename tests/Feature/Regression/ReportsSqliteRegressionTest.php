@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Regression;
 
+use App\Models\BusinessPartner;
 use App\Models\Customer;
 use App\Models\Organization;
 use App\Models\Product;
@@ -9,6 +10,7 @@ use App\Models\ReferralSource;
 use App\Models\Rental;
 use App\Models\RentalItem;
 use App\Models\Role;
+use App\Models\Sale;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\TestData;
@@ -140,6 +142,76 @@ class ReportsSqliteRegressionTest extends TestCase
         $this->assertStringContainsString('Bengaluru Filter Customer', $exportResponse->streamedContent());
     }
 
+    public function test_reports_business_partner_filter_uses_business_name(): void
+    {
+        $organization = TestData::organization();
+        $reportUser = $this->userWithRole($organization, 'Business Partner Report Reader', [
+            'reports' => ['read'],
+        ]);
+
+        BusinessPartner::create([
+            'organization_id' => $organization->id,
+            'business_name' => 'Aarogya Discharge Desk',
+            'contact_person' => 'Rohan Shetty',
+            'phone' => '9000000151',
+            'city' => 'Bengaluru',
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($reportUser)->get(route('reports.index'));
+
+        $response->assertOk()
+            ->assertSee('Aarogya Discharge Desk', false)
+            ->assertDontSee('business_partners.name', false);
+    }
+
+    public function test_reports_staff_filter_does_not_require_sales_created_by_user_id(): void
+    {
+        $organization = TestData::organization();
+        $reportUser = $this->userWithRole($organization, 'Staff Report Reader', [
+            'reports' => ['read'],
+        ]);
+
+        $product = Product::create([
+            'organization_id' => $organization->id,
+            'name' => 'Staff Filter Product',
+            'product_type' => Product::TYPE_BOTH,
+            'stock_mode' => Product::STOCK_MODE_UNTRACKED,
+            'available_quantity' => 5,
+            'total_quantity' => 5,
+            'price_per_day' => 200,
+            'rental_price' => 1200,
+            'sale_price' => 2500,
+            'gst_tax_type' => 'none',
+            'gst_calculation_mode' => 'exclusive',
+        ]);
+
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'name' => 'Staff Filter Customer',
+            'phone' => '9000000152',
+            'city' => 'Bengaluru',
+        ]);
+
+        Sale::create([
+            'organization_id' => $organization->id,
+            'customer_id' => $customer->id,
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'unit_price' => 2500,
+            'sale_amount' => 2500,
+            'sale_date' => now()->toDateString(),
+            'payment_status' => 'pending',
+        ]);
+
+        $response = $this->actingAs($reportUser)->get(route('reports.index', [
+            'staff_user_id' => $reportUser->id,
+        ]));
+
+        $response->assertOk()
+            ->assertDontSee('created_by_user_id', false)
+            ->assertViewHas('reportGroups');
+    }
     public function test_referral_analytics_counts_linked_rentals_and_manual_text_referrals(): void
     {
         $organization = TestData::organization();
@@ -361,3 +433,4 @@ class ReportsSqliteRegressionTest extends TestCase
         ]);
     }
 }
+

@@ -28,6 +28,7 @@ class ReportController extends Controller
     private ?bool $paymentsHaveCustomerColumn = null;
     private ?bool $paymentsHaveInvoiceColumn = null;
     private ?bool $paymentsHaveRentalColumn = null;
+    private ?bool $salesHaveCreatedByUserColumn = null;
 
     private function orgId(): int
     {
@@ -80,6 +81,11 @@ class ReportController extends Controller
     private function paymentsHaveRentalColumn(): bool
     {
         return $this->paymentsHaveRentalColumn ??= Schema::hasColumn('payments', 'rental_id');
+    }
+
+    private function salesHaveCreatedByUserColumn(): bool
+    {
+        return $this->salesHaveCreatedByUserColumn ??= Schema::hasColumn('sales', 'created_by_user_id');
     }
 
     private function yearMonthExpression(string $column): string
@@ -398,7 +404,7 @@ class ReportController extends Controller
             $query->where('business_partner_id', (int) $filters['business_partner_id']);
         }
 
-        if ($filters['staff_user_id'] !== '') {
+        if ($filters['staff_user_id'] !== '' && $this->salesHaveCreatedByUserColumn()) {
             $query->where('created_by_user_id', (int) $filters['staff_user_id']);
         }
 
@@ -1006,7 +1012,9 @@ class ReportController extends Controller
                             ->whereRaw("TRIM(sales.referral_source_name) != ''");
                     });
                 })
-                ->with(['customer', 'product', 'saleItems.product', 'invoice', 'createdBy'])
+                ->with(collect(['customer', 'product', 'saleItems.product', 'invoice'])
+                    ->when($this->salesHaveCreatedByUserColumn(), fn ($relations) => $relations->push('createdBy'))
+                    ->all())
                 ->latest('sale_date')
                 ->get();
 
@@ -1086,7 +1094,7 @@ class ReportController extends Controller
             'status' => $sale->payment_status ?: 'pending',
             'payment_status' => $sale->invoice->payment_status ?? $sale->payment_status ?? '',
             'invoice_number' => $sale->invoice->invoice_number ?? '',
-            'created_by' => $sale->createdBy->name ?? '',
+            'created_by' => $this->salesHaveCreatedByUserColumn() ? ($sale->createdBy->name ?? '') : '',
             'url' => route('sales.show', $sale),
         ];
     }
@@ -1513,10 +1521,12 @@ class ReportController extends Controller
             ->whereNotNull('created_by_user_id')
             ->get(['created_by_user_id', 'rental_amount', 'deposit_amount', 'transport_amount', 'other_amount'])
             ->groupBy('created_by_user_id');
-        $saleCreators = (clone $saleQuery)
-            ->whereNotNull('created_by_user_id')
-            ->get(['created_by_user_id', 'sale_amount'])
-            ->groupBy('created_by_user_id');
+        $saleCreators = $this->salesHaveCreatedByUserColumn()
+            ? (clone $saleQuery)
+                ->whereNotNull('created_by_user_id')
+                ->get(['created_by_user_id', 'sale_amount'])
+                ->groupBy('created_by_user_id')
+            : collect();
         $staffNames = User::query()
             ->where('organization_id', $this->orgId())
             ->whereIn('id', $rentalCreators->keys()->merge($saleCreators->keys())->filter()->unique()->values())
@@ -2060,3 +2070,5 @@ class ReportController extends Controller
         return $this->streamCsv($dataset);
     }
 }
+
+
