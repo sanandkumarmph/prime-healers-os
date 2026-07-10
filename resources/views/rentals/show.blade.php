@@ -762,8 +762,6 @@
         ['label' => 'Invoice', 'value' => $canSeeRentalFinance ? $currency($invoiceTotalAmount) : ($rentalInvoice ? 'Generated' : 'Pending'), 'tone' => 'violet', 'icon' => 'document'],
         ['label' => 'Paid', 'value' => $canSeeRentalFinance ? $currency($invoicePaidAmount) : 'Hidden', 'tone' => 'green', 'icon' => 'wallet'],
         ['label' => 'Outstanding', 'value' => $canSeeRentalFinance ? $currency($invoiceBalanceAmount) : 'Hidden', 'tone' => $invoiceBalanceAmount > 0 ? 'red' : 'green', 'icon' => 'target'],
-        ['label' => 'Deposit', 'value' => $canSeeRentalFinance ? $currency($rental->deposit_amount) : 'Hidden', 'tone' => 'amber', 'icon' => 'shield'],
-        ['label' => 'Transport', 'value' => $canSeeRentalFinance ? $currency($rental->transport_amount) : 'Hidden', 'tone' => 'indigo', 'icon' => 'truck'],
     ]);
     $desktopCustomerName = $rental->billingContactName() ?: 'Customer';
     $desktopCustomerInitials = \Illuminate\Support\Str::of($desktopCustomerName)
@@ -786,8 +784,6 @@
         ['label' => 'Invoice Amount', 'value' => $canSeeRentalFinance ? $currency($invoiceTotalAmount) : ($rentalInvoice ? 'Generated' : 'Pending'), 'tone' => 'violet', 'icon' => 'document'],
         ['label' => 'Paid Amount', 'value' => $canSeeRentalFinance ? $currency($invoicePaidAmount) : 'Hidden', 'tone' => 'green', 'icon' => 'wallet'],
         ['label' => 'Outstanding', 'value' => $canSeeRentalFinance ? $currency($invoiceBalanceAmount) : 'Hidden', 'tone' => $invoiceBalanceAmount > 0 ? 'red' : 'green', 'icon' => 'payment'],
-        ['label' => 'Deposit', 'value' => $canSeeRentalFinance ? $currency($rental->deposit_amount) : 'Hidden', 'tone' => 'amber', 'icon' => 'shield'],
-        ['label' => 'Transport', 'value' => $canSeeRentalFinance ? $currency($rental->transport_amount) : 'Hidden', 'tone' => 'indigo', 'icon' => 'truck'],
     ]);
 @endphp
 
@@ -4248,40 +4244,13 @@
                     @endif
                 </article>
                 <article class="rental-overview-card-v2">
-                    <div class="rental-overview-title"><span class="rental-overview-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="m21 16-9 5-9-5"/><path d="m21 12-9 5-9-5"/><path d="m12 3 9 5-9 5-9-5 9-5z"/></svg></span><h3>Rental Overview</h3></div>
+                    <div class="rental-overview-title"><span class="rental-overview-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="m21 16-9 5-9-5"/><path d="m21 12-9 5-9-5"/><path d="m12 3 9 5-9 5-9-5 9-5z"/></svg></span><h3>Current Rental Summary</h3></div>
                     <div class="rental-line-list">
-                        <div class="rental-line-item"><span>Rental Items</span><strong>{{ $desktopProductSummary }}</strong></div>
-                        <div class="rental-line-item"><span>Primary Product</span><strong>{{ $desktopPrimaryProduct }}</strong></div>
                         <div class="rental-line-item"><span>Start Date</span><strong>{{ $desktopPeriodStart }}</strong></div>
                         <div class="rental-line-item"><span>End Date</span><strong>{{ $desktopPeriodEnd }}</strong></div>
-                        <div class="rental-line-item"><span>Status</span><strong>{{ ucfirst(str_replace('_', ' ', $operationalStatus)) }}</strong></div>
+                        <div class="rental-line-item"><span>Fulfilment</span><strong>{{ $rentalFulfilmentSourceLabel }}</strong></div>
                     </div>
-                    <a href="#rental-products-section" class="detail-btn-secondary">View Products</a>
-                </article>
-                <article class="rental-overview-card-v2">
-                    <div class="rental-overview-title"><span class="rental-overview-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12"/><path d="M6 8h12"/><path d="M6 13l8 8"/><path d="M6 13h3.5a4.5 4.5 0 0 0 0-9H6"/></svg></span><h3>Financial Snapshot</h3></div>
-                    <div class="rental-line-list">
-                        <div class="rental-line-item"><span>Rental Value</span><strong>{{ $canSeeRentalFinance ? $currency($rentalLineTotal) : 'Hidden' }}</strong></div>
-                        <div class="rental-line-item"><span>Deposit</span><strong>{{ $canSeeRentalFinance ? $currency($rental->deposit_amount) : 'Hidden' }}</strong></div>
-                        <div class="rental-line-item"><span>Transport</span><strong>{{ $canSeeRentalFinance ? $currency($rental->transport_amount) : 'Hidden' }}</strong></div>
-                        <div class="rental-line-item"><span>Invoice Value</span><strong>{{ $canSeeRentalFinance ? $currency($invoiceTotalAmount) : ($rentalInvoice ? 'Generated' : 'Pending') }}</strong></div>
-                        <div class="rental-line-item"><span>Due Amount</span><strong style="color:#dc2626;">{{ $canSeeRentalFinance ? $currency($invoiceBalanceAmount) : 'Hidden' }}</strong></div>
-                    </div>
-                    <a href="#rental-billing-actions" class="detail-btn-secondary">Record Payment</a>
-                </article>
-                <article class="rental-overview-card-v2">
-                    <div class="rental-overview-title"><span class="rental-overview-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></span><h3>Renewal Summary</h3></div>
-                    <div class="rental-line-list">
-                        <div class="rental-line-item"><span>Due Date</span><strong>{{ optional($rental->end_date)->format('d M Y') ?: 'Not set' }}</strong></div>
-                        <div class="rental-line-item"><span>Window</span><strong>{{ $daysRemainingLabel }}</strong></div>
-                        <div class="rental-line-item"><span>Status</span><strong>{{ $renewalSummaryStatus }}</strong></div>
-                        <div class="rental-line-item"><span>Last Renewal</span><strong>{{ $lastRenewal ? optional($lastRenewal->created_at)->format('d M Y') : 'None' }}</strong></div>
-                    </div>
-                    @if($rental->canRenew() && $canUpdateRentals)
-                        <button type="button" class="detail-btn" data-open-renewal-modal>Renew Rental</button>
-                    @else
-                        <a href="#renewal-workspace" class="detail-btn-secondary">View Renewal</a>
-                    @endif
+                    <a href="#rental-products-section" class="detail-btn-secondary">View Products Workspace</a>
                 </article>
                 <article class="rental-overview-card-v2">
                     <div class="rental-overview-title"><span class="rental-overview-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg></span><h3>Recent Activity</h3></div>
@@ -4423,37 +4392,6 @@
                         @endif
                     </div>
                     @if($canSeeRentalFinance)
-                        <details class="rcc-details-panel" open>
-                            <summary>
-                                <span>Original Booking Snapshot</span>
-                                <span class="rcc-chip pending">{{ $currency($baseBookingTotal) }}</span>
-                            </summary>
-                            <div class="rcc-details-panel-body">
-                                <div class="rcc-mini-grid">
-                                    <div class="rcc-money"><span>Original Period</span><strong>{{ optional($rental->start_date)->format('d M Y') }} - {{ optional($initialBookingEndDate)->format('d M Y') }}</strong></div>
-                                    <div class="rcc-money"><span>Rental</span><strong>{{ $currency($baseRentalAmount) }}</strong></div>
-                                    <div class="rcc-money"><span>Deposit</span><strong>{{ $currency($baseDepositAmount) }}</strong></div>
-                                    <div class="rcc-money"><span>Transport</span><strong>{{ $currency($baseTransportAmount) }}</strong></div>
-                                </div>
-                                <div class="rcc-snapshot-lines">
-                                    @foreach($rentalItems as $item)
-                                        <div class="rcc-snapshot-line">
-                                            <div>
-                                                <strong>{{ $item->product?->name ?? 'Rental item' }}</strong>
-                                                <div>Qty {{ (int) ($item->ordered_quantity ?? $item->quantity ?? 0) }}</div>
-                                            </div>
-                                            <strong>{{ $currency($rentalLineAmount($item)) }}</strong>
-                                        </div>
-                                    @endforeach
-                                </div>
-                                <div class="rcc-mini-grid">
-                                    <div class="rcc-money"><span>Other</span><strong>{{ $currency($baseOtherAmount) }}</strong></div>
-                                    <div class="rcc-money"><span>Collected</span><strong>{{ $currency($baseBookingPaidAmount) }}</strong></div>
-                                    <div class="rcc-money"><span>Remaining</span><strong>{{ $currency($baseBookingBalance) }}</strong></div>
-                                    <div class="rcc-money"><span>Invoice Flow</span><strong>{{ strtoupper($rentalInvoiceStatus ?? 'Pending') }}</strong></div>
-                                </div>
-                            </div>
-                        </details>
                         <details class="rcc-details-panel">
                             <summary>
                                 <span>Payment History</span>
