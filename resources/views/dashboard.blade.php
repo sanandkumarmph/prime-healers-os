@@ -428,7 +428,7 @@
             'insight' => $endingSoonCount > 0 ? number_format($endingSoonCount) . ' ending soon' : 'No urgent action',
             'insight_tone' => $endingSoonCount > 0 ? 'warning' : 'success',
             'note' => $overdueReturnsCount > 0
-                ? number_format($overdueReturnsCount) . ' overdue · ' . number_format($returnsDueTodayCountValue) . ' due today'
+                ? number_format($overdueReturnsCount) . ' overdue  /  ' . number_format($returnsDueTodayCountValue) . ' due today'
                 : number_format($returnsDueTodayCountValue) . ' due today',
             'icon' => 'rental',
             'href' => $mergeDashboardQuery('rentals.index', ['status' => 'live']),
@@ -441,7 +441,7 @@
             'value' => number_format($deliveryTasksCountValue),
             'insight' => $overdueDeliveryCountValue > 0 ? number_format($overdueDeliveryCountValue) . ' overdue' : 'On track',
             'insight_tone' => $overdueDeliveryCountValue > 0 ? 'danger' : 'success',
-            'note' => number_format($scheduledDeliveryCountValue) . ' scheduled · ' . number_format($outForDeliveryCountValue) . ' out for delivery',
+            'note' => number_format($scheduledDeliveryCountValue) . ' scheduled  /  ' . number_format($outForDeliveryCountValue) . ' out for delivery',
             'icon' => 'delivery',
             'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'delivery_workload']) : null,
             'tone' => $overdueDeliveryCountValue > 0 ? 'danger' : 'warning',
@@ -454,7 +454,7 @@
             'value' => number_format($pickupTasksCountValue),
             'insight' => $overduePickupCountValue > 0 ? number_format($overduePickupCountValue) . ' overdue' : 'No urgent action',
             'insight_tone' => $overduePickupCountValue > 0 ? 'danger' : 'success',
-            'note' => number_format((int) ($pickupsScheduledTodayCount ?? 0)) . ' due today · ' . number_format((int) ($awaitingReturnVerificationCount ?? 0)) . ' awaiting verification',
+            'note' => number_format((int) ($pickupsScheduledTodayCount ?? 0)) . ' due today  /  ' . number_format((int) ($awaitingReturnVerificationCount ?? 0)) . ' awaiting verification',
             'icon' => 'pickup',
             'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'pickup_workload']) : null,
             'tone' => $overduePickupCountValue > 0 ? 'danger' : 'warning',
@@ -620,7 +620,7 @@
             'sort' => 20,
             'label' => 'Products',
             'value' => number_format((int) ($totalProductsCount ?? 0)),
-            'insight' => number_format((int) ($rentableProductsCount ?? 0)) . ' rentable · ' . number_format((int) ($sellableProductsCount ?? 0)) . ' sellable',
+            'insight' => number_format((int) ($rentableProductsCount ?? 0)) . ' rentable  /  ' . number_format((int) ($sellableProductsCount ?? 0)) . ' sellable',
             'insight_tone' => 'info',
             'note' => number_format((int) ($bothProductsCount ?? 0)) . ' support both rental and sale',
             'icon' => 'asset',
@@ -879,7 +879,7 @@
             'widget_key' => 'alert_large_unpaid_invoices',
             'label' => 'Large unpaid invoices',
             'count' => (int) ($largeOutstandingInvoiceCount ?? 0),
-            'copy' => 'High-value invoices above â‚¹10,000 still awaiting collection.',
+            'copy' => 'High-value invoices above Rs. 10,000 still awaiting collection.',
             'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'payments']) : $invoiceIndexUrl,
             'tone' => 'amber',
             'visible' => $canViewFinance,
@@ -1109,7 +1109,7 @@
     $revenueCenterActionRows = $revenueCenterActionRows->sortByDesc('amount')->take(10)->values();
     $recentRevenueActivity = collect()
         ->merge($recentPaymentsSummary->map(fn ($payment) => [
-            'title' => 'Payment received · ' . (optional($payment->customer)->name ?? 'Customer'),
+            'title' => 'Payment received  /  ' . (optional($payment->customer)->name ?? 'Customer'),
             'meta' => optional($payment->invoice)->invoice_number ?? 'Payment entry',
             'amount' => $currency($payment->amount ?? 0),
             'timestamp' => optional($payment->payment_date)?->format('d M Y') ?? 'Recent',
@@ -1117,7 +1117,7 @@
             'href' => $invoiceIndexUrl ? route('invoices.index', ['search' => $payment->invoice->invoice_number ?? null]) : $dashboardUrl,
         ]))
         ->merge($salesPulseRecentOrders->map(fn ($sale) => [
-            'title' => 'Sales order · SALE-' . $sale->id,
+            'title' => 'Sales order  /  SALE-' . $sale->id,
             'meta' => optional($sale->customer)->name ?? 'Customer',
             'amount' => $currency($sale->sale_amount ?? 0),
             'timestamp' => optional($sale->sale_date)?->format('d M Y') ?? 'Recent',
@@ -1269,7 +1269,7 @@
                 ? ($pendingReceivableOverdueCount > 0 ? number_format($pendingReceivableOverdueCount) . ' overdue invoice(s)' : 'No major overdue spike')
                 : 'Finance access required',
             'note' => $canViewFinance
-                ? number_format($openInvoiceCountValue) . ' open invoices · ' . $currency($outstandingDueAmountValue) . ' outstanding'
+                ? number_format($openInvoiceCountValue) . ' open invoices  /  ' . $currency($outstandingDueAmountValue) . ' outstanding'
                 : 'Visible to finance-enabled roles',
             'href' => $canViewFinance ? $mergeDashboardQuery('invoices.index', ['status' => 'open']) : null,
             'action' => 'View Dues',
@@ -1289,7 +1289,7 @@
             'status' => $pendingPaymentFollowUpsCount > 0
                 ? number_format((int) $pendingPaymentFollowUpsCount) . ' payment follow-up(s) pending'
                 : 'Callbacks under control',
-            'note' => number_format((int) ($followUpsDueTodayCount ?? 0)) . ' due today · ' . number_format((int) ($highPriorityFollowUpsCount ?? 0)) . ' high priority',
+            'note' => number_format((int) ($followUpsDueTodayCount ?? 0)) . ' due today  /  ' . number_format((int) ($highPriorityFollowUpsCount ?? 0)) . ' high priority',
             'href' => $communicationCenterUrl ? route('communication-center.index', ['tab' => 'overdue']) : null,
             'action' => 'Take Action',
             'icon' => 'tasks',
@@ -1308,7 +1308,7 @@
             'status' => ((int) ($unpaidRenewalCount ?? 0)) > 0
                 ? number_format((int) ($unpaidRenewalCount ?? 0)) . ' renewal invoice(s) still unpaid'
                 : 'Renewal queue under watch',
-            'note' => number_format((int) ($renewalsDueTodayCount ?? 0)) . ' due today · ' . $currency((float) ($unpaidRenewalAmount ?? 0)) . ' pending',
+            'note' => number_format((int) ($renewalsDueTodayCount ?? 0)) . ' due today  /  ' . $currency((float) ($unpaidRenewalAmount ?? 0)) . ' pending',
             'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'overdue']) : null,
             'action' => 'View Renewals',
             'icon' => 'rental',
@@ -1327,7 +1327,7 @@
             'status' => ((int) ($staffBusyCount ?? 0)) > 0
                 ? number_format((int) ($staffBusyCount ?? 0)) . ' additional teammate(s) running busy'
                 : 'Workload looks balanced',
-            'note' => number_format((int) ($unassignedTasksCount ?? 0)) . ' unassigned task(s) · ' . number_format((int) ($failedTasksCount ?? 0)) . ' failed field task(s)',
+            'note' => number_format((int) ($unassignedTasksCount ?? 0)) . ' unassigned task(s)  /  ' . number_format((int) ($failedTasksCount ?? 0)) . ' failed field task(s)',
             'href' => '#staff-workload-overview',
             'action' => 'Manage Workload',
             'icon' => 'customer',
@@ -1392,21 +1392,21 @@
             'href' => $dashboardUrl,
         ])->values()->all(),
         'rentals' => $recentRentalsSummary->map(fn ($rental) => [
-            'title' => 'Rental #' . $rental->id . ' · ' . ($rental->customer_name ?? optional($rental->customer)->name ?? 'Customer'),
-            'meta' => (optional($rental->product)->name ?? 'Product') . ' · ' . $currency((float) ($rental->rental_amount ?? 0)),
+            'title' => 'Rental #' . $rental->id . '  /  ' . ($rental->customer_name ?? optional($rental->customer)->name ?? 'Customer'),
+            'meta' => (optional($rental->product)->name ?? 'Product') . '  /  ' . $currency((float) ($rental->rental_amount ?? 0)),
             'time' => optional($rental->created_at)?->diffForHumans() ?? 'Recently',
             'tone' => 'violet',
             'href' => route('rentals.show', $rental),
         ])->values()->all(),
         'payments' => $recentPaymentsSummary->map(fn ($payment) => [
             'title' => 'Payment received from ' . ($payment->customer->name ?? 'Customer'),
-            'meta' => ($payment->invoice->invoice_number ?? 'Invoice') . ' · ' . $currency((float) ($payment->amount ?? 0)),
+            'meta' => ($payment->invoice->invoice_number ?? 'Invoice') . '  /  ' . $currency((float) ($payment->amount ?? 0)),
             'time' => optional($payment->payment_date)?->format('d M Y') ?? 'Recently',
             'tone' => 'green',
             'href' => $invoiceIndexUrl ? route('invoices.index', ['search' => $payment->invoice->invoice_number ?? null]) : $dashboardUrl,
         ])->values()->all(),
         'tasks' => $recentDeliveriesSummary->map(fn ($task) => [
-            'title' => ucfirst((string) $task->type) . ' #' . $task->id . ' · ' . ($task->linkedCustomerName() ?: 'Customer'),
+            'title' => ucfirst((string) $task->type) . ' #' . $task->id . '  /  ' . ($task->linkedCustomerName() ?: 'Customer'),
             'meta' => optional($task->scheduled_at)?->format('d M, h:i A') ?? 'Schedule pending',
             'time' => optional($task->updated_at)?->diffForHumans() ?? 'Recently',
             'tone' => 'amber',
@@ -1474,8 +1474,8 @@
         [
             'label' => 'Pending Operations',
             'value' => number_format($pendingOperationsTotal),
-            'status' => number_format($pendingDeliveryCountValue) . ' delivery · ' . number_format($pendingPickupCountValue) . ' pickup',
-            'note' => number_format((int) ($overdueRenewalsCount ?? 0)) . ' renewal(s) overdue · ' . number_format((int) ($unassignedTasksCount ?? 0)) . ' unassigned task(s)',
+            'status' => number_format($pendingDeliveryCountValue) . ' delivery  /  ' . number_format($pendingPickupCountValue) . ' pickup',
+            'note' => number_format((int) ($overdueRenewalsCount ?? 0)) . ' renewal(s) overdue  /  ' . number_format((int) ($unassignedTasksCount ?? 0)) . ' unassigned task(s)',
             'href' => $deliveriesIndexUrl ? route('deliveries.index', ['board' => 'delivery_workload']) : ($renewalCenterUrl ?? null),
             'action' => 'View Queue',
             'icon' => 'tasks',
@@ -1785,7 +1785,7 @@
             'value' => number_format((int) (($renewalsDueTodayCount ?? 0) + ($overdueRenewalsCount ?? 0))),
             'status' => ((int) ($overdueRenewalsCount ?? 0)) > 0
                 ? number_format((int) ($overdueRenewalsCount ?? 0)) . ' overdue renewal(s)'
-                : 'Today’s renewal queue visible',
+                : "Today's renewal queue visible",
             'note' => number_format((int) ($renewalsDueTodayCount ?? 0)) . ' due today',
             'href' => $renewalCenterUrl ? route('renewal-center.index', ['tab' => 'due_today']) : null,
             'action' => 'Open Renewals',
@@ -2392,7 +2392,7 @@
         color: #64748b;
     }
     .dashboard-center-group[open] .dashboard-center-summary::after {
-        content: "−";
+        content: "v";
     }
     .dashboard-center-links {
         display: flex;
@@ -2412,6 +2412,274 @@
         font-size: 10px;
         font-weight: 700;
         text-decoration: none;
+    }
+
+    .team-performance-card {
+        display: grid;
+        gap: 12px;
+        padding: 14px;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: var(--ph-shadow-card);
+    }
+    .team-performance-card [x-cloak] {
+        display: none !important;
+    }
+    .team-performance-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 14px;
+    }
+    .team-performance-title {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 800;
+        color: var(--ph-color-text);
+    }
+    .team-performance-copy {
+        margin: 3px 0 0;
+        font-size: 11px;
+        line-height: 1.35;
+        color: #64748b;
+    }
+    .team-performance-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-height: 32px;
+        padding: 6px 10px;
+        border: 1px solid rgba(79, 70, 229, 0.16);
+        border-radius: 999px;
+        background: #f8fbff;
+        color: #1e293b;
+        font-size: 11px;
+        font-weight: 800;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    .team-performance-toggle input {
+        width: 14px;
+        height: 14px;
+        margin: 0;
+        accent-color: var(--ph-color-primary);
+    }
+    .team-performance-meta {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 7px;
+    }
+    .team-performance-meta span {
+        display: inline-flex;
+        align-items: center;
+        min-height: 22px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: #eef2ff;
+        color: #4338ca;
+        font-size: 10px;
+        font-weight: 800;
+    }
+    .team-performance-meta .is-filtered {
+        background: #ecfeff;
+        color: #0e7490;
+    }
+    .team-performance-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .team-performance-filter {
+        position: relative;
+    }
+    .team-performance-filter-button {
+        position: relative;
+        display: inline-grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border: 1px solid rgba(79, 70, 229, 0.16);
+        border-radius: 999px;
+        background: #fff;
+        color: #334155;
+        cursor: pointer;
+    }
+    .team-performance-filter-button:hover,
+    .team-performance-filter-button.is-active {
+        border-color: rgba(79, 70, 229, 0.32);
+        color: var(--ph-color-primary);
+        background: #f8fbff;
+    }
+    .team-performance-filter-button svg {
+        width: 16px;
+        height: 16px;
+    }
+    .team-performance-filter-dot {
+        position: absolute;
+        top: 6px;
+        right: 7px;
+        width: 7px;
+        height: 7px;
+        border: 2px solid #fff;
+        border-radius: 999px;
+        background: #2563eb;
+    }
+    .team-performance-popover {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        z-index: 45;
+        width: min(320px, calc(100vw - 32px));
+        padding: 12px;
+        border: 1px solid rgba(148, 163, 184, 0.24);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.98);
+        box-shadow: 0 18px 44px rgba(15, 23, 42, 0.16);
+    }
+    .team-performance-popover form,
+    .team-performance-popover label {
+        display: grid;
+        gap: 6px;
+    }
+    .team-performance-popover form {
+        gap: 10px;
+    }
+    .team-performance-popover label span {
+        color: #64748b;
+        font-size: 10px;
+        font-weight: 900;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+    }
+    .team-performance-popover select,
+    .team-performance-popover input {
+        width: 100%;
+        min-height: 36px;
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        border-radius: 10px;
+        background: #fff;
+        color: #0f172a;
+        font-size: 12px;
+        font-weight: 700;
+    }
+    .team-performance-filter-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+    .team-performance-filter-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        padding-top: 2px;
+    }
+    .team-performance-filter-actions a,
+    .team-performance-filter-actions button {
+        min-height: 34px;
+        padding: 7px 12px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 900;
+        text-decoration: none;
+    }
+    .team-performance-filter-actions a {
+        border: 1px solid rgba(148, 163, 184, 0.24);
+        color: #334155;
+        background: #fff;
+    }
+    .team-performance-filter-actions button {
+        border: 0;
+        color: #fff;
+        background: var(--ph-color-primary);
+        cursor: pointer;
+    }
+    .team-performance-notice {
+        padding: 8px 10px;
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        border-radius: 12px;
+        background: #f8fafc;
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 800;
+    }
+    .team-performance-zero-row td,
+    .team-performance-zero-row .team-performance-number,
+    .team-performance-zero-row strong {
+        color: #64748b;
+    }
+    .team-performance-table-wrap {
+        overflow-x: auto;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 14px;
+        background: #fff;
+    }
+    .team-performance-table {
+        width: 100%;
+        min-width: 1120px;
+        border-collapse: collapse;
+    }
+    .team-performance-table th,
+    .team-performance-table td {
+        padding: 9px 10px;
+        border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+        text-align: left;
+        vertical-align: middle;
+        font-size: 11px;
+        color: #334155;
+        white-space: nowrap;
+    }
+    .team-performance-table th {
+        background: #f8fafc;
+        color: #64748b;
+        font-size: 10px;
+        font-weight: 900;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+    }
+    .team-performance-table tbody tr:last-child td {
+        border-bottom: 0;
+    }
+    .team-performance-user {
+        min-width: 170px;
+    }
+    .team-performance-user strong {
+        display: block;
+        color: #0f172a;
+        font-size: 12px;
+    }
+    .team-performance-user span,
+    .team-performance-muted {
+        display: block;
+        margin-top: 2px;
+        color: #64748b;
+        font-size: 10px;
+    }
+    .team-performance-number {
+        font-weight: 800;
+        color: #0f172a;
+    }
+    .team-performance-finance {
+        background: #fbfdff;
+        border-left: 1px solid rgba(79, 70, 229, 0.12);
+        font-weight: 800;
+        color: #111827;
+    }
+    .team-performance-mobile-list {
+        display: none;
+    }
+    .team-performance-empty {
+        display: grid;
+        place-items: center;
+        min-height: 88px;
+        border: 1px dashed rgba(148, 163, 184, 0.4);
+        border-radius: 14px;
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 700;
     }
     .operations-center-grid {
         display: grid;
@@ -2810,13 +3078,13 @@
         color: #4c678d;
     }
     .operations-detail-summary::after {
-        content: "→";
+        content: "v";
         font-size: 16px;
         font-weight: 700;
         color: var(--ph-color-primary);
     }
     .operations-detail-group[open] .operations-detail-summary::after {
-        content: "↓";
+        content: "v";
     }
     .operations-detail-content {
         display: grid;
@@ -3167,13 +3435,13 @@
         color: #4c678d;
     }
     .inventory-detail-summary::after {
-        content: "→";
+        content: "v";
         font-size: 16px;
         font-weight: 700;
         color: var(--ph-color-primary);
     }
     .inventory-detail-group[open] .inventory-detail-summary::after {
-        content: "↓";
+        content: "v";
     }
     .inventory-detail-content {
         display: grid;
@@ -6651,6 +6919,96 @@
         .control-room-shell > .dashboard-center-groups {
             display: none;
         }
+        .team-performance-card {
+            padding: 12px;
+            border-radius: 16px;
+        }
+        .team-performance-head {
+            align-items: stretch;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .team-performance-actions {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            width: 100%;
+        }
+        .team-performance-toggle {
+            justify-content: space-between;
+            width: 100%;
+        }
+        .team-performance-popover {
+            position: fixed;
+            left: 10px;
+            right: 10px;
+            bottom: calc(env(safe-area-inset-bottom, 0px) + 74px);
+            top: auto;
+            width: auto;
+            max-height: min(72vh, 520px);
+            overflow-y: auto;
+            border-radius: 18px;
+        }
+        .team-performance-filter-grid {
+            grid-template-columns: 1fr;
+        }
+        .team-performance-table-wrap {
+            display: none;
+        }
+        .team-performance-mobile-list {
+            display: grid;
+            gap: 8px;
+        }
+        .team-performance-mobile-card {
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 14px;
+            background: #fff;
+            overflow: hidden;
+        }
+        .team-performance-mobile-card summary {
+            list-style: none;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 8px;
+            padding: 10px;
+            cursor: pointer;
+        }
+        .team-performance-mobile-card summary::-webkit-details-marker {
+            display: none;
+        }
+        .team-performance-mobile-card strong {
+            color: #0f172a;
+        }
+        .team-performance-mobile-card small {
+            display: block;
+            margin-top: 2px;
+            color: #64748b;
+            font-size: 10px;
+        }
+        .team-performance-mobile-kpis {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            padding: 0 10px 10px;
+        }
+        .team-performance-mobile-kpis span {
+            display: grid;
+            gap: 2px;
+            padding: 8px;
+            border-radius: 10px;
+            background: #f8fafc;
+            color: #64748b;
+            font-size: 10px;
+            font-weight: 700;
+        }
+        .team-performance-mobile-kpis b {
+            color: #0f172a;
+            font-size: 13px;
+        }
+        .team-performance-mobile-finance {
+            grid-column: 1 / -1;
+            border: 1px solid rgba(79, 70, 229, 0.12);
+            background: #fbfdff !important;
+        }
 
         .dashboard-mobile-section {
             overflow: hidden;
@@ -7075,7 +7433,7 @@
                     <div class="fieldops-home-hero-ill">{!! $fieldOpsIll !!}</div>
                     <div class="fieldops-home-hero-copy">
                         <strong>Hi, Delivery Team</strong>
-                        <p>Hereâ€™s your field work today.</p>
+                        <p>Here / s your field work today.</p>
                     </div>
                 </div>
                 <div class="fieldops-home-kpis">
@@ -7104,7 +7462,7 @@
             <div class="fieldops-home-section">
                 <div class="fieldops-home-section-head">
                     <div>
-                        <h2>Todayâ€™s Task Flow</h2>
+                        <h2>Today's Task Flow</h2>
                         <p>Open the next delivery or pickup without hunting through long cards.</p>
                     </div>
                     <a href="{{ $myAssignedTasksUrl ?? $deliveriesIndexUrl ?? '#' }}" class="rx-btn-secondary">View All</a>
@@ -7118,7 +7476,7 @@
                                     <span class="fieldops-home-item-chip">{{ ucfirst(str_replace('_', ' ', $task->status)) }}</span>
                                     <span>{{ optional($task->scheduled_at)?->format('h:i A') ?? 'No time' }}</span>
                                 </div>
-                                <p>{{ $task->linkedCustomerName() }} â€¢ {{ optional($task->scheduled_at)?->format('d M') ?? 'Today' }}</p>
+                                <p>{{ $task->linkedCustomerName() }}  /  {{ optional($task->scheduled_at)?->format('d M') ?? 'Today' }}</p>
                                 <small>{{ \Illuminate\Support\Str::limit(collect([$task->linkedCustomerAddress(), $task->linkedCustomerCity()])->filter()->implode(', '), 70) ?: 'Address pending' }}</small>
                                 <div class="fieldops-home-links">
                                     <a href="{{ route('deliveries.show', $task) }}">Open</a>
@@ -7341,7 +7699,7 @@
                 <summary class="dashboard-mobile-summary">
                     <div>
                         <strong>Operations Center</strong>
-                        <span>Today’s delivery, pickup, renewal, and task load.</span>
+                        <span>Today's delivery, pickup, renewal, and task load.</span>
                     </div>
                 </summary>
                 <div class="dashboard-mobile-body">
@@ -7689,6 +8047,179 @@
             @endforeach
         </div>
     </section>
+
+    @if($showTeamPerformanceTable ?? false)
+        <section class="team-performance-card" x-data="{ showFinancials: true, filterOpen: false, period: '{{ $teamPerformancePeriod ?? 'this_month' }}' }" x-on:keydown.escape.window="filterOpen = false">
+            <div class="team-performance-head">
+                <div>
+                    <h2 class="team-performance-title">Team Performance</h2>
+                    <p class="team-performance-copy">Selected period productivity by user. Sorted by orders, completed deliveries, then total amount.</p>
+                    <div class="team-performance-meta">
+                        <span>{{ $teamPerformancePeriodLabel ?? 'This Month' }}</span>
+                        @if($teamPerformanceFilterActive ?? false)
+                            <span class="is-filtered">Filtered</span>
+                        @endif
+                    </div>
+                </div>
+                <div class="team-performance-actions">
+                    <label class="team-performance-toggle">
+                        <input type="checkbox" x-model="showFinancials" checked>
+                        <span>Show Financial Columns</span>
+                    </label>
+                    <div class="team-performance-filter" x-on:click.outside="filterOpen = false">
+                        <button type="button" class="team-performance-filter-button {{ ($teamPerformanceFilterActive ?? false) ? 'is-active' : '' }}" x-on:click="filterOpen = ! filterOpen" :aria-expanded="filterOpen.toString()" aria-controls="team-performance-filter-panel" aria-label="Filter team performance">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                            @if($teamPerformanceFilterActive ?? false)
+                                <span class="team-performance-filter-dot" aria-hidden="true"></span>
+                            @endif
+                        </button>
+                        <div id="team-performance-filter-panel" class="team-performance-popover" x-show="filterOpen" x-cloak>
+                            <form method="GET" action="{{ $safeRoute('dashboard') ?? url('/dashboard') }}">
+                                @foreach(request()->except(['team_performance_period', 'team_performance_from_date', 'team_performance_to_date', 'team_performance_city', 'team_performance_role']) as $filterKey => $filterValue)
+                                    @if(is_scalar($filterValue))
+                                        <input type="hidden" name="{{ $filterKey }}" value="{{ $filterValue }}">
+                                    @endif
+                                @endforeach
+                                <label>
+                                    <span>Period</span>
+                                    <select name="team_performance_period" x-model="period">
+                                        <option value="today" @selected(($teamPerformancePeriod ?? '') === 'today')>Today</option>
+                                        <option value="this_week" @selected(($teamPerformancePeriod ?? '') === 'this_week')>This Week</option>
+                                        <option value="last_7_days" @selected(($teamPerformancePeriod ?? '') === 'last_7_days')>Last 7 Days</option>
+                                        <option value="this_fortnight" @selected(($teamPerformancePeriod ?? '') === 'this_fortnight')>This Fortnight</option>
+                                        <option value="last_15_days" @selected(($teamPerformancePeriod ?? '') === 'last_15_days')>Last 15 Days</option>
+                                        <option value="this_month" @selected(($teamPerformancePeriod ?? 'this_month') === 'this_month')>This Month</option>
+                                        <option value="last_30_days" @selected(($teamPerformancePeriod ?? '') === 'last_30_days')>Last 30 Days</option>
+                                        <option value="custom_range" @selected(($teamPerformancePeriod ?? '') === 'custom_range')>Custom Range</option>
+                                    </select>
+                                </label>
+                                <div class="team-performance-filter-grid" x-show="period === 'custom_range'" x-cloak>
+                                    <label>
+                                        <span>From</span>
+                                        <input type="date" name="team_performance_from_date" value="{{ $teamPerformanceFromDate ?? '' }}">
+                                    </label>
+                                    <label>
+                                        <span>To</span>
+                                        <input type="date" name="team_performance_to_date" value="{{ $teamPerformanceToDate ?? '' }}">
+                                    </label>
+                                </div>
+                                <label>
+                                    <span>City</span>
+                                    <select name="team_performance_city">
+                                        <option value="">All cities</option>
+                                        @foreach(($cities ?? collect()) as $cityOption)
+                                            <option value="{{ $cityOption }}" @selected(($teamPerformanceCity ?? '') === $cityOption)>{{ $cityOption }}</option>
+                                        @endforeach
+                                    </select>
+                                </label>
+                                <label>
+                                    <span>Role</span>
+                                    <select name="team_performance_role">
+                                        <option value="">All eligible roles</option>
+                                        <option value="super_admin" @selected(($teamPerformanceRole ?? '') === 'super_admin')>Super Admin</option>
+                                        <option value="admin_operations" @selected(($teamPerformanceRole ?? '') === 'admin_operations')>Admin Operations</option>
+                                        <option value="sales" @selected(($teamPerformanceRole ?? '') === 'sales')>Sales</option>
+                                        <option value="finance" @selected(($teamPerformanceRole ?? '') === 'finance')>Finance</option>
+                                        <option value="operations_executive" @selected(($teamPerformanceRole ?? '') === 'operations_executive')>Operations Executive</option>
+                                        <option value="delivery_executive" @selected(($teamPerformanceRole ?? '') === 'delivery_executive')>Delivery Executive</option>
+                                        <option value="delivery" @selected(($teamPerformanceRole ?? '') === 'delivery')>Delivery</option>
+                                    </select>
+                                </label>
+                                <div class="team-performance-filter-actions">
+                                    <a href="{{ $mergeDashboardQuery('dashboard', ['team_performance_period' => null, 'team_performance_from_date' => null, 'team_performance_to_date' => null, 'team_performance_city' => null, 'team_performance_role' => null]) ?? $dashboardUrl }}">Reset</a>
+                                    <button type="submit">Apply</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @if(($teamPerformanceRows ?? collect())->isNotEmpty())
+                @unless($teamPerformanceHasActivity ?? true)
+                    <div class="team-performance-notice">No activity recorded for the selected period.</div>
+                @endunless
+                <div class="team-performance-table-wrap">
+                    <table class="team-performance-table">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Role</th>
+                                <th>Orders</th>
+                                <th>Rentals</th>
+                                <th>Sales</th>
+                                <th>Delivery Assigned</th>
+                                <th>Delivery Completed</th>
+                                <th>Renewal Reminders</th>
+                                <th>Renewals Completed</th>
+                                <th>Invoices Generated</th>
+                                <th class="team-performance-finance" x-show="showFinancials" x-cloak>Rental Amount</th>
+                                <th class="team-performance-finance" x-show="showFinancials" x-cloak>Sales Amount</th>
+                                <th class="team-performance-finance" x-show="showFinancials" x-cloak>Total Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($teamPerformanceRows as $row)
+                                <tr @class(['team-performance-zero-row' => $row['is_zero_activity'] ?? false])>
+                                    <td class="team-performance-user">
+                                        <strong>{{ $row['name'] }}</strong>
+                                        <span>#{{ $row['id'] }}</span>
+                                    </td>
+                                    <td>{{ $row['role'] }}</td>
+                                    <td>
+                                        <span class="team-performance-number">{{ number_format((int) $row['orders']) }}</span>
+                                        <span class="team-performance-muted">{{ $row['orders_split'] }}</span>
+                                    </td>
+                                    <td>{{ number_format((int) $row['rentals']) }}</td>
+                                    <td>{{ number_format((int) $row['sales']) }}</td>
+                                    <td>{{ number_format((int) $row['delivery_assigned']) }}</td>
+                                    <td>{{ number_format((int) $row['delivery_completed']) }}</td>
+                                    <td>{{ number_format((int) $row['renewal_reminders']) }}</td>
+                                    <td>{{ number_format((int) $row['renewals_completed']) }}</td>
+                                    <td>{{ number_format((int) $row['invoices_generated']) }}</td>
+                                    <td class="team-performance-finance" x-show="showFinancials" x-cloak>Rs. {{ number_format((float) $row['rental_amount'], 2) }}</td>
+                                    <td class="team-performance-finance" x-show="showFinancials" x-cloak>Rs. {{ number_format((float) $row['sales_amount'], 2) }}</td>
+                                    <td class="team-performance-finance" x-show="showFinancials" x-cloak>Rs. {{ number_format((float) $row['total_amount'], 2) }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="team-performance-mobile-list">
+                    @foreach($teamPerformanceRows as $row)
+                        <details @class(['team-performance-mobile-card', 'team-performance-zero-row' => $row['is_zero_activity'] ?? false])>
+                            <summary>
+                                <span>
+                                    <strong>{{ $row['name'] }}</strong>
+                                    <small>{{ $row['role'] }}</small>
+                                </span>
+                                <span>
+                                    <strong>{{ number_format((int) $row['orders']) }}</strong>
+                                    <small>orders / {{ number_format((int) $row['delivery_completed']) }} done</small>
+                                </span>
+                            </summary>
+                            <div class="team-performance-mobile-kpis">
+                                <span>Rentals <b>{{ number_format((int) $row['rentals']) }}</b></span>
+                                <span>Sales <b>{{ number_format((int) $row['sales']) }}</b></span>
+                                <span>Assigned <b>{{ number_format((int) $row['delivery_assigned']) }}</b></span>
+                                <span>Completed <b>{{ number_format((int) $row['delivery_completed']) }}</b></span>
+                                <span>Reminders <b>{{ number_format((int) $row['renewal_reminders']) }}</b></span>
+                                <span>Renewals <b>{{ number_format((int) $row['renewals_completed']) }}</b></span>
+                                <span>Invoices <b>{{ number_format((int) $row['invoices_generated']) }}</b></span>
+                                <span class="team-performance-mobile-finance" x-show="showFinancials" x-cloak>Rental <b>Rs. {{ number_format((float) $row['rental_amount'], 2) }}</b></span>
+                                <span class="team-performance-mobile-finance" x-show="showFinancials" x-cloak>Sales <b>Rs. {{ number_format((float) $row['sales_amount'], 2) }}</b></span>
+                                <span class="team-performance-mobile-finance" x-show="showFinancials" x-cloak>Total <b>Rs. {{ number_format((float) $row['total_amount'], 2) }}</b></span>
+                            </div>
+                        </details>
+                    @endforeach
+                </div>
+            @else
+                <div class="team-performance-empty">No eligible internal users found.</div>
+            @endif
+        </section>
+    @endif
+
     @if(false)
     <section class="control-room-shell">
         <div class="control-room-header">
@@ -8367,7 +8898,7 @@
                             <strong class="operations-health-value">{{ $card['value'] }}</strong>
                             <span class="rx-badge {{ $statusBadgeClass(($card['tone'] ?? 'blue') === 'red' ? 'overdue' : (($card['tone'] ?? 'blue') === 'amber' ? 'warning' : 'completed')) }}">{{ $card['status'] }}</span>
                             <span class="operations-health-note">{{ $card['note'] }}</span>
-                            <span class="operations-health-link">{{ $card['action'] }} →</span>
+                            <span class="operations-health-link">{{ $card['action'] }}  / </span>
                         </{{ $tag }}>
                     @endforeach
                 </div>
@@ -8426,7 +8957,7 @@
                                         <span class="executive-queue-pill {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['priority'] }}</span>
                                         <div class="executive-queue-copy">
                                             <strong>{{ $row['title'] }}</strong>
-                                            <span>{{ $row['owner'] }} · {{ $row['status'] }}</span>
+                                            <span>{{ $row['owner'] }}  /  {{ $row['status'] }}</span>
                                         </div>
                                         <a href="{{ $row['href'] }}" class="executive-queue-link">{{ $row['action'] }}</a>
                                     </div>
@@ -8440,7 +8971,7 @@
                                                     <span class="executive-queue-pill {{ $toneCardClass($row['tone'] ?? null) }}">{{ $row['priority'] }}</span>
                                                     <div class="executive-queue-copy">
                                                         <strong>{{ $row['title'] }}</strong>
-                                                        <span>{{ $row['owner'] }} · {{ $row['status'] }}</span>
+                                                        <span>{{ $row['owner'] }}  /  {{ $row['status'] }}</span>
                                                     </div>
                                                     <a href="{{ $row['href'] }}" class="executive-queue-link">{{ $row['action'] }}</a>
                                                 </div>
@@ -8507,7 +9038,7 @@
                             </div>
 
                             <div class="operations-command-block">
-                                <span class="operations-command-label">Today’s Operations Snapshot</span>
+                                <span class="operations-command-label">Today's Operations Snapshot</span>
                                 <div class="operations-snapshot-strip">
                                     @foreach($operationsSnapshotRows as $row)
                                         <div class="operations-snapshot-card {{ $toneCardClass($row['tone'] ?? null) }}">
@@ -8675,7 +9206,7 @@
                                             <em>{{ optional($rental->end_date)?->format('d M Y') ?? 'Today' }}</em>
                                         </div>
                                         <span>{{ $rental->customer_name ?? optional($rental->customer)->name ?? 'Customer' }}</span>
-                                        <small>{{ optional($rental->product)->name ?? 'Product N/A' }} â€¢ {{ $currency($rental->rental_amount ?? 0) }}</small>
+                                        <small>{{ optional($rental->product)->name ?? 'Product N/A' }}  /  {{ $currency($rental->rental_amount ?? 0) }}</small>
                                         <div class="dashboard-widget-actions">
                                             <a href="{{ route('rentals.show', $rental) }}">Open</a>
                                             @if($rental->customer?->phone)
@@ -8694,8 +9225,8 @@
                                                         <strong>Rental #{{ $rental->id }}</strong>
                                                         <em>{{ optional($rental->end_date)?->format('d M Y') ?? 'Due soon' }}</em>
                                                     </div>
-                                                    <span>{{ $rental->customer_name ?? optional($rental->customer)->name ?? 'Customer' }} • {{ $rental->phone ?? 'No phone' }}</span>
-                                                    <small>{{ optional($rental->product)->name ?? 'Product N/A' }} • {{ $currency((float) ($rental->rental_amount ?? 0)) }}</small>
+                                                    <span>{{ $rental->customer_name ?? optional($rental->customer)->name ?? 'Customer' }}  /  {{ $rental->phone ?? 'No phone' }}</span>
+                                                    <small>{{ optional($rental->product)->name ?? 'Product N/A' }}  /  {{ $currency((float) ($rental->rental_amount ?? 0)) }}</small>
                                                     <div class="dashboard-widget-actions">
                                                         <a href="{{ route('rentals.show', $rental) }}">Open</a>
                                                         @if($rental->phone)
@@ -8737,7 +9268,7 @@
                                             <strong>Pickup #{{ $task->id }}</strong>
                                             <em>{{ optional($task->scheduled_at)?->format('h:i A') ?? 'Today' }}</em>
                                         </div>
-                                        <span>{{ $task->linkedCustomerName() }} â€¢ {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
+                                        <span>{{ $task->linkedCustomerName() }}  /  {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
                                         <small>{{ $task->pickup_address ?: 'Address pending' }}</small>
                                         <div class="dashboard-widget-actions">
                                             <a href="{{ route('deliveries.show', $task) }}">Open</a>
@@ -8760,8 +9291,8 @@
                                                         <strong>Pickup #{{ $task->id }}</strong>
                                                         <em>{{ optional($task->scheduled_at)?->format('h:i A') ?? 'Today' }}</em>
                                                     </div>
-                                                    <span>{{ $task->linkedCustomerName() ?: 'Customer pending' }} • {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
-                                                    <small>{{ $task->pickupOperationalLabel() }} • {{ $task->assignedUser?->name ?: $task->assignedStaff?->name ?: 'Unassigned' }}</small>
+                                                    <span>{{ $task->linkedCustomerName() ?: 'Customer pending' }}  /  {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
+                                                    <small>{{ $task->pickupOperationalLabel() }}  /  {{ $task->assignedUser?->name ?: $task->assignedStaff?->name ?: 'Unassigned' }}</small>
                                                     <div class="dashboard-widget-actions">
                                                         <a href="{{ route('deliveries.show', $task) }}">Open</a>
                                                         @if($task->linkedCustomerPhone())
@@ -8803,7 +9334,7 @@
                                             <strong>Delivery #{{ $task->id }}</strong>
                                             <em>{{ optional($task->scheduled_at)?->format('h:i A') ?? 'Today' }}</em>
                                         </div>
-                                        <span>{{ $task->linkedCustomerName() }} â€¢ {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
+                                        <span>{{ $task->linkedCustomerName() }}  /  {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
                                         <small>{{ $task->delivery_address ?: 'Address pending' }}</small>
                                         <div class="dashboard-widget-actions">
                                             <a href="{{ route('deliveries.show', $task) }}">Open</a>
@@ -8826,8 +9357,8 @@
                                                         <strong>Delivery #{{ $task->id }}</strong>
                                                         <em>{{ optional($task->scheduled_at)?->format('h:i A') ?? 'Today' }}</em>
                                                     </div>
-                                                    <span>{{ $task->linkedCustomerName() ?: 'Customer pending' }} • {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
-                                                    <small>{{ \Illuminate\Support\Str::headline((string) $task->status) }} • {{ $task->assignedUser?->name ?: $task->assignedStaff?->name ?: 'Unassigned' }}</small>
+                                                    <span>{{ $task->linkedCustomerName() ?: 'Customer pending' }}  /  {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
+                                                    <small>{{ \Illuminate\Support\Str::headline((string) $task->status) }}  /  {{ $task->assignedUser?->name ?: $task->assignedStaff?->name ?: 'Unassigned' }}</small>
                                                     <div class="dashboard-widget-actions">
                                                         <a href="{{ route('deliveries.show', $task) }}">Open</a>
                                                         @if($task->linkedCustomerPhone())
@@ -8872,8 +9403,8 @@
                                             <strong>{{ $followUp->title }}</strong>
                                             <em>{{ optional($followUp->due_at)?->format('h:i A') ?? 'Today' }}</em>
                                         </div>
-                                        <span>{{ $followUp->callTargetName() ?: 'Contact pending' }} â€¢ {{ $followUp->callTargetPhone() ?: 'No phone' }}</span>
-                                        <small>{{ $followUp->typeLabel() }} â€¢ {{ $followUp->priorityLabel() }}</small>
+                                        <span>{{ $followUp->callTargetName() ?: 'Contact pending' }}  /  {{ $followUp->callTargetPhone() ?: 'No phone' }}</span>
+                                        <small>{{ $followUp->typeLabel() }}  /  {{ $followUp->priorityLabel() }}</small>
                                         <div class="dashboard-widget-actions">
                                             <a href="{{ route('communication-center.index', ['tab' => 'today']) }}">Open</a>
                                             @if($followUp->callTargetPhone())
@@ -8895,8 +9426,8 @@
                                                         <strong>{{ $followUp->title }}</strong>
                                                         <em>{{ optional($followUp->due_at)?->format('h:i A') ?? 'Today' }}</em>
                                                     </div>
-                                                    <span>{{ $followUp->callTargetName() ?: 'Contact pending' }} • {{ $followUp->callTargetPhone() ?: 'No phone' }}</span>
-                                                    <small>{{ $followUp->typeLabel() }} • {{ $followUp->priorityLabel() }}</small>
+                                                    <span>{{ $followUp->callTargetName() ?: 'Contact pending' }}  /  {{ $followUp->callTargetPhone() ?: 'No phone' }}</span>
+                                                    <small>{{ $followUp->typeLabel() }}  /  {{ $followUp->priorityLabel() }}</small>
                                                     <div class="dashboard-widget-actions">
                                                         <a href="{{ route('communication-center.index', ['tab' => 'today']) }}">Open</a>
                                                         @if($followUp->callTargetPhone())
@@ -8916,7 +9447,7 @@
                             <div class="rx-empty dashboard-empty">
                                 <div class="rx-empty-icon">{!! $dashboardIcon('tasks') !!}</div>
                                 <strong>No follow-ups due today</strong>
-                                <span>Todayâ€™s callback queue is clear.</span>
+                                <span>Today's callback queue is clear.</span>
                             </div>
                         @endif
                     </div>
@@ -8941,7 +9472,7 @@
                                                 <strong>{{ $invoice->invoice_number }}</strong>
                                                 <em>{{ $currency($invoice->total_amount - $invoice->payments_sum_amount) }}</em>
                                             </div>
-                                            <span>{{ optional($invoice->customer)->name ?? 'Customer' }} â€¢ {{ optional($invoice->customer)->phone ?? 'No phone' }}</span>
+                                            <span>{{ optional($invoice->customer)->name ?? 'Customer' }}  /  {{ optional($invoice->customer)->phone ?? 'No phone' }}</span>
                                             <small>Due {{ optional($invoice->due_date)?->format('d M Y') ?? 'now' }}</small>
                                             <div class="dashboard-widget-actions">
                                                 <a href="{{ route('invoices.show', $invoice) }}">Open</a>
@@ -8964,7 +9495,7 @@
                                                             <strong>{{ $invoice->invoice_number }}</strong>
                                                             <em>{{ $currency($invoice->total_amount - $invoice->payments_sum_amount) }}</em>
                                                         </div>
-                                                        <span>{{ optional($invoice->customer)->name ?? 'Customer' }} • {{ optional($invoice->customer)->phone ?? 'No phone' }}</span>
+                                                        <span>{{ optional($invoice->customer)->name ?? 'Customer' }}  /  {{ optional($invoice->customer)->phone ?? 'No phone' }}</span>
                                                         <small>Due {{ optional($invoice->due_date)?->format('d M Y') ?? 'now' }}</small>
                                                         <div class="dashboard-widget-actions">
                                                             <a href="{{ route('invoices.show', $invoice) }}">Open</a>
@@ -9616,7 +10147,7 @@
                             <strong class="inventory-health-value">{{ $card['value'] }}</strong>
                             <span class="inventory-health-status">{{ $card['status'] }}</span>
                             <span class="inventory-health-note">{{ $card['note'] }}</span>
-                            <span class="inventory-health-link">{{ $card['action'] }} →</span>
+                            <span class="inventory-health-link">{{ $card['action'] }}  / </span>
                         </{{ $tag }}>
                     @endforeach
                 </div>
@@ -9784,7 +10315,7 @@
                                     <{{ $tag }} @if(!empty($row['href'])) href="{{ $row['href'] }}" @endif class="inventory-warehouse-card">
                                         <div class="inventory-warehouse-top">
                                             <span class="inventory-warehouse-label">{{ $row['label'] }}</span>
-                                            <span class="inventory-health-link">Open →</span>
+                                            <span class="inventory-health-link">Open  / </span>
                                         </div>
                                         <strong class="inventory-warehouse-value">{{ number_format((int) ($row['count'] ?? 0)) }}</strong>
                                         <span class="inventory-warehouse-note">{{ number_format((int) ($row['count'] ?? 0)) }} asset-linked rental(s)</span>
@@ -10025,8 +10556,8 @@
                                     <strong>{{ $row['name'] }}</strong>
                                     <span class="dashboard-role-chip">{{ $row['load_state'] }}</span>
                                 </div>
-                                <span>{{ $row['delivery_count'] }} deliveries â€¢ {{ $row['pickup_count'] }} pickups â€¢ {{ $row['followup_count'] }} follow-ups</span>
-                                <small>{{ $row['overdue_count'] }} overdue â€¢ {{ \Illuminate\Support\Str::headline((string) ($row['role'] ?? 'team')) }}</small>
+                                <span>{{ $row['delivery_count'] }} deliveries  /  {{ $row['pickup_count'] }} pickups  /  {{ $row['followup_count'] }} follow-ups</span>
+                                <small>{{ $row['overdue_count'] }} overdue  /  {{ \Illuminate\Support\Str::headline((string) ($row['role'] ?? 'team')) }}</small>
                             </div>
                         @endforeach
                     </div>
@@ -10061,8 +10592,8 @@
                                     <strong>{{ $partner['name'] }}</strong>
                                     <span class="dashboard-role-chip">{{ $partner['active_clients_count'] }} clients</span>
                                 </div>
-                                <span>{{ $partner['open_rentals_count'] }} open rentals â€¢ {{ $partner['active_sales_count'] }} sales</span>
-                                <small>{{ $partner['renewal_followups_count'] }} renewal follow-ups â€¢ {{ $partner['payment_followups_count'] }} payment follow-ups</small>
+                                <span>{{ $partner['open_rentals_count'] }} open rentals  /  {{ $partner['active_sales_count'] }} sales</span>
+                                <small>{{ $partner['renewal_followups_count'] }} renewal follow-ups  /  {{ $partner['payment_followups_count'] }} payment follow-ups</small>
                                 <div class="dashboard-feed-links">
                                     <a href="{{ route('business-partners.show', $partner['id']) }}">Open</a>
                                     @if(!empty($partner['phone']))
@@ -10081,8 +10612,8 @@
                                                 <strong>{{ $partner['name'] }}</strong>
                                                 <span class="dashboard-role-chip">{{ $partner['active_clients_count'] }} clients</span>
                                             </div>
-                                            <span>{{ $partner['open_rentals_count'] }} open rentals • {{ $partner['active_sales_count'] }} sales</span>
-                                            <small>{{ $partner['renewal_followups_count'] }} renewal follow-ups • {{ $partner['payment_followups_count'] }} payment follow-ups</small>
+                                            <span>{{ $partner['open_rentals_count'] }} open rentals  /  {{ $partner['active_sales_count'] }} sales</span>
+                                            <small>{{ $partner['renewal_followups_count'] }} renewal follow-ups  /  {{ $partner['payment_followups_count'] }} payment follow-ups</small>
                                             <div class="dashboard-feed-links">
                                                 <a href="{{ route('business-partners.show', $partner['id']) }}">Open</a>
                                                 @if(!empty($partner['phone']))
@@ -10192,7 +10723,7 @@
             @if($activityCenterLinks->isNotEmpty())
                 <div class="activity-control-links">
                     @foreach($activityCenterLinks as $link)
-                        <a href="{{ $link['href'] }}">{{ $link['label'] }} →</a>
+                        <a href="{{ $link['href'] }}">{{ $link['label'] }}  / </a>
                     @endforeach
                 </div>
             @endif
@@ -10302,7 +10833,7 @@
                                     </span>
                                     <span class="activity-control-side">
                                         <strong>{{ $row['priority'] }}</strong>
-                                        <span>{{ $row['action'] }} →</span>
+                                        <span>{{ $row['action'] }}  / </span>
                                     </span>
                                 </{{ $escalationTag }}>
                             @endforeach
@@ -10395,8 +10926,8 @@
                                     <strong>{{ ucfirst((string) $task->type) }} #{{ $task->id }}</strong>
                                     <span class="rx-badge {{ $statusBadgeClass($task->pickupOperationalStatus()) }}">{{ $task->type === 'pickup' ? $task->pickupOperationalLabel() : \Illuminate\Support\Str::headline((string) $task->status) }}</span>
                                 </div>
-                                <span>{{ $task->linkedCustomerName() }} â€¢ {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
-                                <small>{{ optional($task->scheduled_at)?->format('d M, h:i A') ?? 'Schedule pending' }} â€¢ {{ $task->assignedUser?->name ?: $task->assignedStaff?->name ?: 'Unassigned' }}</small>
+                                <span>{{ $task->linkedCustomerName() }}  /  {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
+                                <small>{{ optional($task->scheduled_at)?->format('d M, h:i A') ?? 'Schedule pending' }}  /  {{ $task->assignedUser?->name ?: $task->assignedStaff?->name ?: 'Unassigned' }}</small>
                                 <div class="dashboard-feed-links">
                                     <a href="{{ route('deliveries.show', $task) }}">Open</a>
                                     @if($task->linkedCustomerPhone())
@@ -10418,8 +10949,8 @@
                                                 <strong>{{ ucfirst((string) $task->type) }} #{{ $task->id }}</strong>
                                                 <span class="rx-badge {{ $statusBadgeClass($task->pickupOperationalStatus()) }}">{{ $task->type === 'pickup' ? $task->pickupOperationalLabel() : \Illuminate\Support\Str::headline((string) $task->status) }}</span>
                                             </div>
-                                            <span>{{ $task->linkedCustomerName() }} • {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
-                                            <small>{{ optional($task->scheduled_at)?->format('d M, h:i A') ?? 'Schedule pending' }} • {{ $task->assignedUser?->name ?: $task->assignedStaff?->name ?: 'Unassigned' }}</small>
+                                            <span>{{ $task->linkedCustomerName() }}  /  {{ $task->linkedCustomerPhone() ?: 'No phone' }}</span>
+                                            <small>{{ optional($task->scheduled_at)?->format('d M, h:i A') ?? 'Schedule pending' }}  /  {{ $task->assignedUser?->name ?: $task->assignedStaff?->name ?: 'Unassigned' }}</small>
                                             <div class="dashboard-feed-links">
                                                 <a href="{{ route('deliveries.show', $task) }}">Open</a>
                                                 @if($task->linkedCustomerPhone())
@@ -10466,8 +10997,8 @@
                                     <strong>{{ $followUp->title }}</strong>
                                     <span class="rx-badge {{ $statusBadgeClass($followUp->effectiveStatus()) }}">{{ $followUp->priorityLabel() }}</span>
                                 </div>
-                                <span>{{ $followUp->callTargetName() ?: 'Contact pending' }} â€¢ {{ $followUp->callTargetPhone() ?: 'No phone' }}</span>
-                                <small>{{ $followUp->typeLabel() }} â€¢ {{ optional($followUp->due_at)?->format('d M, h:i A') ?? 'Due now' }}</small>
+                                <span>{{ $followUp->callTargetName() ?: 'Contact pending' }}  /  {{ $followUp->callTargetPhone() ?: 'No phone' }}</span>
+                                <small>{{ $followUp->typeLabel() }}  /  {{ optional($followUp->due_at)?->format('d M, h:i A') ?? 'Due now' }}</small>
                                 <div class="dashboard-feed-links">
                                     <a href="{{ route('communication-center.index', ['priority' => 'high']) }}">Open</a>
                                     @if($followUp->callTargetPhone())
@@ -10489,8 +11020,8 @@
                                                 <strong>{{ $followUp->title }}</strong>
                                                 <span class="rx-badge {{ $statusBadgeClass($followUp->effectiveStatus()) }}">{{ $followUp->priorityLabel() }}</span>
                                             </div>
-                                            <span>{{ $followUp->callTargetName() ?: 'Contact pending' }} • {{ $followUp->callTargetPhone() ?: 'No phone' }}</span>
-                                            <small>{{ $followUp->typeLabel() }} • {{ optional($followUp->due_at)?->format('d M, h:i A') ?? 'Due now' }}</small>
+                                            <span>{{ $followUp->callTargetName() ?: 'Contact pending' }}  /  {{ $followUp->callTargetPhone() ?: 'No phone' }}</span>
+                                            <small>{{ $followUp->typeLabel() }}  /  {{ optional($followUp->due_at)?->format('d M, h:i A') ?? 'Due now' }}</small>
                                             <div class="dashboard-feed-links">
                                                 <a href="{{ route('communication-center.index', ['priority' => 'high']) }}">Open</a>
                                                 @if($followUp->callTargetPhone())

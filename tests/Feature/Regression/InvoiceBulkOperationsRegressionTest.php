@@ -205,6 +205,8 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $bulkTemplate = (string) file_get_contents(resource_path('views/invoices/bulk-print.blade.php'));
         $dompdfTemplate = (string) file_get_contents(resource_path('views/invoices/pdf-dompdf.blade.php'));
         $printTemplate = (string) file_get_contents(resource_path('views/invoices/print.blade.php'));
+        $documentTemplate = (string) file_get_contents(resource_path('views/invoices/partials/invoice-document.blade.php'));
+        $documentStyles = (string) file_get_contents(resource_path('views/invoices/partials/invoice-document-styles.blade.php'));
         $renderer = (string) file_get_contents(app_path('Support/InvoicePdfRenderer.php'));
         $pdfConfig = (string) file_get_contents(config_path('pdf.php'));
 
@@ -232,6 +234,16 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringContainsString("invoices.partials.invoice-document", $dompdfTemplate);
         $this->assertStringContainsString("invoices.partials.invoice-document-styles", $printTemplate);
         $this->assertStringContainsString("invoices.partials.invoice-document-styles", $dompdfTemplate);
+        $this->assertStringContainsString('@page {', $documentStyles);
+        $this->assertStringContainsString('size: A4 portrait;', $documentStyles);
+        $this->assertStringContainsString('margin: 12mm;', $documentStyles);
+        $this->assertStringContainsString('border: 1px solid #64748b;', $documentStyles);
+        $this->assertStringContainsString('padding: 8mm;', $documentStyles);
+        $this->assertStringContainsString('table-layout: fixed;', $documentStyles);
+        $this->assertStringContainsString('$invoiceColumnWidths', $documentTemplate);
+        $this->assertStringContainsString('$showDiscount && $showTaxColumns', $documentTemplate);
+        $this->assertStringContainsString("'description' => 32", $documentTemplate);
+        $this->assertStringContainsString("'amount' => 10", $documentTemplate);
         $this->assertStringContainsString('.bulk-invoice-page:not(:last-child)', $bulkTemplate);
         $this->assertStringContainsString('page-break-after: always;', $bulkTemplate);
         $this->assertStringContainsString('.bulk-items {', $bulkTemplate);

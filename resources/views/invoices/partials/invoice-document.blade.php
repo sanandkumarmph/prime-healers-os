@@ -117,8 +117,9 @@
     $tenantQr = $tenantQr ?? $toDataUri($organization?->payment_qr_code);
     $tenantSignature = $tenantSignature ?? $toDataUri($organization?->digital_signature);
     $organizationInitials = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $organization?->name ?? 'OR'), 0, 2));
-    $currency = trim((string) ($pdfCurrencySymbol ?? ($pdfCurrencyFallback ?? '₹')));
-    $currencyHtml = $currency === '₹' ? '&#8377;' : e($currency);
+    $rupeeSymbol = html_entity_decode('&#8377;', ENT_QUOTES, 'UTF-8');
+    $currency = trim((string) ($pdfCurrencySymbol ?? ($pdfCurrencyFallback ?? 'Rs.')));
+    $currencyHtml = $currency === $rupeeSymbol ? '&#8377;' : e($currency);
     $showPaymentsTable = $showPaymentsTable ?? true;
 @endphp
 
@@ -212,22 +213,65 @@
 
     <div class="subject-row"><strong>Subject:</strong> {{ $subjectLine }}</div>
 
+    @php
+        $invoiceColumnWidths = match (true) {
+            $showDiscount && $showTaxColumns => [
+                'index' => 4,
+                'description' => 32,
+                'hsn' => 9,
+                'qty' => 6,
+                'rate' => 10,
+                'discount' => 9,
+                'tax' => 10,
+                'tax_amount' => 10,
+                'amount' => 10,
+            ],
+            $showDiscount => [
+                'index' => 4,
+                'description' => 43,
+                'hsn' => 10,
+                'qty' => 7,
+                'rate' => 12,
+                'discount' => 11,
+                'amount' => 13,
+            ],
+            $showTaxColumns => [
+                'index' => 4,
+                'description' => 36,
+                'hsn' => 10,
+                'qty' => 7,
+                'rate' => 11,
+                'tax' => 11,
+                'tax_amount' => 11,
+                'amount' => 10,
+            ],
+            default => [
+                'index' => 4,
+                'description' => 49,
+                'hsn' => 12,
+                'qty' => 8,
+                'rate' => 13,
+                'amount' => 14,
+            ],
+        };
+    @endphp
+
     <table class="items-table">
         <thead>
             <tr>
-                <th style="width:4%;">#</th>
-                <th style="width:35%;">Item &amp; Description</th>
-                <th style="width:10%;">HSN/SAC</th>
-                <th style="width:7%;" class="num">Qty</th>
-                <th style="width:11%;" class="num">Rate</th>
+                <th style="width:{{ $invoiceColumnWidths['index'] }}%;">#</th>
+                <th style="width:{{ $invoiceColumnWidths['description'] }}%;">Item &amp; Description</th>
+                <th style="width:{{ $invoiceColumnWidths['hsn'] }}%;">HSN/SAC</th>
+                <th style="width:{{ $invoiceColumnWidths['qty'] }}%;" class="num">Qty</th>
+                <th style="width:{{ $invoiceColumnWidths['rate'] }}%;" class="num">Rate</th>
                 @if($showDiscount)
-                    <th style="width:9%;" class="num">Discount</th>
+                    <th style="width:{{ $invoiceColumnWidths['discount'] }}%;" class="num">Discount</th>
                 @endif
                 @if($showTaxColumns)
-                    <th style="width:10%;" class="num">Tax</th>
-                    <th style="width:10%;" class="num">Tax Amt</th>
+                    <th style="width:{{ $invoiceColumnWidths['tax'] }}%;" class="num">Tax</th>
+                    <th style="width:{{ $invoiceColumnWidths['tax_amount'] }}%;" class="num">Tax Amt</th>
                 @endif
-                <th style="width:11%;" class="num">Amount</th>
+                <th style="width:{{ $invoiceColumnWidths['amount'] }}%;" class="num">Amount</th>
             </tr>
         </thead>
         <tbody>

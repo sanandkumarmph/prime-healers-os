@@ -3,7 +3,9 @@
     margin: 12mm;
 }
 
-* {
+*,
+*::before,
+*::after {
     box-sizing: border-box;
 }
 
@@ -17,16 +19,19 @@ body {
 body {
     color: #24384f;
     font-family: {!! $invoiceBodyFontStack ?? "'Inter', 'Segoe UI', Roboto, Arial, sans-serif" !!};
-    font-size: 11px;
+    font-size: 10px;
     line-height: 1.45;
     font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
+    width: 100%;
 }
 
 .invoice-page {
-    width: 100%;
+    width: auto;
     margin: 0;
-    padding: 0;
+    padding: 8mm;
+    border: 1px solid #64748b;
+    background: #ffffff;
     page-break-inside: auto;
 }
 
@@ -41,6 +46,7 @@ body {
 .footer-table {
     width: 100%;
     border-collapse: collapse;
+    table-layout: fixed;
 }
 
 .header-table {
@@ -54,7 +60,7 @@ body {
 }
 
 .header-logo-cell {
-    width: 36mm;
+    width: 34mm;
     padding-right: 10px;
 }
 
@@ -114,7 +120,7 @@ body {
 }
 
 .header-title-cell {
-    width: 52mm;
+    width: 46mm;
     text-align: right;
     padding-top: 2px;
     padding-right: 2px;
@@ -263,8 +269,10 @@ body {
 .items-table th,
 .items-table td {
     border: 1px solid #d7e1ec;
-    padding: 7px 6px;
+    padding: 5px 5px;
     vertical-align: top;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
 }
 
 .items-table th {
@@ -285,7 +293,8 @@ body {
 
 .num {
     text-align: right;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .item-title {
@@ -322,12 +331,12 @@ body {
 
 .summary-notes-cell {
     width: 58%;
-    padding-right: 10px;
+    padding-right: 6px;
 }
 
 .summary-totals-cell {
     width: 42%;
-    padding-left: 10px;
+    padding-left: 6px;
 }
 
 .summary-notes-wrap,
@@ -337,7 +346,7 @@ body {
 
 .summary-totals-wrap {
     display: block;
-    width: 92mm;
+    width: 100%;
     max-width: 100%;
     margin-left: auto;
     text-align: left;

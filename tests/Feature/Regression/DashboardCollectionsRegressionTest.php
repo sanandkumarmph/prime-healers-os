@@ -74,8 +74,11 @@ class DashboardCollectionsRegressionTest extends TestCase
 
         $response = $this->get(route('dashboard'));
 
-        $response->assertOk()
-            ->assertSee('250.00 received today')
-            ->assertDontSee('439.00 received today');
+        $response->assertOk();
+
+        $content = $response->getContent();
+
+        $this->assertStringContainsString('Rs. 250.00', $content);
+        $this->assertStringNotContainsString('Rs. 439.00', $content);
     }
 }

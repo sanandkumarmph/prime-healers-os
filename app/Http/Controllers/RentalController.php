@@ -5592,6 +5592,38 @@ class RentalController extends Controller
             ]
             : [];
 
+        $showTeamPerformanceTable = $this->canViewDashboardTeamPerformance($currentUser);
+        $teamPerformancePeriod = trim((string) $request->get('team_performance_period', 'this_month')) ?: 'this_month';
+        $teamPerformanceFromDate = trim((string) $request->get('team_performance_from_date', ''));
+        $teamPerformanceToDate = trim((string) $request->get('team_performance_to_date', ''));
+        $teamPerformanceCity = trim((string) $request->get('team_performance_city', $city));
+        $teamPerformanceRole = trim((string) $request->get('team_performance_role', ''));
+        $teamPerformanceContext = $this->resolveDashboardTeamPerformancePeriod(
+            $teamPerformancePeriod,
+            $teamPerformanceFromDate,
+            $teamPerformanceToDate,
+            $today
+        );
+        $teamPerformancePeriod = $teamPerformanceContext['period'];
+        if ($teamPerformancePeriod !== 'custom_range') {
+            $teamPerformanceFromDate = '';
+            $teamPerformanceToDate = '';
+        }
+        $teamPerformanceRows = $showTeamPerformanceTable
+            ? $this->dashboardTeamPerformanceRows(
+                $teamPerformanceContext['from'],
+                $teamPerformanceContext['to'],
+                $teamPerformanceCity,
+                $teamPerformanceRole
+            )
+            : collect();
+        $teamPerformanceHasActivity = $teamPerformanceRows->contains(fn ($row) => ! (bool) ($row['is_zero_activity'] ?? true));
+        $teamPerformanceFilterActive = $teamPerformancePeriod !== 'this_month'
+            || ($teamPerformancePeriod === 'custom_range' && ($teamPerformanceFromDate !== '' || $teamPerformanceToDate !== ''))
+            || $teamPerformanceCity !== trim((string) $city)
+            || $teamPerformanceRole !== '';
+        $teamPerformancePeriodLabel = $teamPerformanceContext['label'];
+
         $filterOptions = $this->filterOptionData();
         $totalRentals = (int) ($rentalSummary['totalRentals'] ?? 0);
         $totalRentalValue = (clone $summaryQuery)->sum('rental_amount');
@@ -5763,8 +5795,308 @@ class RentalController extends Controller
             'vendorPerformanceSummary',
             'staffOverloadedCount',
             'staffBusyCount',
-            'inventoryAvailability'
+            'inventoryAvailability',
+            'showTeamPerformanceTable',
+            'teamPerformanceRows',
+            'teamPerformanceHasActivity',
+            'teamPerformanceFilterActive',
+            'teamPerformancePeriod',
+            'teamPerformanceFromDate',
+            'teamPerformanceToDate',
+            'teamPerformanceCity',
+            'teamPerformanceRole',
+            'teamPerformancePeriodLabel'
         )));
+    }
+
+    private function canViewDashboardTeamPerformance(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        $roleValues = collect([
+            $user->effective_role ?? null,
+            $user->role ?? null,
+            $user->assignedRole?->slug,
+            $user->assignedRole?->name,
+        ])
+            ->filter()
+            ->map(fn ($role) => Str::of((string) $role)->lower()->replace([' ', '-'], '_')->toString())
+            ->unique();
+
+        return $roleValues->contains(User::ROLE_SUPER_ADMIN)
+            || $roleValues->contains('superadmin');
+    }
+    private function resolveDashboardTeamPerformancePeriod(string $period, string $fromDate, string $toDate, Carbon $today): array
+    {
+        $today = $today->copy();
+        $period = in_array($period, [
+            'today',
+            'this_week',
+            'last_7_days',
+            'this_fortnight',
+            'last_15_days',
+            'this_month',
+            'last_30_days',
+            'custom_range',
+        ], true) ? $period : 'this_month';
+
+        $start = $today->copy()->startOfMonth();
+        $end = $today->copy()->endOfDay();
+        $label = 'This Month';
+
+        if ($period === 'today') {
+            $start = $today->copy()->startOfDay();
+            $label = 'Today';
+        } elseif ($period === 'this_week') {
+            $start = $today->copy()->startOfWeek();
+            $label = 'This Week';
+        } elseif ($period === 'last_7_days') {
+            $start = $today->copy()->subDays(6)->startOfDay();
+            $label = 'Last 7 Days';
+        } elseif ($period === 'this_fortnight') {
+            $start = $today->day <= 15
+                ? $today->copy()->startOfMonth()
+                : $today->copy()->startOfMonth()->addDays(15)->startOfDay();
+            $end = $today->day <= 15
+                ? $today->copy()->startOfMonth()->addDays(14)->endOfDay()->min($today->copy()->endOfDay())
+                : $today->copy()->endOfDay();
+            $label = 'This Fortnight';
+        } elseif ($period === 'last_15_days') {
+            $start = $today->copy()->subDays(14)->startOfDay();
+            $label = 'Last 15 Days';
+        } elseif ($period === 'last_30_days') {
+            $start = $today->copy()->subDays(29)->startOfDay();
+            $label = 'Last 30 Days';
+        } elseif ($period === 'custom_range') {
+            try {
+                $customStart = filled($fromDate) ? Carbon::parse($fromDate)->startOfDay() : null;
+                $customEnd = filled($toDate) ? Carbon::parse($toDate)->endOfDay() : null;
+
+                if ($customStart && $customEnd) {
+                    if ($customStart->gt($customEnd)) {
+                        [$customStart, $customEnd] = [$customEnd->copy()->startOfDay(), $customStart->copy()->endOfDay()];
+                    }
+
+                    $start = $customStart;
+                    $end = $customEnd;
+                    $label = 'Custom Range';
+                }
+            } catch (\Throwable $exception) {
+                $period = 'this_month';
+                $label = 'This Month';
+            }
+        }
+
+        return [
+            'period' => $period,
+            'from' => $start,
+            'to' => $end,
+            'label' => $label,
+        ];
+    }
+
+    private function dashboardTeamPerformanceRows(Carbon $periodStart, Carbon $periodEnd, string $city = '', string $role = '')
+    {
+        $city = trim($city);
+        $role = Str::of(trim($role))->lower()->replace([' ', '-'], '_')->toString();
+        $eligibleRoles = collect([
+            User::ROLE_SUPER_ADMIN,
+            User::ROLE_ADMIN_OPERATIONS,
+            User::ROLE_SALES,
+            User::ROLE_FINANCE,
+            User::ROLE_OPERATIONS_EXECUTIVE,
+            User::ROLE_DELIVERY_EXECUTIVE,
+            User::ROLE_DELIVERY,
+        ]);
+        $excludedRoles = collect([
+            User::ROLE_VENDOR,
+            User::ROLE_THIRD_PARTY,
+            User::ROLE_SERVICE,
+            'system',
+            'service_account',
+        ]);
+
+        $userColumns = ['id', 'name', 'role', 'role_id'];
+        if (Schema::hasColumn('users', 'is_active')) {
+            $userColumns[] = 'is_active';
+        }
+        if (Schema::hasColumn('users', 'is_internal')) {
+            $userColumns[] = 'is_internal';
+        }
+
+        $eligibleUsers = User::query()
+            ->where('organization_id', $this->orgId())
+            ->when(Schema::hasColumn('users', 'is_active'), fn ($query) => $query->where('is_active', true))
+            ->when(Schema::hasColumn('users', 'is_internal'), fn ($query) => $query->where('is_internal', true))
+            ->with('assignedRole:id,name,slug')
+            ->get($userColumns)
+            ->filter(function (User $user) use ($eligibleRoles, $excludedRoles, $role) {
+                $roleValues = collect([
+                    $user->effective_role ?? null,
+                    $user->role ?? null,
+                    $user->assignedRole?->slug,
+                    $user->assignedRole?->name,
+                ])
+                    ->filter()
+                    ->map(fn ($value) => Str::of((string) $value)->lower()->replace([' ', '-'], '_')->toString())
+                    ->unique()
+                    ->values();
+
+                if ($role !== '' && ! $roleValues->contains($role)) {
+                    return false;
+                }
+
+                return $roleValues->intersect($eligibleRoles)->isNotEmpty()
+                    && $roleValues->intersect($excludedRoles)->isEmpty();
+            })
+            ->values();
+
+        if ($eligibleUsers->isEmpty()) {
+            return collect();
+        }
+
+        $eligibleUserIds = $eligibleUsers->pluck('id')->all();
+
+        $rentalRows = Schema::hasColumn('rentals', 'created_by_user_id')
+            ? Rental::query()
+                ->where('organization_id', $this->orgId())
+                ->whereBetween('created_at', [$periodStart, $periodEnd])
+                ->whereIn('created_by_user_id', $eligibleUserIds)
+                ->when($city !== '', fn ($query) => $query->whereHas('customer', fn ($customerQuery) => $customerQuery->where('city', $city)))
+                ->selectRaw('created_by_user_id as user_id, COUNT(*) as rental_count, COALESCE(SUM(rental_amount), 0) as rental_amount')
+                ->groupBy('created_by_user_id')
+                ->get()
+                ->keyBy('user_id')
+            : collect();
+
+        $saleRows = $this->hasSalesCreatedByUserColumn()
+            ? Sale::query()
+                ->where('organization_id', $this->orgId())
+                ->whereBetween('created_at', [$periodStart, $periodEnd])
+                ->whereIn('created_by_user_id', $eligibleUserIds)
+                ->when($city !== '', fn ($query) => $query->whereHas('customer', fn ($customerQuery) => $customerQuery->where('city', $city)))
+                ->selectRaw('created_by_user_id as user_id, COUNT(*) as sale_count, COALESCE(SUM(sale_amount), 0) as sale_amount')
+                ->groupBy('created_by_user_id')
+                ->get()
+                ->keyBy('user_id')
+            : collect();
+
+        $deliveryAssignedRows = $this->hasDeliveryAssignedUserColumn()
+            ? Delivery::query()
+                ->where('organization_id', $this->orgId())
+                ->whereBetween('created_at', [$periodStart, $periodEnd])
+                ->whereIn('assigned_user_id', $eligibleUserIds)
+                ->when($city !== '', fn ($query) => $query->where(function ($scope) use ($city) {
+                    $scope->whereHas('rental.customer', fn ($customerQuery) => $customerQuery->where('city', $city))
+                        ->orWhereHas('sale.customer', fn ($customerQuery) => $customerQuery->where('city', $city));
+                }))
+                ->selectRaw('assigned_user_id as user_id, COUNT(*) as assigned_count')
+                ->groupBy('assigned_user_id')
+                ->get()
+                ->keyBy('user_id')
+            : collect();
+
+        $deliveryCompletedRows = $this->hasDeliveryAssignedUserColumn()
+            ? Delivery::query()
+                ->where('organization_id', $this->orgId())
+                ->where('status', 'completed')
+                ->whereBetween('completed_at', [$periodStart, $periodEnd])
+                ->whereIn('assigned_user_id', $eligibleUserIds)
+                ->when($city !== '', fn ($query) => $query->where(function ($scope) use ($city) {
+                    $scope->whereHas('rental.customer', fn ($customerQuery) => $customerQuery->where('city', $city))
+                        ->orWhereHas('sale.customer', fn ($customerQuery) => $customerQuery->where('city', $city));
+                }))
+                ->selectRaw('assigned_user_id as user_id, COUNT(*) as completed_count')
+                ->groupBy('assigned_user_id')
+                ->get()
+                ->keyBy('user_id')
+            : collect();
+
+        $renewalReminderRows = Schema::hasTable('rental_reminder_logs') && Schema::hasColumn('rental_reminder_logs', 'sent_by_user_id')
+            ? RentalReminderLog::query()
+                ->where('organization_id', $this->orgId())
+                ->whereBetween('sent_at', [$periodStart, $periodEnd])
+                ->whereIn('sent_by_user_id', $eligibleUserIds)
+                ->selectRaw('sent_by_user_id as user_id, COUNT(*) as reminder_count')
+                ->groupBy('sent_by_user_id')
+                ->get()
+                ->keyBy('user_id')
+            : collect();
+
+        $renewalCompletedRows = Schema::hasTable('rental_renewals') && Schema::hasColumn('rental_renewals', 'renewed_by_user_id')
+            ? RentalRenewal::query()
+                ->where('organization_id', $this->orgId())
+                ->whereBetween('created_at', [$periodStart, $periodEnd])
+                ->whereIn('renewed_by_user_id', $eligibleUserIds)
+                ->selectRaw('renewed_by_user_id as user_id, COUNT(*) as renewal_count')
+                ->groupBy('renewed_by_user_id')
+                ->get()
+                ->keyBy('user_id')
+            : collect();
+
+        $invoiceRows = Schema::hasColumn('invoices', 'created_by_user_id')
+            ? Invoice::query()
+                ->where('organization_id', $this->orgId())
+                ->whereBetween('created_at', [$periodStart, $periodEnd])
+                ->whereIn('created_by_user_id', $eligibleUserIds)
+                ->selectRaw('created_by_user_id as user_id, COUNT(*) as invoice_count')
+                ->groupBy('created_by_user_id')
+                ->get()
+                ->keyBy('user_id')
+            : collect();
+
+        return $eligibleUsers
+            ->map(function (User $user) use (
+                $rentalRows,
+                $saleRows,
+                $deliveryAssignedRows,
+                $deliveryCompletedRows,
+                $renewalReminderRows,
+                $renewalCompletedRows,
+                $invoiceRows
+            ) {
+                $rentalCount = (int) ($rentalRows->get($user->id)->rental_count ?? 0);
+                $saleCount = (int) ($saleRows->get($user->id)->sale_count ?? 0);
+                $rentalAmount = (float) ($rentalRows->get($user->id)->rental_amount ?? 0);
+                $saleAmount = (float) ($saleRows->get($user->id)->sale_amount ?? 0);
+                $orderCount = $rentalCount + $saleCount;
+                $deliveryAssigned = (int) ($deliveryAssignedRows->get($user->id)->assigned_count ?? 0);
+                $deliveryCompleted = (int) ($deliveryCompletedRows->get($user->id)->completed_count ?? 0);
+                $renewalReminders = (int) ($renewalReminderRows->get($user->id)->reminder_count ?? 0);
+                $renewalsCompleted = (int) ($renewalCompletedRows->get($user->id)->renewal_count ?? 0);
+                $invoicesGenerated = (int) ($invoiceRows->get($user->id)->invoice_count ?? 0);
+                $totalAmount = $rentalAmount + $saleAmount;
+                $activityScore = $orderCount + $deliveryAssigned + $deliveryCompleted + $renewalReminders + $renewalsCompleted + $invoicesGenerated;
+
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name ?: 'User #' . $user->id,
+                    'role' => $user->assignedRole?->name ?: Str::of($user->effective_role ?? $user->role ?? 'staff')->replace('_', ' ')->title()->toString(),
+                    'orders' => $orderCount,
+                    'orders_split' => $rentalCount . 'R / ' . $saleCount . 'S',
+                    'rentals' => $rentalCount,
+                    'sales' => $saleCount,
+                    'delivery_assigned' => $deliveryAssigned,
+                    'delivery_completed' => $deliveryCompleted,
+                    'renewal_reminders' => $renewalReminders,
+                    'renewals_completed' => $renewalsCompleted,
+                    'invoices_generated' => $invoicesGenerated,
+                    'rental_amount' => $rentalAmount,
+                    'sales_amount' => $saleAmount,
+                    'total_amount' => $totalAmount,
+                    'is_zero_activity' => $activityScore === 0 && $totalAmount <= 0,
+                    'sort_orders' => $orderCount,
+                    'sort_delivery_completed' => $deliveryCompleted,
+                    'sort_total_amount' => $totalAmount,
+                ];
+            })
+            ->sort(function ($a, $b) {
+                return [$b['sort_orders'], $b['sort_delivery_completed'], $b['sort_total_amount'], strtolower($a['name'])]
+                    <=> [$a['sort_orders'], $a['sort_delivery_completed'], $a['sort_total_amount'], strtolower($b['name'])];
+            })
+            ->values();
     }
 
     public function exportDashboardCsv(Request $request)
