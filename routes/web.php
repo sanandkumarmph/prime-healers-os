@@ -13,6 +13,7 @@ use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\ImportController;
 use App\Http\Controllers\ImportTemplateController;
 use App\Http\Controllers\KnowledgeController;
+use App\Http\Controllers\LedgerController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OrganizationSettingsController;
 use App\Http\Controllers\PaymentController;
@@ -77,6 +78,8 @@ Route::middleware('auth')->group(function () {
         ->name('customers.export.csv');
     Route::get('/search', [GlobalSearchController::class, 'index'])
         ->name('search.global');
+    Route::get('/search/suggestions', [GlobalSearchController::class, 'suggestions'])
+        ->name('search.suggestions');
     Route::get('/customers/{id}/id-proof', [CustomerController::class, 'downloadIdProof'])
         ->middleware('permission:customers.proof.download')
         ->name('customers.id-proof.download');
@@ -414,6 +417,14 @@ Route::middleware('auth')->group(function () {
     Route::put('/invoices/{id}/void', [InvoiceController::class, 'voidInvoice'])
         ->middleware('module:invoices,update')
         ->name('invoices.void');
+    Route::get('/ledger', [LedgerController::class, 'index'])
+        ->name('ledger.index');
+    Route::get('/ledger/export/csv', [LedgerController::class, 'exportCsv'])
+        ->name('ledger.export.csv');
+    Route::get('/ledger/export/pdf/preview', [LedgerController::class, 'previewPdf'])
+        ->name('ledger.preview.pdf');
+    Route::get('/ledger/export/pdf', [LedgerController::class, 'exportPdf'])
+        ->name('ledger.export.pdf');
 
     $products = Route::resource('products', ProductController::class)
         ->middleware('module:products,read');

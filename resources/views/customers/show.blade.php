@@ -220,6 +220,13 @@
         'label' => 'View Invoices',
         'href' => route('invoices.index', ['customer_id' => $customer->id]),
     ]);
+    if ($currentUser?->canViewRecordFinance()) {
+        $customerMoreActions->push([
+            'type' => 'link',
+            'label' => 'Ledger',
+            'href' => route('ledger.index', ['customer_id' => $customer->id]),
+        ]);
+    }
     if ($paymentsIndexHref) {
         $customerMoreActions->push([
             'type' => 'link',

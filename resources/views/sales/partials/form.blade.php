@@ -90,6 +90,50 @@
         }
     }
 
+    $saleStockSummaryByProduct = collect($saleStockAssets ?? collect())
+        ->groupBy('product_id')
+        ->map(function ($stockAssets) {
+            $available = $stockAssets->where('asset_status', \App\Models\Asset::STATUS_AVAILABLE_FOR_SALE)->count();
+            $reserved = $stockAssets->whereIn('asset_status', [\App\Models\Asset::STATUS_RESERVED_FOR_SALE, \App\Models\Asset::STATUS_RESERVED])->count();
+            $sold = $stockAssets->where('asset_status', \App\Models\Asset::STATUS_SOLD)->count();
+            $inTransit = $stockAssets->where('asset_status', \App\Models\Asset::STATUS_CONVERTED_TO_RENTAL)->count();
+
+            return [
+                'available' => $available,
+                'sold' => $sold,
+                'reserved' => $reserved,
+                'in_transit' => $inTransit,
+                'total' => $available + $sold + $reserved + $inTransit,
+            ];
+        });
+
+
+    collect($saleInventorySummaries ?? collect())->each(function ($inventory) use (&$saleStockSummaryByProduct) {
+        $productId = (int) ($inventory->product_id ?? 0);
+        if ($productId <= 0) {
+            return;
+        }
+
+        $existing = $saleStockSummaryByProduct->get($productId, [
+            'available' => 0,
+            'sold' => 0,
+            'reserved' => 0,
+            'in_transit' => 0,
+            'total' => 0,
+        ]);
+        $available = max((int) ($existing['available'] ?? 0), (int) ($inventory->available_count ?? 0));
+        $reserved = max((int) ($existing['reserved'] ?? 0), (int) ($inventory->reserved_count ?? 0));
+        $sold = (int) ($existing['sold'] ?? 0);
+        $inTransit = (int) ($existing['in_transit'] ?? 0);
+
+        $saleStockSummaryByProduct->put($productId, [
+            'available' => $available,
+            'sold' => $sold,
+            'reserved' => $reserved,
+            'in_transit' => $inTransit,
+            'total' => max((int) ($existing['total'] ?? 0), $available + $sold + $reserved + $inTransit),
+        ]);
+    });
     $productData = $products->map(fn ($product) => [
         'id' => $product->id,
         'name' => $product->name,
@@ -98,10 +142,19 @@
         'sku' => $product->sku,
         'product_code' => $product->product_code,
         'hsn_code' => $product->hsn_code,
+        'product_type' => $product->product_type,
+        'is_sellable' => (bool) ($product->is_sellable ?? false),
         'stock_mode' => $product->stock_mode,
         'stock_mode_label' => $product->stockModeLabel(),
         'total_quantity' => (int) ($product->total_quantity ?? 0),
         'available_quantity' => (int) ($product->available_quantity ?? 0),
+        'sale_stock_summary' => $saleStockSummaryByProduct->get($product->id, [
+            'available' => (int) ($product->available_quantity ?? 0),
+            'sold' => max((int) ($product->total_quantity ?? 0) - (int) ($product->available_quantity ?? 0), 0),
+            'reserved' => 0,
+            'in_transit' => 0,
+            'total' => (int) ($product->total_quantity ?? 0),
+        ]),
         'sale_price' => (float) ($product->sale_price ?? 0),
         'image_url' => $product->product_image_url,
         'tax_percentage' => $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_CGST_SGST
@@ -124,6 +177,13 @@
             $asset->product?->name,
             $asset->warehouse?->name,
         ]))),
+    ])->values();
+    $warehouseData = collect($warehouses ?? collect())->map(fn ($warehouse) => [
+        'id' => $warehouse->id,
+        'name' => $warehouse->name,
+        'city' => $warehouse->city,
+        'state' => $warehouse->state,
+        'label' => trim(implode(' - ', array_filter([$warehouse->name, $warehouse->city]))),
     ])->values();
 
 @endphp
@@ -341,13 +401,29 @@
     }
     .sales-stock-popup.is-open { display:flex; }
     .sales-stock-popup-panel {
-        width:min(1040px, calc(100vw - 32px)); height:min(86vh, 820px); overflow:hidden;
-        border:1px solid #dbe3ef; border-radius:18px; background:#fff; box-shadow:0 28px 80px rgba(15,23,42,.28);
-        display:grid; grid-template-rows:auto minmax(0, 1fr);
+        width:min(680px, calc(100vw - 32px)); max-height:min(88vh, 720px); overflow:hidden;
+        border:1px solid #dbe3ef; border-radius:18px; background:#fff; box-shadow:0 24px 70px rgba(15,23,42,.24);
+        display:block;
     }
-    .sales-stock-popup-head { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; border-bottom:1px solid #e2e8f0; }
-    .sales-stock-popup-head strong { color:#0f172a; font-size:16px; }
-    .sales-stock-popup-frame { width:100%; height:100%; border:0; background:#f8fafc; }
+    .sales-stock-popup-panel form { display:grid; grid-template-rows:auto minmax(0, 1fr) auto; max-height:min(88vh, 720px); }
+    .sales-stock-popup-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:14px 16px; border-bottom:1px solid #e2e8f0; }
+    .sales-stock-popup-head strong { display:block; color:#0f172a; font-size:17px; line-height:1.2; }
+    .sales-stock-popup-head span { display:block; margin-top:3px; color:#64748b; font-size:12px; }
+    .sales-stock-close { width:34px; height:34px; border-radius:999px; border:1px solid #dbe3ef; background:#fff; color:#334155; font-size:22px; line-height:1; cursor:pointer; }
+    .sales-stock-modal-body { overflow:auto; padding:14px 16px; display:grid; gap:12px; background:#f8fafc; }
+    .sales-stock-context { display:flex; align-items:center; gap:10px; padding:10px; border:1px solid #dbe3ef; border-radius:14px; background:#fff; }
+    .sales-stock-context strong { display:block; color:#0f172a; font-size:14px; }
+    .sales-stock-context span { display:block; color:#64748b; font-size:12px; margin-top:2px; }
+    .sales-stock-modal-summary { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px; }
+    .sales-stock-modal-summary span { display:block; border:1px solid #dbe3ef; border-radius:12px; background:#fff; padding:8px 10px; color:#64748b; font-size:11px; font-weight:800; text-transform:uppercase; }
+    .sales-stock-modal-summary strong { display:block; margin-top:2px; color:#0f172a; font-size:16px; }
+    .sales-stock-modal-grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px 12px; }
+    .sales-stock-modal-grid .sales-field input,
+    .sales-stock-modal-grid .sales-field select { min-height:40px; }
+    .sales-stock-modal-notes { grid-column:1 / -1; }
+    .sales-stock-modal-notes textarea { min-height:66px; }
+    .sales-stock-modal-error { border:1px solid #fecaca; border-radius:12px; background:#fff1f2; color:#b91c1c; padding:9px 10px; font-size:12px; font-weight:700; line-height:1.4; }
+    .sales-stock-modal-footer { display:flex; justify-content:flex-end; gap:8px; padding:12px 16px; border-top:1px solid #e2e8f0; background:#fff; }
     .sales-item-head {
         display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;
     }
@@ -1525,11 +1601,75 @@
 </div>
 <div class="sales-stock-popup" id="saleStockPopup" aria-hidden="true">
     <div class="sales-stock-popup-panel" role="dialog" aria-modal="true" aria-labelledby="saleStockPopupTitle">
-        <div class="sales-stock-popup-head">
-            <strong id="saleStockPopupTitle">Add Sale Stock</strong>
-            <button type="button" class="sales-btn-light" data-close-sale-stock-popup>Close</button>
-        </div>
-        <iframe class="sales-stock-popup-frame" id="saleStockPopupFrame" title="Add Sale Stock"></iframe>
+        <form id="saleStockModalForm" data-sale-stock-modal-form novalidate>
+            <input type="hidden" name="asset_stage" value="new_stock">
+            <input type="hidden" name="asset_status" value="available_for_sale">
+            <input type="hidden" name="asset_name" id="saleStockAssetName">
+            <input type="hidden" name="product_id" id="saleStockProductId">
+            <div class="sales-stock-popup-head">
+                <div>
+                    <strong id="saleStockPopupTitle">Add Sale Stock</strong>
+                    <span id="saleStockProductSubtitle">Select a sale product first.</span>
+                </div>
+                <button type="button" class="sales-stock-close" data-close-sale-stock-popup aria-label="Close Add Sale Stock modal">&times;</button>
+            </div>
+            <div class="sales-stock-modal-body">
+                <div class="sales-stock-context" id="saleStockProductContext">
+                    <div class="sales-product-thumb" id="saleStockProductThumb">P</div>
+                    <div>
+                        <strong id="saleStockProductName">Product not selected</strong>
+                        <span id="saleStockProductMeta">Choose a product line before adding stock.</span>
+                    </div>
+                </div>
+                <div class="sales-stock-modal-summary" aria-label="Current sale stock summary">
+                    <span>Available <strong id="saleStockCurrentAvailable">0</strong></span>
+                    <span>Total <strong id="saleStockCurrentTotal">0</strong></span>
+                    <span>Sold <strong id="saleStockCurrentSold">0</strong></span>
+                </div>
+                <div class="sales-stock-modal-error" id="saleStockModalError" hidden></div>
+                <div class="sales-stock-modal-grid">
+                    <div class="sales-field">
+                        <label for="saleStockWarehouseId">Warehouse <span style="color:#dc2626;">*</span></label>
+                        <select name="warehouse_id" id="saleStockWarehouseId" required></select>
+                    </div>
+                    <div class="sales-field">
+                        <label for="saleStockSerialNumber">Serial Number <span style="color:#dc2626;">*</span></label>
+                        <input type="text" name="serial_number" id="saleStockSerialNumber" autocomplete="off" required>
+                    </div>
+                    <div class="sales-field">
+                        <label for="saleStockBarcodeValue">Barcode</label>
+                        <input type="text" name="barcode_value" id="saleStockBarcodeValue" autocomplete="off">
+                    </div>
+                    <div class="sales-field">
+                        <label for="saleStockConditionStatus">Condition</label>
+                        <select name="condition_status" id="saleStockConditionStatus">
+                            <option value="new">New</option>
+                            <option value="good">Good</option>
+                            <option value="fair">Fair</option>
+                            <option value="needs_repair">Needs repair</option>
+                            <option value="damaged">Damaged</option>
+                        </select>
+                    </div>
+                    <div class="sales-field">
+                        <label for="saleStockPurchaseDate">Purchase Date</label>
+                        <input type="date" name="purchase_date" id="saleStockPurchaseDate">
+                    </div>
+                    <div class="sales-field">
+                        <label for="saleStockPurchaseCost">Purchase Cost</label>
+                        <input type="number" min="0" step="0.01" name="purchase_cost" id="saleStockPurchaseCost" placeholder="0.00">
+                    </div>
+                    <div class="sales-field sales-stock-modal-notes">
+                        <label for="saleStockNotes">Notes</label>
+                        <textarea name="notes" id="saleStockNotes" rows="2" placeholder="Optional stock note"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="sales-stock-modal-footer">
+                <button type="button" class="sales-btn-light" data-close-sale-stock-popup>Cancel</button>
+                <button type="submit" class="sales-btn-light" data-sale-stock-submit="add_another">Save & Add Another</button>
+                <button type="submit" class="sales-btn" data-sale-stock-submit="save">Save Stock</button>
+            </div>
+        </form>
     </div>
 </div>
 <div class="sale-mobile-sticky-footer" id="saleMobileStickyFooter" data-current-step="customer">
@@ -1552,6 +1692,8 @@
         const organizationState = @json($organizationState);
         const partnerClientEndpointTemplate = @json($businessPartnerFlowAvailable ? route('sales.business-partners.actual-clients', ['business_partner' => '__PARTNER__']) : null);
         const addSaleStockUrlTemplate = @json(route('assets.create', ['asset_stage' => 'new_stock', 'product_id' => '__PRODUCT__']));
+        const saleStockStoreUrl = @json(route('assets.store'));
+        const warehouses = @json($warehouseData);
         const referralQuickStoreUrl = @json(route('referral-sources.quick-store'));
 
         const customerTypeSelect = document.getElementById('customer_type');
@@ -1601,6 +1743,26 @@
         const saleReferralQuickNotes = document.getElementById('saleReferralQuickNotes');
         const saleReferralQuickError = document.getElementById('saleReferralSourceModalError');
         const saleReferralQuickSave = document.querySelector('[data-save-sale-referral-source]');
+        const saleStockModal = document.getElementById('saleStockPopup');
+        const saleStockModalForm = document.getElementById('saleStockModalForm');
+        const saleStockProductId = document.getElementById('saleStockProductId');
+        const saleStockAssetName = document.getElementById('saleStockAssetName');
+        const saleStockProductSubtitle = document.getElementById('saleStockProductSubtitle');
+        const saleStockProductThumb = document.getElementById('saleStockProductThumb');
+        const saleStockProductName = document.getElementById('saleStockProductName');
+        const saleStockProductMeta = document.getElementById('saleStockProductMeta');
+        const saleStockCurrentAvailable = document.getElementById('saleStockCurrentAvailable');
+        const saleStockCurrentTotal = document.getElementById('saleStockCurrentTotal');
+        const saleStockCurrentSold = document.getElementById('saleStockCurrentSold');
+        const saleStockWarehouseId = document.getElementById('saleStockWarehouseId');
+        const saleStockSerialNumber = document.getElementById('saleStockSerialNumber');
+        const saleStockBarcodeValue = document.getElementById('saleStockBarcodeValue');
+        const saleStockConditionStatus = document.getElementById('saleStockConditionStatus');
+        const saleStockPurchaseDate = document.getElementById('saleStockPurchaseDate');
+        const saleStockPurchaseCost = document.getElementById('saleStockPurchaseCost');
+        const saleStockNotes = document.getElementById('saleStockNotes');
+        const saleStockModalError = document.getElementById('saleStockModalError');
+        let activeSaleStockProductId = null;
         const summaryEls = {
             customer: document.getElementById('saleSummaryCustomer'),
             city: document.getElementById('saleSummaryCity'),
@@ -2744,16 +2906,19 @@
                 return null;
             }
 
-            const trackedAvailable = assets.filter(function (asset) {
-                return parseInt(asset.product_id || 0, 10) === parseInt(product.id || 0, 10);
-            }).length;
             const usesTrackedSale = ['tracked_sale', 'tracked_both'].includes(String(product.stock_mode || ''));
-            const available = usesTrackedSale ? trackedAvailable : Math.max(parseInt(product.available_quantity || 0, 10), 0);
-            const total = Math.max(parseInt(product.total_quantity || 0, 10), available);
-            // Reserved and in-transit sale stock counts are not exposed to this form yet; keep them visible as zero until backend data is available.
-            const reserved = 0;
-            const inTransit = 0;
-            const sold = Math.max(total - available - reserved - inTransit, 0);
+            const tracked = product.sale_stock_summary || {};
+            const available = usesTrackedSale
+                ? Math.max(parseInt(tracked.available ?? 0, 10), 0)
+                : Math.max(parseInt(product.available_quantity || 0, 10), 0);
+            const reserved = usesTrackedSale ? Math.max(parseInt(tracked.reserved ?? 0, 10), 0) : 0;
+            const inTransit = usesTrackedSale ? Math.max(parseInt(tracked.in_transit ?? 0, 10), 0) : 0;
+            const sold = usesTrackedSale
+                ? Math.max(parseInt(tracked.sold ?? 0, 10), 0)
+                : Math.max(parseInt(product.total_quantity || 0, 10) - available, 0);
+            const total = usesTrackedSale
+                ? Math.max(parseInt(tracked.total ?? 0, 10), available + sold + reserved + inTransit)
+                : Math.max(parseInt(product.total_quantity || 0, 10), available);
 
             return { available, sold, reserved, inTransit, total };
         }
@@ -2785,7 +2950,7 @@
             products.forEach(function (product) {
                 const search = [product.name, product.brand, product.model_name, product.sku, product.product_code].filter(Boolean).join(' ');
                 const meta = compactProductMeta(product);
-                html += '<option value="' + product.id + '" data-search="' + escapeHtml(search) + '" data-product-name="' + escapeHtml(product.name) + '" data-product-image-url="' + escapeHtml(product.image_url || '') + '" data-product-brand="' + escapeHtml(product.brand || '') + '" data-product-model="' + escapeHtml(product.model_name || '') + '" data-product-sku="' + escapeHtml(product.sku || '') + '" data-product-code="' + escapeHtml(product.product_code || '') + '" data-product-meta="' + escapeHtml(meta) + '" data-availability-label="Available: ' + escapeHtml(product.available_quantity ?? 0) + '"' + (selectedProductId === parseInt(product.id, 10) ? ' selected' : '') + '>' + escapeHtml(product.name) + '</option>';
+                html += '<option value="' + product.id + '" data-search="' + escapeHtml(search) + '" data-product-name="' + escapeHtml(product.name) + '" data-product-image-url="' + escapeHtml(product.image_url || '') + '" data-product-brand="' + escapeHtml(product.brand || '') + '" data-product-model="' + escapeHtml(product.model_name || '') + '" data-product-sku="' + escapeHtml(product.sku || '') + '" data-product-code="' + escapeHtml(product.product_code || '') + '" data-product-meta="' + escapeHtml(meta) + '" data-availability-label="Available: ' + escapeHtml((saleStockSummary(product)?.available) ?? 0) + '"' + (selectedProductId === parseInt(product.id, 10) ? ' selected' : '') + '>' + escapeHtml(product.name) + '</option>';
             });
 
             return html;
@@ -2852,6 +3017,8 @@
 
                 const row = document.createElement('div');
                 row.className = 'sales-item-card is-compact';
+                row.setAttribute('data-sale-product-line', '');
+                row.setAttribute('data-sale-line-index', String(index));
                 row.innerHTML = `
                     <div class="sales-item-head">
                         <div class="sales-item-title">
@@ -2867,7 +3034,7 @@
                         <div class="sales-product-first-row">
                             <div class="sales-field">
                                 <label for="sale_item_product_${index}">Product <span style="color:#dc2626;">*</span></label>
-                                <select name="sale_items[${index}][product_id]" id="sale_item_product_${index}" data-searchable-select data-search-placeholder="Search product by name, brand, model, SKU, or code">
+                                <select name="sale_items[${index}][product_id]" id="sale_item_product_${index}" data-sale-product-select data-searchable-select data-search-placeholder="Search product by name, brand, model, SKU, or code">
                                     ${productOptionsHtml(item.product_id ? parseInt(item.product_id, 10) : null)}
                                 </select>
                             </div>
@@ -2877,7 +3044,7 @@
                                     ${assetOptionsHtml(item, index)}
                                 </select>
                             </div>
-                            <button type="button" class="sales-add-stock-btn" data-add-sale-stock-link data-stock-url="${escapeHtml(addStockHref)}">
+                            <button type="button" class="sales-add-stock-btn" data-add-sale-stock-link data-line-index="${index}" data-product-id="${product ? escapeHtml(product.id) : ''}" data-stock-url="${escapeHtml(addStockHref)}">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
                                 Add Stock
                             </button>
@@ -3241,28 +3408,203 @@
                     }
                 });
         }
-        function openSaleStockPopup(url) {
-            const modal = document.getElementById('saleStockPopup');
-            const frame = document.getElementById('saleStockPopupFrame');
-            if (!modal || !frame || !url) {
-                if (url) window.open(url, '_blank', 'noopener');
+        function saleStockWarehouseOptionsHtml(selectedWarehouseId) {
+            let html = '<option value="">Select warehouse</option>';
+            warehouses.forEach(function (warehouse) {
+                html += '<option value="' + escapeHtml(warehouse.id) + '"' + (parseInt(selectedWarehouseId || 0, 10) === parseInt(warehouse.id, 10) ? ' selected' : '') + '>' + escapeHtml(warehouse.label || warehouse.name || ('Warehouse #' + warehouse.id)) + '</option>';
+            });
+            return html;
+        }
+
+        function setSaleStockError(message) {
+            if (!saleStockModalError) return;
+            saleStockModalError.textContent = message || '';
+            saleStockModalError.hidden = !message;
+        }
+
+        function resetSaleStockModalFields(keepWarehouse) {
+            if (!keepWarehouse && saleStockWarehouseId) {
+                saleStockWarehouseId.value = warehouses[0]?.id || '';
+            }
+            if (saleStockSerialNumber) saleStockSerialNumber.value = '';
+            if (saleStockBarcodeValue) saleStockBarcodeValue.value = '';
+            if (saleStockConditionStatus) saleStockConditionStatus.value = 'new';
+            if (saleStockPurchaseDate) saleStockPurchaseDate.value = '';
+            if (saleStockPurchaseCost) saleStockPurchaseCost.value = '';
+            if (saleStockNotes) saleStockNotes.value = '';
+            setSaleStockError('');
+        }
+
+        function renderSaleStockProductContext(product) {
+            const summary = saleStockSummary(product) || { available: 0, sold: 0, total: 0 };
+            if (saleStockProductId) saleStockProductId.value = product?.id || '';
+            if (saleStockAssetName) saleStockAssetName.value = product?.name || '';
+            if (saleStockProductSubtitle) saleStockProductSubtitle.textContent = product ? [product.name, product.sku || product.product_code].filter(Boolean).join(' - ') : 'Select a sale product first.';
+            if (saleStockProductName) saleStockProductName.textContent = product?.name || 'Product not selected';
+            if (saleStockProductMeta) saleStockProductMeta.textContent = product ? compactProductMeta(product) || stockModeLabel(product) || 'Sale product' : 'Choose a product line before adding stock.';
+            if (saleStockProductThumb) {
+                saleStockProductThumb.innerHTML = product?.image_url
+                    ? '<img src="' + escapeHtml(product.image_url) + '" alt="" onerror="this.parentElement.textContent=\'' + escapeHtml(productInitial(product)) + '\'">'
+                    : escapeHtml(productInitial(product));
+            }
+            if (saleStockCurrentAvailable) saleStockCurrentAvailable.textContent = summary.available ?? 0;
+            if (saleStockCurrentTotal) saleStockCurrentTotal.textContent = summary.total ?? 0;
+            if (saleStockCurrentSold) saleStockCurrentSold.textContent = summary.sold ?? 0;
+        }
+
+        function resolveSaleStockProduct(button) {
+            const row = button?.closest('[data-sale-product-line], .sales-item-card');
+            const productSelect = row?.querySelector('[data-sale-product-select], select[name*="[product_id]"]');
+            const inferredLineIndex = row ? Array.from(saleItemsList.children).indexOf(row) : -1;
+            const lineIndex = Number.parseInt(button?.dataset?.lineIndex ?? row?.dataset?.saleLineIndex ?? inferredLineIndex, 10);
+            const stockUrlProductMatch = String(button?.dataset?.stockUrl || '').match(/product_id=([^&]+)/);
+            const candidateIds = [
+                productSelect?.value,
+                selectedOption(productSelect)?.value,
+                Number.isInteger(lineIndex) ? saleItems[lineIndex]?.product_id : null,
+                button?.dataset?.productId,
+                stockUrlProductMatch ? decodeURIComponent(stockUrlProductMatch[1]) : null,
+            ];
+
+            for (const candidateId of candidateIds) {
+                const normalizedProductId = Number.parseInt(candidateId || '', 10);
+                if (Number.isInteger(normalizedProductId) && productMap.has(normalizedProductId)) {
+                    return productMap.get(normalizedProductId);
+                }
+            }
+
+            const visibleProductName = [
+                selectedOption(productSelect)?.getAttribute('data-product-name'),
+                selectedOption(productSelect)?.textContent,
+                row?.querySelector('.sales-product-preview strong')?.textContent,
+            ].filter(Boolean).map(function (value) { return String(value).trim().toLowerCase(); }).find(Boolean);
+
+            return visibleProductName
+                ? products.find(function (product) { return String(product.name || '').trim().toLowerCase() === visibleProductName; }) || null
+                : null;
+        }
+
+        function isSaleStockEligibleProduct(product) {
+            if (!product) {
+                return false;
+            }
+
+            const productType = String(product.product_type || '').toLowerCase();
+            const stockMode = String(product.stock_mode || '').toLowerCase();
+
+            return product.is_sellable === true
+                || ['sellable', 'both'].includes(productType)
+                || ['tracked_sale', 'tracked_both'].includes(stockMode);
+        }
+
+        function openSaleStockPopup(productOrId) {
+            const product = productOrId instanceof HTMLElement
+                ? resolveSaleStockProduct(productOrId)
+                : (typeof productOrId === 'object' && productOrId !== null
+                    ? productOrId
+                    : (productOrId ? productMap.get(parseInt(productOrId, 10)) : null));
+            if (!saleStockModal || !saleStockModalForm || !product) {
+                alert('Select a sale product before adding stock.');
                 return;
             }
-            frame.src = url;
-            modal.classList.add('is-open');
-            modal.setAttribute('aria-hidden', 'false');
+            if (!isSaleStockEligibleProduct(product)) {
+                alert('This product is not enabled for sale stock.');
+                return;
+            }
+
+            activeSaleStockProductId = parseInt(product.id, 10);
+            if (saleStockWarehouseId) {
+                saleStockWarehouseId.innerHTML = saleStockWarehouseOptionsHtml(saleStockWarehouseId.value || warehouses[0]?.id || '');
+            }
+            renderSaleStockProductContext(product);
+            resetSaleStockModalFields(false);
+            saleStockModal.classList.add('is-open');
+            saleStockModal.setAttribute('aria-hidden', 'false');
             document.body.classList.add('modal-open');
+            window.setTimeout(function () { saleStockSerialNumber?.focus(); }, 40);
         }
 
         function closeSaleStockPopup() {
-            const modal = document.getElementById('saleStockPopup');
-            const frame = document.getElementById('saleStockPopupFrame');
-            if (!modal) return;
-            modal.classList.remove('is-open');
-            modal.setAttribute('aria-hidden', 'true');
+            if (!saleStockModal) return;
+            saleStockModal.classList.remove('is-open');
+            saleStockModal.setAttribute('aria-hidden', 'true');
             document.body.classList.remove('modal-open');
-            if (frame) frame.src = 'about:blank';
+            activeSaleStockProductId = null;
+            setSaleStockError('');
         }
+
+        function applyCreatedSaleStock(payload) {
+            if (!payload?.asset) return;
+            const asset = payload.asset;
+            const assetId = parseInt(asset.id, 10);
+            if (!assetMap.has(assetId)) {
+                assets.push(asset);
+            } else {
+                const existingIndex = assets.findIndex(function (candidate) { return parseInt(candidate.id, 10) === assetId; });
+                if (existingIndex >= 0) assets[existingIndex] = asset;
+            }
+            assetMap.set(assetId, asset);
+
+            const product = productMap.get(parseInt(asset.product_id, 10));
+            if (product && payload.sale_stock_summary) {
+                product.sale_stock_summary = payload.sale_stock_summary;
+                product.available_quantity = payload.sale_stock_summary.available ?? product.available_quantity;
+                product.total_quantity = payload.sale_stock_summary.total ?? product.total_quantity;
+            }
+            renderSaleItems();
+            updateSaleSummary();
+        }
+
+        function saleStockValidationMessage(payload) {
+            const errors = payload?.errors || {};
+            const first = Object.keys(errors).map(function (key) { return errors[key]?.[0]; }).find(Boolean);
+            return first || payload?.message || 'Unable to add sale stock.';
+        }
+
+        saleStockModalForm?.addEventListener('submit', function (event) {
+            event.preventDefault();
+            const submitter = event.submitter;
+            const mode = submitter?.dataset.saleStockSubmit || 'save';
+            const formData = new FormData(saleStockModalForm);
+            formData.set('save_action', mode);
+            setSaleStockError('');
+            Array.from(saleStockModalForm.querySelectorAll('button')).forEach(function (button) { button.disabled = true; });
+
+            fetch(saleStockStoreUrl, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || document.querySelector('input[name="_token"]')?.value || '',
+                },
+                body: formData,
+            })
+                .then(function (response) {
+                    return response.json().catch(function () { return {}; }).then(function (payload) {
+                        if (!response.ok) {
+                            throw payload;
+                        }
+                        return payload;
+                    });
+                })
+                .then(function (payload) {
+                    applyCreatedSaleStock(payload);
+                    const product = activeSaleStockProductId ? productMap.get(activeSaleStockProductId) : null;
+                    renderSaleStockProductContext(product);
+                    if (mode === 'add_another') {
+                        resetSaleStockModalFields(true);
+                        saleStockSerialNumber?.focus();
+                        return;
+                    }
+                    closeSaleStockPopup();
+                })
+                .catch(function (payload) {
+                    setSaleStockError(saleStockValidationMessage(payload));
+                })
+                .finally(function () {
+                    Array.from(saleStockModalForm.querySelectorAll('button')).forEach(function (button) { button.disabled = false; });
+                });
+        });
         document.addEventListener('click', function (event) {
             const openReferral = event.target.closest('[data-open-sale-referral-modal]');
             if (openReferral) {
@@ -3288,7 +3630,7 @@
             const addStockButton = event.target.closest('[data-add-sale-stock-link]');
             if (addStockButton) {
                 event.preventDefault();
-                openSaleStockPopup(addStockButton.dataset.stockUrl || addStockButton.getAttribute('href'));
+                openSaleStockPopup(addStockButton);
                 return;
             }
 

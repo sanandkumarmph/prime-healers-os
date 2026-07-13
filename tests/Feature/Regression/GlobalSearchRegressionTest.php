@@ -109,4 +109,42 @@ class GlobalSearchRegressionTest extends TestCase
             ->assertSee('Visible Customer')
             ->assertDontSee('Hidden Customer');
     }
+    public function test_predictive_search_suggestions_are_scoped_and_compact(): void
+    {
+        $organizationA = TestData::organization(['name' => 'Org A']);
+        $organizationB = TestData::organization(['name' => 'Org B']);
+        $this->actingAs(TestData::user($organizationA));
+
+        Customer::create([
+            'organization_id' => $organizationA->id,
+            'customer_type' => 'Individual',
+            'name' => 'Aarav Sharma',
+            'first_name' => 'Aarav',
+            'phone' => PhoneNumber::normalize('9876500400', '+91'),
+            'email' => 'aarav@example.com',
+        ]);
+
+        Customer::create([
+            'organization_id' => $organizationB->id,
+            'customer_type' => 'Individual',
+            'name' => 'Aarav Hidden',
+            'first_name' => 'Aarav',
+            'phone' => PhoneNumber::normalize('9876500499', '+91'),
+            'email' => 'hidden-aarav@example.com',
+        ]);
+
+        $response = $this->getJson(route('search.suggestions', [
+            'q' => 'aar',
+            'type' => 'customer',
+        ]));
+
+        $response->assertOk()
+            ->assertJsonFragment([
+                'type' => 'customer',
+                'title' => 'Aarav Sharma',
+            ])
+            ->assertJsonMissing([
+                'title' => 'Aarav Hidden',
+            ]);
+    }
 }

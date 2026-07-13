@@ -253,6 +253,7 @@
         ]);
     }
 
+
     if ($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true)) {
         $rentalQuickActions->push([
             'type' => 'link',
@@ -399,6 +400,7 @@
         ]);
     }
 
+
     if ($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true)) {
         $mobilePrimaryActions->push([
             'type' => 'link',
@@ -430,6 +432,17 @@
         'label' => 'Back to Rentals',
         'href' => route('rentals.index'),
     ]);
+
+    if (auth()->user()?->canViewRecordFinance()) {
+        $pushMoreAction([
+            'type' => 'link',
+            'label' => 'Ledger',
+            'href' => route('ledger.index', ['rental_id' => $rental->id]),
+        ]);
+    }
+
+
+
 
     if ($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true)) {
         $pushMoreAction([
@@ -703,6 +716,7 @@
             'icon' => 'invoice',
         ]);
     }
+
     if ($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true)) {
         $mobileHeroActions->push([
             'type' => 'link',

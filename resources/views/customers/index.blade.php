@@ -57,11 +57,11 @@
 @endphp
 
 <style>
-    .customers-page { padding: 10px 0 24px; display: grid; gap: 14px; width: 100%; max-width: 1280px; min-width: 0; margin: 0 auto; box-sizing: border-box; }
-    .customers-shell { display: grid; gap: 16px; min-width: 0; }
-    .customers-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
-    .customers-title h1 { margin: 10px 0 0; font-size: 30px; letter-spacing:-0.04em; color: var(--ph-color-text); font-family: var(--ph-font-heading); }
-    .customers-title p { margin: 8px 0 0; color: var(--ph-color-text-soft); font-size: 13px; line-height:1.55; max-width:720px; }
+    .customers-page { padding: 6px 0 18px; display: grid; gap: 10px; width: 100%; max-width: 1320px; min-width: 0; margin: 0 auto; box-sizing: border-box; }
+    .customers-shell { display: grid; gap: 12px; min-width: 0; }
+    .customers-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+    .customers-title h1 { margin: 4px 0 0; font-size: 28px; line-height:1.05; letter-spacing:-0.04em; color: var(--ph-color-text); font-family: var(--ph-font-heading); }
+    .customers-title p { margin: 5px 0 0; color: var(--ph-color-text-soft); font-size: 12px; line-height:1.35; max-width:620px; }
     .customers-actions { display: flex; gap: 8px; flex-wrap: wrap; }
     .ops-card {
         background: var(--ph-color-surface);
@@ -71,7 +71,7 @@
         min-width: 0;
         max-width: 100%;
     }
-    .ops-card-body { padding: 18px; min-width: 0; }
+    .ops-card-body { padding: 14px; min-width: 0; }
     .desktop-filter-toggle summary {
         list-style: none;
         cursor: pointer;
@@ -123,10 +123,10 @@
     }
     .desktop-search-shell {
         display:grid;
-        gap:10px;
-        padding:12px;
+        gap:8px;
+        padding:10px;
         border:1px solid #dbe3ef;
-        border-radius:16px;
+        border-radius:14px;
         background:linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
         box-shadow:var(--ph-shadow-soft);
     }
@@ -152,7 +152,7 @@
     }
     .ops-field { display: grid; gap: 6px; }
     .ops-field label {
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 700;
         color: var(--ph-color-text-soft);
         text-transform: uppercase;
@@ -162,7 +162,8 @@
     .ops-field input,
     .ops-field select {
         width: 100%;
-        padding: 10px 12px;
+        min-height: 40px;
+        padding: 8px 11px;
         border-radius: 10px;
         border: 1px solid var(--ph-color-border-strong);
         background: #fff;
@@ -177,8 +178,8 @@
     }
     .summary-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
+        gap: 10px;
     }
     .summary-box {
         display: block;
@@ -192,7 +193,7 @@
     }
     .summary-box span {
         display: block;
-        font-size: 11px;
+        font-size: 10px;
         text-transform: uppercase;
         letter-spacing: .04em;
         color: var(--ph-color-text-soft);
@@ -201,7 +202,7 @@
         font-family: var(--ph-font-heading);
     }
     .summary-box strong {
-        font-size: 20px;
+        font-size: 18px;
         color: var(--ph-color-text);
         line-height: 1;
         font-family: var(--ph-font-heading);
@@ -221,14 +222,14 @@
     }
     .customers-table th,
     .customers-table td {
-        padding: 12px 10px;
+        padding: 9px 8px;
         border-bottom: 1px solid var(--ph-color-border);
-        vertical-align: top;
+        vertical-align: middle;
         text-align: left;
-        font-size: 13px;
+        font-size: 12px;
     }
     .customers-table th {
-        font-size: 11px;
+        font-size: 10px;
         text-transform: uppercase;
         letter-spacing: .04em;
         color: var(--ph-color-text-soft);
@@ -284,11 +285,11 @@
     .pill {
         display: inline-flex;
         align-items: center;
-        padding: 4px 9px;
+        padding: 3px 7px;
         border-radius: 999px;
         background: var(--ph-color-info-soft);
         color: var(--ph-color-primary);
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 700;
         text-decoration: none;
         white-space: nowrap;
@@ -297,8 +298,8 @@
         background: var(--ph-color-surface-soft);
         color: var(--ph-color-text-soft);
     }
-    .count-stack { display: flex; flex-wrap: wrap; gap: 6px; }
-    .action-row { display: flex; flex-wrap: wrap; gap: 6px; align-items:flex-start; }
+    .count-stack { display: flex; flex-wrap: wrap; gap: 4px; }
+    .action-row { display: flex; flex-wrap: nowrap; gap: 5px; align-items:center; }
     .customer-icon-action {
         width:34px;
         height:34px;
@@ -311,19 +312,19 @@
         text-decoration:none;
         box-shadow:var(--ph-shadow-soft);
     }
-    .customer-icon-action svg { width:15px; height:15px; }
+    .customer-icon-action svg { width:14px; height:14px; }
     .customer-icon-action.is-primary { background:var(--ph-color-primary); border-color:var(--ph-color-primary); color:#fff; }
     .customer-icon-action.is-whatsapp { background:var(--ph-color-success-soft); border-color:rgba(14,159,75,.18); color:var(--ph-color-success); }
     .customer-action-menu { position:relative; display:inline-block; }
     .customer-action-menu summary {
-        list-style:none; width:34px; height:34px; border-radius:12px; border:1px solid var(--ph-color-border);
+        list-style:none; width:30px; height:30px; border-radius:10px; border:1px solid var(--ph-color-border);
         background:#fff; color:var(--ph-color-text); display:grid; place-items:center; cursor:pointer; font-weight:900;
         box-shadow:var(--ph-shadow-soft);
     }
     .customer-action-menu summary::-webkit-details-marker { display:none; }
     .customer-action-menu[open] summary { background:var(--ph-color-info-soft); color:var(--ph-color-primary); border-color:rgba(23,119,189,.18); }
     .customer-action-panel {
-        position:absolute; right:0; top:40px; z-index:30; min-width:180px;
+        position:absolute; right:0; top:34px; z-index:30; min-width:170px;
         display:grid; gap:6px; padding:8px; border:1px solid var(--ph-color-border); border-radius:14px;
         background:#fff; box-shadow:var(--ph-shadow-float);
     }
@@ -349,9 +350,9 @@
     .status-tag {
         display: inline-flex;
         align-items: center;
-        padding: 4px 9px;
+        padding: 3px 7px;
         border-radius: 999px;
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: .03em;
@@ -367,11 +368,11 @@
         justify-content: space-between;
         align-items: center;
         gap: 10px;
-        margin-bottom: 12px;
+        margin-bottom: 8px;
     }
     .section-title h2 {
         margin: 0;
-        font-size: 20px;
+        font-size: 18px;
         letter-spacing:-0.02em;
         color: var(--ph-color-text);
         font-family: var(--ph-font-heading);
@@ -381,13 +382,68 @@
         color: var(--ph-color-text-soft);
         font-size: 12px;
     }
-    .pagination-wrap nav { margin-top: 6px; }
+    .customers-title .rx-eyebrow { font-size: 10px; padding: 3px 8px; min-height: 0; }
+    .customers-actions .ops-btn,
+    .customers-actions .ops-btn-light { min-height: 36px; padding: 7px 12px; }
+    .summary-box {
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr);
+        grid-template-areas: "icon label" "icon value" "icon note";
+        align-items: center;
+        column-gap: 10px;
+        min-height: 92px;
+        padding: 12px;
+        border-radius: 14px;
+    }
+    .summary-box .rn-summary-icon {
+        grid-area: icon;
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
+        display: inline-grid;
+        place-items: center;
+        margin: 0;
+    }
+    .summary-box .rn-summary-icon svg { width: 17px; height: 17px; }
+    .summary-box > span:not(.rn-summary-icon) {
+        grid-area: label;
+        display: block;
+        margin: 0;
+        font-size: 10px;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .summary-box strong {
+        grid-area: value;
+        font-size: 26px;
+        line-height: .95;
+        margin-top: 2px;
+    }
+    .summary-box small {
+        grid-area: note;
+        margin-top: 2px;
+        font-size: 11px;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .rn-table-shell .ops-card-body { padding: 12px 14px; }
+    .rn-customer-block { gap: 8px; align-items: center; }
+    .rn-customer-avatar { width: 34px; height: 34px; border-radius: 12px; font-size: 12px; }
+    .rn-name-stack { gap: 2px; }
+    .rn-name-stack .title { font-size: 13px; line-height: 1.2; }
+    .rn-name-stack .meta { font-size: 11px; line-height: 1.2; }
+    .rn-badge { min-height: 18px; padding: 2px 7px !important; font-size: 9px !important; }
+    .pagination-wrap nav { margin-top: 4px; }
     @media (max-width: 1200px) {
-        .customers-page { padding: 16px; }
+        .customers-page { padding: 10px; }
         .customers-table { min-width: 920px; }
     }
     @media (max-width: 820px) {
-        .customers-page { padding: 14px; }
+        .customers-page { padding: 10px; }
         .ops-form-grid { grid-template-columns: 1fr; }
         .customers-actions { width: 100%; }
     }
@@ -437,7 +493,7 @@
         }
         .mobile-customer-title span {
             color: var(--ph-color-text-soft);
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 700;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -465,8 +521,15 @@
             box-sizing: border-box;
         }
         .mobile-stat-strip {
-            display: none;
+            display: grid;
+            grid-auto-flow: column;
+            grid-auto-columns: minmax(108px, 1fr);
+            gap: 6px;
+            overflow-x: auto;
+            padding: 1px 1px 3px;
+            scrollbar-width: none;
         }
+        .mobile-stat-strip::-webkit-scrollbar { display: none; }
         .mobile-stat-strip a {
             display: grid;
             gap: 2px;
@@ -545,7 +608,7 @@
             background: #fff;
             color: var(--ph-color-text);
             text-decoration: none;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 800;
         }
         .mobile-chip.is-active { background: var(--ph-color-sidebar); color: #fff; border-color: var(--ph-color-sidebar); }
@@ -583,7 +646,7 @@
             min-height: 32px;
             padding: 6px 9px;
             border-radius: 10px;
-            font-size: 11px;
+            font-size: 10px;
         }
         .customer-mobile-list {
             display: grid;
@@ -660,7 +723,7 @@
         }
         .customer-mobile-city {
             color: #475569;
-            font-size: 11px;
+            font-size: 10px;
             line-height: 1.2;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -709,7 +772,7 @@
             <div class="customers-title">
                 <div class="rx-eyebrow">Customer CRM</div>
                 <h1>Customers</h1>
-                <p>Search, contact, and open customer-linked work from one clean list.</p>
+                <p>Search and manage customer records.</p>
             </div>
             <div class="customers-actions">
                 <a href="{{ route('customers.export.csv', $queryFor()) }}" class="ops-btn-light">Export CSV</a>
@@ -753,7 +816,7 @@
             <div class="mobile-customer-head">
                 <div class="mobile-customer-title">
                     <strong>Customers</strong>
-                    <span>{{ number_format($totalCustomers) }} Customers{{ $canReadRentals ? ' • ' . number_format($activeRentals) . ' Active Rentals' : '' }}</span>
+                    <span>{{ number_format($totalCustomers) }} Customers{{ $canReadRentals ? ' - ' . number_format($activeRentals) . ' Active Rentals' : '' }}</span>
                 </div>
                 @if($canCreateCustomers)
                     <a href="{{ route('customers.create') }}" class="ops-btn mobile-customer-add">+ Add</a>
@@ -822,7 +885,7 @@
                         <h3>Customer Filters</h3>
                         <p>Keep city, state, status, and date range controls easy to reach on mobile.</p>
                     </div>
-                    <button type="button" class="mobile-filter-sheet-close" data-mobile-sheet-close="customers-mobile-filters" aria-label="Close filters">×</button>
+                    <button type="button" class="mobile-filter-sheet-close" data-mobile-sheet-close="customers-mobile-filters" aria-label="Close filters">&times;</button>
                 </div>
                 <div class="mobile-filter-sheet-body">
                     <form method="GET" action="{{ route('customers.index') }}" class="mobile-sheet-form">
@@ -899,7 +962,7 @@
         </div>
 
         <details class="ops-card desktop-filter-card desktop-filter-toggle" data-filter-panel data-filter-panel-key="customers-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" @if($hasActiveFilters) open @endif>
-            <summary>Search &amp; Filters <span>{{ $hasActiveFilters ? 'Filters Active · ' . $activeFilterChips->count() : 'Expand advanced filters' }}</span></summary>
+            <summary>Search &amp; Filters <span>{{ $hasActiveFilters ? 'Filters Active - ' . $activeFilterChips->count() : 'Expand advanced filters' }}</span></summary>
             <div class="ops-card-body">
                 <form method="GET" action="{{ route('customers.index') }}" style="display:grid; gap:12px;">
                     <div class="ops-form-grid">
@@ -977,7 +1040,7 @@
                 </span>
                 <span>Active Rentals</span>
                 <strong>{{ number_format($activeRentals) }}</strong>
-                <small>Open rental workload from selected customers</small>
+                <small>Active rentals</small>
             </a>
             <a href="{{ route('rentals.index', $queryFor()) }}" class="summary-box rn-summary-link">
                 <span class="rn-summary-icon" aria-hidden="true">
@@ -985,7 +1048,7 @@
                 </span>
                 <span>Total Rentals</span>
                 <strong>{{ number_format($totalRentals) }}</strong>
-                <small>Full rental history tied to this filtered list</small>
+                <small>Rental history</small>
             </a>
             @endif
             @if($canReadSales)
@@ -995,7 +1058,7 @@
                 </span>
                 <span>Total Sales</span>
                 <strong>{{ number_format($totalSales) }}</strong>
-                <small>Sales linked to the visible customers</small>
+                <small>Sales</small>
             </a>
             @endif
             @if($canReadInvoices)
@@ -1005,7 +1068,7 @@
                 </span>
                 <span>Total Invoices</span>
                 <strong>{{ number_format($totalInvoices) }}</strong>
-                <small>Invoice volume for the current list</small>
+                <small>Invoices</small>
             </a>
             @endif
         </div>
@@ -1025,7 +1088,7 @@
                 <div class="section-title">
                     <div>
                         <h2>Customer List</h2>
-                        <p>Compact daily operations view with drilldowns into rentals, sales, and invoices.</p>
+                        <p>Manage customers, rentals, sales and invoices.</p>
                     </div>
                     <div class="bulk-actions">
                         <strong><span id="customerSelectedCount">0</span> selected</strong>
@@ -1047,7 +1110,7 @@
                                 $canReadRentals ? 'Rentals ' . number_format((int) ($customer->rentals_count ?? 0)) : null,
                                 $canReadSales ? 'Sales ' . number_format((int) ($customer->sales_count ?? 0)) : null,
                                 $canReadInvoices ? 'Invoices ' . number_format((int) ($customer->invoices_count ?? 0)) : null,
-                            ])->filter()->implode(' • ');
+                            ])->filter()->implode(' - ');
                             $communicationHref = \Illuminate\Support\Facades\Route::has('communication-center.index')
                                 ? route('communication-center.index', ['search' => $customer->phone ?: $customer->name])
                                 : null;
@@ -1104,7 +1167,7 @@
                                         </details>
                                     </div>
                                 </div>
-                                <div class="customer-mobile-city">{{ $customer->city ?: 'City not set' }}@if($customer->state) • {{ $customer->state }}@endif</div>
+                                <div class="customer-mobile-city">{{ $customer->city ?: 'City not set' }}@if($customer->state) - {{ $customer->state }}@endif</div>
                                 <div class="customer-mobile-metrics">{{ $mobileMetrics ?: 'No linked activity yet' }}</div>
                             </div>
                         </article>

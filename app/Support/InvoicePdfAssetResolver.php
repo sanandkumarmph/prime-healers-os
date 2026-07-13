@@ -6,6 +6,10 @@ use Illuminate\Support\Facades\Log;
 
 class InvoicePdfAssetResolver
 {
+    public function __construct(private readonly PdfImageDataUri $images)
+    {
+    }
+
     public function logoRelativePath(): string
     {
         $configured = collect((array) config('pdf.optimized_assets.logo', [
@@ -29,9 +33,22 @@ class InvoicePdfAssetResolver
         return asset($this->logoRelativePath());
     }
 
-    public function logoDataUri(): ?string
+    public function logoDataUri(?string $organizationLogoPath = null): ?string
     {
-        return $this->publicDataUri($this->logoRelativePath());
+        if (!$this->imagesEnabled()) {
+            return null;
+        }
+
+        if ($organizationLogoPath) {
+            $dataUri = $this->storageDataUri($organizationLogoPath, 'logo', false)
+                ?? $this->publicDataUri($organizationLogoPath, 'logo', false);
+
+            if ($dataUri) {
+                return $dataUri;
+            }
+        }
+
+        return $this->publicDataUri($this->logoRelativePath(), 'logo');
     }
 
     public function qrDataUri(?string $relativePath, bool $forBulk = false): ?string
@@ -49,60 +66,107 @@ class InvoicePdfAssetResolver
 
     public function signatureDataUri(?string $relativePath): ?string
     {
-        return $this->storageDataUri($relativePath, 'signature');
+        return $this->storageDataUri($relativePath, 'signature', false);
     }
 
-    public function publicDataUri(?string $relativePath): ?string
+    public function publicDataUri(?string $relativePath, string $kind = 'public', bool $respectSizeLimit = true): ?string
     {
-        if (!$relativePath) {
+        if (!$this->imagesEnabled() || !$relativePath) {
             return null;
         }
 
-        $absolutePath = public_path(ltrim($relativePath, '/'));
+        $path = trim(str_replace('\\', '/', (string) $relativePath));
 
-        return $this->dataUriForPath($absolutePath, 'public');
+        if (filter_var($path, FILTER_VALIDATE_URL)) {
+            $path = (string) parse_url($path, PHP_URL_PATH);
+        }
+
+        $path = ltrim($path, '/');
+
+        if (str_starts_with($path, 'storage/')) {
+            return $this->storageDataUri($path, $kind, $respectSizeLimit);
+        }
+
+        $absolutePath = public_path($path);
+
+        return $this->dataUriForPath($absolutePath, $kind, $respectSizeLimit);
     }
 
-    public function storageDataUri(?string $relativePath, string $kind = 'image'): ?string
+    public function storageDataUri(?string $relativePath, string $kind = 'image', bool $respectSizeLimit = true): ?string
     {
-        if (!$relativePath) {
+        if (!$this->imagesEnabled() || !$relativePath) {
             return null;
         }
 
-        $absolutePath = public_path('storage/' . ltrim($relativePath, '/'));
+        $path = trim(str_replace('\\', '/', (string) $relativePath));
 
-        return $this->dataUriForPath($absolutePath, $kind);
+        if (filter_var($path, FILTER_VALIDATE_URL)) {
+            $path = (string) parse_url($path, PHP_URL_PATH);
+        }
+
+        $absolutePath = $this->resolveConfiguredPath($path);
+
+        if (!$absolutePath) {
+            return null;
+        }
+
+        if ($respectSizeLimit && $this->shouldSkipOversizedAsset($absolutePath, $kind)) {
+            return null;
+        }
+
+        return $this->images->fromLocalPath($absolutePath);
     }
 
-    private function dataUriForPath(string $absolutePath, string $kind): ?string
+    private function dataUriForPath(string $absolutePath, string $kind, bool $respectSizeLimit = true): ?string
     {
         if (!is_file($absolutePath) || !is_readable($absolutePath)) {
             return null;
         }
 
-        if ($this->shouldSkipOversizedAsset($absolutePath, $kind)) {
+        if ($respectSizeLimit && $this->shouldSkipOversizedAsset($absolutePath, $kind)) {
             return null;
         }
 
-        $mime = function_exists('mime_content_type') ? mime_content_type($absolutePath) : 'image/png';
+        return $this->images->fromLocalPath($absolutePath);
+    }
 
-        if (($mime === 'image/png' || $mime === 'image/x-png') && !extension_loaded('gd')) {
-            Log::warning('invoice_pdf_asset_skipped_missing_gd', [
-                'kind' => $kind,
-                'path' => $absolutePath,
-                'mime' => $mime,
-            ]);
+    private function resolveConfiguredPath(?string $path): ?string
+    {
+        $path = trim(str_replace('\\', '/', (string) $path));
 
+        if ($path === '') {
             return null;
         }
 
-        $contents = @file_get_contents($absolutePath);
-
-        if ($contents === false) {
-            return null;
+        if (filter_var($path, FILTER_VALIDATE_URL)) {
+            $path = (string) parse_url($path, PHP_URL_PATH);
         }
 
-        return 'data:' . ($mime ?: 'image/png') . ';base64,' . base64_encode($contents);
+        $path = ltrim($path, '/');
+
+        if (preg_match('/^[A-Za-z]:\//', $path) === 1 && is_file($path)) {
+            return $path;
+        }
+
+        if (str_starts_with($path, 'storage/')) {
+            $path = substr($path, strlen('storage/'));
+        }
+
+        if (str_starts_with($path, 'public/')) {
+            $path = substr($path, strlen('public/'));
+        }
+
+        foreach ([
+            storage_path('app/public/' . $path),
+            public_path('storage/' . $path),
+            public_path($path),
+        ] as $candidate) {
+            if (is_file($candidate) && is_readable($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 
     private function shouldSkipOversizedAsset(string $absolutePath, string $kind): bool
@@ -111,7 +175,9 @@ class InvoicePdfAssetResolver
             return false;
         }
 
-        $maxImageKb = (int) config('pdf.max_image_kb', 100);
+        $maxImageKb = $kind === 'qr'
+            ? (int) config('pdf.max_qr_image_kb', config('pdf.max_image_kb', 100))
+            : (int) config('pdf.max_image_kb', 100);
 
         if ($maxImageKb <= 0) {
             return false;
@@ -131,5 +197,10 @@ class InvoicePdfAssetResolver
         ]);
 
         return true;
+    }
+
+    public function imagesEnabled(): bool
+    {
+        return extension_loaded('gd') || extension_loaded('imagick');
     }
 }

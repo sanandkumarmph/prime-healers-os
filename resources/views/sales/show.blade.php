@@ -156,6 +156,7 @@
         ]);
     }
 
+
     if ($canCreatePayments && !in_array($saleInvoiceStatus, ['paid', 'cancelled'], true)) {
         $saleQuickActions->push([
             'type' => 'link',
@@ -286,6 +287,7 @@
         ]);
     }
 
+
     if ($canCreatePayments && !in_array($saleInvoiceStatus, ['paid', 'cancelled'], true)) {
         $mobilePrimaryActions->push([
             'type' => 'form',
@@ -336,6 +338,15 @@
         'label' => 'Back to Sales',
         'href' => route('sales.index'),
     ]);
+
+    if ($currentUser?->canViewRecordFinance()) {
+        $pushMoreAction([
+            'type' => 'link',
+            'label' => 'Ledger',
+            'href' => route('ledger.index', ['sale_id' => $sale->id]),
+        ]);
+    }
+
 
     if ($canCreatePayments && !in_array($saleInvoiceStatus, ['paid', 'cancelled'], true)) {
         $pushMoreAction([

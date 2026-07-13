@@ -16,7 +16,7 @@ class InvoicePdfAssetResolverTest extends TestCase
         $this->assertSame('images/invoice-logo.png', $resolver->logoRelativePath());
         $this->assertStringContainsString('invoice-logo.png', $resolver->logoBrowserUrl());
 
-        if (extension_loaded('gd')) {
+        if (extension_loaded('gd') || extension_loaded('imagick')) {
             $this->assertStringStartsWith('data:image/', (string) $resolver->logoDataUri());
         } else {
             $this->assertNull($resolver->logoDataUri());
@@ -33,14 +33,14 @@ class InvoicePdfAssetResolverTest extends TestCase
         ]);
 
         $relativePath = 'tests/pdf-qr-small.png';
-        $absolutePath = public_path('storage/' . $relativePath);
+        $absolutePath = storage_path('app/public/' . $relativePath);
 
         File::ensureDirectoryExists(dirname($absolutePath));
         File::put($absolutePath, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9pR7sQAAAABJRU5ErkJggg=='));
 
         $resolver = app(InvoicePdfAssetResolver::class);
 
-        if (extension_loaded('gd')) {
+        if (extension_loaded('gd') || extension_loaded('imagick')) {
             $this->assertNotNull($resolver->qrDataUri($relativePath));
         } else {
             $this->assertNull($resolver->qrDataUri($relativePath));
@@ -56,10 +56,12 @@ class InvoicePdfAssetResolverTest extends TestCase
         config([
             'pdf.optimize_images' => true,
             'pdf.max_image_kb' => 1,
+            'pdf.max_qr_image_kb' => 1,
+            'pdf.show_qr' => true,
         ]);
 
         $relativePath = 'tests/pdf-qr-large.png';
-        $absolutePath = public_path('storage/' . $relativePath);
+        $absolutePath = storage_path('app/public/' . $relativePath);
 
         File::ensureDirectoryExists(dirname($absolutePath));
         File::put($absolutePath, str_repeat('A', 3 * 1024));
@@ -68,12 +70,58 @@ class InvoicePdfAssetResolverTest extends TestCase
 
         $this->assertNull($resolver->qrDataUri($relativePath));
 
-        Log::shouldHaveReceived('warning')
-            ->withArgs(function ($message, array $context) use ($absolutePath) {
-                return $message === 'invoice_pdf_asset_skipped'
-                    && ($context['kind'] ?? null) === 'qr'
-                    && ($context['path'] ?? null) === $absolutePath;
-            })
-            ->once();
+        if (extension_loaded('gd') || extension_loaded('imagick')) {
+            Log::shouldHaveReceived('warning')
+                ->withArgs(function ($message, array $context) use ($absolutePath) {
+                    return $message === 'invoice_pdf_asset_skipped'
+                        && ($context['kind'] ?? null) === 'qr'
+                        && ($context['path'] ?? null) === $absolutePath;
+                })
+                ->once();
+        } else {
+            Log::shouldNotHaveReceived('warning');
+        }
+    }
+    public function test_it_resolves_uploaded_organization_logos_from_storage_path_variants(): void
+    {
+        $relativePath = 'tests/org-logo.png';
+        $absolutePath = storage_path('app/public/' . $relativePath);
+
+        File::ensureDirectoryExists(dirname($absolutePath));
+        File::put($absolutePath, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9pR7sQAAAABJRU5ErkJggg=='));
+
+        $resolver = new class(app(\App\Support\PdfImageDataUri::class)) extends InvoicePdfAssetResolver {
+            public function imagesEnabled(): bool
+            {
+                return true;
+            }
+        };
+
+        $this->assertStringStartsWith('data:image/', (string) $resolver->logoDataUri($relativePath));
+        $this->assertStringStartsWith('data:image/', (string) $resolver->logoDataUri('storage/' . $relativePath));
+        $this->assertStringStartsWith('data:image/', (string) $resolver->logoDataUri('/storage/' . $relativePath));
+    }
+
+    public function test_it_resolves_uploaded_signatures_without_the_invoice_image_size_limit(): void
+    {
+        config([
+            'pdf.optimize_images' => true,
+            'pdf.max_image_kb' => 1,
+        ]);
+
+        $relativePath = 'tests/org-signature.png';
+        $absolutePath = storage_path('app/public/' . $relativePath);
+
+        File::ensureDirectoryExists(dirname($absolutePath));
+        File::put($absolutePath, base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9pR7sQAAAABJRU5ErkJggg=='));
+
+        $resolver = new class(app(\App\Support\PdfImageDataUri::class)) extends InvoicePdfAssetResolver {
+            public function imagesEnabled(): bool
+            {
+                return true;
+            }
+        };
+
+        $this->assertStringStartsWith('data:image/', (string) $resolver->signatureDataUri($relativePath));
     }
 }

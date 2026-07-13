@@ -21,7 +21,7 @@
     'pdfCurrencyFallback' => $pdfCurrencyFallback ?? null,
     'documentRootClass' => 'invoice-page',
     'showPaymentsTable' => true,
-    'tenantLogo' => $pdfAssets->logoDataUri(),
+    'tenantLogo' => $pdfAssets->logoDataUri($invoice->organization?->logo),
     'tenantQr' => $pdfAssets->qrDataUri($invoice->organization?->payment_qr_code),
     'tenantSignature' => $pdfAssets->signatureDataUri($invoice->organization?->digital_signature),
 ])

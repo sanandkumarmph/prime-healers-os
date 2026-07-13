@@ -19,6 +19,45 @@
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700,800&family=manrope:600,700,800&display=swap" rel="stylesheet" />
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <style>
+        .phos-predictive-field { position:relative; min-width:0; }
+        .phos-predictive-panel {
+            position:fixed;
+            z-index:1000000;
+            display:none;
+            width:min(420px, calc(100vw - 24px));
+            max-height:min(340px, calc(100vh - 96px));
+            overflow:auto;
+            padding:6px;
+            border:1px solid rgba(148, 163, 184, .32);
+            border-radius:14px;
+            background:rgba(255,255,255,.98);
+            box-shadow:0 18px 48px rgba(15, 23, 42, .16);
+        }
+        .phos-predictive-panel.is-open { display:block; }
+        .phos-predictive-option,
+        .phos-predictive-state {
+            width:100%;
+            border:0;
+            background:transparent;
+            text-align:left;
+            padding:9px 10px;
+            border-radius:10px;
+            color:#0f172a;
+            display:grid;
+            gap:3px;
+            cursor:pointer;
+        }
+        .phos-predictive-option:hover,
+        .phos-predictive-option.is-active { background:#eef4ff; }
+        .phos-predictive-option strong { font-size:13px; line-height:1.25; color:#0f172a; font-weight:800; }
+        .phos-predictive-option span { font-size:11px; line-height:1.35; color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .phos-predictive-option em { justify-self:start; margin-top:2px; padding:3px 7px; border-radius:999px; background:#f1f5f9; color:#475569; font-size:10px; font-style:normal; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+        .phos-predictive-state { cursor:default; color:#64748b; font-size:12px; }
+        @media (max-width:767px) {
+            .phos-predictive-panel { left:10px !important; right:10px; width:auto !important; max-height:min(310px, 54vh); border-radius:16px; }
+        }
+    </style>
 </head>
 <body style="margin:0; width:100%; overflow-x:hidden; background:var(--ph-color-bg); color:var(--ph-color-text); font-family:var(--ph-font-body);">
 @php
@@ -148,6 +187,7 @@
         [
             'label' => 'Finance',
             'items' => [
+                ['key' => 'ledger', 'label' => 'Ledger', 'icon' => 'invoices', 'href' => $safeRoute('ledger.index'), 'active' => request()->routeIs('ledger.*'), 'visible' => ($currentUser?->isSuperAdmin() ?? false) || ($currentUser?->canViewFinance() ?? false)],
                 ['key' => 'invoices', 'label' => 'Invoices', 'icon' => 'invoices', 'href' => $safeRoute('invoices.index'), 'active' => request()->routeIs('invoices.*'), 'visible' => $currentUser?->canAccessModule('invoices', 'read') ?? false],
                 ['key' => 'payments', 'label' => 'Payments', 'icon' => 'invoices', 'href' => $paymentsIndexHref, 'active' => request()->routeIs('payments.*'), 'visible' => !empty($paymentsIndexHref)],
                 ['key' => 'deposits', 'label' => 'Deposits', 'icon' => 'invoices', 'href' => $depositsHref, 'active' => request()->routeIs('deposits.*'), 'visible' => !empty($depositsHref)],
@@ -3473,7 +3513,7 @@
                 </div>
                 <form class="app-shell-search" role="search" aria-label="Universal search shell" method="GET" action="{{ $globalSearchHref ?: url('/search') }}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
-                    <input type="text" name="q" value="{{ $globalSearchValue }}" placeholder="Search customers, rentals, invoices, serial no..." autocomplete="off" spellcheck="false" aria-label="Search customers, rentals, invoices, serial no" />
+                    <input type="text" name="q" value="{{ $globalSearchValue }}" placeholder="Search customers, rentals, invoices, serial no..." autocomplete="off" spellcheck="false" aria-label="Search customers, rentals, invoices, serial no" data-predictive-search data-predictive-type="all" />
                 </form>
             </div>
 
@@ -4557,6 +4597,258 @@
 
             window.addEventListener('resize', scheduleResize);
         });
+    })();
+</script>
+<script>
+    window.PHOS_PREDICTIVE_SEARCH_ENDPOINT = @json(Route::has('search.suggestions') ? route('search.suggestions') : url('/search/suggestions'));
+
+    (function () {
+        const endpoint = window.PHOS_PREDICTIVE_SEARCH_ENDPOINT;
+        const minCharsDefault = 2;
+        const debounceMs = 240;
+        let activeController = null;
+        let openInstance = null;
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function inferType(input) {
+            const explicit = input.dataset.predictiveType;
+            if (explicit) return explicit;
+
+            const haystack = [input.name, input.id, input.placeholder, input.getAttribute('aria-label')]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase();
+
+            if (haystack.includes('invoice')) return 'invoice';
+            if (haystack.includes('payment')) return 'payment';
+            if (haystack.includes('rental')) return 'rental';
+            if (haystack.includes('sale')) return 'sale';
+            if (haystack.includes('asset') || haystack.includes('serial') || haystack.includes('barcode')) return 'asset';
+            if (haystack.includes('product') || haystack.includes('sku')) return 'product';
+            if (haystack.includes('vendor')) return 'vendor';
+            if (haystack.includes('partner')) return 'business_partner';
+            if (haystack.includes('customer') || haystack.includes('client') || haystack.includes('phone')) return 'customer';
+            if (haystack.includes('pickup')) return 'pickup';
+            if (haystack.includes('delivery') || haystack.includes('dispatch')) return 'delivery';
+
+            return input.name === 'q' ? 'all' : 'all';
+        }
+
+        function shouldEnhance(input) {
+            if (!input || input.dataset.predictiveEnhanced === 'true') return false;
+            if (input.closest('.searchable-select-panel')) return false;
+            if (input.matches('[data-no-predictive-search], .searchable-select-search')) return false;
+            if (input.type === 'hidden' || input.disabled || input.readOnly) return false;
+            if (input.hasAttribute('data-predictive-search')) return true;
+            if (input.name === 'q' && input.closest('.app-shell-search')) return true;
+            return input.name === 'search' && (input.type === 'search' || input.type === 'text');
+        }
+
+        function placePanel(input, panel) {
+            const rect = input.getBoundingClientRect();
+            panel.style.left = Math.max(10, rect.left) + 'px';
+            panel.style.top = Math.min(window.innerHeight - 72, rect.bottom + 6) + 'px';
+            panel.style.width = Math.max(220, rect.width) + 'px';
+        }
+
+        function makeState(text) {
+            return '<div class="phos-predictive-state">' + escapeHtml(text) + '</div>';
+        }
+
+        function enhance(input) {
+            input.dataset.predictiveEnhanced = 'true';
+            input.setAttribute('autocomplete', 'off');
+
+            const panel = document.createElement('div');
+            panel.className = 'phos-predictive-panel';
+            panel.setAttribute('role', 'listbox');
+            panel.setAttribute('aria-label', 'Search suggestions');
+            document.body.appendChild(panel);
+
+            const state = {
+                results: [],
+                activeIndex: -1,
+                timer: null,
+                lastQuery: '',
+            };
+
+            function hiddenInput() {
+                return input.closest('.phos-predictive-field, form, .ph-card, section, div')?.querySelector('[data-predictive-hidden-id]') || null;
+            }
+
+            function close() {
+                panel.classList.remove('is-open');
+                panel.innerHTML = '';
+                state.activeIndex = -1;
+                if (openInstance === api) openInstance = null;
+            }
+
+            function open() {
+                if (openInstance && openInstance !== api) openInstance.close();
+                openInstance = api;
+                placePanel(input, panel);
+                panel.classList.add('is-open');
+            }
+
+            function render() {
+                if (!state.results.length) {
+                    panel.innerHTML = makeState('No suggestions found');
+                    open();
+                    return;
+                }
+
+                panel.innerHTML = state.results.map(function (item, index) {
+                    const active = index === state.activeIndex ? ' is-active' : '';
+                    const subtitle = item.subtitle ? '<span>' + escapeHtml(item.subtitle) + '</span>' : '';
+                    const meta = item.meta ? '<em>' + escapeHtml(item.meta) + '</em>' : '';
+                    return '<button type="button" class="phos-predictive-option' + active + '" role="option" data-index="' + index + '"><strong>' + escapeHtml(item.title || item.label || item.value) + '</strong>' + subtitle + meta + '</button>';
+                }).join('');
+                open();
+            }
+
+            function selectResult(item) {
+                if (!item) return;
+
+                input.value = item.value || item.label || item.title || '';
+                const hidden = hiddenInput();
+                if (hidden && item.id) {
+                    hidden.value = item.id;
+                    hidden.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                close();
+
+                const isGlobalHeader = input.name === 'q' && input.closest('.app-shell-search');
+                if (isGlobalHeader && item.href) {
+                    window.location.href = item.href;
+                }
+            }
+
+            function fetchSuggestions() {
+                const query = input.value.trim();
+                const minChars = parseInt(input.dataset.predictiveMinChars || minCharsDefault, 10);
+                if (query.length < minChars) {
+                    close();
+                    return;
+                }
+
+                if (query === state.lastQuery && state.results.length) {
+                    render();
+                    return;
+                }
+
+                if (activeController) activeController.abort();
+                activeController = new AbortController();
+                state.lastQuery = query;
+                panel.innerHTML = makeState('Searching...');
+                open();
+
+                const url = new URL(input.dataset.predictiveEndpoint || endpoint, window.location.origin);
+                url.searchParams.set('q', query);
+                url.searchParams.set('type', inferType(input));
+                url.searchParams.set('limit', input.dataset.predictiveLimit || '8');
+
+                Object.keys(input.dataset).forEach(function (key) {
+                    if (key.startsWith('context') && input.dataset[key] !== '') {
+                        url.searchParams.set(key.replace(/^context/, '').replace(/[A-Z]/g, m => '_' + m.toLowerCase()).replace(/^_/, ''), input.dataset[key]);
+                    }
+                });
+
+                fetch(url.toString(), {
+                    headers: { 'Accept': 'application/json' },
+                    signal: activeController.signal,
+                })
+                    .then(response => response.ok ? response.json() : Promise.reject(response))
+                    .then(data => {
+                        state.results = Array.isArray(data.results) ? data.results : [];
+                        state.activeIndex = state.results.length ? 0 : -1;
+                        render();
+                    })
+                    .catch(error => {
+                        if (error.name === 'AbortError') return;
+                        panel.innerHTML = makeState('Suggestions unavailable');
+                        open();
+                    });
+            }
+
+            input.addEventListener('input', function () {
+                window.clearTimeout(state.timer);
+                state.timer = window.setTimeout(fetchSuggestions, debounceMs);
+            });
+
+            input.addEventListener('focus', function () {
+                if (input.value.trim().length >= parseInt(input.dataset.predictiveMinChars || minCharsDefault, 10)) {
+                    fetchSuggestions();
+                }
+            });
+
+            input.addEventListener('keydown', function (event) {
+                if (!panel.classList.contains('is-open')) return;
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    close();
+                    return;
+                }
+                if (event.key === 'ArrowDown') {
+                    event.preventDefault();
+                    state.activeIndex = Math.min(state.results.length - 1, state.activeIndex + 1);
+                    render();
+                    return;
+                }
+                if (event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    state.activeIndex = Math.max(0, state.activeIndex - 1);
+                    render();
+                    return;
+                }
+                if (event.key === 'Enter' && state.activeIndex >= 0 && state.results[state.activeIndex]) {
+                    event.preventDefault();
+                    selectResult(state.results[state.activeIndex]);
+                }
+            });
+
+            panel.addEventListener('mousedown', function (event) {
+                event.preventDefault();
+            });
+
+            panel.addEventListener('click', function (event) {
+                const button = event.target.closest('.phos-predictive-option');
+                if (!button) return;
+                selectResult(state.results[parseInt(button.dataset.index || '-1', 10)]);
+            });
+
+            const api = { close, reposition: () => placePanel(input, panel) };
+        }
+
+        function boot() {
+            document.querySelectorAll('input[type="search"], input[type="text"], input[data-predictive-search]').forEach(function (input) {
+                if (shouldEnhance(input)) enhance(input);
+            });
+        }
+
+        document.addEventListener('click', function (event) {
+            if (!openInstance) return;
+            if (event.target.closest('.phos-predictive-panel') || event.target.closest('[data-predictive-search], .app-shell-search input')) return;
+            openInstance.close();
+        });
+
+        ['scroll', 'resize'].forEach(function (eventName) {
+            window.addEventListener(eventName, function () {
+                openInstance?.reposition?.();
+            }, true);
+        });
+
+        document.addEventListener('DOMContentLoaded', boot);
+        document.addEventListener('phos:content-updated', boot);
     })();
 </script>
 @stack('scripts')

@@ -14,6 +14,7 @@ return [
     'show_qr' => env('PDF_SHOW_QR', true),
     'show_qr_in_bulk' => env('PDF_SHOW_QR_IN_BULK', false),
     'max_image_kb' => (int) env('PDF_MAX_IMAGE_KB', 100),
+    'max_qr_image_kb' => (int) env('PDF_MAX_QR_IMAGE_KB', 256),
     'size_warning_threshold_kb' => (int) env('PDF_SIZE_WARNING_THRESHOLD_KB', 500),
     'optimized_assets' => [
         'logo' => [

@@ -19,6 +19,7 @@ use App\Models\SaleItem;
 use App\Models\StockMovement;
 use App\Models\Vendor;
 use App\Models\VendorOrderDetail;
+use App\Models\Warehouse;
 use App\Services\Finance\InvoiceLinkResolver;
 use App\Services\Finance\InvoiceSyncService;
 use App\Services\Finance\AmountReductionGuardService;
@@ -1953,13 +1954,17 @@ class SaleController extends Controller
         $fulfilmentSource = (string) $request->get('fulfilment_source', '');
         $fromDate = trim((string) $request->get('from_date', $request->get('date', '')));
         $toDate = trim((string) $request->get('to_date', $request->get('date', '')));
+        $createdByUserId = (int) $request->get('created_by_user_id', 0);
+        $legacyCreatedBy = (int) $request->get('created_by', 0);
         $sortBy = (string) $request->get('sort_by', 'latest');
 
-        $applyIndexFilters = function ($query) use ($customerId, $paymentStatus, $fulfilmentSource, $search, $fromDate, $toDate) {
+        $applyIndexFilters = function ($query) use ($customerId, $paymentStatus, $fulfilmentSource, $search, $fromDate, $toDate, $createdByUserId, $legacyCreatedBy) {
             $query
                 ->when($customerId !== '', fn ($innerQuery) => $innerQuery->where('customer_id', $customerId))
                 ->when($paymentStatus !== '', fn ($innerQuery) => $innerQuery->where('payment_status', $paymentStatus))
                 ->when($fulfilmentSource !== '', fn ($innerQuery) => $innerQuery->where('fulfilment_source', $fulfilmentSource))
+                ->when($createdByUserId > 0 && $this->hasSalesCreatedByUserColumn(), fn ($innerQuery) => $innerQuery->where('created_by_user_id', $createdByUserId))
+                ->when($createdByUserId <= 0 && $legacyCreatedBy > 0 && $this->hasSalesCreatedByColumn(), fn ($innerQuery) => $innerQuery->where('created_by', $legacyCreatedBy))
                 ->when($search !== '', function ($innerQuery) use ($search) {
                     $innerQuery->where(function ($nestedQuery) use ($search) {
                         $normalizedSaleId = ltrim(preg_replace('/[^0-9]/', '', $search) ?? '', '0');
@@ -2121,6 +2126,20 @@ class SaleController extends Controller
             ->where('asset_status', 'available_for_sale')
             ->orderBy('serial_number')
             ->get();
+        $saleStockAssets = Asset::query()
+            ->where('organization_id', $this->orgId())
+            ->where('asset_stage', Asset::STAGE_NEW_STOCK)
+            ->whereIn('asset_status', Asset::NEW_STOCK_ASSET_STATUSES)
+            ->get(['id', 'product_id', 'warehouse_id', 'asset_status']);
+        $saleInventorySummaries = SaleInventory::query()
+            ->selectRaw('product_id, SUM(quantity_in_stock) as available_count, SUM(reserved_quantity) as reserved_count')
+            ->where('organization_id', $this->orgId())
+            ->groupBy('product_id')
+            ->get();
+        $warehouses = Warehouse::query()
+            ->where('organization_id', $this->orgId())
+            ->orderBy('name')
+            ->get(['id', 'name', 'city', 'state']);
         $rentals = Rental::query()
             ->with(['customer', 'product'])
             ->where('organization_id', $this->orgId())
@@ -2129,7 +2148,7 @@ class SaleController extends Controller
         $fulfilmentVendors = $this->vendorMasterOptions();
         $referralSourceOptions = $this->referralSourceOptions();
 
-        return view('sales.create', compact('customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'rentals', 'fulfilmentVendors', 'referralSourceOptions'));
+        return view('sales.create', compact('customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'saleStockAssets', 'saleInventorySummaries', 'warehouses', 'rentals', 'fulfilmentVendors', 'referralSourceOptions'));
     }
 
     public function businessPartnerActualClients(BusinessPartner $businessPartner)
@@ -2567,6 +2586,20 @@ class SaleController extends Controller
             })
             ->orderBy('serial_number')
             ->get();
+        $saleStockAssets = Asset::query()
+            ->where('organization_id', $this->orgId())
+            ->where('asset_stage', Asset::STAGE_NEW_STOCK)
+            ->whereIn('asset_status', Asset::NEW_STOCK_ASSET_STATUSES)
+            ->get(['id', 'product_id', 'warehouse_id', 'asset_status']);
+        $saleInventorySummaries = SaleInventory::query()
+            ->selectRaw('product_id, SUM(quantity_in_stock) as available_count, SUM(reserved_quantity) as reserved_count')
+            ->where('organization_id', $this->orgId())
+            ->groupBy('product_id')
+            ->get();
+        $warehouses = Warehouse::query()
+            ->where('organization_id', $this->orgId())
+            ->orderBy('name')
+            ->get(['id', 'name', 'city', 'state']);
         $rentals = Rental::query()
             ->with(['customer', 'product'])
             ->where('organization_id', $this->orgId())
@@ -2579,7 +2612,7 @@ class SaleController extends Controller
             $sale->loadMissing(['saleItems.product', 'saleItems.asset.warehouse', 'saleItems.warehouse']);
         }
 
-        return view('sales.edit', compact('sale', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'rentals', 'fulfilmentVendors', 'referralSourceOptions'));
+        return view('sales.edit', compact('sale', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'saleStockAssets', 'saleInventorySummaries', 'warehouses', 'rentals', 'fulfilmentVendors', 'referralSourceOptions'));
     }
 
     public function update(Request $request, Sale $sale)

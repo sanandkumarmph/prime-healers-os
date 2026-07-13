@@ -128,6 +128,14 @@
         'href' => '#invoice-activity-timeline',
     ]);
 
+    if (auth()->user()?->canViewRecordFinance()) {
+        $invoiceQuickActions->push([
+            'type' => 'link',
+            'label' => 'Ledger',
+            'href' => route('ledger.index', ['invoice_id' => $invoice->id]),
+        ]);
+    }
+
     if ($canUpdateInvoices) {
         $invoiceMoreActions->push([
             'type' => 'link',

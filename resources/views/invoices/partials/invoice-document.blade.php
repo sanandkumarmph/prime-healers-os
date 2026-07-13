@@ -88,34 +88,10 @@
         ->values();
     $displayRentalPeriod = $invoice->inferredRentalPeriod();
 
-    $toDataUri = function (?string $relativePath, string $disk = 'storage'): ?string {
-        if (!$relativePath) {
-            return null;
-        }
-
-        $absolutePath = $disk === 'public'
-            ? public_path(ltrim($relativePath, '/'))
-            : public_path('storage/' . ltrim($relativePath, '/'));
-
-        if (!is_file($absolutePath) || !is_readable($absolutePath)) {
-            return null;
-        }
-
-        $mime = function_exists('mime_content_type') ? mime_content_type($absolutePath) : 'image/png';
-        $contents = @file_get_contents($absolutePath);
-
-        if ($contents === false) {
-            return null;
-        }
-
-        return 'data:' . ($mime ?: 'image/png') . ';base64,' . base64_encode($contents);
-    };
-
-    $tenantLogo = $tenantLogo ?? (extension_loaded('gd')
-        ? $toDataUri('images/prime-healers-logo.png', 'public')
-        : null);
-    $tenantQr = $tenantQr ?? $toDataUri($organization?->payment_qr_code);
-    $tenantSignature = $tenantSignature ?? $toDataUri($organization?->digital_signature);
+    $pdfAssets = app(\App\Support\InvoicePdfAssetResolver::class);
+    $tenantLogo = $tenantLogo ?? $pdfAssets->logoDataUri($organization?->logo);
+    $tenantQr = $tenantQr ?? $pdfAssets->qrDataUri($organization?->payment_qr_code);
+    $tenantSignature = $tenantSignature ?? $pdfAssets->signatureDataUri($organization?->digital_signature);
     $organizationInitials = strtoupper(substr(preg_replace('/[^A-Za-z]/', '', $organization?->name ?? 'OR'), 0, 2));
     $rupeeSymbol = html_entity_decode('&#8377;', ENT_QUOTES, 'UTF-8');
     $currency = trim((string) ($pdfCurrencySymbol ?? ($pdfCurrencyFallback ?? 'Rs.')));

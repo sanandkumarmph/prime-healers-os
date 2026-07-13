@@ -221,10 +221,8 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringContainsString("invoice_pdf_size_warning", $renderer);
         $this->assertStringContainsString("InvoicePdfAssetResolver::class", $printTemplate);
         $this->assertStringContainsString("InvoicePdfAssetResolver::class", $dompdfTemplate);
-        $this->assertStringContainsString("logoDataUri()", $printTemplate);
-        $this->assertStringContainsString("logoDataUri()", $dompdfTemplate);
-        $this->assertStringNotContainsString('$organization?->logo', $printTemplate);
-        $this->assertStringNotContainsString('$organization?->logo', $dompdfTemplate);
+        $this->assertStringContainsString('logoDataUri($invoice->organization?->logo)', $printTemplate);
+        $this->assertStringContainsString('logoDataUri($invoice->organization?->logo)', $dompdfTemplate);
         $this->assertStringNotContainsString('fonts.bunny.net', $printTemplate);
         $this->assertStringNotContainsString('rentnexis-logo.png', $printTemplate);
         $this->assertStringNotContainsString('logo-rentnexis.png', $printTemplate);

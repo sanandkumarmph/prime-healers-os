@@ -914,6 +914,47 @@ class AssetController extends Controller
             return $asset;
         });
 
+        if ($request->expectsJson()) {
+            $createdAsset->loadMissing(['product', 'warehouse']);
+
+            $saleStockAssets = Asset::query()
+                ->where('organization_id', $this->orgId())
+                ->where('product_id', $createdAsset->product_id)
+                ->where('asset_stage', Asset::STAGE_NEW_STOCK)
+                ->whereIn('asset_status', Asset::NEW_STOCK_ASSET_STATUSES)
+                ->get(['id', 'asset_status']);
+
+            $available = $saleStockAssets->where('asset_status', Asset::STATUS_AVAILABLE_FOR_SALE)->count();
+            $reserved = $saleStockAssets->whereIn('asset_status', [Asset::STATUS_RESERVED_FOR_SALE, Asset::STATUS_RESERVED])->count();
+            $sold = $saleStockAssets->where('asset_status', Asset::STATUS_SOLD)->count();
+            $inTransit = $saleStockAssets->where('asset_status', Asset::STATUS_CONVERTED_TO_RENTAL)->count();
+
+            return response()->json([
+                'message' => 'Sale stock added successfully.',
+                'asset' => [
+                    'id' => $createdAsset->id,
+                    'product_id' => $createdAsset->product_id,
+                    'serial_number' => $createdAsset->serial_number,
+                    'barcode_value' => $createdAsset->barcode_value,
+                    'asset_name' => $createdAsset->asset_name,
+                    'warehouse_id' => $createdAsset->warehouse_id,
+                    'warehouse_name' => $createdAsset->warehouse?->name,
+                    'label' => trim(implode(' - ', array_filter([
+                        $createdAsset->serial_number ?: $createdAsset->asset_name ?: ('Asset #' . $createdAsset->id),
+                        $createdAsset->barcode_value,
+                        $createdAsset->product?->name,
+                        $createdAsset->warehouse?->name,
+                    ]))),
+                ],
+                'sale_stock_summary' => [
+                    'available' => $available,
+                    'sold' => $sold,
+                    'reserved' => $reserved,
+                    'in_transit' => $inTransit,
+                    'total' => $available + $sold + $reserved + $inTransit,
+                ],
+            ], 201);
+        }
         if ($request->input('save_action') === 'add_another') {
             return redirect()
                 ->route('assets.create', [

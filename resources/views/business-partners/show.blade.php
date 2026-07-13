@@ -95,6 +95,14 @@
         'label' => 'View Invoices',
         'href' => route('invoices.index', ['business_partner_id' => $businessPartner->id]),
     ]);
+    if ($currentUser?->canViewRecordFinance()) {
+        $partnerMoreActions->push([
+            'type' => 'link',
+            'label' => 'Ledger',
+            'href' => route('ledger.index', ['business_partner_id' => $businessPartner->id]),
+        ]);
+    }
+
     $partnerMoreActions->push([
         'type' => 'link',
         'label' => 'Edit Partner',
