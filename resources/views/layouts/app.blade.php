@@ -72,7 +72,7 @@
     $paymentsIndexHref = (($currentUser?->canAccessModule('payments', 'read') ?? false) && \Illuminate\Support\Facades\Route::has('payments.index'))
         ? route('payments.index')
         : null;
-    $reportsIndexHref = ($currentUser?->canAccessModule('reports', 'read') ?? false) ? $safeRoute('reports.index') : null;
+    $reportsIndexHref = ($currentUser?->canAccessGeneralReports() ?? false) ? $safeRoute('reports.index') : null;
     $isDeliveryFacingMenuRole = in_array($currentUser?->effective_role, [
         \App\Models\User::ROLE_DELIVERY,
         \App\Models\User::ROLE_DELIVERY_EXECUTIVE,
@@ -2545,7 +2545,7 @@
             border:0;
         }
         .mobile-toolbar-btn::before {
-            content:"⌕";
+            content:"\2315";
             display:grid;
             place-items:center;
             width:18px;
@@ -2556,12 +2556,12 @@
             line-height:1;
         }
         .mobile-toolbar-btn[data-mobile-filter-open]::before {
-            content:"⌯";
+            content:"\232F";
             font-size:21px;
         }
         .mobile-toolbar-btn[data-mobile-sort-trigger]::before,
         .mobile-sort-trigger::before {
-            content:"⇅";
+            content:"\21C5";
             font-size:18px;
         }
         .mobile-toolbar-btn:has(svg)::before { display:none; }
@@ -3642,7 +3642,7 @@
                                 <label class="topbar-bell-switch">
                                     <span class="topbar-bell-switch-copy">
                                         <strong>Voice alerts</strong>
-                                        <span>Speak short safe labels like “New pickup assigned”.</span>
+                                        <span>Speak short safe labels like &ldquo;New pickup assigned&rdquo;.</span>
                                     </span>
                                     <span class="topbar-bell-toggle">
                                         <input type="checkbox" data-notification-voice-toggle {{ $notificationVoiceEnabled ? 'checked' : '' }}>

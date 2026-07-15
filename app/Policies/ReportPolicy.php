@@ -11,11 +11,11 @@ class ReportPolicy
 
     public function viewAny(User $user): bool
     {
-        return $this->allowsModule($user, 'reports', 'read');
+        return $user->canAccessGeneralReports();
     }
 
     public function export(User $user): bool
     {
-        return $this->allowsModule($user, 'reports', 'read');
+        return $user->canAccessGeneralReports();
     }
 }

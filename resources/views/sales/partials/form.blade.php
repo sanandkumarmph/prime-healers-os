@@ -25,17 +25,7 @@
     $selectedFulfilmentVendorId = (int) old('vendor_id', $sale->vendor_id ?? 0);
     $selectedDeliveryResponsibility = old('delivery_responsibility', $sale?->delivery_responsibility ?? 'ph_internal_delivery');
     $currentUser = auth()->user();
-    $canViewSaleProfitability = $currentUser && (
-        in_array($currentUser->effective_role, [
-            \App\Models\User::ROLE_SUPER_ADMIN,
-            \App\Models\User::ROLE_ADMIN_OPERATIONS,
-            'admin',
-            \App\Models\User::ROLE_FINANCE,
-        ], true)
-        || $currentUser->canViewFinance('finance.view_profit')
-        || $currentUser->hasPermission('dashboard.finance.full')
-        || $currentUser->hasPermission('vendor_costs.view')
-    );
+    $canViewSaleProfitability = $currentUser?->canViewProfitability() ?? false;
 
     $initialSaleItems = old('sale_items');
     $initialShippingCharges = old('shipping_charges');
@@ -355,11 +345,19 @@
         width:32px; height:32px; border:1px solid #dbe3ef; border-radius:10px; background:#fff; color:#334155;
         display:inline-flex; align-items:center; justify-content:center; cursor:pointer; font-size:16px; font-weight:900;
     }
-    .sales-product-first-row { display:grid; grid-template-columns:minmax(0, 1.1fr) minmax(0, .95fr) max-content; gap:12px; align-items:end; min-width:0; max-width:100%; }
+    .sales-product-first-row { display:grid; grid-template-columns:minmax(0, 1.08fr) minmax(0, .92fr); gap:12px; align-items:start; min-width:0; max-width:100%; }
+    .sales-product-first-row .sales-field { gap:6px; min-width:0; }
+    .sales-product-first-row .searchable-select-trigger,
+    .sales-product-first-row select,
+    .sales-product-first-row input { min-height:44px; height:44px; box-sizing:border-box; }
+    .sales-field-label-row { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:16px; }
+    .sales-field-label-row label { margin:0; }
+    .sales-calculated-total-field { display:none !important; }
     .sales-add-stock-btn {
-        min-height:40px; height:40px; padding:9px 12px; border-radius:12px; border:1px solid #b8c7ff; background:#fff;
-        color:#2440d8; font-size:13px; font-weight:800; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:7px; white-space:nowrap; max-width:100%;
+        flex:0 0 auto; min-height:30px; height:30px; padding:0 10px; border-radius:999px; border:1px solid #b8c7ff; background:#f8fbff;
+        color:#2440d8; font-size:11px; font-weight:800; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:5px; white-space:nowrap; max-width:100%; box-sizing:border-box;
     }
+    .sales-add-stock-btn svg { width:14px; height:14px; }
     .sales-add-stock-btn:hover { background:#eff6ff; border-color:#3150ff; }
     .sales-product-preview {
         display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid #e2e8f0; border-radius:12px; background:#f8fafc; min-width:0;
@@ -482,6 +480,11 @@
         position:absolute; top:calc(100% + 6px); left:0; right:0; z-index:35; padding:10px;
         border:1px solid #cbd5e1; border-radius:14px; background:#fff; box-shadow:0 18px 40px rgba(15, 23, 42, 0.14); display:grid; gap:8px;
     }
+    .searchable-select.is-product-search .searchable-select-panel {
+        right:auto;
+        width:min(560px, calc(100vw - 32px));
+        max-width:min(650px, calc(100vw - 32px));
+    }
     .searchable-select-panel[hidden] { display:none !important; }
     .searchable-select-search {
         width:100%; padding:9px 11px; border-radius:10px; border:1px solid #cbd5e1; font-size:13px; box-sizing:border-box;
@@ -492,7 +495,7 @@
     }
     .searchable-select-option { cursor:pointer; }
     .searchable-select-option:hover, .searchable-select-option.is-selected { background:#eff6ff; color:#1d4ed8; }
-    .searchable-select-option.has-product-media { padding:8px; }
+    .searchable-select-option.has-product-media { min-height:58px; padding:10px 12px; }
     .product-option-media { display:flex; align-items:center; gap:10px; min-width:0; }
     .product-option-thumb {
         width:38px;
@@ -509,10 +512,10 @@
         overflow:hidden;
     }
     .product-option-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
-    .product-option-copy { display:grid; gap:2px; min-width:0; }
-    .product-option-copy strong { color:#0f172a; font-size:13px; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .product-option-copy { display:grid; gap:3px; min-width:0; }
+    .product-option-copy strong { color:#0f172a; font-size:14px; font-weight:800; line-height:1.25; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; white-space:normal; }
     .product-option-copy span { color:#64748b; font-size:11px; line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .product-option-copy em { color:#1d4ed8; font-size:10px; font-style:normal; font-weight:800; line-height:1.2; }    .searchable-select-empty { color:#64748b; }
+    .product-option-copy em { color:#15803d; font-size:11px; font-style:normal; font-weight:800; line-height:1.2; }    .searchable-select-empty { color:#64748b; }
     .sales-field.is-error .searchable-select-trigger {
         border-color:#dc2626; box-shadow:0 0 0 3px rgba(220, 38, 38, 0.12); background:#fff7f7;
     }
@@ -1484,13 +1487,13 @@
                 <label>GST</label>
                 <strong id="saleGstSummary">Rs. 0.00</strong>
             </div>
-            <div class="sales-field sales-pricing-full {{ $errors->has('shipping_charges') ? 'is-error' : '' }}" style="min-width:220px; margin:0;">
+            <div class="sales-field sales-pricing-full {{ $errors->has('shipping_charges') ? 'is-error' : '' }}" style="min-width:160px; margin:0;">
                 <label for="shipping_charges">Transport</label>
                 <input type="number" step="0.01" min="0" name="shipping_charges" id="shipping_charges" value="{{ $initialShippingCharges }}">
                 <small>Applied once to the sale.</small>
                 @error('shipping_charges')<div class="sales-field-error">{{ $message }}</div>@enderror
             </div>
-            <div class="sales-field sales-pricing-full" style="min-width:220px; margin:0;">
+            <div class="sales-field sales-pricing-full sales-calculated-total-field" style="min-width:160px; margin:0;">
                 <label for="sale_amount">Calculated Total</label>
                 <input type="number" step="0.01" min="0" name="sale_amount" id="sale_amount" value="{{ old('sale_amount', $sale->sale_amount ?? 0) }}" readonly>
                 <small>Products plus transport.</small>
@@ -1599,7 +1602,7 @@
         </div>
     </div>
 </div>
-<div class="sales-stock-popup" id="saleStockPopup" aria-hidden="true">
+<div class="sales-stock-popup" id="saleStockPopup" data-sale-stock-modal aria-hidden="true">
     <div class="sales-stock-popup-panel" role="dialog" aria-modal="true" aria-labelledby="saleStockPopupTitle">
         <form id="saleStockModalForm" data-sale-stock-modal-form novalidate>
             <input type="hidden" name="asset_stage" value="new_stock">
@@ -1743,8 +1746,8 @@
         const saleReferralQuickNotes = document.getElementById('saleReferralQuickNotes');
         const saleReferralQuickError = document.getElementById('saleReferralSourceModalError');
         const saleReferralQuickSave = document.querySelector('[data-save-sale-referral-source]');
-        const saleStockModal = document.getElementById('saleStockPopup');
-        const saleStockModalForm = document.getElementById('saleStockModalForm');
+        let saleStockModal = document.getElementById('saleStockPopup');
+        let saleStockModalForm = document.getElementById('saleStockModalForm');
         const saleStockProductId = document.getElementById('saleStockProductId');
         const saleStockAssetName = document.getElementById('saleStockAssetName');
         const saleStockProductSubtitle = document.getElementById('saleStockProductSubtitle');
@@ -2092,8 +2095,17 @@
             return `<span class="product-option-thumb" aria-hidden="true"><img src="${escapeHtml(imageUrl)}" alt="" onerror="this.parentElement.textContent='${initial}'"></span>`;
         }
 
+        function isProductSearchSelect(select) {
+            const name = String(select?.name || '');
+            return name.includes('[product_id]')
+                || select?.id === 'product_id'
+                || select?.hasAttribute('data-sale-product-select')
+                || select?.hasAttribute('data-rental-product-index')
+                || select?.hasAttribute('data-sale-product-index');
+        }
+
         function optionHasProductMedia(select, option) {
-            return Boolean(option?.value) && Boolean(optionProductName(option)) && String(select?.name || '').includes('[product_id]');
+            return Boolean(option?.value) && Boolean(optionProductName(option)) && isProductSearchSelect(select);
         }
 
         function productOptionMarkup(select, option) {
@@ -2125,6 +2137,7 @@
 
             const wrapper = document.createElement('div');
             wrapper.className = 'searchable-select';
+            wrapper.classList.toggle('is-product-search', isProductSearchSelect(select));
 
             const trigger = document.createElement('button');
             trigger.type = 'button';
@@ -2142,7 +2155,9 @@
             const searchInput = document.createElement('input');
             searchInput.type = 'search';
             searchInput.className = 'searchable-select-search';
-            searchInput.placeholder = select.getAttribute('data-search-placeholder') || 'Search options';
+            searchInput.placeholder = isProductSearchSelect(select)
+                ? 'Search product by name, SKU or code...'
+                : (select.getAttribute('data-search-placeholder') || 'Search options');
 
             const optionsWrap = document.createElement('div');
             optionsWrap.className = 'searchable-select-options';
@@ -2163,6 +2178,29 @@
                 wrapper.classList.remove('is-open');
                 panel.hidden = true;
                 trigger.setAttribute('aria-expanded', 'false');
+            }
+
+            function positionProductPanel() {
+                if (panel.hidden || !isProductSearchSelect(select)) {
+                    return;
+                }
+
+                const isMobile = window.matchMedia('(max-width: 640px)').matches;
+                const isTablet = window.matchMedia('(min-width: 641px) and (max-width: 1024px)').matches;
+                const viewportPadding = isMobile ? 12 : 16;
+                const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+                const preferredWidth = isTablet ? 420 : 560;
+                const targetWidth = isMobile
+                    ? viewportWidth - (viewportPadding * 2)
+                    : Math.min(650, Math.max(preferredWidth, trigger.getBoundingClientRect().width));
+                const safeWidth = Math.max(trigger.getBoundingClientRect().width, Math.min(targetWidth, viewportWidth - (viewportPadding * 2)));
+                const triggerRect = trigger.getBoundingClientRect();
+                const wrapperRect = wrapper.getBoundingClientRect();
+                const viewportLeft = Math.min(Math.max(triggerRect.left, viewportPadding), viewportWidth - safeWidth - viewportPadding);
+
+                panel.style.width = safeWidth + 'px';
+                panel.style.left = (viewportLeft - wrapperRect.left) + 'px';
+                panel.style.right = 'auto';
             }
 
             function renderOptions() {
@@ -2235,13 +2273,17 @@
                 trigger.setAttribute('aria-expanded', 'true');
                 searchInput.value = '';
                 renderOptions();
+                positionProductPanel();
                 window.requestAnimationFrame(function () {
+                    positionProductPanel();
                     searchInput.focus();
                 });
             });
 
             searchInput.addEventListener('input', renderOptions);
             select.addEventListener('change', refresh);
+            window.addEventListener('resize', positionProductPanel);
+            window.addEventListener('scroll', positionProductPanel, true);
 
             document.addEventListener('click', function (event) {
                 if (!wrapper.contains(event.target)) {
@@ -3019,6 +3061,7 @@
                 row.className = 'sales-item-card is-compact';
                 row.setAttribute('data-sale-product-line', '');
                 row.setAttribute('data-sale-line-index', String(index));
+                row.setAttribute('data-product-id', product ? String(product.id) : '');
                 row.innerHTML = `
                     <div class="sales-item-head">
                         <div class="sales-item-title">
@@ -3033,10 +3076,17 @@
                     <div class="sales-product-details" data-line-details="${index}">
                         <div class="sales-product-first-row">
                             <div class="sales-field">
-                                <label for="sale_item_product_${index}">Product <span style="color:#dc2626;">*</span></label>
+                                <div class="sales-field-label-row">
+                                    <label for="sale_item_product_${index}">Product <span style="color:#dc2626;">*</span></label>
+                                    <button type="button" class="sales-add-stock-btn" data-add-sale-stock-link data-line-index="${index}" data-product-id="${product ? escapeHtml(product.id) : ''}" data-stock-url="${escapeHtml(addStockHref)}">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
+                                        Stock
+                                    </button>
+                                </div>
                                 <select name="sale_items[${index}][product_id]" id="sale_item_product_${index}" data-sale-product-select data-searchable-select data-search-placeholder="Search product by name, brand, model, SKU, or code">
                                     ${productOptionsHtml(item.product_id ? parseInt(item.product_id, 10) : null)}
                                 </select>
+                                <input type="hidden" data-sale-product-id value="${product ? escapeHtml(product.id) : ''}">
                             </div>
                             <div class="sales-field">
                                 <label for="sale_item_asset_${index}">Asset Link <span style="color:#64748b; text-transform:none; font-weight:700;">(Optional)</span></label>
@@ -3044,11 +3094,7 @@
                                     ${assetOptionsHtml(item, index)}
                                 </select>
                             </div>
-                            <button type="button" class="sales-add-stock-btn" data-add-sale-stock-link data-line-index="${index}" data-product-id="${product ? escapeHtml(product.id) : ''}" data-stock-url="${escapeHtml(addStockHref)}">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
-                                Add Stock
-                            </button>
-                        </div>
+</div>
 
                         <div class="sales-product-preview" ${product ? '' : 'hidden'}>
                             <div class="sales-product-thumb">${product && product.image_url ? `<img src="${escapeHtml(product.image_url)}" alt="" onerror="this.parentElement.textContent='${escapeHtml(productInitial(product))}'">` : escapeHtml(productInitial(product))}</div>
@@ -3155,6 +3201,7 @@
                 const collapseButton = row.querySelector('[data-toggle-line-details="' + index + '"]');
                 const detailsBlock = row.querySelector('[data-line-details="' + index + '"]');
 
+                syncSaleProductLineProductState(row, index);
                 enhanceSearchableSelect(productSelect);
 
                 function refreshLineTotal() {
@@ -3452,38 +3499,96 @@
             if (saleStockCurrentSold) saleStockCurrentSold.textContent = summary.sold ?? 0;
         }
 
+        function resolveSaleLineIndex(button, row) {
+            const rawIndexes = [
+                button?.dataset?.lineIndex,
+                row?.dataset?.saleLineIndex,
+                row?.getAttribute('data-sale-line-index'),
+            ];
+
+            for (const rawIndex of rawIndexes) {
+                const parsedIndex = Number.parseInt(rawIndex ?? '', 10);
+                if (Number.isInteger(parsedIndex) && parsedIndex >= 0) {
+                    return parsedIndex;
+                }
+            }
+
+            return row ? Array.from(saleItemsList.children).indexOf(row) : -1;
+        }
+
+        function productFromCandidateId(candidateId) {
+            const rawProductId = String(candidateId || '').trim();
+            if (!rawProductId) {
+                return null;
+            }
+
+            const normalizedProductId = Number.parseInt(rawProductId, 10);
+            if (Number.isInteger(normalizedProductId) && productMap.has(normalizedProductId)) {
+                return productMap.get(normalizedProductId);
+            }
+
+            return products.find(function (product) {
+                return String(product.id || '').trim() === rawProductId;
+            }) || null;
+        }
+
+        function syncSaleProductLineProductState(row, index) {
+            if (!row) return;
+
+            const lineItem = Number.isInteger(index) && index >= 0 ? saleItems[index] : null;
+            const productId = lineItem?.product_id ? String(lineItem.product_id) : '';
+            const addStockButton = row.querySelector('[data-add-sale-stock-link]');
+            const hiddenProductInput = row.querySelector('[data-sale-product-id]');
+
+            row.dataset.saleLineIndex = String(index);
+            row.dataset.productId = productId;
+
+            if (hiddenProductInput) {
+                hiddenProductInput.value = productId;
+            }
+
+            if (addStockButton) {
+                addStockButton.dataset.lineIndex = String(index);
+                addStockButton.dataset.productId = productId;
+                addStockButton.dataset.stockUrl = productId ? addSaleStockUrl(productId) : '';
+            }
+        }
+
         function resolveSaleStockProduct(button) {
             const row = button?.closest('[data-sale-product-line], .sales-item-card');
             const productSelect = row?.querySelector('[data-sale-product-select], select[name*="[product_id]"]');
-            const inferredLineIndex = row ? Array.from(saleItemsList.children).indexOf(row) : -1;
-            const lineIndex = Number.parseInt(button?.dataset?.lineIndex ?? row?.dataset?.saleLineIndex ?? inferredLineIndex, 10);
+            const hiddenProductInput = row?.querySelector('[data-sale-product-id]');
+            const lineIndex = resolveSaleLineIndex(button, row);
+            const lineItem = lineIndex >= 0 ? saleItems[lineIndex] : null;
             const stockUrlProductMatch = String(button?.dataset?.stockUrl || '').match(/product_id=([^&]+)/);
+            const previewName = row?.querySelector('.sales-product-preview strong')?.textContent?.trim() || '';
             const candidateIds = [
+                lineItem?.product_id,
+                row?.dataset?.productId,
+                hiddenProductInput?.value,
+                button?.dataset?.productId,
                 productSelect?.value,
                 selectedOption(productSelect)?.value,
-                Number.isInteger(lineIndex) ? saleItems[lineIndex]?.product_id : null,
-                button?.dataset?.productId,
                 stockUrlProductMatch ? decodeURIComponent(stockUrlProductMatch[1]) : null,
             ];
 
             for (const candidateId of candidateIds) {
-                const normalizedProductId = Number.parseInt(candidateId || '', 10);
-                if (Number.isInteger(normalizedProductId) && productMap.has(normalizedProductId)) {
-                    return productMap.get(normalizedProductId);
+                const product = productFromCandidateId(candidateId);
+                if (product) {
+                    return product;
                 }
             }
 
             const visibleProductName = [
                 selectedOption(productSelect)?.getAttribute('data-product-name'),
                 selectedOption(productSelect)?.textContent,
-                row?.querySelector('.sales-product-preview strong')?.textContent,
+                previewName,
             ].filter(Boolean).map(function (value) { return String(value).trim().toLowerCase(); }).find(Boolean);
 
             return visibleProductName
                 ? products.find(function (product) { return String(product.name || '').trim().toLowerCase() === visibleProductName; }) || null
                 : null;
         }
-
         function isSaleStockEligibleProduct(product) {
             if (!product) {
                 return false;
@@ -3497,13 +3602,32 @@
                 || ['tracked_sale', 'tracked_both'].includes(stockMode);
         }
 
+        function refreshSaleStockModalRefs() {
+            if (!saleStockModal || !saleStockModal.isConnected) {
+                saleStockModal = document.getElementById('saleStockPopup') || document.querySelector('[data-sale-stock-modal]');
+            }
+            if (!saleStockModalForm || !saleStockModalForm.isConnected) {
+                saleStockModalForm = document.getElementById('saleStockModalForm') || document.querySelector('[data-sale-stock-modal-form]');
+            }
+
+            return {
+                modal: saleStockModal,
+                form: saleStockModalForm,
+            };
+        }
+
         function openSaleStockPopup(productOrId) {
             const product = productOrId instanceof HTMLElement
                 ? resolveSaleStockProduct(productOrId)
                 : (typeof productOrId === 'object' && productOrId !== null
                     ? productOrId
                     : (productOrId ? productMap.get(parseInt(productOrId, 10)) : null));
-            if (!saleStockModal || !saleStockModalForm || !product) {
+            const modalRefs = refreshSaleStockModalRefs();
+            if (!modalRefs.modal || !modalRefs.form) {
+                alert('Sale stock modal is unavailable. Please refresh the page and try again.');
+                return;
+            }
+            if (!product) {
                 alert('Select a sale product before adding stock.');
                 return;
             }
@@ -3518,16 +3642,17 @@
             }
             renderSaleStockProductContext(product);
             resetSaleStockModalFields(false);
-            saleStockModal.classList.add('is-open');
-            saleStockModal.setAttribute('aria-hidden', 'false');
+            modalRefs.modal.classList.add('is-open');
+            modalRefs.modal.setAttribute('aria-hidden', 'false');
             document.body.classList.add('modal-open');
             window.setTimeout(function () { saleStockSerialNumber?.focus(); }, 40);
         }
 
         function closeSaleStockPopup() {
-            if (!saleStockModal) return;
-            saleStockModal.classList.remove('is-open');
-            saleStockModal.setAttribute('aria-hidden', 'true');
+            const modalRefs = refreshSaleStockModalRefs();
+            if (!modalRefs.modal) return;
+            modalRefs.modal.classList.remove('is-open');
+            modalRefs.modal.setAttribute('aria-hidden', 'true');
             document.body.classList.remove('modal-open');
             activeSaleStockProductId = null;
             setSaleStockError('');
@@ -3561,14 +3686,18 @@
             return first || payload?.message || 'Unable to add sale stock.';
         }
 
-        saleStockModalForm?.addEventListener('submit', function (event) {
+        document.addEventListener('submit', function (event) {
+            const submittedSaleStockForm = event.target?.matches?.('[data-sale-stock-modal-form]') ? event.target : null;
+            if (!submittedSaleStockForm) return;
+
             event.preventDefault();
+            saleStockModalForm = submittedSaleStockForm;
             const submitter = event.submitter;
             const mode = submitter?.dataset.saleStockSubmit || 'save';
-            const formData = new FormData(saleStockModalForm);
+            const formData = new FormData(submittedSaleStockForm);
             formData.set('save_action', mode);
             setSaleStockError('');
-            Array.from(saleStockModalForm.querySelectorAll('button')).forEach(function (button) { button.disabled = true; });
+            Array.from(submittedSaleStockForm.querySelectorAll('button')).forEach(function (button) { button.disabled = true; });
 
             fetch(saleStockStoreUrl, {
                 method: 'POST',
@@ -3602,7 +3731,7 @@
                     setSaleStockError(saleStockValidationMessage(payload));
                 })
                 .finally(function () {
-                    Array.from(saleStockModalForm.querySelectorAll('button')).forEach(function (button) { button.disabled = false; });
+                    Array.from(submittedSaleStockForm.querySelectorAll('button')).forEach(function (button) { button.disabled = false; });
                 });
         });
         document.addEventListener('click', function (event) {
@@ -3634,7 +3763,7 @@
                 return;
             }
 
-            if (event.target.closest('[data-close-sale-stock-popup]') || event.target?.id === 'saleStockPopup') {
+            if (event.target.closest('[data-close-sale-stock-popup]') || event.target?.matches?.('[data-sale-stock-modal]')) {
                 event.preventDefault();
                 closeSaleStockPopup();
             }

@@ -234,9 +234,15 @@ class SalesRentalSearchableSelectRegressionTest extends TestCase
 
         $page->assertOk()
             ->assertSee('id="saleStockPopup"', false)
+            ->assertSee('data-sale-stock-modal', false)
             ->assertSee('data-sale-stock-modal-form', false)
             ->assertSee('id="saleStockWarehouseId"', false)
             ->assertSee('id="saleStockSerialNumber"', false)
+            ->assertSee('data-sale-product-id', false)
+            ->assertSee('syncSaleProductLineProductState(row, index);', false)
+            ->assertSee('lineItem?.product_id', false)
+            ->assertSee('refreshSaleStockModalRefs()', false)
+            ->assertSee("document.addEventListener('submit', function (event)", false)
             ->assertDontSee('id="saleStockPopupFrame"', false)
             ->assertDontSee('class="sales-stock-popup-frame"', false);
 

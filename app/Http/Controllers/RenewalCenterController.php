@@ -149,6 +149,10 @@ class RenewalCenterController extends Controller
         $paymentStatus = trim((string) $request->string('payment_status'));
         $deliveryStatus = trim((string) $request->string('delivery_status'));
         $pickupStatus = trim((string) $request->string('pickup_status'));
+        $fromDate = trim((string) $request->string('from_date'));
+        $toDate = trim((string) $request->string('to_date'));
+        $reminderUserId = $request->integer('reminder_user_id');
+        $renewedByUserId = $request->integer('renewed_by_user_id');
 
         if ($search !== '') {
             $query->where(function (Builder $innerQuery) use ($search) {
@@ -227,6 +231,38 @@ class RenewalCenterController extends Controller
             $query->whereHas('pickupRecord', fn (Builder $pickupQuery) => $pickupQuery->where('status', $pickupStatus));
         }
 
+        if ($reminderUserId > 0 && $this->hasReminderLogsTable()) {
+            $query->whereHas('reminderLogs', function (Builder $reminderQuery) use ($fromDate, $toDate, $reminderUserId) {
+                if ($reminderUserId > 0) {
+                    $reminderQuery->where('sent_by_user_id', $reminderUserId);
+                }
+
+                if ($fromDate !== '') {
+                    $reminderQuery->whereDate('sent_at', '>=', $fromDate);
+                }
+
+                if ($toDate !== '') {
+                    $reminderQuery->whereDate('sent_at', '<=', $toDate);
+                }
+            });
+        }
+
+        if ($renewedByUserId > 0 && $this->hasRentalRenewalsTable()) {
+            $query->whereHas('renewals', function (Builder $renewalQuery) use ($fromDate, $toDate, $renewedByUserId) {
+                if ($renewedByUserId > 0) {
+                    $renewalQuery->where('renewed_by_user_id', $renewedByUserId);
+                }
+
+                if ($fromDate !== '') {
+                    $renewalQuery->whereDate('created_at', '>=', $fromDate);
+                }
+
+                if ($toDate !== '') {
+                    $renewalQuery->whereDate('created_at', '<=', $toDate);
+                }
+            });
+        }
+
         return $query;
     }
 
@@ -259,7 +295,17 @@ class RenewalCenterController extends Controller
             'pickup_requested' => $query->whereHas('pickupRecord', fn (Builder $pickupQuery) => $pickupQuery->whereIn('status', ['pending', 'in_progress'])),
             'renewed' => $query->when(
                 $this->hasRentalRenewalsTable(),
-                fn (Builder $renewedQuery) => $renewedQuery->whereHas('renewals', fn (Builder $renewalQuery) => $renewalQuery->whereDate('created_at', '>=', $today->copy()->subDays(30))),
+                function (Builder $renewedQuery) use ($today) {
+                    $hasExplicitRenewalFilter = request()->filled('renewed_by_user_id')
+                        || request()->filled('from_date')
+                        || request()->filled('to_date');
+
+                    return $renewedQuery->whereHas('renewals', function (Builder $renewalQuery) use ($today, $hasExplicitRenewalFilter) {
+                        if (!$hasExplicitRenewalFilter) {
+                            $renewalQuery->whereDate('created_at', '>=', $today->copy()->subDays(30));
+                        }
+                    });
+                },
                 fn (Builder $renewedQuery) => $renewedQuery->whereRaw('1 = 0')
             ),
             default => $query,

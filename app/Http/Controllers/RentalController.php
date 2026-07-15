@@ -3233,6 +3233,7 @@ class RentalController extends Controller
         $customerId = $request->get('customer_id', '');
         $fulfilmentSource = (string) $request->get('fulfilment_source', '');
         $referredBy = trim((string) $request->get('referred_by', ''));
+        $createdByUserId = (int) $request->get('created_by_user_id', 0);
         [$fromDate, $toDate] = $this->normalizedDateFilters($request);
 
         if ($search !== '') {
@@ -3261,7 +3262,19 @@ class RentalController extends Controller
             });
         }
 
-        $this->applyDateRangeFilter($query, $fromDate, $toDate);
+        if ($createdByUserId > 0 && Schema::hasColumn('rentals', 'created_by_user_id')) {
+            $query->where('created_by_user_id', $createdByUserId);
+
+            if ($fromDate !== '') {
+                $query->whereDate('created_at', '>=', $fromDate);
+            }
+
+            if ($toDate !== '') {
+                $query->whereDate('created_at', '<=', $toDate);
+            }
+        } else {
+            $this->applyDateRangeFilter($query, $fromDate, $toDate);
+        }
 
         if ($city !== '') {
             $query->whereHas('customer', function ($customerQuery) use ($city) {
@@ -4725,7 +4738,7 @@ class RentalController extends Controller
         $canViewBusinessSignals = (bool) ($dashboardVisibility['business_signals'] ?? false);
         $canViewInventoryIntelligence = (bool) ($dashboardVisibility['inventory_intelligence'] ?? false);
         $canViewOrganizationAnalytics = (bool) ($dashboardVisibility['organization_analytics'] ?? false);
-        $canViewVendorCosts = (bool) ($currentUser?->hasPermission('vendor_costs.view') ?? false);
+        $canViewVendorCosts = (bool) ($currentUser?->canViewProfitability() ?? false);
         $canReadDeliveries = $currentUser?->canAccessModule('deliveries', 'read') ?? false;
         $restrictDashboardToSelfCreated = (bool) ($currentUser?->hasScope('self_created', 'rentals') ?? false);
         $restrictDashboardToAssignedFollowUps = (bool) (
@@ -5971,14 +5984,25 @@ class RentalController extends Controller
                 ->keyBy('user_id')
             : collect();
 
-        $saleRows = $this->hasSalesCreatedByUserColumn()
+        $saleUserColumn = $this->hasSalesCreatedByUserColumn()
+            ? 'created_by_user_id'
+            : ($this->hasSalesCreatedByColumn() ? 'created_by' : null);
+        $saleDateColumn = Schema::hasColumn('sales', 'sale_date') ? 'sale_date' : 'created_at';
+
+        $saleRows = $saleUserColumn
             ? Sale::query()
                 ->where('organization_id', $this->orgId())
-                ->whereBetween('created_at', [$periodStart, $periodEnd])
-                ->whereIn('created_by_user_id', $eligibleUserIds)
+                ->when(
+                    $saleDateColumn === 'sale_date',
+                    fn ($query) => $query
+                        ->whereDate('sale_date', '>=', $periodStart->toDateString())
+                        ->whereDate('sale_date', '<=', $periodEnd->toDateString()),
+                    fn ($query) => $query->whereBetween('created_at', [$periodStart, $periodEnd])
+                )
+                ->whereIn($saleUserColumn, $eligibleUserIds)
                 ->when($city !== '', fn ($query) => $query->whereHas('customer', fn ($customerQuery) => $customerQuery->where('city', $city)))
-                ->selectRaw('created_by_user_id as user_id, COUNT(*) as sale_count, COALESCE(SUM(sale_amount), 0) as sale_amount')
-                ->groupBy('created_by_user_id')
+                ->selectRaw($saleUserColumn . ' as user_id, COUNT(*) as sale_count, COALESCE(SUM(sale_amount), 0) as sale_amount')
+                ->groupBy($saleUserColumn)
                 ->get()
                 ->keyBy('user_id')
             : collect();
@@ -6036,13 +6060,17 @@ class RentalController extends Controller
                 ->keyBy('user_id')
             : collect();
 
-        $invoiceRows = Schema::hasColumn('invoices', 'created_by_user_id')
+        $invoiceUserColumn = Schema::hasColumn('invoices', 'created_by_user_id')
+            ? 'created_by_user_id'
+            : (Schema::hasColumn('invoices', 'created_by') ? 'created_by' : null);
+
+        $invoiceRows = $invoiceUserColumn
             ? Invoice::query()
                 ->where('organization_id', $this->orgId())
                 ->whereBetween('created_at', [$periodStart, $periodEnd])
-                ->whereIn('created_by_user_id', $eligibleUserIds)
-                ->selectRaw('created_by_user_id as user_id, COUNT(*) as invoice_count')
-                ->groupBy('created_by_user_id')
+                ->whereIn($invoiceUserColumn, $eligibleUserIds)
+                ->selectRaw($invoiceUserColumn . ' as user_id, COUNT(*) as invoice_count')
+                ->groupBy($invoiceUserColumn)
                 ->get()
                 ->keyBy('user_id')
             : collect();
@@ -6055,7 +6083,12 @@ class RentalController extends Controller
                 $deliveryCompletedRows,
                 $renewalReminderRows,
                 $renewalCompletedRows,
-                $invoiceRows
+                $invoiceRows,
+                $periodStart,
+                $periodEnd,
+                $city,
+                $saleUserColumn,
+                $invoiceUserColumn
             ) {
                 $rentalCount = (int) ($rentalRows->get($user->id)->rental_count ?? 0);
                 $saleCount = (int) ($saleRows->get($user->id)->sale_count ?? 0);
@@ -6069,6 +6102,19 @@ class RentalController extends Controller
                 $invoicesGenerated = (int) ($invoiceRows->get($user->id)->invoice_count ?? 0);
                 $totalAmount = $rentalAmount + $saleAmount;
                 $activityScore = $orderCount + $deliveryAssigned + $deliveryCompleted + $renewalReminders + $renewalsCompleted + $invoicesGenerated;
+
+                $dateQuery = [
+                    'from_date' => $periodStart->toDateString(),
+                    'to_date' => $periodEnd->toDateString(),
+                ];
+                $cityQuery = $city !== '' ? ['city' => $city] : [];
+                $deliveryCityQuery = $city !== '' ? ['area' => 'city:' . $city] : [];
+                $rentalCreatorQuery = ['created_by_user_id' => $user->id];
+                $saleCreatorQuery = $saleUserColumn ? [$saleUserColumn => $user->id] : [];
+                $invoiceCreatorQuery = $invoiceUserColumn ? [$invoiceUserColumn => $user->id] : [];
+                $assignedQuery = ['staff' => 'user:' . $user->id];
+                $reminderQuery = ['reminder_user_id' => $user->id];
+                $renewedQuery = ['renewed_by_user_id' => $user->id];
 
                 return [
                     'id' => $user->id,
@@ -6086,6 +6132,15 @@ class RentalController extends Controller
                     'rental_amount' => $rentalAmount,
                     'sales_amount' => $saleAmount,
                     'total_amount' => $totalAmount,
+                    'links' => [
+                        'rentals' => route('rentals.index', array_filter($dateQuery + $cityQuery + $rentalCreatorQuery, fn ($value) => $value !== null && $value !== '')),
+                        'sales' => route('sales.index', array_filter($dateQuery + $cityQuery + $saleCreatorQuery, fn ($value) => $value !== null && $value !== '')),
+                        'delivery_assigned' => route('deliveries.index', array_filter($dateQuery + $deliveryCityQuery + $assignedQuery, fn ($value) => $value !== null && $value !== '')),
+                        'delivery_completed' => route('deliveries.index', array_filter($dateQuery + $deliveryCityQuery + $assignedQuery + ['status' => 'completed'], fn ($value) => $value !== null && $value !== '')),
+                        'renewal_reminders' => route('renewal-center.index', array_filter($dateQuery + $cityQuery + $reminderQuery + ['tab' => 'awaiting_confirmation'], fn ($value) => $value !== null && $value !== '')),
+                        'renewals_completed' => route('renewal-center.index', array_filter($dateQuery + $cityQuery + $renewedQuery + ['tab' => 'renewed'], fn ($value) => $value !== null && $value !== '')),
+                        'invoices_generated' => route('invoices.index', array_filter($dateQuery + $invoiceCreatorQuery, fn ($value) => $value !== null && $value !== '')),
+                    ],
                     'is_zero_activity' => $activityScore === 0 && $totalAmount <= 0,
                     'sort_orders' => $orderCount,
                     'sort_delivery_completed' => $deliveryCompleted,

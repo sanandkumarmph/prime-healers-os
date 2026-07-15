@@ -19,7 +19,7 @@
     $canReadSales = $currentUser?->canAccessModule('sales', 'read') ?? false;
     $canReadDeliveries = $currentUser?->canAccessModule('deliveries', 'read') ?? false;
     $canReadInvoices = $currentUser?->canAccessModule('invoices', 'read') ?? false;
-    $canReadReports = $currentUser?->canAccessModule('reports', 'read') ?? false;
+    $canReadReports = $currentUser?->canAccessGeneralReports() ?? false;
     $canViewFinance = (bool) ($dashboardVisibility['finance_widgets'] ?? false);
     $isDeliveryFacingMenuRole = (bool) ($dashboardVisibility['delivery_focused'] ?? false);
     $isWarehouseDashboardRole = (bool) ($dashboardVisibility['warehouse_focused'] ?? false);
@@ -110,7 +110,7 @@
     $rentalIndexUrl = $mergeDashboardQuery('rentals.index');
     $salesIndexUrl = $mergeDashboardQuery('sales.index');
     $invoiceIndexUrl = $mergeDashboardQuery('invoices.index');
-    $reportsIndexUrl = $mergeDashboardQuery('reports.index');
+    $reportsIndexUrl = $canReadReports ? $mergeDashboardQuery('reports.index') : null;
     $renewalCenterUrl = $safeRoute('renewal-center.index');
     $pickupCenterUrl = $safeRoute('pickup-center.index');
     $communicationCenterUrl = $safeRoute('communication-center.index');
@@ -2661,6 +2661,20 @@
     .team-performance-number {
         font-weight: 800;
         color: #0f172a;
+    }
+    .team-performance-number-link,
+    .team-performance-muted a,
+    .team-performance-mobile-kpis a {
+        color: inherit;
+        font-weight: 900;
+        text-decoration: none;
+    }
+    .team-performance-number-link:hover,
+    .team-performance-muted a:hover,
+    .team-performance-mobile-kpis a:hover {
+        color: var(--ph-color-primary);
+        text-decoration: underline;
+        text-underline-offset: 2px;
     }
     .team-performance-finance {
         background: #fbfdff;
@@ -7690,7 +7704,7 @@
                         @endforeach
                     </div>
                     @if($reportsIndexUrl)
-                        <a href="{{ route('reports.index', ['tab' => 'revenue']) }}" class="dashboard-mobile-btn is-primary">View Revenue Analytics</a>
+                        <a href="{{ $mergeDashboardQuery('reports.index', ['tab' => 'revenue']) }}" class="dashboard-mobile-btn is-primary">View Revenue Analytics</a>
                     @endif
                 </div>
             </details>
@@ -8049,7 +8063,7 @@
     </section>
 
     @if($showTeamPerformanceTable ?? false)
-        <section class="team-performance-card" x-data="{ showFinancials: true, filterOpen: false, period: '{{ $teamPerformancePeriod ?? 'this_month' }}' }" x-on:keydown.escape.window="filterOpen = false">
+        <section id="team-performance" class="team-performance-card" x-data="{ showFinancials: true, filterOpen: false, period: '{{ $teamPerformancePeriod ?? 'this_month' }}' }" x-on:keydown.escape.window="filterOpen = false">
             <div class="team-performance-head">
                 <div>
                     <h2 class="team-performance-title">Team Performance</h2>
@@ -8074,7 +8088,7 @@
                             @endif
                         </button>
                         <div id="team-performance-filter-panel" class="team-performance-popover" x-show="filterOpen" x-cloak>
-                            <form method="GET" action="{{ $safeRoute('dashboard') ?? url('/dashboard') }}">
+                            <form method="GET" action="{{ ($safeRoute('dashboard') ?? url('/dashboard')) . '#team-performance' }}">
                                 @foreach(request()->except(['team_performance_period', 'team_performance_from_date', 'team_performance_to_date', 'team_performance_city', 'team_performance_role']) as $filterKey => $filterValue)
                                     @if(is_scalar($filterValue))
                                         <input type="hidden" name="{{ $filterKey }}" value="{{ $filterValue }}">
@@ -8126,7 +8140,7 @@
                                     </select>
                                 </label>
                                 <div class="team-performance-filter-actions">
-                                    <a href="{{ $mergeDashboardQuery('dashboard', ['team_performance_period' => null, 'team_performance_from_date' => null, 'team_performance_to_date' => null, 'team_performance_city' => null, 'team_performance_role' => null]) ?? $dashboardUrl }}">Reset</a>
+                                    <a href="{{ ($mergeDashboardQuery('dashboard', ['team_performance_period' => null, 'team_performance_from_date' => null, 'team_performance_to_date' => null, 'team_performance_city' => null, 'team_performance_role' => null]) ?? $dashboardUrl) . '#team-performance' }}">Reset</a>
                                     <button type="submit">Apply</button>
                                 </div>
                             </form>
@@ -8167,16 +8181,20 @@
                                     </td>
                                     <td>{{ $row['role'] }}</td>
                                     <td>
-                                        <span class="team-performance-number">{{ number_format((int) $row['orders']) }}</span>
-                                        <span class="team-performance-muted">{{ $row['orders_split'] }}</span>
+                                        <span class="team-performance-number" title="Total rentals and sales for {{ $row['name'] }}">{{ number_format((int) $row['orders']) }}</span>
+                                        <span class="team-performance-muted">
+                                            <a href="{{ $row['links']['rentals'] ?? '#' }}" title="Open rentals for {{ $row['name'] }}">{{ number_format((int) $row['rentals']) }}R</a>
+                                            /
+                                            <a href="{{ $row['links']['sales'] ?? '#' }}" title="Open sales for {{ $row['name'] }}">{{ number_format((int) $row['sales']) }}S</a>
+                                        </span>
                                     </td>
-                                    <td>{{ number_format((int) $row['rentals']) }}</td>
-                                    <td>{{ number_format((int) $row['sales']) }}</td>
-                                    <td>{{ number_format((int) $row['delivery_assigned']) }}</td>
-                                    <td>{{ number_format((int) $row['delivery_completed']) }}</td>
-                                    <td>{{ number_format((int) $row['renewal_reminders']) }}</td>
-                                    <td>{{ number_format((int) $row['renewals_completed']) }}</td>
-                                    <td>{{ number_format((int) $row['invoices_generated']) }}</td>
+                                    <td><a class="team-performance-number-link" href="{{ $row['links']['rentals'] ?? '#' }}" title="Open rentals for {{ $row['name'] }}">{{ number_format((int) $row['rentals']) }}</a></td>
+                                    <td><a class="team-performance-number-link" href="{{ $row['links']['sales'] ?? '#' }}" title="Open sales for {{ $row['name'] }}">{{ number_format((int) $row['sales']) }}</a></td>
+                                    <td><a class="team-performance-number-link" href="{{ $row['links']['delivery_assigned'] ?? '#' }}" title="Open assigned deliveries for {{ $row['name'] }}">{{ number_format((int) $row['delivery_assigned']) }}</a></td>
+                                    <td><a class="team-performance-number-link" href="{{ $row['links']['delivery_completed'] ?? '#' }}" title="Open completed deliveries for {{ $row['name'] }}">{{ number_format((int) $row['delivery_completed']) }}</a></td>
+                                    <td><a class="team-performance-number-link" href="{{ $row['links']['renewal_reminders'] ?? '#' }}" title="Open renewal reminders for {{ $row['name'] }}">{{ number_format((int) $row['renewal_reminders']) }}</a></td>
+                                    <td><a class="team-performance-number-link" href="{{ $row['links']['renewals_completed'] ?? '#' }}" title="Open completed renewals for {{ $row['name'] }}">{{ number_format((int) $row['renewals_completed']) }}</a></td>
+                                    <td><a class="team-performance-number-link" href="{{ $row['links']['invoices_generated'] ?? '#' }}" title="Open invoices for {{ $row['name'] }}">{{ number_format((int) $row['invoices_generated']) }}</a></td>
                                     <td class="team-performance-finance" x-show="showFinancials" x-cloak>Rs. {{ number_format((float) $row['rental_amount'], 2) }}</td>
                                     <td class="team-performance-finance" x-show="showFinancials" x-cloak>Rs. {{ number_format((float) $row['sales_amount'], 2) }}</td>
                                     <td class="team-performance-finance" x-show="showFinancials" x-cloak>Rs. {{ number_format((float) $row['total_amount'], 2) }}</td>
@@ -8200,13 +8218,13 @@
                                 </span>
                             </summary>
                             <div class="team-performance-mobile-kpis">
-                                <span>Rentals <b>{{ number_format((int) $row['rentals']) }}</b></span>
-                                <span>Sales <b>{{ number_format((int) $row['sales']) }}</b></span>
-                                <span>Assigned <b>{{ number_format((int) $row['delivery_assigned']) }}</b></span>
-                                <span>Completed <b>{{ number_format((int) $row['delivery_completed']) }}</b></span>
-                                <span>Reminders <b>{{ number_format((int) $row['renewal_reminders']) }}</b></span>
-                                <span>Renewals <b>{{ number_format((int) $row['renewals_completed']) }}</b></span>
-                                <span>Invoices <b>{{ number_format((int) $row['invoices_generated']) }}</b></span>
+                                <span>Rentals <b><a href="{{ $row['links']['rentals'] ?? '#' }}">{{ number_format((int) $row['rentals']) }}</a></b></span>
+                                <span>Sales <b><a href="{{ $row['links']['sales'] ?? '#' }}">{{ number_format((int) $row['sales']) }}</a></b></span>
+                                <span>Assigned <b><a href="{{ $row['links']['delivery_assigned'] ?? '#' }}">{{ number_format((int) $row['delivery_assigned']) }}</a></b></span>
+                                <span>Completed <b><a href="{{ $row['links']['delivery_completed'] ?? '#' }}">{{ number_format((int) $row['delivery_completed']) }}</a></b></span>
+                                <span>Reminders <b><a href="{{ $row['links']['renewal_reminders'] ?? '#' }}">{{ number_format((int) $row['renewal_reminders']) }}</a></b></span>
+                                <span>Renewals <b><a href="{{ $row['links']['renewals_completed'] ?? '#' }}">{{ number_format((int) $row['renewals_completed']) }}</a></b></span>
+                                <span>Invoices <b><a href="{{ $row['links']['invoices_generated'] ?? '#' }}">{{ number_format((int) $row['invoices_generated']) }}</a></b></span>
                                 <span class="team-performance-mobile-finance" x-show="showFinancials" x-cloak>Rental <b>Rs. {{ number_format((float) $row['rental_amount'], 2) }}</b></span>
                                 <span class="team-performance-mobile-finance" x-show="showFinancials" x-cloak>Sales <b>Rs. {{ number_format((float) $row['sales_amount'], 2) }}</b></span>
                                 <span class="team-performance-mobile-finance" x-show="showFinancials" x-cloak>Total <b>Rs. {{ number_format((float) $row['total_amount'], 2) }}</b></span>

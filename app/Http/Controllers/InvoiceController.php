@@ -279,6 +279,8 @@ class InvoiceController extends Controller
         $city = trim((string) $request->get('city', ''));
         $fromDate = trim((string) $request->get('from_date', ''));
         $toDate = trim((string) $request->get('to_date', ''));
+        $createdByUserId = (int) $request->get('created_by_user_id', 0);
+        $legacyCreatedBy = (int) $request->get('created_by', 0);
 
         if ($search !== '') {
             $query->where(function ($invoiceQuery) use ($search) {
@@ -309,6 +311,12 @@ class InvoiceController extends Controller
             $query->where('customer_id', (int) $customerId);
         }
 
+        if ($createdByUserId > 0 && Schema::hasColumn('invoices', 'created_by_user_id')) {
+            $query->where('created_by_user_id', $createdByUserId);
+        } elseif ($legacyCreatedBy > 0 && Schema::hasColumn('invoices', 'created_by')) {
+            $query->where('created_by', $legacyCreatedBy);
+        }
+
         if ($city !== '') {
             $query->where(function ($cityQuery) use ($city) {
                 $cityQuery
@@ -319,12 +327,14 @@ class InvoiceController extends Controller
             });
         }
 
-        if ($fromDate !== '' && $toDate !== '') {
-            $query->whereBetween('invoice_date', [$fromDate, $toDate]);
-        } elseif ($fromDate !== '') {
-            $query->whereDate('invoice_date', '>=', $fromDate);
-        } elseif ($toDate !== '') {
-            $query->whereDate('invoice_date', '<=', $toDate);
+        $dateColumn = ($createdByUserId > 0 || $legacyCreatedBy > 0) ? 'created_at' : 'invoice_date';
+
+        if ($fromDate !== '') {
+            $query->whereDate($dateColumn, '>=', $fromDate);
+        }
+
+        if ($toDate !== '') {
+            $query->whereDate($dateColumn, '<=', $toDate);
         }
 
         if ($status !== '') {

@@ -299,16 +299,8 @@ class DashboardWidgetRegistryService
 
         return match ($item['sensitivity']) {
             self::SENSITIVITY_FINANCE => $user->canViewFinanceDashboard(),
-            self::SENSITIVITY_MANAGEMENT => $user->isSuperAdmin() || $user->isAdminOperations() || $user->hasAnyPermission([
-                'dashboard.organization_analytics',
-                'dashboard.staff_workload',
-                'dashboard.inventory_intelligence',
-                'dashboard.sales_analytics',
-            ]),
-            self::SENSITIVITY_SENSITIVE_BUSINESS => $user->isSuperAdmin() || $user->isAdminOperations() || $user->hasAnyPermission([
-                'dashboard.business_signals',
-                'dashboard.organization_analytics',
-            ]),
+            self::SENSITIVITY_MANAGEMENT => $user->canViewManagementAnalytics(),
+            self::SENSITIVITY_SENSITIVE_BUSINESS => $user->canViewSensitiveBusinessAnalytics(),
             self::SENSITIVITY_ROLE_OPERATIONAL,
             self::SENSITIVITY_PUBLIC_OPERATIONAL => true,
             default => true,

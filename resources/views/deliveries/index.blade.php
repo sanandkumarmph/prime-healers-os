@@ -200,7 +200,6 @@
         ['label' => 'Today', 'href' => $boardHref(['tab' => 'today', 'status' => null, 'workflow' => null], ['board']), 'active' => $tab === 'today'],
         ['label' => 'Overdue', 'href' => $boardHref(['tab' => 'overdue', 'status' => null, 'workflow' => null], ['board']), 'active' => $tab === 'overdue'],
         ['label' => 'Completed', 'href' => $boardHref(['tab' => 'completed', 'status' => 'completed', 'workflow' => null], ['board']), 'active' => $tab === 'completed' || $statusFilter === 'completed'],
-        ['label' => 'Failed', 'href' => $boardHref(['tab' => 'all', 'status' => null, 'workflow' => 'failed'], ['board']), 'active' => $workflowFilter === 'failed'],
     ];
 
     $scopeTabs = $currentUser?->hasScope('assigned', 'deliveries') && !$assignedScopedDeliveryUser
@@ -262,6 +261,7 @@
             'start' => '<svg '.$attrs.'><path d="m8 5 11 7-11 7V5Z"/></svg>',
             'view' => '<svg '.$attrs.'><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>',
             'menu' => '<svg '.$attrs.'><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>',
+            'refresh' => '<svg '.$attrs.'><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v6h-6"/></svg>',
             default => '<svg '.$attrs.'><path d="M12 5v14"/><path d="M5 12h14"/></svg>',
         };
     };
@@ -1229,6 +1229,57 @@
         .ops-mobile-more .ops-action-panel { right:0; top:38px; max-height:260px; overflow:auto; }
         .ops-widget-stack { display:none; }
     }
+
+    /* Task Board first-fold simplification */
+    .ops-search-form,
+    .ops-mobile-search-row { grid-template-columns:minmax(0, 1fr); }
+    .ops-mobile-search-row .sr-only,
+    .ops-search-form .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+    .ops-task-type-tabs { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:6px; padding:5px; border:1px solid #dbe3ef; border-radius:14px; background:#f8fafc; }
+    .ops-task-type-tabs .ops-tab { min-height:34px; border-radius:10px; border-color:transparent; background:transparent; }
+    .ops-task-type-tabs .ops-tab.is-active { color:#fff; background:linear-gradient(135deg, #2563eb, #4f46e5); box-shadow:0 10px 20px rgba(37,99,235,.18); }
+    .ops-status-tabs { padding-top:0; }
+    .ops-status-tabs .ops-tab { min-height:34px; }
+    .ops-refresh-btn { width:36px; min-width:36px; height:36px; padding:0; border-radius:12px; justify-content:center; }
+    .ops-refresh-btn svg { width:16px; height:16px; }
+    .ops-control-strip.is-empty { padding:8px 10px; }
+    .ops-control-strip.is-empty .ops-attention-list { display:none; }
+    .ops-control-strip.is-empty .ops-control-head h2::after { content:' - all clear'; color:#16a34a; font-weight:800; }
+    .ops-filter-toggle summary h2 { font-size:13px; }
+    .ops-filter-toggle summary span { font-size:11px; }
+
+    @media (max-width: 767px) {
+        .ops-board-title p { display:none; }
+        .ops-mobile-search-row { grid-template-columns:minmax(0, 1fr); }
+        .ops-mobile-command { gap:7px; }
+        .ops-mobile-chip-groups { gap:7px; }
+        .ops-mobile-chip-group:first-child .ops-mobile-chip-row { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:6px; padding:5px; border:1px solid #dbe3ef; border-radius:14px; background:#f8fafc; }
+        .ops-mobile-chip-group:first-child .ops-mobile-chip { border-color:transparent; background:transparent; }
+        .ops-mobile-chip-group:first-child .ops-mobile-chip.is-active { color:#fff; background:linear-gradient(135deg, #2563eb, #4f46e5); box-shadow:0 10px 20px rgba(37,99,235,.18); }
+        .ops-mobile-toolbar .ops-refresh-btn { width:36px; min-width:36px; max-width:36px; padding:0; font-size:0; }
+        .ops-control-strip.is-empty { min-height:42px; }
+    }
+
+    /* Mobile Task Board cognitive-load cleanup */
+    @media (max-width: 767px) {
+        .ops-board-header { display:none; }
+        .ops-mobile-command { padding:7px; gap:6px; }
+        .ops-mobile-search-row input { min-height:36px; font-size:12.5px; }
+        .ops-mobile-chip-row { gap:6px; }
+        .ops-mobile-chip { min-height:28px; padding:0 10px; font-size:11px; }
+        .ops-mobile-toolbar { gap:6px; }
+        .ops-mobile-toolbar .mobile-toolbar-btn,
+        .ops-mobile-toolbar .mobile-sort-trigger { width:auto; min-width:64px; max-width:none; height:34px; min-height:34px; padding:0 12px; font-size:11.5px; font-weight:800; }
+        .ops-mobile-toolbar .ops-refresh-btn { display:none; }
+        .ops-stats { gap:6px; }
+        .ops-stat-card { min-height:56px; padding:7px 9px; border-radius:12px; gap:2px; }
+        .ops-stat-top span { font-size:9.5px; }
+        .ops-stat-value { font-size:18px; }
+        .ops-control-strip.is-empty { display:none; }
+        .ops-task-head { display:none; }
+        .ops-mobile-list { padding-top:6px; }
+        .ops-empty { margin:7px; padding:14px; font-size:12px; }
+    }
 </style>
 
 <div class="ops-board rn-list-page">
@@ -1260,7 +1311,7 @@
         @endforeach
     </div>
 
-    <section class="ops-control-strip" aria-label="Needs attention">
+    <section class="ops-control-strip {{ $attentionTasks->isEmpty() ? 'is-empty' : '' }}" aria-label="Needs attention">
         <div class="ops-control-head">
             <h2>Needs Attention</h2>
             <span class="rn-badge {{ $attentionTasks->isNotEmpty() ? 'rn-badge-danger' : 'rn-badge-success' }}">{{ $attentionTasks->count() }}</span>
@@ -1279,7 +1330,7 @@
                 <div class="ops-attention-row">
                     <span class="ops-attention-dot" aria-hidden="true"></span>
                     <span>No critical tasks right now</span>
-                    <em>Clear</em>
+                    <em>All clear</em>
                 </div>
             @endforelse
         </div>
@@ -1294,8 +1345,8 @@
                     <input type="hidden" name="{{ $queryKey }}" value="{{ $queryValue }}">
                 @endif
             @endforeach
-            <input type="search" name="search" value="{{ $search }}" placeholder="Search customer, phone, product">
-            <button type="submit" class="rn-btn-primary">Search</button>
+            <input type="search" name="search" value="{{ $search }}" placeholder="Search task, customer or product" data-taskboard-auto-search>
+            <button type="submit" class="sr-only">Search</button>
         </form>
 
         <div class="ops-mobile-chip-groups">
@@ -1303,6 +1354,7 @@
                 <label>Task Type</label>
                 <div class="ops-mobile-chip-row">
                     @foreach($taskTypeTabs as $typeTab)
+                        @continue(data_get($typeTab, 'key') === 'all')
                         <a href="{{ $typeTab['href'] }}" class="ops-mobile-chip {{ $typeTab['active'] ? 'is-active' : '' }}">{{ $typeTab['label'] }}</a>
                     @endforeach
                 </div>
@@ -1337,16 +1389,22 @@
                     @endforeach
                 </div>
             </div>
-            <a href="{{ route('deliveries.index') }}" class="rn-btn">Refresh</a>
-            <a href="{{ route('deliveries.index') }}" class="rn-btn" data-filter-clear="deliveries-index">Clear</a>
+            <a href="{{ $boardHref([], ['page']) }}" class="rn-btn ops-refresh-btn" title="Refresh tasks" aria-label="Refresh tasks">{!! $navIcon('refresh') !!}</a>
         </div>
     </div>
 
     <div class="ops-filters-shell">
-        <div class="ops-tabs" aria-label="Tasks board tabs">
-            @foreach($tabs as $boardTab)
-                <a href="{{ $boardTab['href'] ?? $boardHref(['tab' => $boardTab['key']], ['board']) }}" class="ops-tab {{ ($boardTab['active'] ?? ($tab === $boardTab['key'])) ? 'is-active' : '' }}">
-                    {{ $boardTab['label'] }}
+        <div class="ops-tabs ops-task-type-tabs" aria-label="Task type">
+            @foreach($taskTypeTabs as $typeTab)
+                <a href="{{ $typeTab['href'] }}" class="ops-tab {{ $typeTab['active'] ? 'is-active' : '' }}">
+                    {{ $typeTab['label'] }}
+                </a>
+            @endforeach
+        </div>
+        <div class="ops-tabs ops-status-tabs" aria-label="Primary status filters">
+            @foreach($statusTabs as $statusTab)
+                <a href="{{ $statusTab['href'] }}" class="ops-tab {{ $statusTab['active'] ? 'is-active' : '' }}">
+                    {{ $statusTab['label'] }}
                 </a>
             @endforeach
         </div>
@@ -1361,7 +1419,7 @@
         @endif
 
         <div class="ops-search-shell">
-            <form method="GET" action="{{ route('deliveries.index') }}" class="ops-search-form">
+            <form method="GET" action="{{ route('deliveries.index') }}" class="ops-search-form" data-taskboard-search-form>
                 <input type="hidden" name="ownership" value="{{ $ownershipFilter }}">
                 <input type="hidden" name="tab" value="{{ $tab }}">
                 @foreach($sortFormQuery as $queryKey => $queryValue)
@@ -1376,11 +1434,11 @@
                         type="search"
                         name="search"
                         value="{{ $search }}"
-                        placeholder="Search customer, mobile, product, sale order"
+                        placeholder="Search task, customer or product"
+                        data-taskboard-auto-search
                     >
                 </div>
-                <button type="submit" class="rn-btn-primary">Search</button>
-                <a href="{{ route('deliveries.index') }}" class="rn-btn" data-filter-clear="deliveries-index">Clear Filters</a>
+                <button type="submit" class="sr-only">Search</button>
             </form>
             @if(!empty($activeFilterChips))
                 <div class="ops-filter-chip-row" aria-label="Active task filters">
@@ -1394,7 +1452,7 @@
         <details class="ops-filters-card ops-filter-toggle" data-filter-panel data-filter-panel-key="deliveries-index" data-filter-active="false">
             <summary>
                 <h2>Search &amp; Filters</h2>
-                <span>{{ $hasActiveFilters ? 'Filters Active - ' . count($activeFilterChips) : 'Expand advanced filters' }}</span>
+                <span>{{ $hasActiveFilters ? count($activeFilterChips) . ' active' : 'Advanced' }}</span>
             </summary>
             <div class="ops-filter-body">
                 <form method="GET" action="{{ route('deliveries.index') }}" class="ops-filter-grid">
@@ -1475,12 +1533,18 @@
                             <option value="cancelled" @selected($statusFilter === 'cancelled')>Cancelled</option>
                         </select>
                     </div>
+                    <div class="ops-filter-field">
+                        <label for="ops_workflow">Outcome</label>
+                        <select id="ops_workflow" name="workflow">
+                            <option value="">Any outcome</option>
+                            <option value="failed" @selected($workflowFilter === 'failed')>Failed</option>
+                        </select>
+                    </div>
                     <div class="ops-filter-actions">
                         <input type="hidden" name="tab" value="{{ $tab }}">
                         <input type="hidden" name="sort_by" value="{{ $sortBy }}">
                         <input type="hidden" name="sort_dir" value="{{ $sortDirection }}">
                         <button type="submit" class="rn-btn-primary">Apply</button>
-                        <a href="{{ route('deliveries.index') }}" class="rn-btn" data-filter-clear="deliveries-index">Clear Filters</a>
                     </div>
                 </form>
             </div>
@@ -1525,7 +1589,14 @@
                                 <option value="pending" @selected($statusFilter === 'pending')>Pending</option>
                                 <option value="in_progress" @selected($statusFilter === 'in_progress')>In Progress</option>
                                 <option value="completed" @selected($statusFilter === 'completed')>Completed</option>
-                                <option value="cancelled" @selected($statusFilter === 'cancelled')>Failed / Cancelled</option>
+                                <option value="cancelled" @selected($statusFilter === 'cancelled')>Cancelled</option>
+                            </select>
+                        </div>
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_task_workflow">Outcome</label>
+                            <select id="mobile_task_workflow" name="workflow">
+                                <option value="">Any outcome</option>
+                                <option value="failed" @selected($workflowFilter === 'failed')>Failed</option>
                             </select>
                         </div>
                         @if($currentUser?->hasScope('assigned', 'deliveries') && !$assignedScopedDeliveryUser)
@@ -2273,6 +2344,27 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+
+    document.querySelectorAll('[data-taskboard-auto-search]').forEach((input) => {
+        const form = input.closest('form');
+        let timer;
+
+        input.addEventListener('input', function () {
+            window.clearTimeout(timer);
+            timer = window.setTimeout(() => {
+                if (!form) {
+                    return;
+                }
+
+                if (typeof form.requestSubmit === 'function') {
+                    form.requestSubmit();
+                    return;
+                }
+
+                form.submit();
+            }, 450);
+        });
+    });
     const selectAll = document.getElementById('deliverySelectAll');
     const selectedCount = document.getElementById('deliverySelectedCount');
     const taskCards = Array.from(document.querySelectorAll('[data-task-card][data-task-href]'));

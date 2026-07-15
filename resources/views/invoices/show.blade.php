@@ -210,7 +210,7 @@
     }
 @endphp
 
-<div style="max-width:1180px; margin:0 auto;">
+<div class="invoice-view-page" style="max-width:1180px; margin:0 auto;">
     <style>
         .invoice-view-shell {
             display: grid;
@@ -669,7 +669,264 @@
             }
         }
 
+        .invoice-mobile-preview-card { display:none; }
         @media (max-width: 640px) {
+
+            .invoice-view-page {
+                padding: 0 10px 104px;
+            }
+
+            .invoice-view-shell {
+                gap: 12px;
+            }
+
+            .invoice-hero {
+                padding: 14px;
+                border-radius: 18px;
+            }
+
+            .invoice-hero-top {
+                display: grid;
+                gap: 12px;
+                padding-bottom: 12px;
+            }
+
+            .invoice-brand {
+                flex-direction: row;
+                align-items: center;
+                gap: 12px;
+            }
+
+            .invoice-logo {
+                width: 52px;
+                height: 52px;
+                border-radius: 14px;
+            }
+
+            .invoice-logo-fallback {
+                font-size: 18px;
+            }
+
+            .invoice-brand h1 {
+                margin-bottom: 2px;
+                font-size: 16px;
+                line-height: 1.25;
+            }
+
+            .invoice-brand-meta {
+                display: none;
+            }
+
+            .invoice-title-panel {
+                margin-top: 0;
+                text-align: left;
+            }
+
+            .invoice-title-panel h2 {
+                margin: 8px 0 4px;
+                font-size: 24px;
+                line-height: 1.05;
+            }
+
+            .invoice-subtitle {
+                font-size: 12px;
+                line-height: 1.35;
+            }
+
+            .status-badge {
+                margin-top: 10px;
+                padding: 6px 10px;
+                font-size: 10px;
+            }
+
+            .invoice-actions {
+                margin-top: 12px;
+            }
+
+            .invoice-actions p {
+                display: none;
+            }
+
+            .invoice-button {
+                min-height: 40px;
+                padding: 8px 10px;
+                border-radius: 10px;
+                font-size: 12px;
+            }
+
+            .invoice-meta-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 8px;
+            }
+
+            .invoice-meta-card {
+                padding: 10px;
+                border-radius: 14px;
+            }
+
+            .invoice-meta-label {
+                margin-bottom: 4px;
+                font-size: 9px;
+            }
+
+            .invoice-meta-value {
+                font-size: 12px;
+                line-height: 1.35;
+            }
+
+            .invoice-subject-card {
+                padding: 12px;
+                border-radius: 14px;
+                font-size: 12px;
+            }
+
+            .invoice-document-desktop {
+                display: none !important;
+            }
+
+            .invoice-mobile-preview-card {
+                display: grid;
+                gap: 12px;
+                padding: 12px;
+                border-radius: 16px;
+            }
+
+            .invoice-mobile-preview-head {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 10px;
+                padding-bottom: 10px;
+                border-bottom: 1px solid #e2e8f0;
+            }
+
+            .invoice-mobile-preview-head h3 {
+                margin: 0;
+                color: #0f172a;
+                font-size: 16px;
+                line-height: 1.2;
+            }
+
+            .invoice-mobile-preview-head span,
+            .invoice-mobile-label {
+                color: #64748b;
+                font-size: 10px;
+                font-weight: 800;
+                letter-spacing: .06em;
+                text-transform: uppercase;
+            }
+
+            .invoice-mobile-amount {
+                color: #1d4ed8;
+                font-size: 18px;
+                font-weight: 900;
+                white-space: nowrap;
+            }
+
+            .invoice-mobile-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+            }
+
+            .invoice-mobile-box {
+                min-width: 0;
+                padding: 10px;
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                background: #f8fafc;
+            }
+
+            .invoice-mobile-box strong,
+            .invoice-mobile-line strong {
+                display: block;
+                margin-top: 4px;
+                color: #0f172a;
+                font-size: 12px;
+                line-height: 1.35;
+                overflow-wrap: anywhere;
+            }
+
+            .invoice-mobile-box p {
+                margin: 3px 0 0;
+                color: #64748b;
+                font-size: 11px;
+                line-height: 1.4;
+                overflow-wrap: anywhere;
+            }
+
+            .invoice-mobile-lines {
+                display: grid;
+                gap: 8px;
+            }
+
+            .invoice-mobile-line {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) auto;
+                gap: 10px;
+                align-items: start;
+                padding: 10px;
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+                background: #fff;
+            }
+
+            .invoice-mobile-line small {
+                display: block;
+                margin-top: 3px;
+                color: #64748b;
+                font-size: 11px;
+                line-height: 1.35;
+            }
+
+            .invoice-mobile-line-amount {
+                color: #0f172a;
+                font-size: 12px;
+                font-weight: 900;
+                white-space: nowrap;
+            }
+
+            .invoice-mobile-total-list {
+                display: grid;
+                gap: 7px;
+                padding-top: 8px;
+                border-top: 1px solid #e2e8f0;
+            }
+
+            .invoice-mobile-total-row {
+                display: flex;
+                justify-content: space-between;
+                gap: 12px;
+                color: #475569;
+                font-size: 12px;
+            }
+
+            .invoice-mobile-total-row strong {
+                color: #0f172a;
+                white-space: nowrap;
+            }
+
+            .invoice-mobile-total-row.is-grand {
+                margin-top: 2px;
+                padding-top: 8px;
+                border-top: 1px solid #cbd5e1;
+                color: #0f172a;
+                font-size: 14px;
+                font-weight: 900;
+            }
+
+            .timeline-shell {
+                padding: 10px;
+                border-radius: 14px;
+            }
+
+            .timeline-summary-copy h2 {
+                font-size: 15px;
+            }
+
+            .timeline-summary-copy p {
+                font-size: 11px;
+            }
             .invoice-hero {
                 padding: 20px;
                 border-radius: 20px;
@@ -738,6 +995,42 @@
 
             .invoice-table .text-right {
                 text-align: left;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .invoice-view-page .invoice-hero {
+                padding: 14px;
+                border-radius: 18px;
+            }
+
+            .invoice-view-page .invoice-brand {
+                flex-direction: row;
+                align-items: center;
+                gap: 12px;
+            }
+
+            .invoice-view-page .invoice-logo {
+                width: 52px;
+                height: 52px;
+                border-radius: 14px;
+            }
+
+            .invoice-view-page .invoice-brand h1 {
+                font-size: 16px;
+                line-height: 1.25;
+            }
+
+            .invoice-view-page .invoice-title-panel h2 {
+                font-size: 24px;
+            }
+
+            .invoice-view-page .invoice-mobile-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .invoice-view-page .invoice-action-buttons {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
             }
         }
 
@@ -858,7 +1151,68 @@
             'anchorId' => 'invoice-activity-timeline',
         ])
 
-        <div class="invoice-table-card" style="padding:20px 22px;">
+        <div class="invoice-table-card invoice-mobile-preview-card" aria-label="Mobile invoice preview">
+            <div class="invoice-mobile-preview-head">
+                <div>
+                    <span>Invoice Preview</span>
+                    <h3>{{ $invoice->invoice_number }}</h3>
+                    <p class="invoice-subtitle">{{ optional($invoice->invoice_date)->format('d M Y') ?: 'Date not set' }} &middot; {{ $subjectLine }}</p>
+                </div>
+                <div style="text-align:right;">
+                    <div class="invoice-mobile-amount">&#8377;{{ number_format((float) $invoice->total_amount, 2) }}</div>
+                    <span class="status-badge {{ $statusClass }}" style="margin-top:6px;">{{ $statusLabel }}</span>
+                </div>
+            </div>
+
+            <div class="invoice-mobile-grid">
+                <div class="invoice-mobile-box">
+                    <span class="invoice-mobile-label">Bill To</span>
+                    <strong>{{ $invoice->bill_to_name ?: ($invoice->customer->name ?? 'Customer') }}</strong>
+                    @if($invoice->bill_to_phone)<p>{{ $invoice->bill_to_phone }}</p>@endif
+                    @if($billingAddress)<p>{{ $billingAddress }}</p>@endif
+                </div>
+                <div class="invoice-mobile-box">
+                    <span class="invoice-mobile-label">Ship To</span>
+                    <strong>{{ $invoice->ship_to_name ?: ($invoice->bill_to_name ?: ($invoice->customer->name ?? 'Customer')) }}</strong>
+                    <p>{{ $shipMatchesBilling ? 'Same as billing' : ($shippingAddress ?: 'Address not set') }}</p>
+                    <p>Due: {{ optional($invoice->due_date)->format('d M Y') ?: 'N/A' }}</p>
+                </div>
+            </div>
+
+            <div class="invoice-mobile-lines">
+                <span class="invoice-mobile-label">Line Items</span>
+                @foreach($invoice->items as $item)
+                    <div class="invoice-mobile-line">
+                        <div>
+                            <strong>{{ $item->description ?: 'Invoice item' }}</strong>
+                            <small>Qty {{ rtrim(rtrim(number_format((float) $item->quantity, 2), '0'), '.') }} @if($item->unit) {{ $item->unit }} @endif &middot; Rate &#8377;{{ number_format((float) $item->rate, 2) }}</small>
+                            @if($item->hsn_sac_code)<small>HSN/SAC: {{ $item->hsn_sac_code }}</small>@endif
+                        </div>
+                        <div class="invoice-mobile-line-amount">&#8377;{{ number_format((float) $item->total_amount, 2) }}</div>
+                    </div>
+                @endforeach
+            </div>
+
+            <div class="invoice-mobile-total-list">
+                <div class="invoice-mobile-total-row"><span>Subtotal</span><strong>&#8377;{{ number_format((float) $invoice->subtotal, 2) }}</strong></div>
+                @if((float) $invoice->discount_amount > 0)
+                    <div class="invoice-mobile-total-row"><span>Discount</span><strong>-&#8377;{{ number_format((float) $invoice->discount_amount, 2) }}</strong></div>
+                @endif
+                @if((float) $invoice->total_tax_amount > 0)
+                    <div class="invoice-mobile-total-row"><span>GST</span><strong>&#8377;{{ number_format((float) $invoice->total_tax_amount, 2) }}</strong></div>
+                @endif
+                @if((float) $invoice->shipping_charges > 0)
+                    <div class="invoice-mobile-total-row"><span>Transport</span><strong>&#8377;{{ number_format((float) $invoice->shipping_charges, 2) }}</strong></div>
+                @endif
+                <div class="invoice-mobile-total-row is-grand"><span>Total</span><strong>&#8377;{{ number_format((float) $invoice->total_amount, 2) }}</strong></div>
+                <div class="invoice-mobile-total-row"><span>Paid</span><strong>&#8377;{{ number_format((float) $invoice->paid_amount, 2) }}</strong></div>
+                <div class="invoice-mobile-total-row"><span>Balance</span><strong>&#8377;{{ number_format((float) $invoice->balance_amount, 2) }}</strong></div>
+            </div>
+
+            <a href="{{ route('invoices.print', $invoice->id) }}" target="_blank" class="invoice-button invoice-button-primary">Open PDF / Print</a>
+        </div>
+
+        <div class="invoice-table-card invoice-document-desktop" style="padding:20px 22px;">
             @include('invoices.partials.invoice-document', [
                 'invoice' => $invoice,
                 'amountInWords' => $amountInWords ?? null,

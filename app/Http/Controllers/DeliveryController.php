@@ -1318,6 +1318,8 @@ class DeliveryController extends Controller
         $tab = strtolower((string) $request->query('tab', $legacyDefault['tab'] ?? 'all'));
         $search = trim((string) $request->query('search', ''));
         $selectedDate = trim((string) $request->query('date', ''));
+        $fromDate = trim((string) $request->query('from_date', ''));
+        $toDate = trim((string) $request->query('to_date', ''));
         $taskType = strtolower((string) $request->query('task_type', $legacyDefault['task_type'] ?? ''));
         $staffFilter = trim((string) $request->query('staff', ''));
         $areaFilter = trim((string) $request->query('area', ''));
@@ -1485,6 +1487,20 @@ class DeliveryController extends Controller
         if ($selectedDate !== '') {
             $baseQuery->whereDate('scheduled_at', $selectedDate);
             $summaryBaseQuery->whereDate('scheduled_at', $selectedDate);
+        }
+
+        if ($fromDate !== '' || $toDate !== '') {
+            $dateColumn = $statusFilter === 'completed' || $tab === 'completed' ? 'completed_at' : 'created_at';
+
+            if ($fromDate !== '') {
+                $baseQuery->whereDate($dateColumn, '>=', $fromDate);
+                $summaryBaseQuery->whereDate($dateColumn, '>=', $fromDate);
+            }
+
+            if ($toDate !== '') {
+                $baseQuery->whereDate($dateColumn, '<=', $toDate);
+                $summaryBaseQuery->whereDate($dateColumn, '<=', $toDate);
+            }
         }
 
         if ($staffFilter !== '') {

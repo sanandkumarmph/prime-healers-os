@@ -333,6 +333,43 @@ class User extends Authenticatable
         return $this->canViewFinance();
     }
 
+    public function canViewProfitability(): bool
+    {
+        return $this->canViewFinance('finance.view_profit')
+            || $this->hasPermission('vendor_costs.view');
+    }
+
+    public function canViewManagementAnalytics(): bool
+    {
+        return $this->isSuperAdmin()
+            || $this->isAdminOperations()
+            || $this->hasAnyPermission([
+                'dashboard.organization_analytics',
+                'dashboard.staff_workload',
+                'dashboard.inventory_intelligence',
+                'dashboard.sales_analytics',
+            ]);
+    }
+
+    public function canViewSensitiveBusinessAnalytics(): bool
+    {
+        return $this->isSuperAdmin()
+            || $this->isAdminOperations()
+            || $this->hasAnyPermission([
+                'dashboard.business_signals',
+                'dashboard.organization_analytics',
+            ]);
+    }
+
+    public function canAccessGeneralReports(): bool
+    {
+        return $this->canAccessModule('reports', 'read')
+            && ! $this->matchesLegacyRoles([
+                self::ROLE_SALES,
+                self::ROLE_SALES_RENEWALS,
+            ]);
+    }
+
     public function scopeType(?string $module = null): string
     {
         $roleScopes = $this->roleScopeMatrix()[$this->effective_role] ?? [];
@@ -361,7 +398,7 @@ class User extends Authenticatable
             'customers.index' => fn () => $this->canAccessModule('customers', 'read'),
             'products.index' => fn () => $this->canAccessModule('products', 'read'),
             'assets.index' => fn () => $this->canAccessModule('assets', 'read'),
-            'reports.index' => fn () => $this->canAccessModule('reports', 'read'),
+            'reports.index' => fn () => $this->canAccessGeneralReports(),
             'users.index' => fn () => $this->canAccessModule('users', 'read'),
             'organization.settings.edit' => fn () => $this->canAccessModule('settings', 'read'),
             'profile.edit' => fn () => true,

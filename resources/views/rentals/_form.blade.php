@@ -249,9 +249,16 @@
     .primary-rental-product-card .rental-line-heading { padding:0 0 8px; border-bottom:1px solid #eef2f7; margin-bottom:2px; }
     .primary-rental-product-card .rental-line-heading strong { font-size:14px; }
     .primary-rental-product-card .rental-line-heading span { color:#4f46e5; background:#eef2ff; border-radius:999px; padding:3px 9px; }
+    .primary-rental-product-card .rental-field { gap:6px; }
     .primary-rental-product-card .rental-field input,
     .primary-rental-product-card .rental-field select,
-    .primary-rental-product-card .searchable-select-trigger { min-height:40px; border-radius:10px; }
+    .primary-rental-product-card .searchable-select-trigger { min-height:44px; height:44px; border-radius:10px; }
+    .primary-rental-product-card .rental-product-setup-grid { align-items:start; }
+    .primary-rental-product-card .rental-product-label-row { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:16px; }
+    .primary-rental-product-card .rental-product-label-row label { margin:0; }
+    .primary-rental-product-card .rental-stock-inline-button { flex:0 0 auto; min-height:28px; height:28px; border-radius:999px; padding:0 9px; box-sizing:border-box; gap:4px; overflow:hidden; text-overflow:ellipsis; font-size:11px; }
+    .primary-rental-product-card .rental-stock-inline-button .desktop-label { display:none; }
+    .primary-rental-product-card .rental-stock-inline-button .mobile-label { display:inline; }
     .rental-section-panel { border:1px solid #dbe3ef; border-radius:12px; padding:16px; background:#fff; box-shadow:0 8px 18px rgba(15,23,42,.035); }
     .rental-section-panel .sale-section-body { padding-top:10px; }
     .rental-availability-panel { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; padding:8px; border:1px solid #e2e8f0; border-radius:12px; background:#f8fafc; }
@@ -323,6 +330,9 @@
     #rental-product-section .rental-stock-inline-button .desktop-label { display:none; }
     #rental-product-section .rental-stock-inline-button .mobile-label { display:inline; }
     #deliveryPartnerHint { font-size:12px !important; line-height:1.35 !important; color:#64748b !important; max-width:480px; margin-top:4px !important; }
+    .rental-wizard-step[data-rental-wizard-step="delivery"] > .rental-grid { align-items:start; }
+    .rental-wizard-step[data-rental-wizard-step="delivery"] > .rental-grid > .rental-field > label { min-height:30px; display:flex; align-items:flex-end; }
+    .rental-wizard-step[data-rental-wizard-step="delivery"] > .rental-grid > .rental-field select { min-height:44px; height:44px; box-sizing:border-box; }
     .rental-stock-inline-button .mobile-label { display:none; }
     .rental-field .hint { font-size:10px; color:#94a3b8; line-height:1.35; }
     .rental-mode-shell { display:grid; gap:12px; }
@@ -638,6 +648,11 @@
         gap:8px;
         min-width:min(320px, calc(100vw - 32px));
     }
+    .searchable-select.is-product-search .searchable-select-panel {
+        right:auto;
+        width:min(560px, calc(100vw - 32px));
+        max-width:min(650px, calc(100vw - 32px));
+    }
     .searchable-select-panel[hidden] { display:none !important; }
     .searchable-select-search {
         width:100%;
@@ -683,7 +698,7 @@
         border-radius:4px;
         font-weight:800;
     }
-    .searchable-select-option.has-product-media { padding:8px; }
+    .searchable-select-option.has-product-media { min-height:58px; padding:10px 12px; }
     .product-option-media { display:flex; align-items:center; gap:10px; min-width:0; }
     .product-option-thumb,
     .selected-product-thumb {
@@ -704,11 +719,12 @@
     .selected-product-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
     .product-option-copy,
     .selected-product-copy { display:grid; gap:2px; min-width:0; }
-    .product-option-copy strong,
+    .product-option-copy { gap:3px; }
+    .product-option-copy strong { color:#0f172a; font-size:14px; font-weight:800; line-height:1.25; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; white-space:normal; }
     .selected-product-copy strong { color:#0f172a; font-size:13px; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .product-option-copy span,
     .selected-product-copy span { color:#64748b; font-size:11px; line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .product-option-copy em,
+    .product-option-copy em { color:#15803d; font-size:11px; font-style:normal; font-weight:800; line-height:1.2; }
     .selected-product-copy em { color:#1d4ed8; font-size:10px; font-style:normal; font-weight:800; line-height:1.2; }
     .selected-product-preview {
         display:flex;
@@ -2719,12 +2735,12 @@
             </div>
         </div>
         <div class="primary-rental-product-card">
-        <div class="rental-grid"><div class="rental-line-heading">
+        <div class="rental-grid rental-product-setup-grid"><div class="rental-line-heading">
                 <strong>Rental Item #1</strong>
                 <span>Primary</span>
             </div>
-            <div class="rental-field rental-col-4{{ $hasFieldError('product_id', 'rental_items') ? ' is-error' : '' }} section-nav-target" id="rental-product-section">
-                <div class="rental-field-label-row">
+            <div class="rental-field rental-col-5{{ $hasFieldError('product_id', 'rental_items') ? ' is-error' : '' }} section-nav-target" id="rental-product-section">
+                <div class="rental-product-label-row">
                     <label for="product_id">Product</label>
                     @if($canCreateRentalStock)
                         <button type="button" class="rental-stock-inline-button" id="openRentalStockModal" data-open-rental-stock-modal data-add-rental-stock-trigger>
@@ -2772,7 +2788,6 @@
                     <span class="field-error">{{ $fieldError('product_id', 'rental_items') }}</span>
                 @endif
             </div>
-
             <div class="rental-field rental-col-4{{ $hasFieldError('dispatch_warehouse_id') ? ' is-error' : '' }}" id="dispatchWarehouseField">
                 <label for="dispatch_warehouse_id">Warehouse</label>
                 <select name="dispatch_warehouse_id" id="dispatch_warehouse_id">
@@ -2813,7 +2828,7 @@
                 @endif
             </div>
 
-            <div class="rental-field rental-col-4{{ $hasFieldError('quantity', 'asset_ids', 'rental_items') ? ' is-error' : '' }}">
+            <div class="rental-field rental-col-3{{ $hasFieldError('quantity', 'asset_ids', 'rental_items') ? ' is-error' : '' }}">
                 <label for="quantity">Quantity</label>
                 <input type="number" name="quantity" id="quantity" min="1" value="{{ old('quantity', $isEdit ? $rental->quantity : 1) }}" required>
                 <span class="hint" id="productAvailabilityHint">{{ $selectedFulfilmentSource === 'vendor_supplied' ? 'Vendor supplied.' : 'Available: 0' }}</span>
@@ -4837,12 +4852,17 @@
             return `<span class="${className}" aria-hidden="true"><img src="${escapeHtml(imageUrl)}" alt="" onerror="this.parentElement.textContent='${initial}'"></span>`;
         }
 
-        function optionHasProductMedia(select, option) {
-            return Boolean(option?.value) && Boolean(optionProductName(option)) && (
-                select?.id === 'product_id'
+        function isProductSearchSelect(select) {
+            const name = String(select?.name || '');
+            return name.includes('[product_id]')
+                || select?.id === 'product_id'
+                || select?.hasAttribute('data-sale-product-select')
                 || select?.hasAttribute('data-rental-product-index')
-                || select?.hasAttribute('data-sale-product-index')
-            );
+                || select?.hasAttribute('data-sale-product-index');
+        }
+
+        function optionHasProductMedia(select, option) {
+            return Boolean(option?.value) && Boolean(optionProductName(option)) && isProductSearchSelect(select);
         }
 
         function productOptionMarkup(select, option, query) {
@@ -4940,6 +4960,7 @@
 
             const wrapper = document.createElement('div');
             wrapper.className = 'searchable-select';
+            wrapper.classList.toggle('is-product-search', isProductSearchSelect(select));
 
             const trigger = document.createElement('button');
             trigger.type = 'button';
@@ -4957,7 +4978,9 @@
             const searchInput = document.createElement('input');
             searchInput.type = 'search';
             searchInput.className = 'searchable-select-search';
-            searchInput.placeholder = select.getAttribute('data-search-placeholder') || 'Search options';
+            searchInput.placeholder = isProductSearchSelect(select)
+                ? 'Search product by name, SKU or code...'
+                : (select.getAttribute('data-search-placeholder') || 'Search options');
 
             const optionsWrap = document.createElement('div');
             optionsWrap.className = 'searchable-select-options';
@@ -4986,6 +5009,29 @@
                 panel.hidden = true;
                 trigger.setAttribute('aria-expanded', 'false');
                 activeIndex = -1;
+            }
+
+            function positionProductPanel() {
+                if (panel.hidden || !isProductSearchSelect(select)) {
+                    return;
+                }
+
+                const isMobile = window.matchMedia('(max-width: 640px)').matches;
+                const isTablet = window.matchMedia('(min-width: 641px) and (max-width: 1024px)').matches;
+                const viewportPadding = isMobile ? 12 : 16;
+                const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+                const preferredWidth = isTablet ? 420 : 560;
+                const targetWidth = isMobile
+                    ? viewportWidth - (viewportPadding * 2)
+                    : Math.min(650, Math.max(preferredWidth, trigger.getBoundingClientRect().width));
+                const safeWidth = Math.max(trigger.getBoundingClientRect().width, Math.min(targetWidth, viewportWidth - (viewportPadding * 2)));
+                const triggerRect = trigger.getBoundingClientRect();
+                const wrapperRect = wrapper.getBoundingClientRect();
+                const viewportLeft = Math.min(Math.max(triggerRect.left, viewportPadding), viewportWidth - safeWidth - viewportPadding);
+
+                panel.style.width = safeWidth + 'px';
+                panel.style.left = (viewportLeft - wrapperRect.left) + 'px';
+                panel.style.right = 'auto';
             }
 
             function syncActiveOption() {
@@ -5068,7 +5114,9 @@
                 trigger.setAttribute('aria-expanded', 'true');
                 searchInput.value = '';
                 renderOptions();
+                positionProductPanel();
                 window.requestAnimationFrame(function () {
+                    positionProductPanel();
                     searchInput.focus();
                 });
             }
@@ -5092,6 +5140,8 @@
             });
 
             searchInput.addEventListener('input', renderOptions);
+            window.addEventListener('resize', positionProductPanel);
+            window.addEventListener('scroll', positionProductPanel, true);
             searchInput.addEventListener('keydown', function (event) {
                 if (event.key === 'ArrowDown') {
                     event.preventDefault();
