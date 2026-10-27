@@ -498,6 +498,80 @@ def verify_release(repo):
     note("PHOS_REVIEWED_RELEASE_CHECK_PASSED=" + str(len(RUNTIME_CHANGED)) + "_RUNTIME_FILES")
     return changes
 
+def write_access_probe(directories, files):
+    code = r'''
+import json, pathlib, sys, tempfile
+request = json.load(sys.stdin)
+failures = []
+for name in request["directories"]:
+    try:
+        with tempfile.TemporaryDirectory(prefix=".phos-write-check-", dir=name) as folder:
+            child = pathlib.Path(folder) / "child"
+            child.mkdir()
+            (child / "check").write_bytes(b"PHOS deployment permission check\n")
+    except OSError as error:
+        failures.append({"path": name, "operation": "write", "errno": error.errno})
+for name in request["files"]:
+    try:
+        with open(name, "rb") as source:
+            source.read(1)
+    except OSError as error:
+        failures.append({"path": name, "operation": "read", "errno": error.errno})
+print(json.dumps(failures))
+'''
+    request = {"directories": [str(p) for p in sorted(directories)],
+               "files": [str(p) for p in sorted(files)]}
+    return json.loads(execute(as_owner(["python3", "-c", code]), capture=True,
+                              input_data=json.dumps(request).encode()))
+
+def prepare_destinations(repo, changes, repair=False):
+    base_files = {name.decode() for name in git(repo, "ls-tree", "-rz", "--name-only", BASE).split(b"\0") if name}
+    parents, directories, files = set(), set(), set()
+    for name in changes:
+        file = APP / name
+        no_links(file)
+        if name not in base_files:
+            need(not file.exists(), "New release destination already exists: " + name)
+        if file.exists():
+            regular(file)
+            files.add(file)
+        parent = file.parent
+        while not parent.exists():
+            parent = parent.parent
+        need(parent == APP or APP in parent.parents, "Release destination escaped the application.")
+        need(parent.is_dir(), "Release destination parent is not a directory: " + str(parent))
+        directories.add(parent)
+        while parent != APP:
+            parents.add(parent)
+            parent = parent.parent
+    failures = write_access_probe(directories, files)
+    if failures and repair:
+        uid = pwd.getpwnam(OWNER).pw_uid
+        records = []
+        for parent in sorted(parents, key=lambda p: (len(p.parts), str(p))):
+            st = parent.stat()
+            mode = stat.S_IMODE(st.st_mode)
+            if st.st_uid in (0, uid) and (st.st_uid != uid or mode & 0o700 != 0o700):
+                records.append({"path": str(parent), "uid": st.st_uid, "gid": st.st_gid,
+                                "mode": mode, "after_uid": uid, "after_mode": mode | 0o700})
+        need(records, "Release destinations are blocked; no eligible directory permission repair found.")
+        backup = BACKUP / "directory-permissions.before.json"
+        with backup.open("x") as output:
+            json.dump(records, output, indent=2)
+            output.write("\n")
+        note("DIRECTORY_PERMISSION_BACKUP=" + str(backup))
+        for record in records:
+            parent = Path(record["path"])
+            no_links(parent)
+            permissions(parent, record["after_uid"], record["gid"], record["after_mode"])
+            note("RELEASE_DIRECTORY_REPAIRED=" + str(parent.relative_to(APP)))
+        failures = write_access_probe(directories, files)
+    for failure in failures:
+        note("RELEASE_ACCESS_FAILURE=" + str(failure["operation"]) + ":" + str(failure["path"])
+             + " ERRNO=" + str(failure["errno"]))
+    need(not failures, "Release destinations are not accessible to the website account; maintenance was not started.")
+    note("RELEASE_DESTINATIONS_VERIFIED=" + str(len(changes)) + "_FILES_AS_WEBSITE_OWNER")
+
 def check_layout():
     need(APP.is_dir() and not APP.is_symlink() and WEB.is_dir() and not WEB.is_symlink(),
          "Unexpected PHOS application/web directory.")
@@ -659,6 +733,7 @@ def main():
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--check-release", action="store_true")
     parser.add_argument("--check-web", action="store_true")
+    parser.add_argument("--repair-release-permissions", action="store_true")
     parser.add_argument("--rollback")
     parser.add_argument("--target-config")
     args = parser.parse_args()
@@ -725,10 +800,12 @@ def main():
     need(blob((APP / "package-lock.json").read_bytes()) == LOCK_BLOB, "Modified package-lock fingerprint changed.")
     for name in set(source_map(repo, RELEASE)) - set(source_map(repo, BASE)):
         need(not (APP / name).exists() and not (APP / name).is_symlink(), "New runtime destination already exists: " + name)
+    prepare_destinations(repo, changes, args.repair_release_permissions)
     before = snapshot()
     initial_schema = db_state()
     if initial_schema["engine"]:
         schema_ok(initial_schema)
+        note("EXISTING_PAYMENT_SUBMISSION_MIGRATION_VERIFIED=true")
     else:
         need(initial_schema["migration"] == 0, "Migration history and table disagree.")
     health()
