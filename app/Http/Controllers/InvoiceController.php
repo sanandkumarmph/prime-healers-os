@@ -531,6 +531,8 @@ class InvoiceController extends Controller
             'overdueInvoices' => (int) ($invoiceSummary['overdueInvoices'] ?? 0),
             'outstandingAmount' => (float) ($invoiceSummary['outstandingAmount'] ?? 0),
             'totalBilled' => (float) ($invoiceSummary['totalBilled'] ?? 0),
+            'collectedToday' => (float) ($invoiceSummary['collectedToday'] ?? 0),
+            'collectedThisMonth' => (float) ($invoiceSummary['collectedThisMonth'] ?? 0),
             'salesOutstandingCount' => (int) ($invoiceSummary['salesOutstandingCount'] ?? 0),
             'salesOutstandingAmount' => (float) ($invoiceSummary['salesOutstandingAmount'] ?? 0),
             'rentalOutstandingCount' => (int) ($invoiceSummary['rentalOutstandingCount'] ?? 0),

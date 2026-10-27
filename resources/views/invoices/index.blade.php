@@ -1144,6 +1144,16 @@
         <div class="invoice-alert error">{{ session('error') }}</div>
     @endif
 
+    @if($errors->any())
+        <div class="invoice-alert error" role="alert">
+            <ul style="margin:0; padding-left:18px;">
+                @foreach($errors->all() as $message)
+                    <li>{{ $message }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
     <div class="invoice-workspace-grid">
     <div class="invoice-list-shell rn-table-shell">
         <form id="invoiceBulkForm" method="POST" action="{{ route('invoices.bulk.print') }}" target="_blank">
@@ -1222,7 +1232,7 @@
                                     <div class="invoice-mobile-actions">
                                         <a href="{{ route('invoices.show', $invoice->id) }}" class="invoice-action-icon" title="View invoice" aria-label="View invoice">{!! $invoiceIcon('eye') !!}</a>
                                         @if($canCreatePayments && !in_array($invoice->payment_status, ['paid', 'cancelled'], true) && $invoice->status !== 'cancelled')
-                                            <button type="submit" form="markPaidInvoice{{ $invoice->id }}" class="invoice-action-icon pay" title="Record payment" aria-label="Record payment" onclick="return confirm('Mark this invoice as paid?')">{!! $invoiceIcon('card') !!}</button>
+                                            <button type="submit" form="markPaidInvoice{{ $invoice->id }}" class="invoice-action-icon pay" title="Mark Paid" aria-label="Mark Paid" onclick="return confirm('Mark this invoice as paid?')">{!! $invoiceIcon('card') !!}</button>
                                         @endif
                                         <a href="{{ route('invoices.print', $invoice->id) }}" target="_blank" class="invoice-action-icon pdf" title="Download PDF" aria-label="Download PDF">{!! $invoiceIcon('download') !!}</a>
                                         <details class="invoice-action-menu">
@@ -1321,7 +1331,7 @@
                                         <div class="invoice-row-actions">
                                             <a href="{{ route('invoices.show', $invoice->id) }}" class="invoice-action-icon" title="View invoice" aria-label="View invoice">{!! $invoiceIcon('eye') !!}</a>
                                             @if($canCreatePayments && !in_array($invoice->payment_status, ['paid', 'cancelled'], true) && $invoice->status !== 'cancelled')
-                                                <button type="submit" form="markPaidInvoice{{ $invoice->id }}" class="invoice-action-icon pay" title="Record payment" aria-label="Record payment" onclick="return confirm('Mark this invoice as paid?')">{!! $invoiceIcon('card') !!}</button>
+                                                <button type="submit" form="markPaidInvoice{{ $invoice->id }}" class="invoice-action-icon pay" title="Mark Paid" aria-label="Mark Paid" onclick="return confirm('Mark this invoice as paid?')">{!! $invoiceIcon('card') !!}</button>
                                             @endif
                                             <a href="{{ route('invoices.print', $invoice->id) }}" target="_blank" class="invoice-action-icon pdf" title="Download PDF" aria-label="Download PDF">{!! $invoiceIcon('download') !!}</a>
                                             <details class="invoice-action-menu">
