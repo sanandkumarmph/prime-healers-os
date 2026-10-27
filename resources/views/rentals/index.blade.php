@@ -924,6 +924,7 @@
                 @if($canReadInvoices)
                     <form id="rentalInvoiceBulkForm" method="GET" action="{{ route('invoices.bulk.print') }}" target="_blank" class="bulk-toolbar is-hidden">
                         @csrf
+                    <x-payment-submission-token />
                         <div>
                             <strong>Bulk Actions</strong>
                             <span id="rentalInvoiceSelectedCount">0 selected</span>

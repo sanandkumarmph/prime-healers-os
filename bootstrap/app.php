@@ -33,6 +33,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'module' => \App\Http\Middleware\EnsureModulePermission::class,
             'permission' => \App\Http\Middleware\EnsureUserPermission::class,
+            'payment_submission' => \App\Http\Middleware\ProtectPaymentSubmission::class,
             'data_import' => \App\Http\Middleware\EnsureDataImportAccess::class,
         ]);
     })

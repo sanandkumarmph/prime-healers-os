@@ -592,7 +592,7 @@ class InvoiceLinkageRegressionTest extends TestCase
             'balance_amount' => 1500,
         ]);
 
-        $this->post(route('invoices.markPaid', $invoice->id))
+        $this->post(route('invoices.markPaid', $invoice->id), ['payment_submission_token' => (string) \Illuminate\Support\Str::uuid()])
             ->assertRedirect(route('invoices.show', $invoice->id));
 
         $payment = Payment::query()

@@ -32,6 +32,9 @@
                     <form action="{{ $action['action'] }}" method="{{ strtoupper($action['method'] ?? 'POST') === 'GET' ? 'GET' : 'POST' }}">
                         @if(strtoupper($action['method'] ?? 'POST') !== 'GET')
                             @csrf
+                                @if($action['payment_submission'] ?? false)
+                                    <x-payment-submission-token />
+                                @endif
                             @if(!in_array(strtoupper($action['method'] ?? 'POST'), ['POST'], true))
                                 @method($action['method'])
                             @endif

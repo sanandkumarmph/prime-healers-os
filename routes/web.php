@@ -220,9 +220,11 @@ Route::middleware('auth')->group(function () {
         ->name('payments.create');
     Route::post('/rentals/{rental}/payments', [PaymentController::class, 'store'])
         ->middleware('module:payments,create')
+        ->middleware('payment_submission')
         ->name('payments.store');
     Route::post('/invoices/{invoice}/payments', [PaymentController::class, 'storeForInvoice'])
         ->middleware('module:payments,create')
+        ->middleware('payment_submission')
         ->name('invoices.payments.store');
     Route::delete('/payments/{payment}', [PaymentController::class, 'destroy'])
         ->middleware('module:payments,delete')
@@ -404,6 +406,7 @@ Route::middleware('auth')->group(function () {
         ->name('invoices.bulk.print');
     Route::post('/invoices/bulk/action', [InvoiceController::class, 'bulkAction'])
         ->middleware('module:invoices,update')
+        ->middleware('payment_submission')
         ->name('invoices.bulk.action');
     Route::post('/invoices/bulk/delete', [InvoiceController::class, 'bulkDelete'])
         ->middleware('module:invoices,delete')
@@ -413,6 +416,7 @@ Route::middleware('auth')->group(function () {
         ->name('invoices.print');
     Route::post('/invoices/{id}/mark-paid', [InvoiceController::class, 'markPaid'])
         ->middleware('module:invoices,update')
+        ->middleware('payment_submission')
         ->name('invoices.markPaid');
     Route::put('/invoices/{id}/void', [InvoiceController::class, 'voidInvoice'])
         ->middleware('module:invoices,update')
@@ -494,9 +498,11 @@ Route::middleware('auth')->group(function () {
         ->name('rentals.invoice');
     Route::post('/rentals/{rental}/mark-paid', [RentalController::class, 'markPaid'])
         ->middleware('module:payments,create')
+        ->middleware('payment_submission')
         ->name('rentals.markPaid');
     Route::post('/rentals/{rental}/record-payment', [RentalController::class, 'recordPayment'])
         ->middleware('module:payments,create')
+        ->middleware('payment_submission')
         ->name('rentals.recordPayment');
     Route::post('/rentals/{rental}/notes', [RentalController::class, 'addNote'])
         ->middleware('module:rentals,update')
@@ -525,9 +531,11 @@ Route::middleware('auth')->group(function () {
         ->name('sales.invoice');
     Route::post('/sales/{sale}/mark-paid', [SaleController::class, 'markPaid'])
         ->middleware('module:payments,create')
+        ->middleware('payment_submission')
         ->name('sales.markPaid');
     Route::post('/sales/{sale}/record-payment', [SaleController::class, 'recordPayment'])
         ->middleware('module:payments,create')
+        ->middleware('payment_submission')
         ->name('sales.recordPayment');
     Route::put('/sales/{sale}/void', [SaleController::class, 'voidSale'])
         ->middleware('module:sales,update')
