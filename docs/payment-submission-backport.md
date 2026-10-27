@@ -90,3 +90,45 @@ and deposit safeguards. This increment does not declare that wider batch complet
 - GitHub publication was blocked because the write tool requires approval and
   this session's approval policy is never. Deliver the patch for review; do not
   treat this as a merged or deployed change.
+
+## Follow-up validation and confirmed UAT target
+
+The public PHOS UAT URL is https://uat-admin.primehealers.com/.
+The operator's read-only server inspection confirmed:
+application root `/home/uat-admin.primehealers.com/public_html`,
+checked-out baseline `4171aa0c3e058a9190af05a48180051e62c4fee2`,
+connected database `uata_primehealersos`, PHP 8.2.30 and MariaDB 10.11.16.
+The checked source fingerprints match the expected PHOS baseline; the new middleware
+was absent before deployment. Do not use Rentnexis paths or its database.
+
+After interactive approvals were enabled, a normal-permission mixed Pest run
+produced a complete JUnit report: **581 tests, 3,663 assertions, 31 failures,
+zero errors**. All 31 failing identities map to failures recorded on the earlier
+unmodified PHOS baseline. The console formatter was interrupted after JUnit export
+while printing the large failure diffs; this is not a green command-exit result.
+The broader inherited UI/metric failures remain open.
+
+The disposable MariaDB concurrency runner passed **five scenarios** using MariaDB
+10.4.32: same-token serialization/rejection; competing overpayments; equal
+instalments; rollback after receipt creation with a waiting same-token retry; and
+independent organizations proceeding without a shared organization-row lock.
+The test server was bound to loopback, used a fresh private data directory and
+new random database, and was stopped afterward. UAT uses 10.11.16, so this is
+InnoDB behavior validation on a different MariaDB minor release, not a claim that
+the production-equivalent runtime was tested.
+
+To repeat, initialize a new disposable MariaDB instance and pass a private JSON file
+containing `dataDirectory` and `port`:
+```text
+node tests/Concurrency/PaymentSubmissionConcurrency.cjs /path/to/disposable-instance.json
+```
+On systems without the default Windows PHP location, set `PHOS_TEST_PHP` to the
+PHP binary first. The runner expects a newly initialized local instance with the
+default local root account and no password; it verifies the connected data directory
+and refuses an existing generated database name before creating or migrating any
+schema. Its output is synthetic test data only. Never point it at UAT.
+
+The current evidence is recorded in
+`docs/validation/payment-submission-concurrency-20261027.json`.
+GitHub publication is now enabled. Server preflight, backup and a pinned deployment
+remain separate operations; completing these tests does not deploy the PR.
