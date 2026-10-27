@@ -2,6 +2,7 @@
 
 namespace App\Services\Metrics;
 
+use App\Models\Payment;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -9,6 +10,10 @@ use Illuminate\Support\Facades\Schema;
 
 class InvoiceMetricsService
 {
+    public function __construct(private readonly CollectionMetricsService $collectionMetrics)
+    {
+    }
+
     public function summary(Builder $invoiceQuery, ?Carbon $today = null): array
     {
         $today = ($today ?? Carbon::today())->copy()->startOfDay();
@@ -20,6 +25,13 @@ class InvoiceMetricsService
         $overdueInvoices = (clone $invoiceQuery)->overdue($today)->count();
         $outstandingAmount = round((float) ((clone $invoiceQuery)->whereIn('payment_status', $openStatuses)->sum('balance_amount') ?? 0), 2);
         $totalBilled = round((float) ((clone $invoiceQuery)->sum('total_amount') ?? 0), 2);
+        $collections = $this->collectionMetrics->summary(
+            Payment::query()
+                ->whereIn('invoice_id', (clone $invoiceQuery)->reorder()->select('invoices.id'))
+                ->whereHas('invoice', fn (Builder $query) => $query
+                    ->whereColumn('invoices.organization_id', 'payments.organization_id')),
+            $today
+        );
 
         $salesInvoiceIds = $this->salesLinkedInvoiceIds($invoiceQuery);
         $salesOutstandingCount = 0;
@@ -47,6 +59,8 @@ class InvoiceMetricsService
             'overdueInvoices' => (int) $overdueInvoices,
             'outstandingAmount' => $outstandingAmount,
             'totalBilled' => $totalBilled,
+            'collectedToday' => $collections['paymentsReceivedToday'],
+            'collectedThisMonth' => $collections['paymentsReceivedThisMonth'],
             'salesOutstandingCount' => (int) $salesOutstandingCount,
             'salesOutstandingAmount' => $salesOutstandingAmount,
             'rentalOutstandingCount' => $rentalOutstandingCount,
