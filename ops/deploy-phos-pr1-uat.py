@@ -342,15 +342,18 @@ if (!in_array($_SERVER["REMOTE_ADDR"] ?? "", ["127.0.0.1","::1"], true)
 header("Cache-Control: no-store"); header("Content-Type: application/json");
 $count=0; $enabled=filter_var(ini_get("opcache.enable"), FILTER_VALIDATE_BOOLEAN);
 if ($enabled) {
- $s=function_exists("opcache_get_status") ? @opcache_get_status(true) : false;
- if (!is_array($s) || !function_exists("opcache_invalidate")) {
-  http_response_code(500); echo '{"ok":false}'; exit;
+ if (!function_exists("opcache_get_status") || !function_exists("opcache_invalidate")) {
+  http_response_code(500); echo '{"ok":false,"reason":"OPCACHE_API_UNAVAILABLE"}'; exit;
+ }
+ $s=@opcache_get_status(true);
+ if (!is_array($s)) {
+  http_response_code(500); echo '{"ok":false,"reason":"OPCACHE_STATUS_UNAVAILABLE"}'; exit;
  }
  if (__INVALIDATE__) {
   foreach (array_keys($s["scripts"] ?? []) as $path) {
    if (str_starts_with($path, "__APP__/") && is_file($path)) {
     if (!@opcache_invalidate($path,true)) {
-     http_response_code(500); echo '{"ok":false}'; exit;
+     http_response_code(500); echo '{"ok":false,"reason":"OPCACHE_INVALIDATION_FAILED"}'; exit;
     }
     $count++;
    }
@@ -362,11 +365,21 @@ echo json_encode(["ok"=>PHP_VERSION_ID>=80200,"php"=>PHP_VERSION,"invalidated"=>
     code = code.replace("__TOKEN__", token).replace("__APP__", str(APP))
     code = code.replace("__INVALIDATE__", "true" if invalidate else "false")
     try:
-        atomic(file, code.encode(), 0, STORAGE.stat().st_gid, 0o640)
+        # Match the site's scripts: strict ownership and PHP suEXEC reject root-owned probes.
+        atomic(file, code.encode(), pwd.getpwnam(OWNER).pw_uid, WEB.stat().st_gid, 0o644)
         status, data, _ = http("/" + file.name, token=token)
-        need(status == "200", "PHOS loopback PHP/OPcache probe failed.")
-        result = json.loads(data)
-        need(result.get("ok") is True, "PHOS web PHP runtime check failed.")
+        note("PHOS_PHP_PROBE_HTTP=" + status)
+        try:
+            result = json.loads(data)
+        except (ValueError, UnicodeError):
+            result = {}
+        reason = result.get("reason", "") if isinstance(result, dict) else ""
+        details = " HTTP=" + status
+        if reason in {"OPCACHE_API_UNAVAILABLE", "OPCACHE_STATUS_UNAVAILABLE", "OPCACHE_INVALIDATION_FAILED"}:
+            details += " REASON=" + reason
+        need(status == "200", "PHOS loopback PHP/OPcache probe failed;" + details)
+        need(isinstance(result, dict) and result.get("ok") is True,
+             "PHOS web PHP runtime check failed;" + details)
         note("WEB_PHP=" + result["php"] + " PHOS_OPCACHE_INVALIDATED=" + str(result["invalidated"]))
     finally:
         if file.exists():
@@ -645,6 +658,7 @@ def main():
     parser.add_argument("gitdir", nargs="?")
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--check-release", action="store_true")
+    parser.add_argument("--check-web", action="store_true")
     parser.add_argument("--rollback")
     parser.add_argument("--target-config")
     args = parser.parse_args()
@@ -668,6 +682,15 @@ def main():
         need(shutil.which(tool, path=PATH), "Missing required tool: " + tool)
     need(os.access(PHP, os.X_OK), "Inspected PHP 8.2 binary is unavailable.")
     config = check_layout()
+    if args.check_web:
+        need(not args.rollback, "Do not combine web preflight and rollback.")
+        BACKUP = Path(tempfile.mkdtemp(prefix="phos-uat-pr1-webcheck-", dir="/root"))
+        LOG = BACKUP / "web-preflight.log"
+        phase("web_preflight_only")
+        health()
+        web_cache(False)
+        note("PHOS_WEB_PREFLIGHT_PASSED")
+        return
     if args.rollback:
         BACKUP = Path(args.rollback)
         need(BACKUP.parent == Path("/root") and BACKUP.name.startswith("phos-uat-pr1-backup-")
@@ -738,11 +761,11 @@ def main():
         if not initial_schema["engine"]:
             phase("apply_additive_migration")
             stage = Path(tempfile.mkdtemp(prefix="phos-pr1-migration-", dir="/var/tmp"))
-            uid, gid = pwd.getpwnam(OWNER).pw_uid, STORAGE.stat().st_gid
-            permissions(stage, 0, gid, 0o750)
+            migration_group = pwd.getpwnam(OWNER).pw_gid
+            permissions(stage, 0, migration_group, 0o750)
             migration_file = stage / (MIGRATION + ".php")
             atomic(migration_file, git(repo, "show", RELEASE + ":database/migrations/" + MIGRATION + ".php"),
-                   0, gid, 0o640)
+                   0, migration_group, 0o640)
             artisan("migrate", "--force", "--realpath", "--path=" + str(migration_file))
         schema_ok(db_state())
         preserved(before)
