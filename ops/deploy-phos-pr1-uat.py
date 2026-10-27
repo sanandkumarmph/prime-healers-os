@@ -169,10 +169,11 @@ def execute(args, cwd=None, capture=False, timeout=180, input_data=None):
         raise
     if LOG:
         with LOG.open("ab") as output:
-            if not capture:
+            if not capture or process.returncode != 0:
                 output.write(stdout)
             output.write(stderr)
-    need(process.returncode == 0, "Command failed in " + PHASE + "; inspect the private log.")
+    need(process.returncode == 0, "Command failed in " + PHASE + "; exit=" + str(process.returncode)
+         + "; inspect the private log.")
     return stdout
 
 def as_owner(args):
@@ -403,16 +404,24 @@ def assets():
 def routes_ok():
     code = r'''
 require "vendor/autoload.php"; $app=require "bootstrap/app.php";
-$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$app->make(Illuminate\Contracts\Http\Kernel::class)->bootstrap();
+$router=app("router"); $expected=App\Http\Middleware\ProtectPaymentSubmission::class;
+if (($router->getMiddleware()["payment_submission"] ?? "") !== $expected) {
+ fwrite(STDERR,"PHOS_PAYMENT_MIDDLEWARE_ALIAS_MISSING\n"); exit(8);
+}
+if (!class_exists($expected)) {
+ fwrite(STDERR,"PHOS_PAYMENT_MIDDLEWARE_CLASS_UNAVAILABLE\n"); exit(8);
+}
 $names=["payments.store","invoices.payments.store","invoices.markPaid","rentals.markPaid",
 "rentals.recordPayment","sales.markPaid","sales.recordPayment","invoices.bulk.action"];
 foreach ($names as $name) {
- $r=app("router")->getRoutes()->getByName($name);
- if (!$r || !in_array("payment_submission",$r->gatherMiddleware(),true)) {exit(7);}
+ $r=$router->getRoutes()->getByName($name);
+ if (!$r) {fwrite(STDERR,"PHOS_PAYMENT_ROUTE_MISSING=".$name."\n");exit(7);}
+ if (!in_array("payment_submission",$r->gatherMiddleware(),true) ||
+     !in_array($expected,$router->gatherRouteMiddleware($r),true)) {
+  fwrite(STDERR,"PHOS_PAYMENT_ROUTE_GUARD_MISSING=".$name."\n");exit(7);
+ }
 }
-if ((app("router")->getMiddleware()["payment_submission"] ?? "") !==
- App\Http\Middleware\ProtectPaymentSubmission::class ||
- !class_exists(App\Http\Middleware\ProtectPaymentSubmission::class)) {exit(8);}
 echo "PAYMENT_SUBMISSION_RUNTIME_OK=8_ROUTES\n";
 '''
     note(execute(as_owner([PHP, "-d", "opcache.enable_cli=0", "-d", "opcache.jit=0", "-r", code]),
@@ -858,9 +867,13 @@ def main():
             regular(file)
             permissions(file, record.get("uid", uid), record.get("gid", gid), record.get("mode", 0o644))
         verify_source(repo, RELEASE, "DEPLOYED_PHOS")
+        phase("refresh_application_caches")
         rebuild(state["route_cached"])
+        phase("refresh_web_opcache")
         web_cache(True)
+        phase("verify_payment_route_guards")
         routes_ok()
+        phase("verify_schema_and_preserved_configuration")
         schema_ok(db_state())
         preserved(before)
         need(git(APP, "rev-parse", "HEAD").decode().strip() == RELEASE, "PHOS checkout commit changed unexpectedly.")
