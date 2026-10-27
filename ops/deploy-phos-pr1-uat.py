@@ -8,18 +8,13 @@ try:
 except ImportError:
     pwd = fcntl = None
 
-APP = Path("/home/uat-admin.primehealers.com/public_html")
-WEB = APP / "public"
-STORAGE = APP / "storage"
-HOST = "uat-admin.primehealers.com"
-DATABASE = "uata_primehealersos"
-OWNER = "uatad6267"
-PHP = "/usr/local/lsws/lsphp82/bin/php"
+APP = WEB = STORAGE = None
+HOST = DATABASE = OWNER = PHP = LOCK_BLOB = None
+TARGET_CONFIG_BYTES = None
 BASE = "4171aa0c3e058a9190af05a48180051e62c4fee2"
 REVIEWED = "5481ad7756027e9cccab7c04688a713281afc551"
 REVIEWED_TREE = "f399c607a61e44d5c1fcfd2faad3488d376f5d6d"
 RELEASE = "3e584139e884ab636637ee959e3ff86856e3168c"
-LOCK_BLOB = "79c7aea968cb5ea0cc0c8e276b51f0edd464d812"
 MIGRATION = "2026_10_27_000000_create_payment_submissions_table"
 URL = "https://github.com/sanandkumarmph/prime-healers-os.git"
 RUNTIME_CHANGED = {
@@ -68,6 +63,37 @@ def regular(path):
 def no_links(path):
     need(not path.is_symlink() and not any(p.is_symlink() for p in path.parents),
          "Linked destination refused: " + str(path))
+
+def target_values(config):
+    keys = {"host", "application", "database", "owner", "php", "package_lock_blob"}
+    need(set(config) == keys and all(isinstance(config[k], str) for k in keys),
+         "Unexpected private target configuration.")
+    need(re.fullmatch(r"uat-[a-z0-9.-]+", config["host"]), "Target hostname must identify UAT.")
+    need(config["application"] == "/home/" + config["host"] + "/public_html",
+         "Application path does not match the private UAT target.")
+    need(re.fullmatch(r"uat[a-zA-Z0-9_]+", config["database"]), "Target database must identify UAT.")
+    need(re.fullmatch(r"[a-z_][a-z0-9_-]*", config["owner"]) and config["owner"] != "root",
+         "Unexpected site owner.")
+    need(config["php"].startswith("/usr/local/lsws/") and config["php"].endswith("/bin/php"),
+         "Unexpected PHP runtime path.")
+    need(re.fullmatch(r"[0-9a-f]{40}", config["package_lock_blob"]), "Invalid preserved lockfile fingerprint.")
+    return config
+
+def load_target(path):
+    global APP, WEB, STORAGE, HOST, DATABASE, OWNER, PHP, LOCK_BLOB, TARGET_CONFIG_BYTES
+    file = Path(path)
+    regular(file)
+    no_links(file)
+    st, parent = file.stat(), file.parent.stat()
+    need(st.st_uid == 0 and stat.S_IMODE(st.st_mode) & 0o077 == 0
+         and parent.st_uid == 0 and stat.S_IMODE(parent.st_mode) & 0o077 == 0,
+         "Private target configuration and its directory must be root-owned and private.")
+    TARGET_CONFIG_BYTES = file.read_bytes()
+    config = target_values(json.loads(TARGET_CONFIG_BYTES))
+    APP = Path(config["application"])
+    WEB, STORAGE = APP / "public", APP / "storage"
+    HOST, DATABASE, OWNER, PHP, LOCK_BLOB = (config[k] for k in
+        ("host", "database", "owner", "php", "package_lock_blob"))
 
 def permissions(path, uid, gid, mode):
     if os.name != "nt":
@@ -165,7 +191,7 @@ def artisan(*args):
             cwd=APP, timeout=240)
 
 def runtime(name):
-    return name.startswith(("app/", "bootstrap/", "config/", "resources/", "routes/", "public/")) or name in {
+    return name.startswith(("app/", "bootstrap/", "config/", "database/migrations/", "resources/", "routes/", "public/")) or name in {
         "artisan", "composer.json", "composer.lock", "package.json", "package-lock.json"
     }
 
@@ -438,6 +464,27 @@ def database_backup(config):
 def changed_paths(repo):
     return git(repo, "diff", "--name-only", BASE, RELEASE).decode().splitlines()
 
+def validate_change_names(changes, report=True):
+    actual = {name for name in changes if runtime(name)}
+    for name in sorted(actual - RUNTIME_CHANGED):
+        if report:
+            note("UNEXPECTED_RUNTIME_FILE=" + name)
+    for name in sorted(RUNTIME_CHANGED - actual):
+        if report:
+            note("MISSING_EXPECTED_RUNTIME_FILE=" + name)
+    need(actual == RUNTIME_CHANGED, "Unexpected runtime changes or dependencies in release.")
+    for name in changes:
+        pure = PurePosixPath(name)
+        need(not pure.is_absolute() and ".." not in pure.parts, "Unsafe release filename.")
+
+def verify_release(repo):
+    need(git(repo, "rev-parse", RELEASE + "^{tree}").decode().strip() == REVIEWED_TREE,
+         "Merged tree differs from the validated PR.")
+    changes = changed_paths(repo)
+    validate_change_names(changes)
+    note("PHOS_REVIEWED_RELEASE_CHECK_PASSED=" + str(len(RUNTIME_CHANGED)) + "_RUNTIME_FILES")
+    return changes
+
 def check_layout():
     need(APP.is_dir() and not APP.is_symlink() and WEB.is_dir() and not WEB.is_symlink(),
          "Unexpected PHOS application/web directory.")
@@ -503,6 +550,31 @@ def rollback(state):
     note("DATABASE_RESTORED=false")
 
 def self_test():
+    sample_target = {"host": "uat-example.invalid",
+                     "application": "/home/uat-example.invalid/public_html",
+                     "database": "uat_test", "owner": "testsite",
+                     "php": "/usr/local/lsws/lsphp82/bin/php", "package_lock_blob": "a" * 40}
+    target_values(sample_target)
+    for bad_target in (dict(sample_target, host="production.example.invalid"),
+                       dict(sample_target, application="/"),
+                       dict(sample_target, database="production"),
+                       dict(sample_target, owner="root")):
+        try:
+            target_values(bad_target)
+        except Stop:
+            pass
+        else:
+            raise Stop("Private target guard self-test failed.")
+    need(all(runtime(name) for name in RUNTIME_CHANGED), "A required runtime file is not classified as runtime.")
+    validate_change_names(list(RUNTIME_CHANGED) + ["docs/note.md", "tests/ExampleTest.php"])
+    for bad in (list(RUNTIME_CHANGED - {"database/migrations/" + MIGRATION + ".php"}),
+                list(RUNTIME_CHANGED) + ["package-lock.json"]):
+        try:
+            validate_change_names(bad, report=False)
+        except Stop:
+            pass
+        else:
+            raise Stop("Release allowlist guard self-test failed.")
     with tempfile.TemporaryDirectory(prefix="phos-pr1-selftest-") as directory:
         root = Path(directory)
         backups = root / "backup"
@@ -572,14 +644,24 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("gitdir", nargs="?")
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--check-release", action="store_true")
     parser.add_argument("--rollback")
+    parser.add_argument("--target-config")
     args = parser.parse_args()
     if args.self_test:
         self_test()
         return
+    if args.check_release:
+        need(args.gitdir, "Pass the pinned helper Git directory.")
+        if os.name == "nt":
+            ENV["PATH"] = os.environ.get("PATH", PATH)
+        verify_release(Path(args.gitdir).resolve())
+        return
     need(pwd is not None and fcntl is not None and os.geteuid() == 0, "Run in the root Linux SSH terminal.")
     need(re.fullmatch(r"[0-9a-f]{40}", RELEASE), "Merged release commit is not pinned.")
     os.umask(0o077)
+    need(args.target_config, "Pass the private --target-config file.")
+    load_target(args.target_config)
     lock = open("/root/phos-uat-pr1-deploy.lock", "a")
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     for tool in ("git", "runuser", "curl", "timeout", "crontab"):
@@ -598,18 +680,12 @@ def main():
         return
     need(args.gitdir, "Pass the pinned helper Git directory.")
     repo = Path(args.gitdir).resolve()
-    need(git(repo, "rev-parse", RELEASE + "^{tree}").decode().strip() == REVIEWED_TREE,
-         "Merged tree differs from the validated PR.")
-    changes = changed_paths(repo)
-    need({name for name in changes if runtime(name)} == RUNTIME_CHANGED,
-         "Unexpected runtime changes or dependencies in release.")
-    for name in changes:
-        pure = PurePosixPath(name)
-        need(not pure.is_absolute() and ".." not in pure.parts, "Unsafe release filename.")
+    changes = verify_release(repo)
     need(not (STORAGE / "framework/down").exists() and not (STORAGE / "framework/maintenance.php").exists(),
          "PHOS is already in maintenance mode; no release attempted.")
     BACKUP = Path(tempfile.mkdtemp(prefix="phos-uat-pr1-backup-", dir="/root"))
     LOG = BACKUP / "deployment.log"
+    (BACKUP / "target-config.json").write_bytes(TARGET_CONFIG_BYTES)
     note("BACKUP_DIRECTORY=" + str(BACKUP))
     current = git(APP, "rev-parse", "HEAD").decode().strip()
     if current == RELEASE:
@@ -652,7 +728,7 @@ def main():
              "route_cached": route_cache_present(), "preserved": before}
     (BACKUP / "rollback-state.json").write_text(json.dumps(state, indent=2) + "\n")
     shutil.copyfile(Path(__file__).resolve(), BACKUP / "rollback-helper.py")
-    note("ROLLBACK_COMMAND=python3 " + str(BACKUP / "rollback-helper.py") + " --rollback " + str(BACKUP))
+    note("ROLLBACK_COMMAND=python3 " + str(BACKUP / "rollback-helper.py") + " --target-config " + str(BACKUP / "target-config.json") + " --rollback " + str(BACKUP))
     maintenance = mutated = False
     stage = None
     try:
@@ -712,7 +788,7 @@ def main():
                 maintenance = False
             except BaseException:
                 note("AUTOMATIC_ROLLBACK_INCOMPLETE")
-                note("RECOVERY_COMMAND=python3 " + str(BACKUP / "rollback-helper.py") + " --rollback " + str(BACKUP))
+                note("RECOVERY_COMMAND=python3 " + str(BACKUP / "rollback-helper.py") + " --target-config " + str(BACKUP / "target-config.json") + " --rollback " + str(BACKUP))
                 note("Inspect private logs before changing maintenance mode.")
         elif maintenance:
             try:
