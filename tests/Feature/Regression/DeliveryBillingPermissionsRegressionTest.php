@@ -1736,6 +1736,7 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
         ]);
 
         $response = $this->post(route('payments.store', $rental), [
+            'payment_submission_token' => (string) \Illuminate\Support\Str::uuid(),
             'payment_date' => now()->toDateString(),
             'amount' => 1500,
             'payment_method' => 'cash',
@@ -1815,6 +1816,7 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
         ]);
 
         $response = $this->post(route('payments.store', $rental), [
+            'payment_submission_token' => (string) \Illuminate\Support\Str::uuid(),
             'payment_date' => now()->toDateString(),
             'amount' => 600,
             'payment_method' => 'upi',
@@ -1882,6 +1884,7 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
         ]);
 
         $response = $this->post(route('invoices.payments.store', $invoice), [
+            'payment_submission_token' => (string) \Illuminate\Support\Str::uuid(),
             'payment_date' => now()->toDateString(),
             'amount' => 2500,
             'payment_method' => 'bank_transfer',

@@ -1004,6 +1004,7 @@
                     </div>
                     <form id="saleInvoiceBulkForm" method="GET" action="{{ route('invoices.bulk.print') }}" target="_blank" class="bulk-toolbar" hidden>
                         @csrf
+                    <x-payment-submission-token />
                         <div>
                             <strong>Bulk actions</strong>
                             <span id="saleInvoiceSelectedCount">0 selected</span>
@@ -1233,6 +1234,7 @@
                                         @if($canManagePayments)
                                             <form action="{{ route('sales.markPaid', $sale) }}" method="POST" style="margin:0;">
                                                 @csrf
+                    <x-payment-submission-token />
                                                 <button type="submit" class="ops-btn-light">Mark Paid</button>
                                             </form>
                                             <a href="{{ route('sales.show', $sale) }}#sale-billing-actions" class="ops-btn-light">Record Payment</a>

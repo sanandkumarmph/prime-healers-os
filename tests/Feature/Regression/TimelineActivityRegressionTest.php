@@ -57,6 +57,7 @@ class TimelineActivityRegressionTest extends TestCase
         $rental = Rental::query()->where('organization_id', $this->organizationId)->latest('id')->firstOrFail();
 
         $this->post(route('payments.store', $rental), [
+            'payment_submission_token' => (string) \Illuminate\Support\Str::uuid(),
             'amount' => 2000,
             'payment_date' => '2026-05-19',
             'payment_method' => 'upi',

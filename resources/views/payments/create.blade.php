@@ -18,6 +18,7 @@
 
 <form method="POST" action="/rentals/{{ $rental->id }}/payments">
     @csrf
+                    <x-payment-submission-token />
 
     <p>
         Payment Date:<br>

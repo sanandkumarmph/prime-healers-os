@@ -1,0 +1,73 @@
+{
+  "initialization": {
+    "initialized": true,
+    "serverVersion": "10.4.32-MariaDB"
+  },
+  "reports": [
+    {
+      "name": "same-token",
+      "statuses": [
+        302,
+        422
+      ],
+      "payments": 1,
+      "amount": 100,
+      "claims": 1,
+      "balance": 900,
+      "status": "partial",
+      "passed": true
+    },
+    {
+      "name": "overpayment",
+      "statuses": [
+        302,
+        422
+      ],
+      "payments": 1,
+      "amount": 600,
+      "claims": 1,
+      "balance": 400,
+      "status": "partial",
+      "passed": true
+    },
+    {
+      "name": "equal-instalments",
+      "statuses": [
+        302,
+        302
+      ],
+      "payments": 2,
+      "amount": 1000,
+      "claims": 2,
+      "balance": 0,
+      "status": "paid",
+      "passed": true
+    },
+    {
+      "name": "rollback-and-retry",
+      "statuses": [
+        422,
+        302
+      ],
+      "payments": 1,
+      "amount": 100,
+      "claims": 1,
+      "balance": 900,
+      "status": "partial",
+      "passed": true
+    },
+    {
+      "name": "independent-organizations",
+      "statuses": [
+        302,
+        302
+      ],
+      "payments": 1,
+      "amount": 100,
+      "claims": 1,
+      "balance": 900,
+      "status": "partial",
+      "passed": true
+    }
+  ]
+}

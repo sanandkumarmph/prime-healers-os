@@ -10,6 +10,16 @@ use Illuminate\Validation\ValidationException;
 
 class PaymentSyncService
 {
+    public function assertPayable(Invoice $invoice): void
+    {
+        if (in_array($invoice->status, ['cancelled', 'void'], true)
+            || in_array($invoice->payment_status, ['cancelled', 'void'], true)) {
+            throw ValidationException::withMessages([
+                'amount' => 'Payments cannot be recorded against a cancelled invoice.',
+            ]);
+        }
+    }
+
     public function createInvoicePayment(
         int $organizationId,
         Invoice $invoice,
@@ -19,6 +29,8 @@ class PaymentSyncService
         ?string $exceedsMessage = null,
         ?string $nullableRentalIdMessage = null
     ): Payment {
+        abort_unless((int) $invoice->organization_id === $organizationId, 404);
+        $this->assertPayable($invoice);
         $invoice->syncFinancialStatus();
         $amount = (float) ($validated['amount'] ?? 0);
 
@@ -59,6 +71,8 @@ class PaymentSyncService
         float $amount,
         bool $paymentsRentalIdIsNullable
     ): void {
+        abort_unless((int) $invoice->organization_id === $organizationId && (int) $sale->organization_id === $organizationId, 404);
+        $this->assertPayable($invoice);
         if ($amount <= 0) {
             return;
         }

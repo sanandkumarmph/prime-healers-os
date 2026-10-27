@@ -1,4 +1,4 @@
-﻿@extends('layouts.app')
+@extends('layouts.app')
 
 @section('content')
 @php
@@ -1406,6 +1406,7 @@
         @if($canCreatePayments && !in_array($invoice->payment_status, ['paid', 'cancelled'], true) && $invoice->status !== 'cancelled')
             <form id="markPaidInvoice{{ $invoice->id }}" method="POST" action="{{ route('invoices.markPaid', $invoice->id) }}" style="display:none;">
                 @csrf
+                    <x-payment-submission-token />
             </form>
         @endif
 
@@ -1554,5 +1555,3 @@
     </script>
 </div>
 @endsection
-
-

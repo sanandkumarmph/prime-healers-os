@@ -449,6 +449,7 @@
             'type' => 'form',
             'label' => 'Mark as Paid',
             'action' => route('rentals.markPaid', $rental),
+            'payment_submission' => true,
             'method' => 'POST',
         ]);
         $pushMoreAction([
@@ -3990,6 +3991,7 @@
                         @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
                             <form action="{{ route('rentals.recordPayment', $rental) }}" method="POST" class="rcc-payment-form" style="margin-top:4px;">
                                 @csrf
+                    <x-payment-submission-token />
                                 <label>Date<input type="date" name="payment_date" value="{{ old('payment_date', now()->toDateString()) }}"></label>
                                 <label>Amount<input type="number" step="0.01" min="0.01" name="amount" value="{{ old('amount', $rentalInvoiceDue > 0 ? number_format($rentalInvoiceDue, 2, '.', '') : '') }}"></label>
                                 <label>Method<input type="text" name="payment_method" value="{{ old('payment_method', 'other') }}" placeholder="cash / upi / bank"></label>
@@ -4438,6 +4440,7 @@
                             <div class="rcc-details-panel-body">
                                 <form action="{{ route('rentals.recordPayment', $rental) }}" method="POST" class="rcc-payment-form">
                                     @csrf
+                    <x-payment-submission-token />
                                     <label>Date<input type="date" name="payment_date" value="{{ old('payment_date', now()->toDateString()) }}"></label>
                                     <label>Amount<input type="number" step="0.01" min="0.01" name="amount" value="{{ old('amount', $rentalInvoiceDue > 0 ? number_format($rentalInvoiceDue, 2, '.', '') : '') }}"></label>
                                     <label>Method<input type="text" name="payment_method" value="{{ old('payment_method', 'other') }}" placeholder="cash / upi / bank"></label>
@@ -4855,6 +4858,7 @@
                     @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
                         <form action="{{ route('rentals.markPaid', $rental) }}" method="POST" style="margin:0;">
                             @csrf
+                    <x-payment-submission-token />
                             <button type="submit">Mark as Paid</button>
                         </form>
                         <a href="#rental-billing-actions">Partial Payment</a>
