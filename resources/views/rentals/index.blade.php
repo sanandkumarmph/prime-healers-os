@@ -857,7 +857,7 @@
                 <input id="smart_from_date" class="ops-input" type="date" name="from_date" value="{{ $fromDate }}">
             </div>
             <button type="submit" class="ops-btn">Apply</button>
-            <details class="rental-smart-filter-more">
+            <details class="rental-smart-filter-more" data-filter-panel data-filter-panel-key="rentals-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" @if($hasActiveFilters) open @endif>
                 <summary>More Filters</summary>
                 <div class="rental-smart-filter-advanced">
                     <div class="filter-field">

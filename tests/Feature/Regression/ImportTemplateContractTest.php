@@ -1,6 +1,9 @@
 <?php
 
 use App\Services\ImportService;
+use Tests\TestCase;
+
+uses(TestCase::class);
 
 it('downloads every configured import template workbook with frozen headers', function () {
     if (! class_exists(ZipArchive::class)) {

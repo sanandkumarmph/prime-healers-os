@@ -39,10 +39,10 @@ class MobileMenuVisibilityRegressionTest extends TestCase
         $response->assertOk()
             ->assertSee('Dashboard')
             ->assertSee('Customers')
-            ->assertDontSee('Rentals')
-            ->assertDontSee('Sales')
-            ->assertDontSee('Product Master')
-            ->assertDontSee('Asset Register')
+            ->assertDontSee('href="'.route('rentals.index').'"', false)
+            ->assertDontSee('href="'.route('sales.index').'"', false)
+            ->assertDontSee('href="'.route('products.index').'"', false)
+            ->assertDontSee('href="'.route('assets.index').'"', false)
             ->assertSee('mobile-notification-menu', false)
             ->assertSee('mobile-notification-scroll', false)
             ->assertSee('mobile-notification-footer', false)
@@ -66,7 +66,7 @@ class MobileMenuVisibilityRegressionTest extends TestCase
             ->assertSee('Notifications')
             ->assertDontSee('Pickups')
             ->assertDontSee('Customers')
-            ->assertDontSee('Rentals')
-            ->assertDontSee('Sales');
+            ->assertDontSee('href="'.route('rentals.index').'"', false)
+            ->assertDontSee('href="'.route('sales.index').'"', false);
     }
 }

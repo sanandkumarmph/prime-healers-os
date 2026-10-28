@@ -260,14 +260,18 @@ class LogisticsMetricsService
         return $delivery->rental->pendingPickupQuantityTotal() > 0;
     }
 
-    private function isEffectivelyCompleted(Delivery $delivery): bool
+    public function isEffectivelyCompleted(Delivery $delivery): bool
     {
         if ($delivery->status === 'completed') {
             return true;
         }
 
-        if ($delivery->sale_id || !$delivery->rental) {
+        if ($delivery->status === 'cancelled' || $delivery->sale_id || !$delivery->rental) {
             return false;
+        }
+
+        if ($delivery->type === 'pickup' && $delivery->rental->status === 'returned') {
+            return true;
         }
 
         if ($delivery->type === 'delivery') {

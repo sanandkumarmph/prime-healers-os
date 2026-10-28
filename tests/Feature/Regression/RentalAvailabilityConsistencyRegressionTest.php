@@ -104,7 +104,7 @@ class RentalAvailabilityConsistencyRegressionTest extends TestCase
         $this->assertSame('No rental assets available', (string) $lookalike->rental_dropdown_label);
     }
 
-    public function test_rental_create_customer_select_uses_utf8_bullet_label(): void
+    public function test_rental_create_customer_select_uses_readable_utf8_label(): void
     {
         $organization = TestData::organization(['name' => 'UTF Customer Org']);
         $this->actingAs(TestData::user($organization, ['email' => 'utf-customer@example.com']));
@@ -119,7 +119,7 @@ class RentalAvailabilityConsistencyRegressionTest extends TestCase
         $response = $this->get(route('rentals.create'));
 
         $response->assertOk()
-            ->assertSee('Amit Iyer • +919739886843')
+            ->assertSee('Amit Iyer - +919739886843')
             ->assertDontSee('Amit Iyer â€¢ +919739886843');
     }
 

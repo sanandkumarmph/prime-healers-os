@@ -300,4 +300,3 @@ class PaymentCorrectionSafetyRegressionTest extends TestCase
             ->assertViewHas('canViewFinance', true)->assertSee('400.00')->assertDontSee('Restricted');
     }
 }
-

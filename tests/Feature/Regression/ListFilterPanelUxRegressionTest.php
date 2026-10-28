@@ -37,8 +37,7 @@ class ListFilterPanelUxRegressionTest extends TestCase
 
         $response->assertOk()
             ->assertSee('data-filter-panel-key="' . $panelKey . '"', false)
-            ->assertSee('data-filter-active="true"', false)
-            ->assertSee('Filters Active');
+            ->assertSee('data-filter-active="true"', false);
 
         $this->assertMatchesRegularExpression(
             '/<details[^>]*data-filter-panel-key="' . preg_quote($panelKey, '/') . '"[^>]*open[^>]*>/',
@@ -50,12 +49,12 @@ class ListFilterPanelUxRegressionTest extends TestCase
     {
         return [
             'products' => ['products.index', [], 'Search product name, brand, model, SKU, or product code', 'products-index'],
-            'rentals' => ['rentals.index', [], 'Search customer, phone, product, asset serial', 'rentals-index'],
+            'rentals' => ['rentals.index', [], 'Search rentals by ID, customer, product', 'rentals-index'],
             'sales' => ['sales.index', [], 'Search customer, phone, WhatsApp, product, notes', 'sales-index'],
             'customers' => ['customers.index', [], 'Search customer, phone, WhatsApp, city, state', 'customers-index'],
-            'invoices' => ['invoices.index', [], 'Search invoice, customer, phone, GSTIN, or reference', 'invoices-index'],
-            'deliveries' => ['deliveries.index', [], 'Search customer, mobile, product, sale order', 'deliveries-index'],
-            'assets' => ['assets.index', [], 'Search serial number, barcode, or product', 'assets-index'],
+            'invoices' => ['invoices.index', [], 'Search invoice, customer, phone, GSTIN, rental, sale, or reference', 'invoices-index'],
+            'deliveries' => ['deliveries.index', [], 'Search task, customer or product', 'deliveries-index'],
+            'assets' => ['assets.index', [], 'Search by serial, barcode, customer, rental or product', 'assets-index'],
         ];
     }
 

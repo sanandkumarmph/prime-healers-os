@@ -34,10 +34,10 @@ class SectionNavRegressionTest extends TestCase
     {
         $this->get(route('rentals.create'))
             ->assertOk()
-            ->assertSee('data-section-nav', false)
-            ->assertSee('Rental form sections')
-            ->assertSee('href="#rental-customer-section"', false)
-            ->assertSee('href="#rental-assets-section"', false);
+            ->assertSee('data-rental-wizard-tab="fulfilment"', false)
+            ->assertSee('data-rental-wizard-tab="product"', false)
+            ->assertSee('id="rental-customer-section"', false)
+            ->assertSee('id="rental-assets-section"', false);
 
         $this->get(route('sales.create'))
             ->assertOk()
@@ -161,9 +161,10 @@ class SectionNavRegressionTest extends TestCase
 
         $this->get(route('rentals.show', $rental))
             ->assertOk()
-            ->assertSee('Rental page sections')
+            ->assertSee('Rental workspace sections')
             ->assertSee('href="#rental-billing-actions"', false)
-            ->assertSee('href="#rental-activity-timeline"', false);
+            ->assertSee('href="#rental-timeline-workspace"', false)
+            ->assertSee('id="rental-activity-timeline"', false);
 
         $this->get(route('sales.show', $sale))
             ->assertOk()

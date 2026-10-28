@@ -356,7 +356,7 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
             ->assertDontSeeText('rental base')
             ->assertDontSeeText('Business Partner Signals')
             ->assertDontSeeText('Staff Workload')
-            ->assertDontSeeText('Inventory Intelligence')
+            ->assertViewHas('dashboardVisibility', fn (array $visibility) => ! $visibility['inventory_intelligence'])
             ->assertDontSeeText('Sales Pulse')
             ->assertDontSeeText('Pending Payments')
             ->assertDontSeeText('Finance Summary')
@@ -584,7 +584,7 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
             ->assertDontSeeText('Sales Pulse')
             ->assertDontSeeText('Staff Workload')
             ->assertDontSeeText('Business Partner Signals')
-            ->assertDontSeeText('Inventory Intelligence')
+            ->assertViewHas('dashboardVisibility', fn (array $visibility) => ! $visibility['inventory_intelligence'])
             ->assertDontSeeText('No partner pressure signals')
             ->assertDontSeeText('Finance Summary')
             ->assertDontSeeText('Collections This Month');
@@ -622,7 +622,7 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
             ->assertSeeText('Record Payment')
             ->assertDontSeeText('Staff Workload')
             ->assertDontSeeText('Business Partner Signals')
-            ->assertDontSeeText('Inventory Intelligence')
+            ->assertViewHas('dashboardVisibility', fn (array $visibility) => ! $visibility['inventory_intelligence'])
             ->assertDontSeeText('Sales Pulse');
     }
 

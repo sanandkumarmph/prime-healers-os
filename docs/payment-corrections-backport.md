@@ -19,7 +19,9 @@ The additive migration adds a nullable unique `payments.reversal_of_payment_id` 
 - Focused payment, correction, finance-service, invoice-presentation, and cancelled-balance checks: 67 tests, 476 assertions passed using isolated SQLite.
 - Five HTTP-kernel concurrency scenarios passed on disposable loopback MariaDB 10.4.32: same-receipt double submission, correction versus a new payment, correction versus invoice deletion, failed correction then retry, and independent organizations. Each correction committed one reversal and one audit; rollback left no partial entries.
 - MariaDB migration created the unique link and self-reference. UAT uses a different MariaDB version, so its deployment must verify the actual schema.
-- Full-suite CI is not claimed green: the existing unquoted display name in the example environment file previously stops setup before tests. Manual UAT acceptance remains pending deployment.
+- The complete local suite passes: 636 tests and 4,262 assertions. CI runs the full configured suite once with Pest, which supports both test styles, and uses isolated in-memory SQLite. The example display name is quoted and the template contract tests explicitly boot the application.
+- CI recovery also fixes active-filter disclosure/reset behavior and uses the shared completion rule to hide completion actions for returned pickups. Historical UI checks now assert current navigation, contact targets, financial values, and permissions; current-month inventory fixtures freeze their clock. No failing tests are excluded.
+- Verify GitHub checks on the current head before merge. Manual UAT acceptance remains pending deployment.
 
 ## Manual UAT after deployment
 

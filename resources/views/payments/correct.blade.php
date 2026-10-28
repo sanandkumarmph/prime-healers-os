@@ -42,4 +42,3 @@
     @if($backUrl)<a href="{{ $backUrl }}" class="back">Back to payment history</a>@endif
 </div>
 @endsection
-

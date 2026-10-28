@@ -123,7 +123,7 @@ class MobileActionBarRegressionTest extends TestCase
 
         $salePage = $this->get(route('sales.show', $sale));
         $salePage->assertOk()
-            ->assertSee('ph-mobile-action-bar', false)
+            ->assertSee('aria-label="Sale quick actions"', false)
             ->assertSee('ph-sale-section-nav', false)
             ->assertSeeText('Invoice')
             ->assertSeeText('Paid')
@@ -216,7 +216,7 @@ class MobileActionBarRegressionTest extends TestCase
         $page = $this->get(route('assets.index'));
 
         $page->assertOk()
-            ->assertSee('Search Assets', false)
+            ->assertSee('Scan / Search Asset', false)
             ->assertSee('Filters', false)
             ->assertSee('name="city"', false)
             ->assertSee('name="custody"', false)

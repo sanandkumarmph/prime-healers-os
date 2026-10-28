@@ -156,4 +156,3 @@ $http = $app->make(HttpKernel::class);
 $response = $http->handle($request);
 $http->terminate($request, $response);
 echo json_encode(['status' => $response->getStatusCode(), 'body' => $response->getStatusCode() >= 400 ? $response->getContent() : null]), PHP_EOL;
-

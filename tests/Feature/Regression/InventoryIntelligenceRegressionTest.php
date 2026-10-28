@@ -783,6 +783,7 @@ class InventoryIntelligenceRegressionTest extends TestCase
 
     public function test_inventory_intelligence_uses_legacy_direct_sale_quantity_when_sale_items_are_empty(): void
     {
+        $this->travelTo(\Carbon\Carbon::parse('2026-05-31 12:00:00'));
         $organization = TestData::organization();
         $product = $this->makeProduct($organization->id, [
             'name' => 'Legacy Direct Sale Product',
@@ -944,6 +945,7 @@ class InventoryIntelligenceRegressionTest extends TestCase
 
     public function test_inventory_intelligence_global_current_month_reconciles_sale_and_rental_stock_basis(): void
     {
+        $this->travelTo(\Carbon\Carbon::parse('2026-05-31 12:00:00'));
         $organization = TestData::organization();
         $warehouse = $this->makeWarehouse($organization->id);
 
