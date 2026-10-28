@@ -103,16 +103,20 @@ class PaymentSubmissionSafetyTest extends TestCase
         $this->assertSame('cancelled', $invoice->fresh()->status);
     }
 
-    public function test_mark_paid_replay_is_rejected_even_after_receipt_deletion(): void
+    public function test_mark_paid_replay_is_rejected_even_after_receipt_correction(): void
     {
         $invoice = $this->invoice();
         $data = $this->payload();
         $url = route('invoices.markPaid', $invoice->id);
         $this->post($url, $data)->assertSessionHasNoErrors();
         $payment = Payment::firstOrFail();
-        $this->delete(route('payments.destroy', $payment))->assertRedirect();
+        $corrections = app(\App\Services\Finance\PaymentCorrectionService::class);
+        $this->post(route('payments.reverse', $payment), [
+            'reason' => 'Incorrect test receipt entry', 'confirm' => 1, 'version' => $corrections->version($payment),
+        ])->assertSessionHasNoErrors();
         $this->postJson($url, $data)->assertUnprocessable()->assertJsonValidationErrors('payment_submission_token');
-        $this->assertDatabaseCount('payments', 0);
+        $this->assertDatabaseCount('payments', 2);
+        $this->assertSame(0.0, (float) $invoice->payments()->sum('amount'));
         $this->assertDatabaseCount('payment_submissions', 1);
     }
 

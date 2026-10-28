@@ -22,6 +22,7 @@ class Payment extends Model
         'customer_id',
         'rental_id',
         'invoice_id',
+        'reversal_of_payment_id',
         'payment_date',
         'amount',
         'payment_method',
@@ -66,6 +67,16 @@ class Payment extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    public function originalPayment(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'reversal_of_payment_id');
+    }
+
+    public function reversal(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(self::class, 'reversal_of_payment_id');
     }
 
     public function scopeForOrganization(Builder $query, int $organizationId): Builder

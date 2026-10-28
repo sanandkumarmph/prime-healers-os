@@ -13,7 +13,6 @@ use App\Services\NotificationCenterService;
 use App\Support\ActivityLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
@@ -255,39 +254,47 @@ class PaymentController extends Controller
         return $this->streamPaymentsCsv($payments, 'payments-' . now()->format('Ymd-His') . '.csv');
     }
 
+    public function correction(Payment $payment)
+    {
+        abort_unless((int) $payment->organization_id === $this->orgId(), 404);
+        $this->authorize('delete', $payment);
+        $version = app(\App\Services\Finance\PaymentCorrectionService::class)->version($payment);
+
+        $reversal = Payment::where('organization_id', $this->orgId())->where('reversal_of_payment_id', $payment->id)->first();
+
+        $canViewFinance = Auth::user()?->canViewFinance() ?? false;
+
+        $backUrl = $payment->invoice && auth()->user()->can('view', $payment->invoice)
+            ? route('invoices.show', $payment->invoice_id)
+            : ($payment->rental && auth()->user()->can('view', $payment->rental) ? route('rentals.show', $payment->rental_id) : null);
+
+        return view('payments.correct', compact('payment', 'version', 'reversal', 'canViewFinance', 'backUrl'));
+    }
+
+    public function reverse(Request $request, Payment $payment)
+    {
+        abort_unless((int) $payment->organization_id === $this->orgId(), 404);
+        $this->authorize('delete', $payment);
+        $data = $request->validate([
+            'reason' => 'required|string|min:5|max:1000',
+            'version' => 'required|string|size:64',
+            'confirm' => 'accepted',
+        ]);
+        app(\App\Services\Finance\PaymentCorrectionService::class)->reverse($payment, $data['reason'], $data['version']);
+
+        return redirect()->route('payments.correction', $payment)->with('success', 'Payment reversed. Original entry retained. No customer refund recorded.');
+    }
+
     public function destroy(Payment $payment)
     {
         abort_unless((int) $payment->organization_id === $this->orgId(), 404);
         $this->authorize('delete', $payment);
 
-        $payment->load(['invoice.items', 'rental']);
-        $invoice = $payment->invoice;
+        if (request()->expectsJson()) {
+            throw ValidationException::withMessages(['payment' => 'Payments cannot be deleted. Use the appropriate correction workflow.']);
+        }
 
-        DB::transaction(function () use ($payment, $invoice) {
-            if (Schema::hasTable('rental_renewals') && Schema::hasColumn('rental_renewals', 'payment_id')) {
-                DB::table('rental_renewals')
-                    ->where('organization_id', $this->orgId())
-                    ->where('payment_id', $payment->id)
-                    ->update([
-                        'payment_id' => null,
-                        'payment_amount' => 0,
-                    ]);
-            }
-
-            ActivityLogger::log('payment.deleted', $payment, [
-                'amount' => $payment->amount,
-                'payment_method' => $payment->payment_method,
-                'invoice_id' => $payment->invoice_id,
-                'rental_id' => $payment->rental_id,
-            ], 'Payment deleted.');
-
-            $payment->delete();
-
-            if ($invoice) {
-                $this->refreshInvoiceAfterPaymentDeletion($invoice->refresh());
-            }
-        });
-
-        return back()->with('success', 'Payment deleted successfully.');
+        return redirect()->route('payments.correction', $payment)
+            ->with('error', 'Payments cannot be deleted. Review the entry and give a reason to reverse it.');
     }
 }

@@ -1227,7 +1227,7 @@
             <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; padding:16px 18px; border-bottom:1px solid #e2e8f0;">
                 <div>
                     <h3 style="margin:0; color:#0f172a; font-size:18px;">Payment History</h3>
-                    <p style="margin:4px 0 0; color:#64748b; font-size:13px;">Delete incorrect payment entries here before deleting linked invoices, rentals, or sales.</p>
+                    <p style="margin:4px 0 0; color:#64748b; font-size:13px;">Correct an incorrect receipt with a reason. Original entries stay in the history; no customer refund is issued.</p>
                 </div>
             </div>
             @if($invoice->payments->isEmpty())
@@ -1252,6 +1252,11 @@
                                     <td data-label="Date">{{ optional($payment->payment_date)->format('d M Y') ?: '-' }}</td>
                                     <td data-label="Mode">{{ $payment->paymentMethodLabel() }}</td>
                                     <td data-label="Reference">
+                                        @if($payment->reversal_of_payment_id)
+                                            <strong>Correction of receipt #{{ $payment->reversal_of_payment_id }}</strong><br>
+                                        @else
+                                            <strong>Receipt #{{ $payment->id }}{{ $invoice->payments->firstWhere('reversal_of_payment_id', $payment->id) ? ' — Reversed' : '' }}</strong><br>
+                                        @endif
                                         {{ $payment->notes ?: 'Invoice payment' }}
                                         @if($payment->rental_id)
                                             <div style="color:#64748b; font-size:12px;">Rental #{{ $payment->rental_id }}</div>
@@ -1260,11 +1265,9 @@
                                     <td data-label="Amount" class="text-right">&#8377;{{ number_format((float) $payment->amount, 2) }}</td>
                                     @if($canDeletePayments)
                                         <td data-label="Action" class="text-right">
-                                            <form action="{{ route('payments.destroy', $payment) }}" method="POST" style="margin:0;">
-                                                @csrf
-                                                @method('DELETE')
-                                                <button type="submit" class="invoice-button invoice-button-secondary" style="border:1px solid #fecaca;color:#b91c1c; padding:8px 12px;" onclick="return confirm('Delete this payment? Invoice balance and sale payment status will be recalculated.');">Delete</button>
-                                            </form>
+                                            @if(!$payment->reversal_of_payment_id && (float) $payment->amount > 0)
+                                                <a href="{{ route('payments.correction', $payment) }}" class="invoice-button invoice-button-secondary">{{ $invoice->payments->firstWhere('reversal_of_payment_id', $payment->id) ? 'View correction' : 'Correct entry' }}</a>
+                                            @endif
                                         </td>
                                     @endif
                                 </tr>

@@ -152,22 +152,9 @@ class PaymentSyncService
 
     public function refreshInvoiceAfterPaymentDeletion(int $organizationId, Invoice $invoice): void
     {
-        $paymentsTotal = (float) $invoice->payments()->sum('amount');
-        $totalAmount = (float) ($invoice->total_amount ?? 0);
-        $balanceAmount = max($totalAmount - $paymentsTotal, 0);
-        $paymentStatus = Invoice::determineFinancialStatus(
-            $totalAmount,
-            $paymentsTotal,
-            $invoice->due_date,
-            $invoice->status === 'cancelled' ? 'cancelled' : null
-        );
-
-        $invoice->forceFill([
-            'paid_amount' => min($paymentsTotal, $totalAmount),
-            'balance_amount' => $balanceAmount,
-            'payment_status' => $paymentStatus,
-            'status' => $paymentStatus,
-        ])->save();
+        abort_unless((int) $invoice->organization_id === $organizationId, 404);
+        $invoice->syncFinancialStatus();
+        $paymentStatus = (string) $invoice->payment_status;
 
         $saleId = $invoice->sale_id ? (int) $invoice->sale_id : null;
 

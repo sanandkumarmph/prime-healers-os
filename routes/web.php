@@ -226,6 +226,12 @@ Route::middleware('auth')->group(function () {
         ->middleware('module:payments,create')
         ->middleware('payment_submission')
         ->name('invoices.payments.store');
+    Route::get('/payments/{payment}/correct', [PaymentController::class, 'correction'])
+        ->middleware('module:payments,delete')
+        ->name('payments.correction');
+    Route::post('/payments/{payment}/reverse', [PaymentController::class, 'reverse'])
+        ->middleware('module:payments,delete')
+        ->name('payments.reverse');
     Route::delete('/payments/{payment}', [PaymentController::class, 'destroy'])
         ->middleware('module:payments,delete')
         ->name('payments.destroy');

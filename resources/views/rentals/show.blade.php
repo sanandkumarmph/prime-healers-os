@@ -4428,6 +4428,7 @@
                                     <div class="rcc-payment-line">
                                         <div>
                                             <strong>{{ optional($payment->payment_date)->format('d M Y') ?: 'Date not set' }}</strong>
+                                            <div>{{ $payment->reversal_of_payment_id ? 'Correction of receipt #'.$payment->reversal_of_payment_id : 'Receipt #'.$payment->id.(($rental->payments ?? collect())->firstWhere('reversal_of_payment_id', $payment->id) ? ' — Reversed' : '') }}</div>
                                             <div>{{ ucfirst(str_replace('_', ' ', $payment->payment_method ?? 'payment')) }}{{ $payment->invoice?->invoice_number ? '  -  ' . $payment->invoice->invoice_number : '' }}</div>
                                             @if(filled($payment->notes ?? null))
                                                 <div>{{ $payment->notes }}</div>

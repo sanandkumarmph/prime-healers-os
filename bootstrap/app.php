@@ -29,6 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->append(\App\Http\Middleware\SecureHeaders::class);
         $middleware->append(\App\Http\Middleware\EnsureInternalOrganizationContext::class);
+        $middleware->web(append: [\App\Http\Middleware\SerializeFinancialRequests::class]);
 
         $middleware->alias([
             'module' => \App\Http\Middleware\EnsureModulePermission::class,
