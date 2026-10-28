@@ -1250,7 +1250,7 @@
                                                     <button type="submit" form="voidInvoice{{ $invoice->id }}" onclick="return confirm('Void this invoice?')">Void Invoice</button>
                                                 @endif
                                                 @if($canDeleteInvoices)
-                                                    <button type="submit" form="deleteInvoice{{ $invoice->id }}" onclick="return confirm('Delete this invoice permanently? Payments will remain as payment records but will be unlinked from this invoice.');">Delete Invoice</button>
+                                                    <button type="submit" form="deleteInvoice{{ $invoice->id }}" onclick="return confirm('Delete this invoice permanently? Invoices with payment, renewal, or audit history cannot be deleted.');">Delete Invoice</button>
                                                 @endif
                                             </div>
                                         </details>
@@ -1349,7 +1349,7 @@
                                                         <button type="submit" form="voidInvoice{{ $invoice->id }}" onclick="return confirm('Void this invoice?')">Void Invoice</button>
                                                     @endif
                                                     @if($canDeleteInvoices)
-                                                        <button type="submit" form="deleteInvoice{{ $invoice->id }}" onclick="return confirm('Delete this invoice permanently? Payments will remain as payment records but will be unlinked from this invoice.');">Delete Invoice</button>
+                                                        <button type="submit" form="deleteInvoice{{ $invoice->id }}" onclick="return confirm('Delete this invoice permanently? Invoices with payment, renewal, or audit history cannot be deleted.');">Delete Invoice</button>
                                                     @endif
                                                 </div>
                                             </details>
