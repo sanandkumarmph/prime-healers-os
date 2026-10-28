@@ -63,28 +63,8 @@ jobs:
       - name: Cache Blade views
         run: php artisan view:cache
 
-      - name: Run regression suite
-        run: vendor/bin/phpunit --do-not-cache-result tests/Feature/Regression
-        env:
-          APP_ENV: testing
-          CACHE_STORE: array
-          DB_CONNECTION: sqlite
-          DB_DATABASE: ":memory:"
-          QUEUE_CONNECTION: sync
-          SESSION_DRIVER: array
-
-      - name: Run feature tests
-        run: vendor/bin/pest tests/Feature
-        env:
-          APP_ENV: testing
-          CACHE_STORE: array
-          DB_CONNECTION: sqlite
-          DB_DATABASE: ":memory:"
-          QUEUE_CONNECTION: sync
-          SESSION_DRIVER: array
-
-      - name: Run unit tests
-        run: vendor/bin/pest tests/Unit
+      - name: Run complete test suite
+        run: vendor/bin/pest --do-not-cache-result
         env:
           APP_ENV: testing
           CACHE_STORE: array

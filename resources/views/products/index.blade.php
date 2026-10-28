@@ -1422,7 +1422,7 @@
                 @endif
             </div>
 
-            <details class="product-filter-card" data-filter-panel data-filter-panel-key="products-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}">
+            <details class="product-filter-card" data-filter-panel data-filter-panel-key="products-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" @if($hasActiveFilters) open @endif>
                 <summary class="product-filter-summary">
                     <span>Search &amp; Filters</span>
                     <span>{{ $hasActiveFilters ? 'Refine current results' : 'Expand advanced filters' }}</span>

@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class InvoiceController extends Controller
@@ -1100,29 +1101,21 @@ class InvoiceController extends Controller
         return back()->with($updated > 0 ? 'success' : 'error', $message);
     }
 
+    private function assertInvoiceHasNoHistory(Invoice $invoice): void
+    {
+        foreach (['payments', 'rental_renewals', 'activity_logs'] as $table) {
+            if (Schema::hasTable($table) && Schema::hasColumn($table, 'invoice_id')
+                && DB::table($table)->where('organization_id', $this->orgId())->where('invoice_id', $invoice->id)->exists()) {
+                throw ValidationException::withMessages([
+                    'invoice' => 'This invoice has payment, renewal, or audit history and cannot be deleted. Preserve the invoice and use the appropriate correction workflow.',
+                ]);
+            }
+        }
+    }
+
     private function deleteInvoiceRecord(Invoice $invoice): void
     {
-        if (Schema::hasTable('payments') && Schema::hasColumn('payments', 'invoice_id')) {
-            Payment::query()
-                ->where('organization_id', $this->orgId())
-                ->where('invoice_id', $invoice->id)
-                ->update(['invoice_id' => null]);
-        }
-
-        if (Schema::hasTable('rental_renewals') && Schema::hasColumn('rental_renewals', 'invoice_id')) {
-            DB::table('rental_renewals')
-                ->where('organization_id', $this->orgId())
-                ->where('invoice_id', $invoice->id)
-                ->update(['invoice_id' => null]);
-        }
-
-        if (Schema::hasTable('activity_logs') && Schema::hasColumn('activity_logs', 'invoice_id')) {
-            DB::table('activity_logs')
-                ->where('organization_id', $this->orgId())
-                ->where('invoice_id', $invoice->id)
-                ->delete();
-        }
-
+        $this->assertInvoiceHasNoHistory($invoice);
         $invoice->items()->delete();
         $invoice->delete();
     }
@@ -1141,10 +1134,12 @@ class InvoiceController extends Controller
                 ->with(['items'])
                 ->where('organization_id', $this->orgId())
                 ->whereIn('id', $invoiceIds)
-        )->get();
+        )->orderBy('id')->lockForUpdate()->get();
 
-        if ($invoices->isEmpty()) {
-            return back()->with('error', 'No permitted invoices were found for deletion.');
+        abort_unless($invoices->count() === count($invoiceIds), 404);
+        foreach ($invoices as $invoice) {
+            $this->authorize('delete', $invoice);
+            $this->assertInvoiceHasNoHistory($invoice);
         }
 
         DB::transaction(function () use ($invoices) {
@@ -1158,6 +1153,7 @@ class InvoiceController extends Controller
     {
         $invoice = $this->scopedInvoiceQuery()
             ->with(['items'])
+            ->lockForUpdate()
             ->findOrFail($id);
         $this->authorize('delete', $invoice);
 

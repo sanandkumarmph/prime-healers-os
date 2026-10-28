@@ -1115,21 +1115,7 @@ class DeliveryController extends Controller
 
     private function boardIsCompleted(Delivery $delivery): bool
     {
-        if ($delivery->status === 'completed') {
-            return true;
-        }
-
-        if ($delivery->sale_id || !$delivery->rental) {
-            return false;
-        }
-
-        if ($delivery->type === 'delivery') {
-            return $delivery->rental->pendingDeliveryQuantityTotal() <= 0
-                && $delivery->rental->deliveredQuantityTotal() > 0;
-        }
-
-        return $delivery->rental->pendingPickupQuantityTotal() <= 0
-            && $delivery->rental->returnedQuantityTotal() > 0;
+        return $this->logisticsMetrics()->isEffectivelyCompleted($delivery);
     }
 
     private function boardAssignedName(Delivery $delivery): string

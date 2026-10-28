@@ -814,8 +814,8 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
         ]));
         $response->assertOk();
         $response->assertSeeText('View Proof');
-        $response->assertDontSeeText('Edit Assignment');
-        $response->assertDontSeeText('Delete this task record?');
+        $response->assertDontSee('href="'.route('deliveries.edit', $completedPickup).'"', false);
+        $response->assertDontSee('action="'.route('deliveries.destroy', $completedPickup).'"', false);
     }
 
     private function makeDeliveryTask(int $organizationId, int $assignedUserId, string $type = 'delivery', string $status = 'pending'): Delivery

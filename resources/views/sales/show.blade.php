@@ -1996,7 +1996,7 @@
         <div class="ops-card-head">
             <div>
                 <h2>Payment History</h2>
-                <div style="color:#64748b; font-size:12px; margin-top:4px;">Delete incorrect sale invoice payments here before deleting the sale record.</div>
+                <div style="color:#64748b; font-size:12px; margin-top:4px;">Correct incorrect receipts with a reason. Original entries remain in the history.</div>
             </div>
             @if($saleInvoiceId)
                 <a href="{{ route('invoices.show', $saleInvoiceId) }}" class="ops-btn-light">Open Invoice</a>
@@ -2013,6 +2013,7 @@
                             </div>
                             <div>
                                 <strong>{{ $payment->paymentMethodLabel() }}</strong>
+                                <div>{{ $payment->reversal_of_payment_id ? 'Correction of receipt #'.$payment->reversal_of_payment_id : 'Receipt #'.$payment->id.($saleInvoice->payments->firstWhere('reversal_of_payment_id', $payment->id) ? ' — Reversed' : '') }}</div>
                                 <div style="color:#64748b; font-size:12px;">{{ $payment->notes ?: 'Sale invoice payment' }}</div>
                             </div>
                             <div>
@@ -2020,11 +2021,9 @@
                                 <strong>{{ $financeValue($payment->amount) }}</strong>
                             </div>
                             @if($canDeletePayments)
-                                <form action="{{ route('payments.destroy', $payment) }}" method="POST" style="margin:0;">
-                                    @csrf
-                                    @method('DELETE')
-                                    <button type="submit" class="ops-btn-light" style="border-color:#fecaca;color:#b91c1c;" onclick="return confirm('Delete this payment? Sale invoice balance and sale payment status will be recalculated.');">Delete</button>
-                                </form>
+                                @if(!$payment->reversal_of_payment_id && (float) $payment->amount > 0)
+                                    <a href="{{ route('payments.correction', $payment) }}" class="ops-btn-light">{{ $saleInvoice->payments->firstWhere('reversal_of_payment_id', $payment->id) ? 'View correction' : 'Correct entry' }}</a>
+                                @endif
                             @endif
                         </div>
                     @endforeach

@@ -773,8 +773,9 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
         $response = $this->get(route('deliveries.index'));
 
         $response->assertOk();
-        $response->assertSee('>Picked Up<', false);
-        $response->assertSeeText('No pending pickups');
+        $response->assertViewHas('pendingPickupCount', 0);
+        $response->assertSeeText('Picked Up');
+        $response->assertDontSee('href="'.route('deliveries.show', $pickup).'#workflow-proof-section"', false);
         $response->assertDontSee('title="Complete task"', false);
         $response->assertDontSee('title="Complete partial task"', false);
     }

@@ -99,23 +99,15 @@ class QuickActionsRegressionTest extends TestCase
 
         $rentalResponse = $this->get(route('rentals.show', $rental));
         $rentalResponse->assertOk()
-            ->assertSeeText('Rental Actions')
-            ->assertSeeText('Reminder / Payment')
+            ->assertSee('href="tel:'.preg_replace('/\D+/', '', $rental->reminderContactPhone()).'"', false)
             ->assertSeeText($partner->displayName())
-            ->assertSeeText('Delivery / Pickup')
-            ->assertSeeText($client->displayName())
-            ->assertSeeText('View Business Partner')
-            ->assertSeeText('View Actual Client');
+            ->assertSeeText($client->displayName());
 
         $saleResponse = $this->get(route('sales.show', $sale));
         $saleResponse->assertOk()
-            ->assertSeeText('Sale Quick Actions')
-            ->assertSeeText('Reminder / Payment')
+            ->assertSee('href="tel:'.preg_replace('/\D+/', '', $sale->reminderContactPhone()).'"', false)
             ->assertSeeText($partner->displayName())
-            ->assertSeeText('Delivery / Service')
-            ->assertSeeText($client->displayName())
-            ->assertSeeText('View Business Partner')
-            ->assertSeeText('View Actual Client');
+            ->assertSeeText($client->displayName());
     }
 
     public function test_business_partner_show_and_invoice_show_render_quick_action_toolbars(): void

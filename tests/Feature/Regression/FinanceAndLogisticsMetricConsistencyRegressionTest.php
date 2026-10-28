@@ -479,8 +479,8 @@ class FinanceAndLogisticsMetricConsistencyRegressionTest extends TestCase
                 return $summary['sale_stock'] === 154
                     && $summary['serialized_sale_units'] === 0;
             })
-            ->assertSee('Sale Stock Available')
-            ->assertSee('Serialized Sale Units');
+            ->assertSee('Available to Sell')
+            ->assertSee('Sale Units');
     }
 
     private function makeRental(int $organizationId, int $customerId, int $productId, array $overrides = []): Rental

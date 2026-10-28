@@ -1073,7 +1073,7 @@
         @endif
     </div>
 
-    <details class="invoice-filter-card invoice-filter-toggle" data-filter-panel data-filter-panel-key="invoices-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}">
+    <details class="invoice-filter-card invoice-filter-toggle" data-filter-panel data-filter-panel-key="invoices-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" @if($hasActiveFilters) open @endif>
         <summary>Filters <span>{{ $hasActiveFilters ? 'Active - ' . $activeFilterChips->count() : 'Advanced' }}</span></summary>
         <form method="GET" action="{{ route('invoices.index') }}">
             <div class="invoice-filter-grid">

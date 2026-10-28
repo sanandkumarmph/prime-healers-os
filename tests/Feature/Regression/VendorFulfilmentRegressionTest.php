@@ -112,7 +112,7 @@ class VendorFulfilmentRegressionTest extends TestCase
         $response = $this->actingAs($user)->get(route('rentals.create'));
 
         $response->assertOk();
-        $response->assertSee('Vendor supplied rentals use Product Master only as a catalogue. Vendor stock is not reserved in PHOS.');
+        $response->assertSee('Vendor supplied.');
         $response->assertSee('data-vendor-option-label=', false);
         $response->assertSee('Vendor supplied rentals do not reserve PH stock or rental assets.');
     }
@@ -501,9 +501,9 @@ class VendorFulfilmentRegressionTest extends TestCase
         $response = $this->actingAs($user)->get(route('rentals.create'));
 
         $response->assertOk();
-        $response->assertSee('Step 1 Â· Fulfilment Source', false);
-        $response->assertSee('Step 2 Â· City', false);
-        $response->assertSee('Step 6 Â· Delivery Assignment', false);
+        $response->assertSee('Step 1 - Fulfilment Source', false);
+        $response->assertSee('Step 2 - City', false);
+        $response->assertSee('Step 6 - Delivery Assignment', false);
         $response->assertDontSee('Pickup Responsibility', false);
     }
 

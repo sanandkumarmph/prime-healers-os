@@ -5,6 +5,19 @@
     use App\Support\WhatsAppHelper;
 
     $currentUser = auth()->user();
+    $logisticsMetrics = app(\App\Services\Metrics\LogisticsMetricsService::class);
+    $taskProgressStatus = function ($delivery) use ($logisticsMetrics) {
+        if ($delivery->sale_id || $delivery->status === 'cancelled') {
+            return $delivery->status;
+        }
+        if ($logisticsMetrics->isEffectivelyCompleted($delivery)) {
+            return 'completed';
+        }
+
+        return $delivery->type === 'delivery'
+            ? $delivery->rental?->deliveryStatus()
+            : $delivery->rental?->pickupStatus();
+    };
     $canCreateDeliveries = $currentUser?->canAccessModule('deliveries', 'create') ?? false;
     $canUpdateDeliveries = $currentUser?->canAccessModule('deliveries', 'update') ?? false;
     $canDeleteDeliveries = $currentUser?->canAccessModule('deliveries', 'delete') ?? false;
@@ -1449,7 +1462,7 @@
             @endif
         </div>
 
-        <details class="ops-filters-card ops-filter-toggle" data-filter-panel data-filter-panel-key="deliveries-index" data-filter-active="false">
+        <details class="ops-filters-card ops-filter-toggle" data-filter-panel data-filter-panel-key="deliveries-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" @if($hasActiveFilters) open @endif>
             <summary>
                 <h2>Search &amp; Filters</h2>
                 <span>{{ $hasActiveFilters ? count($activeFilterChips) . ' active' : 'Advanced' }}</span>
@@ -1653,7 +1666,7 @@
                     </div>
                     <div class="mobile-sheet-actions">
                         <button type="submit" class="rn-btn-primary">Apply Filters</button>
-                        <a href="{{ route('deliveries.index') }}" class="rn-btn">Reset</a>
+                        <a href="{{ route('deliveries.index') }}" class="rn-btn" data-filter-clear="deliveries-index">Reset</a>
                     </div>
                 </form>
             </div>
@@ -1743,9 +1756,7 @@
                                         : null;
                                     $mapUrl = $delivery->linkedCustomerMapUrl();
                                     $items = $formatTaskItems($delivery);
-                                    $progressStatus = $isSaleTask
-                                        ? $delivery->status
-                                        : ($delivery->type === 'delivery' ? $delivery->rental?->deliveryStatus() : $delivery->rental?->pickupStatus());
+                                    $progressStatus = $taskProgressStatus($delivery);
                                     $displayStatus = $delivery->status;
                                     if (!$isSaleTask && $progressStatus) {
                                         $displayStatus = match ($delivery->type) {
@@ -2016,9 +2027,7 @@
                                 : null;
                             $mapUrl = $delivery->linkedCustomerMapUrl();
                             $items = $formatTaskItems($delivery);
-                            $progressStatus = $isSaleTask
-                                ? $delivery->status
-                                : ($delivery->type === 'delivery' ? $delivery->rental?->deliveryStatus() : $delivery->rental?->pickupStatus());
+                            $progressStatus = $taskProgressStatus($delivery);
                             $displayStatus = $delivery->status;
                             if (!$isSaleTask && $progressStatus) {
                                 $displayStatus = match ($delivery->type) {

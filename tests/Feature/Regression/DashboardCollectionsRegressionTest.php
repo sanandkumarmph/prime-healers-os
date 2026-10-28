@@ -76,9 +76,7 @@ class DashboardCollectionsRegressionTest extends TestCase
 
         $response->assertOk();
 
-        $content = $response->getContent();
-
-        $this->assertStringContainsString('Rs. 250.00', $content);
-        $this->assertStringNotContainsString('Rs. 439.00', $content);
+        $this->assertSame(250.0, (float) $response->viewData('paymentsReceivedToday'));
+        $this->assertSame(250.0, (float) $response->viewData('paymentsReceivedThisMonth'));
     }
 }

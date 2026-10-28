@@ -734,11 +734,11 @@ class StockRulesRegressionTest extends TestCase
             ->assertSee('data-close-rental-asset-modal', false)
             ->assertSee('rentalAssetAssignmentModal', false)
             ->assertSee('rentalAssignAssetButton', false)
-            ->assertSee('Select product and stock.', false)
+            ->assertSee('Select product, stock, dates, price, and assets.', false)
             ->assertSee('Assign rental asset.', false)
             ->assertSee('Asset not assigned', false)
             ->assertSee('Create Rental', false)
-            ->assertSee('1 asset', false)
+            ->assertSee('id="assetSelectedCountInline"', false)
             ->assertSee('selected < required', false)
             ->assertSee('data-asset-id="${normalizedAssetId}"', false)
             ->assertSee('type="hidden" name="asset_ids[]"', false)
@@ -981,7 +981,7 @@ class StockRulesRegressionTest extends TestCase
             ]));
 
         $response->assertOk()
-            ->assertSee('Selected asset was not submitted correctly. Please reselect asset.', false)
+            ->assertSee('Rental could not be saved because:', false)
             ->assertSee('One or more selected assets do not match the product or warehouse for the primary rental line.', false);
         $this->assertSame(0, RentalAsset::query()->count());
     }
