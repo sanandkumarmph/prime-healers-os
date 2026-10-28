@@ -19,6 +19,8 @@ MIGRATION = "2026_10_27_000000_create_payment_submissions_table"
 URL = "https://github.com/sanandkumarmph/prime-healers-os.git"
 RUNTIME_CHANGED = {"resources/views/invoices/index.blade.php"}
 REVIEWED_FILES = set(RUNTIME_CHANGED)
+# Optional verified fixture identities stay in the private server configuration.
+VERIFIED_CORRECTION_FIXTURE = None
 CORRECTION_MIGRATION = "2026_10_28_120000_add_payment_reversal_link"
 PATH = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 ENV = {"PATH": PATH, "LANG": "C.UTF-8", "GIT_TERMINAL_PROMPT": "0"}
@@ -86,6 +88,27 @@ def load_target(path):
     WEB, STORAGE = APP / "public", APP / "storage"
     HOST, DATABASE, OWNER, PHP, LOCK_BLOB = (config[k] for k in
         ("host", "database", "owner", "php", "package_lock_blob"))
+
+def validate_verified_fixture(value):
+    need(isinstance(value, dict) and set(value) == {"invoice_id","invoice_number","receipt_ids","amount"},
+         "Unexpected private correction fixture fields.")
+    need(type(value["invoice_id"]) is int and value["invoice_id"] > 0
+         and isinstance(value["invoice_number"], str) and re.fullmatch(r"INV-[0-9]+", value["invoice_number"])
+         and type(value["amount"]) is int and value["amount"] > 0
+         and isinstance(value["receipt_ids"], list) and len(value["receipt_ids"]) == 3
+         and all(type(item) is int and item > 0 for item in value["receipt_ids"])
+         and len(set(value["receipt_ids"])) == 3, "Invalid private correction fixture identity.")
+    return value
+
+def load_verified_fixture(path):
+    file = Path(path)
+    regular(file)
+    no_links(file)
+    st, parent = file.stat(), file.parent.stat()
+    need(st.st_uid == 0 and stat.S_IMODE(st.st_mode) & 0o077 == 0
+         and parent.st_uid == 0 and stat.S_IMODE(parent.st_mode) & 0o077 == 0,
+         "Correction fixture configuration and directory must be root-owned and private.")
+    return validate_verified_fixture(json.loads(file.read_bytes()))
 
 def permissions(path, uid, gid, mode):
     if os.name != "nt":
@@ -518,7 +541,7 @@ Illuminate\Support\Facades\DB::connection()->beforeExecuting(function ($sql) {
  if (!preg_match('/^\s*select\b/i',$sql)) throw new RuntimeException("FINANCIAL_PRESERVATION_PROBE_MUST_NOT_WRITE");
 });
 $invoice=Illuminate\Support\Facades\DB::table("invoices")->where("id",$id)->first([
- "id","organization_id","customer_id","rental_id","reference_number","total_amount","paid_amount","balance_amount","status","payment_status"
+ "id","invoice_number","organization_id","customer_id","rental_id","reference_number","total_amount","paid_amount","balance_amount","status","payment_status"
 ]);
 $labelled=$invoice && (str_starts_with((string)$invoice->reference_number,"UAT-PAY-SAFETY-")
  || str_starts_with((string)$invoice->reference_number,"UAT-CORRECTION-"));
@@ -541,11 +564,34 @@ if ($invoice && $invoice->rental_id) {
   $labelled=true;$fixtureRental=$candidate;
  }
 }
+$receipts=Illuminate\Support\Facades\DB::table("payments")->where("invoice_id",$id)
+ ->orderBy("id")->get(["id","organization_id","customer_id","rental_id","invoice_id","payment_date","amount","payment_method","notes","reversal_of_payment_id"]);
+$verifiedFixture=__VERIFIED_CORRECTION_FIXTURE__;
+if (!$labelled && $verifiedFixture && $invoice && $id===$verifiedFixture["invoice_id"]
+ && $invoice->invoice_number===$verifiedFixture["invoice_number"] && !$invoice->rental_id
+ && (float)$invoice->total_amount===$verifiedFixture["amount"]*1.0
+ && (float)$invoice->paid_amount===$verifiedFixture["amount"]*1.0
+ && (float)$invoice->balance_amount===0.0 && $invoice->status==="paid" && $invoice->payment_status==="paid"
+ && $receipts->count()===3) {
+ $customer=Illuminate\Support\Facades\DB::table("customers")
+  ->where("id",$invoice->customer_id)->where("organization_id",$invoice->organization_id)->value("name");
+ $expectedAmounts=[$verifiedFixture["amount"],-$verifiedFixture["amount"],$verifiedFixture["amount"]];
+ $matches=str_starts_with((string)$customer,"UAT PAYMENT SAFETY");
+ foreach ($receipts as $n=>$receipt) {
+  $expectedLink=$n===1?$verifiedFixture["receipt_ids"][0]:null;
+  $matches=$matches && (int)$receipt->id===$verifiedFixture["receipt_ids"][$n]
+   && (float)$receipt->amount===$expectedAmounts[$n]*1.0
+   && (int)$receipt->organization_id===(int)$invoice->organization_id
+   && (int)$receipt->customer_id===(int)$invoice->customer_id
+   && (int)$receipt->invoice_id===$id && !$receipt->rental_id
+   && ($receipt->reversal_of_payment_id===null?null:(int)$receipt->reversal_of_payment_id)===$expectedLink;
+ }
+ $labelled=$matches;
+}
 if (!$labelled) {
  fwrite(STDERR,"ACCEPTANCE_INVOICE_IS_NOT_THE_LABELLED_UAT_FIXTURE\n");exit(11);
 }
-$receipts=Illuminate\Support\Facades\DB::table("payments")->where("invoice_id",$id)
- ->orderBy("id")->get(["id","organization_id","customer_id","rental_id","invoice_id","payment_date","amount","payment_method","notes","reversal_of_payment_id"]);
+
 $audit=Illuminate\Support\Facades\DB::table("activity_logs")->where("organization_id",$invoice->organization_id)
  ->where("invoice_id",$id)->orderBy("id")->get();
 $payments=App\Models\Payment::query()->where("invoice_id",$id)->where("organization_id",$invoice->organization_id);
@@ -589,6 +635,8 @@ if (__VERIFY_METRICS__ && ($invoice->status==="cancelled" || $invoice->payment_s
 }
 echo json_encode($out,JSON_THROW_ON_ERROR);
 '''
+    code = code.replace("__VERIFIED_CORRECTION_FIXTURE__",
+                        "json_decode(" + json.dumps(json.dumps(VERIFIED_CORRECTION_FIXTURE)) + ",true)")
     code = code.replace("__VERIFY_METRICS__", "true" if verify_metrics else "false")
     result = json.loads(execute(as_owner([PHP, "-d", "opcache.enable_cli=0", "-d", "opcache.jit=0",
                                           "-r", code, str(invoice_id)]), cwd=APP, capture=True))
@@ -813,6 +861,9 @@ def rebuild(cached):
     artisan("view:cache")
 
 def rollback(state):
+    global VERIFIED_CORRECTION_FIXTURE
+    VERIFIED_CORRECTION_FIXTURE = (validate_verified_fixture(state["verified_correction_fixture"])
+                                   if state.get("verified_correction_fixture") else None)
     phase("rollback")
     # This exact baseline already supports corrections; restore code only.
     correction_ok(db_state())
@@ -863,6 +914,16 @@ def self_test():
             pass
         else:
             raise Stop("Copy-only delta guard accepted an unreviewed edit.")
+    fixture = {"invoice_id":1,"invoice_number":"INV-000001","receipt_ids":[1,2,3],"amount":100}
+    need(validate_verified_fixture(fixture) == fixture, "Private fixture validator self-test failed.")
+    for invalid in ({}, dict(fixture, invoice_id=True), dict(fixture, receipt_ids=[1,1,3]),
+                    dict(fixture, amount=-1), dict(fixture, invoice_number="invalid")):
+        try:
+            validate_verified_fixture(invalid)
+        except Stop:
+            pass
+        else:
+            raise Stop("Private fixture validator accepted an invalid identity.")
     correction_sample = {"engine":"InnoDB", "column":{"DATA_TYPE":"bigint","IS_NULLABLE":"YES","COLUMN_TYPE":"bigint unsigned"},
                          "migration":1,"unique":True,"foreign":[{"target_table":"payments","target_column":"id","delete_rule":"RESTRICT"}],"entries":0}
     need(correction_ok({"correction":correction_sample}), "Correction schema self-test failed.")
@@ -969,7 +1030,7 @@ def self_test():
     print("PHOS_DEPLOY_HELPER_SELF_TEST_PASSED", flush=True)
 
 def main():
-    global BACKUP, LOG
+    global BACKUP, LOG, VERIFIED_CORRECTION_FIXTURE
     parser = argparse.ArgumentParser()
     parser.add_argument("gitdir", nargs="?")
     parser.add_argument("--self-test", action="store_true")
@@ -979,6 +1040,7 @@ def main():
     parser.add_argument("--acceptance-invoice", type=int, action="append", default=[])
     parser.add_argument("--rollback")
     parser.add_argument("--target-config")
+    parser.add_argument("--verified-correction-fixture")
     args = parser.parse_args()
     need(all(value > 0 for value in args.acceptance_invoice)
          and len(set(args.acceptance_invoice)) == len(args.acceptance_invoice),
@@ -997,6 +1059,11 @@ def main():
     os.umask(0o077)
     need(args.target_config, "Pass the private --target-config file.")
     load_target(args.target_config)
+    if args.verified_correction_fixture:
+        need(not args.rollback, "Rollback uses its saved private fixture identity.")
+        VERIFIED_CORRECTION_FIXTURE = load_verified_fixture(args.verified_correction_fixture)
+        need(VERIFIED_CORRECTION_FIXTURE["invoice_id"] in args.acceptance_invoice,
+             "Verified correction fixture must be included in acceptance checks.")
     lock = open("/root/phos-uat-pr1-deploy.lock", "a")
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     for tool in ("git", "runuser", "curl", "timeout", "crontab"):
@@ -1078,7 +1145,8 @@ def main():
         (BACKUP / name).write_bytes(file.read_bytes())
     state = {"app": str(APP), "release": RELEASE, "files": records, "index": index,
              "route_cached": route_cache_present(), "preserved": before,
-             "acceptance_invoice_ids": args.acceptance_invoice}
+             "acceptance_invoice_ids": args.acceptance_invoice,
+             "verified_correction_fixture": VERIFIED_CORRECTION_FIXTURE}
     (BACKUP / "rollback-state.json").write_text(json.dumps(state, indent=2) + "\n")
     shutil.copyfile(Path(__file__).resolve(), BACKUP / "rollback-helper.py")
     note("ROLLBACK_COMMAND=python3 " + str(BACKUP / "rollback-helper.py") + " --target-config " + str(BACKUP / "target-config.json") + " --rollback " + str(BACKUP))
