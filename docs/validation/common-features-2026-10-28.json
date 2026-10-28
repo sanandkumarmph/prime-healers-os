@@ -1,0 +1,98 @@
+{
+  "date": "2026-10-28",
+  "target_baseline": "f9e6de32620ca8ecaf7293e0ee15149cd8c78f22",
+  "rentnexis_source": "ed5c4db6b603cadfe6148158706f7e5cca2eea37",
+  "environment": {
+    "php": "8.2.12",
+    "node": "24.14.1",
+    "mariadb": "10.11.16",
+    "data": "synthetic only; disposable loopback databases; no deployed application access"
+  },
+  "sqlite_complete_suite": {
+    "tests": 704,
+    "assertions": 4916,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0
+  },
+  "native_mariadb_feature_suite": {
+    "tests": 88,
+    "assertions": 797,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0
+  },
+  "native_common_concurrency": {
+    "passed": 32,
+    "isolation_levels": [
+      "REPEATABLE READ",
+      "READ COMMITTED"
+    ],
+    "checks": [
+      "exact replay",
+      "competing collection totals",
+      "manual payment races",
+      "handover reservations",
+      "cash confirmations",
+      "online verification",
+      "correction versus handover",
+      "partial delivery quantities",
+      "quotation conversion",
+      "rollback after save",
+      "independent organizations"
+    ]
+  },
+  "existing_payment_concurrency": {
+    "passed": 5
+  },
+  "existing_payment_correction_concurrency": {
+    "passed": 5
+  },
+  "browser": {
+    "passed": 38,
+    "layout_samples": 33,
+    "viewport_widths": [
+      1440,
+      768,
+      390
+    ],
+    "quotation_conversion_forms": 3,
+    "photo_selection_checks": 2,
+    "uncaught_errors": 0,
+    "document_overflow": 0,
+    "external_requests": "blocked"
+  },
+  "additive_upgrade": {
+    "legacy_tables_preserved": 54,
+    "original_proof_schema_preserved": true,
+    "custom_permissions_preserved": true,
+    "new_tables": 7,
+    "used_history_rollback_guards": 4
+  },
+  "other_checks": {
+    "frontend_build": "passed",
+    "blade_cache": "passed",
+    "php_syntax_files_checked": 625,
+    "patch_whitespace": "passed",
+    "visual_pdf_review": {
+      "short_invoice_pages": 1,
+      "long_invoice_pages": 3,
+      "long_quotation_pages": 2
+    }
+  },
+  "coverage_note": "The complete SQLite run preceded the final duplicate-proof validation message; the final native feature suite includes that change and its regression assertions. Hosted CI should verify the published head.",
+  "not_performed": [
+    "UAT deployment",
+    "production deployment",
+    "real-device camera/GPS acceptance",
+    "business-policy changes pending user decision"
+  ],
+  "evidence_sha256": {
+    "common-release-suite.xml": "8d020e06ea0f1f98952f46832edd2362e2989a0b3826a02c3ff956dba381016a",
+    "common-native-complete.xml": "ee8d0b4ff5ebcdc59a6a3e5f1db63c875c05a1874a99201c6ad767e0abf38622",
+    "common-mariadb-final.log": "9839c0746e898b3dcb44c4a26ea7863350128b73c4919698c2867a579db149d2",
+    "common-existing-payment-concurrency.log": "2d363d915262593f40797baca19ea415763ddd4dcb33b16ee430b1f7df9b493f",
+    "common-existing-correction-concurrency.log": "30936ec00e1729193c6612121f7f8c435399de6d1bf69233a8bca53b8b3a5172",
+    "common-browser-release.log": "ba3a06be3934e717e968a3ced363e54c3fbd1f12295ba6359cbbda3ddf767fd2"
+  }
+}

@@ -1180,8 +1180,8 @@ class RentalController extends Controller
 
     private function normalizedGstMode(?string $value, ?Product $product = null): string
     {
-        if ($value === 'inclusive') {
-            return 'inclusive';
+        if (in_array($value, ['inclusive', 'exclusive'], true)) {
+            return $value;
         }
 
         return (($product?->gst_calculation_mode ?? 'exclusive') === 'inclusive') ? 'inclusive' : 'exclusive';
@@ -2305,6 +2305,7 @@ class RentalController extends Controller
     private function createRentalInvoice(Rental $rental): Invoice
     {
         $organization = Organization::findOrFail($this->orgId());
+        $organization->default_terms = app(\App\Services\Sales\QuotationConversion::class)->terms($rental, $organization->default_terms);
 
         if ($existingInvoice = $this->rentalInvoice($rental)) {
             $this->syncRentalInvoiceFromRental($rental, $existingInvoice);
@@ -2325,6 +2326,7 @@ class RentalController extends Controller
     private function syncRentalInvoiceFromRental(Rental $rental, Invoice $invoice): void
     {
         $organization = Organization::findOrFail($this->orgId());
+        $organization->default_terms = app(\App\Services\Sales\QuotationConversion::class)->terms($rental, $organization->default_terms);
         app(InvoiceSyncService::class)->syncRentalInvoiceFromRental(
             $this->orgId(),
             $rental,
@@ -4729,6 +4731,15 @@ class RentalController extends Controller
         ]);
     }
 
+    public function compactDashboard(Request $request)
+    {
+        $dashboard = $this->dashboard($request);
+
+        return $dashboard instanceof \Illuminate\Contracts\View\View
+            ? view('dashboard.compact', $dashboard->getData())
+            : $dashboard;
+    }
+
     public function dashboard(Request $request)
     {
         $currentUser = auth()->user();
@@ -6539,6 +6550,7 @@ class RentalController extends Controller
     {
         $this->ensureRentalAccess();
         $this->authorize('create', Rental::class);
+        app(\App\Services\Sales\QuotationConversion::class)->prepare(request(), 'rental');
 
         $selectedCustomer = null;
         $businessPartnerFlowAvailable = $this->businessPartnerFlowAvailable();
@@ -6621,6 +6633,11 @@ class RentalController extends Controller
     }
 
     public function store(Request $request)
+    {
+        return app(\App\Services\Sales\QuotationConversion::class)->run($request, 'rental', fn () => $this->storeOrder($request));
+    }
+
+    private function storeOrder(Request $request)
     {
         $this->ensureRentalAccess();
         $request->merge([
@@ -6737,6 +6754,10 @@ class RentalController extends Controller
             $customerContext = $this->rentalValidatedCustomerContext($request);
             $saleItems = $this->normalizedSaleItems($request);
             $rentalItems = $this->combinedRentalItems($request);
+            app(\App\Services\Sales\QuotationConversion::class)->assertLines($request, 'rental', $rentalItems);
+            if ($request->attributes->get('conversion_quote') && $saleItems !== []) {
+                throw ValidationException::withMessages(['quotation_id' => 'Additional sale products need a separate quotation or order.']);
+            }
             if ($vendorSupplied) {
                 $rentalItems = $this->sanitizedVendorSuppliedRentalItems($rentalItems);
                 $selectedAssets = collect();
@@ -6871,6 +6892,8 @@ class RentalController extends Controller
             'rental_amount' => $rental->rental_amount,
             'payment_status' => $invoice->payment_status,
         ], 'Rental created and invoice generated.');
+
+        app(\App\Services\Sales\QuotationConversion::class)->finish($request, $rental);
 
         return redirect()
             ->route('rentals.index', ['sort_by' => 'latest'])
@@ -7786,6 +7809,9 @@ class RentalController extends Controller
                     Delivery::create($deliveryData);
                 }
             } else {
+                if ((clone $openDeliveryTasks)->get()->contains(fn ($task) => $task->hasProtectedWorkflowHistory())) {
+                    throw ValidationException::withMessages(['delivery_responsibility' => 'This delivery has saved workflow history. Preserve the task and reconcile its assignment before changing delivery responsibility.']);
+                }
                 $openDeliveryTasks->delete();
             }
 
@@ -8002,6 +8028,12 @@ class RentalController extends Controller
         $rental = $this->scopedRental($rental);
         $this->authorize('delete', $rental);
         $blockers = $this->rentalDeletionBlockers($rental);
+        if (\App\Models\Quotation::where('organization_id', $rental->organization_id)->where('order_type', 'rental')->where('order_id', $rental->id)->exists()) {
+            $blockers[] = 'an accepted quotation conversion';
+        }
+        if ($rental->deliveries()->get()->contains(fn ($task) => $task->hasProtectedWorkflowHistory())) {
+            $blockers[] = 'saved delivery workflow history';
+        }
 
         if (!empty($blockers)) {
             return redirect()

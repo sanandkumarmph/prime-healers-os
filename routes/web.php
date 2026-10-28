@@ -604,3 +604,6 @@ Route::middleware('auth')->group(function () {
 });
 
 require __DIR__ . '/auth.php';
+
+require __DIR__.'/sales-workspace.php';
+require __DIR__.'/common-features.php';

@@ -940,6 +940,17 @@ class InvoiceController extends Controller
         return redirect()->route('invoices.show', $invoice->id)->with('success', 'Invoice updated successfully.');
     }
 
+    public function download($id)
+    {
+        $response = $this->print($id);
+        if ($response instanceof \Illuminate\Http\Response && $response->headers->get('Content-Type') === 'application/pdf') {
+            $disposition = $response->headers->get('Content-Disposition', 'inline; filename="invoice.pdf"');
+            $response->headers->set('Content-Disposition', preg_replace('/^inline\b/', 'attachment', $disposition));
+        }
+
+        return $response;
+    }
+
     public function print($id)
     {
         $invoice = Invoice::with(['items.product', 'items.rental', 'customer', 'organization', 'payments', 'rentalRenewal'])
@@ -1103,7 +1114,7 @@ class InvoiceController extends Controller
 
     private function assertInvoiceHasNoHistory(Invoice $invoice): void
     {
-        foreach (['payments', 'rental_renewals', 'activity_logs'] as $table) {
+        foreach (['payments', 'rental_renewals', 'activity_logs', 'delivery_collections'] as $table) {
             if (Schema::hasTable($table) && Schema::hasColumn($table, 'invoice_id')
                 && DB::table($table)->where('organization_id', $this->orgId())->where('invoice_id', $invoice->id)->exists()) {
                 throw ValidationException::withMessages([

@@ -3,6 +3,7 @@
 @section('content')
 <div class="ph-mobile-form-page">
     <form id="saleForm" action="{{ route('sales.store') }}" method="POST" novalidate>
+        @include('sales-workspace.conversion-banner')
         @csrf
         @include('sales.partials.form', ['sale' => null])
     </form>

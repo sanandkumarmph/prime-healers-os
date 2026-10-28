@@ -18,6 +18,8 @@ class Role extends Model
         'assets' => 'Assets',
         'rentals' => 'Rentals',
         'sales' => 'Sales',
+        'enquiries' => 'Enquiries',
+        'quotations' => 'Quotations',
         'invoices' => 'Invoices',
         'payments' => 'Payments',
         'deliveries' => 'Deliveries',
@@ -27,6 +29,7 @@ class Role extends Model
 
     public const ACTIONS = ['read', 'create', 'update', 'delete'];
     public const SPECIAL_PERMISSIONS = [
+        'cash.receive' => 'Confirm cash handovers and verify collection reports',
         'customers.proof.download' => 'Download customer ID proofs',
         'customers.export' => 'Export customer data',
         'invoices.export' => 'Export invoices',
@@ -96,6 +99,8 @@ class Role extends Model
             'assets' => ['read', 'create', 'update', 'delete'],
             'rentals' => ['read', 'create', 'update', 'delete'],
             'sales' => ['read', 'create', 'update', 'delete'],
+            'enquiries' => ['read', 'create', 'update'],
+            'quotations' => ['read', 'create', 'update'],
             'invoices' => ['read', 'create', 'update', 'delete'],
             'payments' => ['read', 'create', 'update', 'delete'],
             'deliveries' => ['read', 'create', 'update', 'delete'],
@@ -123,6 +128,8 @@ class Role extends Model
                 'description' => 'Sales role',
                 'permissions' => [
                     'customers' => ['read', 'create', 'update'],
+                    'enquiries' => ['read', 'create', 'update'],
+                    'quotations' => ['read', 'create', 'update'],
                     'products' => ['read'],
                     'rentals' => ['read', 'create', 'update'],
                     'sales' => ['read', 'create', 'update'],

@@ -89,6 +89,20 @@ class Product extends Model
         'is_rentable' => 'boolean',
     ];
 
+    public function defaultGstRate(): float
+    {
+        return match ($this->gst_tax_type) {
+            self::GST_TAX_TYPE_CGST_SGST => round((float) $this->cgst_rate + (float) $this->sgst_rate, 2),
+            self::GST_TAX_TYPE_IGST => round((float) $this->igst_rate, 2),
+            default => 0.0,
+        };
+    }
+
+    public function defaultGstMode(): string
+    {
+        return $this->gst_calculation_mode === 'inclusive' ? 'inclusive' : 'exclusive';
+    }
+
     public function getProductImageUrlAttribute(): ?string
     {
         return $this->product_image_path

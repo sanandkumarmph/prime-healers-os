@@ -1,0 +1,24 @@
+@extends('layouts.app')
+@section('content')
+@include('sales-workspace.style')
+<div class="sw">
+    <header class="sw-head"><div><div class="sw-eyebrow">Enquiries · Quotations · Follow-ups</div><h1>Sales workspace</h1><p class="sw-muted">Keep conversations, quotations and follow-ups together.</p></div>
+    @if(auth()->user()->canAccessModule('enquiries','create'))<a class="sw-btn sw-primary" href="{{ route('enquiries.create') }}">+ New enquiry</a>@endif</header>
+    @include('sales-workspace.alerts')
+    <div class="sw-metrics"><a class="sw-metric" href="{{ route('enquiries.index') }}"><span class="sw-muted">Open enquiries</span><strong>{{ $counts['open'] }}</strong></a><a class="sw-metric" href="{{ route('enquiries.index',['view'=>'followups','queue'=>'today']) }}"><span class="sw-muted">Follow-ups today</span><strong>{{ $counts['today'] }}</strong></a><a class="sw-metric" href="{{ route('enquiries.index',['view'=>'followups','queue'=>'overdue']) }}"><span class="sw-muted">Overdue follow-ups</span><strong class="sw-overdue">{{ $counts['overdue'] }}</strong></a></div>
+    <nav class="sw-tabs" aria-label="Sales workspace views">@foreach(['enquiries'=>'Enquiries','followups'=>'Follow-ups','quotations'=>'Quotations'] as $key=>$label)@if($key !== 'quotations' || auth()->user()->canAccessModule('quotations','read'))<a href="{{ route('enquiries.index',['view'=>$key]) }}" @if($mode===$key) aria-current="page" @endif>{{ $label }}</a>@endif @endforeach</nav>
+    <section class="sw-panel"><form class="sw-filters" method="get"><input type="hidden" name="view" value="{{ $mode }}"><div class="sw-field sw-search"><label for="sw-search">Search enquiries</label><input id="sw-search" name="q" value="{{ request('q') }}" placeholder="Name, phone or requirement" maxlength="100"></div>
+    @if($mode==='followups')<div class="sw-field"><label for="queue">Due</label><select name="queue" id="queue">@foreach(['all'=>'All upcoming','today'=>'Today','overdue'=>'Overdue'] as $key=>$label)<option value="{{ $key }}" @selected(request('queue')===$key)>{{ $label }}</option>@endforeach</select></div>@else<div class="sw-field"><label for="stage">Stage</label><select name="stage" id="stage"><option value="">All stages</option>@foreach(\App\Models\Enquiry::STAGES as $key=>$label)<option value="{{ $key }}" @selected(request('stage')===$key)>{{ $label }}</option>@endforeach</select></div>@endif
+    <label><input type="checkbox" name="mine" value="1" @checked(request()->boolean('mine'))> Assigned to me</label><button class="sw-btn">Apply</button><a href="{{ route('enquiries.index',['view'=>$mode]) }}">Reset</a></form>
+    <div class="sw-list">@forelse($records as $record)
+    @php($e = $mode === 'enquiries' ? $record : $record->enquiry)
+    <article class="sw-row"><div><a href="{{ $mode==='quotations' ? route('quotations.show',$record) : route('enquiries.show',$e) }}"><strong>{{ $mode==='quotations' ? $record->number().' · '.$e->name : ($mode==='followups' ? $record->subject : $e->subject) }}</strong></a>
+    <div class="sw-meta">{{ $e->name }} · {{ $e->owner?->name ?? 'Unassigned' }} @if($mode==='enquiries' && $e->phone) · {{ $e->phone }} @endif</div></div><div>
+    @if($mode==='followups')<span class="sw-badge">{{ $record->channel }}</span> <span class="{{ $record->due_at->isPast() ? 'sw-overdue' : 'sw-muted' }}">{{ $record->due_at->timezone($tz)->format('d M, H:i') }}</span>
+    @elseif($mode==='quotations')<span class="sw-badge" data-status="{{ $record->displayStatus() }}">{{ $record->statusLabel() }}</span><div class="sw-meta">{{ $record->snapshot['currency'] }} {{ number_format($record->snapshot['total'],2) }} · Valid until {{ $record->valid_until->format('d M') }}</div>
+    @else<span class="sw-badge" data-status="{{ $e->stage }}">{{ \App\Models\Enquiry::STAGES[$e->stage] }}</span><div class="sw-meta">@if(!$e->closed()){{ $e->next_follow_up ? 'Next: '.\Illuminate\Support\Carbon::parse($e->next_follow_up)->timezone($tz)->format('d M, H:i') : 'No follow-up scheduled' }}@endif</div>@endif
+    </div></article>
+    @empty<div class="sw-empty"><h2>{{ $mode==='followups' ? 'Nothing due in this view' : 'Your next opportunity starts here' }}</h2><p class="sw-muted">{{ $mode==='followups' ? 'Schedule the next action from an enquiry to keep it moving.' : 'Capture an enquiry, then prepare a quotation when the requirements are clear.' }}</p>@if(request()->filled('q') || request()->filled('stage'))<a href="{{ route('enquiries.index',['view'=>$mode]) }}">Clear filters</a>@elseif(auth()->user()->canAccessModule('enquiries','create'))<a class="sw-btn sw-primary" href="{{ route('enquiries.create') }}">Create enquiry</a>@endif</div>@endforelse</div>
+    {{ $records->links() }}</section><p class="sw-meta">Times shown in {{ $tz }}. Follow-ups are reminders for your team; messages are not sent automatically.</p>
+</div>
+@endsection
