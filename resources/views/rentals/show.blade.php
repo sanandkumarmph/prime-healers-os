@@ -13,6 +13,7 @@
     $canUpdateDeliveries = auth()->user()?->canAccessModule('deliveries', 'update') ?? false;
     $canDeleteDeliveries = auth()->user()?->canAccessModule('deliveries', 'delete') ?? false;
     $canCreatePayments = auth()->user()?->canAccessModule('payments', 'create') ?? false;
+    $renewalValidationFailed = $errors->any() && old('_rental_form') === 'renewal';
     $operationalStatus = $rental->operationalStatus();
     $isHotlisted = $rental->shouldHotlist();
     $latestReminderAt = $rental->latestReminderSentAt();
@@ -3703,6 +3704,15 @@
 </style>
 
 <div class="container detail-page rcc-shell">
+    @if($errors->any() && !$renewalValidationFailed)
+        <div id="rental-validation-errors" role="alert" tabindex="-1" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;padding:12px 14px;border-radius:12px;">
+            <ul style="margin:0;padding-left:18px;">
+                @foreach($errors->all() as $message)
+                    <li>{{ $message }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
     <div class="ph-rental-reference-shell rcc-shell">
         <x-operational-page-header
             eyebrow="Rental Command Center"
@@ -4671,7 +4681,7 @@
         </form>
     </div>
 </div>
-<div class="renewal-modal" id="renewalModal" aria-hidden="true">
+<div class="renewal-modal" id="renewalModal" aria-hidden="true" data-reopen-on-validation="{{ $renewalValidationFailed ? 'true' : 'false' }}">
     <div class="renewal-modal-panel">
         <div class="renewal-modal-head">
             <div>
@@ -4689,8 +4699,18 @@
             data-update-action-template="{{ url('/rentals/' . $rental->id . '/renewals/__RENEWAL__') }}"
         >
             @csrf
+            <input type="hidden" name="_rental_form" value="renewal">
             <input type="hidden" name="_method" value="PUT" data-renewal-method-field disabled>
             <div class="renewal-modal-body">
+            @if($renewalValidationFailed)
+                <div id="rental-validation-errors" role="alert" tabindex="-1" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;padding:12px 14px;border-radius:12px;margin-bottom:14px;">
+                    <ul style="margin:0;padding-left:18px;">
+                        @foreach($errors->all() as $message)
+                            <li>{{ $message }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
             <div
                 id="renewalDuplicateWarning"
                 data-visible-on-create="{{ $showDuplicateRenewalWarning ? '1' : '0' }}"
@@ -5307,9 +5327,13 @@
             }
         });
 
-        @if($errors->any())
+        const validationSummary = document.getElementById('rental-validation-errors');
+        if (modal.dataset.reopenOnValidation === 'true') {
             openModal();
-        @endif
+        } else if (validationSummary) {
+            validationSummary.focus();
+            validationSummary.scrollIntoView({block: 'center'});
+        }
 
         setCreateMode();
     })();
