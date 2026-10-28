@@ -7222,6 +7222,9 @@ class RentalController extends Controller
         }
 
         $rentalInvoice = $this->rentalInvoice($rental);
+        if ($rentalInvoice && ($rentalInvoice->status === 'cancelled' || $rentalInvoice->payment_status === 'cancelled')) {
+            $rentalInvoice->syncFinancialStatus(false);
+        }
         $timelineFilter = ActivityTimelineService::normalizeFilter((string) $request->query('timeline_filter', 'all'));
         $activityLogs = app(ActivityTimelineService::class)->forSubject($rental, $timelineFilter, 25, 'timeline_page');
 

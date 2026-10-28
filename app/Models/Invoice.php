@@ -195,14 +195,17 @@ class Invoice extends Model
         $paymentsTotal = (float) $this->payments()->sum('amount');
         $totalAmount = (float) ($this->total_amount ?? 0);
         $paidAmount = min($paymentsTotal, $totalAmount);
-        $balanceAmount = max($totalAmount - $paidAmount, 0);
+        $currentStatus = $this->status === 'cancelled' || $this->payment_status === 'cancelled'
+            ? 'cancelled'
+            : $this->status;
 
         $financialStatus = self::determineFinancialStatus(
             $totalAmount,
             $paidAmount,
             $this->due_date,
-            $this->status
+            $currentStatus
         );
+        $balanceAmount = $financialStatus === 'cancelled' ? 0 : max($totalAmount - $paidAmount, 0);
 
         $this->forceFill([
             'paid_amount' => $paidAmount,
