@@ -29,7 +29,7 @@ required for the website account; original metadata is recorded privately. It
 never recursively changes permissions. Actual site details and all backup paths
 are private operator inputs/output and must not be committed.
 
-Local validation: six guard checks, nine PHP syntax checks, exact release/asset
+Local validation: ten guard checks, nine PHP syntax checks, exact release/asset
 verification, and a disposable MariaDB 10.11.16 rehearsal preserving 54 legacy
 tables plus a deliberately non-UTF-8 binary sentinel table and verifying seven new tables and all four migrations. This is not a claim
 of actual deployment. Authentication, host runtime and manual device acceptance
@@ -38,3 +38,15 @@ are verified on the target only after the operator runs the prepared command.
 Database row fingerprints serialize raw PDO values only as hash input; they are
 never unserialized. Binary bytes and legacy non-UTF-8 text are preserved exactly.
 This avoids JSON encoding failures without repairing, converting or ignoring data.
+
+
+The runtime route probe now boots Laravel's HTTP kernel, including its web
+middleware configuration. Rehearsal covers uncached and cached routes, reproduces
+the original console-kernel failure and still rejects a deliberately removed
+transaction guard. A zero exit status without the success marker is refused.
+
+A retry after code rollback may reuse the seven new tables only when all four
+migrations are recorded, the complete table set uses InnoDB and every new table is
+empty. Unknown/partial migration states and existing new workflow history stop
+for reconciliation. Applied migrations are not rerun and successful output records
+zero migrations run for this retry. All backup and legacy-data checks still apply.

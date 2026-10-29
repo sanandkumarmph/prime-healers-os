@@ -951,7 +951,8 @@ def verify_release(repo):
 
 def new_runtime_ok():
     code=r'''
-require 'vendor/autoload.php';$app=require 'bootstrap/app.php';$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+require 'vendor/autoload.php';$app=require 'bootstrap/app.php';$app->make(Illuminate\Contracts\Http\Kernel::class)->bootstrap();
+set_exception_handler(function(Throwable $error){fwrite(STDERR,$error::class.': '.$error->getMessage().PHP_EOL);exit(90);});
 $router=app('router');
 foreach(['enquiries.index','quotations.create','availability.index','dashboard.compact','workflow-guides.index','cash-handovers.index','delivery-collections.index','invoices.download'] as $name){
  $r=$router->getRoutes()->getByName($name);if(!$r || !in_array('auth',$r->gatherMiddleware(),true))throw new RuntimeException('New route authentication missing: '.$name);
@@ -965,7 +966,21 @@ foreach(['quotation-share.show','quotation-share.pdf','quotation-share.respond']
 if(!class_exists(App\Casts\UtcDateTime::class) || !class_exists(App\Services\Deliveries\SignatureCapture::class))throw new RuntimeException('New classes unavailable');
 echo 'NEW_FEATURE_ROUTE_AND_AUTOLOAD_GUARDS_OK';
 '''
-    note(execute(as_owner([PHP,'-d','opcache.enable_cli=0','-r',code]),cwd=APP,capture=True).decode())
+    result=execute(as_owner([PHP,'-d','opcache.enable_cli=0','-r',code]),cwd=APP,capture=True).decode().strip()
+    need(result=='NEW_FEATURE_ROUTE_AND_AUTOLOAD_GUARDS_OK','Runtime guard probe did not return its success marker.')
+    note(result)
+
+def migration_plan(state, release_migrations):
+    applied=set(state['migrations']);pending=release_migrations-applied
+    need(not applied-release_migrations,'Unexpected migration history; reconcile before retrying.')
+    if pending==NEW_MIGRATIONS:
+        need(not state['new'],'Unapplied migrations have existing tables; reconcile partial schema.')
+        return pending
+    need(not pending and NEW_MIGRATIONS<=applied,'Partial or unexpected migration set; reconcile before retrying.')
+    need(set(state['new'])==NEW_TABLES and all(x['engine']=='InnoDB' and x['rows']==0 for x in state['new'].values()),
+         'Retained schema must contain all seven empty InnoDB tables; existing history or partial schema requires review.')
+    note('RETAINED_EMPTY_ADDITIVE_SCHEMA_VERIFIED=7_TABLES_4_MIGRATIONS')
+    return set()
 
 def storage_backup():
     path=STORAGE/'app';no_links(path);need(path.is_dir(),'Storage app directory missing.')
@@ -1040,10 +1055,9 @@ def main():
     verify_source(repo,BASE,'BASELINE');config=settings()
     phase('verify_existing_payment_schema');schema_ok(db_state());correction_ok(db_state())
     phase('inspect_pending_migrations_and_existing_data')
-    applied=database_probe()['migrations']
+    initial=database_probe();applied=initial['migrations']
     migrations={Path(n.decode()).stem for n in git(repo,'ls-tree','-rz','--name-only',RELEASE,'--','database/migrations').split(b'\0') if n}
-    need(migrations-set(applied)==NEW_MIGRATIONS and not set(applied)-migrations,'Pending migration set differs from exactly four reviewed migrations.')
-    need(not database_probe()['new'],'New tables already exist; reconcile partial deployment before retrying.')
+    pending=migration_plan(initial,migrations)
     need(shutil.disk_usage(BACKUP).free>1024*1024*1024,'At least 1 GiB free is required for backups.')
     prepare_destinations(repo,changes,True)
     for name,data in payload.items():
@@ -1068,7 +1082,9 @@ def main():
     try:
         maintenance=True;artisan('down','--retry=60');time.sleep(10)
         phase('database_and_private_storage_backups');database_backup(config);storage_backup()
-        state['legacy']=database_probe()['legacy']
+        stable=database_probe()
+        need(migration_plan(stable,migrations)==pending,'Schema changed after preflight; reconcile before activation.')
+        state['legacy']=stable['legacy']
         state['legacy_assets']={str(p):sha(p.read_bytes()) for p in (WEB/'build').rglob('*') if p.is_file() and p.name!='manifest.json'}
         (BACKUP/'rollback-state.json').write_text(json.dumps(state,indent=2)+'\n')
         preserved(before);verify_source(repo,BASE,'PRE_ACTIVATION')
@@ -1079,10 +1095,12 @@ def main():
             p=Path(record['path']);regular(p);permissions(p,record.get('uid',uid),record.get('gid',gid),record.get('mode',0o644))
         verify_source(repo,RELEASE,'DEPLOYED_SOURCE')
         phase('apply_only_four_additive_migrations')
-        artisan('migrate','--force',*['--path=database/migrations/'+name+'.php' for name in sorted(NEW_MIGRATIONS)])
+        if pending:
+            artisan('migrate','--force',*['--path=database/migrations/'+name+'.php' for name in sorted(pending)])
+        else: note('ADDITIVE_MIGRATIONS_ALREADY_APPLIED=4 MIGRATIONS_RUN=0')
         after=database_probe()
         need(set(after['new'])==NEW_TABLES and all(x['engine']=='InnoDB' and x['rows']==0 for x in after['new'].values()),'New schema is incomplete or contains unexpected history.')
-        need(set(after['migrations'])-set(applied)==NEW_MIGRATIONS,'Unexpected migration history changes.')
+        need(set(after['migrations'])==set(applied)|pending,'Unexpected migration history changes.')
         need(after['legacy']==state['legacy'],'Legacy business records changed during migration.')
         phase('install_verified_frontend_assets')
         for name,data in payload.items():atomic(APP/name,data,uid,gid,0o644)
@@ -1094,7 +1112,7 @@ def main():
         # No application write probes: manual acceptance follows only after release verification.
         phase('bring_uat_online');artisan('up');maintenance=False;health();assets()
         note('DEPLOYMENT_COMPLETE');note('ENVIRONMENT=PHOS_UAT');note('COMMIT='+RELEASE)
-        note('LEGACY_DATA_PRESERVED=true PRIVATE_STORAGE_BACKUP_VERIFIED=true MIGRATIONS_RUN=4 PRODUCTION_CHANGED=false')
+        note('LEGACY_DATA_PRESERVED=true PRIVATE_STORAGE_BACKUP_VERIFIED=true MIGRATIONS_RUN='+str(len(pending))+' PRODUCTION_CHANGED=false')
         (BACKUP/'deployment-complete.json').write_text(json.dumps({'commit':RELEASE,'legacy_tables_verified':len(state['legacy']),'migrations':sorted(NEW_MIGRATIONS)},indent=2)+'\n')
     except BaseException:
         if mutated:

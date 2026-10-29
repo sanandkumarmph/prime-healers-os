@@ -6,7 +6,7 @@
   "runtime_files": 74,
   "reviewed_files": 93,
   "asset_files": 3,
-  "helper_sha256": "2bf77e726b21ad4ad9a5b8c935c1fa8574e9a760dc76bd8f4c120ec6f599efb3",
+  "helper_sha256": "0496647d3d3d1b58f66823873edd90a0da7d5c4a19f3cdd781d5fa42b41080a1",
   "assets_sha256": "2b327550cfbf4b2fa639eca0ed7828a9c5ff4eef83dea2c266e264c7f7e663af",
   "rehearsal": {
     "native_probe_legacy_tables_preserved": 55,
@@ -14,10 +14,38 @@
     "migration_set_verified": true,
     "used_history_blocks_rollback": true,
     "binary_sentinel_preserved": true,
-    "note": "Includes 54 baseline tables and one deliberately non-UTF-8 binary sentinel table."
+    "fresh_plan_verified": true,
+    "retained_empty_schema_skips_migrations": true,
+    "used_retained_schema_refused": true,
+    "note": "54 baseline tables plus one deliberately binary sentinel table."
   },
-  "guard_unit_tests": 6,
-  "php_probe_syntax_checks": 9,
+  "guard_unit_tests": 10,
+  "http_runtime_rehearsal": {
+    "checks": [
+      {
+        "name": "original-console-kernel",
+        "passed": true
+      },
+      {
+        "name": "http-kernel-uncached",
+        "passed": true
+      },
+      {
+        "name": "http-kernel-cached",
+        "passed": true
+      },
+      {
+        "name": "missing-guard-is-still-refused",
+        "passed": true
+      }
+    ],
+    "passed": 4
+  },
   "deployed": false,
-  "correction": "Byte-preserving row fingerprints replace UTF-8 JSON encoding; no database values are changed."
+  "corrections": [
+    "Binary-safe database row fingerprints",
+    "HTTP kernel initializes web middleware for read-only route probes",
+    "Explicit probe success marker required",
+    "Strict reuse of complete empty retained additive schema; zero migrations rerun"
+  ]
 }
