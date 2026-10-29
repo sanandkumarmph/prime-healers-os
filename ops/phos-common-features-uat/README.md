@@ -29,8 +29,12 @@ required for the website account; original metadata is recorded privately. It
 never recursively changes permissions. Actual site details and all backup paths
 are private operator inputs/output and must not be committed.
 
-Local validation: five guard checks, nine PHP syntax checks, exact release/asset
+Local validation: six guard checks, nine PHP syntax checks, exact release/asset
 verification, and a disposable MariaDB 10.11.16 rehearsal preserving 54 legacy
-tables and verifying seven new tables and all four migrations. This is not a claim
+tables plus a deliberately non-UTF-8 binary sentinel table and verifying seven new tables and all four migrations. This is not a claim
 of actual deployment. Authentication, host runtime and manual device acceptance
 are verified on the target only after the operator runs the prepared command.
+
+Database row fingerprints serialize raw PDO values only as hash input; they are
+never unserialized. Binary bytes and legacy non-UTF-8 text are preserved exactly.
+This avoids JSON encoding failures without repairing, converting or ignoring data.

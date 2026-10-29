@@ -6,28 +6,18 @@
   "runtime_files": 74,
   "reviewed_files": 93,
   "asset_files": 3,
-  "helper_sha256": "b3a98d87e2c0210a9092e9d2b42743f069a36719a4988973c7f6cf5fb0bd7460",
+  "helper_sha256": "2bf77e726b21ad4ad9a5b8c935c1fa8574e9a760dc76bd8f4c120ec6f599efb3",
   "assets_sha256": "2b327550cfbf4b2fa639eca0ed7828a9c5ff4eef83dea2c266e264c7f7e663af",
   "rehearsal": {
-    "native_probe_legacy_tables_preserved": 54,
+    "native_probe_legacy_tables_preserved": 55,
     "new_tables_verified": 7,
     "migration_set_verified": true,
     "used_history_blocks_rollback": true,
-    "migration_rehearsal": {
-      "version": "10.11.16-MariaDB",
-      "legacy_tables_preserved": 54,
-      "original_proof_shape_preserved": true,
-      "custom_permissions_preserved": true,
-      "new_tables": 7,
-      "used_history_rollback_blocked": [
-        "2026_10_24_120000_create_sales_workspace",
-        "2026_10_25_120000_add_guided_sales_fields",
-        "2026_10_28_190000_create_phos_collection_and_cash_history",
-        "2026_10_28_190100_create_delivery_workflow_submissions"
-      ]
-    }
+    "binary_sentinel_preserved": true,
+    "note": "Includes 54 baseline tables and one deliberately non-UTF-8 binary sentinel table."
   },
-  "guard_unit_tests": 5,
+  "guard_unit_tests": 6,
   "php_probe_syntax_checks": 9,
-  "deployed": false
+  "deployed": false,
+  "correction": "Byte-preserving row fingerprints replace UTF-8 JSON encoding; no database values are changed."
 }

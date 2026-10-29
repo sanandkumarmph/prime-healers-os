@@ -905,7 +905,9 @@ foreach($tables as $t){$name=$t['name'];if(!preg_match('/^[a-zA-Z0-9_]+$/',$name
   if($name==='roles' && $row['is_system'] && in_array($row['slug'],['super_admin','admin_operations','sales'],true)){
    $permissions=json_decode($row['permissions'] ?: '{}',true,512,JSON_THROW_ON_ERROR) ?: [];unset($permissions['enquiries'],$permissions['quotations']);$row['permissions']=json_encode($permissions,JSON_THROW_ON_ERROR);
   }
-  ksort($row);$hashes[]=hash('sha256',json_encode($row,JSON_THROW_ON_ERROR));
+  // PDO rows may contain binary columns or legacy text that is not valid UTF-8.
+  // Serialize only for hashing (never unserialize); preserve every original byte.
+  ksort($row);$hashes[]=hash('sha256',serialize($row));
  }
  sort($hashes);$out['legacy'][$name]=['rows'=>count($hashes),'sha256'=>hash('sha256',json_encode($hashes,JSON_THROW_ON_ERROR))];
 }
@@ -1023,6 +1025,7 @@ def main():
     repo=Path(args.gitdir).resolve();changes=verify_release(repo);payload=asset_payload(args.assets)
     need(not (STORAGE/'framework/down').exists() and not (STORAGE/'framework/maintenance.php').exists(),'Site already in maintenance.')
     BACKUP=Path(tempfile.mkdtemp(prefix='phos-uat-pr8-backup-',dir='/root'));LOG=BACKUP/'deployment.log'
+    note('BACKUP_DIRECTORY='+str(BACKUP))
     (BACKUP/'target-config.json').write_bytes(TARGET_CONFIG_BYTES)
     current=git(APP,'rev-parse','HEAD').decode().strip()
     if current==RELEASE:
@@ -1034,7 +1037,9 @@ def main():
         schema_ok(db_state());correction_ok(db_state());new_runtime_ok();health();assets();note('DEPLOYMENT_ALREADY_CURRENT');return
     need(current==BASE,'Site is not at the verified pre-release baseline.')
     need(not git(APP,'diff','--cached','--name-only').strip(),'Staged server changes need review.')
-    verify_source(repo,BASE,'BASELINE');config=settings();schema_ok(db_state());correction_ok(db_state())
+    verify_source(repo,BASE,'BASELINE');config=settings()
+    phase('verify_existing_payment_schema');schema_ok(db_state());correction_ok(db_state())
+    phase('inspect_pending_migrations_and_existing_data')
     applied=database_probe()['migrations']
     migrations={Path(n.decode()).stem for n in git(repo,'ls-tree','-rz','--name-only',RELEASE,'--','database/migrations').split(b'\0') if n}
     need(migrations-set(applied)==NEW_MIGRATIONS and not set(applied)-migrations,'Pending migration set differs from exactly four reviewed migrations.')
@@ -1101,4 +1106,6 @@ def main():
 if __name__=='__main__':
     try:main()
     except BaseException as error:
-        note('STOPPED: '+str(error));sys.exit(1)
+        note('STOPPED: '+str(error))
+        if LOG: note('DETAILS_IN_PRIVATE_LOG='+str(LOG))
+        sys.exit(1)
