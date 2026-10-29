@@ -137,3 +137,12 @@ and the enquiry list interprets its raw next-follow-up aggregate as UTC. The UI
 converts to the application timezone for display. No migration or historical date
 rewrite is needed. Checks cover a 17:00 Asia/Kolkata reminder, before/after overdue
 boundaries, local midnight, today queues, and duplicate completion protection.
+
+
+The subsequent signature review found that device-pixel-ratio scaling could export
+valid pads wider than 1200 pixels. The server now accepts bounded high-resolution
+captures and resamples them proportionally into a maximum 1200-by-600 image before
+checking ink and encoding the private PNG. Input byte limits, decoded-pixel bounds,
+blank-image checks and output byte limits remain enforced. Synthetic 1440-by-480
+and 2880-by-960 signatures normalize to 1200-by-400, including an end-to-end task
+completion check. Actual camera/GPS/device acceptance remains a separate UAT step.

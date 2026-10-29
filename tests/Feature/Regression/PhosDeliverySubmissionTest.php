@@ -37,10 +37,10 @@ class PhosDeliverySubmissionTest extends TestCase
             'location_captured_at'=>now()->toIso8601String(),'workflow_submission_token'=>(string)Str::uuid()];
     }
 
-    private function signature(bool $blank=false): string
+    private function signature(bool $blank=false, int $scale=1): string
     {
-        $image=imagecreatetruecolor(240,80); imagefill($image,0,0,imagecolorallocate($image,255,255,255));
-        if (!$blank) { $ink=imagecolorallocate($image,20,30,40); imageline($image,20,55,95,20,$ink); imageline($image,95,20,130,60,$ink); imageline($image,130,60,215,25,$ink); }
+        $image=imagecreatetruecolor(240*$scale,80*$scale); imagefill($image,0,0,imagecolorallocate($image,255,255,255));
+        if (!$blank) { $ink=imagecolorallocate($image,20,30,40); imagesetthickness($image,max(1,$scale)); imageline($image,20*$scale,55*$scale,95*$scale,20*$scale,$ink); imageline($image,95*$scale,20*$scale,130*$scale,60*$scale,$ink); imageline($image,130*$scale,60*$scale,215*$scale,25*$scale,$ink); }
         ob_start(); imagepng($image); $bytes=ob_get_clean(); imagedestroy($image);
         return 'data:image/png;base64,'.base64_encode($bytes);
     }
@@ -127,6 +127,31 @@ class PhosDeliverySubmissionTest extends TestCase
         $this->task->update(['status'=>'cancelled']);
         $this->delete(route('rentals.destroy',$rental))->assertSessionHas('error');
         $this->assertDatabaseHas('rentals',['id'=>$rental->id]); $this->assertDatabaseCount('delivery_workflow_submissions',1);
+    }
+
+    public function test_high_dpi_signatures_are_normalized_and_can_complete_a_delivery(): void
+    {
+        foreach ([6,12] as $scale) {
+            $clean=SignatureCapture::clean($this->signature(false,$scale),51200);
+            $size=getimagesizefromstring($clean);
+            $this->assertSame(1200,$size[0]); $this->assertSame(400,$size[1]);
+            $this->assertLessThanOrEqual(51200,strlen($clean));
+        }
+        $this->task->update(['status'=>'in_progress']);
+        $data=$this->location()+['confirm_partial'=>1,'completion_confirmed'=>1,
+            'delivery_device_photos'=>[UploadedFile::fake()->image('device.jpg',60,40)],
+            'premises_photo'=>UploadedFile::fake()->image('location.jpg',60,40),'signature_data'=>$this->signature(false,6)];
+        $this->put(route('deliveries.complete',$this->task),$data)->assertSessionHasNoErrors();
+        $this->assertSame('completed',$this->task->fresh()->status);
+        $proof=DeliveryProof::where('proof_type',DeliveryProof::TYPE_SIGNATURE)->sole();
+        $size=getimagesizefromstring(Storage::disk('local')->get($proof->file_path));
+        $this->assertSame(1200,$size[0]); $this->assertSame(400,$size[1]);
+    }
+
+    public function test_high_dpi_blank_signatures_are_still_rejected(): void
+    {
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        SignatureCapture::clean($this->signature(true,6),51200);
     }
 
     public function test_signature_decoder_rejects_malformed_and_blank_images_and_cleans_valid_pixels(): void
