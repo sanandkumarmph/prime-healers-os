@@ -87,7 +87,8 @@
             return;
         }
         const url = new URL(link.href, location.href);
-        if (url.origin === location.origin && url.pathname === dashboardPath && url.hash && revealHash(url.hash, 'push')) {
+        // Filter changes need a server response before revealing their destination.
+        if (url.origin === location.origin && url.pathname === dashboardPath && url.search === location.search && url.hash && revealHash(url.hash, 'push')) {
             event.preventDefault();
         }
     });

@@ -44,7 +44,9 @@ Tabs are real links preserving existing query filters. Without JavaScript the
 server renders only the selected panel as visible. With JavaScript, tab switching
 retains forms and expanded details, updates the URL, and supports Back/Forward and
 keyboard navigation. Existing section-fragment links open their owning panel and
-native disclosures. Global dashboard filters remain available above every tab.
+native disclosures. Fragment links that change the query string navigate through
+the server so filter resets and drilldowns load the corresponding results.
+Global dashboard filters remain available above every tab.
 
 The sidebar consolidates only Business overview/Dashboard. Other destinations,
 ordering and permission conditions remain intact. Logo-derived blue, burgundy and

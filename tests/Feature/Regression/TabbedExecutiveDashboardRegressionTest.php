@@ -84,6 +84,14 @@ class TabbedExecutiveDashboardRegressionTest extends TestCase
                 }
             }
         }
+
+        $resetLinks = $xpath->query('//*[@id="team-performance"]//a[normalize-space()="Reset"]');
+        $this->assertCount(1, $resetLinks);
+        $resetUrl = $resetLinks->item(0)->getAttribute('href');
+        $resetFilters = [];
+        parse_str((string) parse_url($resetUrl, PHP_URL_QUERY), $resetFilters);
+        $this->assertSame('team-performance', parse_url($resetUrl, PHP_URL_FRAGMENT));
+        $this->assertSame(array_filter($filters, fn ($key) => !str_starts_with($key, 'team_performance_'), ARRAY_FILTER_USE_KEY), $resetFilters);
     }
 
     public function test_switching_server_tabs_preserves_filtered_metrics_tenant_scope_and_business_records(): void
