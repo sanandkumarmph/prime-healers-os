@@ -1,0 +1,51 @@
+{
+  "format": 1,
+  "environment": "PHOS_UAT",
+  "baseline": "09c6c23112dfb405c10b28cdde9d5717a16872e9",
+  "release": "98cb2bfd46f6344c06565a10f4eab060c2357889",
+  "archive_sha256": "14e12f250d1acd9db44392dc7cc75085470e7977109aea500ffcf45c8b059cff",
+  "files": [
+    {
+      "path": "app/Http/Controllers/RentalController.php",
+      "sha256": "e9848e19bcc3c268b191db12d1c4d835b36d684798478e0f7e1777399c0e8788",
+      "baseline_sha256": "13bbc275b6b45826c07950a06026baa6a57ea76758f4b9a7487fcaac08ed0329",
+      "size": 347647
+    },
+    {
+      "path": "public/css/phos-executive-dashboard.css",
+      "sha256": "5cb452a9750f05386135bf8647509725a18a958e86a9a0bc68f31bb1a95ab6b2",
+      "baseline_sha256": null,
+      "size": 34211
+    },
+    {
+      "path": "public/js/phos-executive-dashboard.js",
+      "sha256": "22f421a01e8b5ff78e1cd1b2eb4bfc171290be4d680f81865e93609383de1d25",
+      "baseline_sha256": null,
+      "size": 5594
+    },
+    {
+      "path": "resources/views/dashboard.blade.php",
+      "sha256": "51e49a2e994e98e8b171d8e71eba4762c5c3ee250925ac0e2356db76f274df4f",
+      "baseline_sha256": "58c83b6521bf50ca5493e294c61b5c081e922cb37a56f45950625c7d39206b29",
+      "size": 583464
+    },
+    {
+      "path": "resources/views/dashboard/executive-navigation.blade.php",
+      "sha256": "afb5d9bfc293f49307abf809c668301667624222bc14e98e79be395ead7d78c2",
+      "baseline_sha256": null,
+      "size": 2196
+    },
+    {
+      "path": "resources/views/dashboard/overview-summary.blade.php",
+      "sha256": "4793eccbf9adb8786f3aa027266c34ec7969ee6a264c922c96b60ef3cd9f6b8c",
+      "baseline_sha256": null,
+      "size": 4622
+    },
+    {
+      "path": "resources/views/layouts/app.blade.php",
+      "sha256": "c71f80fad1bc33cd7301156b48fca5ae933f1478e39058f6a936fad0d2ed18b3",
+      "baseline_sha256": "0428aa545b0d2781ff2a161f4980f5ff87dd6e73ca599430e8a722fd34898e3c",
+      "size": 185915
+    }
+  ]
+}

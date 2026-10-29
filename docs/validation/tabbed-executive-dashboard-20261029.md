@@ -5,8 +5,8 @@ constitute live UAT acceptance or a production deployment.
 
 ## Recorded validation
 
-- Complete SQLite regression suite: 717 tests, 5,349 assertions passed before the
-  final additional compact-queue preservation case.
+- Complete SQLite regression suite on the pinned release: 718 tests, 5,511
+  assertions passed, including the additional compact-queue preservation case.
 - Final tabbed-dashboard suite: 10 tests, 622 assertions passed, including distinct
   nonzero counts for all four former compact-view action queues and disabled-widget
   exclusions across tabs.
@@ -18,7 +18,7 @@ constitute live UAT acceptance or a production deployment.
   320, 390, 736, 1024 and 1440 pixels, including role exclusions, JavaScript-disabled
   links, history, keyboard navigation, fragment links, filters and Alpine controls.
 - Blade cache compilation, PHP/JavaScript syntax and whitespace checks passed.
-- UAT rollout helper: 27 offline tests passed with one Windows symlink-privilege
+- UAT rollout helper: 27 offline cases, 26 passed and one Windows symlink-privilege
   skip. Recovery rehearsals include partial activation and persistent cache-probe
   failure, with baseline files restored before probing/restarting the application.
 
