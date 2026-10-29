@@ -59,7 +59,7 @@
         }
     </style>
 </head>
-<body style="margin:0; width:100%; overflow-x:hidden; background:var(--ph-color-bg); color:var(--ph-color-text); font-family:var(--ph-font-body);">
+<body @class(['phos-executive-page' => request()->routeIs('dashboard', 'dashboard.compact')]) style="margin:0; width:100%; overflow-x:hidden; background:var(--ph-color-bg); color:var(--ph-color-text); font-family:var(--ph-font-body);">
 @php
     $currentUser = auth()->user();
     $safeRoute = function (string $routeName, array $parameters = []) {
@@ -154,8 +154,7 @@
         [
             'label' => 'Main',
             'items' => [
-                ['key' => 'business_overview', 'label' => 'Business overview', 'icon' => 'dashboard', 'href' => $safeRoute('dashboard.compact'), 'active' => request()->routeIs('dashboard.compact'), 'visible' => $currentUser?->canAccessDashboard() ?? false],
-                ['key' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'dashboard', 'href' => $safeRoute('dashboard'), 'active' => request()->routeIs('dashboard'), 'visible' => $currentUser?->canAccessDashboard() ?? false],
+                ['key' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'dashboard', 'href' => $safeRoute('dashboard'), 'active' => request()->routeIs('dashboard', 'dashboard.compact'), 'visible' => $currentUser?->canAccessDashboard() ?? false],
                 ['key' => 'customers', 'label' => 'Customers', 'icon' => 'customers', 'href' => $safeRoute('customers.index'), 'active' => request()->routeIs('customers.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('customers', 'read') ?? false)],
                 ['key' => 'business_partners', 'label' => 'Business Partners', 'icon' => 'customers', 'href' => $safeRoute('business-partners.index'), 'active' => request()->routeIs('business-partners.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('customers', 'read') ?? false)],
                 ['key' => 'cash_handovers', 'label' => 'Collections & cash', 'icon' => 'payments', 'href' => $safeRoute('cash-handovers.index'), 'active' => request()->routeIs('cash-handovers.*', 'delivery-collections.*'), 'visible' => ($currentUser?->canAccessModule('deliveries', 'update') ?? false) || ((in_array($currentUser?->effective_role, ['super_admin', 'admin_operations', 'finance', 'admin'], true) || ($currentUser?->hasPermission('cash.receive') ?? false)) && ($currentUser?->canAccessModule('payments', 'create') ?? false))],
@@ -254,12 +253,12 @@
 
     $mobilePrimaryItems = $isDeliveryFacingMenuRole
         ? collect([
-            ['label' => 'Dashboard', 'icon' => 'dashboard', 'href' => ($currentUser?->canAccessDashboard() ?? false) ? $safeRoute('dashboard') : null, 'active' => request()->routeIs('dashboard')],
+            ['label' => 'Dashboard', 'icon' => 'dashboard', 'href' => ($currentUser?->canAccessDashboard() ?? false) ? $safeRoute('dashboard') : null, 'active' => request()->routeIs('dashboard', 'dashboard.compact')],
             ['label' => 'Tasks', 'icon' => 'deliveries', 'href' => ($currentUser?->canAccessModule('deliveries', 'read') ?? false) ? $safeRoute('deliveries.index') : null, 'active' => request()->routeIs('deliveries.index') || request()->routeIs('deliveries.show') || request()->routeIs('deliveries.edit')],
             ['label' => 'Notifications', 'icon' => 'invoices', 'href' => $topbarNotificationsViewAllHref, 'active' => request()->routeIs('notifications.*')],
         ])
         : collect([
-            ['label' => 'Dashboard', 'icon' => 'dashboard', 'href' => ($currentUser?->canAccessDashboard() ?? false) ? $safeRoute('dashboard') : null, 'active' => request()->routeIs('dashboard')],
+            ['label' => 'Dashboard', 'icon' => 'dashboard', 'href' => ($currentUser?->canAccessDashboard() ?? false) ? $safeRoute('dashboard') : null, 'active' => request()->routeIs('dashboard', 'dashboard.compact')],
             ['label' => 'Customers', 'icon' => 'customers', 'href' => (!$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('customers', 'read') ?? false)) ? $safeRoute('customers.index') : null, 'active' => request()->routeIs('customers.*')],
             ['label' => 'Rentals', 'icon' => 'rentals', 'href' => (!$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('rentals', 'read') ?? false)) ? $safeRoute('rentals.index') : null, 'active' => request()->routeIs('rentals.*')],
             ['label' => 'Sales', 'icon' => 'sales', 'href' => ($currentUser?->canAccessModule('sales', 'read') ?? false) ? $safeRoute('sales.index') : null, 'active' => request()->routeIs('sales.*')],
@@ -326,7 +325,7 @@
     $routeParts = $routeName ? explode('.', $routeName) : [];
     $routeModule = $routeParts[0] ?? null;
     $routeAction = $routeParts[1] ?? null;
-    $isDashboardRoute = request()->routeIs('dashboard');
+    $isDashboardRoute = request()->routeIs('dashboard', 'dashboard.compact');
     $moduleLabels = [
         'assets' => 'Asset Register',
         'cities' => 'Cities',
@@ -370,11 +369,11 @@
         ? route('dashboard')
         : ($visibleSidebarSections->flatMap(fn ($section) => $section['items'])->first()['href'] ?? url('/'));
 
-    if ($routeName && !in_array($routeName, ['dashboard', 'login', 'register'], true)) {
+    if ($routeName && !in_array($routeName, ['dashboard', 'dashboard.compact', 'login', 'register'], true)) {
         $breadcrumbItems[] = ['label' => 'Home', 'href' => $dashboardHref];
     }
 
-    if ($routeName === 'dashboard') {
+    if ($isDashboardRoute) {
         $breadcrumbItems[] = ['label' => 'Dashboard', 'href' => null];
     } elseif ($routeName === 'inventory.dashboard') {
         $breadcrumbItems[] = ['label' => 'Inventory Overview', 'href' => null];

@@ -1,0 +1,531 @@
+/* The executive dashboard and its navigation share the Prime Healers palette.
+   The route body class keeps this presentation out of other modules. */
+body.phos-executive-page {
+    --ph-color-primary: #0f75bd;
+    --ph-color-primary-hover: #0b5e99;
+    --ph-color-primary-soft: #edf5fc;
+    --ph-color-primary-light: #edf5fc;
+    --ph-color-bg: #f4f7f9;
+    --ph-color-surface: #ffffff;
+    --ph-color-text: #20364a;
+    --ph-color-text-soft: #627589;
+    --ph-color-border: #dce5ec;
+    --ph-color-border-strong: #cbd8e2;
+    --ph-shadow-card: none;
+    --ph-executive-blue: #0f75bd;
+    --ph-executive-link: #0b5e99;
+    --ph-executive-burgundy: #9e1423;
+    --ph-executive-green: #007c00;
+    --ph-executive-muted: #627589;
+    --ph-executive-border: #dce5ec;
+    --ph-executive-soft: #f3f7fa;
+}
+
+body.phos-executive-page .app-shell {
+    --ph-sidebar-expanded-width: 228px;
+    --ph-sidebar-collapsed-width: 68px;
+    background: var(--ph-color-bg);
+}
+
+/* These important declarations supersede the existing layout's global sidebar
+   refresh. The override is deliberately limited to the dashboard route. */
+body.phos-executive-page .app-shell-sidebar.rn-sidebar {
+    background: #ffffff !important;
+    color: #31485c;
+    border-right: 1px solid var(--ph-executive-border);
+    box-shadow: none;
+    padding: 10px 9px;
+}
+body.phos-executive-page .app-shell-sidebar.rn-sidebar::before { background: none; }
+body.phos-executive-page .app-shell-sidebar .sidebar-scroll {
+    padding-right: 5px;
+    scrollbar-color: #c4d1dc transparent;
+}
+body.phos-executive-page .app-shell-sidebar .sidebar-scroll::-webkit-scrollbar-thumb { background: #c4d1dc; }
+body.phos-executive-page .app-shell-sidebar .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+body.phos-executive-page .app-shell-sidebar .sidebar-section {
+    border-color: #e8eef3;
+    padding-top: 8px;
+    margin-top: 8px;
+}
+body.phos-executive-page .app-shell-sidebar .sidebar-section-toggle,
+body.phos-executive-page .app-shell-sidebar .sidebar-section-toggle svg { color: #627589; }
+body.phos-executive-page .app-shell-sidebar .sidebar-section-title,
+body.phos-executive-page .app-shell-sidebar .sidebar-section-toggle span {
+    color: #627589 !important;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .09em;
+}
+body.phos-executive-page .app-shell-sidebar .sidebar-section-toggle:hover { background: #f3f7fa; }
+body.phos-executive-page .app-shell-sidebar .sidebar-link {
+    min-height: 37px;
+    padding: 8px 9px;
+    gap: 8px;
+    color: #31485c;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    box-shadow: none;
+}
+body.phos-executive-page .app-shell-sidebar .sidebar-link .sidebar-label {
+    font-size: 12px;
+    font-weight: 500;
+}
+body.phos-executive-page .app-shell-sidebar .sidebar-link:hover {
+    color: var(--ph-executive-link);
+    background: #f3f7fa;
+    border-color: transparent;
+    box-shadow: none;
+}
+body.phos-executive-page .app-shell-sidebar .sidebar-link.is-active,
+body.phos-executive-page .app-shell-sidebar .sidebar-link.is-admin-active,
+body.phos-executive-page .app-shell-sidebar .sidebar-link.is-secondary-active {
+    color: var(--ph-executive-link) !important;
+    background: #eaf3fb !important;
+    border-color: #eaf3fb !important;
+    min-height: 37px;
+    box-shadow: none;
+}
+body.phos-executive-page .app-shell-sidebar .sidebar-link.is-active .sidebar-label,
+body.phos-executive-page .app-shell-sidebar .sidebar-link.is-admin-active .sidebar-label,
+body.phos-executive-page .app-shell-sidebar .sidebar-link.is-secondary-active .sidebar-label {
+    color: var(--ph-executive-link) !important;
+    font-weight: 600;
+}
+body.phos-executive-page .app-shell-sidebar .sidebar-link.is-active::before,
+body.phos-executive-page .app-shell-sidebar .sidebar-link.is-admin-active::before,
+body.phos-executive-page .app-shell-sidebar .sidebar-link.is-secondary-active::before {
+    display: none;
+}
+body.phos-executive-page .app-shell-sidebar .sidebar-icon,
+body.phos-executive-page .app-shell-sidebar .sidebar-link:hover .sidebar-icon {
+    color: #627589;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    width: 20px;
+    height: 20px;
+    flex-basis: 20px;
+}
+body.phos-executive-page .app-shell-sidebar .sidebar-icon svg { width: 16px; height: 16px; }
+body.phos-executive-page .app-shell-sidebar .sidebar-link.is-active .sidebar-icon,
+body.phos-executive-page .app-shell-sidebar .sidebar-link.is-admin-active .sidebar-icon,
+body.phos-executive-page .app-shell-sidebar .sidebar-link.is-secondary-active .sidebar-icon {
+    color: var(--ph-executive-blue) !important;
+    background: transparent !important;
+    border-color: transparent !important;
+}
+body.phos-executive-page .app-shell-sidebar .sidebar-link-badge {
+    min-width: 22px;
+    height: 19px;
+    padding: 1px 5px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--ph-executive-burgundy);
+    background: #f9ecee;
+    border: 0;
+    box-shadow: none;
+}
+body.phos-executive-page .app-shell-sidebar .sidebar-link.is-active .sidebar-link-badge {
+    color: var(--ph-executive-burgundy);
+    background: #f9ecee;
+}
+body.phos-executive-page .sidebar-shell-toggle {
+    color: #526a7d;
+    background: #ffffff;
+    border-color: var(--ph-executive-border);
+    box-shadow: none;
+}
+body.phos-executive-page .app-shell-topbar {
+    background: #ffffff;
+    border-color: var(--ph-executive-border);
+    box-shadow: none;
+}
+body.phos-executive-page :is(.shell-brand-pill, .topbar-chip.is-role) {
+    color: #0b5e99;
+    background: #edf5fc;
+    border-color: #d2e5f4;
+}
+body.phos-executive-page .app-shell-main { padding: 22px 26px 30px; }
+
+body.phos-executive-page [data-executive-dashboard] {
+    width: 100%;
+    max-width: 1320px;
+    margin-inline: auto;
+    min-width: 0;
+    gap: 18px;
+    color: var(--ph-color-text);
+    font-family: Inter, "Segoe UI", sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+}
+body.phos-executive-page [data-executive-dashboard] *,
+body.phos-executive-page [data-executive-dashboard] *::before,
+body.phos-executive-page [data-executive-dashboard] *::after { box-sizing: border-box; }
+body.phos-executive-page [data-executive-dashboard] [hidden] { display: none !important; }
+body.phos-executive-page .phos-overview-queues { border-top: 1px solid var(--ph-executive-border); }
+body.phos-executive-page .phos-overview-queues h3 { margin: 0 0 8px; font-size: 13px; }
+body.phos-executive-page .phos-overview-queue { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--ph-executive-border); color: var(--ph-color-text); text-decoration: none; font-size: 12px; }
+body.phos-executive-page .phos-overview-queue small { display: block; margin-top: 3px; color: var(--ph-executive-muted); font-size: 11px; }
+body.phos-executive-page [data-executive-dashboard] section,
+body.phos-executive-page [data-executive-dashboard] [data-dashboard-panel],
+body.phos-executive-page [data-executive-dashboard] details { min-width: 0; }
+body.phos-executive-page [data-executive-dashboard] [data-dashboard-panel] {
+    scroll-margin-top: 16px;
+}
+body.phos-executive-page [data-executive-dashboard] [data-dashboard-panel]:target { scroll-margin-top: 16px; }
+body.phos-executive-page [data-executive-dashboard] a { text-underline-offset: 3px; }
+body.phos-executive-page [data-executive-dashboard] :is(a, button, input, select, summary):focus-visible,
+body.phos-executive-page .app-shell-sidebar :is(a, button):focus-visible {
+    outline: 2px solid var(--ph-executive-blue);
+    outline-offset: 3px;
+}
+
+body.phos-executive-page .phos-dashboard-header {
+    display: grid;
+    gap: 14px;
+    padding: 4px 0 0;
+}
+body.phos-executive-page .phos-dashboard-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 14px;
+}
+body.phos-executive-page .phos-dashboard-heading h1 {
+    margin: 0;
+    color: #20364a;
+    font-size: clamp(23px, 2.1vw, 29px);
+    font-weight: 650;
+    letter-spacing: -.035em;
+    line-height: 1.25;
+}
+body.phos-executive-page .phos-dashboard-heading p {
+    margin: 5px 0 0;
+    font-size: 12px;
+    color: var(--ph-executive-muted);
+}
+body.phos-executive-page .phos-dashboard-scope {
+    display: flex;
+    align-items: center;
+    gap: 8px 12px;
+    flex-wrap: wrap;
+    color: var(--ph-executive-muted);
+    font-size: 11px;
+}
+body.phos-executive-page .phos-dashboard-quick-actions { position: relative; }
+body.phos-executive-page .phos-dashboard-quick-actions > summary { list-style: none; cursor: pointer; }
+body.phos-executive-page .phos-dashboard-quick-actions > summary::-webkit-details-marker { display: none; }
+body.phos-executive-page .phos-dashboard-quick-actions > div {
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 6px);
+    right: 0;
+    display: grid;
+    width: min(270px, calc(100vw - 32px));
+    padding: 6px;
+    gap: 2px;
+    border: 1px solid #dce5ec;
+    border-radius: 8px;
+    background: #ffffff;
+    box-shadow: 0 8px 24px rgb(32 54 74 / 10%);
+}
+body.phos-executive-page .phos-dashboard-quick-actions > div :is(a, span) { display: block; padding: 9px 10px; font-size: 12px; color: #0b5e99; border-radius: 5px; text-decoration: none; }
+body.phos-executive-page .phos-dashboard-quick-actions > div a:hover { background: #edf5fc; }
+body.phos-executive-page .phos-dashboard-tabs {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 8px 0;
+    border-block: 1px solid var(--ph-executive-border);
+}
+body.phos-executive-page .phos-dashboard-tabs a[data-dashboard-tab] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 37px;
+    padding: 8px 12px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: #526a7d;
+    font-size: 12px;
+    font-weight: 500;
+    text-decoration: none;
+    white-space: nowrap;
+}
+body.phos-executive-page .phos-dashboard-tabs a[data-dashboard-tab]:hover { background: #edf5fc; color: var(--ph-executive-link); }
+body.phos-executive-page .phos-dashboard-tabs a[data-dashboard-tab]:is(.is-active, [aria-current="page"], [aria-selected="true"]) {
+    color: var(--ph-executive-link);
+    background: #e7f2fb;
+    border-color: #d5e8f7;
+    font-weight: 600;
+}
+body.phos-executive-page .phos-dashboard-tabs svg { width: 16px; height: 16px; }
+
+/* Retain the existing widgets and their data, with one restrained card system. */
+body.phos-executive-page [data-executive-dashboard] :is(.rx-card, .control-room-card, .executive-command-card, .team-performance-card) {
+    border: 1px solid var(--ph-executive-border);
+    border-radius: 11px;
+    background: #ffffff;
+    box-shadow: none;
+    min-width: 0;
+}
+body.phos-executive-page [data-executive-dashboard] :is(.rx-card-header, .control-room-card-header, .team-performance-head) {
+    padding: 16px 18px 12px;
+    gap: 12px;
+    border-color: #e8eef3;
+    background: #ffffff;
+}
+body.phos-executive-page [data-executive-dashboard] .control-room-card > .control-room-card-header { padding: 0 0 12px; }
+body.phos-executive-page [data-executive-dashboard] :is(.rx-card-body, .team-performance-table-wrap) { padding: 0 18px 17px; }
+body.phos-executive-page [data-executive-dashboard] :is(.rx-card-title, .control-room-card-title, .team-performance-title) {
+    font-size: 16px;
+    line-height: 1.4;
+    font-weight: 650;
+    letter-spacing: -.02em;
+    color: #20364a;
+}
+body.phos-executive-page [data-executive-dashboard] :is(.rx-card-copy, .control-room-card-copy, .team-performance-copy) {
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.5;
+    color: var(--ph-executive-muted);
+    margin-top: 3px;
+}
+body.phos-executive-page [data-executive-dashboard] :is(.rx-btn, .rx-btn-secondary, .dashboard-quick-action) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 8px 12px;
+    border: 1px solid var(--ph-executive-border);
+    border-radius: 7px;
+    background: #ffffff;
+    box-shadow: none;
+    color: var(--ph-executive-link);
+    font-size: 12px;
+    font-weight: 500;
+    text-decoration: none;
+    transform: none;
+}
+body.phos-executive-page [data-executive-dashboard] .rx-btn {
+    color: #ffffff;
+    background: var(--ph-executive-blue);
+    border-color: var(--ph-executive-blue);
+}
+body.phos-executive-page [data-executive-dashboard] .rx-btn:hover { background: var(--ph-executive-link); }
+body.phos-executive-page [data-executive-dashboard] :is(.rx-btn-secondary, .dashboard-quick-action):hover { background: #edf5fc; }
+body.phos-executive-page [data-executive-dashboard] :is(.rx-badge, .team-performance-meta span, .dashboard-role-chip) {
+    border: 0;
+    border-radius: 5px;
+    padding: 3px 7px;
+    background: #f0f5f8;
+    color: #526a7d;
+    box-shadow: none;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0;
+}
+body.phos-executive-page [data-executive-dashboard] .rx-badge.is-danger { color: #9e1423; background: #faedef; }
+body.phos-executive-page [data-executive-dashboard] .rx-badge.is-success { color: #007c00; background: #edf6ed; }
+body.phos-executive-page [data-executive-dashboard] .rx-badge.is-warning { color: #8a531f; background: #fcf3e8; }
+body.phos-executive-page [data-executive-dashboard] :is(.control-room-card-link, .sales-pulse-card-link, .dashboard-inline-item a, .team-performance-number-link) {
+    color: var(--ph-executive-link);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+body.phos-executive-page [data-executive-dashboard] .control-room-shell { gap: 16px; }
+body.phos-executive-page [data-executive-dashboard] > .control-room-filter-dock { display: block; }
+body.phos-executive-page [data-executive-dashboard] > .control-room-filter-dock .dashboard-filters-card { width: 100%; max-width: none; }
+body.phos-executive-page [data-executive-dashboard] > .control-room-filter-dock .rx-card-header { padding: 10px 14px; }
+body.phos-executive-page [data-executive-dashboard] > .control-room-filter-dock .rx-card-title { font-size: 13px; }
+body.phos-executive-page [data-executive-dashboard] > .control-room-filter-dock .rx-card-copy { font-size: 11px; }
+body.phos-executive-page [data-executive-dashboard] .executive-command-card { padding: 17px; gap: 16px; }
+body.phos-executive-page [data-executive-dashboard] .executive-command-card > .control-room-card-header { padding: 0; }
+body.phos-executive-page [data-executive-dashboard] .executive-health-strip { gap: 12px; }
+body.phos-executive-page [data-executive-dashboard] .executive-health-chip {
+    min-height: 62px;
+    padding: 6px 10px;
+    border: 0;
+    border-left: 2px solid #dce5ec;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+body.phos-executive-page [data-executive-dashboard] :is(.executive-health-label, .executive-micro-label) {
+    color: #627589;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+}
+body.phos-executive-page [data-executive-dashboard] .executive-health-value { font-size: 19px; font-weight: 600; color: #20364a; }
+body.phos-executive-page [data-executive-dashboard] .executive-health-period { font-size: 11px; line-height: 1.4; font-weight: 400; color: #627589; white-space: normal; overflow: visible; text-overflow: clip; }
+body.phos-executive-page [data-executive-dashboard] .executive-trend-arrow.is-up { color: #007c00; }
+body.phos-executive-page [data-executive-dashboard] .executive-trend-arrow.is-down { color: #9e1423; }
+body.phos-executive-page [data-executive-dashboard] .control-room-priority-grid { gap: 12px; }
+body.phos-executive-page [data-executive-dashboard] .control-room-priority-card {
+    min-height: 135px;
+    padding: 15px;
+    border: 1px solid #dce5ec;
+    border-radius: 9px;
+    background: #ffffff;
+    box-shadow: none;
+    gap: 8px;
+}
+body.phos-executive-page [data-executive-dashboard] .control-room-priority-card::after { display: none; }
+body.phos-executive-page [data-executive-dashboard] .control-room-priority-card:hover { border-color: #9dc7e6; transform: none; box-shadow: none; }
+body.phos-executive-page [data-executive-dashboard] .control-room-priority-label { font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; color: #627589; }
+body.phos-executive-page [data-executive-dashboard] .control-room-priority-value { font-size: clamp(24px, 2.5vw, 30px); font-weight: 650; line-height: 1.2; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
+body.phos-executive-page [data-executive-dashboard] :is(.control-room-priority-note, .control-room-priority-status, .control-room-priority-link) { font-size: 11px; line-height: 1.45; font-weight: 400; }
+body.phos-executive-page [data-executive-dashboard] .control-room-priority-note { white-space: normal; overflow: visible; text-overflow: clip; }
+body.phos-executive-page [data-executive-dashboard] .control-room-priority-icon { width: 26px; height: 26px; border: 0; background: #edf5fc; color: #0f75bd; border-radius: 6px; }
+body.phos-executive-page [data-executive-dashboard] .control-room-priority-card.is-danger .control-room-priority-icon { color: #9e1423; background: #faedef; }
+body.phos-executive-page [data-executive-dashboard] .control-room-priority-meter span { background: #0f75bd; }
+body.phos-executive-page [data-executive-dashboard] .control-room-priority-card.is-danger .control-room-priority-meter span { background: #9e1423; }
+body.phos-executive-page [data-executive-dashboard] .control-room-priority-card.is-warning .control-room-priority-meter span { background: #9c6b36; }
+body.phos-executive-page [data-executive-dashboard] :is(.executive-micro-card, .executive-health-chip, .executive-performance-row) { box-shadow: none; }
+body.phos-executive-page [data-executive-dashboard] .executive-micro-card { padding: 13px; border: 1px solid #e4ebf0; border-radius: 8px; background: #f8fafc; }
+body.phos-executive-page [data-executive-dashboard] :is(.executive-micro-row, .executive-performance-row) { font-size: 12px; }
+body.phos-executive-page [data-executive-dashboard] :is(.executive-micro-row strong, .executive-performance-row strong) { font-size: 15px; font-weight: 600; }
+body.phos-executive-page [data-executive-dashboard] :is(.phos-overview-figures, .phos-overview-aging) > summary { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; cursor: pointer; }
+body.phos-executive-page [data-executive-dashboard] :is(.phos-overview-figures, .phos-overview-aging) > summary strong { font-size: 13px; font-weight: 600; }
+body.phos-executive-page [data-executive-dashboard] :is(.phos-overview-figures, .phos-overview-aging) > summary > span { font-size: 11px; color: #627589; }
+body.phos-executive-page [data-executive-dashboard] .phos-overview-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+body.phos-executive-page [data-executive-dashboard] .phos-overview-metric { display: grid; gap: 7px; min-width: 0; padding: 12px; border: 1px solid #e4ebf0; border-radius: 7px; background: #f8fafc; color: #20364a; text-decoration: none; }
+body.phos-executive-page [data-executive-dashboard] .phos-overview-metric span { color: #627589; font-size: 11px; }
+body.phos-executive-page [data-executive-dashboard] .phos-overview-metric strong { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+body.phos-executive-page [data-executive-dashboard] .phos-dashboard-deposits { display: flex; align-items: center; gap: 16px 24px; flex-wrap: wrap; padding: 15px 18px; }
+body.phos-executive-page [data-executive-dashboard] .phos-dashboard-deposits > div:first-child { flex: 1 1 170px; }
+body.phos-executive-page [data-executive-dashboard] .phos-dashboard-deposits > div { min-width: 0; }
+body.phos-executive-page [data-executive-dashboard] .phos-dashboard-deposits h2 { font-size: 15px; font-weight: 600; margin: 0; }
+body.phos-executive-page [data-executive-dashboard] .phos-dashboard-deposits :is(p, span) { display: block; margin: 3px 0; max-width: 260px; color: #627589; font-size: 11px; }
+body.phos-executive-page [data-executive-dashboard] .phos-dashboard-deposits strong { display: block; color: #627589; font-size: 12px; font-weight: 500; }
+body.phos-executive-page [data-executive-dashboard] .phos-dashboard-deposits > div:nth-child(2) strong { color: #20364a; font-size: 21px; font-weight: 600; font-variant-numeric: tabular-nums; }
+body.phos-executive-page [data-executive-dashboard] .phos-overview-aging-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; font-size: 12px; border-bottom: 1px solid #e6edf2; }
+body.phos-executive-page [data-executive-dashboard] .phos-overview-aging-row strong { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+body.phos-executive-page [data-executive-dashboard] :is(.dashboard-filters-card, .team-performance-popover) { border-color: #dce5ec; border-radius: 9px; background: #ffffff; box-shadow: none; }
+body.phos-executive-page [data-executive-dashboard] :is(.dashboard-filters-form input, .dashboard-filters-form select, .team-performance-popover input, .team-performance-popover select) { min-height: 36px; padding: 7px 9px; border: 1px solid #cbd8e2; border-radius: 6px; background: #ffffff; font-size: 12px; color: #20364a; }
+body.phos-executive-page [data-executive-dashboard] :is(.dashboard-filters-form label, .team-performance-popover label span) { font-size: 11px; font-weight: 500; color: #627589; }
+body.phos-executive-page [data-executive-dashboard] .team-performance-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+body.phos-executive-page [data-executive-dashboard] .team-performance-table { min-width: 1050px; font-size: 12px; }
+body.phos-executive-page [data-executive-dashboard] .team-performance-table :is(th, td) { padding: 10px; border-color: #e6edf2; }
+body.phos-executive-page [data-executive-dashboard] .team-performance-table th { color: #627589; background: #f3f7fa; font-size: 11px; font-weight: 500; white-space: normal; text-transform: none; letter-spacing: 0; }
+body.phos-executive-page [data-executive-dashboard] :is(.team-performance-user strong, .team-performance-number) { font-size: 12px; font-weight: 600; }
+body.phos-executive-page [data-executive-dashboard] :is(.team-performance-user span, .team-performance-muted) { font-size: 11px; }
+body.phos-executive-page [data-executive-dashboard] .team-performance-toggle { font-size: 11px; color: #627589; }
+body.phos-executive-page [data-executive-dashboard] .team-performance-toggle input { accent-color: #0f75bd; }
+
+body.phos-executive-page [data-executive-dashboard] :is(.operations-hub-grid, .inventory-hub-grid) { gap: 14px; }
+body.phos-executive-page [data-executive-dashboard] :is(.operations-pipeline-wrap, .operations-command-panel, .executive-queue, .inventory-readiness-panel, .inventory-warehouse-panel) { padding: 15px; }
+body.phos-executive-page [data-executive-dashboard] :is(.operations-snapshot-card, .rental-pipeline-stage, .control-room-pipeline-stage, .inventory-health-card, .inventory-warehouse-card) { border: 1px solid #e1e9ef; border-radius: 8px; box-shadow: none; background: #ffffff; padding: 12px; }
+body.phos-executive-page [data-executive-dashboard] :is(.operations-snapshot-label, .operations-snapshot-note, .inventory-health-note, .inventory-warehouse-note, .inventory-warehouse-meta) { font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: none; }
+body.phos-executive-page [data-executive-dashboard] :is(.operations-snapshot-value, .inventory-health-value, .inventory-warehouse-value) { font-size: 24px; font-weight: 600; }
+body.phos-executive-page [data-executive-dashboard] :is(.operations-detail-summary, .inventory-detail-summary, .dashboard-expandable-summary) { min-height: 38px; color: #0b5e99; font-size: 12px; }
+body.phos-executive-page [data-executive-dashboard] :is(.operations-detail-group, .inventory-detail-group) { border: 1px solid #e1e9ef; border-radius: 8px; background: #ffffff; box-shadow: none; }
+
+body.phos-executive-page [data-executive-dashboard] :is(#sales-pulse-panel, #inventory-center-panel, #operations-center-panel) { overflow: visible; }
+body.phos-executive-page [data-executive-dashboard] #sales-pulse-panel .revenue-decision-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+body.phos-executive-page [data-executive-dashboard] #sales-pulse-panel :is(.revenue-decision-card, .sales-pulse-chart-card, .sales-pulse-side-card, .sales-pulse-bottom-card) { padding: 15px; border: 1px solid #e1e9ef; border-radius: 9px; box-shadow: none; background: #ffffff; }
+body.phos-executive-page [data-executive-dashboard] #sales-pulse-panel :is(.revenue-decision-title, .sales-pulse-card-title) { font-size: 13px; font-weight: 600; color: #20364a; letter-spacing: 0; }
+body.phos-executive-page [data-executive-dashboard] #sales-pulse-panel .sales-pulse-heading-icon { color: #0f75bd; background: #edf5fc; border-color: #d2e5f4; }
+body.phos-executive-page [data-executive-dashboard] #sales-pulse-panel :is(.sales-pulse-card-copy, .revenue-decision-row, .sales-pulse-status-row, .revenue-center-activity-item) { font-size: 12px; line-height: 1.5; }
+body.phos-executive-page [data-executive-dashboard] #sales-pulse-panel :is(.revenue-decision-total, .revenue-decision-row strong) { font-weight: 600; font-variant-numeric: tabular-nums; }
+body.phos-executive-page [data-executive-dashboard] #sales-pulse-panel .sales-pulse-analytics { grid-template-columns: minmax(0, 1.6fr) minmax(220px, 1fr); gap: 14px; }
+body.phos-executive-page [data-executive-dashboard] #sales-pulse-panel .sales-pulse-bottom-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+body.phos-executive-page [data-executive-dashboard] #sales-pulse-panel .revenue-center-action-table {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+}
+body.phos-executive-page [data-executive-dashboard] #sales-pulse-panel .revenue-center-activity-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+body.phos-executive-page [data-executive-dashboard] #sales-pulse-panel .revenue-center-activity-item { min-width: 0; }
+body.phos-executive-page [data-executive-dashboard] #sales-pulse-panel .revenue-center-activity-top { min-width: 0; flex-wrap: wrap; }
+body.phos-executive-page [data-executive-dashboard] #sales-pulse-panel .revenue-center-activity-top :is(strong, span),
+body.phos-executive-page [data-executive-dashboard] #sales-pulse-panel .revenue-center-activity-item > span {
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+body.phos-executive-page [data-executive-dashboard] #revenue-aging .control-room-aging-legend { gap: 8px; }
+body.phos-executive-page [data-executive-dashboard] #revenue-aging .control-room-aging-item { padding: 9px 10px; border-radius: 6px; border-color: #e6edf2; background: #f8fafc; }
+body.phos-executive-page [data-executive-dashboard] #revenue-aging .control-room-aging-item :is(strong, span, small) { font-size: 11px; font-weight: 500; }
+body.phos-executive-page [data-executive-dashboard] :is(.sales-pulse-chart-line-sales, .control-room-chart-line-primary) { stroke: #0f75bd; }
+body.phos-executive-page [data-executive-dashboard] .sales-pulse-chart-line-rental { stroke: #007c00; }
+body.phos-executive-page [data-executive-dashboard] :is(.sales-pulse-chart-dot-sales, .control-room-chart-point) { fill: #0f75bd; }
+
+body.phos-executive-page [data-executive-dashboard] :is(.dashboard-overview-grid, .dashboard-recent-grid, .dashboard-insight-grid, .dashboard-rank-grid, .dashboard-queue-grid) { gap: 14px; }
+body.phos-executive-page [data-executive-dashboard] :is(.dashboard-rank-link, .dashboard-overview-item, .dashboard-inline-item, .dashboard-feed-item, .dashboard-action-item) { border-color: #e6edf2; box-shadow: none; }
+body.phos-executive-page [data-executive-dashboard] :is(.dashboard-rank-title, .dashboard-inline-item strong, .dashboard-feed-title strong) { font-size: 12px; font-weight: 600; }
+body.phos-executive-page [data-executive-dashboard] :is(.dashboard-inline-item small, .dashboard-feed-item small, .dashboard-rank-link span) { font-size: 11px; line-height: 1.5; }
+body.phos-executive-page [data-executive-dashboard] :is(.dashboard-empty, .team-performance-empty) { min-height: 110px; background: #f8fafc; border-color: #e1e9ef; border-radius: 8px; box-shadow: none; }
+body.phos-executive-page [data-executive-dashboard] .dashboard-empty strong { font-size: 13px; font-weight: 600; }
+body.phos-executive-page [data-executive-dashboard] .dashboard-empty span { font-size: 12px; line-height: 1.5; }
+body.phos-executive-page [data-executive-dashboard] :is(.dashboard-empty svg, .rx-empty-icon) { color: #0f75bd; }
+
+@media (min-width: 1440px) {
+    body.phos-executive-page [data-executive-dashboard] #sales-pulse-panel .revenue-decision-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 1180px) {
+    body.phos-executive-page .app-shell { --ph-sidebar-expanded-width: 212px; }
+    body.phos-executive-page .app-shell-main { padding: 20px; }
+    body.phos-executive-page [data-executive-dashboard] :is(.control-room-priority-grid, .executive-health-strip) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    body.phos-executive-page [data-executive-dashboard] #sales-pulse-panel .sales-pulse-analytics { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 1024px) {
+    body.phos-executive-page .app-shell-main { padding: 16px 18px 90px; }
+    body.phos-executive-page .mobile-bottom-nav .is-active { color: #0b5e99; background: #eaf3fb; }
+}
+@media (max-width: 760px) {
+    body.phos-executive-page [data-executive-dashboard] { gap: 14px; }
+    body.phos-executive-page .phos-dashboard-tabs { gap: 3px; }
+    body.phos-executive-page .phos-dashboard-tabs a[data-dashboard-tab] { padding: 7px 10px; font-size: 11px; }
+    body.phos-executive-page [data-executive-dashboard] :is(.executive-intel-grid, .operations-hub-grid, .inventory-hub-grid, .dashboard-trend-layout, .dashboard-overview-grid, .dashboard-recent-grid, .dashboard-insight-grid, .dashboard-rank-grid, .dashboard-queue-grid) { grid-template-columns: minmax(0, 1fr); }
+    body.phos-executive-page [data-executive-dashboard] #sales-pulse-panel :is(.revenue-decision-grid, .sales-pulse-bottom-grid) { grid-template-columns: minmax(0, 1fr); }
+    body.phos-executive-page [data-executive-dashboard] #sales-pulse-panel .revenue-center-activity-list { grid-template-columns: minmax(0, 1fr); }
+    body.phos-executive-page [data-executive-dashboard] :is(.rx-card-header, .control-room-card-header, .team-performance-head) { padding: 14px 14px 10px; }
+    body.phos-executive-page [data-executive-dashboard] :is(.rx-card-body, .team-performance-table-wrap) { padding: 0 14px 14px; }
+    body.phos-executive-page [data-executive-dashboard] .executive-command-card { padding: 14px; }
+    body.phos-executive-page [data-executive-dashboard] .team-performance-popover { width: min(340px, calc(100vw - 40px)); max-width: calc(100vw - 40px); }
+    body.phos-executive-page [data-executive-dashboard] :is(.rx-card-title, .control-room-card-title, .team-performance-title) { font-size: 15px; }
+}
+@media (max-width: 767px) {
+    /* Tabs expose the same analytical content on every screen. The previous
+       mobile dashboard is a duplicate, rather than a second source of data. */
+    body.phos-executive-page [data-executive-dashboard] :is(.dashboard-mobile-command, .dashboard-mobile-fab) { display: none; }
+    body.phos-executive-page [data-executive-dashboard] .control-room-shell > .executive-command-card { display: grid; }
+    body.phos-executive-page [data-executive-dashboard] .control-room-shell > .dashboard-center-groups { display: grid; }
+}
+@media (max-width: 480px) {
+    body.phos-executive-page .app-shell-main { padding: 14px 10px 90px; }
+    body.phos-executive-page .phos-dashboard-heading { gap: 10px; }
+    body.phos-executive-page .phos-dashboard-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    body.phos-executive-page .phos-dashboard-tabs a[data-dashboard-tab] { min-width: 0; white-space: normal; padding: 8px 5px; gap: 4px; }
+    body.phos-executive-page .phos-dashboard-tabs svg { width: 14px; height: 14px; }
+    body.phos-executive-page [data-executive-dashboard] :is(.control-room-priority-grid, .executive-health-strip) { gap: 8px; }
+    body.phos-executive-page [data-executive-dashboard] .control-room-priority-card { padding: 11px; min-height: 142px; }
+    body.phos-executive-page [data-executive-dashboard] .control-room-priority-value { font-size: 23px; }
+    body.phos-executive-page [data-executive-dashboard] .control-room-priority-top { gap: 5px; }
+    body.phos-executive-page [data-executive-dashboard] .control-room-priority-icon { width: 21px; height: 21px; flex-shrink: 0; }
+    body.phos-executive-page [data-executive-dashboard] .control-room-priority-status { flex-wrap: wrap; }
+    body.phos-executive-page [data-executive-dashboard] .executive-health-main { flex-wrap: wrap; gap: 4px; }
+    body.phos-executive-page [data-executive-dashboard] :is(.rx-card-header, .team-performance-head, .control-room-card-header) { flex-wrap: wrap; }
+    body.phos-executive-page [data-executive-dashboard] :is(.team-performance-filter-grid, .control-room-reference-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    body.phos-executive-page [data-executive-dashboard] .phos-overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    body.phos-executive-page [data-executive-dashboard] :is(.executive-health-period, .control-room-priority-note, .control-room-priority-label) { overflow-wrap: anywhere; }
+}
+@media (prefers-reduced-motion: reduce) {
+    body.phos-executive-page [data-executive-dashboard] *,
+    body.phos-executive-page .app-shell-sidebar * { scroll-behavior: auto !important; transition: none !important; }
+}

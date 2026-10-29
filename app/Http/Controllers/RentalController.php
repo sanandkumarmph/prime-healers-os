@@ -4733,11 +4733,11 @@ class RentalController extends Controller
 
     public function compactDashboard(Request $request)
     {
-        $dashboard = $this->dashboard($request);
-
-        return $dashboard instanceof \Illuminate\Contracts\View\View
-            ? view('dashboard.compact', $dashboard->getData())
-            : $dashboard;
+        // Preserve bookmarked filters while consolidating the two home screens.
+        return redirect()->route('dashboard', array_merge(
+            ['dashboard_tab' => 'overview'],
+            $request->query(),
+        ));
     }
 
     public function dashboard(Request $request)

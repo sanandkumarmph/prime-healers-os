@@ -1901,6 +1901,19 @@
             ])->filter(fn ($link) => !empty($link['href']))->values(),
         ],
     ])->filter(fn ($group) => $group['visible'] ?? true)->values();
+
+    // Presentation only: use the same visibility predicates as the existing sections.
+    $dashboardTabs = collect([
+        'overview' => ['label' => 'Overview', 'icon' => 'dashboard', 'visible' => true],
+        'team' => ['label' => 'Team', 'icon' => 'customer', 'visible' => ($showTeamPerformanceTable ?? false) || $showExpandedStaffWorkloadSection || $showExpandedBusinessSignalsSection],
+        'operations' => ['label' => 'Operations', 'icon' => 'delivery', 'visible' => true],
+        'revenue' => ['label' => 'Revenue', 'icon' => 'trend', 'visible' => $showFinanceSection || $showSalesOperationsSection || $showOrganizationAnalyticsSection],
+        'inventory' => ['label' => 'Inventory', 'icon' => 'asset', 'visible' => $showInventorySection || $showOrganizationAnalyticsSection],
+        'activity' => ['label' => 'Activity', 'icon' => 'tasks', 'visible' => true],
+    ])->filter(fn ($tab) => $tab['visible']);
+    $requestedDashboardTab = request()->query('dashboard_tab', 'overview');
+    $activeDashboardTab = is_string($requestedDashboardTab) && $dashboardTabs->has($requestedDashboardTab)
+        ? $requestedDashboardTab : 'overview';
 @endphp
 
 <style>
@@ -7420,7 +7433,8 @@
     }
 </style>
 
-<div class="dashboard-shell rx-page {{ $isDeliveryFacingMenuRole ? 'is-delivery-focused' : '' }}">
+<link rel="stylesheet" href="{{ asset('css/phos-executive-dashboard.css') }}?v={{ hash_file('sha256', public_path('css/phos-executive-dashboard.css')) }}">
+<div class="dashboard-shell rx-page {{ $isDeliveryFacingMenuRole ? 'is-delivery-focused' : '' }}" @if(!$isDeliveryFacingMenuRole) data-executive-dashboard data-active-dashboard-tab="{{ $activeDashboardTab }}" @endif>
     @if($isDeliveryFacingMenuRole)
         @php
             $fieldOpsTiles = collect($deliveryMiniTiles)->take(5)->values();
@@ -7514,6 +7528,72 @@
             </div>
         </section>
     @else
+    @include('dashboard.executive-navigation')
+        <div class="control-room-filter-dock">
+            <details class="rx-card dashboard-filters-card">
+                <summary class="rx-card-header">
+                    <div>
+                        <h2 class="rx-card-title">Filters</h2>
+                        <p class="rx-card-copy">Date, city, fulfilment, and payment view.</p>
+                    </div>
+                    <span class="dashboard-filter-toggle" aria-hidden="true"></span>
+                </summary>
+                <div class="rx-card-body">
+                    <form method="GET" action="{{ $dashboardUrl }}" class="rx-form-grid">
+                        <input type="hidden" name="dashboard_tab" value="{{ $activeDashboardTab }}">
+                        <div class="dashboard-filter-grid">
+                            <label class="rx-field">
+                                <span class="rx-label">From Date</span>
+                                <input type="date" name="from_date" value="{{ $fromDate ?? '' }}" class="rn-input" />
+                            </label>
+                            <label class="rx-field">
+                                <span class="rx-label">To Date</span>
+                                <input type="date" name="to_date" value="{{ $toDate ?? '' }}" class="rn-input" />
+                            </label>
+                            <label class="rx-field">
+                                <span class="rx-label">City</span>
+                                <select name="city" class="rn-input">
+                                    <option value="">All Cities</option>
+                                    @foreach($cities as $cityOption)
+                                        <option value="{{ $cityOption }}" @selected(($city ?? null) === $cityOption)>{{ $cityOption }}</option>
+                                    @endforeach
+                                </select>
+                            </label>
+                            <label class="rx-field">
+                                <span class="rx-label">Fulfilment</span>
+                                <select name="fulfilment_source" class="rn-input">
+                                    <option value="">All</option>
+                                    <option value="in_house" @selected(request('fulfilment_source') === 'in_house')>In-house</option>
+                                    <option value="vendor_supplied" @selected(request('fulfilment_source') === 'vendor_supplied')>Vendor supplied</option>
+                                </select>
+                            </label>
+                            <label class="rx-field">
+                                <span class="rx-label">Payment Status</span>
+                                <select name="payment_status" class="rn-input">
+                                    <option value="">All</option>
+                                    <option value="paid" @selected(request('payment_status') === 'paid')>Paid</option>
+                                    <option value="partial" @selected(request('payment_status') === 'partial')>Partial</option>
+                                    <option value="unpaid" @selected(request('payment_status') === 'unpaid')>Unpaid</option>
+                                </select>
+                            </label>
+                            <label class="rx-field">
+                                <span class="rx-label">Search</span>
+                                <input type="text" name="search" value="{{ $search ?? '' }}" placeholder="Customer, rental, phone" class="rn-input" />
+                            </label>
+                        </div>
+
+                        <div class="rx-actions">
+                            <button type="submit" class="rx-btn">Apply</button>
+                            <a href="{{ $safeRoute('dashboard') ?? $dashboardUrl }}" class="rx-btn-secondary">Reset</a>
+                        </div>
+                    </form>
+                </div>
+            </details>
+        </div>
+
+
+    @if($dashboardTabs->has('overview'))
+    <section data-dashboard-panel="overview" id="phos-panel-overview" role="tabpanel" aria-labelledby="phos-tab-overview" @if($activeDashboardTab !== 'overview') hidden @endif>
     <section class="control-room-shell">
         @if($showExecutiveCompatibilityLabels)
             <div class="sr-only">
@@ -7864,67 +7944,6 @@
             </details>
         @endif
 
-        <div class="control-room-filter-dock">
-            <details class="rx-card dashboard-filters-card">
-                <summary class="rx-card-header">
-                    <div>
-                        <h2 class="rx-card-title">Filters</h2>
-                        <p class="rx-card-copy">Date, city, fulfilment, and payment view.</p>
-                    </div>
-                    <span class="dashboard-filter-toggle" aria-hidden="true"></span>
-                </summary>
-                <div class="rx-card-body">
-                    <form method="GET" action="{{ $dashboardUrl }}" class="rx-form-grid">
-                        <div class="dashboard-filter-grid">
-                            <label class="rx-field">
-                                <span class="rx-label">From Date</span>
-                                <input type="date" name="from_date" value="{{ $fromDate ?? '' }}" class="rn-input" />
-                            </label>
-                            <label class="rx-field">
-                                <span class="rx-label">To Date</span>
-                                <input type="date" name="to_date" value="{{ $toDate ?? '' }}" class="rn-input" />
-                            </label>
-                            <label class="rx-field">
-                                <span class="rx-label">City</span>
-                                <select name="city" class="rn-input">
-                                    <option value="">All Cities</option>
-                                    @foreach($cities as $cityOption)
-                                        <option value="{{ $cityOption }}" @selected(($city ?? null) === $cityOption)>{{ $cityOption }}</option>
-                                    @endforeach
-                                </select>
-                            </label>
-                            <label class="rx-field">
-                                <span class="rx-label">Fulfilment</span>
-                                <select name="fulfilment_source" class="rn-input">
-                                    <option value="">All</option>
-                                    <option value="in_house" @selected(request('fulfilment_source') === 'in_house')>In-house</option>
-                                    <option value="vendor_supplied" @selected(request('fulfilment_source') === 'vendor_supplied')>Vendor supplied</option>
-                                </select>
-                            </label>
-                            <label class="rx-field">
-                                <span class="rx-label">Payment Status</span>
-                                <select name="payment_status" class="rn-input">
-                                    <option value="">All</option>
-                                    <option value="paid" @selected(request('payment_status') === 'paid')>Paid</option>
-                                    <option value="partial" @selected(request('payment_status') === 'partial')>Partial</option>
-                                    <option value="unpaid" @selected(request('payment_status') === 'unpaid')>Unpaid</option>
-                                </select>
-                            </label>
-                            <label class="rx-field">
-                                <span class="rx-label">Search</span>
-                                <input type="text" name="search" value="{{ $search ?? '' }}" placeholder="Customer, rental, phone" class="rn-input" />
-                            </label>
-                        </div>
-
-                        <div class="rx-actions">
-                            <button type="submit" class="rx-btn">Apply</button>
-                            <a href="{{ $safeRoute('dashboard') ?? $dashboardUrl }}" class="rx-btn-secondary">Reset</a>
-                        </div>
-                    </form>
-                </div>
-            </details>
-        </div>
-
         <section class="executive-command-card">
             <div class="control-room-card-header">
                 <div>
@@ -8061,182 +8080,6 @@
             @endforeach
         </div>
     </section>
-
-    @if($showTeamPerformanceTable ?? false)
-        <section id="team-performance" class="team-performance-card" x-data="{ showFinancials: true, filterOpen: false, period: '{{ $teamPerformancePeriod ?? 'this_month' }}' }" x-on:keydown.escape.window="filterOpen = false">
-            <div class="team-performance-head">
-                <div>
-                    <h2 class="team-performance-title">Team Performance</h2>
-                    <p class="team-performance-copy">Selected period productivity by user. Sorted by orders, completed deliveries, then total amount.</p>
-                    <div class="team-performance-meta">
-                        <span>{{ $teamPerformancePeriodLabel ?? 'This Month' }}</span>
-                        @if($teamPerformanceFilterActive ?? false)
-                            <span class="is-filtered">Filtered</span>
-                        @endif
-                    </div>
-                </div>
-                <div class="team-performance-actions">
-                    <label class="team-performance-toggle">
-                        <input type="checkbox" x-model="showFinancials" checked>
-                        <span>Show Financial Columns</span>
-                    </label>
-                    <div class="team-performance-filter" x-on:click.outside="filterOpen = false">
-                        <button type="button" class="team-performance-filter-button {{ ($teamPerformanceFilterActive ?? false) ? 'is-active' : '' }}" x-on:click="filterOpen = ! filterOpen" :aria-expanded="filterOpen.toString()" aria-controls="team-performance-filter-panel" aria-label="Filter team performance">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-                            @if($teamPerformanceFilterActive ?? false)
-                                <span class="team-performance-filter-dot" aria-hidden="true"></span>
-                            @endif
-                        </button>
-                        <div id="team-performance-filter-panel" class="team-performance-popover" x-show="filterOpen" x-cloak>
-                            <form method="GET" action="{{ ($safeRoute('dashboard') ?? url('/dashboard')) . '#team-performance' }}">
-                                @foreach(request()->except(['team_performance_period', 'team_performance_from_date', 'team_performance_to_date', 'team_performance_city', 'team_performance_role']) as $filterKey => $filterValue)
-                                    @if(is_scalar($filterValue))
-                                        <input type="hidden" name="{{ $filterKey }}" value="{{ $filterValue }}">
-                                    @endif
-                                @endforeach
-                                <label>
-                                    <span>Period</span>
-                                    <select name="team_performance_period" x-model="period">
-                                        <option value="today" @selected(($teamPerformancePeriod ?? '') === 'today')>Today</option>
-                                        <option value="this_week" @selected(($teamPerformancePeriod ?? '') === 'this_week')>This Week</option>
-                                        <option value="last_7_days" @selected(($teamPerformancePeriod ?? '') === 'last_7_days')>Last 7 Days</option>
-                                        <option value="this_fortnight" @selected(($teamPerformancePeriod ?? '') === 'this_fortnight')>This Fortnight</option>
-                                        <option value="last_15_days" @selected(($teamPerformancePeriod ?? '') === 'last_15_days')>Last 15 Days</option>
-                                        <option value="this_month" @selected(($teamPerformancePeriod ?? 'this_month') === 'this_month')>This Month</option>
-                                        <option value="last_30_days" @selected(($teamPerformancePeriod ?? '') === 'last_30_days')>Last 30 Days</option>
-                                        <option value="custom_range" @selected(($teamPerformancePeriod ?? '') === 'custom_range')>Custom Range</option>
-                                    </select>
-                                </label>
-                                <div class="team-performance-filter-grid" x-show="period === 'custom_range'" x-cloak>
-                                    <label>
-                                        <span>From</span>
-                                        <input type="date" name="team_performance_from_date" value="{{ $teamPerformanceFromDate ?? '' }}">
-                                    </label>
-                                    <label>
-                                        <span>To</span>
-                                        <input type="date" name="team_performance_to_date" value="{{ $teamPerformanceToDate ?? '' }}">
-                                    </label>
-                                </div>
-                                <label>
-                                    <span>City</span>
-                                    <select name="team_performance_city">
-                                        <option value="">All cities</option>
-                                        @foreach(($cities ?? collect()) as $cityOption)
-                                            <option value="{{ $cityOption }}" @selected(($teamPerformanceCity ?? '') === $cityOption)>{{ $cityOption }}</option>
-                                        @endforeach
-                                    </select>
-                                </label>
-                                <label>
-                                    <span>Role</span>
-                                    <select name="team_performance_role">
-                                        <option value="">All eligible roles</option>
-                                        <option value="super_admin" @selected(($teamPerformanceRole ?? '') === 'super_admin')>Super Admin</option>
-                                        <option value="admin_operations" @selected(($teamPerformanceRole ?? '') === 'admin_operations')>Admin Operations</option>
-                                        <option value="sales" @selected(($teamPerformanceRole ?? '') === 'sales')>Sales</option>
-                                        <option value="finance" @selected(($teamPerformanceRole ?? '') === 'finance')>Finance</option>
-                                        <option value="operations_executive" @selected(($teamPerformanceRole ?? '') === 'operations_executive')>Operations Executive</option>
-                                        <option value="delivery_executive" @selected(($teamPerformanceRole ?? '') === 'delivery_executive')>Delivery Executive</option>
-                                        <option value="delivery" @selected(($teamPerformanceRole ?? '') === 'delivery')>Delivery</option>
-                                    </select>
-                                </label>
-                                <div class="team-performance-filter-actions">
-                                    <a href="{{ ($mergeDashboardQuery('dashboard', ['team_performance_period' => null, 'team_performance_from_date' => null, 'team_performance_to_date' => null, 'team_performance_city' => null, 'team_performance_role' => null]) ?? $dashboardUrl) . '#team-performance' }}">Reset</a>
-                                    <button type="submit">Apply</button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            @if(($teamPerformanceRows ?? collect())->isNotEmpty())
-                @unless($teamPerformanceHasActivity ?? true)
-                    <div class="team-performance-notice">No activity recorded for the selected period.</div>
-                @endunless
-                <div class="team-performance-table-wrap">
-                    <table class="team-performance-table">
-                        <thead>
-                            <tr>
-                                <th>User</th>
-                                <th>Role</th>
-                                <th>Orders</th>
-                                <th>Rentals</th>
-                                <th>Sales</th>
-                                <th>Delivery Assigned</th>
-                                <th>Delivery Completed</th>
-                                <th>Renewal Reminders</th>
-                                <th>Renewals Completed</th>
-                                <th>Invoices Generated</th>
-                                <th class="team-performance-finance" x-show="showFinancials" x-cloak>Rental Amount</th>
-                                <th class="team-performance-finance" x-show="showFinancials" x-cloak>Sales Amount</th>
-                                <th class="team-performance-finance" x-show="showFinancials" x-cloak>Total Amount</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach($teamPerformanceRows as $row)
-                                <tr @class(['team-performance-zero-row' => $row['is_zero_activity'] ?? false])>
-                                    <td class="team-performance-user">
-                                        <strong>{{ $row['name'] }}</strong>
-                                        <span>#{{ $row['id'] }}</span>
-                                    </td>
-                                    <td>{{ $row['role'] }}</td>
-                                    <td>
-                                        <span class="team-performance-number" title="Total rentals and sales for {{ $row['name'] }}">{{ number_format((int) $row['orders']) }}</span>
-                                        <span class="team-performance-muted">
-                                            <a href="{{ $row['links']['rentals'] ?? '#' }}" title="Open rentals for {{ $row['name'] }}">{{ number_format((int) $row['rentals']) }}R</a>
-                                            /
-                                            <a href="{{ $row['links']['sales'] ?? '#' }}" title="Open sales for {{ $row['name'] }}">{{ number_format((int) $row['sales']) }}S</a>
-                                        </span>
-                                    </td>
-                                    <td><a class="team-performance-number-link" href="{{ $row['links']['rentals'] ?? '#' }}" title="Open rentals for {{ $row['name'] }}">{{ number_format((int) $row['rentals']) }}</a></td>
-                                    <td><a class="team-performance-number-link" href="{{ $row['links']['sales'] ?? '#' }}" title="Open sales for {{ $row['name'] }}">{{ number_format((int) $row['sales']) }}</a></td>
-                                    <td><a class="team-performance-number-link" href="{{ $row['links']['delivery_assigned'] ?? '#' }}" title="Open assigned deliveries for {{ $row['name'] }}">{{ number_format((int) $row['delivery_assigned']) }}</a></td>
-                                    <td><a class="team-performance-number-link" href="{{ $row['links']['delivery_completed'] ?? '#' }}" title="Open completed deliveries for {{ $row['name'] }}">{{ number_format((int) $row['delivery_completed']) }}</a></td>
-                                    <td><a class="team-performance-number-link" href="{{ $row['links']['renewal_reminders'] ?? '#' }}" title="Open renewal reminders for {{ $row['name'] }}">{{ number_format((int) $row['renewal_reminders']) }}</a></td>
-                                    <td><a class="team-performance-number-link" href="{{ $row['links']['renewals_completed'] ?? '#' }}" title="Open completed renewals for {{ $row['name'] }}">{{ number_format((int) $row['renewals_completed']) }}</a></td>
-                                    <td><a class="team-performance-number-link" href="{{ $row['links']['invoices_generated'] ?? '#' }}" title="Open invoices for {{ $row['name'] }}">{{ number_format((int) $row['invoices_generated']) }}</a></td>
-                                    <td class="team-performance-finance" x-show="showFinancials" x-cloak>Rs. {{ number_format((float) $row['rental_amount'], 2) }}</td>
-                                    <td class="team-performance-finance" x-show="showFinancials" x-cloak>Rs. {{ number_format((float) $row['sales_amount'], 2) }}</td>
-                                    <td class="team-performance-finance" x-show="showFinancials" x-cloak>Rs. {{ number_format((float) $row['total_amount'], 2) }}</td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="team-performance-mobile-list">
-                    @foreach($teamPerformanceRows as $row)
-                        <details @class(['team-performance-mobile-card', 'team-performance-zero-row' => $row['is_zero_activity'] ?? false])>
-                            <summary>
-                                <span>
-                                    <strong>{{ $row['name'] }}</strong>
-                                    <small>{{ $row['role'] }}</small>
-                                </span>
-                                <span>
-                                    <strong>{{ number_format((int) $row['orders']) }}</strong>
-                                    <small>orders / {{ number_format((int) $row['delivery_completed']) }} done</small>
-                                </span>
-                            </summary>
-                            <div class="team-performance-mobile-kpis">
-                                <span>Rentals <b><a href="{{ $row['links']['rentals'] ?? '#' }}">{{ number_format((int) $row['rentals']) }}</a></b></span>
-                                <span>Sales <b><a href="{{ $row['links']['sales'] ?? '#' }}">{{ number_format((int) $row['sales']) }}</a></b></span>
-                                <span>Assigned <b><a href="{{ $row['links']['delivery_assigned'] ?? '#' }}">{{ number_format((int) $row['delivery_assigned']) }}</a></b></span>
-                                <span>Completed <b><a href="{{ $row['links']['delivery_completed'] ?? '#' }}">{{ number_format((int) $row['delivery_completed']) }}</a></b></span>
-                                <span>Reminders <b><a href="{{ $row['links']['renewal_reminders'] ?? '#' }}">{{ number_format((int) $row['renewal_reminders']) }}</a></b></span>
-                                <span>Renewals <b><a href="{{ $row['links']['renewals_completed'] ?? '#' }}">{{ number_format((int) $row['renewals_completed']) }}</a></b></span>
-                                <span>Invoices <b><a href="{{ $row['links']['invoices_generated'] ?? '#' }}">{{ number_format((int) $row['invoices_generated']) }}</a></b></span>
-                                <span class="team-performance-mobile-finance" x-show="showFinancials" x-cloak>Rental <b>Rs. {{ number_format((float) $row['rental_amount'], 2) }}</b></span>
-                                <span class="team-performance-mobile-finance" x-show="showFinancials" x-cloak>Sales <b>Rs. {{ number_format((float) $row['sales_amount'], 2) }}</b></span>
-                                <span class="team-performance-mobile-finance" x-show="showFinancials" x-cloak>Total <b>Rs. {{ number_format((float) $row['total_amount'], 2) }}</b></span>
-                            </div>
-                        </details>
-                    @endforeach
-                </div>
-            @else
-                <div class="team-performance-empty">No eligible internal users found.</div>
-            @endif
-        </section>
-    @endif
 
     @if(false)
     <section class="control-room-shell">
@@ -8896,6 +8739,487 @@
     </section>
 
     @endif
+    @include('dashboard.overview-summary')
+    @unless($dashboardTabs->has('revenue'))
+    <section class="dashboard-trend-layout">
+        <div class="rx-card dashboard-trend-card">
+            <div class="rx-card-header">
+                <div>
+                    <h2 class="rx-card-title">Sales vs Rentals Last 6 Months</h2>
+                    <p class="rx-card-copy">Compact comparative trend for commercial and rental direction.</p>
+                </div>
+            </div>
+            <div class="rx-card-body">
+                @if($monthlyTrendRows->isNotEmpty())
+                    @php
+                        $ordersTrendMax = max(array_merge([1], $monthlyTrendRows->pluck('total_orders')->map(fn ($value) => (float) $value)->all()));
+                    @endphp
+                    <div class="dashboard-trend-legend" aria-label="Sales vs rentals legend">
+                        <span class="dashboard-trend-legend-item"><span class="dashboard-trend-legend-swatch is-rental"></span>Rental Revenue</span>
+                        <span class="dashboard-trend-legend-item"><span class="dashboard-trend-legend-swatch is-sales"></span>Sales Revenue</span>
+                        <span class="dashboard-trend-legend-item"><span class="dashboard-trend-legend-swatch is-orders"></span>Total Orders</span>
+                    </div>
+                    <div class="dashboard-trend-vertical">
+                        @foreach($monthlyTrendRows as $row)
+                            <div class="dashboard-trend-column">
+                                <div class="dashboard-trend-bars">
+                                    <div class="dashboard-trend-bar-wrap">
+                                        <div class="dashboard-trend-bar-head">
+                                            <span class="dashboard-trend-bar-value">{{ $compactCurrency($row['rental_total'] ?? 0) }}</span>
+                                            <span class="dashboard-trend-bar-topline" aria-hidden="true"></span>
+                                        </div>
+                                        <div class="dashboard-trend-bar is-rental" style="height:{{ max(8, round((((float) ($row['rental_total'] ?? 0)) / max($trendMax, 1)) * 104, 1)) }}px;"></div>
+                                        <span class="dashboard-trend-bar-label">R</span>
+                                    </div>
+                                    <div class="dashboard-trend-bar-wrap">
+                                        <div class="dashboard-trend-bar-head">
+                                            <span class="dashboard-trend-bar-value">{{ $compactCurrency($row['sales_total'] ?? 0) }}</span>
+                                            <span class="dashboard-trend-bar-topline" aria-hidden="true"></span>
+                                        </div>
+                                        <div class="dashboard-trend-bar is-sales" style="height:{{ max(8, round((((float) ($row['sales_total'] ?? 0)) / max($trendMax, 1)) * 104, 1)) }}px;"></div>
+                                        <span class="dashboard-trend-bar-label">S</span>
+                                    </div>
+                                    <div class="dashboard-trend-bar-wrap">
+                                        <div class="dashboard-trend-bar-head">
+                                            <span class="dashboard-trend-bar-value">{{ number_format((int) ($row['total_orders'] ?? 0)) }}</span>
+                                            <span class="dashboard-trend-bar-meta">orders</span>
+                                            <span class="dashboard-trend-bar-topline" aria-hidden="true"></span>
+                                        </div>
+                                        <div class="dashboard-trend-bar is-orders" style="height:{{ max(8, round((((float) ($row['total_orders'] ?? 0)) / max($ordersTrendMax, 1)) * 104, 1)) }}px;"></div>
+                                        <span class="dashboard-trend-bar-label">O</span>
+                                    </div>
+                                </div>
+                                <div class="dashboard-trend-month">{{ \Illuminate\Support\Str::replace(' 2026', '', $row['label'] ?? '-') }}</div>
+                            </div>
+                        @endforeach
+                    </div>
+                @else
+                    <div class="rx-empty dashboard-empty">
+                        <div class="rx-empty-icon">{!! $dashboardIcon('trend') !!}</div>
+                        <strong>No trend data</strong>
+                        <span>The dashboard does not have six-month trend data for this filter window.</span>
+                    </div>
+                @endif
+            </div>
+        </div>
+
+        <div class="rx-card dashboard-trend-card">
+            <div class="rx-card-header">
+                <div>
+                    <h2 class="rx-card-title">Business Direction</h2>
+                    <p class="rx-card-copy">Supporting signals around stock, service pressure, and collections.</p>
+                </div>
+            </div>
+            <div class="rx-card-body">
+                <div class="dashboard-overview-list">
+                    <div class="dashboard-inline-item">
+                        <div>
+                            <strong>Payments Today</strong>
+                            <small>Collection pulse inside this filter window</small>
+                        </div>
+                        <div style="text-align:right;">
+                            <strong>{{ $currency($paymentsReceivedTodayAmount) }}</strong>
+                            @if($reportsIndexUrl)
+                                <small><a href="{{ $reportsIndexUrl }}" style="color:var(--ph-color-primary);text-decoration:none;">Open reports</a></small>
+                            @endif
+                        </div>
+                    </div>
+                    <div class="dashboard-inline-item">
+                        <div>
+                            <strong>Invoice Pressure</strong>
+                            <small>Open unpaid and overdue invoice mix</small>
+                        </div>
+                        <div style="text-align:right;">
+                            <strong>{{ $openInvoiceCountValue }}</strong>
+                            <small>{{ $overdueInvoiceCountValue }} overdue now</small>
+                        </div>
+                    </div>
+                    <div class="dashboard-inline-item">
+                        <div>
+                            <strong>Rental Lifecycle</strong>
+                            <small>Active {{ $lifecycleActivePercent }}% | Pending delivery {{ $lifecyclePendingDeliveryPercent }}%</small>
+                        </div>
+                        <div style="text-align:right;">
+                            <strong>{{ $returnedPercent }}%</strong>
+                            <small>Returned mix</small>
+                        </div>
+                    </div>
+                    <div class="dashboard-inline-item">
+                        <div>
+                            <strong>Delivered Base</strong>
+                            <small>Delivered {{ $deliveredPercent }}% | Overdue {{ $overduePercent }}%</small>
+                        </div>
+                        <div style="text-align:right;">
+                            <strong>{{ $deliveriesTodayCount }}</strong>
+                            <small>today</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    @endunless
+    </section>
+    @endif
+    @if($dashboardTabs->has('team'))
+    <section data-dashboard-panel="team" id="phos-panel-team" role="tabpanel" aria-labelledby="phos-tab-team" @if($activeDashboardTab !== 'team') hidden @endif>
+    @if($showTeamPerformanceTable ?? false)
+        <section id="team-performance" class="team-performance-card" x-data="{ showFinancials: true, filterOpen: false, period: '{{ $teamPerformancePeriod ?? 'this_month' }}' }" x-on:keydown.escape.window="filterOpen = false">
+            <div class="team-performance-head">
+                <div>
+                    <h2 class="team-performance-title">Team Performance</h2>
+                    <p class="team-performance-copy">Selected period productivity by user. Sorted by orders, completed deliveries, then total amount.</p>
+                    <div class="team-performance-meta">
+                        <span>{{ $teamPerformancePeriodLabel ?? 'This Month' }}</span>
+                        @if($teamPerformanceFilterActive ?? false)
+                            <span class="is-filtered">Filtered</span>
+                        @endif
+                    </div>
+                </div>
+                <div class="team-performance-actions">
+                    <label class="team-performance-toggle">
+                        <input type="checkbox" x-model="showFinancials" checked>
+                        <span>Show Financial Columns</span>
+                    </label>
+                    <div class="team-performance-filter" x-on:click.outside="filterOpen = false">
+                        <button type="button" class="team-performance-filter-button {{ ($teamPerformanceFilterActive ?? false) ? 'is-active' : '' }}" x-on:click="filterOpen = ! filterOpen" :aria-expanded="filterOpen.toString()" aria-controls="team-performance-filter-panel" aria-label="Filter team performance">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                            @if($teamPerformanceFilterActive ?? false)
+                                <span class="team-performance-filter-dot" aria-hidden="true"></span>
+                            @endif
+                        </button>
+                        <div id="team-performance-filter-panel" class="team-performance-popover" x-show="filterOpen" x-cloak>
+                            <form method="GET" action="{{ ($safeRoute('dashboard') ?? url('/dashboard')) . '#team-performance' }}">
+                                @foreach(request()->except(['team_performance_period', 'team_performance_from_date', 'team_performance_to_date', 'team_performance_city', 'team_performance_role']) as $filterKey => $filterValue)
+                                    @if(is_scalar($filterValue))
+                                        <input type="hidden" name="{{ $filterKey }}" value="{{ $filterValue }}">
+                                    @endif
+                                @endforeach
+                                <label>
+                                    <span>Period</span>
+                                    <select name="team_performance_period" x-model="period">
+                                        <option value="today" @selected(($teamPerformancePeriod ?? '') === 'today')>Today</option>
+                                        <option value="this_week" @selected(($teamPerformancePeriod ?? '') === 'this_week')>This Week</option>
+                                        <option value="last_7_days" @selected(($teamPerformancePeriod ?? '') === 'last_7_days')>Last 7 Days</option>
+                                        <option value="this_fortnight" @selected(($teamPerformancePeriod ?? '') === 'this_fortnight')>This Fortnight</option>
+                                        <option value="last_15_days" @selected(($teamPerformancePeriod ?? '') === 'last_15_days')>Last 15 Days</option>
+                                        <option value="this_month" @selected(($teamPerformancePeriod ?? 'this_month') === 'this_month')>This Month</option>
+                                        <option value="last_30_days" @selected(($teamPerformancePeriod ?? '') === 'last_30_days')>Last 30 Days</option>
+                                        <option value="custom_range" @selected(($teamPerformancePeriod ?? '') === 'custom_range')>Custom Range</option>
+                                    </select>
+                                </label>
+                                <div class="team-performance-filter-grid" x-show="period === 'custom_range'" x-cloak>
+                                    <label>
+                                        <span>From</span>
+                                        <input type="date" name="team_performance_from_date" value="{{ $teamPerformanceFromDate ?? '' }}">
+                                    </label>
+                                    <label>
+                                        <span>To</span>
+                                        <input type="date" name="team_performance_to_date" value="{{ $teamPerformanceToDate ?? '' }}">
+                                    </label>
+                                </div>
+                                <label>
+                                    <span>City</span>
+                                    <select name="team_performance_city">
+                                        <option value="">All cities</option>
+                                        @foreach(($cities ?? collect()) as $cityOption)
+                                            <option value="{{ $cityOption }}" @selected(($teamPerformanceCity ?? '') === $cityOption)>{{ $cityOption }}</option>
+                                        @endforeach
+                                    </select>
+                                </label>
+                                <label>
+                                    <span>Role</span>
+                                    <select name="team_performance_role">
+                                        <option value="">All eligible roles</option>
+                                        <option value="super_admin" @selected(($teamPerformanceRole ?? '') === 'super_admin')>Super Admin</option>
+                                        <option value="admin_operations" @selected(($teamPerformanceRole ?? '') === 'admin_operations')>Admin Operations</option>
+                                        <option value="sales" @selected(($teamPerformanceRole ?? '') === 'sales')>Sales</option>
+                                        <option value="finance" @selected(($teamPerformanceRole ?? '') === 'finance')>Finance</option>
+                                        <option value="operations_executive" @selected(($teamPerformanceRole ?? '') === 'operations_executive')>Operations Executive</option>
+                                        <option value="delivery_executive" @selected(($teamPerformanceRole ?? '') === 'delivery_executive')>Delivery Executive</option>
+                                        <option value="delivery" @selected(($teamPerformanceRole ?? '') === 'delivery')>Delivery</option>
+                                    </select>
+                                </label>
+                                <div class="team-performance-filter-actions">
+                                    <a href="{{ ($mergeDashboardQuery('dashboard', ['team_performance_period' => null, 'team_performance_from_date' => null, 'team_performance_to_date' => null, 'team_performance_city' => null, 'team_performance_role' => null]) ?? $dashboardUrl) . '#team-performance' }}">Reset</a>
+                                    <button type="submit">Apply</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @if(($teamPerformanceRows ?? collect())->isNotEmpty())
+                @unless($teamPerformanceHasActivity ?? true)
+                    <div class="team-performance-notice">No activity recorded for the selected period.</div>
+                @endunless
+                <div class="team-performance-table-wrap">
+                    <table class="team-performance-table">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Role</th>
+                                <th>Orders</th>
+                                <th>Rentals</th>
+                                <th>Sales</th>
+                                <th>Delivery Assigned</th>
+                                <th>Delivery Completed</th>
+                                <th>Renewal Reminders</th>
+                                <th>Renewals Completed</th>
+                                <th>Invoices Generated</th>
+                                <th class="team-performance-finance" x-show="showFinancials" x-cloak>Rental Amount</th>
+                                <th class="team-performance-finance" x-show="showFinancials" x-cloak>Sales Amount</th>
+                                <th class="team-performance-finance" x-show="showFinancials" x-cloak>Total Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach($teamPerformanceRows as $row)
+                                <tr @class(['team-performance-zero-row' => $row['is_zero_activity'] ?? false])>
+                                    <td class="team-performance-user">
+                                        <strong>{{ $row['name'] }}</strong>
+                                        <span>#{{ $row['id'] }}</span>
+                                    </td>
+                                    <td>{{ $row['role'] }}</td>
+                                    <td>
+                                        <span class="team-performance-number" title="Total rentals and sales for {{ $row['name'] }}">{{ number_format((int) $row['orders']) }}</span>
+                                        <span class="team-performance-muted">
+                                            <a href="{{ $row['links']['rentals'] ?? '#' }}" title="Open rentals for {{ $row['name'] }}">{{ number_format((int) $row['rentals']) }}R</a>
+                                            /
+                                            <a href="{{ $row['links']['sales'] ?? '#' }}" title="Open sales for {{ $row['name'] }}">{{ number_format((int) $row['sales']) }}S</a>
+                                        </span>
+                                    </td>
+                                    <td><a class="team-performance-number-link" href="{{ $row['links']['rentals'] ?? '#' }}" title="Open rentals for {{ $row['name'] }}">{{ number_format((int) $row['rentals']) }}</a></td>
+                                    <td><a class="team-performance-number-link" href="{{ $row['links']['sales'] ?? '#' }}" title="Open sales for {{ $row['name'] }}">{{ number_format((int) $row['sales']) }}</a></td>
+                                    <td><a class="team-performance-number-link" href="{{ $row['links']['delivery_assigned'] ?? '#' }}" title="Open assigned deliveries for {{ $row['name'] }}">{{ number_format((int) $row['delivery_assigned']) }}</a></td>
+                                    <td><a class="team-performance-number-link" href="{{ $row['links']['delivery_completed'] ?? '#' }}" title="Open completed deliveries for {{ $row['name'] }}">{{ number_format((int) $row['delivery_completed']) }}</a></td>
+                                    <td><a class="team-performance-number-link" href="{{ $row['links']['renewal_reminders'] ?? '#' }}" title="Open renewal reminders for {{ $row['name'] }}">{{ number_format((int) $row['renewal_reminders']) }}</a></td>
+                                    <td><a class="team-performance-number-link" href="{{ $row['links']['renewals_completed'] ?? '#' }}" title="Open completed renewals for {{ $row['name'] }}">{{ number_format((int) $row['renewals_completed']) }}</a></td>
+                                    <td><a class="team-performance-number-link" href="{{ $row['links']['invoices_generated'] ?? '#' }}" title="Open invoices for {{ $row['name'] }}">{{ number_format((int) $row['invoices_generated']) }}</a></td>
+                                    <td class="team-performance-finance" x-show="showFinancials" x-cloak>Rs. {{ number_format((float) $row['rental_amount'], 2) }}</td>
+                                    <td class="team-performance-finance" x-show="showFinancials" x-cloak>Rs. {{ number_format((float) $row['sales_amount'], 2) }}</td>
+                                    <td class="team-performance-finance" x-show="showFinancials" x-cloak>Rs. {{ number_format((float) $row['total_amount'], 2) }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="team-performance-mobile-list">
+                    @foreach($teamPerformanceRows as $row)
+                        <details @class(['team-performance-mobile-card', 'team-performance-zero-row' => $row['is_zero_activity'] ?? false])>
+                            <summary>
+                                <span>
+                                    <strong>{{ $row['name'] }}</strong>
+                                    <small>{{ $row['role'] }}</small>
+                                </span>
+                                <span>
+                                    <strong>{{ number_format((int) $row['orders']) }}</strong>
+                                    <small>orders / {{ number_format((int) $row['delivery_completed']) }} done</small>
+                                </span>
+                            </summary>
+                            <div class="team-performance-mobile-kpis">
+                                <span>Rentals <b><a href="{{ $row['links']['rentals'] ?? '#' }}">{{ number_format((int) $row['rentals']) }}</a></b></span>
+                                <span>Sales <b><a href="{{ $row['links']['sales'] ?? '#' }}">{{ number_format((int) $row['sales']) }}</a></b></span>
+                                <span>Assigned <b><a href="{{ $row['links']['delivery_assigned'] ?? '#' }}">{{ number_format((int) $row['delivery_assigned']) }}</a></b></span>
+                                <span>Completed <b><a href="{{ $row['links']['delivery_completed'] ?? '#' }}">{{ number_format((int) $row['delivery_completed']) }}</a></b></span>
+                                <span>Reminders <b><a href="{{ $row['links']['renewal_reminders'] ?? '#' }}">{{ number_format((int) $row['renewal_reminders']) }}</a></b></span>
+                                <span>Renewals <b><a href="{{ $row['links']['renewals_completed'] ?? '#' }}">{{ number_format((int) $row['renewals_completed']) }}</a></b></span>
+                                <span>Invoices <b><a href="{{ $row['links']['invoices_generated'] ?? '#' }}">{{ number_format((int) $row['invoices_generated']) }}</a></b></span>
+                                <span class="team-performance-mobile-finance" x-show="showFinancials" x-cloak>Rental <b>Rs. {{ number_format((float) $row['rental_amount'], 2) }}</b></span>
+                                <span class="team-performance-mobile-finance" x-show="showFinancials" x-cloak>Sales <b>Rs. {{ number_format((float) $row['sales_amount'], 2) }}</b></span>
+                                <span class="team-performance-mobile-finance" x-show="showFinancials" x-cloak>Total <b>Rs. {{ number_format((float) $row['total_amount'], 2) }}</b></span>
+                            </div>
+                        </details>
+                    @endforeach
+                </div>
+            @else
+                <div class="team-performance-empty">No eligible internal users found.</div>
+            @endif
+        </section>
+    @endif
+
+    @if($showExpandedStaffOpsSection)
+    <section class="dashboard-insight-grid" id="staff-ops">
+        @if($showExpandedStaffWorkloadSection)
+        <div class="rx-card dashboard-feed-card">
+            <div class="rx-card-header">
+                <div>
+                    <h2 class="rx-card-title">Staff Workload</h2>
+                    <p class="rx-card-copy">Who is overloaded, balanced, or light across deliveries, pickups, and follow-ups.</p>
+                </div>
+            </div>
+            <div class="rx-card-body">
+                @if($staffWorkloadSummary->isNotEmpty())
+                    <div class="dashboard-feed-list">
+                        @foreach($staffWorkloadSummary as $row)
+                            <div class="dashboard-feed-item">
+                                <div class="dashboard-feed-title">
+                                    <strong>{{ $row['name'] }}</strong>
+                                    <span class="dashboard-role-chip">{{ $row['load_state'] }}</span>
+                                </div>
+                                <span>{{ $row['delivery_count'] }} deliveries  /  {{ $row['pickup_count'] }} pickups  /  {{ $row['followup_count'] }} follow-ups</span>
+                                <small>{{ $row['overdue_count'] }} overdue  /  {{ \Illuminate\Support\Str::headline((string) ($row['role'] ?? 'team')) }}</small>
+                            </div>
+                        @endforeach
+                    </div>
+                @else
+                    <div class="rx-empty dashboard-empty">
+                        <div class="rx-empty-icon">{!! $dashboardIcon('customer') !!}</div>
+                        <strong>No staff workload data</strong>
+                        <span>Assignments will appear here as soon as work is distributed.</span>
+                    </div>
+                @endif
+            </div>
+        </div>
+        @endif
+
+        @if($showExpandedBusinessSignalsSection)
+        <div class="rx-card dashboard-feed-card">
+            <div class="rx-card-header">
+                <div>
+                    <h2 class="rx-card-title">Business Partner Signals</h2>
+                    <p class="rx-card-copy">Partner workload, open rentals, and renewal or payment pressure.</p>
+                </div>
+                @if($newBusinessPartnerUrl)
+                    <a href="{{ $newBusinessPartnerUrl }}" class="rx-btn-secondary">Add Business Partner</a>
+                @endif
+            </div>
+            <div class="rx-card-body">
+                @if($partnerOperationalSummary->isNotEmpty())
+                    <div class="dashboard-feed-list">
+                        @foreach($partnerOperationalSummaryVisible as $partner)
+                            <div class="dashboard-feed-item">
+                                <div class="dashboard-feed-title">
+                                    <strong>{{ $partner['name'] }}</strong>
+                                    <span class="dashboard-role-chip">{{ $partner['active_clients_count'] }} clients</span>
+                                </div>
+                                <span>{{ $partner['open_rentals_count'] }} open rentals  /  {{ $partner['active_sales_count'] }} sales</span>
+                                <small>{{ $partner['renewal_followups_count'] }} renewal follow-ups  /  {{ $partner['payment_followups_count'] }} payment follow-ups</small>
+                                <div class="dashboard-feed-links">
+                                    <a href="{{ route('business-partners.show', $partner['id']) }}">Open</a>
+                                    @if(!empty($partner['phone']))
+                                        <a href="tel:{{ preg_replace('/\s+/', '', (string) $partner['phone']) }}">Call</a>
+                                    @endif
+                                </div>
+                            </div>
+                        @endforeach
+                        @if($partnerOperationalSummaryHidden->isNotEmpty())
+                            <details class="dashboard-expandable">
+                                <summary class="dashboard-expandable-summary">Show {{ $partnerOperationalSummaryHidden->count() }} more</summary>
+                                <div class="dashboard-expandable-content">
+                                    @foreach($partnerOperationalSummaryHidden as $partner)
+                                        <div class="dashboard-feed-item">
+                                            <div class="dashboard-feed-title">
+                                                <strong>{{ $partner['name'] }}</strong>
+                                                <span class="dashboard-role-chip">{{ $partner['active_clients_count'] }} clients</span>
+                                            </div>
+                                            <span>{{ $partner['open_rentals_count'] }} open rentals  /  {{ $partner['active_sales_count'] }} sales</span>
+                                            <small>{{ $partner['renewal_followups_count'] }} renewal follow-ups  /  {{ $partner['payment_followups_count'] }} payment follow-ups</small>
+                                            <div class="dashboard-feed-links">
+                                                <a href="{{ route('business-partners.show', $partner['id']) }}">Open</a>
+                                                @if(!empty($partner['phone']))
+                                                    <a href="tel:{{ preg_replace('/\s+/', '', (string) $partner['phone']) }}">Call</a>
+                                                @endif
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </details>
+                        @endif
+                    </div>
+                @else
+                    <div class="rx-empty dashboard-empty">
+                        <div class="rx-empty-icon">{!! $dashboardIcon('customer') !!}</div>
+                        <strong>No partner pressure signals</strong>
+                        <span>Partner-linked renewals and payments will surface here automatically.</span>
+                    </div>
+                @endif
+            </div>
+        </div>
+        @endif
+
+        @if(false && $showExpandedInventorySection)
+        <div class="rx-card dashboard-feed-card">
+            <div class="rx-card-header">
+                <div>
+                    <h2 class="rx-card-title">Inventory Intelligence</h2>
+                    <p class="rx-card-copy">Low stock, highly utilized, and idle inventory without needing a full stock report.</p>
+                </div>
+                @if($productsIndexUrl)
+                    <a href="{{ $productsIndexUrl }}" class="rx-btn-secondary">Open Product Master</a>
+                @endif
+            </div>
+            <div class="rx-card-body">
+                <div class="dashboard-feed-list">
+                    <div class="dashboard-feed-item">
+                        <div class="dashboard-feed-meta">
+                            <strong>Low stock alerts</strong>
+                            <em>{{ $lowStockSummary->count() }}</em>
+                        </div>
+                        @if($lowStockSummaryVisible->isNotEmpty())
+                            <small>{{ $lowStockSummaryVisible->map(fn ($product) => $product->name . ' (' . $product->available_quantity . '/' . $product->total_quantity . ')')->implode(', ') }}</small>
+                            @if($lowStockSummaryHidden->isNotEmpty())
+                                <details class="dashboard-expandable">
+                                    <summary class="dashboard-expandable-summary">Show {{ $lowStockSummaryHidden->count() }} more</summary>
+                                    <div class="dashboard-expandable-content">
+                                        <small>{{ $lowStockSummaryHidden->map(fn ($product) => $product->name . ' (' . $product->available_quantity . '/' . $product->total_quantity . ')')->implode(', ') }}</small>
+                                    </div>
+                                </details>
+                            @endif
+                        @else
+                            <small>No immediate low-stock pressure.</small>
+                        @endif
+                    </div>
+                    <div class="dashboard-feed-item">
+                        <div class="dashboard-feed-meta">
+                            <strong>High utilization</strong>
+                            <em>{{ $highUtilizationSummary->count() }}</em>
+                        </div>
+                        @if($highUtilizationSummaryVisible->isNotEmpty())
+                            <small>{{ $highUtilizationSummaryVisible->map(fn ($product) => $product->name . ' (' . max(0, (int) $product->total_quantity - (int) $product->available_quantity) . '/' . $product->total_quantity . ' out)')->implode(', ') }}</small>
+                            @if($highUtilizationSummaryHidden->isNotEmpty())
+                                <details class="dashboard-expandable">
+                                    <summary class="dashboard-expandable-summary">Show {{ $highUtilizationSummaryHidden->count() }} more</summary>
+                                    <div class="dashboard-expandable-content">
+                                        <small>{{ $highUtilizationSummaryHidden->map(fn ($product) => $product->name . ' (' . max(0, (int) $product->total_quantity - (int) $product->available_quantity) . '/' . $product->total_quantity . ' out)')->implode(', ') }}</small>
+                                    </div>
+                                </details>
+                            @endif
+                        @else
+                            <small>No high-utilization products flagged right now.</small>
+                        @endif
+                    </div>
+                    <div class="dashboard-feed-item">
+                        <div class="dashboard-feed-meta">
+                            <strong>Idle inventory</strong>
+                            <em>{{ $idleInventorySummary->count() }}</em>
+                        </div>
+                        @if($idleInventorySummaryVisible->isNotEmpty())
+                            <small>{{ $idleInventorySummaryVisible->map(fn ($product) => $product->name . ' (' . $product->available_quantity . ' available)')->implode(', ') }}</small>
+                            @if($idleInventorySummaryHidden->isNotEmpty())
+                                <details class="dashboard-expandable">
+                                    <summary class="dashboard-expandable-summary">Show {{ $idleInventorySummaryHidden->count() }} more</summary>
+                                    <div class="dashboard-expandable-content">
+                                        <small>{{ $idleInventorySummaryHidden->map(fn ($product) => $product->name . ' (' . $product->available_quantity . ' available)')->implode(', ') }}</small>
+                                    </div>
+                                </details>
+                            @endif
+                        @else
+                            <small>No idle stock signals at the moment.</small>
+                        @endif
+                    </div>
+                </div>
+            </div>
+        </div>
+        @endif
+    </section>
+    @endif
+
+    </section>
+    @endif
+    @if($dashboardTabs->has('operations'))
+    <section data-dashboard-panel="operations" id="phos-panel-operations" role="tabpanel" aria-labelledby="phos-tab-operations" @if($activeDashboardTab !== 'operations') hidden @endif>
     <section class="rx-card" id="operations-center-panel">
         <div class="rx-card-header dashboard-section-heading">
             <div>
@@ -9546,6 +9870,296 @@
 
     @endif
 
+    @if($primaryPriorityCards->isNotEmpty())
+        <section class="dashboard-main-grid" id="top-priority-panel">
+        <div class="rx-card">
+            <div class="rx-card-header">
+                <div>
+                    <h2 class="rx-card-title">Top Priority</h2>
+                    <p class="rx-card-copy">Immediate risks and action queues.</p>
+                </div>
+            </div>
+            <div class="rx-card-body">
+                <div class="dashboard-priority-grid">
+                    @foreach($primaryPriorityCards as $card)
+                        @php $tag = !empty($card['href']) ? 'a' : 'div'; @endphp
+                        <{{ $tag }} @if(!empty($card['href'])) href="{{ $card['href'] }}" @endif class="dashboard-priority-card {{ $toneCardClass($card['tone'] ?? null) }}">
+                            <div class="dashboard-card-head">
+                                <span class="dashboard-card-label">{{ $card['label'] }}</span>
+                                <span class="dashboard-card-icon">{!! $dashboardIcon($card['icon']) !!}</span>
+                            </div>
+                            <div class="dashboard-card-value">{{ $card['value'] }}</div>
+                            <div class="dashboard-card-subtitle">{{ $card['subtitle'] }}</div>
+                            <div class="dashboard-card-note">{{ $card['note'] }}</div>
+                        </{{ $tag }}>
+                    @endforeach
+                </div>
+            </div>
+        </div>
+    </section>
+    @endif
+
+    @if($actionItems->isNotEmpty())
+    <section class="dashboard-action-layout" id="today-action-panel">
+        <div class="rx-card">
+            <div class="rx-card-header">
+                <div>
+                    <h2 class="rx-card-title">Today Action Panel</h2>
+                    <p class="rx-card-copy">Keep the field and finance queues visible without jumping across modules.</p>
+                </div>
+            </div>
+            <div class="rx-card-body">
+                <div class="dashboard-priority-grid">
+                    @foreach($actionItems as $item)
+                        @php $tag = !empty($item['href']) ? 'a' : 'div'; @endphp
+                        <{{ $tag }} @if(!empty($item['href'])) href="{{ $item['href'] }}" @endif class="dashboard-action-card {{ $toneCardClass($item['tone'] ?? null) }}">
+                            <div class="dashboard-action-top">
+                                <div>
+                                    <strong class="dashboard-overview-head">{{ $item['label'] }}</strong>
+                                    <p class="dashboard-overview-copy">{{ $item['copy'] }}</p>
+                                </div>
+                                <span class="dashboard-compact-chip">{{ number_format((int) $item['count']) }}</span>
+                            </div>
+                            <span class="dashboard-card-icon">{!! $dashboardIcon($item['icon']) !!}</span>
+                        </{{ $tag }}>
+                    @endforeach
+                </div>
+            </div>
+        </div>
+    </section>
+    @endif
+
+    @if($deliveryMiniTiles->isNotEmpty())
+    <section class="rx-card" id="logistics-board-panel">
+        <div class="rx-card">
+            <div class="rx-card-header">
+                <div>
+                    <h2 class="rx-card-title">Logistics Board</h2>
+                    <p class="rx-card-copy">Delivery and pickup flow in one compact row.</p>
+                </div>
+            </div>
+            <div class="rx-card-body">
+                <div class="dashboard-logistics-grid">
+                    @foreach($deliveryMiniTiles as $tile)
+                        @php $tag = !empty($tile['href']) ? 'a' : 'div'; @endphp
+                        <{{ $tag }} @if(!empty($tile['href'])) href="{{ $tile['href'] }}" @endif class="dashboard-logistics-card {{ $toneCardClass($tile['tone'] ?? null) }}">
+                            <div class="dashboard-card-head">
+                                <span class="dashboard-logistics-label">{{ $tile['label'] }}</span>
+                                <span class="dashboard-card-icon">{!! $dashboardIcon($tile['icon']) !!}</span>
+                            </div>
+                            <div class="dashboard-card-value">{{ $tile['value'] }}</div>
+                        </{{ $tag }}>
+                    @endforeach
+                </div>
+            </div>
+        </div>
+    </section>
+    @endif
+
+    @if(false && $renewalMiniTiles->isNotEmpty())
+        <section class="rx-card" id="renewal-center-panel">
+            <div class="rx-card-header">
+                <div>
+                    <h2 class="rx-card-title">Renewal Center</h2>
+                    <p class="rx-card-copy">Due, overdue, and pickup-follow-up renewals in one operational queue.</p>
+                </div>
+                <a href="{{ route('renewal-center.index') }}" class="rx-btn-secondary">Open Renewal Center</a>
+            </div>
+            <div class="rx-card-body">
+                <div class="dashboard-logistics-grid">
+                    @foreach($renewalMiniTiles as $tile)
+                        @php $tag = !empty($tile['href']) ? 'a' : 'div'; @endphp
+                        <{{ $tag }} @if(!empty($tile['href'])) href="{{ $tile['href'] }}" @endif class="dashboard-logistics-card {{ $toneCardClass($tile['tone'] ?? null) }}">
+                            <div class="dashboard-card-head">
+                                <span class="dashboard-logistics-label">{{ $tile['label'] }}</span>
+                                <span class="dashboard-card-icon">{!! $dashboardIcon($tile['icon']) !!}</span>
+                            </div>
+                            <div class="dashboard-card-value">{{ $tile['value'] }}</div>
+                        </{{ $tag }}>
+                    @endforeach
+                </div>
+            </div>
+        </section>
+    @endif
+
+    @if(false && $pickupCenterMiniTiles->isNotEmpty())
+        <section class="rx-card" id="pickup-center-panel">
+            <div class="rx-card-header">
+                <div>
+                    <h2 class="rx-card-title">Pickup Center</h2>
+                    <p class="rx-card-copy">Operational pickup queue for today, overdue collections, failed attempts, and return-verification handoff.</p>
+                </div>
+                <a href="{{ route('pickup-center.index') }}" class="rx-btn-secondary">Open Pickup Center</a>
+            </div>
+            <div class="rx-card-body">
+                <div class="dashboard-logistics-grid">
+                    @foreach($pickupCenterMiniTiles as $tile)
+                        @php $tag = !empty($tile['href']) ? 'a' : 'div'; @endphp
+                        <{{ $tag }} @if(!empty($tile['href'])) href="{{ $tile['href'] }}" @endif class="dashboard-logistics-card {{ $toneCardClass($tile['tone'] ?? null) }}">
+                            <div class="dashboard-card-head">
+                                <span class="dashboard-logistics-label">{{ $tile['label'] }}</span>
+                                <span class="dashboard-card-icon">{!! $dashboardIcon($tile['icon']) !!}</span>
+                            </div>
+                            <div class="dashboard-card-value">{{ $tile['value'] }}</div>
+                        </{{ $tag }}>
+                    @endforeach
+                </div>
+            </div>
+        </section>
+    @endif
+
+    @if(false && $communicationMiniTiles->isNotEmpty())
+        <section class="rx-card" id="communication-center-panel">
+            <div class="rx-card-header">
+                <div>
+                    <h2 class="rx-card-title">Communication Center</h2>
+                    <p class="rx-card-copy">Due, overdue, and coordination follow-ups across renewals, payments, deliveries, and pickups.</p>
+                </div>
+                <a href="{{ route('communication-center.index') }}" class="rx-btn-secondary">Open Communication Center</a>
+            </div>
+            <div class="rx-card-body">
+                <div class="dashboard-logistics-grid">
+                    @foreach($communicationMiniTiles as $tile)
+                        @php $tag = !empty($tile['href']) ? 'a' : 'div'; @endphp
+                        <{{ $tag }} @if(!empty($tile['href'])) href="{{ $tile['href'] }}" @endif class="dashboard-logistics-card {{ $toneCardClass($tile['tone'] ?? null) }}">
+                            <div class="dashboard-card-head">
+                                <span class="dashboard-logistics-label">{{ $tile['label'] }}</span>
+                                <span class="dashboard-card-icon">{!! $dashboardIcon($tile['icon']) !!}</span>
+                            </div>
+                            <div class="dashboard-card-value">{{ $tile['value'] }}</div>
+                        </{{ $tag }}>
+                    @endforeach
+                </div>
+            </div>
+        </section>
+    @endif
+
+                    </div>
+                </details>
+            </div>
+        </div>
+    </section>
+
+
+    @unless($showExpandedStaffOpsSection)
+    <section class="dashboard-queue-grid">
+        <div class="rx-card dashboard-queue-card">
+            <div class="rx-card-header">
+                <div>
+                    <h2 class="rx-card-title">Critical Queue</h2>
+                    <p class="rx-card-copy">Overdue delivered rentals that need immediate recovery.</p>
+                </div>
+                <span class="rx-badge is-danger">{{ $criticalQueue->count() }}</span>
+            </div>
+            <div class="rx-card-body">
+                @if($criticalQueue->isNotEmpty())
+                    <div class="dashboard-queue-list">
+                        @foreach($criticalQueue as $rental)
+                            <div class="dashboard-queue-item">
+                                <div>
+                                    <strong>#{{ $rental->id }} - {{ $rental->customer_name }}</strong>
+                                    <small>{{ $rental->product->name ?? 'Product N/A' }} | Due {{ optional($rental->end_date)->format('d M Y') }}</small>
+                                    <small>{{ $rental->phone ?: 'No phone' }}</small>
+                                    <div class="dashboard-queue-actions">
+                                        <a href="{{ route('rentals.show', $rental) }}">Open</a>
+                                        @if($rental->phone)
+                                            <a href="tel:{{ preg_replace('/\s+/', '', $rental->phone) }}">Call</a>
+                                        @endif
+                                    </div>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                @else
+                    <div class="rx-empty dashboard-empty">
+                        <div class="rx-empty-icon">{!! $dashboardIcon('overdue') !!}</div>
+                        <strong>No critical follow-ups</strong>
+                        <span>No critical rentals are waiting in this filter set.</span>
+                    </div>
+                @endif
+            </div>
+        </div>
+
+        <div class="rx-card dashboard-queue-card">
+            <div class="rx-card-header">
+                <div>
+                    <h2 class="rx-card-title">Today Queue</h2>
+                    <p class="rx-card-copy">Returns due today and rentals closing today.</p>
+                </div>
+                <span class="rx-badge is-warning">{{ $todayQueue->count() }}</span>
+            </div>
+            <div class="rx-card-body">
+                @if($todayQueue->isNotEmpty())
+                    <div class="dashboard-queue-list">
+                        @foreach($todayQueue as $rental)
+                            <div class="dashboard-queue-item">
+                                <div>
+                                    <strong>#{{ $rental->id }} - {{ $rental->customer_name }}</strong>
+                                    <small>{{ $rental->product->name ?? 'Product N/A' }} | Due {{ optional($rental->end_date)->format('d M Y') }}</small>
+                                    <small>{{ $rental->phone ?: 'No phone' }}</small>
+                                    <div class="dashboard-queue-actions">
+                                        <a href="{{ route('rentals.show', $rental) }}">Open</a>
+                                        @if($rental->phone)
+                                            <a href="tel:{{ preg_replace('/\s+/', '', $rental->phone) }}">Call</a>
+                                        @endif
+                                    </div>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                @else
+                    <div class="rx-empty dashboard-empty">
+                        <div class="rx-empty-icon">{!! $dashboardIcon('pickup') !!}</div>
+                        <strong>No same-day follow-ups</strong>
+                        <span>No returns or same-day closures are waiting in this view.</span>
+                    </div>
+                @endif
+            </div>
+        </div>
+
+        <div class="rx-card dashboard-queue-card">
+            <div class="rx-card-header">
+                <div>
+                    <h2 class="rx-card-title">This Week</h2>
+                    <p class="rx-card-copy">Upcoming rental closures that should not age into risk.</p>
+                </div>
+                <span class="rx-badge is-info">{{ $weekQueue->count() }}</span>
+            </div>
+            <div class="rx-card-body">
+                @if($weekQueue->isNotEmpty())
+                    <div class="dashboard-queue-list">
+                        @foreach($weekQueue as $rental)
+                            <div class="dashboard-queue-item">
+                                <div>
+                                    <strong>#{{ $rental->id }} - {{ $rental->customer_name }}</strong>
+                                    <small>{{ $rental->product->name ?? 'Product N/A' }} | Due {{ optional($rental->end_date)->format('d M Y') }}</small>
+                                    <small>{{ $rental->phone ?: 'No phone' }}</small>
+                                    <div class="dashboard-queue-actions">
+                                        <a href="{{ route('rentals.show', $rental) }}">Open</a>
+                                        @if($rental->phone)
+                                            <a href="tel:{{ preg_replace('/\s+/', '', $rental->phone) }}">Call</a>
+                                        @endif
+                                    </div>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                @else
+                    <div class="rx-empty dashboard-empty">
+                        <div class="rx-empty-icon">{!! $dashboardIcon('trend') !!}</div>
+                        <strong>No week-ahead queue</strong>
+                        <span>No upcoming closures need attention in this filter set.</span>
+                    </div>
+                @endif
+            </div>
+        </div>
+    </section>
+    @endunless
+
+    </section>
+    @endif
+    @if($dashboardTabs->has('revenue'))
+    <section data-dashboard-panel="revenue" id="phos-panel-revenue" role="tabpanel" aria-labelledby="phos-tab-revenue" @if($activeDashboardTab !== 'revenue') hidden @endif>
     @if($showFinanceSection || $showSalesOperationsSection)
         <section class="rx-card" id="sales-pulse-panel">
             @php
@@ -9973,177 +10587,127 @@
         </section>
     @endif
 
-    @if($primaryPriorityCards->isNotEmpty())
-        <section class="dashboard-main-grid" id="top-priority-panel">
-        <div class="rx-card">
+    <section class="dashboard-trend-layout">
+        <div class="rx-card dashboard-trend-card">
             <div class="rx-card-header">
                 <div>
-                    <h2 class="rx-card-title">Top Priority</h2>
-                    <p class="rx-card-copy">Immediate risks and action queues.</p>
+                    <h2 class="rx-card-title">Sales vs Rentals Last 6 Months</h2>
+                    <p class="rx-card-copy">Compact comparative trend for commercial and rental direction.</p>
                 </div>
             </div>
             <div class="rx-card-body">
-                <div class="dashboard-priority-grid">
-                    @foreach($primaryPriorityCards as $card)
-                        @php $tag = !empty($card['href']) ? 'a' : 'div'; @endphp
-                        <{{ $tag }} @if(!empty($card['href'])) href="{{ $card['href'] }}" @endif class="dashboard-priority-card {{ $toneCardClass($card['tone'] ?? null) }}">
-                            <div class="dashboard-card-head">
-                                <span class="dashboard-card-label">{{ $card['label'] }}</span>
-                                <span class="dashboard-card-icon">{!! $dashboardIcon($card['icon']) !!}</span>
-                            </div>
-                            <div class="dashboard-card-value">{{ $card['value'] }}</div>
-                            <div class="dashboard-card-subtitle">{{ $card['subtitle'] }}</div>
-                            <div class="dashboard-card-note">{{ $card['note'] }}</div>
-                        </{{ $tag }}>
-                    @endforeach
-                </div>
-            </div>
-        </div>
-    </section>
-    @endif
-
-    @if($actionItems->isNotEmpty())
-    <section class="dashboard-action-layout" id="today-action-panel">
-        <div class="rx-card">
-            <div class="rx-card-header">
-                <div>
-                    <h2 class="rx-card-title">Today Action Panel</h2>
-                    <p class="rx-card-copy">Keep the field and finance queues visible without jumping across modules.</p>
-                </div>
-            </div>
-            <div class="rx-card-body">
-                <div class="dashboard-priority-grid">
-                    @foreach($actionItems as $item)
-                        @php $tag = !empty($item['href']) ? 'a' : 'div'; @endphp
-                        <{{ $tag }} @if(!empty($item['href'])) href="{{ $item['href'] }}" @endif class="dashboard-action-card {{ $toneCardClass($item['tone'] ?? null) }}">
-                            <div class="dashboard-action-top">
-                                <div>
-                                    <strong class="dashboard-overview-head">{{ $item['label'] }}</strong>
-                                    <p class="dashboard-overview-copy">{{ $item['copy'] }}</p>
-                                </div>
-                                <span class="dashboard-compact-chip">{{ number_format((int) $item['count']) }}</span>
-                            </div>
-                            <span class="dashboard-card-icon">{!! $dashboardIcon($item['icon']) !!}</span>
-                        </{{ $tag }}>
-                    @endforeach
-                </div>
-            </div>
-        </div>
-    </section>
-    @endif
-
-    @if($deliveryMiniTiles->isNotEmpty())
-    <section class="rx-card" id="logistics-board-panel">
-        <div class="rx-card">
-            <div class="rx-card-header">
-                <div>
-                    <h2 class="rx-card-title">Logistics Board</h2>
-                    <p class="rx-card-copy">Delivery and pickup flow in one compact row.</p>
-                </div>
-            </div>
-            <div class="rx-card-body">
-                <div class="dashboard-logistics-grid">
-                    @foreach($deliveryMiniTiles as $tile)
-                        @php $tag = !empty($tile['href']) ? 'a' : 'div'; @endphp
-                        <{{ $tag }} @if(!empty($tile['href'])) href="{{ $tile['href'] }}" @endif class="dashboard-logistics-card {{ $toneCardClass($tile['tone'] ?? null) }}">
-                            <div class="dashboard-card-head">
-                                <span class="dashboard-logistics-label">{{ $tile['label'] }}</span>
-                                <span class="dashboard-card-icon">{!! $dashboardIcon($tile['icon']) !!}</span>
-                            </div>
-                            <div class="dashboard-card-value">{{ $tile['value'] }}</div>
-                        </{{ $tag }}>
-                    @endforeach
-                </div>
-            </div>
-        </div>
-    </section>
-    @endif
-
-    @if(false && $renewalMiniTiles->isNotEmpty())
-        <section class="rx-card" id="renewal-center-panel">
-            <div class="rx-card-header">
-                <div>
-                    <h2 class="rx-card-title">Renewal Center</h2>
-                    <p class="rx-card-copy">Due, overdue, and pickup-follow-up renewals in one operational queue.</p>
-                </div>
-                <a href="{{ route('renewal-center.index') }}" class="rx-btn-secondary">Open Renewal Center</a>
-            </div>
-            <div class="rx-card-body">
-                <div class="dashboard-logistics-grid">
-                    @foreach($renewalMiniTiles as $tile)
-                        @php $tag = !empty($tile['href']) ? 'a' : 'div'; @endphp
-                        <{{ $tag }} @if(!empty($tile['href'])) href="{{ $tile['href'] }}" @endif class="dashboard-logistics-card {{ $toneCardClass($tile['tone'] ?? null) }}">
-                            <div class="dashboard-card-head">
-                                <span class="dashboard-logistics-label">{{ $tile['label'] }}</span>
-                                <span class="dashboard-card-icon">{!! $dashboardIcon($tile['icon']) !!}</span>
-                            </div>
-                            <div class="dashboard-card-value">{{ $tile['value'] }}</div>
-                        </{{ $tag }}>
-                    @endforeach
-                </div>
-            </div>
-        </section>
-    @endif
-
-    @if(false && $pickupCenterMiniTiles->isNotEmpty())
-        <section class="rx-card" id="pickup-center-panel">
-            <div class="rx-card-header">
-                <div>
-                    <h2 class="rx-card-title">Pickup Center</h2>
-                    <p class="rx-card-copy">Operational pickup queue for today, overdue collections, failed attempts, and return-verification handoff.</p>
-                </div>
-                <a href="{{ route('pickup-center.index') }}" class="rx-btn-secondary">Open Pickup Center</a>
-            </div>
-            <div class="rx-card-body">
-                <div class="dashboard-logistics-grid">
-                    @foreach($pickupCenterMiniTiles as $tile)
-                        @php $tag = !empty($tile['href']) ? 'a' : 'div'; @endphp
-                        <{{ $tag }} @if(!empty($tile['href'])) href="{{ $tile['href'] }}" @endif class="dashboard-logistics-card {{ $toneCardClass($tile['tone'] ?? null) }}">
-                            <div class="dashboard-card-head">
-                                <span class="dashboard-logistics-label">{{ $tile['label'] }}</span>
-                                <span class="dashboard-card-icon">{!! $dashboardIcon($tile['icon']) !!}</span>
-                            </div>
-                            <div class="dashboard-card-value">{{ $tile['value'] }}</div>
-                        </{{ $tag }}>
-                    @endforeach
-                </div>
-            </div>
-        </section>
-    @endif
-
-    @if(false && $communicationMiniTiles->isNotEmpty())
-        <section class="rx-card" id="communication-center-panel">
-            <div class="rx-card-header">
-                <div>
-                    <h2 class="rx-card-title">Communication Center</h2>
-                    <p class="rx-card-copy">Due, overdue, and coordination follow-ups across renewals, payments, deliveries, and pickups.</p>
-                </div>
-                <a href="{{ route('communication-center.index') }}" class="rx-btn-secondary">Open Communication Center</a>
-            </div>
-            <div class="rx-card-body">
-                <div class="dashboard-logistics-grid">
-                    @foreach($communicationMiniTiles as $tile)
-                        @php $tag = !empty($tile['href']) ? 'a' : 'div'; @endphp
-                        <{{ $tag }} @if(!empty($tile['href'])) href="{{ $tile['href'] }}" @endif class="dashboard-logistics-card {{ $toneCardClass($tile['tone'] ?? null) }}">
-                            <div class="dashboard-card-head">
-                                <span class="dashboard-logistics-label">{{ $tile['label'] }}</span>
-                                <span class="dashboard-card-icon">{!! $dashboardIcon($tile['icon']) !!}</span>
-                            </div>
-                            <div class="dashboard-card-value">{{ $tile['value'] }}</div>
-                        </{{ $tag }}>
-                    @endforeach
-                </div>
-            </div>
-        </section>
-    @endif
-
+                @if($monthlyTrendRows->isNotEmpty())
+                    @php
+                        $ordersTrendMax = max(array_merge([1], $monthlyTrendRows->pluck('total_orders')->map(fn ($value) => (float) $value)->all()));
+                    @endphp
+                    <div class="dashboard-trend-legend" aria-label="Sales vs rentals legend">
+                        <span class="dashboard-trend-legend-item"><span class="dashboard-trend-legend-swatch is-rental"></span>Rental Revenue</span>
+                        <span class="dashboard-trend-legend-item"><span class="dashboard-trend-legend-swatch is-sales"></span>Sales Revenue</span>
+                        <span class="dashboard-trend-legend-item"><span class="dashboard-trend-legend-swatch is-orders"></span>Total Orders</span>
                     </div>
-                </details>
+                    <div class="dashboard-trend-vertical">
+                        @foreach($monthlyTrendRows as $row)
+                            <div class="dashboard-trend-column">
+                                <div class="dashboard-trend-bars">
+                                    <div class="dashboard-trend-bar-wrap">
+                                        <div class="dashboard-trend-bar-head">
+                                            <span class="dashboard-trend-bar-value">{{ $compactCurrency($row['rental_total'] ?? 0) }}</span>
+                                            <span class="dashboard-trend-bar-topline" aria-hidden="true"></span>
+                                        </div>
+                                        <div class="dashboard-trend-bar is-rental" style="height:{{ max(8, round((((float) ($row['rental_total'] ?? 0)) / max($trendMax, 1)) * 104, 1)) }}px;"></div>
+                                        <span class="dashboard-trend-bar-label">R</span>
+                                    </div>
+                                    <div class="dashboard-trend-bar-wrap">
+                                        <div class="dashboard-trend-bar-head">
+                                            <span class="dashboard-trend-bar-value">{{ $compactCurrency($row['sales_total'] ?? 0) }}</span>
+                                            <span class="dashboard-trend-bar-topline" aria-hidden="true"></span>
+                                        </div>
+                                        <div class="dashboard-trend-bar is-sales" style="height:{{ max(8, round((((float) ($row['sales_total'] ?? 0)) / max($trendMax, 1)) * 104, 1)) }}px;"></div>
+                                        <span class="dashboard-trend-bar-label">S</span>
+                                    </div>
+                                    <div class="dashboard-trend-bar-wrap">
+                                        <div class="dashboard-trend-bar-head">
+                                            <span class="dashboard-trend-bar-value">{{ number_format((int) ($row['total_orders'] ?? 0)) }}</span>
+                                            <span class="dashboard-trend-bar-meta">orders</span>
+                                            <span class="dashboard-trend-bar-topline" aria-hidden="true"></span>
+                                        </div>
+                                        <div class="dashboard-trend-bar is-orders" style="height:{{ max(8, round((((float) ($row['total_orders'] ?? 0)) / max($ordersTrendMax, 1)) * 104, 1)) }}px;"></div>
+                                        <span class="dashboard-trend-bar-label">O</span>
+                                    </div>
+                                </div>
+                                <div class="dashboard-trend-month">{{ \Illuminate\Support\Str::replace(' 2026', '', $row['label'] ?? '-') }}</div>
+                            </div>
+                        @endforeach
+                    </div>
+                @else
+                    <div class="rx-empty dashboard-empty">
+                        <div class="rx-empty-icon">{!! $dashboardIcon('trend') !!}</div>
+                        <strong>No trend data</strong>
+                        <span>The dashboard does not have six-month trend data for this filter window.</span>
+                    </div>
+                @endif
+            </div>
+        </div>
+
+        <div class="rx-card dashboard-trend-card">
+            <div class="rx-card-header">
+                <div>
+                    <h2 class="rx-card-title">Business Direction</h2>
+                    <p class="rx-card-copy">Supporting signals around stock, service pressure, and collections.</p>
+                </div>
+            </div>
+            <div class="rx-card-body">
+                <div class="dashboard-overview-list">
+                    <div class="dashboard-inline-item">
+                        <div>
+                            <strong>Payments Today</strong>
+                            <small>Collection pulse inside this filter window</small>
+                        </div>
+                        <div style="text-align:right;">
+                            <strong>{{ $currency($paymentsReceivedTodayAmount) }}</strong>
+                            @if($reportsIndexUrl)
+                                <small><a href="{{ $reportsIndexUrl }}" style="color:var(--ph-color-primary);text-decoration:none;">Open reports</a></small>
+                            @endif
+                        </div>
+                    </div>
+                    <div class="dashboard-inline-item">
+                        <div>
+                            <strong>Invoice Pressure</strong>
+                            <small>Open unpaid and overdue invoice mix</small>
+                        </div>
+                        <div style="text-align:right;">
+                            <strong>{{ $openInvoiceCountValue }}</strong>
+                            <small>{{ $overdueInvoiceCountValue }} overdue now</small>
+                        </div>
+                    </div>
+                    <div class="dashboard-inline-item">
+                        <div>
+                            <strong>Rental Lifecycle</strong>
+                            <small>Active {{ $lifecycleActivePercent }}% | Pending delivery {{ $lifecyclePendingDeliveryPercent }}%</small>
+                        </div>
+                        <div style="text-align:right;">
+                            <strong>{{ $returnedPercent }}%</strong>
+                            <small>Returned mix</small>
+                        </div>
+                    </div>
+                    <div class="dashboard-inline-item">
+                        <div>
+                            <strong>Delivered Base</strong>
+                            <small>Delivered {{ $deliveredPercent }}% | Overdue {{ $overduePercent }}%</small>
+                        </div>
+                        <div style="text-align:right;">
+                            <strong>{{ $deliveriesTodayCount }}</strong>
+                            <small>today</small>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </section>
-
-
+    </section>
+    @endif
+    @if($dashboardTabs->has('inventory'))
+    <section data-dashboard-panel="inventory" id="phos-panel-inventory" role="tabpanel" aria-labelledby="phos-tab-inventory" @if($activeDashboardTab !== 'inventory') hidden @endif>
     @if($showInventorySection)
     <section class="rx-card" id="inventory-center-panel">
         <div class="rx-card-header dashboard-section-heading">
@@ -10555,183 +11119,113 @@
     @endif
 
 
-    @if($showExpandedStaffOpsSection)
-    <section class="dashboard-insight-grid" id="staff-ops">
-        @if($showExpandedStaffWorkloadSection)
-        <div class="rx-card dashboard-feed-card">
+    @if($showOrganizationAnalyticsSection && !$showInventorySection)
+    <section class="dashboard-rank-grid">
+        <div class="rx-card dashboard-rank-card">
             <div class="rx-card-header">
                 <div>
-                    <h2 class="rx-card-title">Staff Workload</h2>
-                    <p class="rx-card-copy">Who is overloaded, balanced, or light across deliveries, pickups, and follow-ups.</p>
+                    <h2 class="rx-card-title">Top Cities</h2>
+                    <p class="rx-card-copy">Best rental value concentration by city.</p>
                 </div>
             </div>
             <div class="rx-card-body">
-                @if($staffWorkloadSummary->isNotEmpty())
-                    <div class="dashboard-feed-list">
-                        @foreach($staffWorkloadSummary as $row)
-                            <div class="dashboard-feed-item">
-                                <div class="dashboard-feed-title">
-                                    <strong>{{ $row['name'] }}</strong>
-                                    <span class="dashboard-role-chip">{{ $row['load_state'] }}</span>
+                @if($citySummaryRows->isNotEmpty())
+                    <div class="dashboard-rank-list">
+                        @foreach($citySummaryRows as $row)
+                            <a href="{{ $mergeDashboardQuery('rentals.index', ['city' => ($row['label'] ?? null) !== 'Unspecified' ? ($row['label'] ?? null) : null]) }}" class="dashboard-rank-link">
+                                <div class="dashboard-rank-head">
+                                    <div>
+                                        <strong class="dashboard-rank-title">{{ $row['label'] ?? 'Unknown' }}</strong>
+                                        <span>{{ (int) ($row['count'] ?? 0) }} rentals</span>
+                                    </div>
+                                    <span class="dashboard-rank-title">{{ $currency($row['total_amount'] ?? 0) }}</span>
                                 </div>
-                                <span>{{ $row['delivery_count'] }} deliveries  /  {{ $row['pickup_count'] }} pickups  /  {{ $row['followup_count'] }} follow-ups</span>
-                                <small>{{ $row['overdue_count'] }} overdue  /  {{ \Illuminate\Support\Str::headline((string) ($row['role'] ?? 'team')) }}</small>
-                            </div>
+                                <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['total_amount'] ?? 0)) / $cityBreakdownMax) * 100, 1) }}%;background:var(--ph-color-primary);"></div></div>
+                            </a>
                         @endforeach
                     </div>
                 @else
                     <div class="rx-empty dashboard-empty">
-                        <div class="rx-empty-icon">{!! $dashboardIcon('customer') !!}</div>
-                        <strong>No staff workload data</strong>
-                        <span>Assignments will appear here as soon as work is distributed.</span>
+                        <div class="rx-empty-icon">{!! $dashboardIcon('city') !!}</div>
+                        <strong>No city performance data</strong>
+                        <span>This view does not currently surface city rankings.</span>
                     </div>
                 @endif
             </div>
         </div>
-        @endif
 
-        @if($showExpandedBusinessSignalsSection)
-        <div class="rx-card dashboard-feed-card">
+        <div class="rx-card dashboard-rank-card">
             <div class="rx-card-header">
                 <div>
-                    <h2 class="rx-card-title">Business Partner Signals</h2>
-                    <p class="rx-card-copy">Partner workload, open rentals, and renewal or payment pressure.</p>
+                    <h2 class="rx-card-title">Top Vendors</h2>
+                    <p class="rx-card-copy">Assigned vendor or field staff impact.</p>
                 </div>
-                @if($newBusinessPartnerUrl)
-                    <a href="{{ $newBusinessPartnerUrl }}" class="rx-btn-secondary">Add Business Partner</a>
-                @endif
             </div>
             <div class="rx-card-body">
-                @if($partnerOperationalSummary->isNotEmpty())
-                    <div class="dashboard-feed-list">
-                        @foreach($partnerOperationalSummaryVisible as $partner)
-                            <div class="dashboard-feed-item">
-                                <div class="dashboard-feed-title">
-                                    <strong>{{ $partner['name'] }}</strong>
-                                    <span class="dashboard-role-chip">{{ $partner['active_clients_count'] }} clients</span>
+                @if($vendorSummaryRows->isNotEmpty())
+                    <div class="dashboard-rank-list">
+                        @foreach($vendorSummaryRows as $row)
+                            <a href="{{ $mergeDashboardQuery('rentals.index', ['vendor_id' => $row['vendor_id'] ?? null]) }}" class="dashboard-rank-link">
+                                <div class="dashboard-rank-head">
+                                    <div>
+                                        <strong class="dashboard-rank-title">{{ $row['label'] ?? 'Unknown' }}</strong>
+                                        <span>{{ (int) ($row['count'] ?? 0) }} rentals</span>
+                                    </div>
+                                    <span class="dashboard-rank-title">{{ $currency($row['total_amount'] ?? 0) }}</span>
                                 </div>
-                                <span>{{ $partner['open_rentals_count'] }} open rentals  /  {{ $partner['active_sales_count'] }} sales</span>
-                                <small>{{ $partner['renewal_followups_count'] }} renewal follow-ups  /  {{ $partner['payment_followups_count'] }} payment follow-ups</small>
-                                <div class="dashboard-feed-links">
-                                    <a href="{{ route('business-partners.show', $partner['id']) }}">Open</a>
-                                    @if(!empty($partner['phone']))
-                                        <a href="tel:{{ preg_replace('/\s+/', '', (string) $partner['phone']) }}">Call</a>
-                                    @endif
-                                </div>
-                            </div>
+                                <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['total_amount'] ?? 0)) / $vendorBreakdownMax) * 100, 1) }}%;background:var(--ph-color-success);"></div></div>
+                            </a>
                         @endforeach
-                        @if($partnerOperationalSummaryHidden->isNotEmpty())
-                            <details class="dashboard-expandable">
-                                <summary class="dashboard-expandable-summary">Show {{ $partnerOperationalSummaryHidden->count() }} more</summary>
-                                <div class="dashboard-expandable-content">
-                                    @foreach($partnerOperationalSummaryHidden as $partner)
-                                        <div class="dashboard-feed-item">
-                                            <div class="dashboard-feed-title">
-                                                <strong>{{ $partner['name'] }}</strong>
-                                                <span class="dashboard-role-chip">{{ $partner['active_clients_count'] }} clients</span>
-                                            </div>
-                                            <span>{{ $partner['open_rentals_count'] }} open rentals  /  {{ $partner['active_sales_count'] }} sales</span>
-                                            <small>{{ $partner['renewal_followups_count'] }} renewal follow-ups  /  {{ $partner['payment_followups_count'] }} payment follow-ups</small>
-                                            <div class="dashboard-feed-links">
-                                                <a href="{{ route('business-partners.show', $partner['id']) }}">Open</a>
-                                                @if(!empty($partner['phone']))
-                                                    <a href="tel:{{ preg_replace('/\s+/', '', (string) $partner['phone']) }}">Call</a>
-                                                @endif
-                                            </div>
-                                        </div>
-                                    @endforeach
-                                </div>
-                            </details>
-                        @endif
                     </div>
                 @else
                     <div class="rx-empty dashboard-empty">
-                        <div class="rx-empty-icon">{!! $dashboardIcon('customer') !!}</div>
-                        <strong>No partner pressure signals</strong>
-                        <span>Partner-linked renewals and payments will surface here automatically.</span>
+                        <div class="rx-empty-icon">{!! $dashboardIcon('vendor') !!}</div>
+                        <strong>No vendor performance data</strong>
+                        <span>This role or filter currently has no vendor ranking data.</span>
                     </div>
                 @endif
             </div>
         </div>
-        @endif
 
-        @if(false && $showExpandedInventorySection)
-        <div class="rx-card dashboard-feed-card">
+        <div class="rx-card dashboard-rank-card">
             <div class="rx-card-header">
                 <div>
-                    <h2 class="rx-card-title">Inventory Intelligence</h2>
-                    <p class="rx-card-copy">Low stock, highly utilized, and idle inventory without needing a full stock report.</p>
+                    <h2 class="rx-card-title">Top Warehouses</h2>
+                    <p class="rx-card-copy">Dispatch source strength by contribution.</p>
                 </div>
-                @if($productsIndexUrl)
-                    <a href="{{ $productsIndexUrl }}" class="rx-btn-secondary">Open Product Master</a>
-                @endif
             </div>
             <div class="rx-card-body">
-                <div class="dashboard-feed-list">
-                    <div class="dashboard-feed-item">
-                        <div class="dashboard-feed-meta">
-                            <strong>Low stock alerts</strong>
-                            <em>{{ $lowStockSummary->count() }}</em>
-                        </div>
-                        @if($lowStockSummaryVisible->isNotEmpty())
-                            <small>{{ $lowStockSummaryVisible->map(fn ($product) => $product->name . ' (' . $product->available_quantity . '/' . $product->total_quantity . ')')->implode(', ') }}</small>
-                            @if($lowStockSummaryHidden->isNotEmpty())
-                                <details class="dashboard-expandable">
-                                    <summary class="dashboard-expandable-summary">Show {{ $lowStockSummaryHidden->count() }} more</summary>
-                                    <div class="dashboard-expandable-content">
-                                        <small>{{ $lowStockSummaryHidden->map(fn ($product) => $product->name . ' (' . $product->available_quantity . '/' . $product->total_quantity . ')')->implode(', ') }}</small>
+                @if($warehouseSummaryRows->isNotEmpty())
+                    <div class="dashboard-rank-list">
+                        @foreach($warehouseSummaryRows as $row)
+                            <a href="{{ $mergeDashboardQuery('rentals.index', ['dispatch_warehouse_id' => $row['warehouse_id'] ?? null]) }}" class="dashboard-rank-link">
+                                <div class="dashboard-rank-head">
+                                    <div>
+                                        <strong class="dashboard-rank-title">{{ $row['label'] ?? 'Unknown' }}</strong>
+                                        <span>{{ (int) ($row['count'] ?? 0) }} rentals</span>
                                     </div>
-                                </details>
-                            @endif
-                        @else
-                            <small>No immediate low-stock pressure.</small>
-                        @endif
+                                    <span class="dashboard-rank-title">{{ $currency($row['total_amount'] ?? 0) }}</span>
+                                </div>
+                                <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['total_amount'] ?? 0)) / $warehouseBreakdownMax) * 100, 1) }}%;background:var(--ph-color-warning);"></div></div>
+                            </a>
+                        @endforeach
                     </div>
-                    <div class="dashboard-feed-item">
-                        <div class="dashboard-feed-meta">
-                            <strong>High utilization</strong>
-                            <em>{{ $highUtilizationSummary->count() }}</em>
-                        </div>
-                        @if($highUtilizationSummaryVisible->isNotEmpty())
-                            <small>{{ $highUtilizationSummaryVisible->map(fn ($product) => $product->name . ' (' . max(0, (int) $product->total_quantity - (int) $product->available_quantity) . '/' . $product->total_quantity . ' out)')->implode(', ') }}</small>
-                            @if($highUtilizationSummaryHidden->isNotEmpty())
-                                <details class="dashboard-expandable">
-                                    <summary class="dashboard-expandable-summary">Show {{ $highUtilizationSummaryHidden->count() }} more</summary>
-                                    <div class="dashboard-expandable-content">
-                                        <small>{{ $highUtilizationSummaryHidden->map(fn ($product) => $product->name . ' (' . max(0, (int) $product->total_quantity - (int) $product->available_quantity) . '/' . $product->total_quantity . ' out)')->implode(', ') }}</small>
-                                    </div>
-                                </details>
-                            @endif
-                        @else
-                            <small>No high-utilization products flagged right now.</small>
-                        @endif
+                @else
+                    <div class="rx-empty dashboard-empty">
+                        <div class="rx-empty-icon">{!! $dashboardIcon('warehouse') !!}</div>
+                        <strong>No warehouse-linked data</strong>
+                        <span>No warehouse performance information is available for this window.</span>
                     </div>
-                    <div class="dashboard-feed-item">
-                        <div class="dashboard-feed-meta">
-                            <strong>Idle inventory</strong>
-                            <em>{{ $idleInventorySummary->count() }}</em>
-                        </div>
-                        @if($idleInventorySummaryVisible->isNotEmpty())
-                            <small>{{ $idleInventorySummaryVisible->map(fn ($product) => $product->name . ' (' . $product->available_quantity . ' available)')->implode(', ') }}</small>
-                            @if($idleInventorySummaryHidden->isNotEmpty())
-                                <details class="dashboard-expandable">
-                                    <summary class="dashboard-expandable-summary">Show {{ $idleInventorySummaryHidden->count() }} more</summary>
-                                    <div class="dashboard-expandable-content">
-                                        <small>{{ $idleInventorySummaryHidden->map(fn ($product) => $product->name . ' (' . $product->available_quantity . ' available)')->implode(', ') }}</small>
-                                    </div>
-                                </details>
-                            @endif
-                        @else
-                            <small>No idle stock signals at the moment.</small>
-                        @endif
-                    </div>
-                </div>
+                @endif
             </div>
         </div>
-        @endif
     </section>
     @endif
 
+    </section>
+    @endif
+    @if($dashboardTabs->has('activity'))
+    <section data-dashboard-panel="activity" id="phos-panel-activity" role="tabpanel" aria-labelledby="phos-tab-activity" @if($activeDashboardTab !== 'activity') hidden @endif>
     <details class="rx-card activity-control-shell" id="recent-ops">
         <summary class="rx-card-header dashboard-section-heading activity-control-header">
             <div>
@@ -11322,341 +11816,8 @@
     </section>
     @endunless
 
-    @if($showOrganizationAnalyticsSection && !$showInventorySection)
-    <section class="dashboard-rank-grid">
-        <div class="rx-card dashboard-rank-card">
-            <div class="rx-card-header">
-                <div>
-                    <h2 class="rx-card-title">Top Cities</h2>
-                    <p class="rx-card-copy">Best rental value concentration by city.</p>
-                </div>
-            </div>
-            <div class="rx-card-body">
-                @if($citySummaryRows->isNotEmpty())
-                    <div class="dashboard-rank-list">
-                        @foreach($citySummaryRows as $row)
-                            <a href="{{ $mergeDashboardQuery('rentals.index', ['city' => ($row['label'] ?? null) !== 'Unspecified' ? ($row['label'] ?? null) : null]) }}" class="dashboard-rank-link">
-                                <div class="dashboard-rank-head">
-                                    <div>
-                                        <strong class="dashboard-rank-title">{{ $row['label'] ?? 'Unknown' }}</strong>
-                                        <span>{{ (int) ($row['count'] ?? 0) }} rentals</span>
-                                    </div>
-                                    <span class="dashboard-rank-title">{{ $currency($row['total_amount'] ?? 0) }}</span>
-                                </div>
-                                <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['total_amount'] ?? 0)) / $cityBreakdownMax) * 100, 1) }}%;background:var(--ph-color-primary);"></div></div>
-                            </a>
-                        @endforeach
-                    </div>
-                @else
-                    <div class="rx-empty dashboard-empty">
-                        <div class="rx-empty-icon">{!! $dashboardIcon('city') !!}</div>
-                        <strong>No city performance data</strong>
-                        <span>This view does not currently surface city rankings.</span>
-                    </div>
-                @endif
-            </div>
-        </div>
-
-        <div class="rx-card dashboard-rank-card">
-            <div class="rx-card-header">
-                <div>
-                    <h2 class="rx-card-title">Top Vendors</h2>
-                    <p class="rx-card-copy">Assigned vendor or field staff impact.</p>
-                </div>
-            </div>
-            <div class="rx-card-body">
-                @if($vendorSummaryRows->isNotEmpty())
-                    <div class="dashboard-rank-list">
-                        @foreach($vendorSummaryRows as $row)
-                            <a href="{{ $mergeDashboardQuery('rentals.index', ['vendor_id' => $row['vendor_id'] ?? null]) }}" class="dashboard-rank-link">
-                                <div class="dashboard-rank-head">
-                                    <div>
-                                        <strong class="dashboard-rank-title">{{ $row['label'] ?? 'Unknown' }}</strong>
-                                        <span>{{ (int) ($row['count'] ?? 0) }} rentals</span>
-                                    </div>
-                                    <span class="dashboard-rank-title">{{ $currency($row['total_amount'] ?? 0) }}</span>
-                                </div>
-                                <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['total_amount'] ?? 0)) / $vendorBreakdownMax) * 100, 1) }}%;background:var(--ph-color-success);"></div></div>
-                            </a>
-                        @endforeach
-                    </div>
-                @else
-                    <div class="rx-empty dashboard-empty">
-                        <div class="rx-empty-icon">{!! $dashboardIcon('vendor') !!}</div>
-                        <strong>No vendor performance data</strong>
-                        <span>This role or filter currently has no vendor ranking data.</span>
-                    </div>
-                @endif
-            </div>
-        </div>
-
-        <div class="rx-card dashboard-rank-card">
-            <div class="rx-card-header">
-                <div>
-                    <h2 class="rx-card-title">Top Warehouses</h2>
-                    <p class="rx-card-copy">Dispatch source strength by contribution.</p>
-                </div>
-            </div>
-            <div class="rx-card-body">
-                @if($warehouseSummaryRows->isNotEmpty())
-                    <div class="dashboard-rank-list">
-                        @foreach($warehouseSummaryRows as $row)
-                            <a href="{{ $mergeDashboardQuery('rentals.index', ['dispatch_warehouse_id' => $row['warehouse_id'] ?? null]) }}" class="dashboard-rank-link">
-                                <div class="dashboard-rank-head">
-                                    <div>
-                                        <strong class="dashboard-rank-title">{{ $row['label'] ?? 'Unknown' }}</strong>
-                                        <span>{{ (int) ($row['count'] ?? 0) }} rentals</span>
-                                    </div>
-                                    <span class="dashboard-rank-title">{{ $currency($row['total_amount'] ?? 0) }}</span>
-                                </div>
-                                <div class="dashboard-bar-track"><div class="dashboard-bar-fill" style="width:{{ round((((float) ($row['total_amount'] ?? 0)) / $warehouseBreakdownMax) * 100, 1) }}%;background:var(--ph-color-warning);"></div></div>
-                            </a>
-                        @endforeach
-                    </div>
-                @else
-                    <div class="rx-empty dashboard-empty">
-                        <div class="rx-empty-icon">{!! $dashboardIcon('warehouse') !!}</div>
-                        <strong>No warehouse-linked data</strong>
-                        <span>No warehouse performance information is available for this window.</span>
-                    </div>
-                @endif
-            </div>
-        </div>
     </section>
     @endif
-
-    @unless($showExpandedStaffOpsSection)
-    <section class="dashboard-queue-grid">
-        <div class="rx-card dashboard-queue-card">
-            <div class="rx-card-header">
-                <div>
-                    <h2 class="rx-card-title">Critical Queue</h2>
-                    <p class="rx-card-copy">Overdue delivered rentals that need immediate recovery.</p>
-                </div>
-                <span class="rx-badge is-danger">{{ $criticalQueue->count() }}</span>
-            </div>
-            <div class="rx-card-body">
-                @if($criticalQueue->isNotEmpty())
-                    <div class="dashboard-queue-list">
-                        @foreach($criticalQueue as $rental)
-                            <div class="dashboard-queue-item">
-                                <div>
-                                    <strong>#{{ $rental->id }} - {{ $rental->customer_name }}</strong>
-                                    <small>{{ $rental->product->name ?? 'Product N/A' }} | Due {{ optional($rental->end_date)->format('d M Y') }}</small>
-                                    <small>{{ $rental->phone ?: 'No phone' }}</small>
-                                    <div class="dashboard-queue-actions">
-                                        <a href="{{ route('rentals.show', $rental) }}">Open</a>
-                                        @if($rental->phone)
-                                            <a href="tel:{{ preg_replace('/\s+/', '', $rental->phone) }}">Call</a>
-                                        @endif
-                                    </div>
-                                </div>
-                            </div>
-                        @endforeach
-                    </div>
-                @else
-                    <div class="rx-empty dashboard-empty">
-                        <div class="rx-empty-icon">{!! $dashboardIcon('overdue') !!}</div>
-                        <strong>No critical follow-ups</strong>
-                        <span>No critical rentals are waiting in this filter set.</span>
-                    </div>
-                @endif
-            </div>
-        </div>
-
-        <div class="rx-card dashboard-queue-card">
-            <div class="rx-card-header">
-                <div>
-                    <h2 class="rx-card-title">Today Queue</h2>
-                    <p class="rx-card-copy">Returns due today and rentals closing today.</p>
-                </div>
-                <span class="rx-badge is-warning">{{ $todayQueue->count() }}</span>
-            </div>
-            <div class="rx-card-body">
-                @if($todayQueue->isNotEmpty())
-                    <div class="dashboard-queue-list">
-                        @foreach($todayQueue as $rental)
-                            <div class="dashboard-queue-item">
-                                <div>
-                                    <strong>#{{ $rental->id }} - {{ $rental->customer_name }}</strong>
-                                    <small>{{ $rental->product->name ?? 'Product N/A' }} | Due {{ optional($rental->end_date)->format('d M Y') }}</small>
-                                    <small>{{ $rental->phone ?: 'No phone' }}</small>
-                                    <div class="dashboard-queue-actions">
-                                        <a href="{{ route('rentals.show', $rental) }}">Open</a>
-                                        @if($rental->phone)
-                                            <a href="tel:{{ preg_replace('/\s+/', '', $rental->phone) }}">Call</a>
-                                        @endif
-                                    </div>
-                                </div>
-                            </div>
-                        @endforeach
-                    </div>
-                @else
-                    <div class="rx-empty dashboard-empty">
-                        <div class="rx-empty-icon">{!! $dashboardIcon('pickup') !!}</div>
-                        <strong>No same-day follow-ups</strong>
-                        <span>No returns or same-day closures are waiting in this view.</span>
-                    </div>
-                @endif
-            </div>
-        </div>
-
-        <div class="rx-card dashboard-queue-card">
-            <div class="rx-card-header">
-                <div>
-                    <h2 class="rx-card-title">This Week</h2>
-                    <p class="rx-card-copy">Upcoming rental closures that should not age into risk.</p>
-                </div>
-                <span class="rx-badge is-info">{{ $weekQueue->count() }}</span>
-            </div>
-            <div class="rx-card-body">
-                @if($weekQueue->isNotEmpty())
-                    <div class="dashboard-queue-list">
-                        @foreach($weekQueue as $rental)
-                            <div class="dashboard-queue-item">
-                                <div>
-                                    <strong>#{{ $rental->id }} - {{ $rental->customer_name }}</strong>
-                                    <small>{{ $rental->product->name ?? 'Product N/A' }} | Due {{ optional($rental->end_date)->format('d M Y') }}</small>
-                                    <small>{{ $rental->phone ?: 'No phone' }}</small>
-                                    <div class="dashboard-queue-actions">
-                                        <a href="{{ route('rentals.show', $rental) }}">Open</a>
-                                        @if($rental->phone)
-                                            <a href="tel:{{ preg_replace('/\s+/', '', $rental->phone) }}">Call</a>
-                                        @endif
-                                    </div>
-                                </div>
-                            </div>
-                        @endforeach
-                    </div>
-                @else
-                    <div class="rx-empty dashboard-empty">
-                        <div class="rx-empty-icon">{!! $dashboardIcon('trend') !!}</div>
-                        <strong>No week-ahead queue</strong>
-                        <span>No upcoming closures need attention in this filter set.</span>
-                    </div>
-                @endif
-            </div>
-        </div>
-    </section>
-    @endunless
-
-    <section class="dashboard-trend-layout">
-        <div class="rx-card dashboard-trend-card">
-            <div class="rx-card-header">
-                <div>
-                    <h2 class="rx-card-title">Sales vs Rentals Last 6 Months</h2>
-                    <p class="rx-card-copy">Compact comparative trend for commercial and rental direction.</p>
-                </div>
-            </div>
-            <div class="rx-card-body">
-                @if($monthlyTrendRows->isNotEmpty())
-                    @php
-                        $ordersTrendMax = max(array_merge([1], $monthlyTrendRows->pluck('total_orders')->map(fn ($value) => (float) $value)->all()));
-                    @endphp
-                    <div class="dashboard-trend-legend" aria-label="Sales vs rentals legend">
-                        <span class="dashboard-trend-legend-item"><span class="dashboard-trend-legend-swatch is-rental"></span>Rental Revenue</span>
-                        <span class="dashboard-trend-legend-item"><span class="dashboard-trend-legend-swatch is-sales"></span>Sales Revenue</span>
-                        <span class="dashboard-trend-legend-item"><span class="dashboard-trend-legend-swatch is-orders"></span>Total Orders</span>
-                    </div>
-                    <div class="dashboard-trend-vertical">
-                        @foreach($monthlyTrendRows as $row)
-                            <div class="dashboard-trend-column">
-                                <div class="dashboard-trend-bars">
-                                    <div class="dashboard-trend-bar-wrap">
-                                        <div class="dashboard-trend-bar-head">
-                                            <span class="dashboard-trend-bar-value">{{ $compactCurrency($row['rental_total'] ?? 0) }}</span>
-                                            <span class="dashboard-trend-bar-topline" aria-hidden="true"></span>
-                                        </div>
-                                        <div class="dashboard-trend-bar is-rental" style="height:{{ max(8, round((((float) ($row['rental_total'] ?? 0)) / max($trendMax, 1)) * 104, 1)) }}px;"></div>
-                                        <span class="dashboard-trend-bar-label">R</span>
-                                    </div>
-                                    <div class="dashboard-trend-bar-wrap">
-                                        <div class="dashboard-trend-bar-head">
-                                            <span class="dashboard-trend-bar-value">{{ $compactCurrency($row['sales_total'] ?? 0) }}</span>
-                                            <span class="dashboard-trend-bar-topline" aria-hidden="true"></span>
-                                        </div>
-                                        <div class="dashboard-trend-bar is-sales" style="height:{{ max(8, round((((float) ($row['sales_total'] ?? 0)) / max($trendMax, 1)) * 104, 1)) }}px;"></div>
-                                        <span class="dashboard-trend-bar-label">S</span>
-                                    </div>
-                                    <div class="dashboard-trend-bar-wrap">
-                                        <div class="dashboard-trend-bar-head">
-                                            <span class="dashboard-trend-bar-value">{{ number_format((int) ($row['total_orders'] ?? 0)) }}</span>
-                                            <span class="dashboard-trend-bar-meta">orders</span>
-                                            <span class="dashboard-trend-bar-topline" aria-hidden="true"></span>
-                                        </div>
-                                        <div class="dashboard-trend-bar is-orders" style="height:{{ max(8, round((((float) ($row['total_orders'] ?? 0)) / max($ordersTrendMax, 1)) * 104, 1)) }}px;"></div>
-                                        <span class="dashboard-trend-bar-label">O</span>
-                                    </div>
-                                </div>
-                                <div class="dashboard-trend-month">{{ \Illuminate\Support\Str::replace(' 2026', '', $row['label'] ?? '-') }}</div>
-                            </div>
-                        @endforeach
-                    </div>
-                @else
-                    <div class="rx-empty dashboard-empty">
-                        <div class="rx-empty-icon">{!! $dashboardIcon('trend') !!}</div>
-                        <strong>No trend data</strong>
-                        <span>The dashboard does not have six-month trend data for this filter window.</span>
-                    </div>
-                @endif
-            </div>
-        </div>
-
-        <div class="rx-card dashboard-trend-card">
-            <div class="rx-card-header">
-                <div>
-                    <h2 class="rx-card-title">Business Direction</h2>
-                    <p class="rx-card-copy">Supporting signals around stock, service pressure, and collections.</p>
-                </div>
-            </div>
-            <div class="rx-card-body">
-                <div class="dashboard-overview-list">
-                    <div class="dashboard-inline-item">
-                        <div>
-                            <strong>Payments Today</strong>
-                            <small>Collection pulse inside this filter window</small>
-                        </div>
-                        <div style="text-align:right;">
-                            <strong>{{ $currency($paymentsReceivedTodayAmount) }}</strong>
-                            @if($reportsIndexUrl)
-                                <small><a href="{{ $reportsIndexUrl }}" style="color:var(--ph-color-primary);text-decoration:none;">Open reports</a></small>
-                            @endif
-                        </div>
-                    </div>
-                    <div class="dashboard-inline-item">
-                        <div>
-                            <strong>Invoice Pressure</strong>
-                            <small>Open unpaid and overdue invoice mix</small>
-                        </div>
-                        <div style="text-align:right;">
-                            <strong>{{ $openInvoiceCountValue }}</strong>
-                            <small>{{ $overdueInvoiceCountValue }} overdue now</small>
-                        </div>
-                    </div>
-                    <div class="dashboard-inline-item">
-                        <div>
-                            <strong>Rental Lifecycle</strong>
-                            <small>Active {{ $lifecycleActivePercent }}% | Pending delivery {{ $lifecyclePendingDeliveryPercent }}%</small>
-                        </div>
-                        <div style="text-align:right;">
-                            <strong>{{ $returnedPercent }}%</strong>
-                            <small>Returned mix</small>
-                        </div>
-                    </div>
-                    <div class="dashboard-inline-item">
-                        <div>
-                            <strong>Delivered Base</strong>
-                            <small>Delivered {{ $deliveredPercent }}% | Overdue {{ $overduePercent }}%</small>
-                        </div>
-                        <div style="text-align:right;">
-                            <strong>{{ $deliveriesTodayCount }}</strong>
-                            <small>today</small>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
     @endif
 </div>
 <script>
@@ -11672,4 +11833,7 @@
         }
     });
 </script>
+@unless($isDeliveryFacingMenuRole)
+<script src="{{ asset('js/phos-executive-dashboard.js') }}?v={{ hash_file('sha256', public_path('js/phos-executive-dashboard.js')) }}" defer></script>
+@endunless
 @endsection
