@@ -15,7 +15,7 @@ class QuotationController extends Controller
     private function form(Enquiry $enquiry, ?Quotation $quote = null)
     {
         $products = Product::where('organization_id', $enquiry->organization_id)->orderBy('name')->get();
-        $rates = collect([0, 5, 12, 18, 28])->merge($products->pluck('gst_rate')->filter())->unique()->sort()->values()->all();
+        $rates = collect([0, 5, 12, 18, 28])->merge($products->map(fn ($product) => $product->defaultGstRate()))->unique()->sort()->values()->all();
         $customers = $this->workspace->customers();
         return view('sales-workspace.quote-form', compact('enquiry', 'quote', 'products', 'rates', 'customers'));
     }

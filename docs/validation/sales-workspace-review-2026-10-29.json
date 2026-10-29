@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-29",
+  "pr": 8,
+  "findings_fixed": [
+    "P1 product selection clears tax dropdown",
+    "P2 follow-up UTC/local round-trip and overdue mismatch"
+  ],
+  "complete_sqlite_suite": {
+    "tests": 706,
+    "assertions": 4978,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "sales_workspace_suite": {
+    "tests": 25,
+    "assertions": 384,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "final_overdue_flag_checks": {
+    "tests": 2,
+    "assertions": 38,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "browser_checks": {
+    "passed": 4,
+    "coverage": [
+      "actual product selection at all standard GST rates and saved 7.5%",
+      "preview and FormData tax values",
+      "dynamic custom-tax line",
+      "three negotiated rental conversion forms"
+    ]
+  },
+  "data_migration": "none; existing UTC due_at values preserved",
+  "merge_or_deployment": false
+}

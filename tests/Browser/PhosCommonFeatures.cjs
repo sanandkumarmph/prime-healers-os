@@ -55,6 +55,37 @@ const server = http.createServer((req, res) => {
       }
     }
 
+    // Use actual product change events, not just prefilled tax values.
+    {
+      const page=await browser.newPage(); const pageErrors=[];
+      page.on('pageerror',error=>pageErrors.push(error.message));
+      await page.setRequestInterception(true);
+      page.on('request',request=>request.url().startsWith(origin+'/') || request.url().startsWith('data:') ? request.continue() : request.abort());
+      await page.goto(origin+'/fixture/sw-tax-product-selection.html',{waitUntil:'networkidle0'});
+      const choices=await page.$$eval('#quotation-lines [data-line-field="product_id"] option',options=>options
+        .filter(option=>option.textContent.startsWith('Tax test ')).map(option=>({id:option.value,rate:Number(option.textContent.slice(9))})));
+      assert.equal(choices.length,6,'All standard and custom product rates have fixtures');
+      for (const choice of choices) {
+        await page.select('#quotation-lines [data-line-field="product_id"]',choice.id);
+        const actual=await page.evaluate(()=>{
+          const tax=document.querySelector('#quotation-lines [data-line-field="tax_rate"]');
+          return {tax:tax.value,valid:tax.checkValidity(),preview:Number(document.getElementById('preview-tax').textContent.replaceAll(',','')),
+            submitted:new FormData(document.getElementById('quotation-form')).get('lines[0][tax_rate]')};
+        });
+        assert.equal(actual.tax,choice.rate.toFixed(2),'Product tax remains selected');
+        assert.equal(actual.submitted,choice.rate.toFixed(2),'Selected tax is included in submitted form');
+        assert.equal(actual.preview,choice.rate,'Exclusive tax preview matches the selected product');
+        assert.ok(actual.valid);
+      }
+      await page.click('#add-quote-line');
+      const custom=choices.find(choice=>choice.rate===7.5);
+      await page.select('#quotation-lines [data-quote-line]:last-child [data-line-field="product_id"]',custom.id);
+      assert.equal(await page.$eval('#quotation-lines [data-quote-line]:last-child [data-line-field="tax_rate"]',select=>select.value),'7.50','New line retains custom product GST');
+      assert.deepEqual(pageErrors,[]);
+      results.push({name:'product-tax-selection',rates:choices.map(choice=>choice.rate),passed:true});
+      await page.close();
+    }
+
     for (const [name,expected,additional] of [['inclusive','150.50',false],['exclusive','150.50',true],['complimentary','0.00',false]]) {
       const page=await browser.newPage(); await page.setViewport({width:390,height:900});
       const formErrors=[]; page.on('pageerror',error=>formErrors.push(error.message));

@@ -122,3 +122,18 @@ the guarded validation name, expected data directory, generated key and credenti
 Recorded results are in `docs/validation/common-features-2026-10-28.json`.
 Local synthetic testing is separate from hosted CI and UAT acceptance. This change
 does not merge or deploy itself.
+
+
+## Review corrections — 29 October 2026
+
+Quotation tax option values use two decimal places, matching product-selection
+JavaScript. Available rates include each product's PHOS GST default, including
+saved custom rates. Browser checks select products at 0%, 5%, 12%, 18%, 28% and
+7.5%, verify the preview and submitted value, and check a newly added line.
+
+Follow-up due dates retain the existing UTC storage format. An explicit immutable
+UTC cast reads those timestamps correctly; overdue queries compare with UTC now,
+and the enquiry list interprets its raw next-follow-up aggregate as UTC. The UI
+converts to the application timezone for display. No migration or historical date
+rewrite is needed. Checks cover a 17:00 Asia/Kolkata reminder, before/after overdue
+boundaries, local midnight, today queues, and duplicate completion protection.

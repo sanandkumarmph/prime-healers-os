@@ -22,14 +22,14 @@ class SalesWorkspaceController extends Controller
         $openIds = (clone $base)->whereNotIn('stage', ['won', 'lost'])->select('id');
         $due = EnquiryFollowUp::whereIn('enquiry_id', $openIds)->whereNull('completed_at');
         $counts = ['open' => (clone $openIds)->count(), 'today' => (clone $due)->where('due_at', '>=', $today)->where('due_at', '<', $tomorrow)->count(),
-            'overdue' => (clone $due)->where('due_at', '<', now())->count()];
+            'overdue' => (clone $due)->where('due_at', '<', now('UTC'))->count()];
         $query = (clone $base)->when($request->boolean('mine'), fn ($q) => $q->where('owner_id', $request->user()->id))
             ->when($data['stage'] ?? null, fn ($q, $stage) => $q->where('stage', $stage))
             ->when($data['q'] ?? null, fn ($q, $term) => $q->where(fn ($q) => $q->where('subject', 'like', '%'.$term.'%')->orWhere('name', 'like', '%'.$term.'%')->orWhere('phone', 'like', '%'.$term.'%')));
         if ($mode === 'followups') {
             $records = EnquiryFollowUp::whereIn('enquiry_id', (clone $query)->whereNotIn('stage', ['won', 'lost'])->select('id'))->whereNull('completed_at')
                 ->when(($data['queue'] ?? '') === 'today', fn ($q) => $q->where('due_at', '>=', $today)->where('due_at', '<', $tomorrow))
-                ->when(($data['queue'] ?? '') === 'overdue', fn ($q) => $q->where('due_at', '<', now()))
+                ->when(($data['queue'] ?? '') === 'overdue', fn ($q) => $q->where('due_at', '<', now('UTC')))
                 ->with('enquiry.owner')->orderBy('due_at')->orderBy('id')->paginate(20)->withQueryString();
         } elseif ($mode === 'quotations') {
             abort_unless($request->user()->canAccessModule('quotations', 'read'), 403);

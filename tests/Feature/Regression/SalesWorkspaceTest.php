@@ -192,12 +192,56 @@ class SalesWorkspaceTest extends TestCase
     {
         $e = $this->enquiry();
         $this->post(route('enquiries.follow-up', $e), ['subject' => 'Call Asha', 'channel' => 'call', 'due_at' => '2026-10-24T17:00'])->assertSessionHasNoErrors();
-        $task = $e->followUps()->sole(); $this->assertSame('2026-10-24 11:30:00', $task->due_at->format('Y-m-d H:i:s'));
+        $task = $e->followUps()->sole();
+        $this->assertSame('2026-10-24 11:30:00', $task->getRawOriginal('due_at'));
+        $this->assertSame('UTC', $task->due_at->timezoneName);
+        $this->assertSame('2026-10-24 17:00', $task->due_at->timezone('Asia/Kolkata')->format('Y-m-d H:i'));
         $this->travelTo(now()->setTime(12, 0));
-        $this->get(route('enquiries.index', ['view' => 'followups', 'queue' => 'overdue']))->assertOk()->assertSee('Call Asha');
+        $this->assertFalse($task->due_at->isPast());
+        $this->get(route('enquiries.show', $e))->assertOk()->assertSee('24 Oct 2026, 17:00');
+        $this->get(route('enquiries.index'))->assertOk()->assertSee('Next: 24 Oct, 17:00')->assertViewHas('counts', fn ($c) => $c['overdue'] === 0 && $c['today'] === 1);
+        $this->get(route('enquiries.index', ['view' => 'followups', 'queue' => 'overdue']))->assertOk()->assertDontSee('Call Asha');
+        $this->get(route('enquiries.index', ['view' => 'followups', 'queue' => 'today']))->assertOk()->assertSee('Call Asha')->assertSee('24 Oct, 17:00');
+        $this->travelTo(now()->setTime(17, 1));
+        $this->assertTrue($task->due_at->isPast());
+        $this->get(route('enquiries.index', ['view' => 'followups', 'queue' => 'overdue']))->assertOk()->assertSee('Call Asha')->assertViewHas('counts', fn ($c) => $c['overdue'] === 1);
         for ($i=0; $i<2; $i++) $this->post(route('enquiries.follow-up.complete', [$e, $task]), ['outcome' => 'connected', 'completion_note' => 'Requested quotation'])->assertSessionHasNoErrors();
         $this->assertSame(1, $e->activities()->where('type', 'followup.completed')->count());
         $this->get(route('enquiries.index', ['view' => 'followups']))->assertDontSee('Call Asha');
+    }
+
+    public function test_follow_up_today_queue_uses_local_midnight_with_existing_utc_rows(): void
+    {
+        $e = $this->enquiry();
+        $this->post(route('enquiries.follow-up', $e), ['subject'=>'Midnight call','channel'=>'call','due_at'=>'2026-10-25T00:15'])->assertSessionHasNoErrors();
+        $task=$e->followUps()->sole();
+        $this->assertSame('2026-10-24 18:45:00', $task->getRawOriginal('due_at'));
+        $this->get(route('enquiries.index', ['view'=>'followups','queue'=>'today']))->assertOk()->assertDontSee('Midnight call');
+        $this->travelTo(now()->addDay()->startOfDay());
+        $this->get(route('enquiries.index', ['view'=>'followups','queue'=>'today']))->assertOk()->assertSee('Midnight call')->assertSee('25 Oct, 00:15');
+        $this->get(route('enquiries.index', ['view'=>'followups','queue'=>'overdue']))->assertOk()->assertDontSee('Midnight call');
+        $this->travelTo(now()->setTime(0,16));
+        $this->get(route('enquiries.index', ['view'=>'followups','queue'=>'overdue']))->assertOk()->assertSee('Midnight call');
+    }
+
+    public function test_product_tax_options_include_standard_and_saved_custom_rates_and_save_them(): void
+    {
+        $products=[];
+        foreach ([0,5,12,18,28,7.5] as $rate) {
+            $product=$this->product->replicate();
+            $product->fill(['name'=>'Tax test '.$rate,'cgst_rate'=>$rate/2,'sgst_rate'=>$rate/2,'gst_calculation_mode'=>'exclusive','rental_price'=>100]);
+            $product->save();$products[]=$product;
+        }
+        $e=$this->enquiry();
+        $response=$this->get(route('quotations.create',$e))->assertOk();
+        foreach ([0,5,12,18,28,7.5] as $rate) $response->assertSee('value="'.number_format($rate,2,'.','').'"',false);
+        $this->fixture('sw-tax-product-selection',$response);
+        foreach ($products as $i=>$product) {
+            $enquiry=$i === 0 ? $e : $this->enquiry();
+            $payload=$this->payload();$payload['lines']=[['product_id'=>$product->id,'quantity'=>1,'rate'=>100,'tax_rate'=>number_format($product->defaultGstRate(),2,'.',''),'tax_mode'=>'exclusive']];
+            $this->post(route('quotations.store',$enquiry),$payload)->assertSessionHasNoErrors();
+            $this->assertEquals($product->defaultGstRate(),$enquiry->quotations()->sole()->snapshot['tax']);
+        }
     }
 
     public function test_lost_reason_is_required_and_active_quote_cannot_be_bypassed(): void
