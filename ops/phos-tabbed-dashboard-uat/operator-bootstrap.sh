@@ -12,8 +12,8 @@ done
 python3 -c 'import sys; assert sys.version_info >= (3,9), "Python 3.9+ required"'
 phos_setup="$(mktemp -d /root/phos-tabbed-dashboard-setup-XXXXXX)"
 trap 'phos_code=$?; printf "STOPPED: dashboard setup failed; exit=%s PRIVATE_SETUP=%s\n" "$phos_code" "$phos_setup"; exit "$phos_code"' ERR
-phos_release='98cb2bfd46f6344c06565a10f4eab060c2357889'
-phos_base='https://raw.githubusercontent.com/sanandkumarmph/prime-healers-os/98cb2bfd46f6344c06565a10f4eab060c2357889/'
+phos_release='4b70936f20410fddd3d9707b30907f5000c0b2a9'
+phos_base='https://raw.githubusercontent.com/sanandkumarmph/prime-healers-os/4b70936f20410fddd3d9707b30907f5000c0b2a9/'
 phos_fetch() {
   curl --fail --silent --show-error --location --max-redirs 3 --connect-timeout 15 --max-time 120 --retry 2 \
     --proto '=https' --proto-redir '=https' "$1" --output "$2"
@@ -24,8 +24,8 @@ cat > "$phos_setup/manifest.json" <<'PHOS_DASHBOARD_PINNED_MANIFEST'
   "format": 1,
   "environment": "PHOS_UAT",
   "baseline": "09c6c23112dfb405c10b28cdde9d5717a16872e9",
-  "release": "98cb2bfd46f6344c06565a10f4eab060c2357889",
-  "archive_sha256": "14e12f250d1acd9db44392dc7cc75085470e7977109aea500ffcf45c8b059cff",
+  "release": "4b70936f20410fddd3d9707b30907f5000c0b2a9",
+  "archive_sha256": "c71fed7b02952ab296b4f9e1701134d01fa777ba7cb77ddfc2e8a8a65e761703",
   "files": [
     {
       "path": "app/Http/Controllers/RentalController.php",
@@ -41,9 +41,9 @@ cat > "$phos_setup/manifest.json" <<'PHOS_DASHBOARD_PINNED_MANIFEST'
     },
     {
       "path": "public/js/phos-executive-dashboard.js",
-      "sha256": "22f421a01e8b5ff78e1cd1b2eb4bfc171290be4d680f81865e93609383de1d25",
+      "sha256": "1a90631da4dcd940ce0bbcdb9d1a4959667c53306464b480b4dea31f3550f407",
       "baseline_sha256": null,
-      "size": 5594
+      "size": 5713
     },
     {
       "path": "resources/views/dashboard.blade.php",
@@ -72,7 +72,7 @@ cat > "$phos_setup/manifest.json" <<'PHOS_DASHBOARD_PINNED_MANIFEST'
   ]
 }
 PHOS_DASHBOARD_PINNED_MANIFEST
-printf '%s  %s\n' 'b0b398d92fdec5a161b280a7662b07912a4c122d2f14b547b27d827155855137' "$phos_setup/manifest.json" | sha256sum --check --status
+printf '%s  %s\n' 'c4fe26ff184a3ddb49f6b96e462b97d3c82cbe13b5321e0b136879c0ab6c6dda' "$phos_setup/manifest.json" | sha256sum --check --status
 phos_fetch "${phos_base}ops/phos-tabbed-dashboard-uat/deploy.py" "$phos_setup/deploy.py"
 printf '%s  %s\n' '321194defa64027530c3a050165b637058ae0598ba9e698b95288b24f841f0d0' "$phos_setup/deploy.py" | sha256sum --check --status
 while IFS=' ' read -r phos_sha phos_relative; do
@@ -82,7 +82,7 @@ while IFS=' ' read -r phos_sha phos_relative; do
 done <<'PHOS_DASHBOARD_PINNED_FILES'
 e9848e19bcc3c268b191db12d1c4d835b36d684798478e0f7e1777399c0e8788 app/Http/Controllers/RentalController.php
 5cb452a9750f05386135bf8647509725a18a958e86a9a0bc68f31bb1a95ab6b2 public/css/phos-executive-dashboard.css
-22f421a01e8b5ff78e1cd1b2eb4bfc171290be4d680f81865e93609383de1d25 public/js/phos-executive-dashboard.js
+1a90631da4dcd940ce0bbcdb9d1a4959667c53306464b480b4dea31f3550f407 public/js/phos-executive-dashboard.js
 51e49a2e994e98e8b171d8e71eba4762c5c3ee250925ac0e2356db76f274df4f resources/views/dashboard.blade.php
 afb5d9bfc293f49307abf809c668301667624222bc14e98e79be395ead7d78c2 resources/views/dashboard/executive-navigation.blade.php
 4793eccbf9adb8786f3aa027266c34ec7969ee6a264c922c96b60ef3cd9f6b8c resources/views/dashboard/overview-summary.blade.php
@@ -102,14 +102,14 @@ with zipfile.ZipFile(root/'release.zip','w',compression=zipfile.ZIP_STORED,allow
         archive.writestr(info,data)
 print('DETERMINISTIC_RELEASE_ARCHIVE_BUILT')
 PHOS_DASHBOARD_BUILD_ZIP
-printf '%s  %s\n' '14e12f250d1acd9db44392dc7cc75085470e7977109aea500ffcf45c8b059cff' "$phos_setup/release.zip" | sha256sum --check --status
+printf '%s  %s\n' 'c71fed7b02952ab296b4f9e1701134d01fa777ba7cb77ddfc2e8a8a65e761703' "$phos_setup/release.zip" | sha256sum --check --status
 python3 - "$phos_setup/deploy.py" <<'PHOS_DASHBOARD_HELPER_SYNTAX'
 import pathlib,sys
 path=pathlib.Path(sys.argv[1]);compile(path.read_bytes(),str(path),'exec')
 print('PHOS_DASHBOARD_HELPER_SYNTAX_OK')
 PHOS_DASHBOARD_HELPER_SYNTAX
 phos_args=(--manifest "$phos_setup/manifest.json" --archive "$phos_setup/release.zip"
-  --manifest-sha256 'b0b398d92fdec5a161b280a7662b07912a4c122d2f14b547b27d827155855137' --archive-sha256 '14e12f250d1acd9db44392dc7cc75085470e7977109aea500ffcf45c8b059cff' --expected-release "$phos_release")
+  --manifest-sha256 'c4fe26ff184a3ddb49f6b96e462b97d3c82cbe13b5321e0b136879c0ab6c6dda' --archive-sha256 'c71fed7b02952ab296b4f9e1701134d01fa777ba7cb77ddfc2e8a8a65e761703' --expected-release "$phos_release")
 python3 "$phos_setup/deploy.py" --check-package "${phos_args[@]}"
 if [ "${1:-}" = '--check-only' ]; then printf 'PACKAGE_CHECK_COMPLETE NO_APPLICATION_CHANGES=true\n'; exit 0; fi
 python3 "$phos_setup/deploy.py" --deploy "${phos_args[@]}"

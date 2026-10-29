@@ -2,8 +2,8 @@
   "format": 1,
   "environment": "PHOS_UAT",
   "baseline": "09c6c23112dfb405c10b28cdde9d5717a16872e9",
-  "release": "98cb2bfd46f6344c06565a10f4eab060c2357889",
-  "archive_sha256": "14e12f250d1acd9db44392dc7cc75085470e7977109aea500ffcf45c8b059cff",
+  "release": "4b70936f20410fddd3d9707b30907f5000c0b2a9",
+  "archive_sha256": "c71fed7b02952ab296b4f9e1701134d01fa777ba7cb77ddfc2e8a8a65e761703",
   "files": [
     {
       "path": "app/Http/Controllers/RentalController.php",
@@ -19,9 +19,9 @@
     },
     {
       "path": "public/js/phos-executive-dashboard.js",
-      "sha256": "22f421a01e8b5ff78e1cd1b2eb4bfc171290be4d680f81865e93609383de1d25",
+      "sha256": "1a90631da4dcd940ce0bbcdb9d1a4959667c53306464b480b4dea31f3550f407",
       "baseline_sha256": null,
-      "size": 5594
+      "size": 5713
     },
     {
       "path": "resources/views/dashboard.blade.php",
