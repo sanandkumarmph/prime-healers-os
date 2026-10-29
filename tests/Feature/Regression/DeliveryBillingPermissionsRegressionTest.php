@@ -2429,10 +2429,12 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
 
     private function signatureDataUrl(): string
     {
-        return 'data:image/png;base64,' . base64_encode(base64_decode(
-            'iVBORw0KGgoAAAANSUhEUgAAAAoAAAAECAIAAADJUWIXAAAAGElEQVQImWNgoBpgYGBg+A8jGEmBgYGBAQAAegQF4g1r0cQAAAAASUVORK5CYII=',
-            true
-        ));
+        $image=imagecreatetruecolor(240,80);
+        imagefill($image,0,0,imagecolorallocate($image,255,255,255));
+        $ink=imagecolorallocate($image,20,30,40);
+        imageline($image,20,55,95,20,$ink); imageline($image,95,20,130,60,$ink); imageline($image,130,60,215,25,$ink);
+        ob_start(); imagepng($image); $bytes=ob_get_clean(); imagedestroy($image);
+        return 'data:image/png;base64,'.base64_encode($bytes);
     }
 
     private function fakeImageUpload(string $name, int $sizeKb): UploadedFile

@@ -358,6 +358,13 @@ class Delivery extends Model
         )) ?: null;
     }
 
+    public function hasProtectedWorkflowHistory(): bool
+    {
+        return $this->status === 'completed' || $this->completed_at || $this->proofs()->exists()
+            || DeliveryCollection::where('organization_id', $this->organization_id)->where('delivery_id', $this->id)->exists()
+            || DB::table('delivery_workflow_submissions')->where('organization_id', $this->organization_id)->where('delivery_id', $this->id)->exists();
+    }
+
     private function dispatchAssignmentNotification(mixed $previousAssignedUserId): void
     {
         $currentAssignedUserId = (int) ($this->assigned_user_id ?? 0);

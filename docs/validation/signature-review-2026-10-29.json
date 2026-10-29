@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-29",
+  "pr": 8,
+  "fix": "Normalize high-DPI signatures before ink inspection and storage",
+  "captures_tested": [
+    [
+      1440,
+      480
+    ],
+    [
+      2880,
+      960
+    ]
+  ],
+  "normalized_dimensions": [
+    1200,
+    400
+  ],
+  "coverage": [
+    "delivery completion stores normalized private signature",
+    "high-DPI blank images rejected",
+    "malformed and original signature validations retained"
+  ],
+  "targeted_suite": {
+    "tests": 10,
+    "assertions": 58,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0
+  },
+  "complete_suite": {
+    "tests": 708,
+    "assertions": 4993,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0
+  }
+}

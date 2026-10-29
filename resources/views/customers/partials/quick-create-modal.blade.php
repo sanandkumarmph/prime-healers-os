@@ -8,6 +8,8 @@
     $quickCustomerTypes = ['Individual' => 'Individual', 'Business' => 'Business'];
     $quickSalutations = ['Mr.' => 'Mr.', 'Mrs.' => 'Mrs.', 'Ms.' => 'Ms.', 'Dr.' => 'Dr.'];
     $quickIdProofTypes = ['Aadhaar', 'PAN', 'Driving License', 'Passport', 'Other'];
+    $quickPrefill = $quickPrefill ?? [];
+    $quickPrefillPhone = \App\Support\PhoneNumber::split($quickPrefill['phone'] ?? null);
 @endphp
 
 @once
@@ -366,7 +368,7 @@
                                 </div>
                                 <div class="quick-field" data-field="first_name">
                                     <label for="{{ $quickModalId }}FirstName">First Name</label>
-                                    <input type="text" name="first_name" id="{{ $quickModalId }}FirstName" placeholder="First name">
+                                    <input type="text" name="first_name" id="{{ $quickModalId }}FirstName" placeholder="First name" value="{{ $quickPrefill['name'] ?? '' }}">
                                     <div class="quick-field-error" data-error-for="first_name" hidden></div>
                                 </div>
                                 <div class="quick-field" data-field="last_name">
@@ -399,12 +401,12 @@
                             @include('partials.country-code-picker', [
                                 'name' => 'phone_country_code',
                                 'pickerId' => $quickModalId . 'PhoneCountryCode',
-                                'value' => \App\Support\PhoneNumber::DEFAULT_CODE,
+                                'value' => $quickPrefillPhone['code'],
                                 'options' => $quickCountryCodes,
                                 'dividerColor' => '#cbd5e1',
                                 'width' => '92px',
                             ])
-                            <input type="text" name="phone" id="{{ $quickModalId }}Phone" placeholder="Primary phone" required inputmode="numeric" maxlength="15" pattern="[0-9]{6,15}" data-phone-local>
+                            <input type="text" name="phone" id="{{ $quickModalId }}Phone" placeholder="Primary phone" required inputmode="numeric" maxlength="15" pattern="[0-9]{6,15}" data-phone-local value="{{ $quickPrefillPhone['local'] }}">
                         </div>
                         <div class="quick-field-error" data-error-for="phone" hidden></div>
                     </div>
@@ -427,7 +429,7 @@
 
                     <div class="quick-field quick-col-4" data-field="email">
                         <label for="{{ $quickModalId }}Email">Email</label>
-                        <input type="email" name="email" id="{{ $quickModalId }}Email" placeholder="Email address">
+                        <input type="email" name="email" id="{{ $quickModalId }}Email" placeholder="Email address" value="{{ $quickPrefill['email'] ?? '' }}">
                         <div class="quick-field-error" data-error-for="email" hidden></div>
                     </div>
 
@@ -764,6 +766,7 @@
 
         function openCustomerModal() {
             resetCustomerModal();
+            form.dispatchEvent(new CustomEvent('quick-customer:prefill'));
             modal.hidden = false;
             modal.setAttribute('aria-hidden', 'false');
             window.rentnexisModalLock?.lock();

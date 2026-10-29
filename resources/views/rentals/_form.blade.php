@@ -4701,6 +4701,7 @@
         let saleItems = @json($saleItemRows);
         const standardGstRates = ['0.00', '5.00', '12.00', '18.00', '28.00'];
         let rentalAmountTouched = Boolean(@json($isEdit || (old('rental_amount') !== null && old('rental_amount') !== '')));
+        const quotationConversionActive = Boolean(@json(request()->attributes->get('conversion_quote')?->id));
         let syncingRentalAmount = false;
         const assetVisibleStep = 3;
         let visibleAssetCount = assetVisibleStep;
@@ -5843,7 +5844,7 @@
                 return;
             }
 
-            const selectedCount = selectedAssetCount();
+            const selectedCount = normalizeAssetIds(selectedAssetIds).length;
             const hasRequiredAssets = requestedQuantity > 0 && selectedCount >= requestedQuantity;
 
             if (state.status === 'sale_only') {
@@ -6063,7 +6064,7 @@
                 return;
             }
 
-            if (!forceUpdate && rentalAmountTouched) {
+            if (rentalAmountTouched && (!forceUpdate || quotationConversionActive)) {
                 syncingRentalAmount = true;
                 rentalAmountInput.dispatchEvent(new Event('input', { bubbles: true }));
                 syncingRentalAmount = false;
@@ -7190,12 +7191,12 @@
             item.quantity = Math.max(parseInt(item.quantity || '1', 10), 1);
             const option = rentalCatalogOption(item.product_id);
             if (option) {
-                if (!item.unit_rental_amount) {
+                if (item.unit_rental_amount === '' || item.unit_rental_amount === null || item.unit_rental_amount === undefined) {
                     const defaultPrice = parseFloat(option.getAttribute('data-default-price') || option.getAttribute('data-rental-price') || option.getAttribute('data-price-per-day') || '0');
                     item.unit_rental_amount = defaultPrice ? defaultPrice.toFixed(2) : item.unit_rental_amount;
                 }
                 const defaults = selectedProductTaxDefaults({ value: option.value, selectedOptions: [option], options: [option], selectedIndex: 0 });
-                item.gst_rate = item.gst_rate || defaults.gstRate;
+                item.gst_rate = (item.gst_rate === '' || item.gst_rate === null || item.gst_rate === undefined) ? defaults.gstRate : item.gst_rate;
                 item.gst_mode = item.gst_mode || defaults.gstMode;
                 item.tax_type = item.tax_type || defaults.taxType;
             }

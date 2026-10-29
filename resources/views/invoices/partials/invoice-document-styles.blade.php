@@ -19,7 +19,7 @@ body {
 body {
     color: #24384f;
     font-family: {!! $invoiceBodyFontStack ?? "'Inter', 'Segoe UI', Roboto, Arial, sans-serif" !!};
-    font-size: 10px;
+    font-size: 10.5px;
     line-height: 1.45;
     font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
@@ -29,8 +29,8 @@ body {
 .invoice-page {
     width: auto;
     margin: 0;
-    padding: 8mm;
-    border: 1px solid #64748b;
+    padding: 6mm;
+    border: 1px solid #d7e1ec;
     background: #ffffff;
     page-break-inside: auto;
 }
@@ -60,13 +60,13 @@ body {
 }
 
 .header-logo-cell {
-    width: 34mm;
+    width: 40mm;
     padding-right: 10px;
 }
 
 .header-logo-box {
-    width: 32mm;
-    height: 18mm;
+    width: 38mm;
+    height: 20mm;
     padding: 0.8mm;
     border: 1px solid #d7e1ec;
     background: #ffffff;
@@ -81,14 +81,14 @@ body {
     display: block;
     width: auto !important;
     height: auto !important;
-    max-width: 31mm;
-    max-height: 16.5mm;
+    max-width: 36mm;
+    max-height: 18mm;
     margin: 0 auto;
 }
 
 .invoice-logo {
-    max-width: 120px !important;
-    max-height: 60px !important;
+    max-width: 136px !important;
+    max-height: 68px !important;
 }
 
 .header-logo-fallback {
@@ -129,7 +129,7 @@ body {
 .header-invoice-title {
     margin: 0 0 8px;
     color: #12263F;
-    font-size: 22px;
+    font-size: 19px;
     font-weight: 700;
     line-height: 1;
     text-transform: uppercase;

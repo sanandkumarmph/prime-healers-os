@@ -248,6 +248,11 @@ class CustomerController extends Controller
             $dependencyLabels[] = 'linked payments';
         }
 
+        if (\App\Models\Enquiry::where('organization_id', $this->orgId())->where('customer_id', $customer->id)->exists()
+            || \App\Models\Quotation::where('organization_id', $this->orgId())->where('snapshot->customer_id', $customer->id)->exists()) {
+            $dependencyLabels[] = 'enquiries or quotations';
+        }
+
         return $dependencyLabels;
     }
 
@@ -549,6 +554,11 @@ class CustomerController extends Controller
 
     public function destroy($id)
     {
+        return app(\App\Services\Finance\OrganizationFinancialTransaction::class)->run($this->orgId(), fn () => $this->destroyWithLock($id));
+    }
+
+    private function destroyWithLock($id)
+    {
         $customer = Customer::where('organization_id', $this->orgId())->findOrFail($id);
         $this->authorize('delete', $customer);
 
@@ -567,6 +577,11 @@ class CustomerController extends Controller
     }
 
     public function bulkDelete(Request $request)
+    {
+        return app(\App\Services\Finance\OrganizationFinancialTransaction::class)->run($this->orgId(), fn () => $this->bulkDeleteWithLock($request));
+    }
+
+    private function bulkDeleteWithLock(Request $request)
     {
         $customerIds = $this->selectedCustomerIds($request);
         $customers = Customer::query()

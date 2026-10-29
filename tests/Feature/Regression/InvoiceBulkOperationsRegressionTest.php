@@ -235,8 +235,8 @@ class InvoiceBulkOperationsRegressionTest extends TestCase
         $this->assertStringContainsString('@page {', $documentStyles);
         $this->assertStringContainsString('size: A4 portrait;', $documentStyles);
         $this->assertStringContainsString('margin: 12mm;', $documentStyles);
-        $this->assertStringContainsString('border: 1px solid #64748b;', $documentStyles);
-        $this->assertStringContainsString('padding: 8mm;', $documentStyles);
+        $this->assertStringContainsString('border: 1px solid #d7e1ec;', $documentStyles);
+        $this->assertStringContainsString('padding: 6mm;', $documentStyles);
         $this->assertStringContainsString('table-layout: fixed;', $documentStyles);
         $this->assertStringContainsString('$invoiceColumnWidths', $documentTemplate);
         $this->assertStringContainsString('$showDiscount && $showTaxColumns', $documentTemplate);

@@ -455,9 +455,9 @@ class DeliveryController extends Controller
         }
 
         if ($delivery->type === 'delivery') {
-            $rules['delivery_device_photos'] = ['required', 'array', 'min:1'];
+            $rules['delivery_device_photos'] = ['required', 'array', 'min:1', 'max:3'];
             $rules['delivery_device_photos.*'] = $commonImageRule;
-            $rules['delivery_extra_photos'] = ['nullable', 'array'];
+            $rules['delivery_extra_photos'] = ['nullable', 'array', 'max:3'];
             $rules['delivery_extra_photos.*'] = $commonImageRule;
             $rules['premises_photo'] = array_merge(['required'], $commonImageRule);
             $rules['pickup_device_photos'] = ['prohibited'];
@@ -468,14 +468,14 @@ class DeliveryController extends Controller
             $rules['damage_photos'] = ['prohibited'];
             $rules['damage_photos.*'] = ['prohibited'];
         } else {
-            $rules['pickup_device_photos'] = ['required', 'array', 'min:1'];
+            $rules['pickup_device_photos'] = ['required', 'array', 'min:1', 'max:3'];
             $rules['pickup_device_photos.*'] = $commonImageRule;
-            $rules['pickup_extra_photos'] = ['nullable', 'array'];
+            $rules['pickup_extra_photos'] = ['nullable', 'array', 'max:3'];
             $rules['pickup_extra_photos.*'] = $commonImageRule;
             $rules['damage_reported'] = ['nullable', 'boolean'];
             $rules['damage_notes'] = ['nullable', 'string', 'max:1000'];
             $rules['missing_accessories_notes'] = ['nullable', 'string', 'max:1000'];
-            $rules['damage_photos'] = ['nullable', 'array'];
+            $rules['damage_photos'] = ['nullable', 'array', 'max:3'];
             $rules['damage_photos.*'] = $commonImageRule;
             $rules['delivery_device_photos'] = ['prohibited'];
             $rules['delivery_device_photos.*'] = ['prohibited'];
@@ -2236,6 +2236,14 @@ class DeliveryController extends Controller
         });
         $validated = $validator->validate();
 
+        // A posted collection must retain the task/order identity it was recorded against.
+        if (\App\Models\DeliveryCollection::where('organization_id', $delivery->organization_id)->where('delivery_id', $delivery->id)->exists()
+            && ((int) $request->input('rental_id') !== (int) $delivery->rental_id
+                || (int) $request->input('sale_id') !== (int) $delivery->sale_id
+                || $request->input('type') !== $delivery->type)) {
+            return back()->withErrors(['rental_id' => 'This task has collection history. Keep its original order and task type; create a separate task for another order.'])->withInput();
+        }
+
         if ($this->hasSaleColumn() && $request->filled('rental_id') && $request->filled('sale_id')) {
             return back()
                 ->withErrors(['sale_id' => 'Choose either a rental or a sale order, not both.'])
@@ -2413,6 +2421,10 @@ class DeliveryController extends Controller
     {
         $delivery = $this->scopedDelivery($delivery);
         $this->authorize('delete', $delivery);
+
+        if ($delivery->hasProtectedWorkflowHistory()) {
+            return back()->with('error', 'This task has completion, proof or collection history. Preserve it and use the appropriate correction workflow.');
+        }
 
         $delivery->delete();
 

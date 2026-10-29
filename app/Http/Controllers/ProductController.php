@@ -1093,6 +1093,11 @@ class ProductController extends Controller
 
     public function destroy(Product $product)
     {
+        return app(\App\Services\Finance\OrganizationFinancialTransaction::class)->run($this->orgId(), fn () => $this->destroyWithLock($product));
+    }
+
+    private function destroyWithLock(Product $product)
+    {
         $product = $this->scopedProduct($product);
 
         $dependencyLabels = [];
@@ -1111,6 +1116,11 @@ class ProductController extends Controller
 
         if (InvoiceItem::where('product_id', $product->id)->exists()) {
             $dependencyLabels[] = 'invoices';
+        }
+
+        if (\App\Models\Quotation::where('organization_id', $this->orgId())
+            ->whereJsonContains('snapshot->product_ids', (int) $product->id)->exists()) {
+            $dependencyLabels[] = 'quotations';
         }
 
         if (!empty($dependencyLabels)) {

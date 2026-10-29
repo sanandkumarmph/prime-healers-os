@@ -14,6 +14,27 @@ use Illuminate\Validation\ValidationException;
 
 class DeliveryProofService
 {
+    private function trackNewFile(string $path): void
+    {
+        $files = request()->attributes->get('phos_new_proof_files', []);
+        $files[] = ['disk' => $this->disk(), 'path' => $path];
+        request()->attributes->set('phos_new_proof_files', $files);
+    }
+
+    public function cleanupFailedRequestFiles(\Illuminate\Http\Request $request): void
+    {
+        foreach ($request->attributes->get('phos_new_proof_files', []) as $file) {
+            try {
+                $prefix = 'delivery-proofs/org-'.(int)$request->user()?->organization_id.'/delivery-';
+                if (str_starts_with($file['path'], $prefix)
+                    && !DeliveryProof::where('file_path', $file['path'])->exists()) {
+                    Storage::disk($file['disk'])->delete($file['path']);
+                }
+            } catch (\Throwable $exception) { report($exception); }
+        }
+        $request->attributes->remove('phos_new_proof_files');
+    }
+
     public function disk(): string
     {
         return (string) config('proof.storage_disk', 'local');
@@ -61,6 +82,8 @@ class DeliveryProofService
                 $this->filename($workflowStage, $captureMoment, $proofType, $file->extension() ?: 'jpg'),
                 $this->disk()
             );
+            if (!$path) throw new \RuntimeException('Private proof storage could not save the image.');
+            $this->trackNewFile($path);
 
             $stored[] = DeliveryProof::create([
                 'organization_id' => $delivery->organization_id,
@@ -99,9 +122,9 @@ class DeliveryProofService
             ]);
         }
 
-        $mimeType = $matches[1];
-        $extension = $matches[2] === 'webp' ? 'webp' : 'png';
-        $binary = base64_decode($matches[3], true);
+        $mimeType = 'image/png';
+        $extension = 'png';
+        $binary = SignatureCapture::clean($signatureData, $this->targetBytes());
 
         if ($binary === false || $binary === '') {
             throw ValidationException::withMessages([
@@ -116,7 +139,8 @@ class DeliveryProofService
         }
 
         $path = $this->directory($delivery) . '/' . $this->filename($workflowStage, $captureMoment, DeliveryProof::TYPE_SIGNATURE, $extension);
-        Storage::disk($this->disk())->put($path, $binary);
+        if (!Storage::disk($this->disk())->put($path, $binary)) throw new \RuntimeException('Private signature storage could not save the capture.');
+        $this->trackNewFile($path);
 
         return DeliveryProof::create([
             'organization_id' => $delivery->organization_id,

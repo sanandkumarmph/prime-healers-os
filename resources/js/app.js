@@ -1,4 +1,5 @@
 import './bootstrap';
+import './rental-availability.js';
 
 import Alpine from 'alpinejs';
 

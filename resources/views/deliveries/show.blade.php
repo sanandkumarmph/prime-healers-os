@@ -2695,6 +2695,9 @@
 </style>
 
 <div class="delivery-detail">
+    @if($delivery->collection_required && ((int)$delivery->assigned_user_id === (int)auth()->id() || app(\App\Services\Deliveries\DeliveryCollectionService::class)->canReceive(auth()->user())))
+    <div class="detail-card"><strong>Collections & cash accountability</strong><p>Use the collection ledger to record a customer receipt and submit cash handovers. Existing completion reports remain in task history.</p><a class="detail-btn" href="{{ route('delivery-collections.show',$delivery) }}">Open collection ledger</a></div>
+    @endif
     <div class="delivery-mobile-titlebar is-{{ $mobileTaskTone }}" aria-label="{{ ucfirst($delivery->type) }} task header">
         <a href="{{ route('deliveries.index') }}" aria-label="Back to deliveries">
             <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
@@ -2996,17 +2999,17 @@
                             <span class="status-badge" style="{{ $itemProgressBadge($itemLifecycleStatus) }}">{{ $itemProgressLabel($itemLifecycleStatus) }}</span>
                         @endforeach
                     </div>
-                    @if($canUpdateTask && $delivery->type === 'delivery' && in_array($delivery->status, ['pending', 'in_progress'], true) && $pendingDeliveryQty > 0)
+                    @if($canUpdateTask && isset($item->id) && $delivery->type === 'delivery' && in_array($delivery->status, ['pending', 'in_progress'], true) && $pendingDeliveryQty > 0)
                         <form method="POST" action="{{ route('deliveries.partial_delivery', $delivery) }}" class="item-progress-form">
-                            @csrf
+                            @csrf <input type="hidden" name="workflow_submission_token" value="{{ (string)\Illuminate\Support\Str::uuid() }}">
                             @method('PUT')
                             <input type="hidden" name="rental_item_id" value="{{ $item->id }}">
                             <input type="number" name="quantity" min="1" max="{{ $pendingDeliveryQty }}" value="1" aria-label="Deliver quantity">
                             <button type="submit" class="detail-btn">Deliver</button>
                         </form>
-                    @elseif($canUpdateTask && $delivery->type === 'pickup' && in_array($delivery->status, ['pending', 'in_progress'], true) && $pendingPickupQty > 0)
+                    @elseif($canUpdateTask && isset($item->id) && $delivery->type === 'pickup' && in_array($delivery->status, ['pending', 'in_progress'], true) && $pendingPickupQty > 0)
                         <form method="POST" action="{{ route('deliveries.partial_pickup', $delivery) }}" class="item-progress-form">
-                            @csrf
+                            @csrf <input type="hidden" name="workflow_submission_token" value="{{ (string)\Illuminate\Support\Str::uuid() }}">
                             @method('PUT')
                             <input type="hidden" name="rental_item_id" value="{{ $item->id }}">
                             <input type="number" name="quantity" min="1" max="{{ $pendingPickupQty }}" value="1" aria-label="Pickup quantity">
@@ -3056,7 +3059,7 @@
 
         @if($canUpdateTask && $delivery->status === 'pending')
             <form action="{{ route('deliveries.in_progress', $delivery) }}" method="POST" class="workflow-proof-card workflow-start-shell" data-workflow-form="start">
-                @csrf
+                @csrf <input type="hidden" name="workflow_submission_token" value="{{ (string)\Illuminate\Support\Str::uuid() }}">
                 @method('PUT')
                 <input type="hidden" name="workflow_capture_form" value="1">
                 <div class="workflow-mobile-stepper" data-mobile-workflow-stepper data-workflow-initial-step="{{ $hasWorkflowErrors ? 2 : 1 }}" data-workflow-step-count="2">
@@ -3169,7 +3172,7 @@
             </form>
         @elseif($canUpdateTask && $delivery->status === 'in_progress')
             <form action="{{ route('deliveries.complete', $delivery) }}" method="POST" enctype="multipart/form-data" class="workflow-proof-card" data-workflow-form="complete" data-workflow-review-form data-workflow-type="{{ $delivery->type }}">
-                @csrf
+                @csrf <input type="hidden" name="workflow_submission_token" value="{{ (string)\Illuminate\Support\Str::uuid() }}">
                 @method('PUT')
                 <input type="hidden" name="workflow_capture_form" value="1">
                 @if((!$isSaleTask && $delivery->type === 'delivery' && $delivery->rental?->pendingDeliveryQuantityTotal() > 0) || (!$isSaleTask && $delivery->type === 'pickup' && $delivery->rental?->pendingPickupQuantityTotal() > 0))
@@ -3722,7 +3725,7 @@
                 </summary>
                 <div class="proof-history-body">
                     <form action="{{ route('deliveries.cancel', $delivery) }}" method="POST" class="workflow-proof-card">
-                        @csrf
+                        @csrf <input type="hidden" name="workflow_submission_token" value="{{ (string)\Illuminate\Support\Str::uuid() }}">
                         @method('PUT')
 
                         @if($hasCancellationErrors)
@@ -4403,32 +4406,46 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    const retainedPhotoFiles = new WeakMap();
+    const photoPreparationQueues = new WeakMap();
+    const applyPhotoFiles = (input, files) => {
+        const transfer = new DataTransfer();
+        files.forEach(file => transfer.items.add(file));
+        input.files = transfer.files;
+        retainedPhotoFiles.set(input, files);
+    };
     document.querySelectorAll('[data-compress-images]').forEach((input) => {
-        input.addEventListener('change', async () => {
-            if (!(input instanceof HTMLInputElement) || !input.files || input.files.length === 0) {
-                return;
-            }
-
-            const files = Array.from(input.files);
-            const dataTransfer = new DataTransfer();
-
+        input.addEventListener('change', () => {
+            if (!(input instanceof HTMLInputElement) || !input.files?.length) return;
+            const selected = Array.from(input.files);
+            const prepare = async () => {
+            const previous = retainedPhotoFiles.get(input) || [];
+            input.setCustomValidity('Preparing selected photos. Please wait.');
+            input.dataset.preparingPhotos = '1';
             try {
-                for (const file of files) {
-                    const compressed = await compressImageFile(file);
-                    dataTransfer.items.add(compressed);
-                }
-
-                input.files = dataTransfer.files;
+                if (typeof DataTransfer !== 'function') throw new Error('This browser cannot retain camera selections. Select the required photos together, or use a supported browser.');
+                if (input.multiple && previous.length + selected.length > 3) throw new Error('Keep up to three photos in this category. Remove one before adding another.');
+                const prepared = [];
+                for (const file of selected) prepared.push(await compressImageFile(file));
+                applyPhotoFiles(input, input.multiple ? [...previous, ...prepared] : prepared);
                 input.setCustomValidity('');
-                const parentForm = input.closest('form');
-                if (parentForm?.hasAttribute('data-workflow-review-form')) {
-                    syncWorkflowReview(parentForm);
-                }
             } catch (error) {
-                input.value = '';
-                input.setCustomValidity(error.message || 'Unable to compress the selected image.');
+                if (typeof DataTransfer === 'function') applyPhotoFiles(input, previous);
+                input.setCustomValidity(error.message || 'Unable to prepare the selected image. Earlier photos were retained.');
                 input.reportValidity();
+            } finally {
+                delete input.dataset.preparingPhotos;
+                syncFilePreview(input);
+                const parentForm = input.closest('form');
+                if (parentForm?.hasAttribute('data-workflow-review-form')) syncWorkflowReview(parentForm);
+                input.dispatchEvent(new CustomEvent('phos:photos-ready'));
             }
+            };
+            // Camera/gallery selections may arrive while the previous image is compressing.
+            const queued = (photoPreparationQueues.get(input) || Promise.resolve()).then(prepare, prepare);
+            photoPreparationQueues.set(input, queued);
+            input.setCustomValidity('Preparing selected photos. Please wait.');
+            input.dataset.preparingPhotos = '1';
         });
     });
 
@@ -4462,7 +4479,23 @@ document.addEventListener('DOMContentLoaded', () => {
             image.alt = file.name || 'Proof preview';
             image.src = URL.createObjectURL(file);
             image.addEventListener('load', () => URL.revokeObjectURL(image.src), { once: true });
-            preview.appendChild(image);
+            const item = document.createElement('div');
+            item.style.cssText = 'display:flex;flex-direction:column;gap:6px;max-width:140px';
+            item.appendChild(image);
+            const remove = document.createElement('button');
+            remove.type = 'button'; remove.textContent = 'Remove';
+            remove.setAttribute('aria-label', 'Remove ' + (file.name || 'proof photo'));
+            remove.className = 'detail-btn';
+            remove.addEventListener('click', () => {
+                if (input.dataset.preparingPhotos === '1') return;
+                const current = Array.from(input.files || []);
+                applyPhotoFiles(input, current.filter(candidate => candidate !== file));
+                input.setCustomValidity(''); syncFilePreview(input);
+                const form = input.closest('form');
+                if (form?.hasAttribute('data-workflow-review-form')) syncWorkflowReview(form);
+                input.focus();
+            });
+            item.appendChild(remove); preview.appendChild(item);
         });
 
         preview.classList.add('is-visible');

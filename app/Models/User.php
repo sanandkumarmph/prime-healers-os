@@ -391,6 +391,7 @@ class User extends Authenticatable
         $candidates = [
             'dashboard' => fn () => $this->hasPermission('dashboard.main'),
             'inventory.dashboard' => fn () => $this->hasPermission('dashboard.inventory'),
+            'enquiries.index' => fn () => $this->canAccessModule('enquiries', 'read'),
             'rentals.index' => fn () => $this->canAccessModule('rentals', 'read'),
             'deliveries.index' => fn () => $this->canAccessModule('deliveries', 'read'),
             'sales.index' => fn () => $this->canAccessModule('sales', 'read'),
@@ -481,6 +482,11 @@ class User extends Authenticatable
 
     private function legacyRoleAllows(string $module, string $action): bool
     {
+        if (in_array($module, ['enquiries', 'quotations'], true)) {
+            return in_array($this->effective_role, [self::ROLE_SUPER_ADMIN, self::ROLE_ADMIN_OPERATIONS, self::ROLE_SALES, 'admin'], true)
+                && in_array($action, ['read', 'create', 'update'], true);
+        }
+
         $rolePermissions = $this->legacyPermissionMatrix()[$this->effective_role] ?? [];
 
         return in_array($action, $rolePermissions[$module] ?? [], true);

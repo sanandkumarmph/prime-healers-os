@@ -108,6 +108,12 @@
     if ($canPrintInvoices) {
         $invoiceQuickActions->push([
             'type' => 'link',
+            'label' => 'Download PDF',
+            'href' => route('invoices.download', $invoice->id),
+            'accent' => true,
+        ]);
+        $invoiceQuickActions->push([
+            'type' => 'link',
             'label' => 'Print',
             'href' => route('invoices.print', $invoice->id),
             'target' => '_blank',

@@ -5,6 +5,7 @@
 @section('content')
 <div class="container ph-mobile-form-page rental-focused-form-page">
     <form id="rentalCreateForm" action="{{ route('rentals.store') }}" method="POST">
+        @include('sales-workspace.conversion-banner')
         @csrf
         @include('rentals._form')
     </form>
