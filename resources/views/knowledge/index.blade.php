@@ -77,6 +77,16 @@
             border-color: #93c5fd;
             color: #1e40af;
         }
+        .rn-knowledge-workflow-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; }
+        .rn-knowledge-workflow { min-width:0; padding:18px; border:1px solid #dbe3ef; border-radius:16px; background:#fff; }
+        .rn-knowledge-workflow summary { cursor:pointer; color:#20364a; font-size:15px; font-weight:600; line-height:1.5; }
+        .rn-knowledge-workflow summary small { display:block; margin:4px 0 0 18px; color:#627589; font-size:11px; font-weight:400; }
+        .rn-knowledge-workflow ol { margin:16px 0; padding-left:22px; color:#475569; font-size:13px; line-height:1.7; }
+        .rn-knowledge-workflow li { padding:5px 0; }
+        .rn-knowledge-workflow a { display:inline-flex; align-items:center; min-height:36px; padding:7px 12px; border:1px solid #d2e5f4; border-radius:7px; background:#edf5fc; color:#0b5e99; font-size:12px; font-weight:600; text-decoration:none; }
+        .rn-knowledge-workflow a:hover { background:#e2eff9; }
+        .rn-knowledge-workflow :is(summary, a):focus-visible { outline:2px solid #0f75bd; outline-offset:3px; }
+        @media (max-width:600px) { .rn-knowledge-workflow-grid { grid-template-columns:minmax(0,1fr); } }
     </style>
     <div style="display:grid; gap:18px;">
         <section style="display:grid; gap:18px; background:#fff; border:1px solid #dbe3ef; border-radius:22px; padding:24px; box-shadow:0 16px 36px rgba(15,23,42,.06);">
@@ -94,11 +104,11 @@
                 <div style="display:flex; gap:12px; flex-wrap:wrap;">
                     <label style="flex:1 1 320px; min-width:240px; display:flex; align-items:center; gap:10px; min-height:44px; padding:0 14px; border:1px solid #dbe3ef; border-radius:14px; background:#f8fafc;">
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
-                        <input type="text" name="search" value="{{ $search }}" placeholder="Search articles, topics, and categories" style="width:100%; border:0; background:transparent; color:#0f172a; font-size:13px; outline:none;">
+                        <input type="text" name="search" value="{{ $search }}" placeholder="Search guides, articles, and categories" style="width:100%; border:0; background:transparent; color:#0f172a; font-size:13px; outline:none;">
                     </label>
                     <label style="flex:0 1 180px; min-width:160px; display:flex; align-items:center; padding:0 14px; border:1px solid #dbe3ef; border-radius:14px; background:#f8fafc;">
                         <select name="type" style="width:100%; border:0; background:transparent; color:#0f172a; font-size:13px; outline:none; min-height:44px;">
-                            <option value="">All article types</option>
+                            <option value="">All content types</option>
                             @foreach($typeOptions as $option)
                                 <option value="{{ $option }}" @selected($typeFilter === $option)>{{ $typeLabels[$option] ?? ucfirst($option) }}</option>
                             @endforeach
@@ -110,6 +120,26 @@
                     @endif
                 </div>
             </form>
+        </section>
+
+        <section data-knowledge-workflows style="display:grid; gap:14px;">
+            <div>
+                <h2 style="margin:0; font-size:20px; color:#20364a;">Workflow guides</h2>
+                <p style="margin:6px 0 0; color:#627589; font-size:13px;">Practical steps for the actions available to your role. Open a guide to see its steps.</p>
+            </div>
+            <div class="rn-knowledge-workflow-grid">
+                @forelse($workflowGuides as $guide)
+                    <details class="rn-knowledge-workflow" id="{{ $guide['id'] }}" data-knowledge-guide="{{ $guide['id'] }}">
+                        <summary>{{ $guide['title'] }}<small>Workflow guide</small></summary>
+                        <ol>@foreach($guide['steps'] as $step)<li>{{ $step }}</li>@endforeach</ol>
+                        <a href="{{ route($guide['route']) }}">Open workflow</a>
+                    </details>
+                @empty
+                    <p style="margin:0; grid-column:1/-1; padding:18px; border:1px solid #dbe3ef; border-radius:16px; background:#fff; color:#627589; font-size:13px;">
+                        {{ $search !== '' || $typeFilter !== '' ? 'No workflow guides match the current search and content type.' : 'No workflow guides are available for the actions assigned to your role.' }}
+                    </p>
+                @endforelse
+            </div>
         </section>
 
         <section style="display:grid; gap:14px;">

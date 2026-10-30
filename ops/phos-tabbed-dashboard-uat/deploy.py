@@ -22,7 +22,7 @@ except ImportError:  # Package verification is also supported on Windows.
     fcntl = pwd = None
 
 
-BASELINE = "09c6c23112dfb405c10b28cdde9d5717a16872e9"
+BASELINE = "4b70936f20410fddd3d9707b30907f5000c0b2a9"
 HOST = "uat-admin.primehealers.com"
 DATABASE = "uata_primehealersos"
 APP = Path("/home/uat-admin.primehealers.com/public_html")
@@ -31,13 +31,15 @@ CONFIG = Path("/root/phos-uat-pr8-backup-o46ztayl/target-config.json")
 BACKUP_PREFIX = "phos-tabbed-dashboard-backup-"
 SYSTEM_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 BASELINE_HASHES = {
-    "resources/views/dashboard.blade.php": "58c83b6521bf50ca5493e294c61b5c081e922cb37a56f45950625c7d39206b29",
-    "resources/views/layouts/app.blade.php": "0428aa545b0d2781ff2a161f4980f5ff87dd6e73ca599430e8a722fd34898e3c",
-    "app/Http/Controllers/RentalController.php": "13bbc275b6b45826c07950a06026baa6a57ea76758f4b9a7487fcaac08ed0329",
-    "resources/views/dashboard/executive-navigation.blade.php": None,
-    "resources/views/dashboard/overview-summary.blade.php": None,
-    "public/css/phos-executive-dashboard.css": None,
-    "public/js/phos-executive-dashboard.js": None,
+    "resources/views/dashboard.blade.php": "51e49a2e994e98e8b171d8e71eba4762c5c3ee250925ac0e2356db76f274df4f",
+    "resources/views/layouts/app.blade.php": "c71f80fad1bc33cd7301156b48fca5ae933f1478e39058f6a936fad0d2ed18b3",
+    "app/Http/Controllers/RentalController.php": "e9848e19bcc3c268b191db12d1c4d835b36d684798478e0f7e1777399c0e8788",
+    "resources/views/dashboard/executive-navigation.blade.php": "afb5d9bfc293f49307abf809c668301667624222bc14e98e79be395ead7d78c2",
+    "resources/views/dashboard/overview-summary.blade.php": "4793eccbf9adb8786f3aa027266c34ec7969ee6a264c922c96b60ef3cd9f6b8c",
+    "public/css/phos-executive-dashboard.css": "5cb452a9750f05386135bf8647509725a18a958e86a9a0bc68f31bb1a95ab6b2",
+    "public/js/phos-executive-dashboard.js": "1a90631da4dcd940ce0bbcdb9d1a4959667c53306464b480b4dea31f3550f407",
+    "app/Http/Controllers/KnowledgeController.php": "6de498dd5511a1e2510a4c0109d1a51ac7878d44b01b24549fda47c467c1bb40",
+    "resources/views/knowledge/index.blade.php": "fa04e2e14440185dea92857a838eb305622bae2243231856505109f0b683d27f",
 }
 MAX_FILE = 3 * 1024 * 1024
 MAX_ARCHIVE = 12 * 1024 * 1024
@@ -249,11 +251,8 @@ def verify_baseline(root):
     for name, expected in BASELINE_HASHES.items():
         path = root / name
         no_links(path)
-        if expected is None:
-            need(not path.exists(), "New dashboard destination already exists: " + name)
-        else:
-            regular(path)
-            need(digest(path.read_bytes()) == expected, "Reviewed PR8 source differs: " + name)
+        regular(path)
+        need(digest(path.read_bytes()) == expected, "Reviewed deployed baseline source differs: " + name)
 
 
 def release_installed(root, payload):
@@ -308,7 +307,8 @@ def health():
             status, _, _ = http(path, local)
             need(status == "200", "UAT HTTP health check failed.")
             note("CHECK=" + path + " HTTP=200 CONNECTION=" + ("local" if local else "public"))
-    for path in ("/dashboard", "/business-overview", "/invoices", "/rentals", "/sales"):
+    protected = ("/dashboard", "/business-overview", "/knowledge", "/invoices", "/rentals", "/sales")
+    for path in protected:
         status, _, headers = http(path)
         locations = re.findall(r"(?im)^location:\s*(.*?)\s*$", headers)
         need(status == "302" and locations, "A protected UAT route did not redirect to login.")
@@ -317,7 +317,7 @@ def health():
         parsed = urlsplit(location)
         need(parsed.path.rstrip("/") == "/login" and parsed.hostname in (None, HOST),
              "A protected route returned an unexpected redirect.")
-    note("PROTECTED_ROUTES_VERIFIED=5")
+    note("PROTECTED_ROUTES_VERIFIED=" + str(len(protected)))
 
 
 def atomic(path, data, uid, gid, mode):
@@ -377,7 +377,7 @@ def runtime_guards():
     code = r'''
 require 'vendor/autoload.php'; $app=require 'bootstrap/app.php';
 $app->make(Illuminate\Contracts\Http\Kernel::class)->bootstrap();$router=app('router');
-foreach(['dashboard','dashboard.compact','enquiries.index','availability.index','cash-handovers.index'] as $name){
+foreach(['dashboard','dashboard.compact','knowledge.index','enquiries.index','availability.index','cash-handovers.index'] as $name){
  $r=$router->getRoutes()->getByName($name);
  if(!$r||!in_array('auth',$r->gatherMiddleware(),true)){fwrite(STDERR,'AUTH_GUARD_MISSING');exit(9);}
 }
@@ -421,16 +421,15 @@ def make_backup(manifest, payload, before, backup):
     for number, name in enumerate(sorted(payload)):
         path = APP / name
         no_links(path)
-        record = {"path": name, "new_sha256": digest(payload[name]), "existed": path.exists()}
-        if path.exists():
-            regular(path)
-            info = path.stat()
-            data = path.read_bytes()
-            saved = "original-" + str(number)
-            (backup / saved).write_bytes(data)
-            os.chmod(backup / saved, 0o600)
-            record.update({"saved": saved, "old_sha256": digest(data), "uid": info.st_uid,
-                           "gid": info.st_gid, "mode": stat.S_IMODE(info.st_mode)})
+        regular(path)
+        record = {"path": name, "new_sha256": digest(payload[name]), "existed": True}
+        info = path.stat()
+        data = path.read_bytes()
+        saved = "original-" + str(number)
+        (backup / saved).write_bytes(data)
+        os.chmod(backup / saved, 0o600)
+        record.update({"saved": saved, "old_sha256": digest(data), "uid": info.st_uid,
+                       "gid": info.st_gid, "mode": stat.S_IMODE(info.st_mode)})
         records.append(record)
     state = {"format": 1, "application": str(APP), "baseline": BASELINE, "release": manifest["release"],
              "files": records, "created_directories": [], "preserved": before, "complete": False}
@@ -440,26 +439,13 @@ def make_backup(manifest, payload, before, backup):
     return backup, state
 
 
-def prepare_parents(path, backup, state):
+def verify_parents(path):
     no_links(path)
-    missing = []
     parent = path.parent
     while parent != APP:
         need(parent.is_relative_to(APP), "Destination escaped the UAT application.")
-        if not parent.exists():
-            missing.append(parent)
-        else:
-            need(parent.is_dir(), "Destination ancestor is not a directory.")
+        need(parent.is_dir(), "Existing baseline destination parent is missing or not a directory.")
         parent = parent.parent
-    for directory in reversed(missing):
-        # Record intent before mutation, so interruption cannot lose recovery information.
-        relative = str(directory.relative_to(APP))
-        if relative not in state["created_directories"]:
-            state["created_directories"].append(relative)
-            save_state(backup, state)
-        directory.mkdir(mode=0o755)
-        os.chown(directory, UID, GID)
-        os.chmod(directory, 0o755)  # Explicitly override the root-private process umask.
 
 
 def validate_restore(root, backup, state):
@@ -473,15 +459,13 @@ def validate_restore(root, backup, state):
         name = safe_relative(record["path"])
         path = root / name
         no_links(path)
-        if record["existed"]:
-            saved = record.get("saved", "")
-            need(re.fullmatch(r"original-[0-9]+", saved), "Unexpected backup filename.")
-            saved_path = backup / saved
-            regular(saved_path)
-            need(record.get("old_sha256") == BASELINE_HASHES[name]
-                 and digest(saved_path.read_bytes()) == record["old_sha256"], "Original backup hash mismatch.")
-        else:
-            need(BASELINE_HASHES[name] is None, "An original PR8 file cannot be marked new.")
+        need(record.get("existed") is True, "Every deployed baseline destination must retain its original backup.")
+        saved = record.get("saved", "")
+        need(re.fullmatch(r"original-[0-9]+", saved), "Unexpected backup filename.")
+        saved_path = backup / saved
+        regular(saved_path)
+        need(record.get("old_sha256") == BASELINE_HASHES[name]
+             and digest(saved_path.read_bytes()) == record["old_sha256"], "Original backup hash mismatch.")
         need(valid_hash(record.get("new_sha256")), "Invalid deployed recovery hash.")
         if path.exists():
             regular(path)
@@ -489,10 +473,7 @@ def validate_restore(root, backup, state):
                  "A dashboard destination changed after deployment; recovery needs review.")
         else:
             need(not record["existed"], "An original dashboard file disappeared; recovery needs review.")
-    allowed_directories = {str(PurePosixPath(name).parent) for name in BASELINE_HASHES if BASELINE_HASHES[name] is None}
-    need(isinstance(state.get("created_directories"), list)
-         and set(state["created_directories"]) <= allowed_directories,
-         "Unexpected recovery directory destinations.")
+    need(state.get("created_directories") == [], "This upgrade must not create or remove destination directories.")
 
 
 def restore(backup, state):
@@ -514,18 +495,7 @@ def restore(backup, state):
         atomic(down, data, UID, GID, 0o600)
     for record in state["files"]:
         path = APP / record["path"]
-        if record["existed"]:
-            atomic(path, (backup / record["saved"]).read_bytes(), record["uid"], record["gid"], record["mode"])
-        elif path.exists():
-            path.unlink()
-    for relative in reversed(state["created_directories"]):
-        directory = APP / relative
-        no_links(directory)
-        if directory.exists():
-            try:
-                directory.rmdir()  # Remove an empty directory only; never recursively delete.
-            except OSError:
-                pass
+        atomic(path, (backup / record["saved"]).read_bytes(), record["uid"], record["gid"], record["mode"])
     artisan("view:clear")
     artisan("view:cache")
     web_cache(True)
@@ -618,7 +588,7 @@ def deploy(manifest, payload):
         records = {record["path"]: record for record in state["files"]}
         for name, data in payload.items():
             path = APP / name
-            prepare_parents(path, backup, state)
+            verify_parents(path)
             record = records[name]
             atomic(path, data, record.get("uid", UID), record.get("gid", GID), record.get("mode", 0o644))
         need(release_installed(APP, payload), "Installed dashboard files differ from the pinned release.")

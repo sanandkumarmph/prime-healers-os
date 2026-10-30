@@ -76,6 +76,17 @@ class PackageGuards(unittest.TestCase):
         with self.assertRaisesRegex(D.Refused, "identity"):
             self.load()
 
+    def test_older_pr8_package_baseline_is_refused(self):
+        self.value["baseline"] = "09c6c23112dfb405c10b28cdde9d5717a16872e9"
+        self.write_manifest()
+        with self.assertRaisesRegex(D.Refused, "identity"):
+            self.load()
+
+    def test_all_nine_deployed_baseline_paths_have_exact_hashes(self):
+        self.assertEqual(D.BASELINE, "4b70936f20410fddd3d9707b30907f5000c0b2a9")
+        self.assertEqual(len(D.BASELINE_HASHES), 9)
+        self.assertTrue(all(D.valid_hash(value) for value in D.BASELINE_HASHES.values()))
+
     def test_altered_embedded_baseline_hash_is_refused(self):
         self.value["files"][0]["baseline_sha256"] = "b" * 64
         self.write_manifest()
@@ -193,22 +204,51 @@ class SourceAndRecoveryGuards(unittest.TestCase):
                 record.update(saved=saved, old_sha256=D.BASELINE_HASHES[name], uid=1, gid=1, mode=0o644)
             self.state["files"].append(record)
 
-    def test_exact_pr8_files_are_verified_without_using_git_head(self):
+    def test_exact_deployed_files_are_verified_without_using_git_head(self):
         D.verify_baseline(self.app)
+        self.assertEqual(len(self.originals), 9)
         self.assertFalse((self.app / ".git").exists())
+
+    def test_actual_backup_records_all_nine_existing_files_and_preserves_previous_backup(self):
+        destination = self.folder / "upgrade-backup"
+        destination.mkdir()
+        previous = self.folder / "previous-dashboard-backup"
+        previous.mkdir()
+        prior_helper = previous / "rollback-helper.py"
+        prior_helper.write_bytes(b"previous release recovery helper must remain unchanged")
+        payload = {name: b"deployed " + name.encode() for name in D.BASELINE_HASHES}
+        with patch.object(D, "APP", self.app):
+            backup, state = D.make_backup({"release": RELEASE}, payload, {}, destination)
+            D.validate_restore(self.app, backup, state)
+        self.assertEqual(len(state["files"]), 9)
+        self.assertTrue(all(record["existed"] is True for record in state["files"]))
+        for record in state["files"]:
+            path = self.app / record["path"]
+            info = path.stat()
+            self.assertEqual((backup / record["saved"]).read_bytes(), path.read_bytes())
+            self.assertEqual((record["uid"], record["gid"], record["mode"]),
+                             (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)))
+        self.assertEqual(prior_helper.read_bytes(), b"previous release recovery helper must remain unchanged")
 
     def test_unknown_source_edit_stops(self):
         path = self.app / next(iter(self.originals))
         path.write_bytes(b"unexpected edit")
-        with self.assertRaisesRegex(D.Refused, "PR8 source differs"):
+        with self.assertRaisesRegex(D.Refused, "deployed baseline source differs"):
             D.verify_baseline(self.app)
 
-    def test_existing_new_file_collision_stops(self):
-        name = next(name for name, old in D.BASELINE_HASHES.items() if old is None)
+    def test_previously_added_asset_missing_from_deployed_baseline_stops(self):
+        name = "public/js/phos-executive-dashboard.js"
         path = self.app / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(b"operator file")
-        with self.assertRaisesRegex(D.Refused, "already exists"):
+        path.unlink()
+        with self.assertRaisesRegex(D.Refused, "regular"):
+            D.verify_baseline(self.app)
+
+    def test_original_pr8_files_cannot_be_used_as_upgrade_baseline(self):
+        name = "resources/views/dashboard.blade.php"
+        previous = subprocess.check_output(["git", "-C", str(REPO), "show",
+                                            "09c6c23112dfb405c10b28cdde9d5717a16872e9:" + name])
+        (self.app / name).write_bytes(previous)
+        with self.assertRaisesRegex(D.Refused, "deployed baseline source differs"):
             D.verify_baseline(self.app)
 
     def test_partial_activation_can_be_recovered_without_inspecting_business_history(self):
@@ -221,16 +261,13 @@ class SourceAndRecoveryGuards(unittest.TestCase):
         self.assertEqual(sentinel.read_bytes(), b"existing business history must survive")
 
     def partial_activation(self):
-        (self.app / "public").mkdir()
         changed = [next(iter(self.originals)), "resources/views/dashboard/executive-navigation.blade.php",
-                   "public/css/phos-executive-dashboard.css"]
+                   "public/css/phos-executive-dashboard.css", "app/Http/Controllers/KnowledgeController.php",
+                   "resources/views/knowledge/index.blade.php"]
         self.state["application"] = str(self.app)
         self.state["preserved"] = {}
         for name in changed:
             path = self.app / name
-            if not path.parent.exists():
-                self.state["created_directories"].append(str(__import__("pathlib").PurePosixPath(name).parent))
-                path.parent.mkdir(parents=True)
             path.write_bytes(b"deployed " + name.encode())
         (self.app / "storage/framework").mkdir(parents=True)
         maintenance = b'{"time":12345,"retry":60,"secret":null,"status":503}'
@@ -242,7 +279,7 @@ class SourceAndRecoveryGuards(unittest.TestCase):
 
     def test_real_file_restore_after_partial_activation_preserves_unrelated_history(self):
         # Runtime/ownership calls are mocked for Windows; actual file validation,
-        # atomic replacement, new-file removal and baseline verification run here.
+        # atomic replacement of all nine files and baseline verification run here.
         sentinel = self.partial_activation()
         with patch.object(D, "APP", self.app), patch.object(D, "WEB", self.app / "public"), \
              patch.object(D.os, "chown", lambda *args: None, create=True), \
@@ -250,6 +287,7 @@ class SourceAndRecoveryGuards(unittest.TestCase):
              patch.object(D, "runtime_guards"), patch.object(D, "health"), patch.object(D, "note"):
             D.restore(self.backup, self.state)
         D.verify_baseline(self.app)
+        self.assertTrue(all((self.app / name).is_file() for name in D.BASELINE_HASHES))
         self.assertEqual(sentinel.read_bytes(), b"must survive code rollback")
         self.assertTrue(self.state["rolled_back"])
 
@@ -288,14 +326,25 @@ class SourceAndRecoveryGuards(unittest.TestCase):
         self.assertNotIn("down", commands)
         self.assertIn("up", commands)
 
-    def test_new_directories_override_private_process_umask(self):
-        (self.app / "public").mkdir()
+    def test_missing_baseline_parent_is_refused_without_creating_directories(self):
         destination = self.app / "public/css/phos-executive-dashboard.css"
-        with patch.object(D, "APP", self.app), patch.object(D.os, "chown", lambda *args: None, create=True), \
-             patch.object(D, "save_state"), patch.object(D.os, "chmod", wraps=__import__("os").chmod) as chmod:
-            D.prepare_parents(destination, self.backup, self.state)
-        self.assertTrue(destination.parent.is_dir())
-        chmod.assert_called_once_with(destination.parent, 0o755)
+        destination.unlink()
+        destination.parent.rmdir()
+        with patch.object(D, "APP", self.app):
+            with self.assertRaisesRegex(D.Refused, "parent is missing"):
+                D.verify_parents(destination)
+        self.assertFalse(destination.parent.exists())
+
+    def test_rollback_cannot_mark_existing_dashboard_assets_as_new(self):
+        record = next(row for row in self.state["files"] if row["path"] == "public/js/phos-executive-dashboard.js")
+        record["existed"] = False
+        with self.assertRaisesRegex(D.Refused, "retain its original backup"):
+            D.validate_restore(self.app, self.backup, self.state)
+
+    def test_rollback_cannot_remove_previous_release_directories(self):
+        self.state["created_directories"] = ["public/css"]
+        with self.assertRaisesRegex(D.Refused, "must not create or remove"):
+            D.validate_restore(self.app, self.backup, self.state)
 
     def test_recovery_refuses_newer_operator_edit_before_restoring_any_file(self):
         name = next(iter(self.originals))
@@ -333,6 +382,18 @@ class SourceAndRecoveryGuards(unittest.TestCase):
         with patch.object(D, "http", response), patch.object(D, "note"):
             with self.assertRaisesRegex(D.Refused, "unexpected redirect"):
                 D.health()
+
+    def test_knowledge_hub_is_included_in_six_protected_route_checks(self):
+        visited = []
+        def response(path, local=True, token=None):
+            visited.append(path)
+            if path in ("/up", "/login"):
+                return "200", b"ok", ""
+            return "302", b"", "Location: https://uat-admin.primehealers.com/login\r\n"
+        with patch.object(D, "http", response), patch.object(D, "note") as note:
+            D.health()
+        self.assertIn("/knowledge", visited)
+        note.assert_any_call("PROTECTED_ROUTES_VERIFIED=6")
 
 
 if __name__ == "__main__":

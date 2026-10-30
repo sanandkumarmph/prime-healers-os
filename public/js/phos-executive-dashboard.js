@@ -14,8 +14,47 @@
     const panelFor = name => panels.find(panel => panel.dataset.dashboardPanel === name);
     const dashboardPath = new URL(links[0].href, location.href).pathname;
     const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const filters = root.querySelector('[data-dashboard-filters]');
+    const period = root.querySelector('[data-dashboard-period]');
+    const disclosures = [filters, period].filter(Boolean);
+
+    function closeDisclosure(disclosure, focus = false) {
+        disclosure.open = false;
+        if (focus) disclosure.querySelector('summary')?.focus();
+    }
+
+    disclosures.forEach(disclosure => disclosure.addEventListener('toggle', () => {
+        if (disclosure.open) disclosures.filter(other => other !== disclosure).forEach(other => closeDisclosure(other));
+    }));
+    document.addEventListener('click', event => {
+        disclosures.filter(disclosure => disclosure.open && !disclosure.contains(event.target)).forEach(disclosure => closeDisclosure(disclosure));
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape') return;
+        const open = disclosures.find(disclosure => disclosure.open);
+        if (open) { event.preventDefault(); closeDisclosure(open, true); }
+    });
+    root.querySelectorAll('[data-dashboard-filter-close]').forEach(button => {
+        button.hidden = false;
+        button.addEventListener('click', () => { if (filters) closeDisclosure(filters, true); });
+    });
+    root.querySelectorAll('[data-dashboard-custom-period]').forEach(button => {
+        button.hidden = false;
+        button.addEventListener('click', event => {
+            event.stopPropagation();
+            if (!filters) return;
+            if (period) closeDisclosure(period);
+            filters.open = true;
+            filters.querySelector('[name="from_date"]')?.focus();
+        });
+    });
 
     function syncForms() {
+        root.querySelectorAll('[data-dashboard-period-link]').forEach(link => {
+            const destination = new URL(link.href, location.href);
+            destination.searchParams.set('dashboard_tab', active);
+            link.href = destination.href;
+        });
         root.querySelectorAll('form').forEach(form => {
             if ((form.getAttribute('method') || 'get').toLowerCase() !== 'get') return;
             const action = new URL(form.getAttribute('action') || location.href, location.href);

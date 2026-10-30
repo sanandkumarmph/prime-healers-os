@@ -46,15 +46,23 @@ retains forms and expanded details, updates the URL, and supports Back/Forward a
 keyboard navigation. Existing section-fragment links open their owning panel and
 native disclosures. Fragment links that change the query string navigate through
 the server so filter resets and drilldowns load the corresponding results.
-Global dashboard filters remain available above every tab.
+Global dashboard filters remain available from the compact icon immediately before
+Detailed reports. The activity-period selector stays visible above the tabs, with
+the selected range and native links for Today, Last 7 days, This month, Last month
+and All dates. Custom range opens the same existing date inputs. Existing default
+date scope and per-metric reporting periods are unchanged. Filters and date presets
+work without JavaScript; enhanced controls support Escape and outside-click close.
 
-The sidebar consolidates only Business overview/Dashboard. Other destinations,
-ordering and permission conditions remain intact. Logo-derived blue, burgundy and
-green are scoped to the dashboard route; other module layouts are unchanged.
+Main prioritizes Dashboard, Rentals, Sales, Sales workspace, Customers, Business
+Partners, Collections & cash and Rental availability. Knowledge Hub in Help contains
+the permission-aware Workflow guides; existing guide URLs continue to work. Other
+destinations, badges and permission conditions remain intact.
+The shared layout now applies the same Prime Healers sidebar and topbar styling on
+every PHOS page. Individual modules retain their own content presentation.
 
 ## UAT scope
 
-The rollout is restricted to the seven runtime paths listed in
+The rollout is restricted to the nine runtime paths listed in
 `ops/phos-tabbed-dashboard-uat/README.md`. It requires no migration, dependency
 installation, report change or business-data transformation. The guarded UAT
 package verifies the previously deployed source bytes and backs up only the

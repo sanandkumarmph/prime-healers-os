@@ -32,6 +32,28 @@ function fixture(url, requestId) {
         destination.hash = '';
         return `<a role="tab" data-dashboard-tab="${tab}" aria-selected="${tab === selected}" href="${escape(destination.pathname + destination.search)}">${tab}</a>`;
     }).join('');
+    const filterForm = `<details data-dashboard-filters><summary data-dashboard-filter-toggle aria-label="Filters">Filters</summary>
+        <form method="GET" action="/dashboard" data-dashboard-filter-form>
+            <input type="hidden" name="dashboard_tab" value="${selected}">
+            <label>From date <input type="date" name="from_date" value="${escape(url.searchParams.get('from_date') || '')}"></label>
+            <label>To date <input type="date" name="to_date" value="${escape(url.searchParams.get('to_date') || '')}"></label>
+            <label>City <select name="city">${['', 'Bengaluru', 'Mysuru'].map(value => `<option value="${value}"${url.searchParams.get('city') === value ? ' selected' : ''}>${value || 'All cities'}</option>`).join('')}</select></label>
+            <label>Fulfilment <select name="fulfilment_source"><option value="">All</option><option value="vendor_supplied">Vendor supplied</option></select></label>
+            <label>Payment status <select name="payment_status"><option value="">All</option><option value="partial">Partial</option></select></label>
+            <label>Search <input name="search" value="${escape(url.searchParams.get('search') || '')}"></label>
+            <button type="submit">Apply</button><a href="/dashboard" data-dashboard-filter-reset>Reset</a>
+        </form></details>`;
+    const periodLinks = [
+        ['Today', '2026-10-29', '2026-10-29'], ['Last 7 days', '2026-10-23', '2026-10-29'],
+        ['This month', '2026-10-01', '2026-10-29'], ['Last month', '2026-09-01', '2026-09-30'], ['All dates', null, null],
+    ].map(([label, from, to]) => {
+        const destination = new URL(url);
+        destination.searchParams.delete('from_date'); destination.searchParams.delete('to_date');
+        if (from) destination.searchParams.set('from_date', from);
+        if (to) destination.searchParams.set('to_date', to);
+        destination.hash = '';
+        return `<a data-dashboard-period-link href="${escape(destination.pathname + destination.search)}">${label}</a>`;
+    }).join('');
     const content = {
         overview: `<a data-test="same-query" href="${escape(inventory.pathname + inventory.search + inventory.hash)}">Inventory details</a>
             <a data-test="changed-filter" href="${escape(changedFilter.pathname + changedFilter.search + changedFilter.hash)}">Mysuru invoice aging</a>`,
@@ -44,6 +66,7 @@ function fixture(url, requestId) {
     return `<!doctype html><html><head><meta charset="utf-8"><title>Dashboard navigation fixture</title>
         <style>[hidden]{display:none!important}a{display:inline-block;margin:8px;padding:8px}section{min-height:60px}</style></head><body>
         <main data-executive-dashboard data-active-dashboard-tab="${selected}" data-server-request="${requestId}" data-server-city="${escape(url.searchParams.get('city') || '')}">
+            <header>${filterForm}<details data-dashboard-period><summary data-dashboard-period-toggle>1–29 October 2026</summary>${periodLinks}</details></header>
             <nav role="tablist">${tabLinks}</nav>
             ${tabs.map(tab => `<section data-dashboard-panel="${tab}"${tab === selected ? '' : ' hidden'}>${content[tab]}</section>`).join('')}
         </main><script src="/public/js/phos-executive-dashboard.js"></script></body></html>`;
@@ -76,8 +99,10 @@ test('dashboard fragments preserve server-side filter navigation', { timeout: 90
     browser = await puppeteer.launch({ headless: true,
         ...(process.env.CI ? { args: ['--no-sandbox', '--disable-setuid-sandbox'] } : {}) });
 
-    async function pageFor(query) {
+    async function pageFor(query, {javascript = true, width = 1440} = {}) {
         const page = await browser.newPage();
+        await page.setViewport({width, height: 1000});
+        await page.setJavaScriptEnabled(javascript);
         const errors = [];
         page.on('pageerror', error => errors.push(error.message));
         await page.setRequestInterception(true);
@@ -166,4 +191,64 @@ test('dashboard fragments preserve server-side filter navigation', { timeout: 90
             assert.deepEqual(errors, []);
         } finally { await page.close(); }
     });
+
+    for (const javascript of [true, false]) {
+        await t.test(`global filter form submits its current tab and all controls through GET (${javascript ? 'JavaScript' : 'no JavaScript'})`, async () => {
+            const {page, errors} = await pageFor({...globalFilters, dashboard_tab: javascript ? 'overview' : 'revenue'}, {javascript, width: javascript ? 1440 : 390});
+            try {
+                if (javascript) await page.click('[data-dashboard-tab="revenue"]');
+                await assertPanel(page, 'revenue');
+                await page.click('[data-dashboard-filter-toggle]');
+                assert.equal(await page.$eval('[data-dashboard-filters]', details => details.open), true);
+                const values = {from_date: '2026-10-03', to_date: '2026-10-23', city: 'Mysuru', fulfilment_source: 'vendor_supplied', payment_status: 'partial', search: 'Filter regression'};
+                await page.evaluate(fields => {
+                    const form = document.querySelector('[data-dashboard-filter-form]');
+                    for (const [name, value] of Object.entries(fields)) form.elements.namedItem(name).value = value;
+                }, values);
+                const before = requests.length;
+                await Promise.all([
+                    page.waitForNavigation({waitUntil: 'networkidle0', timeout: 5000}),
+                    page.click('[data-dashboard-filter-form] button[type="submit"]'),
+                ]);
+                assert.equal(requests.length, before + 1);
+                assert.equal(requests.at(-1).method, 'GET');
+                for (const [name, value] of Object.entries(values)) assert.equal(requests.at(-1).url.searchParams.get(name), value);
+                assert.equal(requests.at(-1).url.searchParams.get('dashboard_tab'), 'revenue');
+                await assertPanel(page, 'revenue');
+                await page.click('[data-dashboard-filter-toggle]');
+                await Promise.all([
+                    page.waitForNavigation({waitUntil: 'networkidle0', timeout: 5000}),
+                    page.click('[data-dashboard-filter-reset]'),
+                ]);
+                assert.equal(requests.at(-1).url.pathname, '/dashboard');
+                assert.equal(requests.at(-1).url.search, '');
+                await assertPanel(page, 'overview');
+                assert.deepEqual(errors, []);
+            } finally { await page.close(); }
+        });
+        await t.test(`activity period presets use a server GET and retain the selected tab (${javascript ? 'JavaScript' : 'no JavaScript'})`, async () => {
+            const {page, errors} = await pageFor({...globalFilters, dashboard_tab: javascript ? 'overview' : 'revenue'}, {javascript, width: javascript ? 1440 : 390});
+            try {
+                if (javascript) await page.click('[data-dashboard-tab="revenue"]');
+                await page.click('[data-dashboard-period-toggle]');
+                assert.equal(await page.$eval('[data-dashboard-period]', details => details.open), true);
+                const links = await page.$$eval('[data-dashboard-period-link]', elements => elements.map(link => ({text: link.textContent.trim(), tab: new URL(link.href).searchParams.get('dashboard_tab')})));
+                assert.equal(links.length, 5);
+                assert.ok(links.every(link => link.tab === 'revenue'), 'Period links must follow a local tab switch.');
+                const count = requests.length;
+                await Promise.all([
+                    page.waitForNavigation({waitUntil: 'networkidle0', timeout: 5000}),
+                    page.$$eval('[data-dashboard-period-link]', elements => elements.find(link => link.textContent.trim() === 'Today').click()),
+                ]);
+                assert.equal(requests.length, count + 1);
+                assert.equal(requests.at(-1).method, 'GET');
+                assert.equal(requests.at(-1).url.searchParams.get('dashboard_tab'), 'revenue');
+                assert.equal(requests.at(-1).url.searchParams.get('from_date'), '2026-10-29');
+                assert.equal(requests.at(-1).url.searchParams.get('to_date'), '2026-10-29');
+                for (const key of ['city', 'vendor_id']) assert.equal(requests.at(-1).url.searchParams.get(key), globalFilters[key]);
+                await assertPanel(page, 'revenue');
+                assert.deepEqual(errors, []);
+            } finally { await page.close(); }
+        });
+    }
 });

@@ -7529,68 +7529,6 @@
         </section>
     @else
     @include('dashboard.executive-navigation')
-        <div class="control-room-filter-dock">
-            <details class="rx-card dashboard-filters-card">
-                <summary class="rx-card-header">
-                    <div>
-                        <h2 class="rx-card-title">Filters</h2>
-                        <p class="rx-card-copy">Date, city, fulfilment, and payment view.</p>
-                    </div>
-                    <span class="dashboard-filter-toggle" aria-hidden="true"></span>
-                </summary>
-                <div class="rx-card-body">
-                    <form method="GET" action="{{ $dashboardUrl }}" class="rx-form-grid">
-                        <input type="hidden" name="dashboard_tab" value="{{ $activeDashboardTab }}">
-                        <div class="dashboard-filter-grid">
-                            <label class="rx-field">
-                                <span class="rx-label">From Date</span>
-                                <input type="date" name="from_date" value="{{ $fromDate ?? '' }}" class="rn-input" />
-                            </label>
-                            <label class="rx-field">
-                                <span class="rx-label">To Date</span>
-                                <input type="date" name="to_date" value="{{ $toDate ?? '' }}" class="rn-input" />
-                            </label>
-                            <label class="rx-field">
-                                <span class="rx-label">City</span>
-                                <select name="city" class="rn-input">
-                                    <option value="">All Cities</option>
-                                    @foreach($cities as $cityOption)
-                                        <option value="{{ $cityOption }}" @selected(($city ?? null) === $cityOption)>{{ $cityOption }}</option>
-                                    @endforeach
-                                </select>
-                            </label>
-                            <label class="rx-field">
-                                <span class="rx-label">Fulfilment</span>
-                                <select name="fulfilment_source" class="rn-input">
-                                    <option value="">All</option>
-                                    <option value="in_house" @selected(request('fulfilment_source') === 'in_house')>In-house</option>
-                                    <option value="vendor_supplied" @selected(request('fulfilment_source') === 'vendor_supplied')>Vendor supplied</option>
-                                </select>
-                            </label>
-                            <label class="rx-field">
-                                <span class="rx-label">Payment Status</span>
-                                <select name="payment_status" class="rn-input">
-                                    <option value="">All</option>
-                                    <option value="paid" @selected(request('payment_status') === 'paid')>Paid</option>
-                                    <option value="partial" @selected(request('payment_status') === 'partial')>Partial</option>
-                                    <option value="unpaid" @selected(request('payment_status') === 'unpaid')>Unpaid</option>
-                                </select>
-                            </label>
-                            <label class="rx-field">
-                                <span class="rx-label">Search</span>
-                                <input type="text" name="search" value="{{ $search ?? '' }}" placeholder="Customer, rental, phone" class="rn-input" />
-                            </label>
-                        </div>
-
-                        <div class="rx-actions">
-                            <button type="submit" class="rx-btn">Apply</button>
-                            <a href="{{ $safeRoute('dashboard') ?? $dashboardUrl }}" class="rx-btn-secondary">Reset</a>
-                        </div>
-                    </form>
-                </div>
-            </details>
-        </div>
-
 
     @if($dashboardTabs->has('overview'))
     <section data-dashboard-panel="overview" id="phos-panel-overview" role="tabpanel" aria-labelledby="phos-tab-overview" @if($activeDashboardTab !== 'overview') hidden @endif>

@@ -20,6 +20,7 @@ use DOMElement;
 use DOMXPath;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\View;
 use Illuminate\Testing\TestResponse;
 use Tests\Support\TestData;
 use Tests\TestCase;
@@ -306,20 +307,102 @@ class TabbedExecutiveDashboardRegressionTest extends TestCase
         $this->assertSame('inventory', $query['dashboard_tab'] ?? null);
     }
 
-    public function test_sidebar_only_consolidates_dashboard_and_preserves_other_module_destinations(): void
+    public function test_sidebar_prioritizes_daily_work_preserves_badges_and_keeps_other_destinations(): void
     {
-        $this->actingAs(TestData::user());
+        $owner = TestData::user();
+        $this->actingAs($owner);
+        // Console HTTP tests intentionally suppress the live sidebar count composer.
+        // Supply an existing badge value to exercise its unchanged rendering/key.
+        View::composer('layouts.app', fn ($view) => $view->with('sidebarPendingCounts', ['rentals' => 1]));
         $response = $this->get(route('dashboard'))->assertOk();
         $xpath = $this->xpath($response);
+        $this->assertSame([
+            'Dashboard', 'Rentals', 'Sales', 'Sales workspace', 'Customers',
+            'Business Partners', 'Collections & cash', 'Rental availability',
+        ], $this->sidebarLabels($xpath, 'main'));
+        $this->assertSame(['Knowledge Hub'], $this->sidebarLabels($xpath, 'help'));
+        $groups = [];
+        foreach ($xpath->query('//*[@data-sidebar-group]') as $group) {
+            $groups[] = $group->getAttribute('data-sidebar-group');
+        }
+        $this->assertSame(['main', 'operations', 'inventory', 'finance', 'team', 'analytics', 'more', 'help', 'organization-settings'], $groups);
+        $rentalBadge = $xpath->query('//*[@data-sidebar-group="main"]//a[@aria-label="Rentals"]//span[contains(concat(" ", normalize-space(@class), " "), " sidebar-link-badge ")]');
+        $this->assertSame(1, $rentalBadge->length);
+        $this->assertSame('1', trim($rentalBadge->item(0)->textContent), 'The overdue rental badge must follow its existing destination after reordering.');
         $links = [];
         foreach ($xpath->query('//a[contains(concat(" ", normalize-space(@class), " "), " sidebar-link ")]') as $link) {
             $links[] = $link->getAttribute('href');
         }
         $this->assertSame(1, count(array_filter($links, fn ($href) => $href === route('dashboard'))));
         $this->assertNotContains(route('dashboard.compact'), $links);
-        foreach (['customers.index', 'business-partners.index', 'cash-handovers.index', 'enquiries.index', 'availability.index', 'workflow-guides.index', 'rentals.index', 'sales.index', 'renewal-center.index', 'pickup-center.index', 'communication-center.index', 'deliveries.index', 'inventory.dashboard', 'products.index', 'assets.index', 'warehouses.index', 'stock-history.index', 'ledger.index', 'invoices.index', 'reports.index', 'users.index', 'roles.index'] as $route) {
+        foreach (['customers.index', 'business-partners.index', 'cash-handovers.index', 'enquiries.index', 'availability.index', 'knowledge.index', 'rentals.index', 'sales.index', 'renewal-center.index', 'pickup-center.index', 'communication-center.index', 'deliveries.index', 'inventory.dashboard', 'products.index', 'assets.index', 'warehouses.index', 'stock-history.index', 'ledger.index', 'invoices.index', 'reports.index', 'users.index', 'roles.index'] as $route) {
             $this->assertContains(route($route), $links, "Existing sidebar destination {$route} was removed.");
         }
+    }
+
+    public function test_reordered_main_and_bottom_help_preserve_restricted_role_visibility(): void
+    {
+        $organization = TestData::organization();
+        $customerReader = $this->roleUser($organization, 'customers_only', ['customers' => ['read']]);
+        $response = $this->actingAs($customerReader)->get(route('profile.edit'))->assertOk();
+        $xpath = $this->xpath($response);
+        $this->assertSame(['Dashboard', 'Customers', 'Business Partners'], $this->sidebarLabels($xpath, 'main'));
+        $this->assertSame(['Knowledge Hub'], $this->sidebarLabels($xpath, 'help'));
+        foreach (['rentals.index', 'sales.index', 'enquiries.index', 'cash-handovers.index', 'availability.index'] as $route) {
+            $this->assertSame(0, $xpath->query('//*[@data-sidebar-group="main"]//a[@href="'.route($route).'"]')->length, "Reordering must not expose {$route} to a customer-only reader.");
+        }
+
+        $delivery = $this->roleUser($organization, User::ROLE_DELIVERY, [
+            'deliveries' => ['read', 'update'], 'rentals' => ['read'],
+        ]);
+        $response = $this->actingAs($delivery)->get(route('profile.edit'))->assertOk();
+        $xpath = $this->xpath($response);
+        $this->assertSame(['Dashboard', 'Collections & cash'], $this->sidebarLabels($xpath, 'main'));
+        $this->assertSame(['Pickup Center', 'Tasks Board'], $this->sidebarLabels($xpath, 'operations'));
+        $this->assertSame(['Knowledge Hub'], $this->sidebarLabels($xpath, 'help'));
+    }
+
+    public function test_knowledge_hub_help_destination_remains_active_for_legacy_workflow_guides(): void
+    {
+        $this->actingAs(TestData::user());
+        $response = $this->get(route('workflow-guides.index'))->assertOk();
+        $xpath = $this->xpath($response);
+        $help = $xpath->query('//*[@data-sidebar-group="help"]');
+        $this->assertSame(1, $help->length);
+        $this->assertSame('true', $help->item(0)->getAttribute('data-has-active'));
+        $this->assertSame('true', $help->item(0)->getAttribute('data-default-open'));
+        $active = $xpath->query('//*[@data-sidebar-group="help"]//a[@href="'.route('knowledge.index').'" and contains(concat(" ", normalize-space(@class), " "), " is-active ")]');
+        $this->assertSame(1, $active->length, 'Knowledge Hub must stay active for existing workflow-guide bookmarks.');
+        $this->assertSame(0, $xpath->query('//*[@data-sidebar-group="help"]//a[@href="'.route('workflow-guides.index').'"]')->length);
+    }
+
+    public function test_shared_navigation_appearance_is_present_outside_dashboard_without_dashboard_assets(): void
+    {
+        $this->actingAs(TestData::user());
+        foreach (['profile.edit', 'rentals.index', 'customers.index', 'workflow-guides.index'] as $route) {
+            $response = $this->get(route($route))->assertOk();
+            $xpath = $this->xpath($response);
+            $bodyClasses = $xpath->query('//body')->item(0)->getAttribute('class');
+            $this->assertContains('phos-navigation-refresh', preg_split('/\s+/', trim($bodyClasses)), "{$route} must use the shared navigation presentation.");
+            $this->assertNotContains('phos-executive-page', preg_split('/\s+/', trim($bodyClasses)), "{$route} must retain its own content presentation.");
+            $this->assertSame(1, $xpath->query('//style[@id="phos-global-navigation-styles"]')->length);
+            $this->assertSame(0, $xpath->query('//link[contains(@href, "/css/phos-executive-dashboard.css")]')->length, 'Shared navigation must not depend on the dashboard-only stylesheet.');
+            $this->assertSame(0, $xpath->query('//script[contains(@src, "/js/phos-executive-dashboard.js")]')->length);
+            $this->assertSame(['Knowledge Hub'], $this->sidebarLabels($xpath, 'help'));
+            if ($route === 'profile.edit') {
+                $this->exportFixture('non-dashboard-profile', $response, ['role' => 'super_admin', 'active_tab' => null, 'route' => $route]);
+            }
+        }
+    }
+
+    private function sidebarLabels(DOMXPath $xpath, string $group): array
+    {
+        $labels = [];
+        foreach ($xpath->query('//*[@data-sidebar-group="'.$group.'"]//a[@data-sidebar-link]') as $link) {
+            $labels[] = $link->getAttribute('aria-label');
+        }
+
+        return $labels;
     }
 
     private function xpath(TestResponse $response): DOMXPath

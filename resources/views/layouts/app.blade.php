@@ -59,7 +59,7 @@
         }
     </style>
 </head>
-<body @class(['phos-executive-page' => request()->routeIs('dashboard', 'dashboard.compact')]) style="margin:0; width:100%; overflow-x:hidden; background:var(--ph-color-bg); color:var(--ph-color-text); font-family:var(--ph-font-body);">
+<body @class(['phos-navigation-refresh', 'phos-executive-page' => request()->routeIs('dashboard', 'dashboard.compact')]) style="margin:0; width:100%; overflow-x:hidden; background:var(--ph-color-bg); color:var(--ph-color-text); font-family:var(--ph-font-body);">
 @php
     $currentUser = auth()->user();
     $safeRoute = function (string $routeName, array $parameters = []) {
@@ -155,14 +155,13 @@
             'label' => 'Main',
             'items' => [
                 ['key' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'dashboard', 'href' => $safeRoute('dashboard'), 'active' => request()->routeIs('dashboard', 'dashboard.compact'), 'visible' => $currentUser?->canAccessDashboard() ?? false],
+                ['key' => 'rentals', 'label' => 'Rentals', 'icon' => 'rentals', 'href' => $safeRoute('rentals.index'), 'active' => request()->routeIs('rentals.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('rentals', 'read') ?? false)],
+                ['key' => 'sales', 'label' => 'Sales', 'icon' => 'sales', 'href' => $safeRoute('sales.index'), 'active' => request()->routeIs('sales.*'), 'visible' => $currentUser?->canAccessModule('sales', 'read') ?? false],
+                ['key' => 'sales_workspace', 'label' => 'Sales workspace', 'icon' => 'sales', 'href' => $safeRoute('enquiries.index'), 'active' => request()->routeIs('enquiries.*', 'quotations.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('enquiries', 'read') ?? false)],
                 ['key' => 'customers', 'label' => 'Customers', 'icon' => 'customers', 'href' => $safeRoute('customers.index'), 'active' => request()->routeIs('customers.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('customers', 'read') ?? false)],
                 ['key' => 'business_partners', 'label' => 'Business Partners', 'icon' => 'customers', 'href' => $safeRoute('business-partners.index'), 'active' => request()->routeIs('business-partners.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('customers', 'read') ?? false)],
                 ['key' => 'cash_handovers', 'label' => 'Collections & cash', 'icon' => 'payments', 'href' => $safeRoute('cash-handovers.index'), 'active' => request()->routeIs('cash-handovers.*', 'delivery-collections.*'), 'visible' => ($currentUser?->canAccessModule('deliveries', 'update') ?? false) || ((in_array($currentUser?->effective_role, ['super_admin', 'admin_operations', 'finance', 'admin'], true) || ($currentUser?->hasPermission('cash.receive') ?? false)) && ($currentUser?->canAccessModule('payments', 'create') ?? false))],
-                ['key' => 'sales_workspace', 'label' => 'Sales workspace', 'icon' => 'sales', 'href' => $safeRoute('enquiries.index'), 'active' => request()->routeIs('enquiries.*', 'quotations.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('enquiries', 'read') ?? false)],
                 ['key' => 'rental_availability', 'label' => 'Rental availability', 'icon' => 'inventory', 'href' => $safeRoute('availability.index'), 'active' => request()->routeIs('availability.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('rentals', 'read') ?? false)],
-                ['key' => 'workflow_guides', 'label' => 'Workflow guides', 'icon' => 'knowledge', 'href' => $safeRoute('workflow-guides.index'), 'active' => request()->routeIs('workflow-guides.*'), 'visible' => true],
-                ['key' => 'rentals', 'label' => 'Rentals', 'icon' => 'rentals', 'href' => $safeRoute('rentals.index'), 'active' => request()->routeIs('rentals.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('rentals', 'read') ?? false)],
-                ['key' => 'sales', 'label' => 'Sales', 'icon' => 'sales', 'href' => $safeRoute('sales.index'), 'active' => request()->routeIs('sales.*'), 'visible' => $currentUser?->canAccessModule('sales', 'read') ?? false],
             ],
         ],
         [
@@ -218,6 +217,12 @@
                 ['label' => 'Cities', 'icon' => 'cities', 'href' => $safeRoute('cities.index'), 'active' => request()->routeIs('cities.*'), 'visible' => $currentUser?->canAccessModule('cities', 'read') ?? false],
                 ['label' => 'Vendors', 'icon' => 'vendors', 'href' => $safeRoute('vendors.index'), 'active' => request()->routeIs('vendors.*'), 'visible' => $currentUser?->canAccessModule('vendors', 'read') ?? false],
                 ['label' => 'Referral Sources', 'icon' => 'customers', 'href' => $safeRoute('referral-sources.index'), 'active' => request()->routeIs('referral-sources.*'), 'visible' => ($currentUser?->canAccessModule('vendors', 'read') ?? false) || ($currentUser?->canAccessModule('settings', 'read') ?? false)],
+            ],
+        ],
+        [
+            'label' => 'Help',
+            'items' => [
+                ['key' => 'knowledge_hub', 'label' => 'Knowledge Hub', 'icon' => 'knowledge', 'href' => $knowledgeHubHref, 'active' => request()->routeIs('knowledge.*', 'workflow-guides.*'), 'visible' => true],
             ],
         ],
     ];
@@ -3360,6 +3365,159 @@
     }
 </style>
 
+<style id="phos-global-navigation-styles">
+    /* Shared navigation only. Each module keeps its existing content palette and layout. */
+    body.phos-navigation-refresh {
+        --ph-nav-surface:#ffffff;
+        --ph-nav-text:#31485c;
+        --ph-nav-muted:#627589;
+        --ph-nav-border:#dce5ec;
+        --ph-nav-link:#0b5e99;
+        --ph-nav-blue:#0f75bd;
+        --ph-nav-soft:#f3f7fa;
+        --ph-nav-selected:#eaf3fb;
+        --ph-nav-badge:#9e1423;
+    }
+    body.phos-navigation-refresh .app-shell {
+        --ph-sidebar-expanded-width:228px;
+        --ph-sidebar-collapsed-width:68px;
+    }
+    body.phos-navigation-refresh .app-shell-sidebar.rn-sidebar {
+        background:var(--ph-nav-surface) !important;
+        color:var(--ph-nav-text);
+        border-right:1px solid var(--ph-nav-border);
+        box-shadow:none;
+        padding:10px 9px;
+    }
+    body.phos-navigation-refresh .app-shell-sidebar.rn-sidebar::before { background:none; }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-scroll {
+        padding-right:5px;
+        scrollbar-color:#c4d1dc transparent;
+    }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-scroll::-webkit-scrollbar-thumb { background:#c4d1dc; }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-scroll::-webkit-scrollbar-track { background:transparent; }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-section {
+        border-color:#e8eef3;
+        padding-top:8px;
+        margin-top:8px;
+    }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-section-toggle,
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-section-toggle svg { color:var(--ph-nav-muted); }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-section-title,
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-section-toggle span {
+        color:var(--ph-nav-muted) !important;
+        font-size:10px;
+        font-weight:600;
+        letter-spacing:.09em;
+    }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-section-toggle:hover { background:var(--ph-nav-soft); }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-link {
+        min-height:37px;
+        padding:8px 9px;
+        gap:8px;
+        color:var(--ph-nav-text);
+        background:transparent;
+        border:1px solid transparent;
+        border-radius:7px;
+        box-shadow:none;
+    }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-link .sidebar-label {
+        font-size:12px;
+        font-weight:500;
+    }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-link:hover {
+        color:var(--ph-nav-link);
+        background:var(--ph-nav-soft);
+        border-color:transparent;
+        box-shadow:none;
+    }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-link.is-active,
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-link.is-admin-active,
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-link.is-secondary-active {
+        color:var(--ph-nav-link) !important;
+        background:var(--ph-nav-selected) !important;
+        border-color:var(--ph-nav-selected) !important;
+        min-height:37px;
+        box-shadow:none;
+    }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-link.is-active .sidebar-label,
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-link.is-admin-active .sidebar-label,
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-link.is-secondary-active .sidebar-label {
+        color:var(--ph-nav-link) !important;
+        font-weight:600;
+    }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-link.is-active::before,
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-link.is-admin-active::before,
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-link.is-secondary-active::before { display:none; }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-icon,
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-link:hover .sidebar-icon {
+        color:var(--ph-nav-muted);
+        background:transparent;
+        border-color:transparent;
+        box-shadow:none;
+        width:20px;
+        height:20px;
+        flex-basis:20px;
+    }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-icon svg { width:16px; height:16px; }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-link.is-active .sidebar-icon,
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-link.is-admin-active .sidebar-icon,
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-link.is-secondary-active .sidebar-icon {
+        color:var(--ph-nav-blue) !important;
+        background:transparent !important;
+        border-color:transparent !important;
+    }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-link-badge {
+        min-width:22px;
+        height:19px;
+        padding:1px 5px;
+        font-size:10px;
+        font-weight:600;
+        color:var(--ph-nav-badge);
+        background:#f9ecee;
+        border:0;
+        box-shadow:none;
+    }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-link.is-active .sidebar-link-badge {
+        color:var(--ph-nav-badge);
+        background:#f9ecee;
+    }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-shell-toggle {
+        color:#526a7d;
+        background:var(--ph-nav-surface);
+        border-color:var(--ph-nav-border);
+        box-shadow:none;
+    }
+    body.phos-navigation-refresh .app-shell-sidebar .sidebar-shell-toggle:hover {
+        color:var(--ph-nav-link);
+        background:var(--ph-nav-soft);
+        border-color:#cbd8e2;
+    }
+    body.phos-navigation-refresh .app-shell-topbar {
+        background:var(--ph-nav-surface);
+        border-color:var(--ph-nav-border);
+        box-shadow:none;
+    }
+    body.phos-navigation-refresh :is(.shell-brand-pill, .topbar-chip.is-role) {
+        color:var(--ph-nav-link);
+        background:#edf5fc;
+        border-color:#d2e5f4;
+    }
+    body.phos-navigation-refresh .app-shell-sidebar :is(a, button):focus-visible {
+        outline:2px solid var(--ph-nav-blue);
+        outline-offset:3px;
+    }
+    @media (max-width:1024px) {
+        body.phos-navigation-refresh .mobile-bottom-nav .is-active {
+            color:var(--ph-nav-link);
+            background:var(--ph-nav-selected);
+        }
+    }
+    @media (prefers-reduced-motion:reduce) {
+        body.phos-navigation-refresh .app-shell-sidebar * { scroll-behavior:auto !important; transition:none !important; }
+    }
+</style>
+
 <div class="app-shell rn-shell" data-sidebar-shell>
     @include('partials.mobile-topbar', ['breadcrumbItems' => $breadcrumbItems ?? [], 'currentUser' => $currentUser])
 
@@ -3544,7 +3702,7 @@
                 @if(!empty($knowledgeHubHref))
                     <a
                         href="{{ $knowledgeHubHref }}"
-                        class="topbar-action-link icon-ink icon-knowledge {{ request()->routeIs('knowledge.index') ? 'is-active' : '' }}"
+                        class="topbar-action-link icon-ink icon-knowledge {{ request()->routeIs('knowledge.*', 'workflow-guides.*') ? 'is-active' : '' }}"
                         title="Knowledge Hub"
                         aria-label="Knowledge Hub"
                     >
