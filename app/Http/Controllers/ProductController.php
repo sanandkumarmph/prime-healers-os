@@ -731,7 +731,7 @@ class ProductController extends Controller
         return response()->streamDownload(function () use ($products) {
             $output = fopen('php://output', 'w');
 
-            fputcsv($output, [
+            \App\Support\SafeCsv::row($output, [
                 '#',
                 'Product',
                 'Category',
@@ -751,7 +751,7 @@ class ProductController extends Controller
             ]);
 
             foreach ($products as $index => $product) {
-                fputcsv($output, [
+                \App\Support\SafeCsv::row($output, [
                     $index + 1,
                     $product->name,
                     $product->category,

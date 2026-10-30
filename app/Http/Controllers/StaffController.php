@@ -189,7 +189,7 @@ class StaffController extends Controller
         return response()->streamDownload(function () use ($staffMembers) {
             $output = fopen('php://output', 'w');
 
-            fputcsv($output, [
+            \App\Support\SafeCsv::row($output, [
                 'Name',
                 'Phone',
                 'Email',
@@ -204,7 +204,7 @@ class StaffController extends Controller
             ]);
 
             foreach ($staffMembers as $staff) {
-                fputcsv($output, [
+                \App\Support\SafeCsv::row($output, [
                     $staff->name,
                     $staff->phone,
                     $staff->email,

@@ -2028,10 +2028,10 @@ class ReportController extends Controller
 
         return response()->streamDownload(function () use ($dataset) {
             $output = fopen('php://output', 'w');
-            fputcsv($output, $dataset['columns']);
+            \App\Support\SafeCsv::row($output, $dataset['columns']);
 
             foreach ($dataset['rows'] as $row) {
-                fputcsv($output, $row);
+                \App\Support\SafeCsv::row($output, $row);
             }
 
             fclose($output);

@@ -334,7 +334,7 @@ class VendorOrderReportController extends Controller
 
         return response()->streamDownload(function () use ($rows, $headers, $includeCosts) {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, $headers);
+            \App\Support\SafeCsv::row($handle, $headers);
 
             foreach ($rows as $detail) {
                 $row = [
@@ -375,7 +375,7 @@ class VendorOrderReportController extends Controller
                     $detail->notes,
                 ]);
 
-                fputcsv($handle, $row);
+                \App\Support\SafeCsv::row($handle, $row);
             }
 
             fclose($handle);

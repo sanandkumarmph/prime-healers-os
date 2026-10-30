@@ -751,7 +751,7 @@
     $recentSalesSummary = $dashboardWidgetEnabled('section_sales_overview') ? collect($recentSales ?? collect())->take(5) : collect();
     $recentRentalsSummary = $dashboardWidgetEnabled('section_recent_rentals') ? collect($recentRentals ?? collect())->take(6) : collect();
     $recentCustomersSummary = $dashboardWidgetEnabled('section_recent_customers') ? collect($recentCustomers ?? collect())->take(5) : collect();
-    $recentPaymentsSummary = $dashboardWidgetEnabled('section_recent_payments') ? collect($recentPayments ?? collect())->take(5) : collect();
+    $recentPaymentsSummary = $canViewFinance && $dashboardWidgetEnabled('section_recent_payments') ? collect($recentPayments ?? collect())->take(5) : collect();
     $recentDeliveriesSummary = $dashboardWidgetEnabled('section_recent_deliveries') ? collect($recentDeliveries ?? collect())->take(5) : collect();
     $recentFollowUpsSummary = $dashboardWidgetEnabled('section_high_priority_followups') ? collect($recentFollowUps ?? collect())->take(5) : collect();
     $recentActivitiesSummary = $dashboardWidgetEnabled('section_recent_activity') ? collect($recentActivities ?? collect())->take(6) : collect();
@@ -759,7 +759,7 @@
     $todayPickupSummary = $dashboardWidgetEnabled('widget_today_pickups') ? collect($todayPickupItems ?? collect())->take(5) : collect();
     $todayDeliverySummary = $dashboardWidgetEnabled('widget_today_deliveries') ? collect($todayDeliveryItems ?? collect())->take(5) : collect();
     $todayFollowUpSummary = $dashboardWidgetEnabled('widget_today_followups') ? collect($todayFollowUps ?? collect())->take(5) : collect();
-    $pendingPaymentSummary = $dashboardWidgetEnabled('widget_pending_payments') ? collect($pendingPaymentItems ?? collect())->take(5) : collect();
+    $pendingPaymentSummary = $canViewFinance && $dashboardWidgetEnabled('widget_pending_payments') ? collect($pendingPaymentItems ?? collect())->take(5) : collect();
     $highPriorityFollowUpSummary = $dashboardWidgetEnabled('section_high_priority_followups') ? collect($highPriorityFollowUps ?? collect())->take(5) : collect();
     $todayRenewalSummaryVisible = $todayRenewalSummary->take($compactListLimit);
     $todayRenewalSummaryHidden = $todayRenewalSummary->slice($compactListLimit)->values();
@@ -1264,6 +1264,7 @@
     $controlRoomCards = collect([
         [
             'label' => 'Cash at Risk',
+            'requires_finance' => true,
             'value' => $compactCurrency(max($pendingReceivableAmountValue, $outstandingDueAmountValue)),
             'status' => $canViewFinance
                 ? ($pendingReceivableOverdueCount > 0 ? number_format($pendingReceivableOverdueCount) . ' overdue invoice(s)' : 'No major overdue spike')
@@ -1340,7 +1341,7 @@
                 (int) ($staffOverloadedCount ?? 0),
             ],
         ],
-    ])->values();
+    ])->filter(fn ($card) => !($card['requires_finance'] ?? false) || $canViewFinance)->values();
 
     $pipelineStages = collect([
         ['label' => 'Created', 'value' => $totalRentalsValue, 'tone' => 'blue'],
@@ -1447,6 +1448,7 @@
     $executiveCommandCards = collect([
         [
             'label' => 'Cash at Risk',
+            'requires_finance' => true,
             'value' => $compactCurrency(max($outstandingDueAmountValue, $pendingReceivableAmountValue)),
             'status' => $canViewFinance
                 ? ($overdueInvoiceCountValue > 0 ? number_format($overdueInvoiceCountValue) . ' overdue invoice(s)' : 'No overdue pressure')
@@ -1493,7 +1495,7 @@
             'tone' => $inventoryHealthTone,
             'meter' => min(100, round(($availableRentalAssetsCount / max($inventoryAvailabilityTotal, 1)) * 100)),
         ],
-    ])->values();
+    ])->filter(fn ($card) => !($card['requires_finance'] ?? false) || $canViewFinance)->values();
 
     $topPriorityQueueRows = collect([
         $overdueInvoiceCountValue > 0 && $canViewFinance ? [
@@ -1729,9 +1731,9 @@
         ? round(($onRentInventoryCount / max($inventoryAvailabilityTotal, 1)) * 100, 1)
         : $activePercent;
     $executiveBusinessHealthRows = collect([
-        $buildExecutiveTrendMetric('Revenue Trend', $executiveRevenueTrendCurrent, $executiveRevenueTrendPrevious, fn ($value) => $currency($value), !empty($previousTrendRow)),
+        $canViewFinance ? $buildExecutiveTrendMetric('Revenue Trend', $executiveRevenueTrendCurrent, $executiveRevenueTrendPrevious, fn ($value) => $currency($value), !empty($previousTrendRow)) : null,
         $buildExecutiveTrendMetric('Orders Trend', $executiveOrdersTrendCurrent, $executiveOrdersTrendPrevious, fn ($value) => number_format((int) $value) . ' order(s)', !empty($previousTrendRow)),
-        $buildExecutiveTrendMetric('Collection Trend', $executiveCollectionTrendCurrent, $executiveCollectionTrendPrevious, fn ($value) => $currency($value), !empty($previousRevenueTrendRow)),
+        $canViewFinance ? $buildExecutiveTrendMetric('Collection Trend', $executiveCollectionTrendCurrent, $executiveCollectionTrendPrevious, fn ($value) => $currency($value), !empty($previousRevenueTrendRow)) : null,
         [
             'label' => 'Rental Utilization',
             'value' => number_format($executiveRentalUtilizationPercent, 1) . '%',
@@ -1740,7 +1742,7 @@
             'comparison_label' => 'Current stock position',
             'tooltip' => 'Current Period: ' . number_format($onRentInventoryCount) . ' on-rent rental asset(s) / ' . number_format($inventoryAvailabilityTotal) . ' total rental asset(s)' . "\n" . 'Previous Period: Not period-based',
         ],
-    ])->values();
+    ])->filter()->values();
     $executiveCommunicationPulseRows = collect([
         ['label' => 'Follow-ups Pending', 'value' => (int) (($pendingRenewalFollowUpsCount ?? 0) + ($pendingPaymentFollowUpsCount ?? 0) + ($pendingPickupFollowUpsCount ?? 0)), 'tone' => ((int) ($overdueFollowUpsCount ?? 0)) > 0 ? 'red' : 'blue'],
         ['label' => 'Critical Alerts', 'value' => (int) ($overdueInvoiceCountValue + $overdueDeliveryCountValue + ($highPriorityFollowUpsCount ?? 0)), 'tone' => ($overdueInvoiceCountValue + $overdueDeliveryCountValue + ((int) ($highPriorityFollowUpsCount ?? 0))) > 0 ? 'red' : 'green'],
@@ -1753,10 +1755,10 @@
         ['label' => 'Pickups Scheduled', 'value' => $scheduledPickupCountValue, 'tone' => $scheduledPickupCountValue > 0 ? 'blue' : 'green'],
     ])->values();
     $executivePerformanceRows = collect([
-        ['label' => 'Rental Revenue', 'value' => $compactCurrency((float) ($latestTrendRow['rental_total'] ?? 0)), 'points' => $buildMiniSparkline($monthlyTrendRows->pluck('rental_total')->map(fn ($value) => (float) $value)->all()), 'tone' => 'blue'],
-        ['label' => 'Sales Revenue', 'value' => $compactCurrency((float) ($latestTrendRow['sales_total'] ?? 0)), 'points' => $buildMiniSparkline($monthlyTrendRows->pluck('sales_total')->map(fn ($value) => (float) $value)->all()), 'tone' => 'green'],
+        $canViewFinance ? ['label' => 'Rental Revenue', 'value' => $compactCurrency((float) ($latestTrendRow['rental_total'] ?? 0)), 'points' => $buildMiniSparkline($monthlyTrendRows->pluck('rental_total')->map(fn ($value) => (float) $value)->all()), 'tone' => 'blue'] : null,
+        $canViewFinance ? ['label' => 'Sales Revenue', 'value' => $compactCurrency((float) ($latestTrendRow['sales_total'] ?? 0)), 'points' => $buildMiniSparkline($monthlyTrendRows->pluck('sales_total')->map(fn ($value) => (float) $value)->all()), 'tone' => 'green'] : null,
         ['label' => 'Total Orders', 'value' => number_format((int) ($latestTrendRow['total_orders'] ?? 0)), 'points' => $buildMiniSparkline($monthlyTrendRows->pluck('total_orders')->map(fn ($value) => (float) $value)->all()), 'tone' => 'amber'],
-    ])->values();
+    ])->filter()->values();
     $executiveRecentActivityRows = $activityRecentItems->take(5)->values();
 
     $operationsHealthCards = collect([
@@ -7676,7 +7678,7 @@
                 <summary class="dashboard-mobile-summary">
                     <div>
                         <strong>Executive Command Center</strong>
-                        <span>Cash, rentals, operations, inventory.</span>
+                        <span>{{ $canViewFinance ? 'Cash, rentals, operations, inventory.' : 'Rentals, operations, inventory.' }}</span>
                     </div>
                 </summary>
                 <div class="dashboard-mobile-body">
@@ -7721,7 +7723,7 @@
                             </div>
                         @endforeach
                     </div>
-                    @if($reportsIndexUrl)
+                    @if($canViewFinance && $reportsIndexUrl)
                         <a href="{{ $mergeDashboardQuery('reports.index', ['tab' => 'revenue']) }}" class="dashboard-mobile-btn is-primary">View Revenue Analytics</a>
                     @endif
                 </div>
@@ -7802,7 +7804,7 @@
                     <div class="dashboard-mobile-list">
                         <div class="dashboard-mobile-row"><span>Rental Returns Today</span><strong>{{ number_format($pickedUpTodayCountValue) }}</strong></div>
                         <div class="dashboard-mobile-row"><span>New Deliveries</span><strong>{{ number_format($deliveriesTodayCount) }}</strong></div>
-                        <div class="dashboard-mobile-row"><span>Payments Received</span><strong>{{ number_format($recentPaymentsSummary->count()) }}</strong></div>
+                        @if($canViewFinance)<div class="dashboard-mobile-row"><span>Payments Received</span><strong>{{ number_format($recentPaymentsSummary->count()) }}</strong></div>@endif
                         <div class="dashboard-mobile-row"><span>Critical Alerts</span><strong>{{ number_format($overdueInvoiceCountValue + $overdueDeliveryCountValue + (int) ($highPriorityFollowUpsCount ?? 0)) }}</strong></div>
                     </div>
                     @if($communicationCenterUrl)
@@ -7826,7 +7828,7 @@
                                 <strong>{{ $row['label'] }}</strong>
                                 <div class="dashboard-mobile-mini-grid">
                                     <span>Rentals <b>{{ number_format((int) ($row['count'] ?? 0)) }}</b></span>
-                                    <span>Value <b>{{ $row['amount'] }}</b></span>
+                                    @if($canViewFinance)<span>Value <b>{{ $row['amount'] }}</b></span>@endif
                                     <span>Open <b>View</b></span>
                                 </div>
                             </{{ $warehouseTag }}>
@@ -10839,7 +10841,7 @@
                                         </div>
                                         <strong class="inventory-warehouse-value">{{ number_format((int) ($row['count'] ?? 0)) }}</strong>
                                         <span class="inventory-warehouse-note">{{ number_format((int) ($row['count'] ?? 0)) }} asset-linked rental(s)</span>
-                                        <span class="inventory-warehouse-meta">{{ $row['amount'] }}</span>
+                                        @if($canViewFinance)<span class="inventory-warehouse-meta">{{ $row['amount'] }}</span>@endif
                                     </{{ $tag }}>
                                 @endforeach
                             </div>

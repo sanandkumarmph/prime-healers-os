@@ -757,7 +757,7 @@ class AssetController extends Controller
         return response()->streamDownload(function () use ($assets) {
             $output = fopen('php://output', 'w');
 
-            fputcsv($output, [
+            \App\Support\SafeCsv::row($output, [
                 '#',
                 'Product',
                 'Brand',
@@ -775,7 +775,7 @@ class AssetController extends Controller
             ]);
 
             foreach ($assets as $index => $asset) {
-                fputcsv($output, [
+                \App\Support\SafeCsv::row($output, [
                     $index + 1,
                     $asset->product?->name,
                     $asset->product?->brand,

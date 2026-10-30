@@ -241,9 +241,9 @@ Recommended steps:
 3. Run `php artisan storage:link` only for public assets like logos and build outputs.
 
 Current compatibility note:
-- legacy customer proof files may still be served from a temporary public-disk fallback path
-- the app logs a warning when this happens
-- migrate those files to the private local disk as part of cleanup
+- the authorized download route reads the private local disk only
+- legacy files physically left on the public disk still require a separate server/storage audit
+- use the counts-only read-only command and safety notes in [Private customer proof audit](docs/private-proof-audit.md); migration apply is a separate maintenance action
 
 ## Import Process
 
@@ -419,7 +419,10 @@ php artisan route:cache
 This repository includes GitHub Actions CI that:
 - installs PHP and Composer dependencies
 - installs Node dependencies
+- audits the locked PHP and npm dependencies
+- tests the UAT mail setup utility offline
 - builds frontend assets
+- tests dashboard navigation, rental calendar dates and the rendered delivery signer workflow in a browser
 - prepares a non-secret `.env`
 - clears caches
 - runs regression, feature, and unit tests
@@ -428,3 +431,5 @@ CI is intentionally test-only:
 - it does not deploy
 - it does not use production secrets
 - it relies on SQLite in-memory testing
+
+See [PHOS access, mobile and security update](docs/access-mobile-security.md) for the UAT release boundaries, role compatibility and remaining server/operator checks. Private Zoho configuration uses the separate [mail setup guide](ops/phos-access-security-uat/README.md).

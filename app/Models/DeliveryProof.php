@@ -100,6 +100,13 @@ class DeliveryProof extends Model
         return $this->belongsTo(Delivery::class);
     }
 
+    public function getSignerNameAttribute(): ?string
+    {
+        $name = ($this->meta ?? [])['signer_name'] ?? null;
+
+        return is_string($name) && trim($name) !== '' ? trim($name) : null;
+    }
+
     public function rental()
     {
         return $this->belongsTo(Rental::class);

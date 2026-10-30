@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches:
@@ -15,6 +18,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -26,7 +31,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
 
       - name: Cache Composer dependencies
@@ -42,6 +47,14 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Check locked dependencies for security advisories
+        run: |
+          composer audit --locked
+          npm audit --audit-level=moderate
+
+      - name: Test private UAT mail setup safety offline
+        run: python3 -B -m unittest discover -s ops/phos-access-security-uat -p 'test_*.py'
 
       - name: Build frontend assets
         run: npm run build

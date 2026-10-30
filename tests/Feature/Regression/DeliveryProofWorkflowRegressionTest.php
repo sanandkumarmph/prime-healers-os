@@ -72,6 +72,7 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
                     $this->fakeImageUpload('device-2.jpg', 42),
                 ],
                 'premises_photo' => $this->fakeImageUpload('premises.jpg', 48),
+                'signature_signer_name' => 'Synthetic signer',
                 'signature_data' => $this->signatureDataUrl(),
                 'proof_notes' => 'Delivered in working condition.',
                 'location_latitude' => '12.971700',
@@ -608,6 +609,7 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
                     $this->fakeImageUpload('device-complete.jpg', 45),
                 ],
                 'premises_photo' => $this->fakeImageUpload('premises-complete.jpg', 48),
+                'signature_signer_name' => 'Synthetic signer',
                 'signature_data' => $this->signatureDataUrl(),
                 'proof_notes' => 'Completed in the field.',
                 'location_missing_reason' => 'GPS unavailable indoors.',
@@ -672,6 +674,7 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
                 ],
                 'premises_photo' => $this->fakeImageUpload('not-allowed.jpg', 40),
                 'damage_reported' => '1',
+                'signature_signer_name' => 'Synthetic signer',
                 'signature_data' => $this->signatureDataUrl(),
                 'location_missing_reason' => 'GPS signal blocked inside the building.',
             ]);
@@ -704,6 +707,7 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
                     $this->fakeImageUpload('huge-device.jpg', 25),
                 ],
                 'premises_photo' => $this->fakeImageUpload('huge-premises.jpg', 25),
+                'signature_signer_name' => 'Synthetic signer',
                 'signature_data' => $this->signatureDataUrl(),
                 'location_missing_reason' => 'GPS blocked',
             ]);
@@ -773,6 +777,7 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
                     $this->fakeImageUpload('device.jpg', 40),
                 ],
                 'premises_photo' => $this->fakeImageUpload('premises.jpg', 40),
+                'signature_signer_name' => 'Synthetic signer',
                 'signature_data' => $this->signatureDataUrl(),
                 'location_missing_reason' => 'GPS unavailable',
             ])->assertForbidden();

@@ -35,7 +35,7 @@
 </section>
 @if($quote->status==='sent')<section class="sw-panel"><h2>Follow-up <span class="sw-meta">Optional</span></h2>
 @php($nextFollowUp=$enquiry->followUps()->whereNull('completed_at')->orderBy('due_at')->first())
-@if($nextFollowUp)<p class="sw-meta">Next: {{ $nextFollowUp->subject }} · {{ $nextFollowUp->due_at->timezone($enquiry->organization->timezone ?: 'UTC')->format('d M, H:i') }} <a href="{{ route('enquiries.show',$enquiry) }}">Manage</a></p>
+@if($nextFollowUp)<p class="sw-meta">Next: {{ $nextFollowUp->subject }} · {{ $nextFollowUp->due_at->timezone(config('app.timezone'))->format('d M, H:i') }} <a href="{{ route('enquiries.show',$enquiry) }}">Manage</a></p>
 @else @include('sales-workspace.follow-up-form') @endif
 </section>@endif
 @endif

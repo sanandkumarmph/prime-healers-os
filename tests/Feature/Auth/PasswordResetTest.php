@@ -8,6 +8,17 @@ use Illuminate\Support\Facades\Notification;
 
 uses(TestCase::class, RefreshDatabase::class);
 
+beforeEach(function () {
+    config([
+        'mail.default' => 'smtp',
+        'mail.from.address' => 'support@primehealers.com',
+        'mail.mailers.smtp.host' => 'smtp.zoho.com',
+        'mail.mailers.smtp.port' => 587,
+        'mail.mailers.smtp.username' => 'support@primehealers.com',
+        'mail.mailers.smtp.password' => 'synthetic-test-password',
+    ]);
+});
+
 test('reset password link screen can be rendered', function () {
     $response = $this->get('/forgot-password');
 

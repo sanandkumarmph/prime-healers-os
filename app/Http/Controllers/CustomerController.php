@@ -190,7 +190,7 @@ class CustomerController extends Controller
         return response()->streamDownload(function () use ($customers) {
             $output = fopen('php://output', 'w');
 
-            fputcsv($output, [
+            \App\Support\SafeCsv::row($output, [
                 'Customer Name',
                 'Phone',
                 'WhatsApp',
@@ -206,7 +206,7 @@ class CustomerController extends Controller
             ]);
 
             foreach ($customers as $customer) {
-                fputcsv($output, [
+                \App\Support\SafeCsv::row($output, [
                     $customer->name,
                     $customer->phone,
                     $customer->preferredWhatsAppNumber(),

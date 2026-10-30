@@ -13,6 +13,7 @@ use App\Models\PartnerClient;
 use App\Models\Payment;
 use App\Models\Rental;
 use App\Models\Sale;
+use App\Models\User;
 use App\Policies\BusinessPartnerPolicy;
 use App\Policies\DeliveryPolicy;
 use App\Policies\ImportPolicy;
@@ -28,6 +29,12 @@ use App\Http\Controllers\ImportController;
 use App\Http\Controllers\ReportController;
 use App\Services\NotificationCenterService;
 use App\Support\InternalOrganization;
+use App\Services\Auth\PasswordRecovery;
+use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Auth\Events\Login;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Cache;
@@ -36,6 +43,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\View;
+use Illuminate\Support\Facades\RateLimiter;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -55,6 +63,20 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Event::listen(Login::class, function (Login $event): void {
+            if ($event->guard === 'web' && request()->hasSession()) {
+                request()->session()->put('password_hash_web', Auth::guard('web')->hashPasswordForCookie($event->user->getAuthPassword()));
+            }
+        });
+        ResetPassword::createUrlUsing(fn (User $user, string $token) => app(PasswordRecovery::class)->resetUrl($user, $token));
+        RateLimiter::for('password-recovery', fn (Request $request) => [
+            Limit::perMinute(10)->by('recovery-ip:'.$request->ip()),
+            Limit::perMinute(2)->by('recovery-email:'.hash('sha256', is_string($request->input('email')) ? strtolower(trim($request->input('email'))) : 'invalid-input')),
+        ]);
+        RateLimiter::for('password-reset', fn (Request $request) => Limit::perMinute(10)->by('reset-ip:'.$request->ip()));
+        RateLimiter::for('authentication', fn (Request $request) => Limit::perMinute(20)->by('login-ip:'.$request->ip()));
+        RateLimiter::for('password-confirmation', fn (Request $request) => Limit::perMinute(5)->by('confirm:'.$request->user()?->getAuthIdentifier().'|'.$request->ip()));
+
         Paginator::defaultView('vendor.pagination.prime-healers');
         Paginator::defaultSimpleView('vendor.pagination.prime-healers-simple');
 

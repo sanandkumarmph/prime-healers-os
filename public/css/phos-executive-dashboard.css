@@ -435,6 +435,7 @@ body.phos-executive-page [data-executive-dashboard] :is(.dashboard-empty svg, .r
     body.phos-executive-page .phos-dashboard-tabs a[data-dashboard-tab] { min-width: 0; white-space: normal; padding: 8px 5px; gap: 4px; }
     body.phos-executive-page .phos-dashboard-tabs svg { width: 14px; height: 14px; }
     body.phos-executive-page [data-executive-dashboard] :is(.control-room-priority-grid, .executive-health-strip) { gap: 8px; }
+    body.phos-executive-page [data-executive-dashboard] :is(.control-room-priority-grid, .executive-health-strip, .executive-mini-grid, .control-room-summary-grid, .operations-health-grid, .inventory-health-grid, .inventory-readiness-grid, .operations-snapshot-strip, .executive-activity-strip, .sales-pulse-metrics, .revenue-center-summary-grid) { grid-template-columns:minmax(0,1fr) !important; }
     body.phos-executive-page [data-executive-dashboard] .control-room-priority-card { padding: 11px; min-height: 142px; }
     body.phos-executive-page [data-executive-dashboard] .control-room-priority-value { font-size: 23px; }
     body.phos-executive-page [data-executive-dashboard] .control-room-priority-top { gap: 5px; }
@@ -442,8 +443,8 @@ body.phos-executive-page [data-executive-dashboard] :is(.dashboard-empty svg, .r
     body.phos-executive-page [data-executive-dashboard] .control-room-priority-status { flex-wrap: wrap; }
     body.phos-executive-page [data-executive-dashboard] .executive-health-main { flex-wrap: wrap; gap: 4px; }
     body.phos-executive-page [data-executive-dashboard] :is(.rx-card-header, .team-performance-head, .control-room-card-header) { flex-wrap: wrap; }
-    body.phos-executive-page [data-executive-dashboard] :is(.team-performance-filter-grid, .control-room-reference-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    body.phos-executive-page [data-executive-dashboard] .phos-overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    body.phos-executive-page [data-executive-dashboard] :is(.team-performance-filter-grid, .control-room-reference-grid) { grid-template-columns:minmax(0,1fr); }
+    body.phos-executive-page [data-executive-dashboard] .phos-overview-metrics { grid-template-columns:minmax(0,1fr); }
     body.phos-executive-page [data-executive-dashboard] :is(.executive-health-period, .control-room-priority-note, .control-room-priority-label) { overflow-wrap: anywhere; }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -20,6 +20,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->trustHosts(at: function (): array {
+            $host = parse_url((string) config('app.url'), PHP_URL_HOST);
+            return [$host ? '^'.preg_quote($host, '/').'$' : '(?!)'];
+        }, subdomains: false);
         $middleware->redirectGuestsTo(fn () => route('login'));
         $middleware->redirectUsersTo(function ($request) {
             $user = $request->user();
@@ -29,7 +33,15 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->append(\App\Http\Middleware\SecureHeaders::class);
         $middleware->append(\App\Http\Middleware\EnsureInternalOrganizationContext::class);
-        $middleware->web(append: [\App\Http\Middleware\SerializeFinancialRequests::class]);
+        $middleware->web(append: [
+            \App\Http\Middleware\EnsureActiveAccount::class,
+            \Illuminate\Session\Middleware\AuthenticateSession::class,
+            \App\Http\Middleware\SerializeFinancialRequests::class,
+        ]);
+        $middleware->prependToPriorityList(
+            \Illuminate\Contracts\Session\Middleware\AuthenticatesSessions::class,
+            \App\Http\Middleware\EnsureActiveAccount::class,
+        );
 
         $middleware->alias([
             'module' => \App\Http\Middleware\EnsureModulePermission::class,
