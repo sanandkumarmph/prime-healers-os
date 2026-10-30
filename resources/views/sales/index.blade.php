@@ -359,7 +359,10 @@
     }
     @media (max-width: 767px) {
         .sales-page { padding:4px 0 16px; gap:8px; }
-        .sales-header { display:none; }
+        .sales-header { display:flex; align-items:center; padding:9px 10px; }
+        .sales-header .rx-eyebrow, .sales-header p { display:none; }
+        .sales-header h1 { font-size:19px; }
+        .sales-actions { gap:6px; margin-left:auto; }
         .desktop-priority-panel { display:none !important; }
         .desktop-search-shell { display:none; }
         .sales-summary-strip { display:none; }
@@ -615,9 +618,17 @@
             overflow:visible;
         }
     }
+    .sales-page [data-phos-list-filter-panel] .sales-filter-panel > .ops-card-body { padding:0; }
+    .sales-page [data-phos-list-filter-panel] .filter-grid { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+    @media (max-width: 600px) {
+        .sales-page [data-phos-list-filter-panel] .filter-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 380px) {
+        .sales-page [data-phos-list-filter-panel] .filter-grid { grid-template-columns:minmax(0, 1fr); }
+    }
 </style>
 
-<div class="container sales-page rn-list-page">
+<div class="container sales-page rn-list-page" data-phos-compact-page="sales">
     @if(session('created_sale'))
         @php
             $createdSale = session('created_sale');
@@ -644,7 +655,7 @@
         </section>
     @endif
 
-    <div class="sales-header">
+    <div class="sales-header phos-page-header">
         <div>
             <div class="rx-eyebrow">Sales Desk</div>
             <h1>Sales</h1>
@@ -652,7 +663,101 @@
         </div>
 
         <div class="sales-actions">
-            <button type="button" class="ops-btn-light" data-sales-search-toggle="salesSearchShell">Search & Filters</button>
+            <x-phos-list-filter id="sales-list-filters" label="Filter sales" :active="$hasActiveFilters">
+                <div id="salesSearchShell" class="desktop-search-shell" data-phos-legacy-filter hidden>
+                    <form method="GET" action="{{ route('sales.index') }}" class="desktop-search-form">
+                        @foreach(request()->except(['search', 'page']) as $key => $value)
+                            @if(is_scalar($value) && $value !== '')
+                                <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                            @endif
+                        @endforeach
+                        <div class="desktop-search-field">
+                            <label for="desktop-sales-search">Search sales</label>
+                            <input id="desktop-sales-search" class="ops-input" type="search" name="search" value="{{ $search }}" placeholder="Search customer, phone, WhatsApp, product, notes">
+                        </div>
+                        <button type="submit" class="ops-btn">Search</button>
+                        <a href="{{ route('sales.index') }}" class="ops-btn-light" data-filter-clear="sales-index">Clear filters</a>
+                    </form>
+                </div>
+
+                <div id="salesFilterPanel" class="sales-filter-panel" data-filter-panel data-filter-panel-key="sales-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}">
+                    <div class="ops-card-body">
+                        <form method="GET" action="{{ route('sales.index') }}" style="display:grid; gap:12px;">
+                            <div class="filter-grid">
+                                <div class="filter-field">
+                                    <label for="search">Search</label>
+                                    <input id="search" class="ops-input" type="text" name="search" value="{{ $search }}" placeholder="Customer, phone, WhatsApp, product, notes">
+                                </div>
+
+                                <div class="filter-field">
+                                    <label for="customer_id">Customer</label>
+                                    <select id="customer_id" class="ops-select" name="customer_id">
+                                        <option value="">All Customers</option>
+                                        @foreach($customers as $customer)
+                                            <option value="{{ $customer->id }}" @selected((string) $customerId === (string) $customer->id)>{{ $customer->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+
+                                <div class="filter-field">
+                                    <label for="payment_status">Payment</label>
+                                    <select id="payment_status" class="ops-select" name="payment_status">
+                                        <option value="">All Statuses</option>
+                                        <option value="pending" @selected($paymentStatus === 'pending')>Pending</option>
+                                        <option value="partial" @selected($paymentStatus === 'partial')>Partial</option>
+                                        <option value="paid" @selected($paymentStatus === 'paid')>Paid</option>
+                                        <option value="void" @selected($paymentStatus === 'void')>Void</option>
+                                    </select>
+                                </div>
+
+                                <div class="filter-field">
+                                    <label for="fulfilment_source">Fulfilment</label>
+                                    <select id="fulfilment_source" class="ops-select" name="fulfilment_source">
+                                        <option value="">All Sources</option>
+                                        <option value="{{ \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE }}" @selected($fulfilmentSource === \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE)>In-house</option>
+                                        <option value="{{ \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED }}" @selected($fulfilmentSource === \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED)>Vendor Supplied</option>
+                                    </select>
+                                </div>
+
+                                <div class="filter-field">
+                                    <label for="from_date">From Date</label>
+                                    <input id="from_date" class="ops-input" type="date" name="from_date" value="{{ $fromDate }}">
+                                </div>
+
+                                <div class="filter-field">
+                                    <label for="to_date">To Date</label>
+                                    <input id="to_date" class="ops-input" type="date" name="to_date" value="{{ $toDate }}">
+                                </div>
+
+                                <div class="filter-field">
+                                    <label for="sort_by">Sort By</label>
+                                    <select id="sort_by" class="ops-select" name="sort_by">
+                                        <option value="priority" @selected($sortBy === 'priority')>Priority</option>
+                                        <option value="latest" @selected($sortBy === 'latest')>Latest First</option>
+                                        <option value="oldest" @selected($sortBy === 'oldest')>Oldest First</option>
+                                        <option value="customer_asc" @selected($sortBy === 'customer_asc')>Customer A-Z</option>
+                                        <option value="customer_desc" @selected($sortBy === 'customer_desc')>Customer Z-A</option>
+                                        <option value="amount_desc" @selected($sortBy === 'amount_desc')>Amount: High to Low</option>
+                                        <option value="amount_asc" @selected($sortBy === 'amount_asc')>Amount: Low to High</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="filter-actions">
+                                <button type="submit" class="ops-btn">Apply filters</button>
+                                <a href="{{ route('sales.index') }}" class="ops-btn-light" data-filter-clear="sales-index">Clear filters</a>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                    @if($hasActiveFilters)
+                        <div class="desktop-filter-chip-row">
+                            @foreach($activeFilterChips as $chip)
+                                <span class="desktop-filter-chip">{{ $chip }}</span>
+                            @endforeach
+                        </div>
+                    @endif
+            </x-phos-list-filter>
             @if($canCreateSales)
                 <a href="{{ route('sales.create') }}" class="ops-btn">+ New Sale</a>
             @endif
@@ -805,7 +910,7 @@
             </form>
 
             <div class="mobile-action-toolbar {{ $hasActiveFilters ? 'has-active-filters' : '' }}" aria-label="Mobile sales filters and sorting">
-                <button type="button" class="mobile-toolbar-btn" data-mobile-filter-open="sales-mobile-filters" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" aria-label="Open sales filters">
+                <button type="button" class="mobile-toolbar-btn" data-phos-legacy-filter data-mobile-filter-open="sales-mobile-filters" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" aria-label="Open sales filters">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16"/><path d="M7 12h10"/><path d="M10 18h4"/></svg>
                     <span>Filter</span>
                 </button>
@@ -855,110 +960,7 @@
 
     </div>
 
-    <div id="salesSearchShell" class="desktop-search-shell" hidden>
-        <div class="sales-filter-title-row">
-            <div>
-                <h2>Search & Filters</h2>
-            <span>{{ $hasActiveFilters ? 'Filters Active - ' . $activeFilterChips->count() : 'Expand advanced filters' }}</span>
-            </div>
-            <button type="button" class="ops-btn-light" data-sales-filter-toggle="salesFilterPanel">{{ $hasActiveFilters ? 'Edit filters' : 'Expand filters' }}</button>
-        </div>
-        <form method="GET" action="{{ route('sales.index') }}" class="desktop-search-form">
-            @foreach(request()->except(['search', 'page']) as $key => $value)
-                @if(is_scalar($value) && $value !== '')
-                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
-                @endif
-            @endforeach
-            <div class="desktop-search-field">
-                <label for="desktop-sales-search">Search sales</label>
-                <input id="desktop-sales-search" class="ops-input" type="search" name="search" value="{{ $search }}" placeholder="Search customer, phone, WhatsApp, product, notes">
-            </div>
-            <button type="submit" class="ops-btn">Search</button>
-            <a href="{{ route('sales.index') }}" class="ops-btn-light" data-filter-clear="sales-index">Clear filters</a>
-        </form>
-        @if($hasActiveFilters)
-            <div class="desktop-filter-chip-row">
-                @foreach($activeFilterChips as $chip)
-                    <span class="desktop-filter-chip">{{ $chip }}</span>
-                @endforeach
-            </div>
-        @endif
-    </div>
 
-    <details id="salesFilterPanel" class="ops-card desktop-priority-panel desktop-filter-toggle" data-filter-panel data-filter-panel-key="sales-index" data-filter-active="false" @if($hasActiveFilters) open @endif>
-        <summary>
-            <h2>Search & Filters</h2>
-            <span>{{ $hasActiveFilters ? 'Filters Active - ' . $activeFilterChips->count() : 'Expand advanced filters' }}</span>
-        </summary>
-        <div class="ops-card-body">
-            <form method="GET" action="{{ route('sales.index') }}" style="display:grid; gap:12px;">
-                <div class="filter-grid">
-                    <div class="filter-field">
-                        <label for="search">Search</label>
-                        <input id="search" class="ops-input" type="text" name="search" value="{{ $search }}" placeholder="Customer, phone, WhatsApp, product, notes">
-                    </div>
-
-                    <div class="filter-field">
-                        <label for="customer_id">Customer</label>
-                        <select id="customer_id" class="ops-select" name="customer_id">
-                            <option value="">All Customers</option>
-                            @foreach($customers as $customer)
-                                <option value="{{ $customer->id }}" @selected((string) $customerId === (string) $customer->id)>{{ $customer->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-
-                    <div class="filter-field">
-                        <label for="payment_status">Payment</label>
-                        <select id="payment_status" class="ops-select" name="payment_status">
-                            <option value="">All Statuses</option>
-                            <option value="pending" @selected($paymentStatus === 'pending')>Pending</option>
-                            <option value="partial" @selected($paymentStatus === 'partial')>Partial</option>
-                            <option value="paid" @selected($paymentStatus === 'paid')>Paid</option>
-                            <option value="void" @selected($paymentStatus === 'void')>Void</option>
-                        </select>
-                    </div>
-
-                    <div class="filter-field">
-                        <label for="fulfilment_source">Fulfilment</label>
-                        <select id="fulfilment_source" class="ops-select" name="fulfilment_source">
-                            <option value="">All Sources</option>
-                            <option value="{{ \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE }}" @selected($fulfilmentSource === \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE)>In-house</option>
-                            <option value="{{ \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED }}" @selected($fulfilmentSource === \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED)>Vendor Supplied</option>
-                        </select>
-                    </div>
-
-                    <div class="filter-field">
-                        <label for="from_date">From Date</label>
-                        <input id="from_date" class="ops-input" type="date" name="from_date" value="{{ $fromDate }}">
-                    </div>
-
-                    <div class="filter-field">
-                        <label for="to_date">To Date</label>
-                        <input id="to_date" class="ops-input" type="date" name="to_date" value="{{ $toDate }}">
-                    </div>
-
-                    <div class="filter-field">
-                        <label for="sort_by">Sort By</label>
-                        <select id="sort_by" class="ops-select" name="sort_by">
-                            <option value="priority" @selected($sortBy === 'priority')>Priority</option>
-                            <option value="latest" @selected($sortBy === 'latest')>Latest First</option>
-                            <option value="oldest" @selected($sortBy === 'oldest')>Oldest First</option>
-                            <option value="customer_asc" @selected($sortBy === 'customer_asc')>Customer A-Z</option>
-                            <option value="customer_desc" @selected($sortBy === 'customer_desc')>Customer Z-A</option>
-                            <option value="amount_desc" @selected($sortBy === 'amount_desc')>Amount: High to Low</option>
-                            <option value="amount_asc" @selected($sortBy === 'amount_asc')>Amount: Low to High</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="filter-actions">
-                    <button type="submit" class="ops-btn">Apply filters</button>
-                    <a href="{{ route('sales.index') }}" class="ops-btn-light" data-filter-clear="sales-index">Clear filters</a>
-                </div>
-            </form>
-        </div>
-    </details>
 
     @if($canViewFinanceSummary || $canViewFinance)
         <div class="sales-summary-strip" aria-label="Sales summary for current filters">
@@ -1156,23 +1158,23 @@
                             <div class="sale-compact-actions">
                                 <span class="sale-desktop-primary-action">
                                     @if($sale->linked_invoice_id)
-                                        <a href="{{ route('invoices.show', $sale->linked_invoice_id) }}" class="ops-btn">Invoice</a>
+                                        <a href="{{ route('invoices.show', $sale->linked_invoice_id) }}" class="ops-btn" data-ph-action="invoice">Invoice</a>
                                     @elseif($canUpdateSales)
                                         <form action="{{ route('sales.invoice', $sale) }}" method="POST" style="margin:0;">
                                             @csrf
                                             <button type="submit" class="ops-btn">Invoice</button>
                                         </form>
                                     @else
-                                        <a href="{{ route('sales.show', $sale) }}" class="ops-btn">View</a>
+                                        <a href="{{ route('sales.show', $sale) }}" class="ops-btn" data-ph-action="view" aria-label="View sale" title="View sale"><x-phos-action-icon name="view" label="View sale" /></a>
                                     @endif
                                 </span>
 
                                 <span class="sale-mobile-action-row">
-                                    <a href="{{ route('sales.show', $sale) }}" class="sale-mobile-action" aria-label="View sale" title="View">
+                                    <a href="{{ route('sales.show', $sale) }}" class="sale-mobile-action" aria-label="View sale" title="View" data-ph-action="view">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z"/><circle cx="12" cy="12" r="3"/></svg>
                                     </a>
                                     @if($customerPhone)
-                                        <a href="tel:{{ $customerPhoneDigits }}" class="sale-mobile-action" aria-label="Call customer" title="Call">
+                                        <a href="tel:{{ $customerPhoneDigits }}" class="sale-mobile-action" aria-label="Call customer" title="Call" data-ph-action="call">
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7A2 2 0 0 1 22 16.9Z"/></svg>
                                         </a>
                                     @else
@@ -1181,7 +1183,7 @@
                                         </span>
                                     @endif
                                     @if($whatsAppUrl)
-                                        <a href="{{ $whatsAppUrl }}" target="_blank" class="sale-mobile-action is-wa" aria-label="WhatsApp customer" title="WhatsApp">
+                                        <a href="{{ $whatsAppUrl }}" target="_blank" class="sale-mobile-action is-wa" aria-label="WhatsApp customer" title="WhatsApp" data-ph-action="whatsapp">
                                             <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M12.04 2a9.9 9.9 0 0 0-8.5 15.02L2.45 22l5.1-1.06A9.96 9.96 0 1 0 12.04 2Zm0 1.8a8.15 8.15 0 0 1 6.95 12.42 8.15 8.15 0 0 1-10.94 2.9l-.35-.2-3.02.63.64-2.92-.22-.36A8.14 8.14 0 0 1 12.04 3.8Zm-3.2 3.9c-.18 0-.48.07-.73.34-.25.27-.96.94-.96 2.28 0 1.35.98 2.65 1.12 2.83.14.18 1.9 3.04 4.7 4.14 2.33.92 2.8.74 3.3.7.51-.05 1.65-.67 1.89-1.33.23-.65.23-1.2.16-1.33-.07-.12-.25-.2-.53-.34-.27-.14-1.64-.81-1.9-.9-.25-.09-.44-.14-.62.14-.19.27-.72.9-.88 1.08-.16.18-.32.2-.6.07-.27-.14-1.16-.43-2.22-1.37-.82-.73-1.37-1.63-1.53-1.9-.16-.28-.02-.43.12-.56.12-.12.27-.32.41-.48.14-.16.19-.28.28-.46.09-.18.05-.34-.02-.48-.07-.14-.62-1.5-.86-2.05-.22-.54-.45-.46-.62-.47h-.53Z"/></svg>
                                         </a>
                                     @else
@@ -1190,7 +1192,7 @@
                                         </span>
                                     @endif
                                     @if($sale->linked_invoice_id)
-                                        <a href="{{ route('invoices.show', $sale->linked_invoice_id) }}" class="sale-mobile-action" aria-label="Open invoice" title="Invoice">
+                                        <a href="{{ route('invoices.show', $sale->linked_invoice_id) }}" class="sale-mobile-action" aria-label="Open invoice" title="Invoice" data-ph-action="invoice">
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>
                                         </a>
                                     @elseif($canUpdateSales)
@@ -1216,12 +1218,12 @@
                                         </svg>
                                     </summary>
                                     <div class="ops-action-panel row-actions">
-                                        <a href="{{ route('sales.show', $sale) }}" class="ops-btn-light mobile-primary-duplicate">View</a>
+                                        <a href="{{ route('sales.show', $sale) }}" class="ops-btn-light mobile-primary-duplicate" data-ph-action="view">View</a>
                                         @if($customerPhone)
-                                            <a href="tel:{{ $customerPhoneDigits }}" class="ops-btn-light mobile-primary-duplicate">Call</a>
+                                            <a href="tel:{{ $customerPhoneDigits }}" class="ops-btn-light mobile-primary-duplicate" data-ph-action="call">Call</a>
                                         @endif
                                         @if($sale->linked_invoice_id)
-                                            <a href="{{ route('invoices.show', $sale->linked_invoice_id) }}" class="ops-btn-light mobile-primary-duplicate">Invoice</a>
+                                            <a href="{{ route('invoices.show', $sale->linked_invoice_id) }}" class="ops-btn-light mobile-primary-duplicate" data-ph-action="invoice">Invoice</a>
                                         @elseif($canUpdateSales)
                                             <form action="{{ route('sales.invoice', $sale) }}" method="POST" class="mobile-primary-duplicate" style="margin:0;">
                                                 @csrf
@@ -1229,7 +1231,7 @@
                                             </form>
                                         @endif
                                         @if($whatsAppUrl)
-                                            <a href="{{ $whatsAppUrl }}" target="_blank" class="ops-btn-light mobile-primary-duplicate">WhatsApp</a>
+                                            <a href="{{ $whatsAppUrl }}" target="_blank" class="ops-btn-light mobile-primary-duplicate" data-ph-action="whatsapp">WhatsApp</a>
                                         @endif
                                         @if($canManagePayments)
                                             <form action="{{ route('sales.markPaid', $sale) }}" method="POST" style="margin:0;">
@@ -1247,7 +1249,7 @@
                                             @endif
                                         @endif
                                         @if(!$isAutoGeneratedRentalSale && $canUpdateSales)
-                                            <a href="{{ route('sales.edit', $sale) }}" class="ops-btn-light">Edit Sale</a>
+                                            <a href="{{ route('sales.edit', $sale) }}" class="ops-btn-light" data-ph-action="edit">Edit Sale</a>
                                         @endif
                                         @if($sale->rental && $canReadRentals && \Illuminate\Support\Facades\Route::has('rentals.show'))
                                             <a href="{{ route('rentals.show', $sale->rental) }}" class="ops-btn-light">View Linked Rental</a>

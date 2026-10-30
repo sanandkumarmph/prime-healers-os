@@ -35,7 +35,7 @@
         }
 
         if ($pickup->scheduled_at?->isPast() && !$pickup->scheduled_at?->isToday()) {
-            return $pickup->scheduled_at->diffInDays($today) . ' day(s) overdue';
+            return (int) $pickup->scheduled_at->copy()->startOfDay()->diffInDays($today->copy()->startOfDay(), true) . ' day(s) overdue';
         }
 
         if ($pickup->scheduled_at?->isToday()) {
@@ -43,7 +43,7 @@
         }
 
         if ($pickup->scheduled_at?->isFuture()) {
-            return $pickup->scheduled_at->diffInDays($today) . ' day(s) remaining';
+            return (int) $pickup->scheduled_at->copy()->startOfDay()->diffInDays($today->copy()->startOfDay(), true) . ' day(s) remaining';
         }
 
         return 'Awaiting schedule';
@@ -285,16 +285,68 @@
         .pickup-modal { padding:0; align-items:stretch; }
         .pickup-modal-dialog { width:100%; max-height:100vh; border-radius:0; }
     }
+    /* All contacts/status fields remain visible without seven nested padded cards. */
+    [data-phos-compact-page="pickups"] .pickup-center-card:not(.pickup-empty) { padding:10px; gap:6px; }
+    [data-phos-compact-page="pickups"] .pickup-card-main { gap:3px; }
+    [data-phos-compact-page="pickups"] .pickup-card-line { line-height:1.25; }
+    [data-phos-compact-page="pickups"] .pickup-tab-row { flex-wrap:nowrap; overflow-x:auto; padding-bottom:3px; }
+    [data-phos-compact-page="pickups"] .pickup-tab { flex:0 0 auto; white-space:nowrap; }
+    @media (min-width: 769px) {
+        [data-phos-compact-page="pickups"] :is(.pickup-contact-block, .pickup-kv-item) {
+            padding:0; border:0; border-radius:0; background:transparent; box-shadow:none; gap:2px;
+        }
+        [data-phos-compact-page="pickups"] :is(.pickup-contact-label, .pickup-kv-item span) { font-size:9.5px; line-height:1.2; }
+        [data-phos-compact-page="pickups"] :is(.pickup-contact-value, .pickup-kv-item strong) { font-size:11px; line-height:1.25; }
+        [data-phos-compact-page="pickups"] .pickup-card-contacts { padding-top:5px; border-top:1px solid #edf1f5; }
+    }
+    @media (max-width: 768px) {
+        [data-phos-compact-page="pickups"] .pickup-card-contacts { grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+        [data-phos-compact-page="pickups"] .pickup-contact-block:last-child { grid-column:1 / -1; }
+        [data-phos-compact-page="pickups"] .pickup-kv { grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; }
+        [data-phos-compact-page="pickups"] :is(.pickup-contact-block, .pickup-kv-item) { padding:6px; gap:2px; border-radius:8px; }
+        [data-phos-compact-page="pickups"] :is(.pickup-contact-label, .pickup-kv-item span) { font-size:9.5px; }
+        [data-phos-compact-page="pickups"] :is(.pickup-contact-value, .pickup-kv-item strong) { font-size:11px; line-height:1.3; }
+    }
 </style>
 
-<div class="container pickup-center-page">
+<div class="container pickup-center-page" data-phos-compact-page="pickups">
     <section class="pickup-center-shell">
-        <div class="pickup-center-head">
+        <div class="pickup-center-head phos-page-header">
             <div>
                 <h1>Pickup Center</h1>
-                <p>Central pickup queue for recovery, failed attempts, reschedules, and return-verification handoff.</p>
+                <p>Plan pickups, recover equipment and verify returns.</p>
             </div>
-            <div class="pickup-form-actions">
+            <div class="pickup-form-actions phos-list-header-actions">
+                <x-phos-list-filter id="pickups-list-filters" label="Filter pickups" :active="!empty($activeFilters)">
+                    <form method="GET" action="{{ route('pickup-center.index') }}" class="pickup-search-row">
+                        <input type="hidden" name="tab" value="{{ $tab }}">
+                        <input type="hidden" name="sort_by" value="{{ $sortBy }}">
+                        <input type="hidden" name="sort_dir" value="{{ $sortDirection }}">
+                        <input class="pickup-input" type="search" name="search" value="{{ request('search') }}" aria-label="Search pickups" placeholder="Search rental, customer, business partner, actual client, phone, product, serial">
+                        <input class="pickup-input" type="text" name="city" value="{{ request('city') }}" aria-label="City" placeholder="City">
+                        <input class="pickup-input" type="text" name="product" value="{{ request('product') }}" aria-label="Product" placeholder="Product">
+                        <select class="pickup-select" name="staff" aria-label="Assigned staff">
+                            <option value="">All staff</option>
+                            <option value="unassigned" @selected(request('staff') === 'unassigned')>Unassigned</option>
+                            @foreach($assignableUsers as $user)
+                                <option value="user:{{ $user->id }}" @selected(request('staff') === 'user:' . $user->id)>{{ $user->name }} ({{ Str::headline($user->role ?: 'user') }})</option>
+                            @endforeach
+                            @foreach($assignableStaff as $staffMember)
+                                <option value="staff:{{ $staffMember->id }}" @selected(request('staff') === 'staff:' . $staffMember->id)>{{ $staffMember->name }} (Vendor/Partner)</option>
+                            @endforeach
+                        </select>
+                        <select class="pickup-select" name="pickup_status" aria-label="Pickup status">
+                            <option value="">All pickup states</option>
+                            @foreach(Delivery::PICKUP_STATUSES as $pickupState)
+                                <option value="{{ $pickupState }}" @selected(request('pickup_status') === $pickupState)>{{ Str::headline($pickupState) }}</option>
+                            @endforeach
+                        </select>
+                        <div class="pickup-form-actions">
+                            <button class="pickup-btn" type="submit">Apply</button>
+                            <a href="{{ $clearFilterHref }}" class="pickup-btn-ghost">Clear</a>
+                        </div>
+                    </form>
+                </x-phos-list-filter>
                 <a href="{{ route('renewal-center.index', ['tab' => 'pickup_requested']) }}" class="pickup-btn-ghost">Open Renewal Queue</a>
                 <a href="{{ route('deliveries.index', ['tab' => 'pickups', 'task_type' => 'pickup']) }}" class="pickup-btn-ghost">Open Tasks Board</a>
             </div>
@@ -309,34 +361,7 @@
             @endforeach
         </div>
 
-        <form method="GET" action="{{ route('pickup-center.index') }}" class="pickup-search-row">
-            <input type="hidden" name="tab" value="{{ $tab }}">
-            <input type="hidden" name="sort_by" value="{{ $sortBy }}">
-            <input type="hidden" name="sort_dir" value="{{ $sortDirection }}">
-            <input class="pickup-input" type="search" name="search" value="{{ request('search') }}" placeholder="Search rental, customer, business partner, actual client, phone, product, serial">
-            <input class="pickup-input" type="text" name="city" value="{{ request('city') }}" placeholder="City">
-            <input class="pickup-input" type="text" name="product" value="{{ request('product') }}" placeholder="Product">
-            <select class="pickup-select" name="staff">
-                <option value="">All staff</option>
-                <option value="unassigned" @selected(request('staff') === 'unassigned')>Unassigned</option>
-                @foreach($assignableUsers as $user)
-                    <option value="user:{{ $user->id }}" @selected(request('staff') === 'user:' . $user->id)>{{ $user->name }} ({{ Str::headline($user->role ?: 'user') }})</option>
-                @endforeach
-                @foreach($assignableStaff as $staffMember)
-                    <option value="staff:{{ $staffMember->id }}" @selected(request('staff') === 'staff:' . $staffMember->id)>{{ $staffMember->name }} (Vendor/Partner)</option>
-                @endforeach
-            </select>
-            <select class="pickup-select" name="pickup_status">
-                <option value="">All pickup states</option>
-                @foreach(Delivery::PICKUP_STATUSES as $pickupState)
-                    <option value="{{ $pickupState }}" @selected(request('pickup_status') === $pickupState)>{{ Str::headline($pickupState) }}</option>
-                @endforeach
-            </select>
-            <div class="pickup-form-actions">
-                <button class="pickup-btn" type="submit">Apply</button>
-                <a href="{{ $clearFilterHref }}" class="pickup-btn-ghost">Clear</a>
-            </div>
-        </form>
+
 
         @if(!empty($activeFilters))
             <div class="pickup-active-filters" aria-label="Active pickup filters">
@@ -392,8 +417,8 @@
                         <div class="pickup-card-line">
                             <span class="pickup-card-strong">Rental #{{ $pickup->rental_id }}</span>
                             <span class="pickup-card-subtle">• {{ $rental?->product?->name ?? 'Rental product' }}</span>
+                            <span class="pickup-card-subtle">• {{ $statusSubtitle($pickup) }}</span>
                         </div>
-                        <div class="pickup-card-subtle">{{ $statusSubtitle($pickup) }}</div>
                         @if($pickup->lastPickupNote())
                             <div class="pickup-card-subtle">Last note: {{ $pickup->lastPickupNote() }}</div>
                         @endif

@@ -20,7 +20,7 @@ class ListFilterPanelUxRegressionTest extends TestCase
     }
 
     #[DataProvider('listPageProvider')]
-    public function test_primary_search_is_visible_by_default(string $routeName, array $query, string $placeholder, string $panelKey): void
+    public function test_primary_search_remains_available(string $routeName, array $query, string $placeholder, string $panelKey): void
     {
         $this->get(route($routeName, $query))
             ->assertOk()
@@ -31,13 +31,27 @@ class ListFilterPanelUxRegressionTest extends TestCase
     }
 
     #[DataProvider('activeFilterProvider')]
-    public function test_filter_panel_stays_open_when_filters_are_active(string $routeName, array $query, string $panelKey): void
+    public function test_active_filters_remain_discoverable_without_forcing_compact_popovers_open(string $routeName, array $query, string $panelKey): void
     {
         $response = $this->get(route($routeName, $query));
 
         $response->assertOk()
             ->assertSee('data-filter-panel-key="' . $panelKey . '"', false)
             ->assertSee('data-filter-active="true"', false);
+
+        if (in_array($routeName, ['rentals.index', 'sales.index', 'customers.index', 'deliveries.index'], true)) {
+            $document = new \DOMDocument();
+            $previous = libxml_use_internal_errors(true);
+            $document->loadHTML('<?xml encoding="utf-8" ?>'.$response->getContent());
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+            $xpath = new \DOMXPath($document);
+            $details = $xpath->query('//details[@data-phos-list-filter]');
+            $this->assertCount(1, $details);
+            $this->assertFalse($details->item(0)->hasAttribute('open'));
+            $this->assertStringContainsString('filters active', $xpath->query('./summary', $details->item(0))->item(0)->getAttribute('aria-label'));
+            return;
+        }
 
         $this->assertMatchesRegularExpression(
             '/<details[^>]*data-filter-panel-key="' . preg_quote($panelKey, '/') . '"[^>]*open[^>]*>/',
