@@ -25,6 +25,9 @@ articles and old guide URLs remain available.
   errors. Covered all six tabs at 320, 390, 736, 1024 and 1440 pixels, header icon
   placement, visible periods, real GET filter/preset navigation, dismissal/focus,
   shared profile/Knowledge Hub navigation and expandable guide content.
+- After the final card-alignment refinement, 10 additional targeted Knowledge Hub
+  browser checks passed at desktop/mobile sizes with zero browser errors. Closed
+  cards retain compact height while another guide is expanded.
 - Short-phone physical click checks: 6 passed at 320×680 and 390×760. The period
   menu and advanced filters scroll within the available space above bottom
   navigation; Custom range and Apply remain clickable.
