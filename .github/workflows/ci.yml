@@ -46,6 +46,9 @@ jobs:
       - name: Build frontend assets
         run: npm run build
 
+      - name: Test dashboard browser navigation
+        run: node --test tests/Browser/*Test.cjs
+
       - name: Prepare environment file
         run: |
           cp .env.example .env

@@ -35,7 +35,8 @@ class PhosPresentationAndGuidesTest extends TestCase
     public function test_compact_dashboard_preserves_scoped_figures_and_disabled_widgets(): void
     {
         $owner=TestData::user(); $this->actingAs($owner);
-        $response=$this->get(route('dashboard.compact'))->assertOk()->assertSee('Your business, at a glance.')->assertSee('Full dashboard');
+        $redirect=$this->get(route('dashboard.compact'))->assertRedirect(route('dashboard',['dashboard_tab'=>'overview']));
+        $response=$this->get($redirect->headers->get('Location'))->assertOk()->assertSee('Executive command centre')->assertSee('Business overview figures');
         $full=$this->get(route('dashboard'))->assertOk();
         foreach (['activeRentals','pendingDeliveryCount','pendingPickupCount','paymentsReceivedThisMonth','outstandingDueAmount'] as $key) {
             $this->assertEquals($full->viewData($key),$response->viewData($key));
@@ -46,13 +47,15 @@ class PhosPresentationAndGuidesTest extends TestCase
         $widget=DashboardWidget::where('widget_key','kpi_active_rentals')->firstOrFail();
         RoleDashboardWidget::create(['organization_id'=>$owner->organization_id,'role_id'=>$role->id,'dashboard_widget_id'=>$widget->id,'is_enabled'=>false,'sort_order'=>1]);
         $staff=TestData::user($owner->organization,['role_id'=>$role->id,'role'=>'admin_operations']);
-        $this->actingAs($staff)->get(route('dashboard.compact'))->assertOk()->assertDontSee('data-overview-widget="kpi_active_rentals"',false);
+        $redirect=$this->actingAs($staff)->get(route('dashboard.compact'))->assertRedirect();
+        $this->get($redirect->headers->get('Location'))->assertOk()->assertDontSee('data-overview-widget="kpi_active_rentals"',false);
     }
 
     public function test_delivery_role_compact_dashboard_cannot_render_company_finance(): void
     {
         $operator=TestData::user(null,['role'=>User::ROLE_DELIVERY]);
-        $this->actingAs($operator)->get(route('dashboard.compact'))->assertOk()
+        $redirect=$this->actingAs($operator)->get(route('dashboard.compact'))->assertRedirect();
+        $this->get($redirect->headers->get('Location'))->assertOk()
             ->assertDontSee('Collections this month')->assertDontSee('Outstanding invoices')->assertDontSee('Invoice aging');
     }
 

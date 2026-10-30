@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\KnowledgeArticle;
 use App\Models\KnowledgeCategory;
+use App\Services\WorkflowGuides;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 
@@ -365,7 +366,7 @@ class KnowledgeController extends Controller
         return $this->articleEnhancements()[$article->slug] ?? [];
     }
 
-    public function index(Request $request)
+    public function index(Request $request, WorkflowGuides $guides)
     {
         $search = trim((string) $request->query('search', ''));
         $typeFilter = trim((string) $request->query('type', ''));
@@ -390,12 +391,27 @@ class KnowledgeController extends Controller
             ->limit(10)
             ->get();
 
+        $workflowGuides = collect($guides->forUser($request->user()))
+            ->filter(function (array $guide) use ($search, $typeFilter) {
+                if (in_array($typeFilter, ['sop', 'faq', 'tutorial', 'policy'], true)) {
+                    return false;
+                }
+
+                return $search === '' || str_contains(
+                    mb_strtolower(implode(' ', [$guide['title'], ...$guide['steps']])),
+                    mb_strtolower($search),
+                );
+            })
+            ->values()
+            ->all();
+
         return view('knowledge.index', [
             'search' => $search,
             'typeFilter' => $typeFilter,
             'categories' => $categories,
             'featuredArticles' => $featuredArticles,
             'recentArticles' => $recentArticles,
+            'workflowGuides' => $workflowGuides,
             'typeOptions' => ['sop', 'guide', 'faq', 'tutorial', 'policy'],
         ]);
     }
