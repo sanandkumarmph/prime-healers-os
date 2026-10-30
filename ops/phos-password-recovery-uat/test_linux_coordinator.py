@@ -176,7 +176,7 @@ class NarrowCoordinatorLinux(unittest.TestCase):
         locks=(self.boundary/'shared-deploy.lock',self.boundary/'zoho.lock')
         with patch.object(d,'LOCK_PATHS',locks):
             with d.mutation_lock():
-                with self.assertRaisesRegex(d.Refused,'Another UAT'): 
+                with self.assertRaisesRegex(d.Refused,'Another UAT'):
                     with d.mutation_lock():self.fail('Concurrent mutation was allowed.')
             with d.mutation_lock():pass
         for path in locks:

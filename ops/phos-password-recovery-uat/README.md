@@ -24,3 +24,13 @@ unchanged. It never updates shared software or accesses production.
 Acceptance is a controlled request from the Forgot password page, receipt of the
 email, one successful reset, rejection of the used link, and a normal login.
 The utility's SMTP authentication test alone does not establish inbox delivery.
+
+The pinned `manifest.json` and `payload.zip` contain exactly nine reviewed source
+files. The deployment helper verifies the previous source hashes, saves private
+recovery information, rebuilds only application caches and checks UAT through
+GET requests. It does not submit account forms or send reset email.
+
+Code installation and mail configuration have separate recovery records. If
+both must be undone, restore the mail configuration first, then the code release.
+The code helper preserves unrelated environment edits and reports drift instead
+of overwriting a later mail configuration.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Private narrow PHOS UAT password-recovery rollout; pins pending, activation disabled."""
+"""Reviewed, pinned nine-file password-recovery rollout for the fixed PHOS UAT."""
 import argparse
 from contextlib import contextmanager
 import hashlib
@@ -39,7 +39,7 @@ MAX_CAPTURE=2*1024*1024
 MAX_TREE=256*1024*1024
 CACHE_NAMES=('config.php','routes-v7.php')
 NEW_PARENT='app/Services/Auth'
-ACTIVATION_REVIEW_COMPLETE=False
+ACTIVATION_REVIEW_COMPLETE=True
 PACKAGE_RELEASE='7e81f3fb20eea99fe13f19f48208f911b8369b56'
 PACKAGE_MANIFEST_SHA='eb64dee656c8d7f75056e72fabf014cb597ba2732eefb167158598eff43cdc9a'
 PACKAGE_ARCHIVE_SHA='34224f3c49b4caff1bfb3c566c37c834762951906b4073e71ce3966411708456'
@@ -955,7 +955,7 @@ def restore_backup(backup):
 
 def main():
     global LOG_ROOT
-    parser=argparse.ArgumentParser(description='Private narrow password-recovery UAT helper; pins pending.')
+    parser=argparse.ArgumentParser(description='Pinned nine-file password-recovery UAT release.')
     parser.add_argument('mode',choices=('verify-package','deploy','rollback'))
     parser.add_argument('--package',type=Path)
     parser.add_argument('--backup',type=Path)
@@ -987,4 +987,3 @@ if __name__=='__main__':
     except (Exception,KeyboardInterrupt) as error:
         print('STOPPED='+(str(error) if isinstance(error,Refused) else type(error).__name__),file=sys.stderr)
         sys.exit(2)
-
