@@ -42,7 +42,7 @@ UAT activation requires the separately collected read-only runtime report, a pin
 
 ## Operator verification still required
 
-1. Verify effective UAT IST, HTTPS/session settings, PHP/extensions, reset-table existence, configured PDF Node/browser versions and Chromium isolation from the read-only diagnostic. Do not change the shared server's global Node/browser runtime by guesswork.
+1. The operator's read-only UAT report confirms Asia/Kolkata, synchronized time, debug disabled, database sessions with secure/HTTP-only/lax cookies, reset-table existence and PHP8.2.30. Configured/system Node22.22.2 meets Puppeteer's compatibility minimum but predates the [Node22.23.4 security release](https://nodejs.org/en/blog/release/v22.23.4). Prepare a verified application-specific patched runtime; do not change the shared server's global Node/browser runtime by guesswork. The PDF sandbox is currently disabled and needs a controlled isolated runtime check.
 2. Deploy the reviewed UAT application and dependency package, then verify login, permissions, dashboard/mobile pages, private proof access and a controlled invoice PDF.
 3. Configure **support@primehealers.com** with the separate [private Zoho setup utility](../ops/phos-access-security-uat/README.md). The operator supplies the account's exact SMTP host and app-specific password privately in the terminal. The utility authenticates once inside verified TLS, changes only eight mail keys, backs up and supports rollback; it sends no email.
 4. Manually request one UAT reset to an inbox controlled by the operator. Check the sender, UAT HTTPS link, reset, login and token reuse without sharing the token or password.

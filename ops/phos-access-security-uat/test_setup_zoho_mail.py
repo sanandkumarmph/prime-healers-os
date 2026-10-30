@@ -81,11 +81,11 @@ class ZohoMailSetupTests(unittest.TestCase):
         values = self.values(password='punctuation$#"\\\'12')
         candidate = module.patch_environment(b'APP_ENV=uat\nMAIL_URL=\n', values)
         content = json.dumps({'candidate_b64': base64.b64encode(candidate).decode(), 'expected': values}).encode()
-        result = subprocess.run([str(php), '-n', '-d', 'display_errors=0', '-d', 'log_errors=0', '-r', code], input=content, capture_output=True, check=False)
+        result = subprocess.run([str(php), '-d', 'display_errors=0', '-d', 'log_errors=0', '-r', code], input=content, capture_output=True, check=False)
         self.assertEqual(0, result.returncode, result.stdout)
         self.assertEqual({'candidate_valid': True}, json.loads(result.stdout))
         for bad in [b'MAIL_URL="smtp://SYNTHETIC_SECRET@evil.test"\n', b'APP_ENV=uat\nAPP_ENV=production\n', b'NOT_MAIL="multi\nline"\n']:
-            result = subprocess.run([str(php), '-n', '-d', 'display_errors=0', '-d', 'log_errors=0', '-r', code],
+            result = subprocess.run([str(php), '-d', 'display_errors=0', '-d', 'log_errors=0', '-r', code],
                                     input=json.dumps({'candidate_b64': base64.b64encode(bad).decode(), 'expected': {}}).encode(), capture_output=True, check=False)
             self.assertEqual(2, result.returncode)
             self.assertIn('error_class', json.loads(result.stdout))
@@ -390,7 +390,7 @@ class ZohoMailSetupTests(unittest.TestCase):
             with self.subTest(key=key):
                 for value in ['', '/unreviewed/outside-uat', '${UNREVIEWED_PATH}']:
                     candidate = (key + '=' + module.dotenv_value(value) + '\n').encode() if value else (key + '=\n').encode()
-                    result = subprocess.run([str(php), '-n', '-d', 'display_errors=0', '-d', 'log_errors=0', '-r', code],
+                    result = subprocess.run([str(php), '-d', 'display_errors=0', '-d', 'log_errors=0', '-r', code],
                         input=json.dumps({'candidate_b64': base64.b64encode(candidate).decode(), 'expected': {}}).encode(), capture_output=True, check=False)
                     self.assertEqual(2, result.returncode)
                     self.assertEqual({'error_class': 'RuntimeException'}, json.loads(result.stdout))
@@ -415,6 +415,9 @@ class ZohoMailSetupTests(unittest.TestCase):
         self.assertIn("['127.0.0.1','::1']", source)
         self.assertIn("hash_equals('__TOKEN__'", source)
         self.assertIn("context=ssl.create_default_context()", module.SMTP_AUTH)
+        candidate_return = module.PHP_INSPECT.index('echo \'{"candidate_valid":true}\';exit;')
+        self.assertLess(candidate_return, module.PHP_INSPECT.index('$app=new PhosMailConfiguration'))
+        self.assertLess(candidate_return, module.PHP_INSPECT.index('new PDO('))
         sql = re.findall(r"query\('([^']+)'\)", module.PHP_INSPECT)
         self.assertEqual(['SELECT DATABASE()'], sql)
 
