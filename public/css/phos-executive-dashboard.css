@@ -445,6 +445,10 @@ body.phos-executive-page [data-executive-dashboard] :is(.dashboard-empty svg, .r
     body.phos-executive-page [data-executive-dashboard] :is(.rx-card-header, .team-performance-head, .control-room-card-header) { flex-wrap: wrap; }
     body.phos-executive-page [data-executive-dashboard] :is(.team-performance-filter-grid, .control-room-reference-grid) { grid-template-columns:minmax(0,1fr); }
     body.phos-executive-page [data-executive-dashboard] .phos-overview-metrics { grid-template-columns:minmax(0,1fr); }
+    body.phos-executive-page [data-executive-dashboard] .control-room-pipeline-track { grid-template-columns: minmax(0, 1fr); }
+    body.phos-executive-page [data-executive-dashboard] .control-room-pipeline-stage { grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; padding: 10px 12px; min-width: 0; }
+    body.phos-executive-page [data-executive-dashboard] .control-room-pipeline-stage-label { min-width: 0; max-width: none; font-size: 12px; line-height: 1.35; word-break: normal; overflow-wrap: normal; }
+    body.phos-executive-page [data-executive-dashboard] .control-room-pipeline-stage-value { justify-self: end; font-size: 16px; white-space: nowrap; }
     body.phos-executive-page [data-executive-dashboard] :is(.executive-health-period, .control-room-priority-note, .control-room-priority-label) { overflow-wrap: anywhere; }
 }
 @media (prefers-reduced-motion: reduce) {
