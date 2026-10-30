@@ -32,7 +32,7 @@ Legacy profiles and stored role templates have differences in module breadth and
 
 ## Validation and release boundaries
 
-The final integrated local PHP regression run passed **806 tests / 7,813 assertions**. Frontend and Blade compilation and all **24 permanent browser tests** passed. The mobile matrix passed **205 checks on 29 synthetic pages** at 1440, 768, 390 and 320 pixels with no non-GET requests. Another **101 signer browser checks** cover real strokes, mobile field containment, required names, unavailable reasons and preservation across resizing/step changes. Eighteen isolated Apache HTTP cases verified both denials and allowed images/ACME paths.
+The final integrated local PHP regression run passed **806 tests / 7,813 assertions**. Frontend and Blade compilation and all **24 workflow/navigation browser tests** passed. A separate permanent synthetic-PDF browser test also passed and runs in CI on both the main Node24 runtime and patched Node22.23.4. The mobile matrix passed **205 checks on 29 synthetic pages** at 1440, 768, 390 and 320 pixels with no non-GET requests. Another **101 signer browser checks** cover real strokes, mobile field containment, required names, unavailable reasons and preservation across resizing/step changes. Eighteen isolated Apache HTTP cases verified both denials and allowed images/ACME paths.
 
 The separate SMTP utility passed **20 offline tests** on Windows with one directory-symlink test skipped; Linux CI exercises that case. Tests use mocked SMTP/HTTP, not real credentials or message delivery.
 
