@@ -21,6 +21,7 @@ This update addresses password recovery, role-based access, mobile layouts, deli
 - Apache/LiteSpeed rules deny direct public customer/delivery proof namespaces and sensitive dot/dependency files, including existing static files. Private proof retrieval also checks task assignment and organization scope.
 - All application CSV exports use a shared writer that neutralizes formula-leading untrusted text, preserves numeric cells and uses standard CSV enclosure.
 - PDF requests retain certificate validation; the unconditional HTTPS-error bypass is removed.
+- When PDF sandboxing is explicitly enabled, incompatible legacy single-process/no-zygote and sandbox override arguments are removed from the actual browser command. The existing Linux default is preserved until supported server isolation is verified.
 - Composer and npm lockfiles include compatible security updates. CI now audits both lockfiles, builds assets, exercises browser checks and runs the full PHP suite. Puppeteer 25 requires **Node 22.12 or newer**; the CI runtime is Node 24.
 - The legacy customer-proof migration verifies private bytes before metadata activation or public cleanup. A private journal supports safe cleanup retries. `rentnexis:migrate-proof-files --summary` is a counts-only read-only audit; it must not be combined with `--apply`.
 
@@ -35,6 +36,8 @@ Legacy profiles and stored role templates have differences in module breadth and
 The final integrated local PHP regression run passed **806 tests / 7,813 assertions**. Frontend and Blade compilation and the workflow/navigation browser tests passed. Permanent browser checks also cover the actual pipeline markup/stylesheet at six viewport sizes and synthetic PDF rendering on both Node24 and patched Node22.23.4 in CI. The final mobile matrix passed **209 checks on 29 synthetic pages** at 1440, 768, 390 and 320 pixels with no non-GET requests. Another **101 signer browser checks** cover real strokes, mobile field containment, required names, unavailable reasons and preservation across resizing/step changes. Eighteen isolated Apache HTTP cases verified both denials and allowed images/ACME paths.
 
 The separate SMTP utility passed **20 offline tests** on Windows with one directory-symlink test skipped; Linux CI exercises that case. Tests use mocked SMTP/HTTP, not real credentials or message delivery.
+
+The UAT runtime diagnostic and bounded permission repair have **20 and 19 offline tests**, respectively. The operator's metadata report found `.env`0644 and shared-group-writable runtime directories. The repair requires proof of the actual web PHP UID before tightening a fixed allowlist; it preserves public asset traversal, records original attributes for recovery, and does not recursively change unknown data. Its `/login` health check can create a routine anonymous framework session, without direct database commands or business-record changes. Global hosting/vhost ownership and shared PHP patching remain separate server review items.
 
 Both final dependency audits reported no known advisories at the time of review. This is a snapshot of those registries, not a guarantee against all attacks. Tests use synthetic records; they do not establish the state of a deployed server.
 

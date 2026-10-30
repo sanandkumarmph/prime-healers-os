@@ -114,6 +114,22 @@ def trusted_executable(value, *, executable=True):
     return str(resolved)
 
 
+def validate_vhost_metadata(info):
+    need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1)
+    mode = stat.S_IMODE(info.st_mode)
+    root_owned = info.st_uid == 0 and mode & 0o022 == 0
+    observed_uat = info.st_uid == 65534 and info.st_gid == 65534 and mode == 0o750
+    # This exact observed UAT exception permits read-only identity parsing only.
+    # It neither executes this file nor certifies the hosting ownership policy.
+    need(root_owned or observed_uat)
+
+
+def validate_vhost(path):
+    need(path == Path('/usr/local/lsws/conf/vhosts/uat-admin.primehealers.com/vhost.conf'))
+    validate_vhost_metadata(regular(path, 1048576))
+    need(re.search(r'(?im)^\s*docRoot\s+\$VH_ROOT/public_html/public\s*$', path.read_text()) is not None)
+
+
 def load_target():
     need(sys.platform.startswith('linux') and pwd is not None and os.geteuid() == 0)
     need(APP == Path('/home/uat-admin.primehealers.com/public_html') and HOST == 'uat-admin.primehealers.com'
@@ -138,9 +154,7 @@ def load_target():
     for relative in STANDARD_PATHS.values():
         no_links(APP / relative)
     vhost = Path('/usr/local/lsws/conf/vhosts') / HOST / 'vhost.conf'
-    vhost_info = regular(vhost, 1048576)
-    need(vhost_info.st_uid == 0 and stat.S_IMODE(vhost_info.st_mode) & 0o022 == 0)
-    need(re.search(r'(?im)^\s*docRoot\s+\$VH_ROOT/public_html/public\s*$', vhost.read_text()) is not None)
+    validate_vhost(vhost)
     return account, trusted_executable(PHP)
 
 

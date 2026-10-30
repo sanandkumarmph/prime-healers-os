@@ -34,6 +34,44 @@ class PdfDiagnosticTests(unittest.TestCase):
             with self.assertRaises(probe.Refused):
                 probe.no_links(path)
 
+    def test_vhost_accepts_root_metadata_and_only_the_exact_observed_uat_exception(self):
+        for uid, gid, mode in [(0, 0, 0o600), (0, 5006, 0o640), (0, 65534, 0o750), (65534, 65534, 0o750)]:
+            with self.subTest(uid=uid, gid=gid, mode=mode):
+                probe.validate_vhost_metadata(types.SimpleNamespace(st_uid=uid, st_gid=gid,
+                    st_mode=stat.S_IFREG | mode, st_nlink=1))
+
+    def test_vhost_rejects_other_owners_groups_modes_links_and_nonregular_files(self):
+        refused = [(5006, 5006, 0o750), (65534, 5006, 0o750), (65534, 0, 0o750),
+                   (65534, 65534, 0o640), (65534, 65534, 0o755), (65534, 65534, 0o770),
+                   (65534, 65534, 0o775), (0, 0, 0o660), (0, 0, 0o602)]
+        for uid, gid, mode in refused:
+            with self.subTest(uid=uid, gid=gid, mode=mode), self.assertRaises(probe.Refused):
+                probe.validate_vhost_metadata(types.SimpleNamespace(st_uid=uid, st_gid=gid,
+                    st_mode=stat.S_IFREG | mode, st_nlink=1))
+        for kind, links in [(stat.S_IFREG, 2), (stat.S_IFDIR, 1), (stat.S_IFLNK, 1)]:
+            with self.subTest(kind=kind, links=links), self.assertRaises(probe.Refused):
+                probe.validate_vhost_metadata(types.SimpleNamespace(st_uid=65534, st_gid=65534,
+                    st_mode=kind | 0o750, st_nlink=links))
+
+    def test_vhost_exception_preserves_exact_path_regular_guard_and_document_root(self):
+        path = Path('/usr/local/lsws/conf/vhosts/uat-admin.primehealers.com/vhost.conf')
+        info = types.SimpleNamespace(st_uid=65534, st_gid=65534, st_mode=stat.S_IFREG | 0o750, st_nlink=1)
+        with mock.patch.object(probe, 'regular', return_value=info) as regular, \
+             mock.patch.object(Path, 'read_text', return_value='docRoot $VH_ROOT/public_html/public\n'):
+            probe.validate_vhost(path)
+            regular.assert_called_once_with(path, 1048576)
+        with mock.patch.object(probe, 'regular') as regular, self.assertRaises(probe.Refused):
+            probe.validate_vhost(Path('/usr/local/lsws/conf/vhosts/admin.primehealers.com/vhost.conf'))
+        regular.assert_not_called()
+        with mock.patch.object(probe, 'regular', return_value=info), \
+             mock.patch.object(Path, 'read_text', return_value='docRoot $VH_ROOT/other_application/public\n'), \
+             self.assertRaises(probe.Refused):
+            probe.validate_vhost(path)
+        with mock.patch.object(probe, 'regular', side_effect=probe.Refused), \
+             mock.patch.object(Path, 'read_text') as read, self.assertRaises(probe.Refused):
+            probe.validate_vhost(path)
+        read.assert_not_called()
+
     def test_private_environment_drops_runtime_injection_and_credentials(self):
         with mock.patch.dict(os.environ, {'NODE_OPTIONS': '--require secret', 'NODE_PATH': '/other', 'MAIL_PASSWORD': 'SYNTHETIC_SECRET'}):
             env = probe.private_environment(Path('/tmp/private'))

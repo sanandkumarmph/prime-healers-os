@@ -56,4 +56,39 @@ class PdfBrowsershotConfiguratorTest extends TestCase
             $this->assertSame($disableSandbox, in_array('--no-sandbox', $command['options']['args'] ?? [], true));
         }
     }
+
+    public function test_enabling_sandbox_removes_incompatible_legacy_flags_from_the_actual_pdf_command(): void
+    {
+        config([
+            'pdf.browser_path' => null,
+            'pdf.fallback_browser_paths.windows' => [],
+            'pdf.fallback_browser_paths.linux' => [],
+            'pdf.fallback_browser_paths.macos' => [],
+            'pdf.chromium_arguments.common' => ['no-sandbox', 'disable-setuid-sandbox',
+                'single-process', 'no-zygote', 'disable-seccomp-filter-sandbox',
+                '--disable-namespace-sandbox=true', 'disable-dev-shm-usage'],
+            'pdf.chromium_arguments.windows' => ['disable-gpu'],
+            'pdf.chromium_arguments.linux' => ['disable-gpu'],
+            'pdf.chromium_arguments.macos' => ['disable-gpu'],
+            'pdf.disable_sandbox' => false,
+        ]);
+        $command = app(PdfBrowsershotConfigurator::class)
+            ->configure(Browsershot::html('<p>Synthetic sandbox configuration check.</p>'))
+            ->createPdfCommand();
+        $arguments = $command['options']['args'] ?? [];
+        $this->assertContains('--disable-dev-shm-usage', $arguments);
+        $this->assertContains('--disable-gpu', $arguments);
+        foreach ($arguments as $argument) {
+            $this->assertStringNotContainsString('sandbox', strtolower($argument));
+            $this->assertNotContains($argument, ['--single-process', '--no-zygote']);
+        }
+
+        config(['pdf.disable_sandbox' => true]);
+        $legacy = app(PdfBrowsershotConfigurator::class)
+            ->configure(Browsershot::html('<p>Synthetic existing configuration check.</p>'))
+            ->createPdfCommand();
+        foreach (['--single-process', '--no-zygote', '--no-sandbox', '--disable-setuid-sandbox'] as $argument) {
+            $this->assertContains($argument, $legacy['options']['args']);
+        }
+    }
 }
