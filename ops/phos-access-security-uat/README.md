@@ -1,5 +1,7 @@
 # PHOS UAT: private Zoho SMTP setup
 
+The separate [synthetic PDF/runtime diagnostic](pdf-diagnostic.md) checks existing UAT runtime isolation before installation. It does not configure mail or deploy code.
+
 This is a separate operator utility. It does not deploy application source, merge code, migrate, restore a database, send a message or access production. Old rollout helpers remain unchanged. No live server/SMTP run has been performed during preparation.
 
 The authorized mailbox and sender are fixed as `support@primehealers.com`. The application, host and database are fixed to the existing PHOS UAT installation. The helper requires the root operator terminal, validates the website's non-root owner and exact private target identity, and runs PHP/configuration commands and the SMTP authentication child as that owner. It has no credential, host or target command-line arguments.
