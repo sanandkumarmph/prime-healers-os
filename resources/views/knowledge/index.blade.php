@@ -77,7 +77,7 @@
             border-color: #93c5fd;
             color: #1e40af;
         }
-        .rn-knowledge-workflow-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; }
+        .rn-knowledge-workflow-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px; align-items:start; }
         .rn-knowledge-workflow { min-width:0; padding:18px; border:1px solid #dbe3ef; border-radius:16px; background:#fff; }
         .rn-knowledge-workflow summary { cursor:pointer; color:#20364a; font-size:15px; font-weight:600; line-height:1.5; }
         .rn-knowledge-workflow summary small { display:block; margin:4px 0 0 18px; color:#627589; font-size:11px; font-weight:400; }
