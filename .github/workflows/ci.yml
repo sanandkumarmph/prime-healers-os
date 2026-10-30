@@ -56,6 +56,9 @@ jobs:
       - name: Test private UAT mail setup safety offline
         run: python3 -B -m unittest discover -s ops/phos-access-security-uat -p 'test_*.py'
 
+      - name: Test deployment coordinator in disposable Linux ownership fixtures
+        run: sudo python3 -I -B -m unittest discover -s ops/phos-access-security-uat/dependency -p 'test_linux_coordinator.py' -v
+
       - name: Build frontend assets
         run: npm run build
 
