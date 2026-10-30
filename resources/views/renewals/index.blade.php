@@ -1082,17 +1082,146 @@
             white-space: normal;
         }
     }
+    /* Keep operational actions together instead of making every rental four rows tall. */
+    @media (min-width: 769px) {
+        [data-phos-compact-page="renewals"] .renewal-table { min-width:1200px; }
+        [data-phos-compact-page="renewals"] .renewal-action-set {
+            display:flex; flex-wrap:wrap; align-content:flex-start; gap:4px; min-width:240px; max-width:240px;
+        }
+        [data-phos-compact-page="renewals"] .renewal-action-set > * {
+            width:auto !important; min-height:28px !important; padding:4px 7px !important; font-size:11px; white-space:nowrap;
+        }
+        [data-phos-compact-page="renewals"] .renewal-action-set .renewal-icon-action {
+            width:auto !important; padding:4px 7px !important;
+        }
+        [data-phos-compact-page="renewals"] .renewal-action-set .renewal-action-label { display:inline; }
+        [data-phos-compact-page="renewals"] .renewal-list :is(.renewal-row-copy, .renewal-muted) { font-size:11px; line-height:1.25; }
+        [data-phos-compact-page="renewals"] .renewal-list .renewal-row-title { font-size:13px; line-height:1.25; }
+    }
+    @media (max-width: 768px) {
+        [data-phos-compact-page="renewals"] .renewal-stat-strip { display:flex !important; gap:6px !important; overflow-x:auto; padding-bottom:4px; }
+        [data-phos-compact-page="renewals"] .renewal-stat { flex:0 0 134px; min-height:64px !important; padding:8px !important; }
+        [data-phos-compact-page="renewals"] .renewal-meta-strip.phos-list-header-actions { gap:5px; }
+        [data-phos-compact-page="renewals"] .renewal-meta-strip.phos-list-header-actions .renewal-chip { min-height:22px; padding:3px 6px; font-size:9.5px; }
+        [data-phos-compact-page="renewals"] .renewal-tabs { flex-wrap:nowrap !important; overflow-x:auto; }
+    }
 </style>
 
-<div class="renewal-center-shell">
+<div class="renewal-center-shell" data-phos-compact-page="renewals">
     <section class="renewal-hero">
-        <div class="renewal-hero-top">
+        <div class="renewal-hero-top phos-page-header">
             <div>
                 <div class="renewal-eyebrow">RENEWALS</div>
                 <h1 class="renewal-title">Renewal Center</h1>
-                <p class="renewal-copy">Keep every renewal in one place so the team can act early and avoid service disruption.</p>
+                <p class="renewal-copy">Renew, follow up or arrange a pickup.</p>
             </div>
-            <div class="renewal-meta-strip">
+            <div class="renewal-meta-strip phos-list-header-actions">
+                <x-phos-list-filter id="renewals-list-filters" label="Filter renewals" :active="$activeFilters->isNotEmpty() || $sortBy !== 'action_priority' || $sortDir !== 'asc'">
+                    <form method="GET" action="{{ route('renewal-center.index') }}" class="renewal-toolbar">
+                            <div class="renewal-filter-body">
+                        <input type="hidden" name="tab" value="{{ $tab }}">
+                        <div class="renewal-field">
+                            <label for="renewal-search">Search</label>
+                            <input
+                                id="renewal-search"
+                                type="text"
+                                name="search"
+                                value="{{ request('search') }}"
+                                class="renewal-input"
+                                placeholder="Search rental number, customer, partner, client, phone, or product"
+                            >
+                        </div>
+                        <div class="renewal-field">
+                            <label for="renewal-sort-by">Sort By</label>
+                            <select id="renewal-sort-by" name="sort_by" class="renewal-select">
+                                <option value="action_priority" @selected($sortBy === 'action_priority')>Action Priority</option>
+                                <option value="renewal_date" @selected($sortBy === 'renewal_date')>Renewal Date</option>
+                                <option value="status" @selected($sortBy === 'status')>Status</option>
+                                <option value="customer" @selected($sortBy === 'customer')>Customer / Partner</option>
+                                <option value="product" @selected($sortBy === 'product')>Product</option>
+                                <option value="amount" @selected($sortBy === 'amount')>Rental Amount</option>
+                                <option value="updated_at" @selected($sortBy === 'updated_at')>Recently Updated</option>
+                            </select>
+                        </div>
+                        <div class="renewal-field">
+                            <label for="renewal-sort-dir">Direction</label>
+                            <select id="renewal-sort-dir" name="sort_dir" class="renewal-select">
+                                <option value="asc" @selected($sortDir === 'asc')>Ascending</option>
+                                <option value="desc" @selected($sortDir === 'desc')>Descending</option>
+                            </select>
+                        </div>
+                        <div class="renewal-list-actions">
+                            <button type="submit" class="renewal-btn">Apply</button>
+                            <a href="{{ $clearUrl }}" class="renewal-btn-secondary">Clear Filters</a>
+                        </div>
+
+                        <div class="renewal-filter-grid">
+                            <div class="renewal-field">
+                                <label for="renewal-city">City</label>
+                                <input id="renewal-city" type="text" name="city" value="{{ request('city') }}" class="renewal-input" placeholder="Delivery city">
+                            </div>
+                            <div class="renewal-field">
+                                <label for="renewal-product">Product</label>
+                                <select id="renewal-product" name="product_id" class="renewal-select">
+                                    <option value="">All Products</option>
+                                    @foreach($products as $product)
+                                        <option value="{{ $product->id }}" @selected((int) request('product_id') === (int) $product->id)>{{ $product->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="renewal-field">
+                                <label for="renewal-staff">Assigned Staff</label>
+                                <select id="renewal-staff" name="staff" class="renewal-select">
+                                    <option value="">Any Staff</option>
+                                    @if($assignableUsers->isNotEmpty())
+                                        <optgroup label="Users">
+                                            @foreach($assignableUsers as $user)
+                                                <option value="user:{{ $user->id }}" @selected(request('staff') === 'user:' . $user->id)>{{ $user->name }}</option>
+                                            @endforeach
+                                        </optgroup>
+                                    @endif
+                                    @if($assignableStaff->isNotEmpty())
+                                        <optgroup label="Staff / Vendors">
+                                            @foreach($assignableStaff as $staffMember)
+                                                <option value="staff:{{ $staffMember->id }}" @selected(request('staff') === 'staff:' . $staffMember->id)>{{ $staffMember->name }}</option>
+                                            @endforeach
+                                        </optgroup>
+                                    @endif
+                                </select>
+                            </div>
+                            <div class="renewal-field">
+                                <label for="renewal-overdue-days">Overdue Days</label>
+                                <select id="renewal-overdue-days" name="overdue_days" class="renewal-select">
+                                    <option value="">Any</option>
+                                    <option value="1" @selected((int) request('overdue_days') === 1)>1+ day</option>
+                                    <option value="3" @selected((int) request('overdue_days') === 3)>3+ days</option>
+                                    <option value="7" @selected((int) request('overdue_days') === 7)>7+ days</option>
+                                </select>
+                            </div>
+                            <div class="renewal-field">
+                                <label for="renewal-payment-status">Payment Status</label>
+                                <select id="renewal-payment-status" name="payment_status" class="renewal-select">
+                                    <option value="">Any</option>
+                                    <option value="paid" @selected(request('payment_status') === 'paid')>Paid</option>
+                                    <option value="partial" @selected(request('payment_status') === 'partial')>Partial</option>
+                                    <option value="unpaid" @selected(request('payment_status') === 'unpaid')>Unpaid</option>
+                                    <option value="overdue" @selected(request('payment_status') === 'overdue')>Overdue</option>
+                                </select>
+                            </div>
+                            <div class="renewal-field">
+                                <label for="renewal-pickup-status">Pickup Status</label>
+                                <select id="renewal-pickup-status" name="pickup_status" class="renewal-select">
+                                    <option value="">Any</option>
+                                    <option value="pending" @selected(request('pickup_status') === 'pending')>Pending</option>
+                                    <option value="in_progress" @selected(request('pickup_status') === 'in_progress')>In Progress</option>
+                                    <option value="completed" @selected(request('pickup_status') === 'completed')>Completed</option>
+                                    <option value="cancelled" @selected(request('pickup_status') === 'cancelled')>Cancelled</option>
+                                </select>
+                            </div>
+                        </div>
+                                    </div>
+                    </form>
+                </x-phos-list-filter>
                 <span class="renewal-chip"><span class="renewal-chip-icon">i</span>Reminder contact follows billing logic</span>
                 <span class="renewal-chip"><span class="renewal-chip-icon">i</span>Service location follows delivery logic</span>
             </div>
@@ -1136,113 +1265,7 @@
     </section>
 
     <section class="renewal-card">
-        <form method="GET" action="{{ route('renewal-center.index') }}" class="renewal-toolbar">
-            <details class="renewal-filter-panel">
-                <summary aria-expanded="false"><span class="renewal-filter-summary-icon">F</span><span>Filters &amp; Search</span><span class="renewal-filter-count">{{ $activeFilters->count() }}</span><small>{{ Str::headline((string) request('sort_by', 'action_priority')) }} - {{ request('city') ?: 'Any City' }}</small><b aria-hidden="true">v</b></summary>
-                <div class="renewal-filter-body">
-            <input type="hidden" name="tab" value="{{ $tab }}">
-            <div class="renewal-field">
-                <label for="renewal-search">Search</label>
-                <input
-                    id="renewal-search"
-                    type="text"
-                    name="search"
-                    value="{{ request('search') }}"
-                    class="renewal-input"
-                    placeholder="Search rental number, customer, partner, client, phone, or product"
-                >
-            </div>
-            <div class="renewal-field">
-                <label for="renewal-sort-by">Sort By</label>
-                <select id="renewal-sort-by" name="sort_by" class="renewal-select">
-                    <option value="action_priority" @selected($sortBy === 'action_priority')>Action Priority</option>
-                    <option value="renewal_date" @selected($sortBy === 'renewal_date')>Renewal Date</option>
-                    <option value="status" @selected($sortBy === 'status')>Status</option>
-                    <option value="customer" @selected($sortBy === 'customer')>Customer / Partner</option>
-                    <option value="product" @selected($sortBy === 'product')>Product</option>
-                    <option value="amount" @selected($sortBy === 'amount')>Rental Amount</option>
-                    <option value="updated_at" @selected($sortBy === 'updated_at')>Recently Updated</option>
-                </select>
-            </div>
-            <div class="renewal-field">
-                <label for="renewal-sort-dir">Direction</label>
-                <select id="renewal-sort-dir" name="sort_dir" class="renewal-select">
-                    <option value="asc" @selected($sortDir === 'asc')>Ascending</option>
-                    <option value="desc" @selected($sortDir === 'desc')>Descending</option>
-                </select>
-            </div>
-            <div class="renewal-list-actions">
-                <button type="submit" class="renewal-btn">Apply</button>
-                <a href="{{ $clearUrl }}" class="renewal-btn-secondary">Clear Filters</a>
-            </div>
 
-            <div class="renewal-filter-grid">
-                <div class="renewal-field">
-                    <label for="renewal-city">City</label>
-                    <input id="renewal-city" type="text" name="city" value="{{ request('city') }}" class="renewal-input" placeholder="Delivery city">
-                </div>
-                <div class="renewal-field">
-                    <label for="renewal-product">Product</label>
-                    <select id="renewal-product" name="product_id" class="renewal-select">
-                        <option value="">All Products</option>
-                        @foreach($products as $product)
-                            <option value="{{ $product->id }}" @selected((int) request('product_id') === (int) $product->id)>{{ $product->name }}</option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="renewal-field">
-                    <label for="renewal-staff">Assigned Staff</label>
-                    <select id="renewal-staff" name="staff" class="renewal-select">
-                        <option value="">Any Staff</option>
-                        @if($assignableUsers->isNotEmpty())
-                            <optgroup label="Users">
-                                @foreach($assignableUsers as $user)
-                                    <option value="user:{{ $user->id }}" @selected(request('staff') === 'user:' . $user->id)>{{ $user->name }}</option>
-                                @endforeach
-                            </optgroup>
-                        @endif
-                        @if($assignableStaff->isNotEmpty())
-                            <optgroup label="Staff / Vendors">
-                                @foreach($assignableStaff as $staffMember)
-                                    <option value="staff:{{ $staffMember->id }}" @selected(request('staff') === 'staff:' . $staffMember->id)>{{ $staffMember->name }}</option>
-                                @endforeach
-                            </optgroup>
-                        @endif
-                    </select>
-                </div>
-                <div class="renewal-field">
-                    <label for="renewal-overdue-days">Overdue Days</label>
-                    <select id="renewal-overdue-days" name="overdue_days" class="renewal-select">
-                        <option value="">Any</option>
-                        <option value="1" @selected((int) request('overdue_days') === 1)>1+ day</option>
-                        <option value="3" @selected((int) request('overdue_days') === 3)>3+ days</option>
-                        <option value="7" @selected((int) request('overdue_days') === 7)>7+ days</option>
-                    </select>
-                </div>
-                <div class="renewal-field">
-                    <label for="renewal-payment-status">Payment Status</label>
-                    <select id="renewal-payment-status" name="payment_status" class="renewal-select">
-                        <option value="">Any</option>
-                        <option value="paid" @selected(request('payment_status') === 'paid')>Paid</option>
-                        <option value="partial" @selected(request('payment_status') === 'partial')>Partial</option>
-                        <option value="unpaid" @selected(request('payment_status') === 'unpaid')>Unpaid</option>
-                        <option value="overdue" @selected(request('payment_status') === 'overdue')>Overdue</option>
-                    </select>
-                </div>
-                <div class="renewal-field">
-                    <label for="renewal-pickup-status">Pickup Status</label>
-                    <select id="renewal-pickup-status" name="pickup_status" class="renewal-select">
-                        <option value="">Any</option>
-                        <option value="pending" @selected(request('pickup_status') === 'pending')>Pending</option>
-                        <option value="in_progress" @selected(request('pickup_status') === 'in_progress')>In Progress</option>
-                        <option value="completed" @selected(request('pickup_status') === 'completed')>Completed</option>
-                        <option value="cancelled" @selected(request('pickup_status') === 'cancelled')>Cancelled</option>
-                    </select>
-                </div>
-            </div>
-                        </div>
-            </details>
-        </form>
 
         @if($activeFilters->isNotEmpty())
             <div class="renewal-meta-strip">

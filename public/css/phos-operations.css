@@ -1,0 +1,104 @@
+/* PHOS navigation header and compact operational lists. Business forms and other
+   module content retain their own layouts. */
+body.phos-navigation-refresh .app-shell { --ph-header-height: 68px; }
+body.phos-navigation-refresh .app-shell-topbar { min-height:68px; padding:10px 18px; gap:18px; box-shadow:none; }
+body.phos-navigation-refresh .app-shell-topbar-left { flex:1 1 auto; min-width:0; gap:20px; }
+body.phos-navigation-refresh .shell-brand-logo { max-width:168px; max-height:36px; }
+body.phos-navigation-refresh :is(.shell-brand-divider, .shell-brand-pill, .app-shell-topbar-right > .topbar-chip.is-role) { display:none; }
+body.phos-navigation-refresh .app-shell-search { width:100%; max-width:620px; min-height:40px; height:40px; border-radius:10px; background:#f7f9fb; box-shadow:none; }
+body.phos-navigation-refresh .app-shell-topbar-right { gap:8px; flex:0 0 auto; }
+body.phos-navigation-refresh .app-shell-topbar :is(.quick-add-trigger, .topbar-action-link, .topbar-bell-trigger) { min-height:38px; height:38px; border-radius:9px; box-shadow:none; }
+body.phos-navigation-refresh .app-shell-topbar :is(.topbar-action-link, .topbar-bell-trigger) { min-width:38px; width:38px; }
+body.phos-navigation-refresh .topbar-user-trigger { min-height:40px; border-radius:10px; box-shadow:none; padding:4px 9px 4px 4px; }
+body.phos-navigation-refresh .topbar-user-avatar { width:30px; height:30px; font-size:11px; }
+body.phos-navigation-refresh .topbar-user-meta strong { font-size:12px; max-width:160px; }
+body.phos-navigation-refresh .topbar-user-meta span { font-size:10px; max-width:160px; }
+body.phos-navigation-refresh .topbar-user-panel .topbar-user-role { display:inline-flex; }
+
+body.phos-list-page { --ph-color-primary:#0f75bd; --ph-color-primary-strong:#0b5e99; --ph-color-primary-hover:#0b5e99; --ph-color-primary-soft:#edf5fc; --ph-color-primary-light:#edf5fc; --ph-color-bg:#f4f7f9; --ph-color-text:#20364a; --ph-color-text-soft:#627589; --ph-color-border:#dce5ec; --ph-shadow-card:none; }
+body.phos-list-page .app-shell-main { padding:18px 22px 28px; }
+body.phos-list-page [data-phos-compact-page] { min-width:0; color:#20364a; }
+body.phos-list-page [data-phos-compact-page="renewals"] { grid-template-columns:minmax(0,1fr); }
+body.phos-list-page [data-phos-compact-page="renewals"] :is(.renewal-hero, .renewal-hero-top, .phos-list-header-actions) { min-width:0; max-width:100%; }
+body.phos-list-page .phos-page-header { position:relative; overflow:visible !important; transform:none !important; backdrop-filter:none !important; padding:16px 18px !important; border:1px solid #dce5ec !important; border-radius:12px !important; background:white !important; box-shadow:none !important; }
+body.phos-list-page .phos-page-header h1 { margin:0; font-size:25px !important; line-height:1.2 !important; font-weight:650 !important; letter-spacing:-.025em; color:#20364a !important; }
+body.phos-list-page .phos-page-header p { margin-top:5px !important; font-size:12px !important; line-height:1.45 !important; color:#627589 !important; }
+body.phos-list-page .phos-page-header :is(.ops-btn, .rn-btn-primary, .comms-btn) { background:#0f75bd !important; border-color:#0f75bd !important; color:white !important; box-shadow:none !important; }
+body.phos-list-page .phos-page-header :is(a, button, summary) { font-size:12px; }
+body.phos-list-page .phos-page-header .rx-eyebrow { background:#edf5fc; color:#0b5e99; }
+body.phos-list-page :is(.decision-tab, .sales-decision-tab, .renewal-tab, .pickup-tab, .comms-tab, .ops-tab).is-active { background:#0f75bd !important; border-color:#0f75bd !important; color:#fff !important; box-shadow:none; }
+body.phos-list-page :is(.decision-tab, .renewal-tab).is-active :is(.decision-tab-count, .renewal-tab-count) { background:rgb(255 255 255 / 18%); color:#fff; }
+body.phos-list-page :is(.rental-detail-id, .rental-open-link) { color:#0b5e99; }
+body.phos-list-page :is(.product-thumb, .rental-open-icon) { background:#edf5fc; color:#0b5e99; }
+body.phos-list-page :is(.mobile-chip, .ops-mobile-chip).is-active { background:#0f75bd !important; border-color:#0f75bd !important; color:#fff !important; }
+body.phos-list-page [data-phos-legacy-filter] { display:none !important; }
+body.phos-list-page [data-phos-compact-page] table { border-collapse:separate; border-spacing:0; }
+body.phos-list-page [data-phos-compact-page] table th { padding:9px 10px !important; font-size:10px !important; line-height:1.3 !important; font-weight:650 !important; color:#627589; letter-spacing:.035em; }
+body.phos-list-page [data-phos-compact-page] table td { padding:8px 10px !important; line-height:1.35 !important; font-size:12px; vertical-align:top; }
+body.phos-list-page [data-phos-compact-page] table td :is(p, small) { margin-top:2px !important; margin-bottom:2px !important; line-height:1.35; }
+body.phos-list-page [data-phos-compact-page] table td :is(.rn-badge, .status-badge, .payment-badge) { font-size:10px !important; padding:3px 6px !important; line-height:1.2; }
+body.phos-list-page [data-phos-compact-page] :is(.summary-grid, .stat-grid, .stats-grid) { gap:10px !important; }
+body.phos-list-page [data-phos-compact-page] :is(.summary-card, .stat-card, .metric-card) { padding:12px !important; border-radius:9px !important; box-shadow:none !important; }
+body.phos-list-page [data-phos-compact-page] :is(.summary-card, .stat-card, .metric-card) strong { font-size:23px !important; line-height:1.15 !important; }
+body.phos-list-page [data-phos-compact-page] :is(.rn-btn, .ops-btn, .ops-btn-light, .comms-btn, .comms-btn-ghost) { min-height:30px; padding-top:4px; padding-bottom:4px; box-shadow:none; }
+body.phos-list-page [data-ph-action] { display:inline-flex; align-items:center; justify-content:center; min-width:30px; min-height:30px; gap:5px; }
+.phos-action-icon { display:inline-block; width:16px; height:16px; vertical-align:middle; flex-shrink:0; }
+body.phos-list-page [data-phos-compact-page] .sale-compact-row { padding:7px 10px !important; gap:8px !important; box-shadow:none !important; }
+body.phos-list-page [data-phos-compact-page] .comms-inbox-item > summary { padding:6px 10px !important; }
+body.phos-list-page [data-phos-compact-page] :is(.customer-avatar, .customer-avatar-badge) { width:30px !important; height:30px !important; flex-basis:30px !important; }
+
+.phos-list-filter { position:static; flex-shrink:0; }
+.phos-list-filter > summary { position:relative; display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; min-height:36px; padding:8px; border:1px solid #cbdbe7; border-radius:8px; background:white; color:#0b5e99; list-style:none; cursor:pointer; box-shadow:none; }
+.phos-list-filter > summary::-webkit-details-marker { display:none; }
+.phos-list-filter > summary svg { width:17px; height:17px; }
+.phos-list-filter[open] > summary, .phos-list-filter > summary:hover { background:#edf5fc; border-color:#93bfde; }
+.phos-list-filter-dot { position:absolute; top:3px; right:3px; width:7px; height:7px; border:1px solid white; border-radius:50%; background:#9e1423; }
+.phos-list-filter-panel { position:absolute; z-index:95; top:calc(100% + 8px); right:0; width:min(760px, 100%); max-height:min(62vh, 560px); overflow:auto; overscroll-behavior:contain; padding:16px; border:1px solid #dce5ec; border-radius:10px; background:white; color:#20364a; box-shadow:0 12px 36px rgb(32 54 74 / 15%); text-align:left; }
+.phos-list-filter:not([open]) > .phos-list-filter-panel { display:none; }
+.phos-list-filter-head { display:flex; justify-content:space-between; align-items:start; gap:12px; margin-bottom:14px; }
+.phos-list-filter-head strong { display:block; font-size:15px; font-weight:600; }
+.phos-list-filter-head span { display:block; margin-top:3px; font-size:11px; color:#627589; }
+.phos-list-filter-close { display:grid; place-items:center; width:28px; height:28px; flex-shrink:0; padding:5px; border:0; border-radius:5px; background:#f1f5f8; color:#526a7d; cursor:pointer; }
+.phos-list-filter-close[hidden] { display:none; }
+.phos-list-filter-close svg { width:17px; height:17px; }
+.phos-list-filter-content { min-width:0; }
+body.phos-list-page .phos-list-filter-content :is(form, section, .rn-card, .ops-card, .rental-smart-filter, .comms-filter-panel-body) { max-width:100%; margin:0; box-shadow:none; }
+body.phos-list-page .phos-list-filter-content :is(.filter-grid, .rn-filter-grid, .renewal-filter-grid, .pickup-filter-grid, .customer-filter-grid, .renewal-filter-body, .pickup-search-row, .comms-search-row, .ops-filter-grid, .rental-smart-filter-main) { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)) !important; gap:10px; }
+body.phos-list-page .phos-list-filter-content .renewal-toolbar { display:block; }
+body.phos-list-page .phos-list-filter-content .renewal-filter-body { grid-column:1 / -1; }
+body.phos-list-page .phos-list-filter-content :is(input:not([type=checkbox]):not([type=radio]), select) { width:100%; min-width:0; max-width:100%; min-height:36px; font-size:12px; border-radius:7px; }
+body.phos-list-page .phos-list-filter-content :is(label, .filter-field) { min-width:0; }
+body.phos-list-page .phos-list-filter-content label { font-size:11px; }
+body.phos-list-page :is(.phos-list-filter-toggle, .phos-list-filter-panel a, .phos-list-filter-panel button, [data-ph-action]):focus-visible { outline:2px solid #0f75bd; outline-offset:3px; }
+
+@media (min-width:768px) {
+    body.phos-list-page [data-phos-compact-page="renewals"] .renewal-list { min-width:0; max-width:100%; overflow-x:auto; }
+    body.phos-list-page .rental-row-actions > :is(.row-actions-primary, .row-actions-secondary) { display:contents; }
+    body.phos-list-page [data-phos-compact-page] table td :is(.ops-btn, .ops-btn-light, .ops-btn-success, .ops-btn-danger, .ops-btn-wa) { min-height:28px; padding:4px 7px; line-height:1.2; }
+    body.phos-list-page .rental-row-actions [data-ph-action] { min-width:28px; min-height:28px; padding:5px; }
+    body.phos-list-page .rental-row-actions .ops-action-menu > summary { width:28px; height:28px; min-height:28px; padding:0; }
+}
+@media (min-width:768px) and (max-width:1180px) {
+    body.phos-navigation-refresh .topbar-user-meta { display:none; }
+    body.phos-navigation-refresh .app-shell-topbar-left { gap:12px; }
+    body.phos-navigation-refresh .shell-brand-logo { max-width:148px; }
+}
+@media (max-width:767px) {
+    body.phos-navigation-refresh .mobile-topbar { min-height:58px; padding:8px 12px; background:#fff; backdrop-filter:none; }
+    body.phos-navigation-refresh .mobile-brand-copy { display:none; }
+    body.phos-navigation-refresh .mobile-brand-badge { padding:5px 8px; border-radius:9px; box-shadow:none; }
+    body.phos-navigation-refresh .mobile-brand-logo { max-width:138px; max-height:28px; }
+    body.phos-list-page :is(.mobile-fab, .mobile-customer-head) { display:none !important; }
+    body.phos-list-page .app-shell-main { padding:12px 10px 92px; }
+    body.phos-list-page .phos-page-header { padding:12px !important; gap:10px; }
+    body.phos-list-page .ops-board-header.phos-page-header { display:flex !important; }
+    body.phos-list-page .phos-page-header :is(.rentals-actions, .sales-actions) { display:flex; flex-direction:row !important; align-items:center !important; flex-wrap:nowrap; gap:6px; margin-left:auto; }
+    body.phos-list-page .phos-page-header h1 { font-size:22px !important; }
+    .phos-list-filter-panel { position:fixed; top:106px; left:12px; right:12px; width:auto; max-height:calc(100vh - 210px); max-height:calc(100dvh - 210px); padding:14px; }
+    body.phos-list-page .phos-page-header .ops-board-actions { display:flex !important; flex-direction:row !important; flex-wrap:nowrap; width:auto; align-items:center; gap:8px; }
+    body.phos-list-page .phos-page-header .ops-board-actions > a { width:auto !important; flex:0 0 auto; }
+    body.phos-list-page .phos-page-header .phos-list-filter > summary { min-height:36px; height:36px; padding:8px; }
+    body.phos-list-page .phos-list-filter-content :is(.filter-grid, .rn-filter-grid, .renewal-filter-grid, .pickup-filter-grid, .customer-filter-grid, .renewal-filter-body, .pickup-search-row, .comms-search-row, .ops-filter-grid, .rental-smart-filter-main) { grid-template-columns:minmax(0,1fr) !important; }
+    body.phos-list-page [data-ph-action] { min-height:36px; min-width:36px; }
+}
+@media (prefers-reduced-motion:reduce) { body.phos-list-page [data-phos-compact-page] * { transition:none !important; scroll-behavior:auto !important; } }

@@ -138,7 +138,7 @@
 @endphp
 
 <style>
-    .rentals-page { display:grid; gap:8px; width:100%; max-width:100%; min-width:0; margin:0 auto; padding:0 0 14px; box-sizing:border-box; overflow:hidden; }
+    .rentals-page { display:grid; gap:8px; width:100%; max-width:100%; min-width:0; margin:0 auto; padding:0 0 14px; box-sizing:border-box; overflow:visible; }
     .rentals-header { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; background:#fff; border:1px solid var(--ph-color-border); border-radius:14px; padding:10px 12px; box-shadow:var(--ph-shadow-soft); min-width:0; }
     .rentals-header h1 { margin:0; font-size:22px; line-height:1.1; color:var(--ph-color-text); font-family: var(--ph-font-heading); }
     .rentals-header p { margin:3px 0 0; color:var(--ph-color-text-soft); font-size:13px; max-width:760px; }
@@ -308,12 +308,12 @@
     .action-icon {
         width:14px; height:14px; flex:0 0 14px;
     }
-    .actions-cell { position:sticky; right:0; z-index:8; width:280px; min-width:280px; text-align:left; background:#fff !important; box-shadow:-12px 0 20px rgba(11,35,66,.08); overflow:visible; }
+    .actions-cell { position:static; right:auto; z-index:auto; width:190px; min-width:190px; text-align:left; background:#fff !important; box-shadow:none; overflow:visible; }
     .rental-open-link { display:inline-flex; align-items:center; gap:5px; font-weight:900; color:#4f46e5; text-decoration:none; }
     .rental-open-link:hover { color:#3730a3; text-decoration:underline; }
     .rental-open-icon { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:999px; background:#eef2ff; color:#4338ca; font-size:12px; line-height:1; }
     .ops-table tr:has(.ops-action-menu[open]) .actions-cell { z-index:1000; }
-    .ops-table th.actions-cell { z-index:4; background:var(--ph-color-surface-soft) !important; }
+    .ops-table th.actions-cell { position:static; right:auto; z-index:auto; box-shadow:none; background:var(--ph-color-surface-soft) !important; }
     .ops-action-menu { position:relative; display:inline-block; z-index:20; }
     .ops-action-menu summary { list-style:none; display:inline-flex; align-items:center; justify-content:center; width:40px; height:36px; border:1px solid var(--ph-color-border-strong); border-radius:999px; background:#fff; color:var(--ph-color-text); font-weight:900; cursor:pointer; user-select:none; }
     .ops-action-menu summary::-webkit-details-marker { display:none; }
@@ -376,9 +376,11 @@
     }
     @media (max-width: 767px) {
         .rentals-page { padding:4px 0 112px; gap:8px; }
-        .rentals-header,
+        .rentals-header { display:flex; align-items:center; padding:9px 10px; }
+        .rentals-header .rx-eyebrow, .rentals-header p { display:none; }
+        .rentals-header h1 { font-size:19px; }
+        .rentals-actions { gap:6px; margin-left:auto; }
         .summary-grid,
-        .rental-smart-filter,
         .decision-tabs,
         .desktop-priority-panel { display:none !important; }
         .mobile-list-command {
@@ -579,9 +581,21 @@
         .rentals-page.is-selection-mode .mobile-rental-card { padding-left:42px; }
         .rental-row.is-selected .mobile-rental-card { background:#eff6ff; }
     }
+    .rentals-page [data-phos-list-filter-panel] .rental-smart-filter { padding:0; border:0; border-radius:0; box-shadow:none; }
+    .rentals-page [data-phos-list-filter-panel] .rental-smart-filter-main { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+    .rentals-page [data-phos-list-filter-panel] .rental-smart-filter-more { grid-column:1 / -1; }
+    .rentals-page [data-phos-list-filter-panel] .rental-smart-filter-advanced { grid-template-columns:repeat(3, minmax(0, 1fr)); }
+    @media (max-width: 600px) {
+        .rentals-page [data-phos-list-filter-panel] .rental-smart-filter-main,
+        .rentals-page [data-phos-list-filter-panel] .rental-smart-filter-advanced { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 380px) {
+        .rentals-page [data-phos-list-filter-panel] .rental-smart-filter-main,
+        .rentals-page [data-phos-list-filter-panel] .rental-smart-filter-advanced { grid-template-columns:minmax(0, 1fr); }
+    }
 </style>
 
-<div class="container rentals-page rn-list-page">
+<div class="container rentals-page rn-list-page" data-phos-compact-page="rentals">
     @if(session('created_rental'))
         @php
             $createdRental = session('created_rental');
@@ -608,7 +622,7 @@
         </section>
     @endif
 
-    <div class="rentals-header">
+    <div class="rentals-header phos-page-header">
         <div>
             <div class="rx-eyebrow">Rental Ops</div>
             <h1>Rentals</h1>
@@ -616,7 +630,117 @@
         </div>
 
         <div class="rentals-actions">
-            <a href="{{ route('rentals.export.csv', $queryWithoutPage) }}" class="ops-btn-light">Export</a>
+            <a href="{{ route('rentals.export.csv', $queryWithoutPage) }}" class="ops-btn-light" data-ph-action="download" aria-label="Export rentals" title="Export rentals"><x-phos-action-icon name="download" label="Export rentals" /></a>
+            <x-phos-list-filter id="rentals-list-filters" label="Filter rentals" :active="$hasActiveFilters">
+                <form method="GET" action="{{ route('rentals.index') }}" class="rental-smart-filter" aria-label="Rental filters">
+                    @if($filter)
+                        <input type="hidden" name="filter" value="{{ $filter }}">
+                    @endif
+                    <div class="rental-smart-filter-main">
+                        <div class="filter-field">
+                            <label for="smart_search">Search</label>
+                            <input id="smart_search" class="ops-input" type="search" name="search" value="{{ $search }}" placeholder="Search rentals by ID, customer, product">
+                        </div>
+                        <div class="filter-field">
+                            <label for="smart_status">Status</label>
+                            <select id="smart_status" class="ops-select" name="status">
+                                <option value="">All</option>
+                                <option value="live" @selected($status === 'live')>Total</option>
+                                <option value="active" @selected($status === 'active')>Active</option>
+                                <option value="delivery_pending" @selected($status === 'delivery_pending')>Delivery Pending</option>
+                                <option value="returned" @selected($status === 'returned')>Completed</option>
+                                <option value="overdue" @selected($status === 'overdue')>Overdue</option>
+                            </select>
+                        </div>
+                        <div class="filter-field">
+                            <label for="smart_delivery_status">Delivery</label>
+                            <select id="smart_delivery_status" class="ops-select" name="delivery_status">
+                                <option value="">All</option>
+                                <option value="pending" @selected($deliveryStatus === 'pending')>Pending</option>
+                                <option value="assigned" @selected($deliveryStatus === 'assigned')>Assigned</option>
+                                <option value="in_progress" @selected($deliveryStatus === 'in_progress')>Out for Delivery</option>
+                                <option value="completed" @selected($deliveryStatus === 'completed')>Completed</option>
+                            </select>
+                        </div>
+                        <div class="filter-field">
+                            <label for="smart_pickup_status">Pickup</label>
+                            <select id="smart_pickup_status" class="ops-select" name="pickup_status">
+                                <option value="">All</option>
+                                <option value="pending" @selected($pickupStatus === 'pending')>Pending</option>
+                                <option value="assigned" @selected($pickupStatus === 'assigned')>Assigned</option>
+                                <option value="in_progress" @selected($pickupStatus === 'in_progress')>Out for Pickup</option>
+                                <option value="completed" @selected($pickupStatus === 'completed')>Completed</option>
+                            </select>
+                        </div>
+                        <div class="filter-field">
+                            <label for="smart_warehouse">Warehouse</label>
+                            <select id="smart_warehouse" class="ops-select" name="dispatch_warehouse_id">
+                                <option value="">All</option>
+                                @foreach($warehouses as $warehouse)
+                                    <option value="{{ $warehouse->id }}" @selected((string) $warehouseId === (string) $warehouse->id)>{{ $warehouse->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="filter-field">
+                            <label for="smart_city">City</label>
+                            <select id="smart_city" class="ops-select" name="city">
+                                <option value="">All</option>
+                                @foreach($cities as $cityOption)
+                                    <option value="{{ $cityOption }}" @selected($city === $cityOption)>{{ $cityOption }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="filter-field">
+                            <label for="smart_from_date">From</label>
+                            <input id="smart_from_date" class="ops-input" type="date" name="from_date" value="{{ $fromDate }}">
+                        </div>
+                        <button type="submit" class="ops-btn">Apply</button>
+                            <details class="rental-smart-filter-more" data-filter-panel data-filter-panel-key="rentals-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" data-mobile-keep-open open>
+                            <summary>More Filters</summary>
+                            <div class="rental-smart-filter-advanced">
+                                <div class="filter-field">
+                                    <label for="smart_to_date">To</label>
+                                    <input id="smart_to_date" class="ops-input" type="date" name="to_date" value="{{ $toDate }}">
+                                </div>
+                                <div class="filter-field">
+                                    <label for="smart_vendor_id">Vendor / Assignee</label>
+                                    <select id="smart_vendor_id" class="ops-select" name="vendor_id">
+                                        <option value="">All</option>
+                                        @foreach($vendors as $vendor)
+                                            <option value="{{ $vendor->id }}" @selected((string) $vendorId === (string) $vendor->id)>{{ $vendor->name }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div class="filter-field">
+                                    <label for="smart_referred_by">Referred By</label>
+                                    <input id="smart_referred_by" class="ops-input" type="search" name="referred_by" value="{{ $referredBy }}" placeholder="Doctor, clinic, customer...">
+                                </div>
+                                <div class="filter-field">
+                                    <label for="smart_sort_by">Sort</label>
+                                    <select id="smart_sort_by" class="ops-select" name="sort_by">
+                                        <option value="priority" @selected($sortBy === 'priority')>Priority</option>
+                                        <option value="latest" @selected($sortBy === 'latest')>Latest First</option>
+                                        <option value="oldest" @selected($sortBy === 'oldest')>Oldest First</option>
+                                        <option value="end_date_asc" @selected($sortBy === 'end_date_asc')>End Date: Earliest</option>
+                                        <option value="amount_desc" @selected($sortBy === 'amount_desc')>Amount: High to Low</option>
+                                        <option value="amount_asc" @selected($sortBy === 'amount_asc')>Amount: Low to High</option>
+                                    </select>
+                                </div>
+                                <div class="filter-actions">
+                                    <a href="{{ route('rentals.index') }}" class="ops-btn-light" data-filter-clear="rentals-index">Reset</a>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                    @if($hasActiveFilters)
+                        <div class="desktop-filter-chip-row">
+                            @foreach($activeFilterChips as $chip)
+                                <span class="desktop-filter-chip">{{ $chip }}</span>
+                            @endforeach
+                        </div>
+                    @endif
+                </form>
+            </x-phos-list-filter>
             @if($canCreateRentals)
                 <a href="{{ route('rentals.create') }}" class="ops-btn">+ New Rental</a>
             @endif
@@ -728,7 +852,7 @@
             </form>
 
             <div class="mobile-action-toolbar {{ $hasActiveFilters ? 'has-active-filters' : '' }}" aria-label="Mobile rental filters and sorting">
-                <button type="button" class="mobile-toolbar-btn" data-mobile-filter-open="rentals-mobile-filters" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" aria-label="Open rental filters">
+                <button type="button" class="mobile-toolbar-btn" data-phos-legacy-filter data-mobile-filter-open="rentals-mobile-filters" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" aria-label="Open rental filters">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16"/><path d="M7 12h10"/><path d="M10 18h4"/></svg>
                 </button>
                 <div class="mobile-sort-anchor" data-mobile-sort-root>
@@ -794,114 +918,7 @@
         </a>
     </div>
 
-    <form method="GET" action="{{ route('rentals.index') }}" class="rental-smart-filter" aria-label="Rental filters">
-        @if($filter)
-            <input type="hidden" name="filter" value="{{ $filter }}">
-        @endif
-        <div class="rental-smart-filter-main">
-            <div class="filter-field">
-                <label for="smart_search">Search</label>
-                <input id="smart_search" class="ops-input" type="search" name="search" value="{{ $search }}" placeholder="Search rentals by ID, customer, product">
-            </div>
-            <div class="filter-field">
-                <label for="smart_status">Status</label>
-                <select id="smart_status" class="ops-select" name="status">
-                    <option value="">All</option>
-                    <option value="live" @selected($status === 'live')>Total</option>
-                    <option value="active" @selected($status === 'active')>Active</option>
-                    <option value="delivery_pending" @selected($status === 'delivery_pending')>Delivery Pending</option>
-                    <option value="returned" @selected($status === 'returned')>Completed</option>
-                    <option value="overdue" @selected($status === 'overdue')>Overdue</option>
-                </select>
-            </div>
-            <div class="filter-field">
-                <label for="smart_delivery_status">Delivery</label>
-                <select id="smart_delivery_status" class="ops-select" name="delivery_status">
-                    <option value="">All</option>
-                    <option value="pending" @selected($deliveryStatus === 'pending')>Pending</option>
-                    <option value="assigned" @selected($deliveryStatus === 'assigned')>Assigned</option>
-                    <option value="in_progress" @selected($deliveryStatus === 'in_progress')>Out for Delivery</option>
-                    <option value="completed" @selected($deliveryStatus === 'completed')>Completed</option>
-                </select>
-            </div>
-            <div class="filter-field">
-                <label for="smart_pickup_status">Pickup</label>
-                <select id="smart_pickup_status" class="ops-select" name="pickup_status">
-                    <option value="">All</option>
-                    <option value="pending" @selected($pickupStatus === 'pending')>Pending</option>
-                    <option value="assigned" @selected($pickupStatus === 'assigned')>Assigned</option>
-                    <option value="in_progress" @selected($pickupStatus === 'in_progress')>Out for Pickup</option>
-                    <option value="completed" @selected($pickupStatus === 'completed')>Completed</option>
-                </select>
-            </div>
-            <div class="filter-field">
-                <label for="smart_warehouse">Warehouse</label>
-                <select id="smart_warehouse" class="ops-select" name="dispatch_warehouse_id">
-                    <option value="">All</option>
-                    @foreach($warehouses as $warehouse)
-                        <option value="{{ $warehouse->id }}" @selected((string) $warehouseId === (string) $warehouse->id)>{{ $warehouse->name }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div class="filter-field">
-                <label for="smart_city">City</label>
-                <select id="smart_city" class="ops-select" name="city">
-                    <option value="">All</option>
-                    @foreach($cities as $cityOption)
-                        <option value="{{ $cityOption }}" @selected($city === $cityOption)>{{ $cityOption }}</option>
-                    @endforeach
-                </select>
-            </div>
-            <div class="filter-field">
-                <label for="smart_from_date">From</label>
-                <input id="smart_from_date" class="ops-input" type="date" name="from_date" value="{{ $fromDate }}">
-            </div>
-            <button type="submit" class="ops-btn">Apply</button>
-            <details class="rental-smart-filter-more" data-filter-panel data-filter-panel-key="rentals-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" @if($hasActiveFilters) open @endif>
-                <summary>More Filters</summary>
-                <div class="rental-smart-filter-advanced">
-                    <div class="filter-field">
-                        <label for="smart_to_date">To</label>
-                        <input id="smart_to_date" class="ops-input" type="date" name="to_date" value="{{ $toDate }}">
-                    </div>
-                    <div class="filter-field">
-                        <label for="smart_vendor_id">Vendor / Assignee</label>
-                        <select id="smart_vendor_id" class="ops-select" name="vendor_id">
-                            <option value="">All</option>
-                            @foreach($vendors as $vendor)
-                                <option value="{{ $vendor->id }}" @selected((string) $vendorId === (string) $vendor->id)>{{ $vendor->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <div class="filter-field">
-                        <label for="smart_referred_by">Referred By</label>
-                        <input id="smart_referred_by" class="ops-input" type="search" name="referred_by" value="{{ $referredBy }}" placeholder="Doctor, clinic, customer...">
-                    </div>
-                    <div class="filter-field">
-                        <label for="smart_sort_by">Sort</label>
-                        <select id="smart_sort_by" class="ops-select" name="sort_by">
-                            <option value="priority" @selected($sortBy === 'priority')>Priority</option>
-                            <option value="latest" @selected($sortBy === 'latest')>Latest First</option>
-                            <option value="oldest" @selected($sortBy === 'oldest')>Oldest First</option>
-                            <option value="end_date_asc" @selected($sortBy === 'end_date_asc')>End Date: Earliest</option>
-                            <option value="amount_desc" @selected($sortBy === 'amount_desc')>Amount: High to Low</option>
-                            <option value="amount_asc" @selected($sortBy === 'amount_asc')>Amount: Low to High</option>
-                        </select>
-                    </div>
-                    <div class="filter-actions">
-                        <a href="{{ route('rentals.index') }}" class="ops-btn-light" data-filter-clear="rentals-index">Reset</a>
-                    </div>
-                </div>
-            </details>
-        </div>
-        @if($hasActiveFilters)
-            <div class="desktop-filter-chip-row">
-                @foreach($activeFilterChips as $chip)
-                    <span class="desktop-filter-chip">{{ $chip }}</span>
-                @endforeach
-            </div>
-        @endif
-    </form>
+
 
     <div class="decision-tabs" aria-label="Rental decision tabs">
         <a href="{{ $rentalUrl(['status' => null, 'filter' => 'ending_soon']) }}" class="decision-tab {{ blank($status) && blank($filter) ? 'is-active' : '' }}">Needs Action <span class="decision-tab-count">{{ $needsActionCount }}</span></a>
@@ -1105,20 +1122,20 @@
                                                 @endif
                                             </div>
                                             <div class="mobile-rental-actions">
-                                                <a href="{{ route('rentals.show', $rental) }}" class="ops-btn-light mobile-utility-btn" title="View rental" aria-label="View rental" data-row-click-ignore>
+                                                <a href="{{ route('rentals.show', $rental) }}" class="ops-btn-light mobile-utility-btn" title="View rental" aria-label="View rental" data-row-click-ignore data-ph-action="view">
                                                     <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.06 12.35a1 1 0 0 1 0-.7C3.49 7.75 7.23 5 12 5s8.51 2.75 9.94 6.65a1 1 0 0 1 0 .7C20.51 16.25 16.77 19 12 19s-8.51-2.75-9.94-6.65Z"/><circle cx="12" cy="12" r="3"/></svg>
-                                                    <span>View</span>
+                                                    <span class="sr-only">View</span>
                                                 </a>
                                                 @if($customerPhoneHref)
-                                                    <a href="{{ $customerPhoneHref }}" class="ops-btn-light mobile-utility-btn" title="Call customer" aria-label="Call customer" data-row-click-ignore>
+                                                    <a href="{{ $customerPhoneHref }}" class="ops-btn-light mobile-utility-btn" title="Call customer" aria-label="Call customer" data-row-click-ignore data-ph-action="call">
                                                         <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.89.33 1.77.63 2.62a2 2 0 0 1-.45 2.11L8 9.91a16 16 0 0 0 6.09 6.09l1.46-1.29a2 2 0 0 1 2.11-.45c.85.3 1.73.51 2.62.63A2 2 0 0 1 22 16.92z"/></svg>
-                                                        <span>Call</span>
+                                                        <span class="sr-only">Call</span>
                                                     </a>
                                                 @endif
                                                 @if(WhatsAppHelper::resolveCustomerNumber($rental->customer))
-                                                    <a href="{{ $whatsAppUrl }}" target="_blank" class="ops-btn-wa mobile-utility-btn" title="WhatsApp {{ $rental->customer_name }}" aria-label="WhatsApp {{ $rental->customer_name }}" data-row-click-ignore>
+                                                    <a href="{{ $whatsAppUrl }}" target="_blank" class="ops-btn-wa mobile-utility-btn" title="WhatsApp {{ $rental->customer_name }}" aria-label="WhatsApp {{ $rental->customer_name }}" data-row-click-ignore data-ph-action="whatsapp">
                                                         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 11.4c0 4.7-3.9 8.6-8.8 8.6-1.5 0-3-.4-4.2-1.1L3 20l1.2-3.7A8.4 8.4 0 0 1 2.4 11.4C2.4 6.7 6.3 3 11.2 3 16.1 3 20 6.7 20 11.4Zm-4.8 2.2c-.2-.1-1.2-.6-1.4-.7s-.3-.1-.4.1-.5.7-.7.9-.3.2-.5.1a5.9 5.9 0 0 1-1.7-1c-.6-.5-1-1.2-1.1-1.4-.1-.2 0-.3.1-.4l.3-.4.2-.3v-.4c0-.1-.4-1.1-.6-1.6-.2-.4-.3-.4-.4-.4h-.4c-.1 0-.4 0-.6.3-.2.2-.8.8-.8 1.9s.8 2.1 1 2.3c.1.1 1.5 2.3 3.8 3.2.5.2 1 .4 1.3.5.6.2 1.2.2 1.7.1.5-.1 1.2-.5 1.4-1 .2-.5.2-1 .1-1Z"/></svg>
-                                                        <span>WhatsApp</span>
+                                                        <span class="sr-only">WhatsApp</span>
                                                     </a>
                                                 @endif
                                                 @if($canUpdateRentals && $rental->canRenew())
@@ -1169,7 +1186,7 @@
                                                             <a href="{{ $renewalWhatsAppUrl }}" target="_blank" class="ops-btn-wa">Renewal WA</a>
                                                         @endif
                                                         @if($canUpdateRentals && !in_array($rental->status, ['returned', 'cancelled'], true))
-                                                            <a href="{{ route('rentals.edit', $rental) }}" class="ops-btn-light">Edit</a>
+                                                            <a href="{{ route('rentals.edit', $rental) }}" class="ops-btn-light" data-ph-action="edit">Edit</a>
                                                         @endif
                                                         @if($canUpdateRentals && !in_array($rental->status, ['returned', 'cancelled'], true))
                                                             <form method="POST" action="{{ route('rentals.cancel', $rental) }}" style="margin:0;">
@@ -1207,7 +1224,7 @@
                                                     <div class="customer-contact-actions">
                                                     <a href="{{ $whatsAppUrl }}" target="_blank" class="rn-wa-action" title="WhatsApp {{ $rental->customer_name }}" aria-label="WhatsApp {{ $rental->customer_name }}">
                                                         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 11.4c0 4.7-3.9 8.6-8.8 8.6-1.5 0-3-.4-4.2-1.1L3 20l1.2-3.7A8.4 8.4 0 0 1 2.4 11.4C2.4 6.7 6.3 3 11.2 3 16.1 3 20 6.7 20 11.4Zm-4.8 2.2c-.2-.1-1.2-.6-1.4-.7s-.3-.1-.4.1-.5.7-.7.9-.3.2-.5.1a5.9 5.9 0 0 1-1.7-1c-.6-.5-1-1.2-1.1-1.4-.1-.2 0-.3.1-.4l.3-.4.2-.3v-.4c0-.1-.4-1.1-.6-1.6-.2-.4-.3-.4-.4-.4h-.4c-.1 0-.4 0-.6.3-.2.2-.8.8-.8 1.9s.8 2.1 1 2.3c.1.1 1.5 2.3 3.8 3.2.5.2 1 .4 1.3.5.6.2 1.2.2 1.7.1.5-.1 1.2-.5 1.4-1 .2-.5.2-1 .1-1Z"/></svg>
-                                                        <span class="rn-wa-action-label">WhatsApp</span>
+                                                        <span class="rn-wa-action-label sr-only">WhatsApp</span>
                                                     </a>
                                                     </div>
                                                 @endif
@@ -1288,22 +1305,22 @@
                                     </td>
                                     @endif
                                     <td class="actions-cell" data-label="Actions">
-                                        <div class="row-actions">
+                                        <div class="row-actions rental-row-actions">
                                             <div class="row-actions-primary">
-                                                <a href="{{ route('rentals.show', $rental) }}" class="ops-btn-light mobile-utility-btn" title="View rental" aria-label="View rental">
+                                                <a href="{{ route('rentals.show', $rental) }}" class="ops-btn-light mobile-utility-btn" title="View rental" aria-label="View rental" data-ph-action="view">
                                                     <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.06 12.35a1 1 0 0 1 0-.7C3.49 7.75 7.23 5 12 5s8.51 2.75 9.94 6.65a1 1 0 0 1 0 .7C20.51 16.25 16.77 19 12 19s-8.51-2.75-9.94-6.65Z"/><circle cx="12" cy="12" r="3"/></svg>
-                                                    <span>View</span>
+                                                    <span class="sr-only">View</span>
                                                 </a>
                                                 @if($customerPhoneHref)
-                                                    <a href="{{ $customerPhoneHref }}" class="ops-btn-light mobile-utility-btn" title="Call customer" aria-label="Call customer">
+                                                    <a href="{{ $customerPhoneHref }}" class="ops-btn-light mobile-utility-btn" title="Call customer" aria-label="Call customer" data-ph-action="call">
                                                         <svg class="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.89.33 1.77.63 2.62a2 2 0 0 1-.45 2.11L8 9.91a16 16 0 0 0 6.09 6.09l1.46-1.29a2 2 0 0 1 2.11-.45c.85.3 1.73.51 2.62.63A2 2 0 0 1 22 16.92z"/></svg>
-                                                        <span>Call</span>
+                                                        <span class="sr-only">Call</span>
                                                     </a>
                                                 @endif
                                                 @if(WhatsAppHelper::resolveCustomerNumber($rental->customer))
-                                                    <a href="{{ $whatsAppUrl }}" target="_blank" class="ops-btn-wa mobile-utility-btn" title="WhatsApp {{ $rental->customer_name }}" aria-label="WhatsApp {{ $rental->customer_name }}">
+                                                    <a href="{{ $whatsAppUrl }}" target="_blank" class="ops-btn-wa mobile-utility-btn" title="WhatsApp {{ $rental->customer_name }}" aria-label="WhatsApp {{ $rental->customer_name }}" data-ph-action="whatsapp">
                                                         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 11.4c0 4.7-3.9 8.6-8.8 8.6-1.5 0-3-.4-4.2-1.1L3 20l1.2-3.7A8.4 8.4 0 0 1 2.4 11.4C2.4 6.7 6.3 3 11.2 3 16.1 3 20 6.7 20 11.4Zm-4.8 2.2c-.2-.1-1.2-.6-1.4-.7s-.3-.1-.4.1-.5.7-.7.9-.3.2-.5.1a5.9 5.9 0 0 1-1.7-1c-.6-.5-1-1.2-1.1-1.4-.1-.2 0-.3.1-.4l.3-.4.2-.3v-.4c0-.1-.4-1.1-.6-1.6-.2-.4-.3-.4-.4-.4h-.4c-.1 0-.4 0-.6.3-.2.2-.8.8-.8 1.9s.8 2.1 1 2.3c.1.1 1.5 2.3 3.8 3.2.5.2 1 .4 1.3.5.6.2 1.2.2 1.7.1.5-.1 1.2-.5 1.4-1 .2-.5.2-1 .1-1Z"/></svg>
-                                                        <span>WhatsApp</span>
+                                                        <span class="sr-only">WhatsApp</span>
                                                     </a>
                                                 @endif
                                                 @if($canUpdateRentals && $rental->canRenew())
@@ -1343,7 +1360,7 @@
                                                     <summary aria-label="Rental actions">...</summary>
                                                     <div class="ops-action-panel row-actions">
                                                         @if($canUpdateRentals && !in_array($rental->status, ['returned', 'cancelled'], true))
-                                                            <a href="{{ route('rentals.edit', $rental) }}" class="ops-btn-light">Edit</a>
+                                                            <a href="{{ route('rentals.edit', $rental) }}" class="ops-btn-light" data-ph-action="edit">Edit</a>
                                                         @endif
                                                         @if($canUpdateRentals && !in_array($rental->status, ['returned', 'cancelled'], true))
                                                             <form method="POST" action="{{ route('rentals.cancel', $rental) }}" style="margin:0;">

@@ -19,6 +19,8 @@
     <link rel="preconnect" href="https://fonts.bunny.net">
     <link href="https://fonts.bunny.net/css?family=inter:400,500,600,700,800&family=manrope:600,700,800&display=swap" rel="stylesheet" />
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <link rel="stylesheet" href="{{ asset('css/phos-operations.css') }}?v={{ hash_file('sha256', public_path('css/phos-operations.css')) }}">
+    <script src="{{ asset('js/phos-operations.js') }}?v={{ hash_file('sha256', public_path('js/phos-operations.js')) }}" defer></script>
     <style>
         .phos-predictive-field { position:relative; min-width:0; }
         .phos-predictive-panel {
@@ -59,7 +61,7 @@
         }
     </style>
 </head>
-<body @class(['phos-navigation-refresh', 'phos-executive-page' => request()->routeIs('dashboard', 'dashboard.compact')]) style="margin:0; width:100%; overflow-x:hidden; background:var(--ph-color-bg); color:var(--ph-color-text); font-family:var(--ph-font-body);">
+<body @class(['phos-navigation-refresh', 'phos-list-page' => request()->routeIs('rentals.index', 'sales.index', 'customers.index', 'business-partners.index', 'renewal-center.index', 'pickup-center.index', 'communication-center.index', 'deliveries.index'), 'phos-executive-page' => request()->routeIs('dashboard', 'dashboard.compact')]) style="margin:0; width:100%; overflow-x:hidden; background:var(--ph-color-bg); color:var(--ph-color-text); font-family:var(--ph-font-body);">
 @php
     $currentUser = auth()->user();
     $safeRoute = function (string $routeName, array $parameters = []) {
@@ -3836,7 +3838,7 @@
                     </div>
                 </details>
                 <details class="topbar-user-menu">
-                    <summary class="topbar-user-trigger" aria-label="Open user menu">
+                    <summary class="topbar-user-trigger" aria-label="Open user menu" title="{{ $currentUser?->name }} · {{ $userRoleLabel }} · {{ $currentUser?->organization?->name ?: $internalCompanyName }}">
                         <div class="topbar-user-avatar">{{ $userInitials }}</div>
                         <div class="topbar-user-meta">
                             <strong>{{ $currentUser?->name ?: 'User' }}</strong>
@@ -4307,7 +4309,7 @@
             const mobileFilterSheets = Array.from(document.querySelectorAll('[data-mobile-filter-sheet]'));
             const sortRoots = Array.from(document.querySelectorAll('[data-mobile-sort-root]'));
             const bodyLock = window.rentnexisModalLock;
-            const filterPanels = Array.from(document.querySelectorAll('details[data-filter-panel][data-filter-panel-key]'));
+            const filterPanels = Array.from(document.querySelectorAll('details[data-filter-panel][data-filter-panel-key]:not([data-phos-list-filter])'));
 
             filterPanels.forEach(function (panel) {
                 const panelKey = panel.getAttribute('data-filter-panel-key');

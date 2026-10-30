@@ -14,14 +14,14 @@
 @endphp
 
 <style>
-    .bp-page { display:grid; gap:12px; padding:6px 18px 30px; max-width:1460px; margin:0 auto; color:#111827; overflow-x:hidden; }
+    .bp-page { display:grid; gap:12px; padding:4px 0 24px; max-width:1460px; margin:0 auto; color:#20364a; min-width:0; }
     .bp-header { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }
     .bp-breadcrumb { display:none; }
     .bp-title { margin:0; font-size:26px; line-height:1.08; letter-spacing:0; }
     .bp-subtitle { margin:5px 0 0; color:#5b6b84; font-size:14px; }
     .bp-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
     .bp-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:38px; padding:9px 13px; border:1px solid #cbd7ea; border-radius:12px; background:#fff; color:#243246; font-size:13px; font-weight:800; text-decoration:none; cursor:pointer; white-space:nowrap; }
-    .bp-btn-primary { border-color:#4338ca; background:#4f46e5; color:#fff; box-shadow:0 10px 22px rgba(79,70,229,.18); }
+    .bp-btn-primary { border-color:#0f75bd; background:#0f75bd; color:#fff; box-shadow:none; }
     .bp-btn-icon { width:36px; min-width:36px; padding:0; }
     .bp-btn-icon svg { width:17px; height:17px; stroke:currentColor; }
     .bp-card { background:#fff; border:1px solid #dce5f2; border-radius:15px; box-shadow:0 8px 22px rgba(15,23,42,.04); }
@@ -58,25 +58,28 @@
     .bp-table { width:100%; min-width:880px; border-collapse:separate; border-spacing:0; }
     .bp-table th { padding:10px 12px; background:#f8fafc; border-bottom:1px solid #e4ebf5; color:#64748b; font-size:11px; letter-spacing:.05em; text-transform:uppercase; text-align:left; }
     .bp-table td { padding:12px; border-bottom:1px solid #edf2f8; vertical-align:top; font-size:13px; }
-    .bp-partner { display:flex; gap:10px; align-items:flex-start; min-width:250px; }
-    .bp-avatar { width:44px; height:44px; border-radius:14px; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; background:#eef2ff; color:#4f46e5; font-weight:900; border:1px solid #d9e2f1; }
-    .bp-name { font-weight:900; color:#111827; font-size:14px; }
-    .bp-muted { color:#64748b; font-size:12px; line-height:1.45; }
-    .bp-link { color:#2563eb; font-weight:800; text-decoration:none; }
+    .bp-table td:nth-child(4) { min-width:118px; }
+    .bp-table td:nth-child(4) > .bp-muted { white-space:nowrap; }
+    .bp-partner { display:flex; gap:7px; align-items:flex-start; min-width:210px; }
+    .bp-avatar { width:30px; height:30px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; background:#edf5fc; color:#0b5e99; font-size:11px; font-weight:600; border:1px solid #d9e5ee; }
+    .bp-name { font-weight:600; color:#20364a; font-size:12px; line-height:1.35; }
+    .bp-muted { color:#627589; font-size:11px; line-height:1.35; }
+    .bp-link { color:#0b5e99; font-weight:500; text-decoration:none; }
     .bp-status { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:5px 9px; border-radius:999px; font-size:11px; font-weight:900; line-height:1; text-transform:uppercase; white-space:nowrap; word-break:normal; overflow-wrap:normal; writing-mode:horizontal-tb; min-width:max-content; flex:0 0 auto; }
     .bp-status.active { background:#dcfce7; color:#166534; }
     .bp-status.inactive { background:#e2e8f0; color:#475569; }
-    .bp-type { display:inline-flex; padding:5px 9px; border-radius:999px; background:#eef2ff; color:#4f46e5; font-size:11px; font-weight:900; text-transform:uppercase; }
-    .bp-money { color:#c2410c; font-weight:900; }
+    .bp-type { display:inline-flex; padding:3px 6px; border-radius:5px; background:#edf5fc; color:#0b5e99; font-size:10px; font-weight:600; }
+    .bp-money { color:#9e1423; font-weight:600; font-variant-numeric:tabular-nums; }
     .bp-actions-cell { display:flex; gap:7px; align-items:center; }
     .bp-more { position:relative; }
     .bp-more summary { list-style:none; }
     .bp-more summary::-webkit-details-marker { display:none; }
     .bp-menu { position:absolute; right:0; top:42px; z-index:20; min-width:170px; padding:8px; border:1px solid #dbe4f1; border-radius:14px; background:#fff; box-shadow:0 18px 36px rgba(15,23,42,.16); display:grid; gap:6px; }
     .bp-menu a, .bp-menu button { display:flex; width:100%; box-sizing:border-box; padding:9px 10px; border:0; border-radius:10px; background:#f8fafc; color:#243246; text-decoration:none; font-size:13px; font-weight:800; text-align:left; cursor:pointer; }
-    .bp-clients { margin-top:8px; }
+    .bp-clients { margin-top:3px; }
     .bp-clients summary { cursor:pointer; color:#2563eb; font-weight:900; font-size:12px; list-style:none; }
     .bp-clients summary::-webkit-details-marker { display:none; }
+    .bp-table .bp-clients summary { white-space:nowrap; font-size:11px; font-weight:600; color:#0b5e99; }
     .bp-client-grid { display:grid; gap:8px; margin-top:9px; }
     .bp-client { display:flex; justify-content:space-between; gap:10px; padding:9px 10px; border:1px solid #dce5f2; border-radius:12px; background:#f8fafc; }
     .bp-side { display:grid; gap:10px; position:sticky; top:82px; min-width:0; width:100%; }
@@ -88,7 +91,7 @@
     .bp-side-row { display:flex; justify-content:space-between; gap:10px; padding:7px 0; border-bottom:1px solid #eef2f7; color:#475569; font-size:12px; }
     .bp-side-row strong { color:#111827; }
     .bp-mobile-list { display:none; }
-    .bp-mobile-card { padding:14px; display:grid; gap:10px; }
+    .bp-mobile-card { padding:10px; display:grid; gap:7px; }
     .bp-mobile-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
     .bp-mobile-head .bp-partner { min-width:0; }
     .bp-mobile-head .bp-status { margin-left:auto; align-self:flex-start; }
@@ -96,6 +99,8 @@
     .bp-mini { padding:9px; border:1px solid #e1e8f3; border-radius:12px; background:#f8fafc; }
     .bp-mini span { display:block; color:#64748b; font-size:11px; font-weight:800; text-transform:uppercase; }
     .bp-mini strong { display:block; margin-top:2px; font-size:15px; }
+    .bp-filter-actions { display:flex; gap:8px; flex-wrap:wrap; grid-column:1 / -1; }
+    .bp-icon svg { width:18px; height:18px; stroke:currentColor; }
     @media (max-width: 1320px) {
         .bp-layout { grid-template-columns:1fr; }
         .bp-side { position:static; grid-template-columns:repeat(3, minmax(0,1fr)); }
@@ -124,8 +129,8 @@
     }
 </style>
 
-<div class="bp-page">
-    <header class="bp-header">
+<div class="bp-page" data-phos-compact-page="business-partners">
+    <header class="bp-header phos-page-header">
         <div>
             <div class="bp-breadcrumb">Home / Business Partners</div>
             <h1 class="bp-title">Business Partners</h1>
@@ -138,6 +143,52 @@
             @if(Route::has('import.index'))
                 <a href="{{ route('import.index') }}" class="bp-btn" title="Import partners">Import Partners</a>
             @endif
+            <x-phos-list-filter id="business-partners-list-filters" label="Filter business partners" :active="filled($search) || filled($partnerType) || filled($status) || filled($city)">
+                    <div class="bp-filter-fields">
+                        <form method="GET" class="bp-filter-row filter-grid">
+                            <div class="bp-field">
+                                <label for="bp-search">Search</label>
+                                <input id="bp-search" type="search" name="search" value="{{ $search }}" placeholder="Partner name, contact, phone, email, city">
+                            </div>
+                            <div class="bp-field">
+                                <label for="bp-type">Partner Type</label>
+                                <select id="bp-type" name="partner_type">
+                                    <option value="">All types</option>
+                                    <option value="gst_registered" {{ $partnerType === 'gst_registered' ? 'selected' : '' }}>GST registered</option>
+                                    <option value="general" {{ $partnerType === 'general' ? 'selected' : '' }}>General</option>
+                                </select>
+                            </div>
+                            <div class="bp-field">
+                                <label for="bp-status">Status</label>
+                                <select id="bp-status" name="status">
+                                    <option value="">All</option>
+                                    <option value="active" {{ $status === 'active' ? 'selected' : '' }}>Active</option>
+                                    <option value="inactive" {{ $status === 'inactive' ? 'selected' : '' }}>Inactive</option>
+                                </select>
+                            </div>
+                            <div class="bp-field">
+                                <label for="bp-city">City</label>
+                                <select id="bp-city" name="city">
+                                    <option value="">All cities</option>
+                                    @foreach($cityOptions as $cityOption)
+                                        <option value="{{ $cityOption }}" {{ $city === $cityOption ? 'selected' : '' }}>{{ $cityOption }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="bp-filter-actions">
+                                <button type="submit" class="bp-btn bp-btn-primary">Apply</button>
+                                <a href="{{ route('business-partners.index') }}" class="bp-btn">Clear</a>
+                            </div>
+                        </form>
+                        <div class="bp-chips" aria-label="Quick partner filters">
+                            <a class="bp-chip {{ $status === '' && $partnerType === '' ? 'active' : '' }}" href="{{ route('business-partners.index', array_filter(['search' => $search, 'city' => $city])) }}">All</a>
+                            <a class="bp-chip {{ $partnerType === 'gst_registered' ? 'active' : '' }}" href="{{ route('business-partners.index', array_filter(['search' => $search, 'city' => $city, 'status' => $status, 'partner_type' => 'gst_registered'])) }}">GST</a>
+                            <a class="bp-chip {{ $partnerType === 'general' ? 'active' : '' }}" href="{{ route('business-partners.index', array_filter(['search' => $search, 'city' => $city, 'status' => $status, 'partner_type' => 'general'])) }}">General</a>
+                            <a class="bp-chip {{ $status === 'active' ? 'active' : '' }}" href="{{ route('business-partners.index', array_filter(['search' => $search, 'city' => $city, 'partner_type' => $partnerType, 'status' => 'active'])) }}">Active</a>
+                            <a class="bp-chip {{ $status === 'inactive' ? 'active' : '' }}" href="{{ route('business-partners.index', array_filter(['search' => $search, 'city' => $city, 'partner_type' => $partnerType, 'status' => 'inactive'])) }}">Inactive</a>
+                        </div>
+                    </div>
+            </x-phos-list-filter>
             @can('create', App\Models\BusinessPartner::class)
                 <a href="{{ route('business-partners.create') }}" class="bp-btn bp-btn-primary">+ Add Partner</a>
             @endcan
@@ -145,60 +196,15 @@
     </header>
 
     <section class="bp-kpis" aria-label="Business partner summary">
-        <div class="bp-card bp-kpi"><span class="bp-icon">BP</span><div><div class="bp-kpi-label">Partners</div><div class="bp-kpi-value">{{ $totalPartners }}</div><div class="bp-kpi-note">{{ $activePartners }} active</div></div></div>
-        <div class="bp-card bp-kpi"><span class="bp-icon green">AC</span><div><div class="bp-kpi-label">Actual Clients</div><div class="bp-kpi-value">{{ $totalClients }}</div><div class="bp-kpi-note">{{ $activeClients }} active</div></div></div>
-        <div class="bp-card bp-kpi"><span class="bp-icon blue">RT</span><div><div class="bp-kpi-label">Active Rentals</div><div class="bp-kpi-value">{{ $totalRentals }}</div><div class="bp-kpi-note">Linked rentals</div></div></div>
-        <div class="bp-card bp-kpi"><span class="bp-icon amber">Rs</span><div><div class="bp-kpi-label">Outstanding</div><div class="bp-kpi-value">{{ $money($totalOutstandingAmount) }}</div><div class="bp-kpi-note">Linked invoice balance</div></div></div>
-        <div class="bp-card bp-kpi"><span class="bp-icon red">PI</span><div><div class="bp-kpi-label">Partner Invoices</div><div class="bp-kpi-value">{{ $totalPartnerInvoices }}</div><div class="bp-kpi-note">Linked invoices</div></div></div>
+        <div class="bp-card bp-kpi"><span class="bp-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M22 21v-2a4 4 0 0 0-3-3.9"/><circle cx="9" cy="7" r="4"/><path d="M16 3.1a4 4 0 0 1 0 7.8"/></svg></span><div><div class="bp-kpi-label">Partners</div><div class="bp-kpi-value">{{ $totalPartners }}</div><div class="bp-kpi-note">{{ $activePartners }} active</div></div></div>
+        <div class="bp-card bp-kpi"><span class="bp-icon green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a6 6 0 0 1 12 0v2m1-9 2 2 4-4"/></svg></span><div><div class="bp-kpi-label">Actual Clients</div><div class="bp-kpi-value">{{ $totalClients }}</div><div class="bp-kpi-note">{{ $activeClients }} active</div></div></div>
+        <div class="bp-card bp-kpi"><span class="bp-icon blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 11h18m-13 5h2m4 0h2"/></svg></span><div><div class="bp-kpi-label">Active Rentals</div><div class="bp-kpi-value">{{ $totalRentals }}</div><div class="bp-kpi-note">Linked rentals</div></div></div>
+        <div class="bp-card bp-kpi"><span class="bp-icon amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 9h20m-6 5h3m-13 0h3"/></svg></span><div><div class="bp-kpi-label">Outstanding</div><div class="bp-kpi-value">{{ $money($totalOutstandingAmount) }}</div><div class="bp-kpi-note">Linked invoice balance</div></div></div>
+        <div class="bp-card bp-kpi"><span class="bp-icon red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6V3Zm9 0v5h4M9 12h7m-7 4h7"/></svg></span><div><div class="bp-kpi-label">Partner Invoices</div><div class="bp-kpi-value">{{ $totalPartnerInvoices }}</div><div class="bp-kpi-note">Linked invoices</div></div></div>
     </section>
 
     <div class="bp-layout">
         <main style="display:grid;gap:12px;min-width:0;">
-            <details class="bp-card bp-filter-card">
-                <summary class="bp-filter-summary" aria-label="Open filters" title="Filters"><span class="bp-filter-toggle"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4" stroke-width="2" stroke-linecap="round"/></svg></span></summary>
-                <div class="bp-filter-body">
-                    <form method="GET" class="bp-filter-row">
-                        <div class="bp-field">
-                            <label for="bp-search">Search</label>
-                            <input id="bp-search" type="search" name="search" value="{{ $search }}" placeholder="Partner name, contact, phone, email, city">
-                        </div>
-                        <div class="bp-field">
-                            <label for="bp-type">Partner Type</label>
-                            <select id="bp-type" name="partner_type">
-                                <option value="">All types</option>
-                                <option value="gst_registered" {{ $partnerType === 'gst_registered' ? 'selected' : '' }}>GST registered</option>
-                                <option value="general" {{ $partnerType === 'general' ? 'selected' : '' }}>General</option>
-                            </select>
-                        </div>
-                        <div class="bp-field">
-                            <label for="bp-status">Status</label>
-                            <select id="bp-status" name="status">
-                                <option value="">All</option>
-                                <option value="active" {{ $status === 'active' ? 'selected' : '' }}>Active</option>
-                                <option value="inactive" {{ $status === 'inactive' ? 'selected' : '' }}>Inactive</option>
-                            </select>
-                        </div>
-                        <div class="bp-field">
-                            <label for="bp-city">City</label>
-                            <select id="bp-city" name="city">
-                                <option value="">All cities</option>
-                                @foreach($cityOptions as $cityOption)
-                                    <option value="{{ $cityOption }}" {{ $city === $cityOption ? 'selected' : '' }}>{{ $cityOption }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <button type="submit" class="bp-btn bp-btn-primary">Apply</button>
-                        <a href="{{ route('business-partners.index') }}" class="bp-btn">Clear</a>
-                    </form>
-                    <div class="bp-chips" aria-label="Quick partner filters">
-                        <a class="bp-chip {{ $status === '' && $partnerType === '' ? 'active' : '' }}" href="{{ route('business-partners.index', array_filter(['search' => $search, 'city' => $city])) }}">All</a>
-                        <a class="bp-chip {{ $partnerType === 'gst_registered' ? 'active' : '' }}" href="{{ route('business-partners.index', array_filter(['search' => $search, 'city' => $city, 'status' => $status, 'partner_type' => 'gst_registered'])) }}">GST</a>
-                        <a class="bp-chip {{ $partnerType === 'general' ? 'active' : '' }}" href="{{ route('business-partners.index', array_filter(['search' => $search, 'city' => $city, 'status' => $status, 'partner_type' => 'general'])) }}">General</a>
-                        <a class="bp-chip {{ $status === 'active' ? 'active' : '' }}" href="{{ route('business-partners.index', array_filter(['search' => $search, 'city' => $city, 'partner_type' => $partnerType, 'status' => 'active'])) }}">Active</a>
-                        <a class="bp-chip {{ $status === 'inactive' ? 'active' : '' }}" href="{{ route('business-partners.index', array_filter(['search' => $search, 'city' => $city, 'partner_type' => $partnerType, 'status' => 'inactive'])) }}">Inactive</a>
-                    </div>
-                </div>
-            </details>
             <section class="bp-card bp-table-card">
                 <div class="bp-table-top">
                     <div>
@@ -283,9 +289,9 @@
                                     </td>
                                     <td>
                                         <div class="bp-actions-cell">
-                                            <a class="bp-btn bp-btn-icon" href="{{ route('business-partners.show', $partner) }}" title="View partner" aria-label="View {{ $partner->displayName() }}"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.7" stroke-width="1.8"/></svg></a>
+                                            <a class="bp-btn bp-btn-icon" data-ph-action="view" href="{{ route('business-partners.show', $partner) }}" title="View partner" aria-label="View {{ $partner->displayName() }}"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.7" stroke-width="1.8"/></svg></a>
                                             @can('update', $partner)
-                                                <a class="bp-btn bp-btn-icon" href="{{ route('business-partners.edit', $partner) }}" title="Edit partner" aria-label="Edit {{ $partner->displayName() }}">Edit</a>
+                                                <a class="bp-btn bp-btn-icon" data-ph-action="edit" href="{{ route('business-partners.edit', $partner) }}" title="Edit partner" aria-label="Edit {{ $partner->displayName() }}"><x-phos-action-icon name="edit" label="Edit partner" /></a>
                                             @endcan
                                             <details class="bp-more">
                                                 <summary class="bp-btn bp-btn-icon" title="More actions" aria-label="More actions">...</summary>
@@ -344,8 +350,8 @@
                                 </div>
                             </details>
                             <div class="bp-actions-cell">
-                                <a class="bp-btn bp-btn-icon" href="{{ route('business-partners.show', $partner) }}" title="View partner" aria-label="View {{ $partner->displayName() }}"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.7" stroke-width="1.8"/></svg></a>
-                                @can('update', $partner)<a class="bp-btn" href="{{ route('business-partners.edit', $partner) }}">Edit</a>@endcan
+                                <a class="bp-btn bp-btn-icon" data-ph-action="view" href="{{ route('business-partners.show', $partner) }}" title="View partner" aria-label="View {{ $partner->displayName() }}"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.7" stroke-width="1.8"/></svg></a>
+                                @can('update', $partner)<a class="bp-btn bp-btn-icon" data-ph-action="edit" href="{{ route('business-partners.edit', $partner) }}" title="Edit partner" aria-label="Edit {{ $partner->displayName() }}"><x-phos-action-icon name="edit" label="Edit partner" /></a>@endcan
                                 <a class="bp-btn" href="{{ route('business-partners.clients.create', $partner) }}">Add Client</a>
                             </div>
                         </article>

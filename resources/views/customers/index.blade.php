@@ -385,6 +385,7 @@
     .customers-title .rx-eyebrow { font-size: 10px; padding: 3px 8px; min-height: 0; }
     .customers-actions .ops-btn,
     .customers-actions .ops-btn-light { min-height: 36px; padding: 7px 12px; }
+    .customers-actions .customer-export-action { width:36px; min-width:36px; padding:0; }
     .summary-box {
         display: grid;
         grid-template-columns: 34px minmax(0, 1fr);
@@ -432,10 +433,13 @@
     }
     .rn-table-shell .ops-card-body { padding: 12px 14px; }
     .rn-customer-block { gap: 8px; align-items: center; }
-    .rn-customer-avatar { width: 34px; height: 34px; border-radius: 12px; font-size: 12px; }
-    .rn-name-stack { gap: 2px; }
-    .rn-name-stack .title { font-size: 13px; line-height: 1.2; }
-    .rn-name-stack .meta { font-size: 11px; line-height: 1.2; }
+    .rn-customer-avatar { width: 28px; height: 28px; border-radius: 8px; font-size: 11px; }
+    .rn-name-stack { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 6px; align-items:center; }
+    .rn-name-stack .title { grid-column:1; grid-row:1; font-size:12px; line-height:1.3; }
+    .rn-name-stack .meta { grid-column:1 / -1; grid-row:2; font-size:11px; line-height:1.3; }
+    .rn-name-stack .rn-badge { grid-column:2; grid-row:1; justify-self:end; }
+    .customers-filter-search { display:grid; gap:8px; min-width:0; }
+    .customers-filter-fields { margin-top:12px; padding-top:12px; border-top:1px solid var(--ph-color-border); min-width:0; }
     .rn-badge { min-height: 18px; padding: 2px 7px !important; font-size: 9px !important; }
     .pagination-wrap nav { margin-top: 4px; }
     @media (max-width: 1200px) {
@@ -456,13 +460,15 @@
             gap: 8px;
         }
         .customers-header {
-            display: none;
+            display: flex;
         }
         .desktop-filter-card,
         .desktop-summary-grid {
             display: none !important;
         }
         .desktop-search-shell { display:none; }
+        .customers-filter-search .desktop-search-form { grid-template-columns:1fr 1fr; }
+        .customers-filter-search .desktop-search-field { grid-column:1 / -1; }
         .mobile-list-command {
             display: grid;
             gap: 6px;
@@ -474,7 +480,7 @@
             pointer-events: auto;
         }
         .mobile-customer-head {
-            display: grid;
+            display: none;
             grid-template-columns: minmax(0, 1fr) auto;
             align-items: center;
             gap: 8px;
@@ -705,6 +711,7 @@
             min-width: 0;
         }
         .customer-mobile-name {
+            display: block;
             color: var(--ph-color-text);
             font-family: var(--ph-font-heading);
             font-size: 13.5px;
@@ -720,6 +727,8 @@
             font-size: 11.5px;
             font-weight: 700;
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .customer-mobile-city {
             color: #475569;
@@ -761,21 +770,113 @@
             margin-top: 8px;
         }
     }
+    @media (max-width: 360px) {
+        .customer-mobile-card { grid-template-columns: 20px 30px minmax(0, 1fr); gap: 6px; }
+        .customer-mobile-avatar { width: 30px; height: 30px; border-radius: 10px; font-size: 11px; }
+        .customer-mobile-phone { font-size: 10.5px; }
+    }
     @media (max-width: 560px) {
         .summary-grid { grid-template-columns: 1fr; }
     }
 </style>
 
-<div class="container customers-page">
+<div class="container customers-page" data-phos-compact-page="customers">
     <div class="customers-shell">
-        <div class="customers-header">
+        <div class="customers-header phos-page-header">
             <div class="customers-title">
                 <div class="rx-eyebrow">Customer CRM</div>
                 <h1>Customers</h1>
                 <p>Search and manage customer records.</p>
             </div>
             <div class="customers-actions">
-                <a href="{{ route('customers.export.csv', $queryFor()) }}" class="ops-btn-light">Export CSV</a>
+                <a href="{{ route('customers.export.csv', $queryFor()) }}" class="ops-btn-light customer-export-action" data-ph-action="download" title="Export CSV" aria-label="Export customers as CSV"><x-phos-action-icon name="download" label="Export CSV" /></a>
+                <x-phos-list-filter id="customers-list-filters" label="Filter customers" :active="$hasActiveFilters">
+                    <div class="customers-filter-search">
+                        <form method="GET" action="{{ route('customers.index') }}" class="desktop-search-form" data-phos-legacy-filter>
+                            @foreach(request()->except(['search', 'page']) as $key => $value)
+                                @if(is_scalar($value) && $value !== '')
+                                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+                                @endif
+                            @endforeach
+                            <div class="desktop-search-field">
+                                <label for="desktop-customer-search">Search customers</label>
+                                <input id="desktop-customer-search" type="search" name="search" value="{{ $search }}" placeholder="Search customer, phone, WhatsApp, city, state">
+                            </div>
+                            <button type="submit" class="ops-btn-secondary">Search</button>
+                            <a href="{{ route('customers.index') }}" class="ops-btn-light" data-filter-clear="customers-index">Clear Filters</a>
+                        </form>
+                        @if($hasActiveFilters)
+                            <div class="desktop-filter-chip-row">
+                                @foreach($activeFilterChips as $chip)
+                                    <span class="desktop-filter-chip">{{ $chip }}</span>
+                                @endforeach
+                            </div>
+                        @endif
+                    </div>
+
+                    <div class="customers-filter-fields" data-filter-panel data-filter-panel-key="customers-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}">
+                        <div class="customers-filter-body">
+                            <form method="GET" action="{{ route('customers.index') }}" style="display:grid; gap:12px;">
+                                @if(filled($createdDate))<input type="hidden" name="created_date" value="{{ $createdDate }}">@endif
+                                <div class="ops-form-grid customer-filter-grid">
+                                    <div class="ops-field">
+                                        <label for="search">Search</label>
+                                        <input id="search" type="text" name="search" value="{{ $search }}" placeholder="Search customer, phone, WhatsApp, city, state">
+                                    </div>
+                                    <div class="ops-field">
+                                        <label for="city">City</label>
+                                        <select id="city" name="city">
+                                            <option value="">All cities</option>
+                                            @foreach($cities as $cityOption)
+                                                <option value="{{ $cityOption }}" {{ $city === $cityOption ? 'selected' : '' }}>{{ $cityOption }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div class="ops-field">
+                                        <label for="state">State</label>
+                                        <select id="state" name="state">
+                                            <option value="">All states</option>
+                                            @foreach($states as $stateOption)
+                                                <option value="{{ $stateOption }}" {{ $state === $stateOption ? 'selected' : '' }}>{{ $stateOption }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    @if($statusEnabled)
+                                        <div class="ops-field">
+                                            <label for="status">Status</label>
+                                            <select id="status" name="status">
+                                                <option value="">All</option>
+                                                <option value="active" {{ $status === 'active' ? 'selected' : '' }}>Active</option>
+                                                <option value="inactive" {{ $status === 'inactive' ? 'selected' : '' }}>Inactive</option>
+                                            </select>
+                                        </div>
+                                    @endif
+                                    <div class="ops-field">
+                                        <label for="from_date">From Date</label>
+                                        <input id="from_date" type="date" name="from_date" value="{{ $fromDate }}">
+                                    </div>
+                                    <div class="ops-field">
+                                        <label for="to_date">To Date</label>
+                                        <input id="to_date" type="date" name="to_date" value="{{ $toDate }}">
+                                    </div>
+                                    <div class="ops-field">
+                                        <label for="sort_by">Sort By</label>
+                                        <select id="sort_by" name="sort_by">
+                                            <option value="latest" {{ $sortBy === 'latest' ? 'selected' : '' }}>Newest First</option>
+                                            <option value="oldest" {{ $sortBy === 'oldest' ? 'selected' : '' }}>Oldest First</option>
+                                            <option value="name_asc" {{ $sortBy === 'name_asc' ? 'selected' : '' }}>Name A-Z</option>
+                                            <option value="name_desc" {{ $sortBy === 'name_desc' ? 'selected' : '' }}>Name Z-A</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                    <button type="submit" class="ops-btn-secondary">Apply Filters</button>
+                                    <a href="{{ route('customers.index') }}" class="ops-btn-light" data-filter-clear="customers-index">Reset</a>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </x-phos-list-filter>
                 @if($canCreateCustomers)
                     <a href="{{ route('customers.create') }}" class="ops-btn">+ Add Customer</a>
                 @endif
@@ -834,7 +935,7 @@
                 </form>
 
                 <div class="mobile-action-toolbar {{ $hasActiveFilters ? 'has-active-filters' : '' }}" aria-label="Mobile customer filters and sorting">
-                    <button type="button" class="mobile-toolbar-btn" data-mobile-filter-open="customers-mobile-filters" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" aria-label="Open customer filters">
+                    <button type="button" class="mobile-toolbar-btn" data-phos-legacy-filter data-mobile-filter-open="customers-mobile-filters" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" aria-label="Open customer filters">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16"/><path d="M7 12h10"/><path d="M10 18h4"/></svg>
                         <span>Filter</span>
                     </button>
@@ -937,92 +1038,6 @@
                 </div>
             </div>
         </div>
-
-        <div class="desktop-search-shell">
-            <form method="GET" action="{{ route('customers.index') }}" class="desktop-search-form">
-                @foreach(request()->except(['search', 'page']) as $key => $value)
-                    @if(is_scalar($value) && $value !== '')
-                        <input type="hidden" name="{{ $key }}" value="{{ $value }}">
-                    @endif
-                @endforeach
-                <div class="desktop-search-field">
-                    <label for="desktop-customer-search">Search customers</label>
-                    <input id="desktop-customer-search" type="search" name="search" value="{{ $search }}" placeholder="Search customer, phone, WhatsApp, city, state">
-                </div>
-                <button type="submit" class="ops-btn-secondary">Search</button>
-                <a href="{{ route('customers.index') }}" class="ops-btn-light" data-filter-clear="customers-index">Clear Filters</a>
-            </form>
-            @if($hasActiveFilters)
-                <div class="desktop-filter-chip-row">
-                    @foreach($activeFilterChips as $chip)
-                        <span class="desktop-filter-chip">{{ $chip }}</span>
-                    @endforeach
-                </div>
-            @endif
-        </div>
-
-        <details class="ops-card desktop-filter-card desktop-filter-toggle" data-filter-panel data-filter-panel-key="customers-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" @if($hasActiveFilters) open @endif>
-            <summary>Search &amp; Filters <span>{{ $hasActiveFilters ? 'Filters Active - ' . $activeFilterChips->count() : 'Expand advanced filters' }}</span></summary>
-            <div class="ops-card-body">
-                <form method="GET" action="{{ route('customers.index') }}" style="display:grid; gap:12px;">
-                    <div class="ops-form-grid">
-                        <div class="ops-field">
-                            <label for="search">Search</label>
-                            <input id="search" type="text" name="search" value="{{ $search }}" placeholder="Search customer, phone, WhatsApp, city, state">
-                        </div>
-                        <div class="ops-field">
-                            <label for="city">City</label>
-                            <select id="city" name="city">
-                                <option value="">All cities</option>
-                                @foreach($cities as $cityOption)
-                                    <option value="{{ $cityOption }}" {{ $city === $cityOption ? 'selected' : '' }}>{{ $cityOption }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div class="ops-field">
-                            <label for="state">State</label>
-                            <select id="state" name="state">
-                                <option value="">All states</option>
-                                @foreach($states as $stateOption)
-                                    <option value="{{ $stateOption }}" {{ $state === $stateOption ? 'selected' : '' }}>{{ $stateOption }}</option>
-                                @endforeach
-                            </select>
-                        </div>
-                        @if($statusEnabled)
-                            <div class="ops-field">
-                                <label for="status">Status</label>
-                                <select id="status" name="status">
-                                    <option value="">All</option>
-                                    <option value="active" {{ $status === 'active' ? 'selected' : '' }}>Active</option>
-                                    <option value="inactive" {{ $status === 'inactive' ? 'selected' : '' }}>Inactive</option>
-                                </select>
-                            </div>
-                        @endif
-                        <div class="ops-field">
-                            <label for="from_date">From Date</label>
-                            <input id="from_date" type="date" name="from_date" value="{{ $fromDate }}">
-                        </div>
-                        <div class="ops-field">
-                            <label for="to_date">To Date</label>
-                            <input id="to_date" type="date" name="to_date" value="{{ $toDate }}">
-                        </div>
-                        <div class="ops-field">
-                            <label for="sort_by">Sort By</label>
-                            <select id="sort_by" name="sort_by">
-                                <option value="latest" {{ $sortBy === 'latest' ? 'selected' : '' }}>Newest First</option>
-                                <option value="oldest" {{ $sortBy === 'oldest' ? 'selected' : '' }}>Oldest First</option>
-                                <option value="name_asc" {{ $sortBy === 'name_asc' ? 'selected' : '' }}>Name A-Z</option>
-                                <option value="name_desc" {{ $sortBy === 'name_desc' ? 'selected' : '' }}>Name Z-A</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                        <button type="submit" class="ops-btn-secondary">Apply Filters</button>
-                        <a href="{{ route('customers.index') }}" class="ops-btn-light" data-filter-clear="customers-index">Reset</a>
-                    </div>
-                </form>
-            </div>
-        </details>
 
         <div class="summary-grid desktop-summary-grid">
             <a href="{{ route('customers.index', $queryFor()) }}" class="summary-box rn-summary-link">
@@ -1128,21 +1143,21 @@
                                     </div>
                                     <div class="customer-mobile-actions">
                                         @if($customer->phone)
-                                            <a href="tel:{{ preg_replace('/\D+/', '', $customer->phone) }}" class="customer-icon-action is-primary" title="Call {{ $customer->name }}" aria-label="Call {{ $customer->name }}">
+                                            <a href="tel:{{ preg_replace('/\D+/', '', $customer->phone) }}" class="customer-icon-action is-primary" data-ph-action="phone" title="Call {{ $customer->name }}" aria-label="Call {{ $customer->name }}">
                                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8l-1.3 1.3a16 16 0 0 0 6.4 6.4l1.3-1.3a2 2 0 0 1 1.8-.6l3 .5A2 2 0 0 1 22 16.9Z"/></svg>
                                             </a>
                                         @endif
                                         @if($customerWhatsapp)
-                                            <a href="{{ $customerWhatsapp }}" target="_blank" class="customer-icon-action is-whatsapp" title="WhatsApp {{ $customer->name }}" aria-label="WhatsApp {{ $customer->name }}">
+                                            <a href="{{ $customerWhatsapp }}" target="_blank" class="customer-icon-action is-whatsapp" data-ph-action="whatsapp" title="WhatsApp {{ $customer->name }}" aria-label="WhatsApp {{ $customer->name }}">
                                                 <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 11.4c0 4.7-3.9 8.6-8.8 8.6-1.5 0-3-.4-4.2-1.1L3 20l1.2-3.7A8.4 8.4 0 0 1 2.4 11.4C2.4 6.7 6.3 3 11.2 3 16.1 3 20 6.7 20 11.4Zm-4.8 2.2c-.2-.1-1.2-.6-1.4-.7s-.3-.1-.4.1-.5.7-.7.9-.3.2-.5.1a5.9 5.9 0 0 1-1.7-1c-.6-.5-1-1.2-1.1-1.4-.1-.2 0-.3.1-.4l.3-.4.2-.3v-.4c0-.1-.4-1.1-.6-1.6-.2-.4-.3-.4-.4-.4h-.4c-.1 0-.4 0-.6.3-.2.2-.8.8-.8 1.9s.8 2.1 1 2.3c.1.1 1.5 2.3 3.8 3.2.5.2 1 .4 1.3.5.6.2 1.2.2 1.7.1.5-.1 1.2-.5 1.4-1 .2-.5.2-1 .1-1Z"/></svg>
                                             </a>
                                         @endif
                                         <details class="customer-action-menu">
                                             <summary aria-label="More actions for {{ $customer->name }}">...</summary>
                                             <div class="customer-action-panel">
-                                                <a href="{{ route('customers.show', $customer) }}" class="customer-action-link">View Customer</a>
+                                                <a href="{{ route('customers.show', $customer) }}" class="customer-action-link" data-ph-action="view"><x-phos-action-icon name="view" label="" />View Customer</a>
                                                 @if($canUpdateCustomers)
-                                                    <a href="{{ route('customers.edit', $customer) }}" class="customer-action-link">Edit Customer</a>
+                                                    <a href="{{ route('customers.edit', $customer) }}" class="customer-action-link" data-ph-action="edit"><x-phos-action-icon name="edit" label="" />Edit Customer</a>
                                                 @endif
                                                 @if($canReadRentals)
                                                     <a href="{{ route('rentals.index', ['customer_id' => $customer->id]) }}" class="customer-action-link">Rental History</a>
@@ -1280,21 +1295,21 @@
                                     <td data-label="Actions">
                                         <div class="action-row">
                                             @if($customer->phone)
-                                                <a href="tel:{{ preg_replace('/\D+/', '', $customer->phone) }}" class="customer-icon-action is-primary" title="Call {{ $customer->name }}" aria-label="Call {{ $customer->name }}">
+                                                <a href="tel:{{ preg_replace('/\D+/', '', $customer->phone) }}" class="customer-icon-action is-primary" data-ph-action="phone" title="Call {{ $customer->name }}" aria-label="Call {{ $customer->name }}">
                                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8l-1.3 1.3a16 16 0 0 0 6.4 6.4l1.3-1.3a2 2 0 0 1 1.8-.6l3 .5A2 2 0 0 1 22 16.9Z"/></svg>
                                                 </a>
                                             @endif
                                             @if($customerWhatsapp)
-                                                <a href="{{ $customerWhatsapp }}" target="_blank" class="customer-icon-action is-whatsapp" title="WhatsApp {{ $customer->name }}" aria-label="WhatsApp {{ $customer->name }}">
+                                                <a href="{{ $customerWhatsapp }}" target="_blank" class="customer-icon-action is-whatsapp" data-ph-action="whatsapp" title="WhatsApp {{ $customer->name }}" aria-label="WhatsApp {{ $customer->name }}">
                                                     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 11.4c0 4.7-3.9 8.6-8.8 8.6-1.5 0-3-.4-4.2-1.1L3 20l1.2-3.7A8.4 8.4 0 0 1 2.4 11.4C2.4 6.7 6.3 3 11.2 3 16.1 3 20 6.7 20 11.4Zm-4.8 2.2c-.2-.1-1.2-.6-1.4-.7s-.3-.1-.4.1-.5.7-.7.9-.3.2-.5.1a5.9 5.9 0 0 1-1.7-1c-.6-.5-1-1.2-1.1-1.4-.1-.2 0-.3.1-.4l.3-.4.2-.3v-.4c0-.1-.4-1.1-.6-1.6-.2-.4-.3-.4-.4-.4h-.4c-.1 0-.4 0-.6.3-.2.2-.8.8-.8 1.9s.8 2.1 1 2.3c.1.1 1.5 2.3 3.8 3.2.5.2 1 .4 1.3.5.6.2 1.2.2 1.7.1.5-.1 1.2-.5 1.4-1 .2-.5.2-1 .1-1Z"/></svg>
                                                 </a>
                                             @endif
                                             <details class="customer-action-menu">
                                                 <summary aria-label="More actions for {{ $customer->name }}">...</summary>
                                                 <div class="customer-action-panel">
-                                                    <a href="{{ route('customers.show', $customer) }}" class="customer-action-link">View</a>
+                                                    <a href="{{ route('customers.show', $customer) }}" class="customer-action-link" data-ph-action="view"><x-phos-action-icon name="view" label="" />View</a>
                                                     @if($canUpdateCustomers)
-                                                        <a href="{{ route('customers.edit', $customer) }}" class="customer-action-link">Edit</a>
+                                                        <a href="{{ route('customers.edit', $customer) }}" class="customer-action-link" data-ph-action="edit"><x-phos-action-icon name="edit" label="" />Edit</a>
                                                     @endif
                                                     @if($canCreateRentals)
                                                         <a href="{{ route('rentals.create', ['customer_id' => $customer->id]) }}" class="customer-action-link">Create Rental</a>

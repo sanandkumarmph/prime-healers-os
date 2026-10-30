@@ -358,17 +358,58 @@
         .comms-detail-actions { grid-template-columns:1fr 1fr; }
         .comms-detail-actions .comms-payment-cta { grid-column:1 / -1; }
     }
+    @media (min-width: 769px) {
+        [data-phos-compact-page="communications"] .comms-row { gap:6px; }
+        [data-phos-compact-page="communications"] .comms-row-title { gap:1px; }
+        [data-phos-compact-page="communications"] .comms-row-title strong { line-height:1.2; }
+    }
 </style>
 
-<div class="container comms-page">
+<div class="container comms-page" data-phos-compact-page="communications">
     <section class="comms-shell">
-        <div class="comms-head">
+        <div class="comms-head phos-page-header">
             <div>
                 <h1>Communication Center</h1>
-                <p>Follow-ups, alerts, payment outreach, and service messages in one action queue.</p>
+                <p>Follow-ups, alerts and customer communication.</p>
             </div>
-            <div class="comms-actions">
+            <div class="comms-actions phos-list-header-actions">
                 @if($featureReady)
+                    <x-phos-list-filter id="communications-list-filters" label="Filter communications" :active="!empty($activeFilters)">
+                        <form method="GET" action="{{ route('communication-center.index') }}" class="comms-search-row">
+                            <input type="hidden" name="tab" value="{{ $tab }}">
+                            <input class="comms-input" type="search" name="search" value="{{ request('search') }}" aria-label="Search communications" placeholder="Search customer, partner, actual client, phone, rental, invoice, product">
+                            <select class="comms-select" name="priority" aria-label="Priority">
+                                <option value="">All priorities</option>
+                                @foreach(\App\Models\FollowUp::PRIORITIES as $value => $label)
+                                    <option value="{{ $value }}" @selected(request('priority') === $value)>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            <select class="comms-select" name="type" aria-label="Follow-up type">
+                                <option value="">All types</option>
+                                @foreach(\App\Models\FollowUp::TYPES as $value => $label)
+                                    <option value="{{ $value }}" @selected(request('type') === $value)>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            <select class="comms-select" name="staff" aria-label="Assigned staff">
+                                <option value="">All staff</option>
+                                <option value="me" @selected(request('staff') === 'me')>My Work</option>
+                                <option value="unassigned" @selected(request('staff') === 'unassigned')>Unassigned</option>
+                                @foreach($assignableUsers as $user)
+                                    <option value="user:{{ $user->id }}" @selected(request('staff') === 'user:' . $user->id)>{{ $user->name }} ({{ Str::headline($user->role ?: 'user') }})</option>
+                                @endforeach
+                            </select>
+                            <select class="comms-select" name="sort" aria-label="Sort communications">
+                                <option value="unread_first" @selected(request('sort', 'unread_first') === 'unread_first')>Unread first</option>
+                                <option value="overdue_first" @selected(request('sort') === 'overdue_first')>Overdue first</option>
+                                <option value="high_priority" @selected(request('sort') === 'high_priority')>High priority first</option>
+                                <option value="latest" @selected(request('sort') === 'latest')>Latest first</option>
+                            </select>
+                            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                                <button class="comms-btn" type="submit">Apply</button>
+                                <a href="{{ $clearHref }}" class="comms-btn-ghost">Clear</a>
+                            </div>
+                        </form>
+                    </x-phos-list-filter>
                     <a href="{{ route('communication-center.index', array_merge(request()->except('page'), ['tab' => 'unread'])) }}" class="comms-btn-ghost">Show unread only</a>
                     <button type="button" class="comms-btn-ghost" data-comms-mark-all-read>Mark all as read</button>
                     <button type="button"
@@ -399,48 +440,7 @@
                 @endforeach
             </div>
 
-            <details class="comms-filter-panel">
-                <summary>
-                    <span>Search &amp; Filters</span>
-                    <span class="comms-card-subtle">{{ !empty($activeFilters) ? count($activeFilters) . ' active' : 'Closed' }}</span>
-                </summary>
-                <div class="comms-filter-panel-body">
-                    <form method="GET" action="{{ route('communication-center.index') }}" class="comms-search-row">
-                        <input type="hidden" name="tab" value="{{ $tab }}">
-                        <input class="comms-input" type="search" name="search" value="{{ request('search') }}" placeholder="Search customer, partner, actual client, phone, rental, invoice, product">
-                        <select class="comms-select" name="priority">
-                            <option value="">All priorities</option>
-                            @foreach(\App\Models\FollowUp::PRIORITIES as $value => $label)
-                                <option value="{{ $value }}" @selected(request('priority') === $value)>{{ $label }}</option>
-                            @endforeach
-                        </select>
-                        <select class="comms-select" name="type">
-                            <option value="">All types</option>
-                            @foreach(\App\Models\FollowUp::TYPES as $value => $label)
-                                <option value="{{ $value }}" @selected(request('type') === $value)>{{ $label }}</option>
-                            @endforeach
-                        </select>
-                        <select class="comms-select" name="staff">
-                            <option value="">All staff</option>
-                            <option value="me" @selected(request('staff') === 'me')>My Work</option>
-                            <option value="unassigned" @selected(request('staff') === 'unassigned')>Unassigned</option>
-                            @foreach($assignableUsers as $user)
-                                <option value="user:{{ $user->id }}" @selected(request('staff') === 'user:' . $user->id)>{{ $user->name }} ({{ Str::headline($user->role ?: 'user') }})</option>
-                            @endforeach
-                        </select>
-                        <select class="comms-select" name="sort">
-                            <option value="unread_first" @selected(request('sort', 'unread_first') === 'unread_first')>Unread first</option>
-                            <option value="overdue_first" @selected(request('sort') === 'overdue_first')>Overdue first</option>
-                            <option value="high_priority" @selected(request('sort') === 'high_priority')>High priority first</option>
-                            <option value="latest" @selected(request('sort') === 'latest')>Latest first</option>
-                        </select>
-                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                            <button class="comms-btn" type="submit">Apply</button>
-                            <a href="{{ $clearHref }}" class="comms-btn-ghost">Clear</a>
-                        </div>
-                    </form>
-                </div>
-            </details>
+
 
             @if(!empty($activeFilters))
                 <div class="comms-active-filters" aria-label="Active communication filters">

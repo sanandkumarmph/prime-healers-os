@@ -1293,181 +1293,30 @@
         .ops-mobile-list { padding-top:6px; }
         .ops-empty { margin:7px; padding:14px; font-size:12px; }
     }
+    /* Table-local scrolling keeps schedule/assignee words out of tall narrow stacks. */
+    @media (min-width: 769px) {
+        [data-phos-compact-page="deliveries"] .ops-table { min-width:1280px; border-spacing:0 4px; }
+        [data-phos-compact-page="deliveries"] .ops-col-order { width:190px; min-width:190px; }
+        [data-phos-compact-page="deliveries"] .ops-col-customer { width:220px; min-width:220px; }
+        [data-phos-compact-page="deliveries"] .ops-col-schedule { width:160px; min-width:160px; }
+        [data-phos-compact-page="deliveries"] .ops-col-staff { width:180px; min-width:180px; }
+        [data-phos-compact-page="deliveries"] .ops-col-status { width:130px; min-width:130px; }
+        [data-phos-compact-page="deliveries"] .ops-col-actions { width:200px; min-width:200px; }
+        [data-phos-compact-page="deliveries"] .ops-stack { gap:2px; }
+        [data-phos-compact-page="deliveries"] .ops-col-schedule strong { white-space:nowrap; }
+        [data-phos-compact-page="deliveries"] .ops-item-pill { line-height:1.2; }
+    }
 </style>
 
-<div class="ops-board rn-list-page">
-    <div class="ops-board-header">
+<div class="ops-board rn-list-page" data-phos-compact-page="deliveries">
+    <div class="ops-board-header phos-page-header">
         <div class="ops-board-title">
             <div class="rx-eyebrow">Operations</div>
             <h1>Tasks Board</h1>
-            <p>Compact field taskboard for deliveries, pickups, and proof-first execution.</p>
+            <p>Deliveries, pickups and proof of completion.</p>
         </div>
-        <div class="ops-board-actions">
-            @if($canCreateDeliveries && \Illuminate\Support\Facades\Route::has('deliveries.create'))
-                <a href="{{ route('deliveries.create') }}" class="rn-btn-primary">+ Add Assignment</a>
-            @endif
-        </div>
-    </div>
-
-    @if(session('success'))
-        <div class="ops-flash-success">{{ session('success') }}</div>
-    @endif
-
-    <div class="ops-stats">
-        @foreach($opsKpiPills as $card)
-            <a href="{{ $card['href'] }}" class="ops-stat-card {{ !empty($card['tone']) ? 'is-' . $card['tone'] : '' }}">
-                <div class="ops-stat-top">
-                    <span>{{ $card['label'] }}</span>
-                </div>
-                <strong class="ops-stat-value">{{ $card['value'] }}</strong>
-            </a>
-        @endforeach
-    </div>
-
-    <section class="ops-control-strip {{ $attentionTasks->isEmpty() ? 'is-empty' : '' }}" aria-label="Needs attention">
-        <div class="ops-control-head">
-            <h2>Needs Attention</h2>
-            <span class="rn-badge {{ $attentionTasks->isNotEmpty() ? 'rn-badge-danger' : 'rn-badge-success' }}">{{ $attentionTasks->count() }}</span>
-        </div>
-        <div class="ops-attention-list">
-            @forelse($attentionTasks as $attention)
-                @php
-                    $attentionTask = $attention['task'];
-                @endphp
-                <a href="{{ route('deliveries.show', $attentionTask) }}" class="ops-attention-row {{ $attention['tone'] === 'danger' ? 'is-danger' : '' }}">
-                    <span class="ops-attention-dot" aria-hidden="true"></span>
-                    <span>{{ $attention['label'] }}</span>
-                    <em>{{ $attentionTask->assignedUser->name ?? $attentionTask->assignedStaff->name ?? $attentionTask->third_party_name ?? 'Unassigned' }}</em>
-                </a>
-            @empty
-                <div class="ops-attention-row">
-                    <span class="ops-attention-dot" aria-hidden="true"></span>
-                    <span>No critical tasks right now</span>
-                    <em>All clear</em>
-                </div>
-            @endforelse
-        </div>
-    </section>
-
-    <div class="ops-mobile-command" aria-label="Mobile task controls">
-        <form method="GET" action="{{ route('deliveries.index') }}" class="ops-mobile-search-row">
-            <input type="hidden" name="ownership" value="{{ $ownershipFilter }}">
-            <input type="hidden" name="tab" value="{{ $tab }}">
-            @foreach($sortFormQuery as $queryKey => $queryValue)
-                @if(!in_array($queryKey, ['search', 'ownership', 'tab'], true))
-                    <input type="hidden" name="{{ $queryKey }}" value="{{ $queryValue }}">
-                @endif
-            @endforeach
-            <input type="search" name="search" value="{{ $search }}" placeholder="Search task, customer or product" data-taskboard-auto-search>
-            <button type="submit" class="sr-only">Search</button>
-        </form>
-
-        <div class="ops-mobile-chip-groups">
-            <div class="ops-mobile-chip-group">
-                <label>Task Type</label>
-                <div class="ops-mobile-chip-row">
-                    @foreach($taskTypeTabs as $typeTab)
-                        @continue(data_get($typeTab, 'key') === 'all')
-                        <a href="{{ $typeTab['href'] }}" class="ops-mobile-chip {{ $typeTab['active'] ? 'is-active' : '' }}">{{ $typeTab['label'] }}</a>
-                    @endforeach
-                </div>
-            </div>
-            <div class="ops-mobile-chip-group">
-                <label>Status</label>
-                <div class="ops-mobile-chip-row">
-                    @foreach($statusTabs as $statusTab)
-                        <a href="{{ $statusTab['href'] }}" class="ops-mobile-chip {{ $statusTab['active'] ? 'is-active' : '' }}">{{ $statusTab['label'] }}</a>
-                    @endforeach
-                </div>
-            </div>
-            @if(!empty($scopeTabs))
-                <div class="ops-mobile-chip-group">
-                    <label>Scope</label>
-                    <div class="ops-mobile-chip-row">
-                        @foreach($scopeTabs as $scopeTab)
-                            <a href="{{ $scopeTab['href'] }}" class="ops-mobile-chip {{ $scopeTab['active'] ? 'is-active' : '' }}">{{ $scopeTab['label'] }}</a>
-                        @endforeach
-                    </div>
-                </div>
-            @endif
-        </div>
-
-        <div class="ops-mobile-toolbar {{ $hasActiveFilters ? 'has-active-filters' : '' }}" aria-label="Mobile task tools">
-            <button type="button" class="mobile-toolbar-btn" data-mobile-filter-open="deliveries-mobile-filters" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" aria-label="Open task filters">Filter</button>
-            <div class="ops-mobile-sort-anchor" data-mobile-sort-root>
-                <button type="button" class="mobile-toolbar-btn mobile-sort-trigger" data-mobile-sort-trigger aria-label="Sort tasks">Sort</button>
-                <div class="ops-mobile-sort-menu" data-mobile-sort-menu hidden>
-                    @foreach($sortOptions as $sortKey => $sortLabel)
-                        <a href="{{ $boardHref(['sort_by' => $sortKey, 'sort_dir' => $sortDirection], ['page']) }}" class="{{ $sortBy === $sortKey ? 'is-active' : '' }}">{{ $sortLabel }}</a>
-                    @endforeach
-                </div>
-            </div>
-            <a href="{{ $boardHref([], ['page']) }}" class="rn-btn ops-refresh-btn" title="Refresh tasks" aria-label="Refresh tasks">{!! $navIcon('refresh') !!}</a>
-        </div>
-    </div>
-
-    <div class="ops-filters-shell">
-        <div class="ops-tabs ops-task-type-tabs" aria-label="Task type">
-            @foreach($taskTypeTabs as $typeTab)
-                <a href="{{ $typeTab['href'] }}" class="ops-tab {{ $typeTab['active'] ? 'is-active' : '' }}">
-                    {{ $typeTab['label'] }}
-                </a>
-            @endforeach
-        </div>
-        <div class="ops-tabs ops-status-tabs" aria-label="Primary status filters">
-            @foreach($statusTabs as $statusTab)
-                <a href="{{ $statusTab['href'] }}" class="ops-tab {{ $statusTab['active'] ? 'is-active' : '' }}">
-                    {{ $statusTab['label'] }}
-                </a>
-            @endforeach
-        </div>
-        @if($currentUser?->hasScope('assigned', 'deliveries'))
-            <div class="ops-tabs" aria-label="Ownership tabs">
-                @foreach($ownershipTabs as $ownershipTab)
-                    <a href="{{ $boardHref(['ownership' => $ownershipTab['key']], ['board']) }}" class="ops-tab {{ $ownershipFilter === $ownershipTab['key'] ? 'is-active' : '' }}">
-                        {{ $ownershipTab['label'] }}
-                    </a>
-                @endforeach
-            </div>
-        @endif
-
-        <div class="ops-search-shell">
-            <form method="GET" action="{{ route('deliveries.index') }}" class="ops-search-form" data-taskboard-search-form>
-                <input type="hidden" name="ownership" value="{{ $ownershipFilter }}">
-                <input type="hidden" name="tab" value="{{ $tab }}">
-                @foreach($sortFormQuery as $queryKey => $queryValue)
-                    @if(!in_array($queryKey, ['search', 'ownership', 'tab'], true))
-                        <input type="hidden" name="{{ $queryKey }}" value="{{ $queryValue }}">
-                    @endif
-                @endforeach
-                <div class="ops-search-field">
-                    <label for="desktop_delivery_search" class="sr-only">Search tasks</label>
-                    <input
-                        id="desktop_delivery_search"
-                        type="search"
-                        name="search"
-                        value="{{ $search }}"
-                        placeholder="Search task, customer or product"
-                        data-taskboard-auto-search
-                    >
-                </div>
-                <button type="submit" class="sr-only">Search</button>
-            </form>
-            @if(!empty($activeFilterChips))
-                <div class="ops-filter-chip-row" aria-label="Active task filters">
-                    @foreach($activeFilterChips as $chip)
-                        <span class="ops-filter-chip">{{ $chip }}</span>
-                    @endforeach
-                </div>
-            @endif
-        </div>
-
-        <details class="ops-filters-card ops-filter-toggle" data-filter-panel data-filter-panel-key="deliveries-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" @if($hasActiveFilters) open @endif>
-            <summary>
-                <h2>Search &amp; Filters</h2>
-                <span>{{ $hasActiveFilters ? count($activeFilterChips) . ' active' : 'Advanced' }}</span>
-            </summary>
-            <div class="ops-filter-body">
+        <div class="ops-board-actions phos-list-header-actions">
+            <x-phos-list-filter id="deliveries-list-filters" label="Filter tasks" :active="$hasActiveFilters" data-filter-panel data-filter-panel-key="deliveries-index" :data-filter-active="$hasActiveFilters ? 'true' : 'false'">
                 <form method="GET" action="{{ route('deliveries.index') }}" class="ops-filter-grid">
                     <input type="hidden" name="ownership" value="{{ $ownershipFilter }}">
                     <div class="ops-filter-field">
@@ -1558,10 +1407,170 @@
                         <input type="hidden" name="sort_by" value="{{ $sortBy }}">
                         <input type="hidden" name="sort_dir" value="{{ $sortDirection }}">
                         <button type="submit" class="rn-btn-primary">Apply</button>
+                        <a href="{{ route('deliveries.index') }}" class="rn-btn" data-phos-filter-reset>Reset</a>
                     </div>
                 </form>
+            </x-phos-list-filter>
+            @if($canCreateDeliveries && \Illuminate\Support\Facades\Route::has('deliveries.create'))
+                <a href="{{ route('deliveries.create') }}" class="rn-btn-primary">+ Add Assignment</a>
+            @endif
+        </div>
+    </div>
+
+    @if(session('success'))
+        <div class="ops-flash-success">{{ session('success') }}</div>
+    @endif
+
+    <div class="ops-stats">
+        @foreach($opsKpiPills as $card)
+            <a href="{{ $card['href'] }}" class="ops-stat-card {{ !empty($card['tone']) ? 'is-' . $card['tone'] : '' }}">
+                <div class="ops-stat-top">
+                    <span>{{ $card['label'] }}</span>
+                </div>
+                <strong class="ops-stat-value">{{ $card['value'] }}</strong>
+            </a>
+        @endforeach
+    </div>
+
+    <section class="ops-control-strip {{ $attentionTasks->isEmpty() ? 'is-empty' : '' }}" aria-label="Needs attention">
+        <div class="ops-control-head">
+            <h2>Needs Attention</h2>
+            <span class="rn-badge {{ $attentionTasks->isNotEmpty() ? 'rn-badge-danger' : 'rn-badge-success' }}">{{ $attentionTasks->count() }}</span>
+        </div>
+        <div class="ops-attention-list">
+            @forelse($attentionTasks as $attention)
+                @php
+                    $attentionTask = $attention['task'];
+                @endphp
+                <a href="{{ route('deliveries.show', $attentionTask) }}" class="ops-attention-row {{ $attention['tone'] === 'danger' ? 'is-danger' : '' }}">
+                    <span class="ops-attention-dot" aria-hidden="true"></span>
+                    <span>{{ $attention['label'] }}</span>
+                    <em>{{ $attentionTask->assignedUser->name ?? $attentionTask->assignedStaff->name ?? $attentionTask->third_party_name ?? 'Unassigned' }}</em>
+                </a>
+            @empty
+                <div class="ops-attention-row">
+                    <span class="ops-attention-dot" aria-hidden="true"></span>
+                    <span>No critical tasks right now</span>
+                    <em>All clear</em>
+                </div>
+            @endforelse
+        </div>
+    </section>
+
+    <div class="ops-mobile-command" aria-label="Mobile task controls">
+        <form method="GET" action="{{ route('deliveries.index') }}" class="ops-mobile-search-row">
+            <input type="hidden" name="ownership" value="{{ $ownershipFilter }}">
+            <input type="hidden" name="tab" value="{{ $tab }}">
+            @foreach($sortFormQuery as $queryKey => $queryValue)
+                @if(!in_array($queryKey, ['search', 'ownership', 'tab'], true))
+                    <input type="hidden" name="{{ $queryKey }}" value="{{ $queryValue }}">
+                @endif
+            @endforeach
+            <input type="search" name="search" value="{{ $search }}" placeholder="Search task, customer or product" data-taskboard-auto-search>
+            <button type="submit" class="sr-only">Search</button>
+        </form>
+
+        <div class="ops-mobile-chip-groups">
+            <div class="ops-mobile-chip-group">
+                <label>Task Type</label>
+                <div class="ops-mobile-chip-row">
+                    @foreach($taskTypeTabs as $typeTab)
+                        @continue(data_get($typeTab, 'key') === 'all')
+                        <a href="{{ $typeTab['href'] }}" class="ops-mobile-chip {{ $typeTab['active'] ? 'is-active' : '' }}">{{ $typeTab['label'] }}</a>
+                    @endforeach
+                </div>
             </div>
-        </details>
+            <div class="ops-mobile-chip-group">
+                <label>Status</label>
+                <div class="ops-mobile-chip-row">
+                    @foreach($statusTabs as $statusTab)
+                        <a href="{{ $statusTab['href'] }}" class="ops-mobile-chip {{ $statusTab['active'] ? 'is-active' : '' }}">{{ $statusTab['label'] }}</a>
+                    @endforeach
+                </div>
+            </div>
+            @if(!empty($scopeTabs))
+                <div class="ops-mobile-chip-group">
+                    <label>Scope</label>
+                    <div class="ops-mobile-chip-row">
+                        @foreach($scopeTabs as $scopeTab)
+                            <a href="{{ $scopeTab['href'] }}" class="ops-mobile-chip {{ $scopeTab['active'] ? 'is-active' : '' }}">{{ $scopeTab['label'] }}</a>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
+        </div>
+
+        <div class="ops-mobile-toolbar {{ $hasActiveFilters ? 'has-active-filters' : '' }}" aria-label="Mobile task tools">
+            <button type="button" class="mobile-toolbar-btn" data-phos-legacy-filter data-mobile-filter-open="deliveries-mobile-filters" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" aria-label="Open task filters">Filter</button>
+            <div class="ops-mobile-sort-anchor" data-mobile-sort-root>
+                <button type="button" class="mobile-toolbar-btn mobile-sort-trigger" data-mobile-sort-trigger aria-label="Sort tasks">Sort</button>
+                <div class="ops-mobile-sort-menu" data-mobile-sort-menu hidden>
+                    @foreach($sortOptions as $sortKey => $sortLabel)
+                        <a href="{{ $boardHref(['sort_by' => $sortKey, 'sort_dir' => $sortDirection], ['page']) }}" class="{{ $sortBy === $sortKey ? 'is-active' : '' }}">{{ $sortLabel }}</a>
+                    @endforeach
+                </div>
+            </div>
+            <a href="{{ $boardHref([], ['page']) }}" class="rn-btn ops-refresh-btn" title="Refresh tasks" aria-label="Refresh tasks">{!! $navIcon('refresh') !!}</a>
+        </div>
+    </div>
+
+    <div class="ops-filters-shell">
+        <div class="ops-tabs ops-task-type-tabs" aria-label="Task type">
+            @foreach($taskTypeTabs as $typeTab)
+                <a href="{{ $typeTab['href'] }}" class="ops-tab {{ $typeTab['active'] ? 'is-active' : '' }}">
+                    {{ $typeTab['label'] }}
+                </a>
+            @endforeach
+        </div>
+        <div class="ops-tabs ops-status-tabs" aria-label="Primary status filters">
+            @foreach($statusTabs as $statusTab)
+                <a href="{{ $statusTab['href'] }}" class="ops-tab {{ $statusTab['active'] ? 'is-active' : '' }}">
+                    {{ $statusTab['label'] }}
+                </a>
+            @endforeach
+        </div>
+        @if($currentUser?->hasScope('assigned', 'deliveries'))
+            <div class="ops-tabs" aria-label="Ownership tabs">
+                @foreach($ownershipTabs as $ownershipTab)
+                    <a href="{{ $boardHref(['ownership' => $ownershipTab['key']], ['board']) }}" class="ops-tab {{ $ownershipFilter === $ownershipTab['key'] ? 'is-active' : '' }}">
+                        {{ $ownershipTab['label'] }}
+                    </a>
+                @endforeach
+            </div>
+        @endif
+
+        <div class="ops-search-shell">
+            <form method="GET" action="{{ route('deliveries.index') }}" class="ops-search-form" data-taskboard-search-form>
+                <input type="hidden" name="ownership" value="{{ $ownershipFilter }}">
+                <input type="hidden" name="tab" value="{{ $tab }}">
+                @foreach($sortFormQuery as $queryKey => $queryValue)
+                    @if(!in_array($queryKey, ['search', 'ownership', 'tab'], true))
+                        <input type="hidden" name="{{ $queryKey }}" value="{{ $queryValue }}">
+                    @endif
+                @endforeach
+                <div class="ops-search-field">
+                    <label for="desktop_delivery_search" class="sr-only">Search tasks</label>
+                    <input
+                        id="desktop_delivery_search"
+                        type="search"
+                        name="search"
+                        value="{{ $search }}"
+                        placeholder="Search task, customer or product"
+                        data-taskboard-auto-search
+                    >
+                </div>
+                <button type="submit" class="sr-only">Search</button>
+            </form>
+            @if(!empty($activeFilterChips))
+                <div class="ops-filter-chip-row" aria-label="Active task filters">
+                    @foreach($activeFilterChips as $chip)
+                        <span class="ops-filter-chip">{{ $chip }}</span>
+                    @endforeach
+                </div>
+            @endif
+        </div>
+
+
     </div>
 
     <div id="deliveries-mobile-filters" class="mobile-filter-sheet" data-mobile-filter-sheet hidden>
