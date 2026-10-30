@@ -7,6 +7,7 @@ use App\Models\User;
 uses(TestCase::class, RefreshDatabase::class);
 
 test('login screen can be rendered', function () {
+    $this->withoutVite();
     $response = $this->get('/login');
 
     $response->assertStatus(200);

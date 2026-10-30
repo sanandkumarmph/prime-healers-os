@@ -8,6 +8,20 @@ use Illuminate\Support\Facades\Notification;
 
 uses(TestCase::class, RefreshDatabase::class);
 
+beforeEach(function () {
+    $this->withoutVite();
+    config([
+        'app.url' => 'https://recovery.phos.test',
+        'mail.default' => 'smtp',
+        'mail.from.address' => 'support@phos.test',
+        'mail.mailers.smtp.host' => 'smtp.phos.test',
+        'mail.mailers.smtp.port' => 587,
+        'mail.mailers.smtp.username' => 'support@phos.test',
+        'mail.mailers.smtp.password' => 'synthetic-test-value',
+        'mail.mailers.smtp.url' => null,
+    ]);
+});
+
 test('reset password link screen can be rendered', function () {
     $response = $this->get('/forgot-password');
 

@@ -3,20 +3,23 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Services\Auth\PasswordRecovery;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use function Illuminate\Support\defer;
 
 class PasswordResetLinkController extends Controller
 {
     /**
      * Display the password reset link request view.
      */
-    public function create(): View
+    public function create(PasswordRecovery $recovery): View
     {
-        return view('auth.forgot-password');
+        return view('auth.forgot-password', ['passwordRecoveryAvailable' => $recovery->available()]);
     }
 
     /**
@@ -24,22 +27,40 @@ class PasswordResetLinkController extends Controller
      *
      * @throws ValidationException
      */
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, PasswordRecovery $recovery): RedirectResponse
     {
         $request->validate([
-            'email' => ['required', 'email'],
+            'email' => ['required', 'string', 'email', 'max:254'],
         ]);
 
-        // We will send the password reset link to this user. Once we have attempted
-        // to send the link, we will examine the response then see the message we
-        // need to show to the user. Finally, we'll send out a proper response.
-        $status = Password::sendResetLink(
-            $request->only('email')
-        );
+        if (!$recovery->available()) {
+            return back()->withInput($request->only('email'))->withErrors(['email' => PasswordRecovery::UNAVAILABLE]);
+        }
+        $user = $recovery->eligibleUser($request->string('email')->toString());
+        if ($user) {
+            // SMTP runs after the response so delivery timing does not reveal
+            // whether an address belongs to an eligible account. No worker is needed.
+            defer(function () use ($user, $recovery): void {
+                $current = null;
+                try {
+                    $current = $recovery->eligibleUser($user->getEmailForPasswordReset());
+                    if (!$current || !$current->is($user)) {
+                        return;
+                    }
+                    Password::sendResetLink(['email' => $current->getEmailForPasswordReset()]);
+                } catch (\Throwable $exception) {
+                    Log::error('Password recovery delivery failed.', ['exception_type' => $exception::class]);
+                    if ($current) {
+                        try {
+                            Password::deleteToken($current);
+                        } catch (\Throwable $cleanupException) {
+                            Log::error('Password recovery token cleanup failed.', ['exception_type' => $cleanupException::class]);
+                        }
+                    }
+                }
+            })->always();
+        }
 
-        return $status == Password::RESET_LINK_SENT
-                    ? back()->with('status', __($status))
-                    : back()->withInput($request->only('email'))
-                        ->withErrors(['email' => __($status)]);
+        return back()->with('status', PasswordRecovery::RECEIVED);
     }
 }
