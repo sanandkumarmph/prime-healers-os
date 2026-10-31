@@ -31,6 +31,8 @@ use App\Services\NotificationCenterService;
 use App\Support\InternalOrganization;
 use App\Services\Auth\PasswordRecovery;
 use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Auth\Events\Login;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\ServiceProvider;
@@ -61,6 +63,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Event::listen(Login::class, function (Login $event): void {
+            if ($event->guard === 'web' && request()->hasSession()) {
+                request()->session()->put('password_hash_web', Auth::guard('web')->hashPasswordForCookie($event->user->getAuthPassword()));
+            }
+        });
         ResetPassword::createUrlUsing(fn (User $user, string $token) => app(PasswordRecovery::class)->resetUrl($user, $token));
         RateLimiter::for('password-recovery', fn (Request $request) => [
             Limit::perMinute(10)->by('recovery-ip:'.$request->ip()),
