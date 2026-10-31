@@ -43,6 +43,9 @@ jobs:
       - name: Test password recovery mail setup offline
         run: python3 -B -m unittest discover -s ops/phos-password-recovery-uat -p 'test_setup_zoho_mail.py'
 
+      - name: Test hidden Zoho prompts on a real Linux terminal
+        run: python3 -I -B -m unittest discover -s ops/phos-password-recovery-uat -p 'test_zoho_terminal.py' -v
+
       - name: Test password release and recovery in disposable Linux fixtures
         run: sudo python3 -I -B -m unittest discover -s ops/phos-password-recovery-uat -p 'test_*coordinator.py' -v
 

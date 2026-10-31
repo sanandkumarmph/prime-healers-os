@@ -555,16 +555,22 @@ def configure(values):
 
 def prompt_values():
     warnings.simplefilter('error', getpass.GetPassWarning)
-    with open('/dev/tty', 'r+', encoding='utf-8', buffering=1) as terminal:
-        need(terminal.isatty())
-        terminal.write('Copy the exact SMTP hostname from this Zoho account Server Configuration Details: ')
-        host = terminal.readline().rstrip('\n')
-        terminal.write('Port (465 for SMTPS or 587 for STARTTLS): ')
-        port = terminal.readline().rstrip('\n')
+    # A terminal cannot seek. Separate streams avoid BufferedRandom's seek
+    # requirement for r+ while keeping all input on the controlling terminal.
+    with open('/dev/tty', 'r', encoding='utf-8') as terminal_input, \
+            open('/dev/tty', 'w', encoding='utf-8', buffering=1) as terminal_output:
+        need(terminal_input.isatty() and terminal_output.isatty())
+        terminal_output.write('Copy the exact SMTP hostname from this Zoho account Server Configuration Details: ')
+        terminal_output.flush()
+        host = terminal_input.readline().rstrip('\n')
+        terminal_output.write('Port (465 for SMTPS or 587 for STARTTLS): ')
+        terminal_output.flush()
+        port = terminal_input.readline().rstrip('\n')
         need(port in ('465', '587'))
-        terminal.write('Sender display name [Prime Healers]: ')
-        name = terminal.readline().rstrip('\n') or 'Prime Healers'
-        password = getpass.getpass('Zoho app-specific password (hidden; never paste into chat): ', stream=terminal)
+        terminal_output.write('Sender display name [Prime Healers]: ')
+        terminal_output.flush()
+        name = terminal_input.readline().rstrip('\n') or 'Prime Healers'
+        password = getpass.getpass('Zoho app-specific password (hidden; never paste into chat): ', stream=terminal_output)
     return settings(host, int(port), password, name)
 
 
