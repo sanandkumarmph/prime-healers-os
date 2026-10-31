@@ -101,3 +101,19 @@ jobs:
           DB_DATABASE: ":memory:"
           QUEUE_CONNECTION: sync
           SESSION_DRIVER: array
+
+      - name: Render synthetic mobile layout pages
+        run: vendor/bin/pest tests/Feature/Regression/MobileDashboardTasksProductsRegressionTest.php --filter=test_mobile_dashboard_task_and_product_pages
+        env:
+          APP_ENV: testing
+          CACHE_STORE: array
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ":memory:"
+          QUEUE_CONNECTION: sync
+          SESSION_DRIVER: array
+          PHOS_MOBILE_LAYOUT_RENDER_DIR: ${{ runner.temp }}/phos-mobile-layout-fixtures
+
+      - name: Test actual dashboard task and product layouts on phones
+        run: node --test tests/Browser/MobileDashboardTasksProductsTest.cjs
+        env:
+          PHOS_MOBILE_LAYOUT_RENDER_DIR: ${{ runner.temp }}/phos-mobile-layout-fixtures
