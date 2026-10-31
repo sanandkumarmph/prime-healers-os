@@ -83,6 +83,17 @@ class PackageTests(Fixture):
 
 
 class RecoveryTests(Fixture):
+    def test_activated_sources_are_not_also_marked_as_immutable_preserved_files(self):
+        seen=[]
+        def record(path):
+            seen.append(str(path.relative_to(self.root)).replace('\\','/'))
+            return None
+        with patch.object(d,'signature',side_effect=record),patch.object(d,'directory_identity',return_value={}):
+            d.immutable_snapshot(self.root)
+        self.assertEqual(set(seen)&set(d.BASELINE_HASHES),set())
+        self.assertIn('.env',seen)
+        self.assertIn('config/mail.php',seen)
+
     def test_atomic_mail_cache_restoration_accepts_exact_bytes_metadata_and_mtime(self):
         path=self.put('bootstrap/cache/config.php',b'baseline cache')
         files=d.FileRecovery(self.root,self.backup,['bootstrap/cache/config.php']);files.snapshot()
