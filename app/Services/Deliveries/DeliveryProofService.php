@@ -113,9 +113,17 @@ class DeliveryProofService
         string $captureMoment,
         string $signatureData,
         string $acknowledgementText,
+        string $signerName,
         ?string $notes = null,
         array $meta = []
     ): DeliveryProof {
+        $signerName = trim($signerName);
+        if ($signerName === '' || mb_strlen($signerName) > 120) {
+            throw ValidationException::withMessages([
+                'signature_signer_name' => 'Enter the signer name using no more than 120 characters.',
+            ]);
+        }
+
         if (! preg_match('#^data:(image/(png|webp));base64,(.+)$#', $signatureData, $matches)) {
             throw ValidationException::withMessages([
                 'signature_data' => 'Signature capture is invalid. Please sign again before submitting.',
@@ -156,7 +164,7 @@ class DeliveryProofService
             'captured_at' => now(),
             'acknowledgement_text' => $acknowledgementText,
             'notes' => $notes,
-            'meta' => $meta,
+            'meta' => array_merge($meta, ['signer_name' => $signerName]),
             'created_by_user_id' => $user->id,
         ]);
     }
@@ -204,7 +212,8 @@ class DeliveryProofService
             $proof->original_name ?: basename((string) $proof->file_path),
             [
                 'Content-Type' => $proof->mime_type ?: 'application/octet-stream',
-                'Cache-Control' => 'private, max-age=300',
+                'Cache-Control' => 'private, no-store, max-age=0',
+                'X-Content-Type-Options' => 'nosniff',
             ],
             'inline'
         );

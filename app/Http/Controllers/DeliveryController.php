@@ -433,6 +433,7 @@ class DeliveryController extends Controller
             'location_captured_at' => ['nullable', 'date'],
             'location_missing_reason' => ['nullable', 'string', 'max:500'],
             'signature_data' => ['nullable', 'string'],
+            'signature_signer_name' => ['nullable', 'string', 'max:120'],
             'signature_unavailable_reason' => ['nullable', 'string', 'max:500'],
             'proof_notes' => ['nullable', 'string', 'max:1000'],
             'completion_confirmed' => ['required', 'accepted'],
@@ -504,6 +505,8 @@ class DeliveryController extends Controller
         $actionLabel = $delivery->type === 'pickup' ? 'pickup' : 'delivery';
         $validator = Validator::make($request->all(), $this->completionWorkflowValidationRules($delivery), [
             'signature_data.required' => 'Add customer signature to continue.',
+            'signature_signer_name.max' => 'Keep the signer name under 120 characters.',
+            'signature_signer_name.string' => 'Enter the name of the person signing.',
             'signature_unavailable_reason.max' => 'Keep the acknowledgement reason short and clear.',
             'proof_notes.max' => 'Keep notes under 1000 characters.',
             'location_missing_reason.max' => 'Keep the GPS reason short and clear.',
@@ -608,7 +611,15 @@ class DeliveryController extends Controller
         $signatureData = trim((string) ($validated['signature_data'] ?? ''));
         $signatureReason = trim((string) ($validated['signature_unavailable_reason'] ?? ''));
 
-        if ($signatureData !== '' || $signatureReason !== '') {
+        if ($signatureReason !== '') {
+            return;
+        }
+
+        if ($signatureData !== '') {
+            $signerName = $validated['signature_signer_name'] ?? null;
+            if (! is_string($signerName) || trim($signerName) === '') {
+                $validator->errors()->add('signature_signer_name', 'Enter the name of the person signing.');
+            }
             return;
         }
 
@@ -769,6 +780,7 @@ class DeliveryController extends Controller
                 DeliveryProof::MOMENT_COMPLETE,
                 (string) $validated['signature_data'],
                 $acknowledgementText,
+                trim((string) $validated['signature_signer_name']),
                 $proofNotes,
                 $signatureMeta
             );
@@ -823,6 +835,13 @@ class DeliveryController extends Controller
         abort_if($delivery->organization_id !== $this->orgId(), 403);
 
         return $delivery;
+    }
+
+    private function canViewDeliveryProofs(Delivery $delivery): bool
+    {
+        return $this->applyDeliveryScope(Delivery::query()->where('organization_id', $this->orgId()))
+            ->whereKey($delivery->id)
+            ->exists();
     }
 
     private function redirectAfterDeliveryMutation(Delivery $delivery, string $message)
@@ -2100,19 +2119,21 @@ class DeliveryController extends Controller
         }
 
         $activityLogs = ActivityLogger::recentFor($delivery);
-        $deliveryProofs = $this->hasDeliveryProofsTable()
+        $canViewProofs = $this->canViewDeliveryProofs($delivery);
+        $deliveryProofs = $this->hasDeliveryProofsTable() && $canViewProofs
             ? $delivery->proofs()->with('creator')->latest('captured_at')->latest('id')->get()
             : collect();
         $proofConfig = $this->deliveryProofConfig();
         $cancellationReasonOptions = $this->cancellationReasonOptions();
 
-        return view('deliveries.show', compact('delivery', 'activityLogs', 'deliveryProofs', 'proofConfig', 'cancellationReasonOptions'));
+        return view('deliveries.show', compact('delivery', 'activityLogs', 'deliveryProofs', 'proofConfig', 'cancellationReasonOptions', 'canViewProofs'));
     }
 
     public function viewProof(Delivery $delivery, DeliveryProof $proof)
     {
         $delivery = $this->scopedDelivery($delivery, false);
         $this->authorize('view', $delivery);
+        abort_unless($this->canViewDeliveryProofs($delivery), 403);
 
         abort_if($proof->organization_id !== $this->orgId(), 403);
         abort_if((int) $proof->delivery_id !== (int) $delivery->id, 404);

@@ -145,6 +145,7 @@
         'damage_notes',
         'missing_accessories_notes',
         'signature_data',
+        'signature_signer_name',
         'signature_unavailable_reason',
         'location_missing_reason',
         'location_latitude',
@@ -211,13 +212,13 @@
             2 => ['pickup_device_photos', 'pickup_device_photos.*', 'damage_photos', 'damage_photos.*'],
             3 => ['damage_reported'],
             4 => ['damage_notes', 'missing_accessories_notes'],
-            5 => ['signature_data', 'signature_unavailable_reason'],
+            5 => ['signature_data', 'signature_signer_name', 'signature_unavailable_reason'],
         ]
         : [
             1 => ['location_missing_reason', 'location_latitude', 'location_longitude', 'location_accuracy', 'location_captured_at'],
             2 => ['delivery_device_photos', 'delivery_device_photos.*', 'premises_photo'],
             3 => ['proof_notes'],
-            4 => ['signature_data', 'signature_unavailable_reason'],
+            4 => ['signature_data', 'signature_signer_name', 'signature_unavailable_reason'],
         ];
     $initialCompletionStep = $delivery->status === 'in_progress' ? 2 : 1;
     foreach ($completionStepErrorMap as $stepIndex => $stepFields) {
@@ -1222,13 +1223,28 @@
         padding:12px;
         background:#fcfdff;
         display:grid;
+        grid-template-columns:minmax(0, 1fr);
         gap:10px;
         min-width:0;
         overflow:hidden;
     }
+    .workflow-proof-signature-wrap > * {
+        min-width:0;
+        max-width:100%;
+        overflow-wrap:anywhere;
+    }
+    .workflow-proof-signature-wrap input,
+    .workflow-proof-signature-wrap textarea {
+        width:100%;
+        max-width:100%;
+    }
+    .workflow-proof-signature-wrap .workflow-proof-actions {
+        flex-wrap:wrap;
+    }
     .workflow-proof-signature-pad {
         display:block;
         width:100%;
+        max-width:100%;
         min-width:0;
         height:180px;
         border:1px solid #cbd5e1;
@@ -3513,6 +3529,12 @@
                                 <div class="workflow-proof-signature-wrap">
                                     <div class="workflow-proof-help">{{ $acknowledgementText }}</div>
                                     <div class="workflow-proof-help" data-signature-hint>Signature is preferred. If not possible, add a short reason below.</div>
+                                    <label for="signature_signer_name">Name of person signing</label>
+                                    <input id="signature_signer_name" type="text" name="signature_signer_name" value="{{ old('signature_signer_name') }}" maxlength="120" autocomplete="off" aria-describedby="signature-signer-help" data-signature-signer-name>
+                                    <div id="signature-signer-help" class="workflow-proof-help">Enter the name of the customer or representative who signs below. Required when a signature is captured.</div>
+                                    @error('signature_signer_name')
+                                        <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
+                                    @enderror
                                     <canvas class="workflow-proof-signature-pad" data-signature-pad data-target-input="signature_data"></canvas>
                                     <input type="hidden" name="signature_data" value="{{ old('signature_data') }}">
                                     <div class="workflow-proof-signature-preview" data-signature-preview-wrap>
@@ -3672,7 +3694,7 @@
                             @if($delivery->type === 'pickup')
                                 <div class="workflow-review-item workflow-review-item--stacked" data-review-item="condition" data-review-ready="false" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;"><strong style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Condition</strong><span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Damage and accessories reviewed.</span><span class="workflow-review-status" style="display:block;writing-mode:horizontal-tb;white-space:normal;">Missing</span></div>
                             @endif
-                            <div class="workflow-review-item workflow-review-item--stacked" data-review-item="signature" data-review-ready="false" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;"><strong style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Signature</strong><span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Customer acknowledgement captured.</span><span class="workflow-review-status" style="display:block;writing-mode:horizontal-tb;white-space:normal;">Missing</span></div>
+                            <div class="workflow-review-item workflow-review-item--stacked" data-review-item="signature" data-review-ready="false" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;"><strong style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Signature</strong><span data-review-signature-description style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Customer acknowledgement captured.</span><span class="workflow-review-status" style="display:block;writing-mode:horizontal-tb;white-space:normal;">Missing</span></div>
                             @if($supportsCollectionStep)
                                 <div class="workflow-review-item workflow-review-item--stacked" data-review-item="collection" data-review-ready="false" style="display:block;width:100%;max-width:100%;min-width:0;overflow:hidden;margin-bottom:8px;"><strong style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Collection</strong><span style="display:block;writing-mode:horizontal-tb;white-space:normal;overflow-wrap:anywhere;word-break:break-word;">Amount recorded or reason added.</span><span class="workflow-review-status" style="display:block;writing-mode:horizontal-tb;white-space:normal;">Missing</span></div>
                             @endif
@@ -3784,7 +3806,7 @@
                 @php
                     $proofLabel = \App\Models\DeliveryProof::historyLabelFor($proof);
                     $proofWhen = $proof->captured_at ?: $proof->created_at;
-                    $proofMeta = collect($proof->meta ?? [])->filter(fn ($value) => filled($value));
+                    $proofMeta = collect($proof->meta ?? [])->except('signer_name')->filter(fn ($value) => filled($value));
                     $proofUrl = $proof->file_path ? route('deliveries.proofs.view', [$delivery, $proof]) : null;
                     $hasCoordinates = filled($proof->latitude) && filled($proof->longitude);
                     $proofMapUrl = $hasCoordinates
@@ -3807,6 +3829,9 @@
                             <small>{{ optional($proofWhen)->format('d M Y h:i A') }}</small>
                         </div>
                         <small>{{ ucfirst($proof->workflow_stage) }} {{ $proof->capture_moment ? ucfirst($proof->capture_moment) : 'Record' }} · Uploaded by {{ $proof->creator->name ?? 'System' }}</small>
+                        @if($proof->proof_type === \App\Models\DeliveryProof::TYPE_SIGNATURE)
+                            <div class="workflow-proof-help"><strong>Signed by:</strong> {{ $proof->signer_name ?? 'Name not recorded (legacy proof)' }}</div>
+                        @endif
                         @if($proof->acknowledgement_text)
                             <div class="workflow-proof-help"><strong>Acknowledgement:</strong> {{ $proof->acknowledgement_text }}</div>
                         @endif
@@ -3840,7 +3865,7 @@
                     </div>
                 </article>
             @empty
-                <div class="workflow-proof-status">No proof has been captured for this task yet.</div>
+                <div class="workflow-proof-status">{{ ($canViewProofs ?? true) ? 'No proof has been captured for this task yet.' : 'Private proof history is available to the assigned team and authorized managers.' }}</div>
             @endforelse
         </div>
             </div>
@@ -4630,8 +4655,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 || (pickupCondition === 'missing_accessories' && missingAccessoryNotes !== '')
                 || ['good', 'needs_inspection', ''].includes(pickupCondition)
             );
-        const signatureReady = Boolean(form.querySelector('input[name="signature_data"]')?.value)
-            || Boolean(form.querySelector('textarea[name="signature_unavailable_reason"]')?.value?.trim());
+        const signatureCaptured = Boolean(form.querySelector('input[name="signature_data"]')?.value);
+        const signatureReason = form.querySelector('textarea[name="signature_unavailable_reason"]')?.value?.trim() || '';
+        const signerName = form.querySelector('[data-signature-signer-name]')?.value?.trim() || '';
+        const signatureReady = signatureCaptured
+            ? signerName !== '' && signerName.length <= 120
+            : Boolean(signatureReason);
         const collectionRequired = {{ $supportsCollectionStep ? 'true' : 'false' }};
         const hasCollectedAmount = (() => {
             const raw = form.querySelector('input[name="collection_amount_collected"]')?.value?.trim() || '';
@@ -4649,6 +4678,9 @@ document.addEventListener('DOMContentLoaded', () => {
             conditionReady,
             notesReady,
             signatureReady,
+            signatureCaptured,
+            signatureReason,
+            signerName,
             pickupCondition,
             damagePhotoReady,
             collectionRequired,
@@ -4683,6 +4715,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         setReviewItemState(form, 'notes', state.workflowType === 'pickup' ? state.notesReady : true, notesStateLabel);
         setReviewItemState(form, 'signature', state.signatureReady, state.signatureReady ? 'Ready' : 'Missing');
+        const signatureDescription = form.querySelector('[data-review-signature-description]');
+        if (signatureDescription) {
+            signatureDescription.textContent = state.signatureCaptured
+                ? (state.signerName ? `Signed by: ${state.signerName}` : 'Enter the name of the person signing.')
+                : (state.signatureReason ? `Unable to sign: ${state.signatureReason}` : 'Customer acknowledgement pending.');
+        }
+        const signerNameInput = form.querySelector('[data-signature-signer-name]');
+        if (signerNameInput instanceof HTMLInputElement) {
+            signerNameInput.required = state.signatureCaptured;
+        }
 
         const completeButton = form.querySelector('[data-workflow-complete]');
         if (completeButton) {
@@ -4733,6 +4775,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (((workflowType === 'pickup' && currentStep === 5) || (workflowType === 'delivery' && currentStep === 4)) && !state.signatureReady) {
+            if (state.signatureCaptured && !state.signerName) {
+                form.querySelector('[data-signature-signer-name]')?.focus();
+                return false;
+            }
             form.querySelector('[data-signature-pad]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
             return false;
         }
@@ -4846,7 +4892,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        form.querySelectorAll('input[type="file"], textarea, input[type="checkbox"]').forEach((field) => {
+        form.querySelectorAll('input[type="file"], textarea, input[type="checkbox"], [data-signature-signer-name]').forEach((field) => {
             field.addEventListener('change', refreshWorkflowState);
             field.addEventListener('input', refreshWorkflowState);
         });
@@ -4919,16 +4965,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const resizeCanvas = () => {
             pixelRatio = window.devicePixelRatio || 1;
+            canvas.style.width = '100%';
+            canvas.style.height = '';
             const bounds = canvas.getBoundingClientRect();
-            const width = Math.max(Math.floor(bounds.width), 280);
+            if (bounds.width <= 0 || bounds.height <= 0) {
+                return;
+            }
+            const width = Math.max(Math.floor(bounds.width), 1);
             const height = Math.max(Math.floor(bounds.height), 118);
             const preservedSignature = currentSignatureData || hiddenInput?.value || '';
 
             canvas.width = Math.max(Math.floor(width * pixelRatio), 1);
             canvas.height = Math.max(Math.floor(height * pixelRatio), 1);
-            canvas.style.width = `${width}px`;
-            canvas.style.height = `${height}px`;
-
             context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
             applyCanvasStyles();
             redrawSignature(preservedSignature);
@@ -4965,11 +5013,16 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         const stopStroke = () => {
+            if (!drawing) {
+                return;
+            }
             drawing = false;
 
             if (hasSignature && hiddenInput) {
                 currentSignatureData = canvas.toDataURL('image/png');
                 hiddenInput.value = currentSignatureData;
+                const unavailableReason = form?.querySelector('textarea[name="signature_unavailable_reason"]');
+                if (unavailableReason) unavailableReason.value = '';
                 drawSignaturePreview(currentSignatureData);
             }
 
@@ -4978,6 +5031,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
+        if (typeof ResizeObserver === 'function') {
+            new ResizeObserver(resizeCanvas).observe(canvas);
+        }
         drawSignaturePreview(currentSignatureData);
         if (currentSignatureData) {
             hasSignature = true;

@@ -4,7 +4,7 @@
 
 @section('content')
 <div class="container rental-focused-form-page">
-    <form action="{{ route('rentals.update', $rental) }}" method="POST">
+    <form id="rentalCreateForm" action="{{ route('rentals.update', $rental) }}" method="POST">
         @csrf
         @method('PUT')
         @include('rentals._form')
