@@ -34,3 +34,11 @@ Code installation and mail configuration have separate recovery records. If
 both must be undone, restore the mail configuration first, then the code release.
 The code helper preserves unrelated environment edits and reports drift instead
 of overwriting a later mail configuration.
+
+Verified mail restoration may replace `.env` and the generated configuration
+cache atomically. Code rollback accepts the original bytes, ownership,
+permissions, device and modification time without requiring the earlier inode
+or change time. Activation remains strict, and unrelated preserved files must
+retain their exact identity. Use the updated verified code-recovery helper for
+older backups; their copied helper does not update automatically. Do not run
+rollback unless the release actually needs to be undone.

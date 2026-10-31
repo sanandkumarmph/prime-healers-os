@@ -124,6 +124,22 @@ def same_contents(left, right):
         return left is right
     return all(key in left and key in right and left[key] == right[key] for key in ('sha256', 'size', 'uid', 'gid', 'mode'))
 
+def restored_signature_matches(current, expected):
+    """Mail recovery atomically replaces known files while restoring their mtime."""
+    if current is None or expected is None:
+        return current is expected
+    return same_contents(current, expected) and all(
+        key in current and key in expected and current[key] == expected[key]
+        for key in ('device', 'mtime_ns'))
+
+
+def preserved_restoration_matches(root, expected):
+    current = immutable_snapshot(root)
+    return set(current) == set(expected) and all(
+        restored_signature_matches(current[name], expected[name]) if name == '.env'
+        else current[name] == expected[name] for name in expected)
+
+
 def private_file(path, owner=0):
     info = regular(path)
     need(info.st_uid == owner and info.st_gid == owner and stat.S_IMODE(info.st_mode) == 0o600,
@@ -231,6 +247,8 @@ class FileRecovery:
                     continue
                 known_new = (entry['after'] is not None and current == entry['after']) or (
                     entry['after'] is None and entry.get('expected') is not None and same_contents(current, entry['expected']))
+                if name == 'bootstrap/cache/config.php' and entry['after'] is not None:
+                    known_new = known_new or restored_signature_matches(current, entry['after'])
                 # Unknown present bytes must also survive for manual review.
                 if not known_new and current is not None:
                     uncertain.append(name)
@@ -935,7 +953,7 @@ def restore_backup(backup):
         nonlocal marker
         marker=restore_maintenance(APP,marker);state['maintenance_marker']=marker
     def recovered_runtime():
-        need(immutable_snapshot(APP)==state['preserved'],'Unknown preserved state retained.')
+        need(preserved_restoration_matches(APP,state['preserved']),'Unknown preserved state retained.')
         web_php_probe(backup,True);php_configuration();maintenance_leave(APP,marker)
         for local in (True,False):
             for path in ('/login','/up'):

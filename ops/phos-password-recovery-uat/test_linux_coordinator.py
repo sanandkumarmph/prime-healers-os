@@ -114,7 +114,7 @@ class NarrowCoordinatorLinux(unittest.TestCase):
         return '200',b'fixture','Cache-Control: private, no-store\r\nReferrer-Policy: no-referrer\r\n'
     def invoke(self):
         self.assertNotEqual(self.app,REAL_APP);d.activate(self.payload,self.backup)
-    def assert_original(self):
+    def assert_original(self,allow_mail_restoration=False):
         for name,value in self.original.items():
             self.assertEqual((self.app/name).read_bytes(),value)
             info=(self.app/name).stat();self.assertEqual((info.st_uid,info.st_gid,stat.S_IMODE(info.st_mode)),(0,0,0o644))
@@ -123,7 +123,43 @@ class NarrowCoordinatorLinux(unittest.TestCase):
         self.assertFalse((self.app/d.NEW_PARENT).exists())
         for name,value in self.original_caches.items():self.assertEqual((self.app/'bootstrap/cache'/name).read_bytes(),value)
         self.assertEqual(d.tree_signature(self.app/'storage/framework/views'),self.original_views)
-        self.assertEqual(d.immutable_snapshot(self.app),self.preserved)
+        if allow_mail_restoration:
+            self.assertTrue(d.preserved_restoration_matches(self.app,self.preserved))
+        else:
+            self.assertEqual(d.immutable_snapshot(self.app),self.preserved)
+
+    def test_real_atomic_mail_restore_then_code_cache_and_view_recovery_leaves_uat_online(self):
+        self.invoke()
+        state=d.parse_json((self.backup/'recovery-state.json').read_bytes())
+        mail_spec=importlib.util.spec_from_file_location('mail_restore_fixture',HERE.parent/'phos-password-recovery-uat/setup-zoho-mail.py')
+        mail=importlib.util.module_from_spec(mail_spec);mail_spec.loader.exec_module(mail)
+        mail_backup=self.boundary/'mail-backup';self.mkdir(mail_backup,0,0o700)
+        entries={}
+        for label,name in [('environment','.env'),('config-cache','bootstrap/cache/config.php')]:
+            entry=mail.snapshot(self.app/name)
+            entries[label]={key:value for key,value in entry.items() if key!='data'}
+            mail.atomic(mail_backup/(label+'.before'),entry['data'],0,0,0o600)
+        env_before=d.signature(self.app/'.env')
+        cache_before=d.signature(self.app/'bootstrap/cache/config.php')
+        mail.atomic(self.app/'.env',b'APP_ENV=uat\nMAIL_PASSWORD="synthetic-mail-change"\n',5006,5006,0o600)
+        mail.atomic(self.app/'bootstrap/cache/config.php',b'synthetic mail cache',5006,5006,0o600)
+        mail_state={'files':entries,'cache_mutation_started':True,
+            'new_environment_signature':mail.file_signature(mail.snapshot(self.app/'.env')),
+            'new_cache_signature':mail.file_signature(mail.snapshot(self.app/'bootstrap/cache/config.php'))}
+        with patch.object(mail,'APP',self.app):mail.restore_files(mail_backup,mail_state)
+        self.assertNotEqual(d.signature(self.app/'.env')['inode'],env_before['inode'])
+        self.assertNotEqual(d.signature(self.app/'bootstrap/cache/config.php')['inode'],cache_before['inode'])
+        files=d.FileRecovery(self.app,self.backup,list(state['source']));files.entries=state['source']
+        parent=d.NewAuthParent(self.app);parent.entry=state['new_parent']
+        compiled=d.CompiledViewRecovery(self.app,Path(state['slot']));compiled.entries=state['compiled_views']
+        marker=d.maintenance_enter(self.app,self.backup)
+        def runtime():
+            d.need(d.preserved_restoration_matches(self.app,state['preserved']),'Restored preserved state differs.')
+            d.maintenance_leave(self.app,marker)
+        result=d.recover_with_maintenance(files,d.NarrowDirectoryRecovery(compiled,parent),lambda:None,lambda:None,runtime)
+        self.assertTrue(result['complete']);self.assertFalse(result['maintenance_retained'])
+        self.assertFalse((self.app/'storage/framework/down').exists())
+        self.assert_original(allow_mail_restoration=True)
 
     def test_success_installs_nine_only_with_real_ownership_and_private_cache(self):
         self.invoke()
