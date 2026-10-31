@@ -1,13 +1,23 @@
 <?php
 
+$configuredRuntimePath = trim((string) env('PDF_RUNTIME_PATH', ''));
+$runtimePath = $configuredRuntimePath !== ''
+    ? rtrim($configuredRuntimePath, '/\\')
+    : storage_path('app/pdf-runtime');
+$configuredTempPath = trim((string) env('PDF_TEMP_PATH', ''));
+$tempPath = $configuredTempPath !== '' ? $configuredTempPath : $runtimePath . '/tmp';
+$configuredProfilePath = trim((string) env('PDF_USER_DATA_DIR', ''));
+$profilePath = $configuredProfilePath !== '' ? $configuredProfilePath : $runtimePath . '/profile';
+
 return [
+    'runtime_path' => $runtimePath,
     'engine' => env('PDF_ENGINE', 'browsershot'),
     'node_binary' => env('PDF_NODE_BINARY', 'node'),
     'node_module_path' => env('PDF_NODE_MODULE_PATH', base_path('node_modules')),
     'browser_path' => env('PDF_BROWSER_PATH'),
     'disable_sandbox' => env('PDF_DISABLE_SANDBOX', DIRECTORY_SEPARATOR !== '\\'),
-    'temp_path' => env('PDF_TEMP_PATH', storage_path('app/pdf-runtime/tmp')),
-    'user_data_dir' => env('PDF_USER_DATA_DIR', storage_path('app/pdf-runtime/profile')),
+    'temp_path' => $tempPath,
+    'user_data_dir' => $profilePath,
     'currency_symbol' => env('PDF_CURRENCY_SYMBOL', "\u{20B9}"),
     'currency_fallback' => env('PDF_CURRENCY_FALLBACK', 'Rs.'),
     'optimize_images' => env('PDF_OPTIMIZE_IMAGES', true),
@@ -27,13 +37,13 @@ return [
     'environment' => [
         'windows' => [],
         'linux' => [
-            'HOME' => storage_path('app/pdf-runtime/home'),
-            'TMPDIR' => storage_path('app/pdf-runtime/tmp'),
-            'TMP' => storage_path('app/pdf-runtime/tmp'),
-            'TEMP' => storage_path('app/pdf-runtime/tmp'),
-            'XDG_CONFIG_HOME' => storage_path('app/pdf-runtime/xdg-config'),
-            'XDG_CACHE_HOME' => storage_path('app/pdf-runtime/xdg-cache'),
-            'XDG_RUNTIME_DIR' => storage_path('app/pdf-runtime/xdg-runtime'),
+            'HOME' => $runtimePath . '/home',
+            'TMPDIR' => $tempPath,
+            'TMP' => $tempPath,
+            'TEMP' => $tempPath,
+            'XDG_CONFIG_HOME' => $runtimePath . '/xdg-config',
+            'XDG_CACHE_HOME' => $runtimePath . '/xdg-cache',
+            'XDG_RUNTIME_DIR' => $runtimePath . '/xdg-runtime',
         ],
         'macos' => [],
     ],
