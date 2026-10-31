@@ -42,10 +42,48 @@ MAIL_KEYS = ('MAIL_MAILER', 'MAIL_HOST', 'MAIL_PORT', 'MAIL_SCHEME', 'MAIL_USERN
              'MAIL_PASSWORD', 'MAIL_FROM_ADDRESS', 'MAIL_FROM_NAME')
 OWNER = PHP = None
 UID = GID = None
+PHASE = 'startup'
+PHASES = frozenset({'startup', 'target_validation', 'lock', 'existing_configuration', 'operator_input',
+    'operator_host', 'operator_port', 'operator_name', 'operator_password', 'input_validation', 'preflight',
+    'configuration_snapshot', 'prepare_settings', 'candidate_configuration', 'web_identity_check',
+    'smtp_authentication', 'backup', 'maintenance', 'activate_settings', 'rebuild_cache',
+    'verify_configuration', 'invalidate_web_cache', 'complete', 'rollback'})
+SMTP_PHASES = frozenset({'connect', 'tls_connect', 'ehlo', 'starttls', 'auth_capability', 'authenticate', 'complete'})
+SMTP_ERROR_CLASSES = frozenset({'SMTPAuthenticationError', 'SSLCertVerificationError', 'SSLError', 'gaierror',
+    'TimeoutError', 'SMTPServerDisconnected', 'SMTPNotSupportedError', 'SMTPConnectError', 'ConnectionRefusedError',
+    'ConnectionResetError', 'ConnectionAbortedError', 'OSError', 'RuntimeError', 'KnownFailure', 'ValueError', 'ProbeError'})
+SMTP_REASONS = frozenset({'DNS_LOOKUP_FAILED', 'SMTP_CONNECTION_FAILED', 'SMTP_CONNECTION_CLOSED', 'SMTP_TIMEOUT',
+    'TLS_CERTIFICATE_REJECTED', 'TLS_HANDSHAKE_FAILED', 'STARTTLS_NOT_OFFERED', 'AUTH_MECHANISM_UNAVAILABLE',
+    'SMTP_AUTHENTICATION_REJECTED', 'SMTP_PROTOCOL_UNSUPPORTED', 'SMTP_UNEXPECTED_FAILURE'})
+SAFE_REASONS = SMTP_REASONS | frozenset({'INPUT_HOST_INVALID', 'INPUT_HOST_UNSUPPORTED', 'INPUT_PORT_INVALID',
+    'INPUT_PASSWORD_INVALID', 'INPUT_NAME_INVALID', 'SMTP_PROCESS_FAILED', 'SMTP_RESULT_INVALID', 'TLS_NOT_VERIFIED'})
 
 
 class Refused(RuntimeError):
     pass
+
+
+class DiagnosticRefused(Refused):
+    def __init__(self, reason, smtp_phase=None):
+        if reason not in SAFE_REASONS or (smtp_phase is not None and smtp_phase not in SMTP_PHASES):
+            raise Refused()
+        self.reason, self.smtp_phase = reason, smtp_phase
+        super().__init__(reason)
+
+
+def phase(value):
+    global PHASE
+    need(value in PHASES)
+    PHASE = value
+
+
+def diagnostic_fields(exception):
+    result = ' PHASE=' + PHASE + ' ERROR_CLASS=' + type(exception).__name__
+    if isinstance(exception, DiagnosticRefused):
+        result += ' REASON=' + exception.reason
+        if exception.smtp_phase is not None:
+            result += ' SMTP_PHASE=' + exception.smtp_phase
+    return result
 
 
 def need(condition):
@@ -74,11 +112,18 @@ def validate_input(value, *, limit=256):
 
 
 def settings(host, port, password, from_name):
-    validate_input(host, limit=80)
-    need(host in ZOHO_HOSTS and type(port) is int and port in (465, 587))
-    validate_input(password)
-    need(password == password.strip() and password.isascii())
-    validate_input(from_name, limit=120)
+    if not isinstance(host, str) or not 0 < len(host) <= 80 or any(ord(char) < 32 or ord(char) == 127 for char in host):
+        raise DiagnosticRefused('INPUT_HOST_INVALID')
+    if host not in ZOHO_HOSTS:
+        raise DiagnosticRefused('INPUT_HOST_UNSUPPORTED')
+    if type(port) is not int or port not in (465, 587):
+        raise DiagnosticRefused('INPUT_PORT_INVALID')
+    if not isinstance(password, str) or not 0 < len(password) <= 256 or not password.isascii() \
+            or password != password.strip() or any(ord(char) < 32 or ord(char) == 127 for char in password):
+        raise DiagnosticRefused('INPUT_PASSWORD_INVALID')
+    if not isinstance(from_name, str) or not 0 < len(from_name) <= 120 \
+            or any(ord(char) < 32 or ord(char) == 127 for char in from_name):
+        raise DiagnosticRefused('INPUT_NAME_INVALID')
     return {'MAIL_MAILER': 'smtp', 'MAIL_HOST': host, 'MAIL_PORT': str(port),
             'MAIL_SCHEME': 'smtps' if port == 465 else 'smtp', 'MAIL_USERNAME': MAILBOX,
             'MAIL_PASSWORD': password, 'MAIL_FROM_ADDRESS': MAILBOX, 'MAIL_FROM_NAME': from_name}
@@ -170,13 +215,14 @@ def as_owner():
     os.umask(0o077)
 
 
-def execute(arguments, *, content=None, timeout=90):
+def execute(arguments, *, content=None, timeout=90, allow_failure=False):
+    need(type(allow_failure) is bool)
     process = subprocess.run(arguments, cwd=APP,
                              env={'PATH': SYSTEM_PATH, 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8'},
                              input=content, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                              timeout=timeout, check=False, preexec_fn=as_owner)
-    need(process.returncode == 0 and len(process.stdout) <= 65536)
-    return process.stdout
+    need(process.returncode in ((0, 2) if allow_failure else (0,)) and len(process.stdout) <= 65536)
+    return (process.returncode, process.stdout) if allow_failure else process.stdout
 
 
 PHP_INSPECT = r'''
@@ -265,34 +311,82 @@ def inspect_configuration(content=None):
 
 
 SMTP_AUTH = r'''
-import json, smtplib, ssl, sys
+import json, smtplib, socket, ssl, sys
 client=None
+stage='connect'
+class KnownFailure(Exception):
+ def __init__(self,reason):
+  self.reason=reason if reason in ('STARTTLS_NOT_OFFERED','AUTH_MECHANISM_UNAVAILABLE') else 'SMTP_UNEXPECTED_FAILURE'
 try:
  value=json.load(sys.stdin)
  context=ssl.create_default_context();context.minimum_version=ssl.TLSVersion.TLSv1_2
  if value['port']==465:
+  stage='tls_connect'
   client=smtplib.SMTP_SSL(value['host'],465,timeout=20,context=context)
+  stage='ehlo'
   client.ehlo()
  else:
+  stage='connect'
   client=smtplib.SMTP(value['host'],587,timeout=20)
+  stage='ehlo'
   client.ehlo()
-  if not client.has_extn('starttls'):raise RuntimeError()
-  client.starttls(context=context);client.ehlo()
- if 'PLAIN' not in client.esmtp_features.get('auth','').upper().split():raise RuntimeError()
+  stage='starttls'
+  if not client.has_extn('starttls'):raise KnownFailure('STARTTLS_NOT_OFFERED')
+  client.starttls(context=context);stage='ehlo';client.ehlo()
+ stage='auth_capability'
+ if 'PLAIN' not in client.esmtp_features.get('auth','').upper().split():raise KnownFailure('AUTH_MECHANISM_UNAVAILABLE')
  # Exactly one AUTH attempt, no fallback/retry, and no SMTP message commands.
+ stage='authenticate'
  client.auth('PLAIN',lambda challenge=None:'\0support@primehealers.com\0'+value['password'],initial_response_ok=True)
+ stage='complete'
  print(json.dumps({'authenticated':True,'tls_version':client.sock.version()}))
 except Exception as exception:
- print(json.dumps({'error_class':type(exception).__name__}));sys.exit(2)
+ if isinstance(exception,KnownFailure):reason=exception.reason
+ elif isinstance(exception,smtplib.SMTPAuthenticationError):reason='SMTP_AUTHENTICATION_REJECTED'
+ elif isinstance(exception,ssl.SSLCertVerificationError):reason='TLS_CERTIFICATE_REJECTED'
+ elif isinstance(exception,ssl.SSLError):reason='TLS_HANDSHAKE_FAILED'
+ elif isinstance(exception,socket.gaierror):reason='DNS_LOOKUP_FAILED'
+ elif isinstance(exception,(TimeoutError,socket.timeout)):reason='SMTP_TIMEOUT'
+ elif isinstance(exception,smtplib.SMTPServerDisconnected):reason='SMTP_CONNECTION_CLOSED'
+ elif isinstance(exception,smtplib.SMTPNotSupportedError):reason='SMTP_PROTOCOL_UNSUPPORTED'
+ elif isinstance(exception,(smtplib.SMTPConnectError,ConnectionError,OSError)):reason='SMTP_CONNECTION_FAILED'
+ else:reason='SMTP_UNEXPECTED_FAILURE'
+ allowed={'SMTPAuthenticationError','SSLCertVerificationError','SSLError','gaierror','TimeoutError',
+  'SMTPServerDisconnected','SMTPNotSupportedError','SMTPConnectError','ConnectionRefusedError',
+  'ConnectionResetError','ConnectionAbortedError','OSError','RuntimeError','KnownFailure','ValueError'}
+ error=type(exception).__name__;error=error if error in allowed else 'ProbeError'
+ print(json.dumps({'authenticated':False,'error_class':error,'phase':stage,'reason':reason}));sys.exit(2)
 finally:
  if client is not None:client.close()
 '''
 
 
 def authenticate_once(values):
-    result = json.loads(execute([sys.executable, '-B', '-c', SMTP_AUTH], content=json.dumps({
-        'host': values['MAIL_HOST'], 'port': int(values['MAIL_PORT']), 'password': values['MAIL_PASSWORD']}).encode(), timeout=60))
-    need(result.get('authenticated') is True and result.get('tls_version') in ('TLSv1.2', 'TLSv1.3'))
+    try:
+        code, output = execute([sys.executable, '-I', '-B', '-c', SMTP_AUTH], content=json.dumps({
+            'host': values['MAIL_HOST'], 'port': int(values['MAIL_PORT']), 'password': values['MAIL_PASSWORD']}).encode(),
+            timeout=60, allow_failure=True)
+    except subprocess.TimeoutExpired:
+        raise DiagnosticRefused('SMTP_TIMEOUT') from None
+    except Refused:
+        raise DiagnosticRefused('SMTP_PROCESS_FAILED') from None
+    try:
+        result = json.loads(output)
+    except (ValueError, UnicodeError):
+        raise DiagnosticRefused('SMTP_RESULT_INVALID') from None
+    if code == 2:
+        if not isinstance(result, dict) or set(result) != {'authenticated', 'error_class', 'phase', 'reason'} \
+                or result.get('authenticated') is not False or not isinstance(result.get('reason'), str) \
+                or result['reason'] not in SMTP_REASONS or not isinstance(result.get('phase'), str) \
+                or result['phase'] not in SMTP_PHASES or not isinstance(result.get('error_class'), str) \
+                or result['error_class'] not in SMTP_ERROR_CLASSES:
+            raise DiagnosticRefused('SMTP_RESULT_INVALID')
+        raise DiagnosticRefused(result['reason'], result['phase'])
+    if code != 0 or not isinstance(result, dict) or set(result) != {'authenticated', 'tls_version'} \
+            or result.get('authenticated') is not True:
+        raise DiagnosticRefused('SMTP_RESULT_INVALID')
+    if result.get('tls_version') not in ('TLSv1.2', 'TLSv1.3'):
+        raise DiagnosticRefused('TLS_NOT_VERIFIED')
 
 
 def artisan(command):
@@ -500,28 +594,39 @@ def recover(backup, state):
 
 
 def configure(values):
+    phase('preflight')
     need(not (APP / 'storage/framework/down').exists())
+    phase('existing_configuration')
     before = inspect_configuration()
     need(before.get('identity_verified') is True and before.get('providers_loaded') == 0)
+    phase('configuration_snapshot')
     original = snapshot(APP / '.env')
     cached = snapshot(APP / 'bootstrap/cache/config.php')
+    phase('prepare_settings')
     changed = patch_environment(original['data'], values)
+    phase('candidate_configuration')
     valid = inspect_configuration({'candidate_b64': base64.b64encode(changed).decode(), 'expected': values})
     need(valid.get('candidate_valid') is True)
+    phase('web_identity_check')
     web_cache(False)
+    phase('smtp_authentication')
     authenticate_once(values)
     print('SMTP_AUTHENTICATED=true EMAIL_SENT=false')
+    phase('configuration_snapshot')
     require_unchanged(APP / '.env', original)
     require_unchanged(APP / 'bootstrap/cache/config.php', cached)
+    phase('backup')
     backup, state = make_backup(original, cached, changed, before)
     print('BACKUP_DIRECTORY=' + str(backup))
     print('RECOVERY_COMMAND=python3 -B ' + str(backup / 'rollback-helper.py') + ' --rollback ' + str(backup))
     try:
+        phase('maintenance')
         ensure_maintenance(backup, state)
         # Backup/maintenance creation can take time. Refuse a concurrent admin edit
         # at the actual activation boundary, including permission/mtime drift.
         require_unchanged(APP / '.env', original)
         require_unchanged(APP / 'bootstrap/cache/config.php', cached)
+        phase('activate_settings')
         atomic(APP / '.env', changed, original['uid'], original['gid'], original['mode'])
         state['new_environment_signature'] = file_signature(snapshot(APP / '.env'))
         state['phase'] = 'mail_environment_changed'
@@ -529,8 +634,10 @@ def configure(values):
         require_unchanged(APP / 'bootstrap/cache/config.php', cached)
         state['cache_mutation_started'] = True
         save_state(backup, state)
+        phase('rebuild_cache')
         artisan('config:clear')
         artisan('config:cache')
+        phase('verify_configuration')
         after = inspect_configuration({'expected': values})
         need(after.get('configuration_cached') is True and after.get('identity_verified') is True
              and after.get('protected_configuration_fingerprint') == before['protected_configuration_fingerprint'])
@@ -539,16 +646,19 @@ def configure(values):
         state['new_cache_sha256'] = cache['sha256']
         state['new_cache_signature'] = file_signature(cache)
         save_state(backup, state)
+        phase('invalidate_web_cache')
         web_cache(True)
         need(digest((APP / '.env').read_bytes()) == digest(changed))
         state['phase'] = 'complete'
         save_state(backup, state)
         leave_maintenance(state)
+        phase('complete')
         print('ZOHO_MAIL_CONFIGURATION_COMPLETE=true ENVIRONMENT=PHOS_UAT EMAIL_SENT=false PRODUCTION_CHANGED=false')
         print('MANUAL_FORGOT_PASSWORD_VERIFICATION_PENDING=true')
         return 0
     except BaseException as exception:
-        print('CONFIGURATION_COMPLETE=false ERROR_CLASS=' + type(exception).__name__)
+        print('CONFIGURATION_COMPLETE=false' + diagnostic_fields(exception))
+        phase('rollback')
         recover(backup, state)
         return 2
 
@@ -560,17 +670,25 @@ def prompt_values():
     with open('/dev/tty', 'r', encoding='utf-8') as terminal_input, \
             open('/dev/tty', 'w', encoding='utf-8', buffering=1) as terminal_output:
         need(terminal_input.isatty() and terminal_output.isatty())
+        phase('operator_host')
         terminal_output.write('Copy the exact SMTP hostname from this Zoho account Server Configuration Details: ')
         terminal_output.flush()
         host = terminal_input.readline().rstrip('\n')
+        if host not in ZOHO_HOSTS:
+            raise DiagnosticRefused('INPUT_HOST_UNSUPPORTED')
+        phase('operator_port')
         terminal_output.write('Port (465 for SMTPS or 587 for STARTTLS): ')
         terminal_output.flush()
         port = terminal_input.readline().rstrip('\n')
-        need(port in ('465', '587'))
+        if port not in ('465', '587'):
+            raise DiagnosticRefused('INPUT_PORT_INVALID')
+        phase('operator_name')
         terminal_output.write('Sender display name [Prime Healers]: ')
         terminal_output.flush()
         name = terminal_input.readline().rstrip('\n') or 'Prime Healers'
+        phase('operator_password')
         password = getpass.getpass('Zoho app-specific password (hidden; never paste into chat): ', stream=terminal_output)
+    phase('input_validation')
     return settings(host, int(port), password, name)
 
 
@@ -628,7 +746,9 @@ def main():
         parser = argparse.ArgumentParser(description='Configure only the authorized PHOS UAT Zoho mailbox; sends no mail.')
         parser.add_argument('--rollback', type=Path)
         args = parser.parse_args()
+        phase('target_validation')
         load_target()
+        phase('lock')
         lock_path = Path('/root/phos-zoho-mail-uat.lock')
         no_links(lock_path)
         descriptor = os.open(lock_path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
@@ -638,13 +758,16 @@ def main():
             signal.signal(signal.SIGTERM, interrupted)
             signal.signal(signal.SIGHUP, interrupted)
             if args.rollback:
+                phase('rollback')
                 return 0 if recover(args.rollback, load_recovery(args.rollback)) else 2
+            phase('existing_configuration')
             inspect_configuration()
+            phase('operator_input')
             return configure(prompt_values())
     except BaseException as exception:
         if isinstance(exception, SystemExit):
             return exception.code
-        print('ZOHO_MAIL_CONFIGURATION_COMPLETE=false ERROR_CLASS=' + type(exception).__name__)
+        print('ZOHO_MAIL_CONFIGURATION_COMPLETE=false' + diagnostic_fields(exception))
         return 2
 
 
