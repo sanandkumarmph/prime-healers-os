@@ -13,6 +13,7 @@
     $canReadInvoices = $currentUser?->canAccessModule('invoices', 'read') ?? false;
     $canCreatePayments = $currentUser?->canAccessModule('payments', 'create') ?? false;
     $hasSaleDeliverySupport = \Illuminate\Support\Facades\Schema::hasColumn('deliveries', 'sale_id');
+    $canViewDues = $currentUser?->canViewDues() ?? false;
     $canViewFinance = $currentUser?->canViewFinance() ?? false;
     $canViewFinanceSummary = $currentUser?->canViewFinance() ?? false;
     $currency = fn ($value) => "\u{20B9}" . number_format((float) $value, 2);
@@ -867,7 +868,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18v10H3z"/><path d="M7 15h5"/><path d="M17 11h.01"/></svg>
             </span>
             <span>Outstanding Sales Invoices</span>
-            <strong style="font-size:18px;">{{ $currency($outstandingInvoiceAmount) }}</strong>
+            <strong style="font-size:18px;">@if($canViewDues){{ $currency($outstandingInvoiceAmount) }}@else Restricted @endif</strong>
             <small>{{ $outstandingInvoiceCount }} open sales invoices</small>
         </a>
         <a href="{{ $salesUrl(['payment_status' => null]) }}" class="summary-card warning rn-summary-link">
@@ -932,7 +933,7 @@
             <a href="{{ $salesUrl(['payment_status' => null]) }}"><span>Sales</span><strong>{{ $totalSales }}</strong></a>
             <a href="{{ $salesUrl(['payment_status' => 'paid']) }}"><span>Paid</span><strong>{{ $paidSales }}</strong></a>
             <a href="{{ $salesUrl(['payment_status' => 'pending']) }}"><span>Pending</span><strong>{{ $pendingSales }}</strong></a>
-            <a href="{{ route('invoices.index', ['status' => 'unpaid']) }}"><span>Due</span><strong>{{ $currency($outstandingInvoiceAmount) }}</strong></a>
+            <a @if($canViewDues) href="{{ route('invoices.index', ['status' => 'open']) }}" @else aria-disabled="true" @endif data-sales-dues-summary><span>Due</span><strong>@if($canViewDues){{ $currency($outstandingInvoiceAmount) }}@else Restricted @endif</strong></a>
         </div>
 
         @if($canViewFinanceSummary || $canViewFinance)
