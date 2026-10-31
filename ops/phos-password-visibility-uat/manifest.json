@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "environment": "PHOS_UAT",
+  "baseline": "7e81f3fb20eea99fe13f19f48208f911b8369b56",
+  "release": "1c8f14bdcd1df687b461ae98f2c76e746cdf473b",
+  "archive_sha256": "6dd080e7b6c06ec9531fdd6a71668fc3471f1e00f9368e146aeb2c2dbb45bd8a",
+  "files": [
+    {
+      "path": "resources/views/auth/login.blade.php",
+      "sha256": "736cdec8656497fa47e10ae27b274348290b0fe3ec62295a152ede5cc03b034a",
+      "baseline_sha256": "d696c10244cf598fe348d365e0515e125689ce604e8ad48b2987a878dd74efa6",
+      "size": 2254
+    },
+    {
+      "path": "resources/views/auth/reset-password.blade.php",
+      "sha256": "a4bd3ae01042bfef159b8de1a7c4eac3501966ed2e895ab1bee713a739c5bcfe",
+      "baseline_sha256": "8bc47fe128deb801490256b4475042c0794e03117e87e03312fed83458277d93",
+      "size": 1737
+    },
+    {
+      "path": "resources/views/components/password-input.blade.php",
+      "sha256": "58bc0298dcf8653deff97d47cb29544f4078838eaf8b2eb19639e034b21425f6",
+      "baseline_sha256": null,
+      "size": 1655
+    }
+  ]
+}
