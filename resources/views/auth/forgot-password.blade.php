@@ -1,13 +1,13 @@
 <x-guest-layout>
     <div>
         <h1 class="auth-form-title">Reset your password</h1>
-        <p class="auth-form-copy">Enter your work email to request a password-reset link.</p>
+        <p class="auth-form-copy">Enter your work email to request a password reset link.</p>
     </div>
 
     <!-- Session Status -->
     <x-auth-session-status class="mb-4" :status="session('status')" />
-    @if (!$passwordRecoveryAvailable)
-        <p class="auth-form-copy" role="status">{{ \App\Services\Auth\PasswordRecovery::UNAVAILABLE }}</p>
+    @if(!$passwordRecoveryAvailable)
+        <p class="auth-form-copy">{{ \App\Services\Auth\PasswordRecovery::UNAVAILABLE }}</p>
     @endif
 
     <form method="POST" action="{{ route('password.email') }}">
@@ -25,6 +25,6 @@
                 {{ __('Send reset link') }}
             </button>
         </div>
-        <p class="mt-4"><a class="underline text-sm" href="{{ route('login') }}">Back to sign in</a></p>
+        <p class="auth-form-copy"><a href="{{ route('login') }}">Back to sign in</a></p>
     </form>
 </x-guest-layout>

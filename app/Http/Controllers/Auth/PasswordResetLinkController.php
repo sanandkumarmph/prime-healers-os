@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Services\Auth\PasswordRecovery;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use function Illuminate\Support\defer;
@@ -38,24 +38,29 @@ class PasswordResetLinkController extends Controller
         }
         $user = $recovery->eligibleUser($request->string('email')->toString());
         if ($user) {
-            // Finish the HTTP response before SMTP so mailbox eligibility does not
-            // expose the network delivery time. This requires no queue worker.
-            defer(function () use ($user): void {
+            // SMTP runs after the response so delivery timing does not reveal
+            // whether an address belongs to an eligible account. No worker is needed.
+            defer(function () use ($user, $recovery): void {
+                $current = null;
                 try {
-                    Password::sendResetLink(['email' => $user->getEmailForPasswordReset()]);
+                    $current = $recovery->eligibleUser($user->getEmailForPasswordReset());
+                    if (!$current || !$current->is($user)) {
+                        return;
+                    }
+                    Password::sendResetLink(['email' => $current->getEmailForPasswordReset()]);
                 } catch (\Throwable $exception) {
-                    // Do not log tokens, message bodies, recipient addresses or transport credentials.
                     Log::error('Password recovery delivery failed.', ['exception_type' => $exception::class]);
-                    try {
-                        Password::deleteToken($user);
-                    } catch (\Throwable $cleanupException) {
-                        Log::error('Password recovery token cleanup failed.', ['exception_type' => $cleanupException::class]);
+                    if ($current) {
+                        try {
+                            Password::deleteToken($current);
+                        } catch (\Throwable $cleanupException) {
+                            Log::error('Password recovery token cleanup failed.', ['exception_type' => $cleanupException::class]);
+                        }
                     }
                 }
             })->always();
         }
 
-        // An unknown, disabled or throttled account gets the same public response.
         return back()->with('status', PasswordRecovery::RECEIVED);
     }
 }

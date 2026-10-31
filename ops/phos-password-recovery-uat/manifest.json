@@ -1,0 +1,63 @@
+{
+  "archive_sha256": "34224f3c49b4caff1bfb3c566c37c834762951906b4073e71ce3966411708456",
+  "baseline": "90d81d9aa69951aad092caa89defa5524a9097c8",
+  "environment": "PHOS_UAT",
+  "files": [
+    {
+      "baseline_sha256": "64300ff2989baeb1924c6b0d698cdcd189796ed45d5b14135a03c4607e4007af",
+      "path": "app/Http/Controllers/Auth/NewPasswordController.php",
+      "sha256": "1b42e7ff700e6dfbcba661bfbe433ec364006264b89d14245c7008ab4e597451",
+      "size": 3093
+    },
+    {
+      "baseline_sha256": "82a07fee8b04223bf3587e5d3458de77275335104efa304aaf9e4a2dad1dea8c",
+      "path": "app/Http/Controllers/Auth/PasswordResetLinkController.php",
+      "sha256": "f869c86114a7af5b4e40fdc2706c4456de9d0bba6a1d1f5e6b31bdba9dd251ba",
+      "size": 2512
+    },
+    {
+      "baseline_sha256": null,
+      "path": "app/Http/Middleware/PasswordRecoveryHeaders.php",
+      "sha256": "55f2f1a6ff3aedf59576cee9036380942902ca6558a93de7eabb11aec39b429b",
+      "size": 458
+    },
+    {
+      "baseline_sha256": "9ee213c409de9210cfa71c0f01bffb8e545fac222e8289658b3a759e4e658491",
+      "path": "app/Providers/AppServiceProvider.php",
+      "sha256": "05ef2af6f22b7d14318f2058acae4ace97bf873d90ad58bddfe918ae26fd3a2a",
+      "size": 13427
+    },
+    {
+      "baseline_sha256": null,
+      "path": "app/Services/Auth/PasswordRecovery.php",
+      "sha256": "564f9c4e05e650fc7563dacd543ee969709703801675b9785c5e254140734069",
+      "size": 4518
+    },
+    {
+      "baseline_sha256": null,
+      "path": "app/Services/Auth/RevokeAccountSessions.php",
+      "sha256": "824adb9b3e83374827a0bf5a4202db1097c988dd48cfb133ccdcb240d3020ec8",
+      "size": 614
+    },
+    {
+      "baseline_sha256": "c43ff49a31c5f32ce21eb7159f2a4b3cd2f4074eaed5838d265646dbfedd3474",
+      "path": "config/mail.php",
+      "sha256": "bf3eb69073f18c28f4d2bfb238c079714fcf7ab42863b5aa95ade9b403370e1d",
+      "size": 3664
+    },
+    {
+      "baseline_sha256": "15b091b089dac7eb2e0dae0c701088de8a91c265f5766ee624d310b6e61e4ca2",
+      "path": "resources/views/auth/forgot-password.blade.php",
+      "sha256": "99466f7894b628ae52cae9e377458788ad3829bbf9fdab0fe75a8b652c923125",
+      "size": 1215
+    },
+    {
+      "baseline_sha256": "65beacc98506a95db64754d5cbd35e450ce8e8f0d66e697bae2b840ca6489dae",
+      "path": "routes/auth.php",
+      "sha256": "7e29faeadfc2d125b3ca8ddf18ec91056964d066de94fea0ab14055eff8599fa",
+      "size": 2752
+    }
+  ],
+  "format": 1,
+  "release": "7e81f3fb20eea99fe13f19f48208f911b8369b56"
+}

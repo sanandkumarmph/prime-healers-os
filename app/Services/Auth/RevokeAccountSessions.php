@@ -9,8 +9,8 @@ class RevokeAccountSessions
 {
     public function forUser(User $user): void
     {
-        // AuthenticateSession validates password hashes for other session stores.
-        // Also remove pre-existing database sessions which predate that middleware.
+        // This reset-only rollout revokes the target account's database sessions.
+        // Other accounts and non-database session stores are unchanged.
         if (config('session.driver') === 'database') {
             DB::connection(config('session.connection'))
                 ->table(config('session.table', 'sessions'))

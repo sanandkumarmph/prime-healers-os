@@ -6,14 +6,16 @@ use App\Models\Role;
 use App\Services\Auth\PasswordRecovery;
 use App\Services\Auth\RevokeAccountSessions;
 use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
-use Illuminate\Support\Facades\Mail;
 use Tests\Support\TestData;
 use Tests\TestCase;
 
@@ -24,33 +26,37 @@ class PasswordRecoverySecurityRegressionTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->withoutVite();
         Cache::flush();
         config([
-            'app.url' => 'https://uat-admin.primehealers.com',
+            'app.url' => 'https://recovery.phos.test',
             'mail.default' => 'smtp',
-            'mail.from.address' => 'support@primehealers.com',
-            'mail.mailers.smtp.host' => 'smtp.zoho.com',
+            'mail.from.address' => 'support@phos.test',
+            'mail.mailers.smtp.host' => 'smtp.phos.test',
             'mail.mailers.smtp.port' => 587,
-            'mail.mailers.smtp.username' => 'support@primehealers.com',
-            'mail.mailers.smtp.password' => 'synthetic-only-not-a-credential',
+            'mail.mailers.smtp.username' => 'support@phos.test',
+            'mail.mailers.smtp.password' => 'synthetic-test-value',
             'mail.mailers.smtp.url' => null,
         ]);
     }
 
-    public function test_unconfigured_email_never_claims_to_send_or_creates_a_reset_token(): void
+    public function test_unconfigured_email_never_claims_delivery_or_creates_a_token(): void
     {
         Notification::fake();
         $user = TestData::user();
         config(['mail.default' => 'log']);
+
         $this->get('/forgot-password')->assertOk()->assertSee(PasswordRecovery::UNAVAILABLE)
             ->assertSee('disabled', false)->assertSee('Back to sign in');
         $this->from('/forgot-password')->post('/forgot-password', ['email' => $user->email])
-            ->assertRedirect('/forgot-password')->assertSessionHasErrors(['email' => PasswordRecovery::UNAVAILABLE]);
+            ->assertRedirect('/forgot-password')
+            ->assertSessionHasErrors(['email' => PasswordRecovery::UNAVAILABLE]);
+
         Notification::assertNothingSent();
         $this->assertDatabaseCount('password_reset_tokens', 0);
     }
 
-    public function test_a_logging_fallback_or_placeholder_sender_is_not_deliverable(): void
+    public function test_logging_fallback_placeholder_sender_and_unsafe_base_url_are_unavailable(): void
     {
         $recovery = app(PasswordRecovery::class);
         $this->assertTrue($recovery->available());
@@ -58,209 +64,319 @@ class PasswordRecoverySecurityRegressionTest extends TestCase
         $this->assertFalse($recovery->available());
         config(['mail.default' => 'smtp', 'mail.from.address' => 'hello@example.com']);
         $this->assertFalse($recovery->available());
+        config(['mail.from.address' => 'support@phos.test', 'app.url' => 'https://user:password@recovery.phos.test']);
+        $this->assertFalse($recovery->available());
+        config(['app.url' => 'https://recovery.phos.test/?redirect=elsewhere']);
+        $this->assertFalse($recovery->available());
     }
 
-    public function test_known_unknown_and_disabled_accounts_get_the_same_public_response(): void
+    public function test_known_unknown_disabled_and_broker_throttled_accounts_have_the_same_public_status(): void
     {
         Notification::fake();
-        $org = TestData::organization();
-        $active = TestData::user($org);
-        $inactive = TestData::user($org, ['is_active' => false]);
-        foreach ([$active->email, 'not-an-account@primehealers.test', $inactive->email] as $email) {
+        $active = TestData::user();
+        $inactive = TestData::user($active->organization, ['is_active' => false]);
+
+        foreach ([$active->email, 'unknown@phos.test', $inactive->email, strtoupper($active->email)] as $email) {
             $this->from('/forgot-password')->post('/forgot-password', ['email' => $email])
                 ->assertRedirect('/forgot-password')->assertSessionHasNoErrors()
                 ->assertSessionHas('status', PasswordRecovery::RECEIVED);
         }
-        Notification::assertSentTo($active, ResetPassword::class);
+
+        Notification::assertSentToTimes($active, ResetPassword::class, 1);
         Notification::assertNotSentTo($inactive, ResetPassword::class);
         $this->assertDatabaseCount('password_reset_tokens', 1);
     }
 
-    public function test_recovery_url_uses_configured_origin_even_with_a_hostile_host_header(): void
+    public function test_case_insensitive_recovery_uses_only_the_configured_origin(): void
     {
         Notification::fake();
-        $user = TestData::user(null, ['email' => 'Team.Member@primehealers.test']);
-        $this->withServerVariables(['HTTP_HOST' => 'attacker.invalid'])->post('/forgot-password', ['email' => strtoupper($user->email)])
-            ->assertSessionHasNoErrors();
+        $user = TestData::user(null, ['email' => 'Team.Member@phos.test']);
+        $this->withServerVariables(['HTTP_HOST' => 'attacker.invalid'])
+            ->post('/forgot-password', ['email' => strtoupper($user->email)])->assertSessionHasNoErrors();
+
         Notification::assertSentTo($user, ResetPassword::class, function ($notice) use ($user) {
             $url = $notice->toMail($user)->actionUrl;
-            $this->assertStringStartsWith('https://uat-admin.primehealers.com/reset-password/', $url);
+            $this->assertStringStartsWith('https://recovery.phos.test/reset-password/', $url);
             $this->assertStringNotContainsString('attacker.invalid', $url);
-            $this->assertStringContainsString('email=Team.Member%40primehealers.test', $url);
+            $this->assertStringContainsString('email=Team.Member%40phos.test', $url);
             return true;
         });
     }
 
-    public function test_mail_is_deferred_until_after_the_public_http_response(): void
+    public function test_case_variant_account_collision_cannot_select_an_arbitrary_tenant_or_active_account(): void
+    {
+        Notification::fake();
+        $first = TestData::user(null, ['email' => 'Same.Address@phos.test']);
+        $second = TestData::user(null, ['email' => 'same.address@phos.test', 'is_active' => false]);
+        $hash = $first->password;
+        $token = Password::createToken($first);
+
+        $this->post('/forgot-password', ['email' => strtoupper($first->email)])
+            ->assertSessionHasNoErrors()->assertSessionHas('status', PasswordRecovery::RECEIVED);
+        $this->post('/reset-password', $this->resetPayload($first->email, $token))->assertSessionHasErrors('email');
+
+        Notification::assertNothingSent();
+        $this->assertNull(app(PasswordRecovery::class)->eligibleUser($first->email));
+        $this->assertSame($hash, $first->fresh()->password);
+        $this->assertTrue(Password::tokenExists($first, $token));
+        $this->assertFalse($second->is_active);
+    }
+
+    public function test_disabled_and_cross_tenant_assigned_roles_cannot_request_or_consume_reset_tokens(): void
     {
         Notification::fake();
         $user = TestData::user();
-        $request = \Illuminate\Http\Request::create('https://uat-admin.primehealers.com/forgot-password', 'POST', ['email' => $user->email]);
-        $kernel = $this->app->make(\Illuminate\Contracts\Http\Kernel::class);
-        $response = $kernel->handle($request);
+        $otherOrg = TestData::organization();
+        $hash = $user->password;
+        $remember = $user->remember_token;
+
+        foreach ([[$user->organization_id, false], [$otherOrg->id, true]] as $index => [$organizationId, $active]) {
+            $role = Role::create(['organization_id' => $organizationId, 'name' => 'Recovery role '.$index,
+                'slug' => 'recovery-role-'.$index, 'is_active' => $active, 'permissions' => []]);
+            $user->update(['role_id' => $role->id]);
+            $token = Password::createToken($user);
+
+            $this->post('/forgot-password', ['email' => $user->email])->assertSessionHasNoErrors()
+                ->assertSessionHas('status', PasswordRecovery::RECEIVED);
+            $this->post('/reset-password', $this->resetPayload($user->email, $token))->assertSessionHasErrors('email');
+            $this->assertTrue(Password::tokenExists($user, $token));
+        }
+
+        Notification::assertNothingSent();
+        $this->assertSame($hash, $user->fresh()->password);
+        $this->assertSame($remember, $user->fresh()->remember_token);
+    }
+
+    public function test_eligible_assigned_role_requires_no_new_administrative_privilege(): void
+    {
+        Notification::fake();
+        $user = TestData::user(null, ['role' => 'staff']);
+        $role = Role::create(['organization_id' => $user->organization_id, 'name' => 'Read only',
+            'slug' => 'recovery-read-only', 'is_active' => true, 'permissions' => ['rentals' => ['read']]]);
+        $user->update(['role_id' => $role->id]);
+
+        $this->post('/forgot-password', ['email' => $user->email])->assertSessionHasNoErrors();
+
+        Notification::assertSentTo($user, ResetPassword::class);
+        $this->assertSame('staff', $user->fresh()->role);
+        $this->assertSame(['rentals' => ['read']], $role->fresh()->permissions);
+    }
+
+    public function test_real_http_kernel_defers_mail_and_token_creation_until_termination(): void
+    {
+        Notification::fake();
+        $user = TestData::user();
+        [$kernel, $request, $response] = $this->beginRecovery($user->email);
+
         $this->assertSame(302, $response->getStatusCode());
+        $this->assertSame(PasswordRecovery::RECEIVED, $request->session()->get('status'));
         Notification::assertNothingSent();
         $this->assertDatabaseCount('password_reset_tokens', 0);
+
         $kernel->terminate($request, $response);
+
         Notification::assertSentTo($user, ResetPassword::class);
         $this->assertDatabaseCount('password_reset_tokens', 1);
     }
 
-    public function test_mail_delivery_exception_has_generic_response_and_no_token_or_secret_log(): void
-    {
-        $user = TestData::user();
-        Log::spy();
-        Password::shouldReceive('sendResetLink')->once()->andThrow(new \RuntimeException('secret transport detail'));
-        Password::shouldReceive('deleteToken')->once()->withArgs(fn ($candidate) => $candidate->is($user))->andReturnNull();
-        $this->from('/forgot-password')->post('/forgot-password', ['email' => $user->email])
-            ->assertSessionHasNoErrors()->assertSessionHas('status', PasswordRecovery::RECEIVED);
-        Log::shouldHaveReceived('error')->once()->with('Password recovery delivery failed.', ['exception_type' => \RuntimeException::class]);
-    }
-
-    public function test_recovery_endpoint_limits_unknown_accounts_too_and_validates_array_input(): void
+    public function test_deferred_mail_rechecks_account_status_before_creating_a_token(): void
     {
         Notification::fake();
-        $this->post('/forgot-password', ['email' => ['invalid']])->assertSessionHasErrors('email');
-        for ($i = 0; $i < 2; $i++) {
-            $this->post('/forgot-password', ['email' => 'unknown@primehealers.test'])->assertRedirect();
-        }
-        $this->post('/forgot-password', ['email' => 'unknown@primehealers.test'])->assertStatus(429);
+        $user = TestData::user();
+        [$kernel, $request, $response] = $this->beginRecovery($user->email);
+        $user->update(['is_active' => false]);
+
+        $kernel->terminate($request, $response);
+
         Notification::assertNothingSent();
+        $this->assertDatabaseCount('password_reset_tokens', 0);
+        $this->assertSame(PasswordRecovery::RECEIVED, $request->session()->get('status'));
     }
 
-    public function test_valid_reset_is_single_use_rotates_remember_token_and_revokes_old_database_sessions(): void
+    public function test_actual_broker_delivery_failure_removes_only_its_token_and_logs_no_transport_secret(): void
     {
         $user = TestData::user();
         $other = TestData::user($user->organization);
+        $otherToken = Password::createToken($other);
+        $secret = 'synthetic-smtp-password-and-private-recipient';
+        Log::spy();
+        Notification::shouldReceive('send')->once()->andReturnUsing(function () use ($user, $secret) {
+            $this->assertDatabaseHas('password_reset_tokens', ['email' => $user->email]);
+            throw new \RuntimeException($secret);
+        });
+        [$kernel, $request, $response] = $this->beginRecovery($user->email);
+        $this->assertSame(302, $response->getStatusCode());
+        $this->assertSame(PasswordRecovery::RECEIVED, $request->session()->get('status'));
+
+        $kernel->terminate($request, $response);
+
+        $this->assertStringNotContainsString($secret, $response->getContent());
+        $this->assertDatabaseMissing('password_reset_tokens', ['email' => $user->email]);
+        $this->assertTrue(Password::tokenExists($other, $otherToken));
+        Log::shouldHaveReceived('error')->once()->with('Password recovery delivery failed.', ['exception_type' => \RuntimeException::class]);
+        Log::shouldNotHaveReceived('warning');
+    }
+
+    public function test_recovery_throttles_unknown_addresses_across_case_variants_and_rejects_array_input(): void
+    {
+        Notification::fake();
+        $this->post('/forgot-password', ['email' => ['invalid']])->assertSessionHasErrors('email');
+        $this->post('/forgot-password', ['email' => 'unknown@phos.test'])->assertRedirect();
+        $this->post('/forgot-password', ['email' => 'UNKNOWN@phos.test'])->assertRedirect();
+        $this->post('/forgot-password', ['email' => 'unknown@phos.test'])->assertStatus(429);
+
+        Notification::assertNothingSent();
+        $this->assertDatabaseCount('password_reset_tokens', 0);
+    }
+
+    public function test_reset_submission_throttle_also_applies_to_invalid_accounts(): void
+    {
+        for ($i = 0; $i < 10; $i++) {
+            $this->post('/reset-password', $this->resetPayload('unknown@phos.test', 'invalid-token'))
+                ->assertSessionHasErrors('email');
+        }
+        $this->post('/reset-password', $this->resetPayload('unknown@phos.test', 'invalid-token'))->assertStatus(429);
+    }
+
+    public function test_valid_reset_is_single_use_rotates_remember_token_and_revokes_only_target_database_sessions(): void
+    {
+        $user = TestData::user(null, ['email' => 'Reset.Target@phos.test']);
+        $other = TestData::user($user->organization);
         $remember = $user->remember_token;
         $token = Password::createToken($user);
-        foreach (['legacy-a' => $user, 'legacy-b' => $user, 'other' => $other] as $id => $owner) {
-            DB::table('sessions')->insert(['id' => $id, 'user_id' => $owner->id, 'payload' => '', 'last_activity' => time()]);
+        foreach (['target-a' => $user->id, 'target-b' => $user->id, 'other' => $other->id, 'guest' => null] as $id => $owner) {
+            $this->sessionRow($id, $owner);
         }
         config(['session.driver' => 'database']);
-        $payload = ['email' => $user->email, 'token' => $token, 'password' => 'a unique recovery passphrase', 'password_confirmation' => 'a unique recovery passphrase'];
+        $payload = $this->resetPayload(strtoupper($user->email), $token);
+
         $this->post('/reset-password', $payload)->assertSessionHasNoErrors()->assertRedirect(route('login'));
+
         $this->assertTrue(Hash::check($payload['password'], $user->fresh()->password));
         $this->assertNotSame($remember, $user->fresh()->remember_token);
-        $this->assertDatabaseMissing('sessions', ['id' => 'legacy-a']);
-        $this->assertDatabaseMissing('sessions', ['id' => 'legacy-b']);
-        $this->assertDatabaseHas('sessions', ['id' => 'other']);
+        $this->assertDatabaseMissing('sessions', ['id' => 'target-a']);
+        $this->assertDatabaseMissing('sessions', ['id' => 'target-b']);
+        $this->assertDatabaseHas('sessions', ['id' => 'other', 'user_id' => $other->id]);
+        $this->assertDatabaseHas('sessions', ['id' => 'guest', 'user_id' => null]);
+        $newHash = $user->fresh()->password;
         $this->post('/reset-password', $payload)->assertSessionHasErrors('email');
+        $this->assertSame($newHash, $user->fresh()->password);
         $this->assertDatabaseMissing('password_reset_tokens', ['email' => $user->email]);
     }
 
-    public function test_expired_token_and_disabled_role_cannot_reset_a_password(): void
+    public function test_non_database_session_store_does_not_purge_database_sessions(): void
+    {
+        $user = TestData::user();
+        $this->sessionRow('unrelated-store', $user->id);
+        $token = Password::createToken($user);
+
+        $this->post('/reset-password', $this->resetPayload($user->email, $token))->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('sessions', ['id' => 'unrelated-store', 'user_id' => $user->id]);
+    }
+
+    public function test_expired_token_and_deactivation_after_issue_leave_password_remember_and_sessions_unchanged(): void
     {
         $user = TestData::user();
         $hash = $user->password;
+        $remember = $user->remember_token;
+        $this->sessionRow('unchanged', $user->id);
+        config(['session.driver' => 'database']);
         $token = Password::createToken($user);
-        $payload = ['email' => $user->email, 'token' => $token, 'password' => 'a unique recovery passphrase', 'password_confirmation' => 'a unique recovery passphrase'];
         $this->travel(61)->minutes();
-        $this->post('/reset-password', $payload)->assertSessionHasErrors('email');
+        $this->post('/reset-password', $this->resetPayload($user->email, $token))->assertSessionHasErrors('email');
         $this->travelBack();
-        $role = Role::create(['organization_id' => $user->organization_id, 'name' => 'Disabled', 'slug' => 'disabled', 'is_active' => false, 'permissions' => []]);
-        $user->update(['role_id' => $role->id]);
-        $payload['token'] = Password::createToken($user);
-        $this->post('/reset-password', $payload)->assertSessionHasErrors('email');
+        $token = Password::createToken($user);
+        $user->update(['is_active' => false]);
+        $this->post('/reset-password', $this->resetPayload($user->email, $token))->assertSessionHasErrors('email');
+
         $this->assertSame($hash, $user->fresh()->password);
+        $this->assertSame($remember, $user->fresh()->remember_token);
+        $this->assertDatabaseHas('sessions', ['id' => 'unchanged', 'user_id' => $user->id]);
+        $this->assertTrue(Password::tokenExists($user, $token));
     }
 
-    public function test_failed_session_revocation_rolls_back_the_password_change(): void
+    public function test_failed_session_purge_rolls_back_password_remember_token_token_consumption_and_deleted_sessions(): void
     {
         $user = TestData::user();
-        $oldHash = $user->password;
-        $oldRemember = $user->remember_token;
+        $other = TestData::user($user->organization);
+        $hash = $user->password;
+        $remember = $user->remember_token;
         $token = Password::createToken($user);
+        $this->sessionRow('rollback-target', $user->id);
+        $this->sessionRow('rollback-other', $other->id);
+        config(['session.driver' => 'database']);
         $revoker = \Mockery::mock(RevokeAccountSessions::class);
-        $revoker->shouldReceive('forUser')->once()->andThrow(new \RuntimeException('Synthetic revocation failure'));
+        $revoker->shouldReceive('forUser')->once()->withArgs(fn ($current) => $current->is($user))
+            ->andReturnUsing(function ($current) {
+                DB::table('sessions')->where('user_id', $current->id)->delete();
+                throw new \RuntimeException('Synthetic revocation failure');
+            });
         $this->app->instance(RevokeAccountSessions::class, $revoker);
         $this->withoutExceptionHandling();
+
         try {
-            $this->post('/reset-password', ['email' => $user->email, 'token' => $token, 'password' => 'new recovery passphrase', 'password_confirmation' => 'new recovery passphrase']);
-            $this->fail('The synthetic session failure must propagate.');
+            $this->post('/reset-password', $this->resetPayload($user->email, $token));
+            $this->fail('A failed purge must prevent a partially completed reset.');
         } catch (\RuntimeException $exception) {
             $this->assertSame('Synthetic revocation failure', $exception->getMessage());
         }
-        $this->assertSame($oldHash, $user->fresh()->password);
-        $this->assertSame($oldRemember, $user->fresh()->remember_token);
-        $this->assertTrue(Password::tokenExists($user->fresh(), $token));
+
+        $this->assertSame($hash, $user->fresh()->password);
+        $this->assertSame($remember, $user->fresh()->remember_token);
+        $this->assertTrue(Password::tokenExists($user, $token));
+        $this->assertDatabaseHas('sessions', ['id' => 'rollback-target', 'user_id' => $user->id]);
+        $this->assertDatabaseHas('sessions', ['id' => 'rollback-other', 'user_id' => $other->id]);
     }
 
-    public function test_existing_inactive_sessions_and_invalid_roles_are_rejected(): void
+    public function test_recovery_headers_cover_only_the_four_reset_routes(): void
     {
-        $user = TestData::user(null, ['is_active' => false]);
-        $this->actingAs($user)->get('/profile')->assertRedirect(route('login'));
-        $this->assertGuest();
-        $this->actingAs($user)->getJson('/profile')->assertForbidden();
-        $this->assertGuest();
-        $user->update(['is_active' => true, 'role_id' => Role::create(['organization_id' => $user->organization_id, 'name' => 'Disabled', 'slug' => 'disabled', 'is_active' => false, 'permissions' => []])->id]);
-        $this->actingAs($user->fresh())->get('/profile')->assertRedirect(route('login'));
-        $this->assertGuest();
-    }
-
-    public function test_established_session_with_an_old_password_hash_is_logged_out(): void
-    {
-        $user = TestData::user();
-        $oldHash = $user->password;
-        $user->update(['password' => 'new recovery phrase']);
-        $this->actingAs($user->fresh())->withSession(['password_hash_web' => $oldHash])->get('/profile')->assertRedirect(route('login'));
-        $this->assertGuest();
-    }
-
-    public function test_legacy_non_database_session_without_hash_needs_fresh_login(): void
-    {
-        $user = TestData::user();
-        $key = \Illuminate\Support\Facades\Auth::guard('web')->getName();
-        $this->actingAs($user)->withSession([$key => $user->id])->get('/profile')->assertRedirect(route('login'));
-        $this->assertGuest();
-        $this->post('/login', ['email' => $user->email, 'password' => 'password'])->assertRedirect();
-        $this->assertAuthenticatedAs($user);
-        $this->assertNotEmpty(session('password_hash_web'));
-        $this->get('/profile')->assertOk();
-    }
-
-    public function test_recovery_pages_disable_caching_and_referrers_and_keep_delivery_camera_permissions(): void
-    {
-        $response = $this->get('https://uat-admin.primehealers.com/forgot-password')->assertOk();
+        foreach (['password.request', 'password.email', 'password.reset', 'password.store'] as $name) {
+            $route = app('router')->getRoutes()->getByName($name);
+            $this->assertContains(\App\Http\Middleware\PasswordRecoveryHeaders::class, $route->gatherMiddleware());
+        }
+        foreach (['login', 'dashboard', 'profile.edit'] as $name) {
+            $this->assertNotContains(\App\Http\Middleware\PasswordRecoveryHeaders::class,
+                app('router')->getRoutes()->getByName($name)->gatherMiddleware());
+        }
+        foreach (['/forgot-password', '/reset-password/synthetic-token?email=user%40phos.test'] as $url) {
+            $response = $this->get($url)->assertOk()->assertHeader('Referrer-Policy', 'no-referrer');
+            $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+        }
+        $response = $this->post('/reset-password', $this->resetPayload('unknown@phos.test', 'invalid-token'));
         $response->assertHeader('Referrer-Policy', 'no-referrer');
         $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
-        $this->assertStringContainsString("object-src 'none'", $response->headers->get('Content-Security-Policy'));
-        $response->assertHeader('Permissions-Policy', 'camera=(self), geolocation=(self), microphone=()');
-        $response->assertHeader('Strict-Transport-Security', 'max-age=15552000');
     }
 
-    public function test_smtp_transports_require_encrypted_connections_without_sending_mail(): void
+    public function test_baseline_smtp_transports_require_tls_without_connecting_or_sending(): void
     {
         foreach ([['smtp', 587], ['smtps', 465]] as [$scheme, $port]) {
             config(['mail.mailers.smtp.scheme' => $scheme, 'mail.mailers.smtp.port' => $port]);
             Mail::purge('smtp');
             $transport = Mail::mailer('smtp')->getSymfonyTransport();
             $this->assertTrue($transport->isTlsRequired());
+            $this->assertTrue($transport->isAutoTls());
             if ($scheme === 'smtps') {
                 $this->assertTrue($transport->getStream()->isTls());
             }
         }
     }
 
-    public function test_configured_host_policy_rejects_other_domains_and_subdomains(): void
+    private function resetPayload(string $email, string $token): array
     {
-        $this->get('/login')->assertOk();
-        $hosts = (new \Illuminate\Http\Middleware\TrustHosts($this->app))->hosts();
-        $this->assertCount(1, $hosts);
-        \Illuminate\Http\Request::setTrustedHosts($hosts);
-        try {
-            $request = \Illuminate\Http\Request::create('https://uat-admin.primehealers.com/login');
-            $this->assertSame('uat-admin.primehealers.com', $request->getHost());
-            foreach (['attacker.invalid', 'attacker.uat-admin.primehealers.com'] as $host) {
-                try {
-                    \Illuminate\Http\Request::create('https://'.$host.'/login')->getHost();
-                    $this->fail('Untrusted host accepted.');
-                } catch (\Symfony\Component\HttpFoundation\Exception\SuspiciousOperationException) {
-                    $this->addToAssertionCount(1);
-                }
-            }
-        } finally {
-            \Illuminate\Http\Request::setTrustedHosts([]);
-        }
+        return ['email' => $email, 'token' => $token, 'password' => 'a unique recovery passphrase',
+            'password_confirmation' => 'a unique recovery passphrase'];
+    }
+
+    private function sessionRow(string $id, ?int $userId): void
+    {
+        DB::table('sessions')->insert(['id' => $id, 'user_id' => $userId, 'payload' => '', 'last_activity' => time()]);
+    }
+
+    private function beginRecovery(string $email): array
+    {
+        $request = Request::create('https://recovery.phos.test/forgot-password', 'POST', ['email' => $email]);
+        $kernel = $this->app->make(Kernel::class);
+        return [$kernel, $request, $kernel->handle($request)];
     }
 }

@@ -25,7 +25,25 @@ class PasswordRecovery
         $users = User::query()->whereRaw('LOWER(email) = ?', [strtolower(trim($email))])->limit(2)->get();
         $user = $users->count() === 1 ? $users->first() : null;
 
-        return $user?->hasActiveAccess() ? $user : null;
+        return $user && $this->eligible($user) ? $user : null;
+    }
+
+    public function eligible(User $user): bool
+    {
+        if (array_key_exists('is_active', $user->getAttributes()) && !$user->is_active) {
+            return false;
+        }
+        if ($user->role_id === null) {
+            return true;
+        }
+
+        $role = $user->assignedRole;
+
+        return $role !== null
+            && (int) $role->getKey() === (int) $user->role_id
+            && (int) $user->organization_id > 0
+            && (int) $role->organization_id === (int) $user->organization_id
+            && $role->is_active;
     }
 
     public function resetUrl(User $user, string $token): string
