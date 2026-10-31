@@ -42,8 +42,8 @@ class Fixture(unittest.TestCase):
 
 class PackageTests(Fixture):
     def test_review_boundary_and_exact_role_paths(self):
-        self.assertEqual(d.PACKAGE_RELEASE,'61ac958c6b40171e75e83e42eb836c6a6fe648b6')
-        self.assertEqual(len(d.BASELINE_HASHES),23)
+        self.assertEqual(d.PACKAGE_RELEASE,'f162ea25a90df3b8cae15d91eddacfcb917b5525')
+        self.assertEqual(len(d.BASELINE_HASHES),24)
         self.assertEqual(sum(value is None for value in d.BASELINE_HASHES.values()),3)
         with patch.object(d,'PACKAGE_RELEASE',None),self.assertRaises(d.Refused):d.load_package(self.root)
         with patch.object(d,'ACTIVATION_REVIEW_COMPLETE',False):
@@ -83,6 +83,30 @@ class PackageTests(Fixture):
 
 
 class RecoveryTests(Fixture):
+    def test_atomic_mail_cache_restoration_accepts_exact_bytes_metadata_and_mtime(self):
+        path=self.put('bootstrap/cache/config.php',b'baseline cache')
+        files=d.FileRecovery(self.root,self.backup,['bootstrap/cache/config.php']);files.snapshot()
+        files.install('bootstrap/cache/config.php',b'activated cache',self.uid,self.gid,0o600,lambda:None)
+        activated=files.entries['bootstrap/cache/config.php']['after']
+        d.atomic(path,b'activated cache',self.uid,self.gid,0o600)
+        os.utime(path,ns=(activated['mtime_ns'],activated['mtime_ns']))
+        self.assertTrue(d.restored_signature_matches(d.signature(path),activated))
+        self.assertEqual(files.restore_files(),[])
+        self.assertEqual(path.read_bytes(),b'baseline cache')
+
+    def test_only_preserved_environment_file_identity_may_change_and_real_drift_is_rejected(self):
+        original={'sha256':'a'*64,'size':12,'uid':5006,'gid':5006,'mode':0o600,
+                  'device':1,'inode':10,'mtime_ns':123,'ctime_ns':456}
+        expected={'.env':original,'composer.lock':original}
+        restored={**original,'inode':11,'ctime_ns':789}
+        with patch.object(d,'immutable_snapshot',return_value={'.env':restored,'composer.lock':original}):
+            self.assertTrue(d.preserved_restoration_matches(self.root,expected))
+        for key,value in [('sha256','b'*64),('size',13),('uid',99),('gid',99),('mode',0o644),('mtime_ns',124),('device',2)]:
+            with self.subTest(key=key),patch.object(d,'immutable_snapshot',return_value={'.env':{**restored,key:value},'composer.lock':original}):
+                self.assertFalse(d.preserved_restoration_matches(self.root,expected))
+        with patch.object(d,'immutable_snapshot',return_value={'.env':restored,'composer.lock':restored}):
+            self.assertFalse(d.preserved_restoration_matches(self.root,expected))
+
     def test_actual_source_new_file_undo_preserves_unrelated(self):
         self.put('app/Old.php',b'old');self.put('app/unrelated.php',b'unrelated')
         files=d.FileRecovery(self.root,self.backup,['app/Old.php','app/New.php']);files.snapshot()

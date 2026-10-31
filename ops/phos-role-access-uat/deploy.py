@@ -40,13 +40,14 @@ MAX_TREE=256*1024*1024
 CACHE_NAMES=('config.php','routes-v7.php')
 NEW_PARENT='app/Services'
 ACTIVATION_REVIEW_COMPLETE=True
-PACKAGE_RELEASE='61ac958c6b40171e75e83e42eb836c6a6fe648b6'
-PACKAGE_MANIFEST_SHA='a7417ff3caed6c70ed6eacb68eac4b9d6f8c811b38d8c625a9615a6ce6c616d9'
-PACKAGE_ARCHIVE_SHA='468ae788a546dd26a3395b432968bc7a84d5dc9b5351d0c31919cbbd0ab9649e'
+PACKAGE_RELEASE='f162ea25a90df3b8cae15d91eddacfcb917b5525'
+PACKAGE_MANIFEST_SHA='95a196f4a008c400220210f2eef10d9637ac5c8726f4c846ca9bb09f5e2ee7b4'
+PACKAGE_ARCHIVE_SHA='2573ef62427a03f399281d884730055829bf3f52f1c1ae564f235d2058e88c96'
 LOG_ROOT=None
 LOCK_PATHS=(Path('/root/phos-tabbed-dashboard-deploy.lock'),Path('/root/phos-zoho-mail-uat.lock'))
 BASELINE_HASHES={'app/Http/Controllers/Auth/AuthenticatedSessionController.php': 'f2154bfcde158b2ca1e60bf1e14e6da8035fe4c171ce4579c9138e2e3c97d309',
  'app/Http/Controllers/RentalController.php': 'e9848e19bcc3c268b191db12d1c4d835b36d684798478e0f7e1777399c0e8788',
+ 'app/Http/Controllers/ReportController.php': '5ce01bf8350adc463916e2c40a4ed08f4cce7cdd6ca3ed41068a82724c92b34d',
  'app/Http/Controllers/RoleController.php': 'e5c7d9c2374ad39065e2318fa3f5133bcbf3169d984bfb9d4f28b3706c3c060b',
  'app/Http/Controllers/UserController.php': '7e1f938daf31dd931d4ec7dce49c58cf331319c1566e2e8eb7de5197f9d3d1f9',
  'app/Http/Middleware/EnsureActiveAccount.php': None,
@@ -145,6 +146,22 @@ def same_contents(left, right):
     if left is None or right is None:
         return left is right
     return all(key in left and key in right and left[key] == right[key] for key in ('sha256', 'size', 'uid', 'gid', 'mode'))
+
+def restored_signature_matches(current, expected):
+    """Mail recovery atomically replaces known files while restoring their mtime."""
+    if current is None or expected is None:
+        return current is expected
+    return same_contents(current, expected) and all(
+        key in current and key in expected and current[key] == expected[key]
+        for key in ('device', 'mtime_ns'))
+
+
+def preserved_restoration_matches(root, expected):
+    current = immutable_snapshot(root)
+    return set(current) == set(expected) and all(
+        restored_signature_matches(current[name], expected[name]) if name == '.env'
+        else current[name] == expected[name] for name in expected)
+
 
 def private_file(path, owner=0):
     info = regular(path)
@@ -253,6 +270,8 @@ class FileRecovery:
                     continue
                 known_new = (entry['after'] is not None and current == entry['after']) or (
                     entry['after'] is None and entry.get('expected') is not None and same_contents(current, entry['expected']))
+                if name == 'bootstrap/cache/config.php' and entry['after'] is not None:
+                    known_new = known_new or restored_signature_matches(current, entry['after'])
                 # Unknown present bytes must also survive for manual review.
                 if not known_new and current is not None:
                     uncertain.append(name)
@@ -969,7 +988,7 @@ def restore_backup(backup):
         nonlocal marker
         marker=restore_maintenance(APP,marker);state['maintenance_marker']=marker
     def recovered_runtime():
-        need(immutable_snapshot(APP)==state['preserved'],'Unknown preserved state retained.')
+        need(preserved_restoration_matches(APP,state['preserved']),'Unknown preserved state retained.')
         web_php_probe(backup,True);php_configuration();maintenance_leave(APP,marker)
         for local in (True,False):
             for path in ('/login','/up'):

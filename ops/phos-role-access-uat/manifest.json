@@ -1,5 +1,5 @@
 {
-  "archive_sha256": "468ae788a546dd26a3395b432968bc7a84d5dc9b5351d0c31919cbbd0ab9649e",
+  "archive_sha256": "2573ef62427a03f399281d884730055829bf3f52f1c1ae564f235d2058e88c96",
   "baseline": "80b6616bc63d99519a1983e4adf17f834d92749e",
   "environment": "PHOS_UAT",
   "files": [
@@ -12,8 +12,14 @@
     {
       "baseline_sha256": "e9848e19bcc3c268b191db12d1c4d835b36d684798478e0f7e1777399c0e8788",
       "path": "app/Http/Controllers/RentalController.php",
-      "sha256": "4a3bdc6bada492c451c62e3738205314d48fc0c5b8240970e52b020a4d203438",
-      "size": 353135
+      "sha256": "c0bad2a29fbe98c974b2056b45dce34563e1d6e4ba27ede57b3022fd6703f137",
+      "size": 353326
+    },
+    {
+      "baseline_sha256": "5ce01bf8350adc463916e2c40a4ed08f4cce7cdd6ca3ed41068a82724c92b34d",
+      "path": "app/Http/Controllers/ReportController.php",
+      "sha256": "53ae48f01a96b8cbb2db125113f23cfad101819a706fd9e33efd2c6edcd0fec5",
+      "size": 103125
     },
     {
       "baseline_sha256": "e5c7d9c2374ad39065e2318fa3f5133bcbf3169d984bfb9d4f28b3706c3c060b",
@@ -143,5 +149,5 @@
     }
   ],
   "format": 1,
-  "release": "61ac958c6b40171e75e83e42eb836c6a6fe648b6"
+  "release": "f162ea25a90df3b8cae15d91eddacfcb917b5525"
 }
