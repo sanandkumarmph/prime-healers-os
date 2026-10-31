@@ -78,7 +78,7 @@ try {
    if(fixture.page==='tasks-attention'&&width<=390){
     const attention=await page.$$eval('.ops-attention-row',rows=>rows.filter(row=>row.getBoundingClientRect().height>0).map(row=>{const label=row.querySelector('span:nth-child(2)'),assignee=row.querySelector('em'),a=label.getBoundingClientRect(),b=assignee.getBoundingClientRect(),r=row.getBoundingClientRect();return{label:label.textContent.trim(),assignee:assignee.textContent.trim(),noOverlap:b.top>=a.bottom-1,contained:a.right<=r.right+1&&b.right<=r.right+1&&a.bottom<=r.bottom+1&&b.bottom<=r.bottom+1,width:r.width};}));
     check(`Tasks attention label/assignee do not overlap ${width}`,attention.length>0&&attention.every(row=>row.noOverlap&&row.contained),{attention});
-    const reachable=await page.$eval('.ops-attention-list',list=>{list.scrollTop=list.scrollHeight;const last=list.lastElementChild.getBoundingClientRect(),bounds=list.getBoundingClientRect();return last.bottom<=bounds.bottom+2&&last.top>=bounds.top-1;});
+    const reachable=await page.$eval('.ops-attention-list',list=>{list.scrollTop=list.scrollHeight;const last=list.lastElementChild.getBoundingClientRect(),bounds=list.getBoundingClientRect();const reachable=last.bottom<=bounds.bottom+2&&last.top>=bounds.top-1;list.scrollTop=0;return reachable;});
     check(`Last attention task remains reachable ${width}`,reachable);
    }
    if(width===1440||width===320||width===390){const filename=path.join(folder,'screenshots',fixture.page+'-'+width+'.png');await page.screenshot({path:filename});report.screenshots.push(filename);}

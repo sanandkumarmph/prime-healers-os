@@ -116,4 +116,5 @@ jobs:
       - name: Test actual dashboard task and product layouts on phones
         run: node --test tests/Browser/MobileDashboardTasksProductsTest.cjs
         env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
           PHOS_MOBILE_LAYOUT_RENDER_DIR: ${{ runner.temp }}/phos-mobile-layout-fixtures
