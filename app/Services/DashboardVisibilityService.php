@@ -8,7 +8,7 @@ class DashboardVisibilityService
 {
     public function forUser(?User $user): array
     {
-        if (!$user) {
+        if (!$user || ! $user->hasActiveAccess()) {
             return [
                 'delivery_focused' => false,
                 'warehouse_focused' => false,
@@ -154,7 +154,7 @@ class DashboardVisibilityService
 
     public function isDeliveryFocused(?User $user): bool
     {
-        return in_array($user?->effective_role, [
+        return ($user?->hasActiveAccess() ?? false) && in_array($user->effective_role, [
             User::ROLE_DELIVERY,
             User::ROLE_DELIVERY_EXECUTIVE,
             User::ROLE_VENDOR,
@@ -189,7 +189,7 @@ class DashboardVisibilityService
 
     public function isSalesFocused(?User $user): bool
     {
-        return in_array($user?->effective_role, [
+        return ($user?->hasActiveAccess() ?? false) && in_array($user->effective_role, [
             User::ROLE_SALES,
             User::ROLE_SALES_RENEWALS,
         ], true);

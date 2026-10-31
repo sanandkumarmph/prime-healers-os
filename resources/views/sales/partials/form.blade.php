@@ -936,7 +936,7 @@
         margin-bottom:2px;
     }
     .sales-referral-grid input,
-    .sales-referral-grid select,
+    .sales-referral-grid select:not(.searchable-select-native),
     .sales-referral-grid .searchable-select-trigger {
         min-height:40px;
         height:40px;
@@ -987,7 +987,7 @@
     }
 
     .sales-referral-grid input,
-    .sales-referral-grid select,
+    .sales-referral-grid select:not(.searchable-select-native),
     .sales-referral-grid textarea,
     .sales-referral-grid .searchable-select,
     .sales-referral-grid .searchable-select-trigger {
@@ -1067,7 +1067,7 @@
     }
 
     .sales-referral-grid input,
-    .sales-referral-grid select,
+    .sales-referral-grid select:not(.searchable-select-native),
     .sales-referral-grid textarea,
     .sales-referral-grid .searchable-select,
     .sales-referral-grid .searchable-select-trigger,

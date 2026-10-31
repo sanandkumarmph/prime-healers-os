@@ -228,6 +228,8 @@
         margin:0;
     }
     .rental-shell { display:grid; gap:10px; width:100%; max-width:100%; min-width:0; overflow-x:clip; }
+    .rental-shell .party-flow-shell { grid-template-columns:minmax(0, 1fr); min-width:0; }
+    .rental-shell .party-flow-shell > *, .rental-shell .party-flow-row > * { min-width:0; max-width:100%; }
     .rental-toolbar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:0; }
     .rental-title h1 { margin:0; font-size:24px; color:#0f172a; }
     .rental-title p { margin:4px 0 0; color:#64748b; font-size:13px; }
@@ -4282,7 +4284,7 @@
                 });
                 localStorage.setItem(draftKey, JSON.stringify({ savedAt: new Date().toISOString(), payload }));
                 saveDraftButton.textContent = 'Draft Saved';
-                setDraftStatus('Draft saved locally at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '.');
+            setDraftStatus('Draft saved locally at ' + new Date().toLocaleTimeString('en-IN', { timeZone: @json(config('app.timezone')), hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) + '.');
                 window.setTimeout(() => {
                     saveDraftButton.textContent = originalLabel;
                 }, 1800);
@@ -5978,8 +5980,9 @@
                 return 0;
             }
 
-            const startDate = new Date(startDateInput.value + 'T00:00:00');
-            const endDate = new Date(endDateInput.value + 'T00:00:00');
+            // Calendar-day durations must not depend on the browser's daylight-saving transitions.
+            const startDate = new Date(startDateInput.value + 'T00:00:00Z');
+            const endDate = new Date(endDateInput.value + 'T00:00:00Z');
 
             if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate < startDate) {
                 return 0;
@@ -7620,8 +7623,8 @@
                     rentalItems[index].start_date = startInputEl?.value || '';
                     rentalItems[index].end_date = endInputEl?.value || '';
                     if (rentalItems[index].start_date && rentalItems[index].end_date) {
-                        const start = new Date(rentalItems[index].start_date + 'T00:00:00');
-                        const end = new Date(rentalItems[index].end_date + 'T00:00:00');
+                        const start = new Date(rentalItems[index].start_date + 'T00:00:00Z');
+                        const end = new Date(rentalItems[index].end_date + 'T00:00:00Z');
                         if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end >= start) {
                             rentalItems[index].duration_days = Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
                             if (durationInputEl) durationInputEl.value = rentalItems[index].duration_days;

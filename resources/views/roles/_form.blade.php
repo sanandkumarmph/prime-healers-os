@@ -1,6 +1,7 @@
 @php
     $isEdit = $role->exists;
-    $selectedPermissions = old('permissions', $role->permissions ?? []);
+    $selectedPermissions = old('permissions', array_merge($role->permissions ?? [], ['__special' => $role->effectiveSpecialPermissions()]));
+    $selectedPermissions['__special'] = array_values(array_filter($selectedPermissions['__special'] ?? [], fn ($permission) => array_key_exists($permission, $specialPermissions ?? [])));
     $fieldError = fn (string $field) => $errors->first($field);
     $hasPermissionError = $errors->has('permissions') || collect($errors->keys())->contains(fn ($key) => str_starts_with($key, 'permissions.'));
     $actionLabels = ['read'=>'View','create'=>'Create','update'=>'Edit','delete'=>'Delete'];
@@ -49,6 +50,7 @@
 
     <form method="POST" action="{{ $isEdit ? route('roles.update', $role) : route('roles.store') }}" style="display:grid;gap:14px;" data-role-form>
         @csrf
+        <input type="hidden" name="permissions[__special][]" value="__none">
         @if($isEdit) @method('PUT') @endif
 
         <section class="rb-panel">

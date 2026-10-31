@@ -2405,6 +2405,7 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
     {
         $base = [
             'workflow_capture_form' => '1',
+            'signature_signer_name' => 'Synthetic signer',
             'signature_data' => $this->signatureDataUrl(),
             'location_missing_reason' => 'Indoor coverage blocked GPS at this step.',
             'proof_notes' => 'Captured during regression test.',

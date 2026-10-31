@@ -136,7 +136,9 @@
     }
 @endphp
 <style>
-    .bp-show { display:grid; gap:14px; padding:16px 20px 24px; max-width:1200px; margin:0 auto; }
+    .bp-show { display:grid; grid-template-columns:minmax(0,1fr); min-width:0; gap:14px; padding:16px 20px 24px; max-width:1200px; margin:0 auto; }
+    .bp-show-card, .bp-show-card > div, .bp-show-card > div > div { min-width:0; max-width:100%; }
+    .bp-show-card h1, .bp-show-value { overflow-wrap:anywhere; }
     .bp-show-card { background:#fff; border:1px solid #dbe3ef; border-radius:16px; padding:14px; box-shadow:0 10px 22px rgba(15,23,42,.05); }
     .bp-show-grid { display:grid; grid-template-columns:repeat(12, minmax(0,1fr)); gap:14px; }
     .bp-show-col-4 { grid-column:span 4; }
@@ -155,6 +157,8 @@
     }
     @media (max-width: 640px) {
         .bp-show { padding:14px; }
+        .bp-show-client-filters { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+        .bp-show-client-filters > div { grid-column:1 / -1; }
     }
 </style>
 
@@ -266,7 +270,7 @@
             <a href="{{ route('business-partners.clients.create', $businessPartner) }}" class="bp-show-btn">Add Actual Client</a>
         </div>
 
-        <form method="GET" style="display:grid;grid-template-columns:minmax(0,2fr) 220px auto auto;gap:10px;align-items:end;margin-top:14px;">
+        <form method="GET" class="bp-show-client-filters" style="display:grid;grid-template-columns:minmax(0,2fr) 220px auto auto;gap:10px;align-items:end;margin-top:14px;">
             <div>
                 <label style="display:block;margin-bottom:6px;color:#475569;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;">Search Clients</label>
                 <input type="text" name="client_search" value="{{ $clientSearch }}" placeholder="Search client name, phone, address, or city" style="width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:12px;padding:10px 12px;">

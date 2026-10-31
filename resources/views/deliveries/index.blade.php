@@ -1294,6 +1294,13 @@
         .ops-empty { margin:7px; padding:14px; font-size:12px; }
     }
     /* Table-local scrolling keeps schedule/assignee words out of tall narrow stacks. */
+    @media (max-width:767px) {
+        [data-phos-compact-page="deliveries"] .ops-control-strip { min-width:0; }
+        [data-phos-compact-page="deliveries"] .ops-attention-list { max-height:220px; overflow-y:auto; overflow-x:hidden; }
+        [data-phos-compact-page="deliveries"] .ops-attention-row { grid-template-columns:10px minmax(0,1fr); min-width:0; align-items:start; }
+        [data-phos-compact-page="deliveries"] .ops-attention-row span:nth-child(2) { white-space:normal; overflow-wrap:anywhere; }
+        [data-phos-compact-page="deliveries"] .ops-attention-row em { grid-column:2; min-width:0; max-width:100%; white-space:normal; overflow-wrap:anywhere; }
+    }
     @media (min-width: 769px) {
         [data-phos-compact-page="deliveries"] .ops-table { min-width:1280px; border-spacing:0 4px; }
         [data-phos-compact-page="deliveries"] .ops-col-order { width:190px; min-width:190px; }

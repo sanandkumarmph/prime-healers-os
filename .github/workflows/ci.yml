@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches:
@@ -14,25 +17,26 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # reviewed v2
         with:
           php-version: '8.2'
           coverage: none
           extensions: mbstring, dom, fileinfo, sqlite3, pdo_sqlite, gd
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
 
       - name: Cache Composer dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # reviewed v6
         with:
           path: vendor
           key: ${{ runner.os }}-php-${{ hashFiles('composer.lock') }}
@@ -62,6 +66,17 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Check locked dependencies for security advisories
+        run: |
+          composer audit --locked
+          npm audit --audit-level=moderate
+
+      - name: Test private UAT mail setup safety offline
+        run: python3 -B -m unittest discover -s ops/phos-access-security-uat -p 'test_*.py'
+
+      - name: Test deployment coordinator in disposable Linux ownership fixtures
+        run: sudo python3 -I -B -m unittest discover -s ops/phos-access-security-uat/dependency -p 'test_linux_coordinator.py' -v
 
       - name: Build frontend assets
         run: npm run build
@@ -95,3 +110,12 @@ jobs:
           DB_DATABASE: ":memory:"
           QUEUE_CONNECTION: sync
           SESSION_DRIVER: array
+
+      - name: Setup patched PHOS PDF Node runtime
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.4'
+          package-manager-cache: false
+
+      - name: Verify PDF compatibility on the patched Node 22 runtime
+        run: node --test tests/Browser/PdfRuntimeTest.cjs

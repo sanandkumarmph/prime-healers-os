@@ -89,7 +89,7 @@ class InventoryIntelligenceController extends Controller
                     ? $date['start']->format('Y-m-d')
                     : $date['label'];
             }
-            fputcsv($handle, $header);
+            \App\Support\SafeCsv::row($handle, $header);
 
             foreach ($report['rows'] as $row) {
                 $record = [
@@ -101,7 +101,7 @@ class InventoryIntelligenceController extends Controller
                     $record[] = (string) ($row['daily'][$date['key']]['closing_stock'] ?? 0);
                 }
 
-                fputcsv($handle, $record);
+                \App\Support\SafeCsv::row($handle, $record);
             }
 
             fclose($handle);
@@ -121,7 +121,7 @@ class InventoryIntelligenceController extends Controller
 
         return response()->streamDownload(function () use ($movements) {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, [
+            \App\Support\SafeCsv::row($handle, [
                 'Movement At',
                 'Product',
                 'Movement Type',
@@ -144,7 +144,7 @@ class InventoryIntelligenceController extends Controller
                     ?: $movement->rental?->customer_name
                     ?: null;
 
-                fputcsv($handle, [
+                \App\Support\SafeCsv::row($handle, [
                     optional($movement->movement_at)->format('Y-m-d H:i:s'),
                     $movement->product?->name,
                     $movement->movement_type,
@@ -198,7 +198,7 @@ class InventoryIntelligenceController extends Controller
 
         return response()->streamDownload(function () use ($reconciliation) {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, [
+            \App\Support\SafeCsv::row($handle, [
                 'Asset ID',
                 'Serial / Barcode',
                 'Product',
@@ -219,7 +219,7 @@ class InventoryIntelligenceController extends Controller
             ]);
 
             foreach (($reconciliation['unclassified_assets'] ?? []) as $asset) {
-                fputcsv($handle, [
+                \App\Support\SafeCsv::row($handle, [
                     $asset['asset_id'],
                     $asset['serial_number'] ?: ($asset['barcode_value'] ?: null),
                     $asset['product'],

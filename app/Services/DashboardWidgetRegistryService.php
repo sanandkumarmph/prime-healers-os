@@ -69,6 +69,10 @@ class DashboardWidgetRegistryService
 
     public function visibleWidgetsForUser(User $user): Collection
     {
+        if (! $user->hasActiveAccess() || ! $user->canAccessDashboard()) {
+            return collect();
+        }
+
         $role = $user->assignedRole;
         $configured = $role
             ? $this->configurationForRole($role)

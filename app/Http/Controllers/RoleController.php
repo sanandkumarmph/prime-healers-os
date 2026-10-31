@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Services\Access\RoleGrantGuard;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -75,8 +76,8 @@ class RoleController extends Controller
                         ->orWhere('slug', 'like', "%{$search}%");
                 });
             })
-            ->with(['users:id,role_id,name,email,phone,is_active'])
-            ->withCount('users')
+            ->with(['users' => fn ($query) => $query->where('organization_id', $organizationId)->select(['id', 'role_id', 'name', 'email', 'phone', 'is_active'])])
+            ->withCount(['users' => fn ($query) => $query->where('organization_id', $organizationId)])
             ->orderByDesc('is_system')
             ->orderBy('name')
             ->paginate(15)
@@ -105,17 +106,21 @@ class RoleController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate($this->validationRules());
-        $permissions = Role::normalizePermissions($validated['permissions'] ?? []);
+        $permissions = Role::normalizeExplicitPermissions($validated['permissions'] ?? []);
 
-        $role = Role::create([
+        $role = new Role([
             'organization_id' => $this->orgId(),
             'name' => $validated['name'],
-            'slug' => Str::slug($validated['slug'] ?: $validated['name'], '_'),
+            'slug' => Str::slug(($validated['slug'] ?? '') ?: $validated['name'], '_'),
             'description' => $validated['description'] ?? null,
             'permissions' => $permissions,
             'is_system' => false,
             'is_active' => (bool) ($validated['is_active'] ?? false),
         ]);
+        app(RoleGrantGuard::class)->mutate($request->user(), 'roles', 'create', function () use ($request, $role) {
+            app(RoleGrantGuard::class)->authorizeRoleChange($request->user(), $role);
+            $role->save();
+        });
 
         return redirect()->route('roles.show', $role)->with('success', 'Role created successfully.');
     }
@@ -123,7 +128,8 @@ class RoleController extends Controller
     public function show(Role $role)
     {
         $role = $this->scopedRole($role);
-        $role->load(['users.cityRecord']);
+        $role->load(['users' => fn ($query) => $query->where('organization_id', $this->orgId())
+            ->with(['cityRecord' => fn ($cities) => $cities->where('organization_id', $this->orgId())])]);
 
         return view('roles.show', [
             'role' => $role,
@@ -136,6 +142,7 @@ class RoleController extends Controller
     public function edit(Role $role)
     {
         $role = $this->scopedRole($role);
+        app(RoleGrantGuard::class)->authorizeRoleMutation(auth()->user(), $role);
 
         return view('roles.edit', [
             'role' => $role,
@@ -150,13 +157,22 @@ class RoleController extends Controller
         $role = $this->scopedRole($role);
         $validated = $request->validate($this->validationRules($role));
 
-        $role->update([
+        $attributes = [
             'name' => $validated['name'],
-            'slug' => Str::slug($validated['slug'] ?: $validated['name'], '_'),
+            'slug' => Str::slug(($validated['slug'] ?? '') ?: $validated['name'], '_'),
             'description' => $validated['description'] ?? null,
-            'permissions' => Role::normalizePermissions($validated['permissions'] ?? []),
+            'permissions' => Role::normalizeExplicitPermissions($validated['permissions'] ?? []),
             'is_active' => (bool) ($validated['is_active'] ?? false),
-        ]);
+        ];
+        app(RoleGrantGuard::class)->mutate($request->user(), 'roles', 'update', function () use ($request, $role, $attributes) {
+            $role->refresh();
+            $proposed = clone $role;
+            $proposed->fill($attributes);
+            $guard = app(RoleGrantGuard::class);
+            $guard->authorizeRoleChange($request->user(), $proposed, $role);
+            $guard->protectLastOwnerRole($role, $proposed);
+            $role->fill($attributes)->save();
+        });
 
         return redirect()->route('roles.show', $role)->with('success', 'Role updated successfully.');
     }
@@ -164,13 +180,18 @@ class RoleController extends Controller
     public function destroy(Role $role)
     {
         $role = $this->scopedRole($role);
+        return app(RoleGrantGuard::class)->mutate(auth()->user(), 'roles', 'delete', function () use ($role) {
+            $role->refresh();
+            app(RoleGrantGuard::class)->authorizeRoleMutation(auth()->user(), $role);
+            app(RoleGrantGuard::class)->protectLastOwnerRole($role, null);
 
-        if ($role->users()->exists()) {
-            return redirect()->route('roles.index')->with('error', 'Remove assigned users before deleting this role.');
-        }
+            if ($role->users()->exists()) {
+                return redirect()->route('roles.index')->with('error', 'Remove assigned users before deleting this role.');
+            }
 
-        $role->delete();
+            $role->delete();
 
-        return redirect()->route('roles.index')->with('success', 'Role deleted successfully.');
+            return redirect()->route('roles.index')->with('success', 'Role deleted successfully.');
+        });
     }
 }

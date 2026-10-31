@@ -673,7 +673,8 @@ class ReportController extends Controller
             return null;
         }
 
-        if ($delivery->assignedUser && $delivery->assignedUser->isVendor()) {
+        // Historical attribution follows the recorded assignment, not current login access.
+        if ((int) $delivery->organization_id > 0 && $delivery->assignedUser && (int) $delivery->assignedUser->organization_id === (int) $delivery->organization_id) {
             return $delivery->assignedUser->name;
         }
 
@@ -2028,10 +2029,10 @@ class ReportController extends Controller
 
         return response()->streamDownload(function () use ($dataset) {
             $output = fopen('php://output', 'w');
-            fputcsv($output, $dataset['columns']);
+            \App\Support\SafeCsv::row($output, $dataset['columns']);
 
             foreach ($dataset['rows'] as $row) {
-                fputcsv($output, $row);
+                \App\Support\SafeCsv::row($output, $row);
             }
 
             fclose($output);
