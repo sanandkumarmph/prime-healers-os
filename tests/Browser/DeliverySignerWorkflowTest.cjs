@@ -119,7 +119,21 @@ test('delivery and pickup signer acknowledgement works in the actual rendered wo
         }, value);
     }
     async function draw(page) {
-        await page.$eval('[data-signature-pad]', canvas => canvas.scrollIntoView({ block: 'center' }));
+        // Mobile step changes schedule scrolling on the next animation frame.
+        // Wait for stable, unobscured pointer targets before using coordinates.
+        await page.evaluate(() => { window.signerTestPosition = null; });
+        await page.waitForFunction(() => {
+            const canvas = document.querySelector('[data-signature-pad]');
+            canvas.scrollIntoView({ block: 'center', behavior: 'instant' });
+            const r = canvas.getBoundingClientRect();
+            const position = [r.x, r.y, r.width, r.height].join(',');
+            const prior = window.signerTestPosition;
+            const reachable = r.width > 100 && r.height > 80 && [
+                [r.x + 20, r.y + 30], [r.x + r.width * .35, r.y + 70], [r.x + r.width * .7, r.y + 35],
+            ].every(([x, y]) => document.elementFromPoint(x, y) === canvas);
+            window.signerTestPosition = { position, frames: reachable && prior?.position === position ? prior.frames + 1 : 0 };
+            return reachable && window.signerTestPosition.frames >= 3;
+        }, { polling: 'raf' });
         const r = await page.$eval('[data-signature-pad]', canvas => { const r = canvas.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width }; });
         await page.mouse.move(r.x + 20, r.y + 30); await page.mouse.down();
         await page.mouse.move(r.x + r.width * .35, r.y + 70, { steps: 6 });
