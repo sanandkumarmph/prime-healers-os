@@ -182,7 +182,7 @@ class RentalShowPremiumUiRegressionTest extends TestCase
         ]);
 
         $this->assertTrue($superAdmin->canViewFinance());
-        $this->assertTrue($finance->canViewFinance());
+        $this->assertFalse($finance->canViewFinance());
         $this->assertFalse($sales->canViewFinance());
         $this->assertFalse($operations->canViewFinance());
 

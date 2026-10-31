@@ -88,7 +88,7 @@ class UserController extends Controller
             'roleId' => $roleId,
             'cityId' => $cityId,
             'status' => $status,
-            'roles' => Role::forOrganization($this->orgId())->where('is_active', true)->orderBy('name')->get(),
+            'roles' => Role::forOrganization($this->orgId())->where('is_active', true)->inAccessOrder()->orderBy('name')->get(),
             'cities' => City::forOrganization($this->orgId())->where('is_active', true)->orderBy('name')->get(),
         ]);
     }
@@ -97,7 +97,7 @@ class UserController extends Controller
     {
         return view('users.create', [
             'user' => new User(['is_active' => true]),
-            'roles' => Role::forOrganization($this->orgId())->where('is_active', true)->orderBy('name')->get()
+            'roles' => Role::forOrganization($this->orgId())->where('is_active', true)->inAccessOrder()->orderBy('name')->get()
                 ->filter(fn (Role $role) => app(RoleGrantGuard::class)->canGrantRole(auth()->user(), $role))->values(),
             'cities' => City::forOrganization($this->orgId())->where('is_active', true)->orderBy('name')->get(),
         ]);
@@ -148,7 +148,7 @@ class UserController extends Controller
 
         return view('users.edit', [
             'user' => $user,
-            'roles' => Role::forOrganization($this->orgId())->where('is_active', true)->orderBy('name')->get()
+            'roles' => Role::forOrganization($this->orgId())->where('is_active', true)->inAccessOrder()->orderBy('name')->get()
                 ->filter(fn (Role $role) => app(RoleGrantGuard::class)->canGrantRole(auth()->user(), $role))->values(),
             'cities' => City::forOrganization($this->orgId())->where('is_active', true)->orderBy('name')->get(),
         ]);

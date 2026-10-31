@@ -2005,7 +2005,8 @@ class SaleController extends Controller
         $salesSummary = $this->salesMetrics()->summary(
             $summaryQuery,
             $this->orgId(),
-            $this->hasInvoiceSaleColumn()
+            $this->hasInvoiceSaleColumn(),
+            $request->user()->canViewFinance()
         );
         $totalSales = (int) ($salesSummary['totalSales'] ?? 0);
         $paidSales = (int) ($salesSummary['paidSalesCount'] ?? 0);

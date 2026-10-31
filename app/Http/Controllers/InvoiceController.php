@@ -524,7 +524,8 @@ class InvoiceController extends Controller
             ->withQueryString();
 
         $summaryQuery = $this->applyInvoiceFilters($this->invoiceBaseQuery(false, false), $request);
-        $invoiceSummary = $this->invoiceMetrics()->summary($summaryQuery);
+        $invoiceSummary = $this->invoiceMetrics()->summary($summaryQuery, null,
+            $request->user()->canViewFinance(), $request->user()->canViewDues());
         $invoiceStats = [
             'totalInvoices' => (int) ($invoiceSummary['totalInvoices'] ?? 0),
             'paidInvoices' => (int) ($invoiceSummary['paidInvoices'] ?? 0),

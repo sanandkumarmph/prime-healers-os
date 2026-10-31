@@ -34,8 +34,8 @@ class SalesVisibilityBoundariesRegressionTest extends TestCase
         $this->assertFalse($adminOperations->canViewProfitability());
 
         $this->assertTrue($finance->canViewRecordFinance());
-        $this->assertTrue($finance->canViewFinanceDashboard());
-        $this->assertTrue($finance->canViewProfitability());
+        $this->assertFalse($finance->canViewFinanceDashboard());
+        $this->assertFalse($finance->canViewProfitability());
 
         $this->assertFalse($vendor->canViewRecordFinance());
         $this->assertFalse($vendor->canViewFinanceDashboard());
@@ -75,7 +75,7 @@ class SalesVisibilityBoundariesRegressionTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_non_sales_report_reader_still_uses_existing_report_permission(): void
+    public function test_non_admin_report_reader_cannot_open_consolidated_business_reports(): void
     {
         $organization = TestData::organization();
 
@@ -96,6 +96,7 @@ class SalesVisibilityBoundariesRegressionTest extends TestCase
             'role_id' => $role->id,
         ]);
 
-        $this->assertTrue($reader->canAccessGeneralReports());
+        $this->assertFalse($reader->canAccessGeneralReports());
+        $this->actingAs($reader)->get(route('reports.index'))->assertForbidden();
     }
 }

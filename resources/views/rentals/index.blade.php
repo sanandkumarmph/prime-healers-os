@@ -12,7 +12,7 @@
     $canUpdateDeliveries = $currentUser?->canAccessModule('deliveries', 'update') ?? false;
     $canReadInvoices = $currentUser?->canAccessModule('invoices', 'read') ?? false;
     $canSeeRentalFinance = $currentUser?->canSeeRentalFinance() ?? false;
-    $canViewFinanceSummary = $currentUser?->isSuperAdmin() ?? false;
+    $canViewFinanceSummary = $currentUser?->canViewFinance() ?? false;
     $currency = fn ($value) => "\u{20B9}" . number_format((float) $value, 2);
     $queryWithoutPage = collect(request()->query())->except('page')->all();
     $rentalUrl = function (array $overrides = []) use ($queryWithoutPage) {

@@ -201,11 +201,11 @@ class VendorFulfilmentRegressionTest extends TestCase
     public function test_vendor_costs_are_only_visible_to_authorized_users_and_report_export_filters(): void
     {
         $organization = TestData::organization();
-        $viewer = $this->userWithRole($organization, 'Vendor Report Viewer', [
+        $viewer = $this->userWithRole($organization, 'Admin', [
             'vendors' => ['read'],
             '__special' => ['vendor_reports.view'],
         ]);
-        $finance = $this->userWithRole($organization, 'Vendor Finance', [
+        $finance = $this->userWithRole($organization, 'Admin Operations', [
             'vendors' => ['read'],
             '__special' => ['vendor_reports.view', 'vendor_reports.export', 'vendor_costs.view', 'vendor_costs.update'],
         ]);
@@ -408,7 +408,7 @@ class VendorFulfilmentRegressionTest extends TestCase
     public function test_vendor_report_detects_negative_margin_and_vendor_payment_reconciliation(): void
     {
         $organization = TestData::organization();
-        $finance = $this->userWithRole($organization, 'Vendor Finance', [
+        $finance = $this->userWithRole($organization, 'Admin Operations', [
             'vendors' => ['read'],
             '__special' => ['vendor_reports.view', 'vendor_reports.export', 'vendor_costs.view', 'vendor_costs.update'],
         ]);

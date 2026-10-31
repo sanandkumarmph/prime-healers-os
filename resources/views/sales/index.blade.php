@@ -14,7 +14,7 @@
     $canCreatePayments = $currentUser?->canAccessModule('payments', 'create') ?? false;
     $hasSaleDeliverySupport = \Illuminate\Support\Facades\Schema::hasColumn('deliveries', 'sale_id');
     $canViewFinance = $currentUser?->canViewFinance() ?? false;
-    $canViewFinanceSummary = $currentUser?->isSuperAdmin() ?? false;
+    $canViewFinanceSummary = $currentUser?->canViewFinance() ?? false;
     $currency = fn ($value) => "\u{20B9}" . number_format((float) $value, 2);
     $salesUrl = function (array $overrides = []) use ($search, $customerId, $paymentStatus, $fulfilmentSource, $fromDate, $toDate, $sortBy) {
         return route('sales.index', array_filter(array_merge([

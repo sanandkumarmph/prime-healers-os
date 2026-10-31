@@ -206,7 +206,7 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
         $superadminSales->assertOk();
         $deliverySales->assertOk();
         $this->assertSame((int) $superadminSales->viewData('totalSales'), (int) $deliverySales->viewData('totalSales'));
-        $this->assertSame((float) $superadminSales->viewData('totalSalesAmount'), (float) $deliverySales->viewData('totalSalesAmount'));
+        $this->assertSame(0.0, (float) $deliverySales->viewData('totalSalesAmount'));
 
         $superadminInvoices = $this->actingAs($superadmin)->get(route('invoices.index'));
         $deliveryInvoices = $this->actingAs($deliveryUser)->get(route('invoices.index'));
@@ -216,10 +216,7 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
             (int) (($superadminInvoices->viewData('invoiceStats')['totalInvoices'] ?? 0)),
             (int) (($deliveryInvoices->viewData('invoiceStats')['totalInvoices'] ?? 0))
         );
-        $this->assertSame(
-            (float) (($superadminInvoices->viewData('invoiceStats')['outstandingAmount'] ?? 0)),
-            (float) (($deliveryInvoices->viewData('invoiceStats')['outstandingAmount'] ?? 0))
-        );
+        $this->assertSame(0.0, (float) ($deliveryInvoices->viewData('invoiceStats')['outstandingAmount'] ?? 0));
     }
 
     public function test_delivery_taskboard_compact_kpis_count_open_assigned_tasks_for_delivery_user(): void

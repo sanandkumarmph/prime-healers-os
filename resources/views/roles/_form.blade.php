@@ -1,5 +1,7 @@
 @php
     $isEdit = $role->exists;
+    $rolePresets = \App\Models\Role::accessPresets();
+    if (!auth()->user()?->isSuperAdmin()) { unset($rolePresets['super_admin']); }
     $selectedPermissions = old('permissions', array_merge($role->permissions ?? [], ['__special' => $role->effectiveSpecialPermissions()]));
     $selectedPermissions['__special'] = array_values(array_filter($selectedPermissions['__special'] ?? [], fn ($permission) => array_key_exists($permission, $specialPermissions ?? [])));
     $fieldError = fn (string $field) => $errors->first($field);
@@ -85,7 +87,7 @@
                             <button type="button" class="perm-btn primary" data-permission-action="select-all">Select All</button>
                             <button type="button" class="perm-btn" data-permission-action="clear-all">Clear All</button>
                             <button type="button" class="perm-btn" data-permission-action="view-only">View Only</button>
-                            <select class="perm-select" data-template-select aria-label="Apply permission template"><option value="">Apply Template</option><option value="read">Read Only</option><option value="operations">Operations</option><option value="finance">Finance</option><option value="warehouse">Warehouse</option><option value="admin">Admin</option><option value="custom">Custom</option></select>
+                            <select class="perm-select" data-template-select aria-label="Apply standard role preset"><option value="">Choose a standard role</option>@foreach($rolePresets as $key => $preset)<option value="{{ $key }}">{{ $preset['name'] }}</option>@endforeach</select>
                             <button type="button" class="perm-btn" data-permission-action="collapse-all">Collapse All</button>
                         </div>
                     </div>
@@ -122,7 +124,7 @@
                 </section>
 
                 <section class="sensitive">
-                    <div class="sensitive-head"><div><h2 class="sensitive-title">Sensitive Access</h2><p style="margin:4px 0 0;color:#9a3412;font-size:12px;">Private exports, finance data, vendor costs, and system-level access.</p></div><button type="button" class="perm-btn warn" data-permission-action="select-sensitive">Select All</button></div>
+                    <div class="sensitive-head"><div><h2 class="sensitive-title">Sensitive Access</h2><p style="margin:4px 0 0;color:#9a3412;font-size:12px;">Consolidated revenue, collections, profit and vendor costs are restricted to Admin and Super Admin. Other roles can receive dues access and permitted record-level work access.</p></div><button type="button" class="perm-btn warn" data-permission-action="select-sensitive">Select All</button></div>
                     <div class="sensitive-grid">
                         @foreach(($specialPermissions ?? []) as $permissionKey => $permissionLabel)
                             <label class="sensitive-check"><input type="checkbox" name="permissions[__special][]" value="{{ $permissionKey }}" data-special-permission @checked(in_array($permissionKey, $selectedPermissions['__special'] ?? [], true))><span>{{ $permissionLabel }}</span></label>
@@ -134,7 +136,7 @@
             <aside class="summary" aria-label="Permission summary">
                 <section class="summary-card"><h2 class="summary-title">Permission Summary</h2><div class="summary-donut" data-summary-donut style="--enabled:0%;"><div class="summary-donut-inner"><div><span data-enabled-count>{{ $selectedModuleCount + $selectedSpecialCount }}</span><small>Total enabled</small></div></div></div><div class="summary-line"><span>Enabled</span><strong data-enabled-text>{{ $selectedModuleCount + $selectedSpecialCount }}</strong></div><div class="summary-line"><span>Disabled</span><strong data-disabled-text>{{ $totalPermissionCount - ($selectedModuleCount + $selectedSpecialCount) }}</strong></div><div class="summary-line"><span>Sensitive</span><strong data-sensitive-count>{{ $selectedSpecialCount }}</strong></div></section>
                 <section class="summary-card"><h2 class="summary-title">Module Coverage</h2><div class="module-progress">@foreach($permissionModules as $moduleKey => $moduleLabel)<div class="progress-row" data-module-progress="{{ $moduleKey }}"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ $moduleLabel }}</span><span class="progress-track"><span class="progress-fill" data-progress-fill></span></span><strong data-progress-text>{{ count($selectedPermissions[$moduleKey] ?? []) }}/{{ count($permissionActions) }}</strong></div>@endforeach</div></section>
-                <section class="summary-card"><h2 class="summary-title">Quick Templates</h2><div class="template-grid"><button type="button" class="template-btn" data-template-button="read">Read Only</button><button type="button" class="template-btn" data-template-button="operations">Operations</button><button type="button" class="template-btn" data-template-button="finance">Finance</button><button type="button" class="template-btn" data-template-button="warehouse">Warehouse</button><button type="button" class="template-btn" data-template-button="admin">Admin</button><button type="button" class="template-btn" data-template-button="custom">Custom</button></div></section>
+                <section class="summary-card"><h2 class="summary-title">Standard roles</h2><p style="font-size:12px;color:#64748b">Choose a starting point, review the permissions, then save. Only Admin and Super Admin can see consolidated business finances. Dues remain available to permitted staff.</p><div class="template-grid">@foreach($rolePresets as $key => $preset)<button type="button" class="template-btn" data-template-button="{{ $key }}">{{ $preset['name'] }}</button>@endforeach</div></section>
             </aside>
         </div>
 
@@ -153,14 +155,8 @@
     const dirtyText = root.querySelector('[data-save-state]');
     const dirtyDot = root.querySelector('[data-save-dot]');
     let dirty = false;
-    const templates = {
-        read: { all: ['read'] },
-        operations: { modules: { customers:['read','create','update'], products:['read'], assets:['read','update'], rentals:['read','create','update'], deliveries:['read','update'], reports:['read'] } },
-        finance: { modules: { customers:['read'], rentals:['read'], sales:['read'], invoices:['read','create','update'], payments:['read','create','update'], reports:['read'], settings:['read'] } },
-        warehouse: { modules: { products:['read'], assets:['read','create','update'], warehouses:['read','update'], deliveries:['read','update'], reports:['read'] } },
-        admin: { all: ['read','create','update','delete'] },
-        custom: null
-    };
+    const templates = @json($rolePresets);
+
     function markDirty(){ dirty = true; if (dirtyText) dirtyText.textContent = 'Unsaved changes'; if (dirtyDot) dirtyDot.style.background = '#f59e0b'; }
     function syncMirrors(module, action, checked){ root.querySelectorAll(`[data-mirror-checkbox][data-module="${module}"][data-action="${action}"], [data-mobile-mirror-checkbox][data-module="${module}"][data-action="${action}"]`).forEach(mirror => mirror.checked = checked); }
     function primaryBox(module, action){ return root.querySelector(`[data-permission-checkbox][data-module="${module}"][data-action="${action}"]`); }
@@ -186,9 +182,16 @@
     }
     function applyTemplate(name){
         const template = templates[name]; if (!template) return;
+        if (name === 'custom') { markDirty(); return; }
+        // Role identity determines work scope, so keep it consistent with the chosen preset.
+        form.querySelector('[name="name"]').value = template.name;
+        form.querySelector('[name="slug"]').value = template.slug;
         checkboxes().forEach(box => setBox(box, false)); specialBoxes().forEach(box => box.checked = false);
         if (template.all) checkboxes().forEach(box => setBox(box, template.all.includes(box.dataset.action)));
         if (template.modules) Object.entries(template.modules).forEach(([module, actions]) => actions.forEach(action => { const box = primaryBox(module, action); if (box) setBox(box, true); }));
+        specialBoxes().forEach(box => box.checked = (template.special || []).includes(box.value));
+        const dashboard = form.querySelector('[name="dashboard_access"]');
+        if (dashboard) dashboard.value = 'allow';
         markDirty(); updateSummary();
     }
     root.addEventListener('change', event => {

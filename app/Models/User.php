@@ -141,7 +141,8 @@ class User extends Authenticatable
 
     public function canSeeFinanceSummary(): bool
     {
-        return $this->canAccessModule('payments', 'read')
+        return $this->canViewConsolidatedFinance()
+            && $this->canAccessModule('payments', 'read')
             && $this->canAccessModule('invoices', 'read');
     }
 
@@ -173,6 +174,10 @@ class User extends Authenticatable
             self::ROLE_DELIVERY_EXECUTIVE,
         ])) {
             return false;
+        }
+
+        if ($this->effective_role === self::ROLE_FINANCE && $this->canViewDues()) {
+            return true;
         }
 
         return $this->matchesLegacyRoles([
@@ -297,6 +302,16 @@ class User extends Authenticatable
             return true;
         }
 
+        // Record-level work access is separate from organization-wide finance.
+        if (! $this->canViewConsolidatedFinance() && (
+            (str_starts_with($permission, 'finance.') && $permission !== 'finance.view_dues')
+            || $permission === 'dashboard.finance.full'
+            || str_starts_with($permission, 'vendor_costs.')
+            || str_starts_with($permission, 'vendor_reports.')
+        )) {
+            return false;
+        }
+
         if (str_contains($permission, '.')) {
             [$group, $action] = explode('.', $permission, 2);
 
@@ -343,8 +358,25 @@ class User extends Authenticatable
         return false;
     }
 
+    public function canViewConsolidatedFinance(): bool
+    {
+        return $this->isSuperAdmin() || $this->isAdminOperations()
+            || ($this->hasActiveAccess() && $this->effective_role === 'admin');
+    }
+
+    public function canViewDues(): bool
+    {
+        return $this->hasPermission('finance.view_dues') && $this->canAccessModule('invoices', 'read');
+    }
+
     public function canViewFinance(?string $permission = null): bool
     {
+        if ($permission === 'finance.view_dues') {
+            return $this->canViewDues();
+        }
+        if (! $this->canViewConsolidatedFinance()) {
+            return false;
+        }
         if ($permission !== null) {
             return $this->hasPermission($permission);
         }
@@ -387,17 +419,18 @@ class User extends Authenticatable
 
     public function canViewSensitiveBusinessAnalytics(): bool
     {
-        return $this->isSuperAdmin()
+        return $this->canViewConsolidatedFinance() && ($this->isSuperAdmin()
             || $this->isAdminOperations()
             || $this->hasAnyPermission([
                 'dashboard.business_signals',
                 'dashboard.organization_analytics',
-            ]);
+            ]));
     }
 
     public function canAccessGeneralReports(): bool
     {
-        return $this->canAccessModule('reports', 'read')
+        return $this->canViewConsolidatedFinance()
+            && $this->canAccessModule('reports', 'read')
             && ! $this->matchesLegacyRoles([
                 self::ROLE_SALES,
                 self::ROLE_SALES_RENEWALS,

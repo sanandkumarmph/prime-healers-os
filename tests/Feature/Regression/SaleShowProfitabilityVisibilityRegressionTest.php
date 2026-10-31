@@ -17,7 +17,7 @@ class SaleShowProfitabilityVisibilityRegressionTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_finance_user_can_see_sale_profitability_card(): void
+    public function test_finance_user_cannot_see_sale_profitability_card(): void
     {
         [$sale, $organization] = $this->saleFixture();
         $admin = TestData::user($organization, [
@@ -27,10 +27,10 @@ class SaleShowProfitabilityVisibilityRegressionTest extends TestCase
         $this->actingAs($admin)
             ->get(route('sales.show', $sale))
             ->assertOk()
-            ->assertSee('Profitability')
-            ->assertSee('Vendor Cost')
-            ->assertSee('Gross Margin')
-            ->assertSee('Margin %');
+            ->assertDontSee('Profitability')
+            ->assertDontSee('Vendor Cost')
+            ->assertDontSee('Gross Margin')
+            ->assertDontSee('Margin %');
     }
 
     public function test_operations_user_without_profit_permission_cannot_see_margin(): void

@@ -419,7 +419,7 @@ class ReportsSqliteRegressionTest extends TestCase
         $role = Role::create([
             'organization_id' => $organization->id,
             'name' => $name,
-            'slug' => str($name)->slug('_'),
+            'slug' => User::ROLE_ADMIN_OPERATIONS,
             'description' => $name,
             'permissions' => Role::normalizePermissions($permissions),
             'is_system' => false,

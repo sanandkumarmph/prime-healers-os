@@ -8,6 +8,7 @@
     $canDeleteInvoices = $currentUser?->canAccessModule('invoices', 'delete') ?? false;
     $canCreatePayments = $currentUser?->canAccessModule('payments', 'create') ?? false;
     $canViewFinance = $currentUser?->canViewFinance() ?? false;
+    $canViewDues = $currentUser?->canViewDues() ?? false;
     $canViewRecordFinance = $currentUser?->canViewRecordFinance() ?? false;
     $totalInvoices = (int) ($invoiceStats['totalInvoices'] ?? $invoices->total());
     $paidInvoices = (int) ($invoiceStats['paidInvoices'] ?? 0);
@@ -18,7 +19,7 @@
     $collectedThisMonth = (float) ($invoiceStats['collectedThisMonth'] ?? 0);
     $collectedToday = (float) ($invoiceStats['collectedToday'] ?? 0);
     $overdueAmount = (float) ($invoiceStats['overdueAmount'] ?? 0);
-    $largestInvoice = (float) ($invoiceStats['largestInvoice'] ?? ($invoices->max('total_amount') ?? 0));
+    $largestInvoice = $canViewFinance ? (float) ($invoiceStats['largestInvoice'] ?? ($invoices->max('total_amount') ?? 0)) : 0;
     $averageInvoiceValue = $totalInvoices > 0 ? ($totalBilled / max(1, $totalInvoices)) : 0;
     $currency = fn ($value, $decimals = 0) => '&#8377;' . number_format((float) $value, $decimals);
     $invoiceIcon = function (string $name): string {
@@ -1031,7 +1032,7 @@
         </a>
         <a href="{{ $invoiceUrl(['status' => 'open']) }}" class="invoice-summary-tile tone-amber">
             <span class="invoice-tile-icon">{!! $invoiceIcon('rupee') !!}</span><span>Outstanding</span>
-            <strong>@if($canViewRecordFinance){!! $currency($outstandingAmount) !!}@else Restricted @endif</strong><small>{{ $comparisonLabel('outstandingAmountChangePercent') }}</small>
+            <strong>@if($canViewDues){!! $currency($outstandingAmount) !!}@else Restricted @endif</strong><small>{{ $comparisonLabel('outstandingAmountChangePercent') }}</small>
         </a>
         <div class="invoice-summary-tile tone-green">
             <span class="invoice-tile-icon">{!! $invoiceIcon('card') !!}</span><span>Collected Month</span>
@@ -1216,7 +1217,7 @@
                                         </div>
                                         <div class="invoice-mobile-metric">
                                             <span>Balance</span>
-                                            <strong>@if($canViewRecordFinance)&#8377;{{ number_format($invoice->balance_amount, 2) }}@else Restricted @endif</strong>
+                                            <strong>@if($canViewRecordFinance || $canViewDues)&#8377;{{ number_format($invoice->balance_amount, 2) }}@else Restricted @endif</strong>
                                         </div>
                                     </div>
                                     <div class="invoice-mobile-meta">
@@ -1306,7 +1307,7 @@
                                     <td><span class="invoice-status-badge rn-badge {{ $statusClass }}">{{ $statusLabel }}</span></td>
                                     <td>{{ optional($invoice->due_date)->format('d/m/Y') ?: 'N/A' }}</td>
                                     <td class="invoice-money">@if($canViewRecordFinance)&#8377;{{ number_format($invoice->total_amount, 2) }}@else Restricted @endif</td>
-                                    <td class="invoice-money">@if($canViewRecordFinance)&#8377;{{ number_format($invoice->balance_amount, 2) }}@else Restricted @endif</td>
+                                    <td class="invoice-money">@if($canViewRecordFinance || $canViewDues)&#8377;{{ number_format($invoice->balance_amount, 2) }}@else Restricted @endif</td>
                                     <td>
                                         <div class="invoice-gst-compact">
                                             @if($canViewRecordFinance)
@@ -1368,12 +1369,12 @@
         <div class="invoice-side-card">
             <div class="invoice-side-head"><strong>Finance Summary</strong><span>Live</span></div>
             <div class="invoice-side-list">
-                <div><span>Outstanding</span><strong>@if($canViewRecordFinance){!! $currency($outstandingAmount) !!}@else Restricted @endif</strong></div>
-                <div><span>Overdue</span><strong class="danger">@if($canViewRecordFinance){!! $currency($overdueAmount) !!}@else Restricted @endif</strong></div>
+                <div><span>Outstanding</span><strong>@if($canViewDues){!! $currency($outstandingAmount) !!}@else Restricted @endif</strong></div>
+                <div><span>Overdue</span><strong class="danger">@if($canViewDues){!! $currency($overdueAmount) !!}@else Restricted @endif</strong></div>
                 <div><span>Collected Today</span><strong class="success">@if($canViewFinance){!! $currency($collectedToday) !!}@else Restricted @endif</strong></div>
                 <div><span>Collected Month</span><strong class="success">@if($canViewFinance){!! $currency($collectedThisMonth) !!}@else Restricted @endif</strong></div>
-                <div><span>Largest Invoice</span><strong>@if($canViewRecordFinance){!! $currency($largestInvoice) !!}@else Restricted @endif</strong></div>
-                <div><span>Average Invoice</span><strong>@if($canViewRecordFinance){!! $currency($averageInvoiceValue) !!}@else Restricted @endif</strong></div>
+                <div><span>Largest Invoice</span><strong>@if($canViewFinance){!! $currency($largestInvoice) !!}@else Restricted @endif</strong></div>
+                <div><span>Average Invoice</span><strong>@if($canViewFinance){!! $currency($averageInvoiceValue) !!}@else Restricted @endif</strong></div>
             </div>
         </div>
         <div class="invoice-side-card">
@@ -1389,7 +1390,7 @@
             <div class="invoice-side-head"><strong>Outstanding by Aging</strong><span>Balance</span></div>
             <div class="invoice-aging-body">
                 <div class="invoice-aging-donut" style="--p1: {{ round(($agingBuckets->get('0-30 Days')['amount'] / $agingTotal) * 100, 1) }}%; --p2: {{ round((($agingBuckets->get('0-30 Days')['amount'] + $agingBuckets->get('31-60 Days')['amount']) / $agingTotal) * 100, 1) }}%; --p3: {{ round((($agingBuckets->get('0-30 Days')['amount'] + $agingBuckets->get('31-60 Days')['amount'] + $agingBuckets->get('61-90 Days')['amount']) / $agingTotal) * 100, 1) }}%;">
-                    <strong>@if($canViewRecordFinance){!! $currency($agingBuckets->sum('amount')) !!}@else -- @endif</strong>
+                    <strong>@if($canViewDues){!! $currency($agingBuckets->sum('amount')) !!}@else -- @endif</strong>
                     <span>Total</span>
                 </div>
                 <div class="invoice-aging-list">
@@ -1397,7 +1398,7 @@
                         @php $agingPercent = $agingBuckets->sum('amount') > 0 ? round(($bucket['amount'] / max(1, $agingBuckets->sum('amount'))) * 100) : 0; @endphp
                         <div class="invoice-aging-row tone-{{ $bucket['tone'] }}">
                             <span><i></i>{{ $label }}</span>
-                            <strong>@if($canViewRecordFinance){!! $currency($bucket['amount']) !!} <em>{{ $agingPercent }}%</em>@else Restricted @endif</strong>
+                            <strong>@if($canViewDues){!! $currency($bucket['amount']) !!} <em>{{ $agingPercent }}%</em>@else Restricted @endif</strong>
                         </div>
                     @endforeach
                 </div>

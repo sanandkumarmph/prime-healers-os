@@ -5070,6 +5070,10 @@ class RentalController extends Controller
         $adjustmentGapAmount = (float) ($financeSummary['adjustmentGapAmount'] ?? 0);
         $totalBilledAmount = (float) ($financeSummary['netBilledAmount'] ?? 0);
         $outstandingDueAmount = (float) ($financeSummary['outstandingDuesAmount'] ?? 0);
+        if (! $canViewFinance && $currentUser->canViewDues()) {
+            $outstandingDueAmount = round((float) (clone $invoiceQuery)
+                ->whereIn('payment_status', ['unpaid', 'partial', 'overdue'])->sum('balance_amount'), 2);
+        }
         $unpaidInvoiceAmount = $outstandingDueAmount;
 
         $collectionSummary = $canViewFinance
@@ -5881,7 +5885,16 @@ class RentalController extends Controller
             'teamPerformancePeriodLabel'
         ));
 
-        return view('dashboard', $canViewRecordFinance ? $dashboardData : $this->redactDashboardRecordFinance($dashboardData));
+        if (! $canViewRecordFinance) {
+            $dashboardData = $this->redactDashboardRecordFinance($dashboardData);
+            if ($currentUser->canViewDues()) {
+                // Restore only the explicitly permitted balance, never the other financial payload.
+                $dashboardData['outstandingDueAmount'] = $outstandingDueAmount;
+                $dashboardData['unpaidInvoiceAmount'] = $outstandingDueAmount;
+            }
+        }
+
+        return view('dashboard', $dashboardData);
     }
 
     private function redactDashboardRecordFinance(mixed $value, ?\SplObjectStorage $seen = null): mixed
@@ -6535,10 +6548,10 @@ class RentalController extends Controller
         $returnedRentals = (int) ($rentalSummary['returnedRentals'] ?? 0);
         $endingSoonCount = (int) ($rentalSummary['endingSoonCount'] ?? 0);
 
-        $totalRentalValue = (clone $summaryQuery)->sum('rental_amount');
-        $totalDepositValue = (clone $summaryQuery)->sum('deposit_amount');
-        $totalTransportValue = (clone $summaryQuery)->sum('transport_amount');
-        $totalOtherValue = (clone $summaryQuery)->sum('other_amount');
+        $totalRentalValue = auth()->user()->canViewFinance() ? (clone $summaryQuery)->sum('rental_amount') : 0.0;
+        $totalDepositValue = auth()->user()->canViewFinance() ? (clone $summaryQuery)->sum('deposit_amount') : 0.0;
+        $totalTransportValue = auth()->user()->canViewFinance() ? (clone $summaryQuery)->sum('transport_amount') : 0.0;
+        $totalOtherValue = auth()->user()->canViewFinance() ? (clone $summaryQuery)->sum('other_amount') : 0.0;
         $renewalQueueCount = $endingSoonCount + $overdueCount;
         $renewalsThisMonthCount = 0;
         $renewalAmountThisMonth = 0;
@@ -6567,6 +6580,14 @@ class RentalController extends Controller
             $unbilledRenewalAmount = (float) ($renewalFinance['unbilledRenewalAmount'] ?? 0);
             $unpaidRenewalCount = (int) ($renewalFinance['unpaidRenewalCount'] ?? 0);
             $unpaidRenewalAmount = (float) ($renewalFinance['unpaidRenewalAmount'] ?? 0);
+        }
+
+        if (! auth()->user()->canViewFinance()) {
+            $renewalAmountThisMonth = 0.0;
+            $unbilledRenewalAmount = 0.0;
+        }
+        if (! auth()->user()->canViewDues()) {
+            $unpaidRenewalAmount = 0.0;
         }
 
         return view('rentals.index', array_merge($this->filterOptionData(), compact(
