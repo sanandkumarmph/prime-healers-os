@@ -46,10 +46,10 @@
             <p style="margin:0; color:#64748b;">User profile, access mapping, and internal company metadata.</p>
         </div>
         <div class="user-show-actions" style="display:flex; gap:10px; flex-wrap:wrap;">
-            @if($canUpdateUsers)
+            @if($canUpdateUsers && app(\App\Services\RoleGrantGuard::class)->mayManage($currentUser, $user))
                 <a href="{{ route('users.edit', $user) }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:600;">Edit</a>
             @endif
-            @if($canDeleteUsers && (int) $user->id !== (int) auth()->id())
+            @if($canDeleteUsers && app(\App\Services\RoleGrantGuard::class)->mayManage($currentUser, $user) && (int) $user->id !== (int) auth()->id())
                 <form method="POST" action="{{ route('users.destroy', $user) }}" style="margin:0;" onsubmit="return confirm('Delete this user? This will be blocked if dependencies exist.');">
                     @csrf
                     @method('DELETE')
@@ -68,6 +68,7 @@
         <div style="margin-bottom:18px; padding:14px 16px; border-radius:16px; background:#fff1f2; border:1px solid #fecaca; color:#991b1b;">{{ session('error') }}</div>
     @endif
 
+    <x-access-summary :user="$user" />
     <div class="user-show-layout" style="display:grid; grid-template-columns:1.2fr 0.8fr; gap:18px;">
         <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:22px; padding:22px;">
             <h2 style="margin:0 0 16px; font-size:20px;">Profile Summary</h2>
@@ -91,7 +92,7 @@
                 @if($user->cityRecord)
                     <a href="{{ route('cities.show', $user->cityRecord) }}" style="display:block; padding:12px 14px; border-radius:14px; background:#f8fafc; border:1px solid #e2e8f0; color:#0f172a; text-decoration:none; font-weight:600;">Open City</a>
                 @endif
-                @if($canUpdateUsers)
+                @if($canUpdateUsers && app(\App\Services\RoleGrantGuard::class)->mayManage($currentUser, $user))
                     <a href="{{ route('users.edit', $user) }}" style="display:block; padding:12px 14px; border-radius:14px; background:#eff6ff; border:1px solid #bfdbfe; color:#1d4ed8; text-decoration:none; font-weight:700;">Edit User</a>
                 @endif
             </div>

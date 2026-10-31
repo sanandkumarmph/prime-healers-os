@@ -172,17 +172,17 @@
 
                     <div class="role-actions-row" data-role-actions>
                         <button type="button" class="role-action" data-open-role-drawer="{{ $role->id }}" aria-label="Preview {{ $role->name }}">View</button>
-                        @if($canUpdateRoles)
+                        @if($canUpdateRoles && app(\App\Services\RoleGrantGuard::class)->mayManage($currentUser, $role))
                             <a class="role-action" href="{{ route('roles.edit', $role) }}" aria-label="Edit {{ $role->name }}">Edit</a>
                         @endif
                         <details class="role-menu">
                             <summary class="role-action icon" aria-label="More actions for {{ $role->name }}" title="More actions">...</summary>
                             <div class="role-menu-panel">
                                 <a class="role-menu-item" href="{{ route('roles.show', $role) }}">Open full page</a>
-                                @if($canUpdateRoles)
+                                @if($canUpdateRoles && app(\App\Services\RoleGrantGuard::class)->mayManage($currentUser, $role))
                                     <a class="role-menu-item" href="{{ route('roles.edit', $role) }}">Edit role</a>
                                 @endif
-                                @if($canDeleteRoles && (int) $role->users_count === 0)
+                                @if($canDeleteRoles && app(\App\Services\RoleGrantGuard::class)->mayManage($currentUser, $role) && (int) $role->users_count === 0)
                                     <form method="POST" action="{{ route('roles.destroy', $role) }}" onsubmit="return confirm('Delete this role?');">
                                         @csrf
                                         @method('DELETE')
@@ -291,11 +291,11 @@
                     </section>
 
                     <div class="drawer-footer">
-                        @if($canUpdateRoles)
+                        @if($canUpdateRoles && app(\App\Services\RoleGrantGuard::class)->mayManage($currentUser, $role))
                             <a class="role-action" href="{{ route('roles.edit', $role) }}">Edit Role</a>
                         @endif
                         <a class="role-action" href="{{ route('roles.show', $role) }}">Open Full Page</a>
-                        @if($canDeleteRoles && (int) $role->users_count === 0)
+                        @if($canDeleteRoles && app(\App\Services\RoleGrantGuard::class)->mayManage($currentUser, $role) && (int) $role->users_count === 0)
                             <form method="POST" action="{{ route('roles.destroy', $role) }}" onsubmit="return confirm('Delete this role?');">
                                 @csrf
                                 @method('DELETE')

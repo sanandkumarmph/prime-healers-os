@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Role;
 use App\Models\User;
-use App\Services\Access\RoleGrantGuard;
+use App\Services\RoleGrantGuard;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -49,6 +49,7 @@ class RoleController extends Controller
             'permissions.*' => 'nullable|array',
             'permissions.*.*' => ['string'],
             'is_active' => 'nullable|boolean',
+            'dashboard_access' => ['sometimes', Rule::in(['auto', 'allow', 'deny'])],
         ];
     }
 
@@ -107,6 +108,9 @@ class RoleController extends Controller
     {
         $validated = $request->validate($this->validationRules());
         $permissions = Role::normalizeExplicitPermissions($validated['permissions'] ?? []);
+        if (isset($validated['dashboard_access'])) {
+            $permissions['__dashboard'] = $validated['dashboard_access'];
+        }
 
         $role = new Role([
             'organization_id' => $this->orgId(),
@@ -157,11 +161,20 @@ class RoleController extends Controller
         $role = $this->scopedRole($role);
         $validated = $request->validate($this->validationRules($role));
 
+        $permissions = Role::normalizeExplicitPermissions($validated['permissions'] ?? []);
+        if (isset($validated['dashboard_access']) || array_key_exists('__dashboard', $role->permissions ?? [])) {
+            $permissions['__dashboard'] = $validated['dashboard_access'] ?? $role->permissions['__dashboard'];
+        }
+        // The legacy Staff dashboard grant is controlled by the dashboard selector,
+        // and has no row in the module CRUD builder.
+        if (in_array('read', $role->permissions['dashboard'] ?? [], true)) {
+            $permissions['dashboard'] = ['read'];
+        }
         $attributes = [
             'name' => $validated['name'],
             'slug' => Str::slug(($validated['slug'] ?? '') ?: $validated['name'], '_'),
             'description' => $validated['description'] ?? null,
-            'permissions' => Role::normalizeExplicitPermissions($validated['permissions'] ?? []),
+            'permissions' => $permissions,
             'is_active' => (bool) ($validated['is_active'] ?? false),
         ];
         app(RoleGrantGuard::class)->mutate($request->user(), 'roles', 'update', function () use ($request, $role, $attributes) {

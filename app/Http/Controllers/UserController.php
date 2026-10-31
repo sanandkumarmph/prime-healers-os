@@ -9,7 +9,7 @@ use App\Models\Rental;
 use App\Models\Role;
 use App\Models\Sale;
 use App\Models\User;
-use App\Services\Access\RoleGrantGuard;
+use App\Services\RoleGrantGuard;
 use App\Services\Auth\RevokeAccountSessions;
 use App\Support\InternalOrganization;
 use App\Support\PhoneNumber;

@@ -423,8 +423,8 @@ class User extends Authenticatable
     public function defaultRedirectRoute(): string
     {
         $candidates = [
-            'dashboard' => fn () => $this->hasPermission('dashboard.main') || $this->hasModulePermission('dashboard', 'read'),
-            'inventory.dashboard' => fn () => $this->hasPermission('dashboard.inventory'),
+            'dashboard' => fn () => $this->canAccessDashboard() && ($this->hasPermission('dashboard.main') || $this->hasModulePermission('dashboard', 'read') || ($this->assignedRole?->permissions['__dashboard'] ?? 'auto') === 'allow'),
+            'inventory.dashboard' => fn () => $this->canAccessDashboard() && $this->hasPermission('dashboard.inventory'),
             'enquiries.index' => fn () => $this->canAccessModule('enquiries', 'read'),
             'rentals.index' => fn () => $this->canAccessModule('rentals', 'read'),
             'deliveries.index' => fn () => $this->canAccessModule('deliveries', 'read'),
@@ -482,6 +482,15 @@ class User extends Authenticatable
     {
         if (! $this->hasActiveAccess()) {
             return false;
+        }
+
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        $access = $this->assignedRole?->permissions['__dashboard'] ?? 'auto';
+        if ($access !== 'auto') {
+            return $access === 'allow';
         }
 
         return true

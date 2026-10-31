@@ -181,6 +181,10 @@ class Role extends Model
     {
         $normalized = [];
 
+        if (in_array('read', $permissions['dashboard'] ?? [], true)) {
+            $normalized['dashboard'] = ['read'];
+        }
+
         foreach (self::MODULES as $module => $label) {
             $actions = collect($permissions[$module] ?? [])
                 ->map(fn ($action) => strtolower((string) $action))
@@ -205,6 +209,9 @@ class Role extends Model
         if (($permissions['__special_explicit'] ?? false) === true) {
             $normalized['__special'] ??= [];
             $normalized['__special_explicit'] = true;
+        }
+        if (in_array($permissions['__dashboard'] ?? null, ['auto', 'allow', 'deny'], true)) {
+            $normalized['__dashboard'] = $permissions['__dashboard'];
         }
 
         return $normalized;
