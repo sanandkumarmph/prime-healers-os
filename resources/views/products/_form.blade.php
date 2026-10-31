@@ -483,7 +483,7 @@
         display:none;
     }
     .inventory-advanced-settings summary::after {
-        content:'âŒ„';
+        content:'⌄';
         color:#64748b;
         font-size:16px;
     }
@@ -875,10 +875,10 @@
                 <div class="product-form-card product-mobile-section is-open" data-product-mobile-section="basics">
                     <button type="button" class="product-mobile-section-header" data-product-mobile-toggle aria-expanded="true">
                         <span class="product-mobile-section-title">
-                            <span>â–¡</span>
+                            <span aria-hidden="true">□</span>
                             <span>Product Basics<small>Name, category, catalog IDs</small></span>
                         </span>
-                        <span class="product-mobile-section-chevron">âŒ„</span>
+                        <span class="product-mobile-section-chevron" aria-hidden="true">⌄</span>
                     </button>
                     <div class="product-mobile-desktop-heading" style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:18px;">
                         <div>
@@ -994,10 +994,10 @@
                 <div class="product-form-card product-mobile-section" data-product-mobile-section="inventory">
                     <button type="button" class="product-mobile-section-header" data-product-mobile-toggle aria-expanded="false">
                         <span class="product-mobile-section-title">
-                            <span>â–£</span>
+                            <span aria-hidden="true">▣</span>
                             <span>Inventory Configuration<small>Type, stock mode, quantity</small></span>
                         </span>
-                        <span class="product-mobile-section-chevron">âŒ„</span>
+                        <span class="product-mobile-section-chevron" aria-hidden="true">⌄</span>
                     </button>
                     <div class="product-mobile-desktop-heading" style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
                         <div>
@@ -1029,10 +1029,10 @@
                                     </span>
                                     <span class="inventory-profile-examples">Beds, concentrators, CPAP, BiPAP, wheelchairs.</span>
                                     <span class="inventory-profile-checks">
-                                        <span>âœ“ Rental</span>
-                                        <span>âœ“ Sale</span>
-                                        <span>âœ“ Asset tracking</span>
-                                        <span>âœ“ Serial numbers</span>
+                                        <span>✓ Rental</span>
+                                        <span>✓ Sale</span>
+                                        <span>✓ Asset tracking</span>
+                                        <span>✓ Serial numbers</span>
                                     </span>
                                 </label>
                                 <label class="inventory-profile-card {{ $inventoryProfile === 'consumable' ? 'is-selected' : '' }}" data-inventory-profile-card>
@@ -1051,9 +1051,9 @@
                                     </span>
                                     <span class="inventory-profile-examples">Masks, filters, tubing, accessories, diapers.</span>
                                     <span class="inventory-profile-checks">
-                                        <span>âœ“ Sale only</span>
-                                        <span>âœ“ Quantity stock</span>
-                                        <span>âœ“ No asset tracking</span>
+                                        <span>✓ Sale only</span>
+                                        <span>✓ Quantity stock</span>
+                                        <span>✓ No asset tracking</span>
                                     </span>
                                 </label>
                             </div>
@@ -1160,10 +1160,10 @@
                 <div class="product-form-card product-mobile-section" data-product-mobile-section="pricing">
                     <button type="button" class="product-mobile-section-header" data-product-mobile-toggle aria-expanded="false">
                         <span class="product-mobile-section-title">
-                            <span>â‚¹</span>
+                            <span aria-hidden="true">₹</span>
                             <span>Pricing &amp; Tax<small>Sale, rental, GST setup</small></span>
                         </span>
-                        <span class="product-mobile-section-chevron">âŒ„</span>
+                        <span class="product-mobile-section-chevron" aria-hidden="true">⌄</span>
                     </button>
                     <div class="product-mobile-desktop-heading">
                         <h2 style="margin:0;">Pricing</h2>
@@ -1726,15 +1726,15 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         if (validation('name')) {
-            validation('name').textContent = name ? 'âœ“ Product name entered' : 'Product name required';
+            validation('name').textContent = name ? '✓ Product name entered' : 'Product name required';
             validation('name').className = name ? 'is-ok' : 'is-warn';
         }
         if (validation('pricing')) {
-            validation('pricing').textContent = pricingConfigured ? 'âœ“ Pricing configured' : 'Pricing not configured';
+            validation('pricing').textContent = pricingConfigured ? '✓ Pricing configured' : 'Pricing not configured';
             validation('pricing').className = pricingConfigured ? 'is-ok' : 'is-warn';
         }
         if (validation('gst')) {
-            validation('gst').textContent = gstTaxType?.value ? 'âœ“ GST selected' : 'GST not selected';
+            validation('gst').textContent = gstTaxType?.value ? '✓ GST selected' : 'GST not selected';
             validation('gst').className = gstTaxType?.value ? 'is-ok' : 'is-warn';
         }
     };

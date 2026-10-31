@@ -43,6 +43,7 @@ class StandardRolePresetRegressionTest extends TestCase
         $before = Role::count();
         $response = $this->actingAs($owner)->get(route('roles.create'))->assertOk()
             ->assertSeeText('Standard roles')->assertSeeText('Accounts / Finance')
+            ->assertSee('id="standard-role-preset"', false)
             ->assertSee('data-template-button="service"', false)
             ->assertSee('data-template-button="delivery"', false);
         if ($folder = getenv('PHOS_ROLE_PRESET_RENDER_DIR')) {
