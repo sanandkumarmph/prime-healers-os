@@ -34,14 +34,14 @@ class DashboardMetricsService
         return $this->rentalMetrics->dashboardLifecycleSnapshot($rentals, $today);
     }
 
-    public function salesSummary(Builder $salesQuery, int $organizationId, bool $hasInvoiceSaleColumn = false): array
+    public function salesSummary(Builder $salesQuery, int $organizationId, bool $hasInvoiceSaleColumn = false, bool $includeAmounts = true): array
     {
-        return $this->salesMetrics->summary($salesQuery, $organizationId, $hasInvoiceSaleColumn);
+        return $this->salesMetrics->summary($salesQuery, $organizationId, $hasInvoiceSaleColumn, $includeAmounts);
     }
 
-    public function invoiceSummary(Builder $invoiceQuery, ?Carbon $today = null): array
+    public function invoiceSummary(Builder $invoiceQuery, ?Carbon $today = null, bool $includeAmounts = true): array
     {
-        return $this->invoiceMetrics->summary($invoiceQuery, $today);
+        return $this->invoiceMetrics->summary($invoiceQuery, $today, $includeAmounts);
     }
 
     public function financeSummary(

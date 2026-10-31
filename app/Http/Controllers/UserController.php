@@ -9,11 +9,14 @@ use App\Models\Rental;
 use App\Models\Role;
 use App\Models\Sale;
 use App\Models\User;
+use App\Services\RoleGrantGuard;
+use App\Services\Auth\RevokeAccountSessions;
 use App\Support\InternalOrganization;
 use App\Support\PhoneNumber;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
@@ -61,7 +64,10 @@ class UserController extends Controller
 
         $users = User::query()
             ->where('organization_id', $this->orgId())
-            ->with(['assignedRole', 'cityRecord'])
+            ->with([
+                'assignedRole' => fn ($query) => $query->where('organization_id', $this->orgId()),
+                'cityRecord' => fn ($query) => $query->where('organization_id', $this->orgId()),
+            ])
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($innerQuery) use ($search) {
                     $innerQuery->where('name', 'like', "%{$search}%")
@@ -91,7 +97,8 @@ class UserController extends Controller
     {
         return view('users.create', [
             'user' => new User(['is_active' => true]),
-            'roles' => Role::forOrganization($this->orgId())->where('is_active', true)->orderBy('name')->get(),
+            'roles' => Role::forOrganization($this->orgId())->where('is_active', true)->orderBy('name')->get()
+                ->filter(fn (Role $role) => app(RoleGrantGuard::class)->canGrantRole(auth()->user(), $role))->values(),
             'cities' => City::forOrganization($this->orgId())->where('is_active', true)->orderBy('name')->get(),
         ]);
     }
@@ -101,20 +108,24 @@ class UserController extends Controller
         $validated = $request->validate($this->validationRules());
         $validated = PhoneNumber::normalizeFields($validated, ['phone']);
         $role = Role::forOrganization($this->orgId())->findOrFail($validated['role_id']);
+        $user = app(RoleGrantGuard::class)->mutate($request->user(), 'users', 'create', function () use ($request, $validated, $role) {
+            $role->refresh();
+            app(RoleGrantGuard::class)->authorizeUserRole($request->user(), $role);
 
-        $user = User::create([
-            'organization_id' => $this->orgId(),
-            'name' => $validated['name'],
-            'email' => $validated['email'],
-            'phone' => $validated['phone'] ?? null,
-            'address' => $validated['address'] ?? null,
-            'password' => Hash::make($validated['password']),
-            'role_id' => $role->id,
-            'role' => $role->slug,
-            'city_id' => $validated['city_id'] ?? null,
-            'is_internal' => true,
-            'is_active' => (bool) ($validated['is_active'] ?? false),
-        ]);
+            return User::create([
+                'organization_id' => $this->orgId(),
+                'name' => $validated['name'],
+                'email' => $validated['email'],
+                'phone' => $validated['phone'] ?? null,
+                'address' => $validated['address'] ?? null,
+                'password' => Hash::make($validated['password']),
+                'role_id' => $role->id,
+                'role' => $role->slug,
+                'city_id' => $validated['city_id'] ?? null,
+                'is_internal' => true,
+                'is_active' => (bool) ($validated['is_active'] ?? false),
+            ]);
+        });
 
         return redirect()->route('users.show', $user)->with('success', 'User created successfully.');
     }
@@ -122,7 +133,10 @@ class UserController extends Controller
     public function show(User $user)
     {
         $user = $this->scopedUser($user);
-        $user->load(['assignedRole', 'cityRecord']);
+        $user->load([
+            'assignedRole' => fn ($query) => $query->where('organization_id', $this->orgId()),
+            'cityRecord' => fn ($query) => $query->where('organization_id', $this->orgId()),
+        ]);
 
         return view('users.show', compact('user'));
     }
@@ -130,10 +144,12 @@ class UserController extends Controller
     public function edit(User $user)
     {
         $user = $this->scopedUser($user);
+        app(RoleGrantGuard::class)->authorizeUserMutation(auth()->user(), $user);
 
         return view('users.edit', [
             'user' => $user,
-            'roles' => Role::forOrganization($this->orgId())->where('is_active', true)->orderBy('name')->get(),
+            'roles' => Role::forOrganization($this->orgId())->where('is_active', true)->orderBy('name')->get()
+                ->filter(fn (Role $role) => app(RoleGrantGuard::class)->canGrantRole(auth()->user(), $role))->values(),
             'cities' => City::forOrganization($this->orgId())->where('is_active', true)->orderBy('name')->get(),
         ]);
     }
@@ -141,26 +157,44 @@ class UserController extends Controller
     public function update(Request $request, User $user)
     {
         $user = $this->scopedUser($user);
+        app(RoleGrantGuard::class)->authorizeUserMutation($request->user(), $user);
         $validated = $request->validate($this->validationRules($user));
         $validated = PhoneNumber::normalizeFields($validated, ['phone']);
         $role = Role::forOrganization($this->orgId())->findOrFail($validated['role_id']);
+        app(RoleGrantGuard::class)->mutate($request->user(), 'users', 'update', function () use ($request, $user, $validated, $role) {
+            $user->refresh()->unsetRelation('assignedRole');
+            $role->refresh();
+            $guard = app(RoleGrantGuard::class);
+            $guard->authorizeUserMutation($request->user(), $user);
+            $guard->authorizeUserRole($request->user(), $role);
+            $attributes = [
+                'name' => $validated['name'],
+                'email' => $validated['email'],
+                'phone' => $validated['phone'] ?? null,
+                'address' => $validated['address'] ?? null,
+                'role_id' => $role->id,
+                'role' => $role->slug,
+                'city_id' => $validated['city_id'] ?? null,
+                'is_active' => (bool) ($validated['is_active'] ?? false),
+            ];
+            $proposed = clone $user;
+            $proposed->fill($attributes)->setRelation('assignedRole', $role);
+            $guard->protectLastOwnerUser($user, $proposed);
+            $revokeSessions = filled($validated['password'] ?? null) || ($user->is_active && ! $proposed->is_active);
+            $user->fill($attributes)->setRelation('assignedRole', $role);
 
-        $user->fill([
-            'name' => $validated['name'],
-            'email' => $validated['email'],
-            'phone' => $validated['phone'] ?? null,
-            'address' => $validated['address'] ?? null,
-            'role_id' => $role->id,
-            'role' => $role->slug,
-            'city_id' => $validated['city_id'] ?? null,
-            'is_active' => (bool) ($validated['is_active'] ?? false),
-        ]);
+            if (filled($validated['password'] ?? null)) {
+                $user->password = Hash::make($validated['password']);
+            }
+            if ($revokeSessions) {
+                $user->remember_token = Str::random(60);
+            }
 
-        if (filled($validated['password'] ?? null)) {
-            $user->password = Hash::make($validated['password']);
-        }
-
-        $user->save();
+            $user->save();
+            if ($revokeSessions) {
+                app(RevokeAccountSessions::class)->forUser($user);
+            }
+        });
 
         return redirect()->route('users.show', $user)->with('success', 'User updated successfully.');
     }
@@ -168,50 +202,55 @@ class UserController extends Controller
     public function destroy(User $user)
     {
         $user = $this->scopedUser($user);
+        return app(RoleGrantGuard::class)->mutate(auth()->user(), 'users', 'delete', function () use ($user) {
+            $user->refresh()->unsetRelation('assignedRole');
+            app(RoleGrantGuard::class)->authorizeUserMutation(auth()->user(), $user);
 
-        if ((int) $user->id === (int) auth()->id()) {
-            return redirect()->route('users.index')->with('error', 'You cannot delete your own account.');
-        }
+            if ((int) $user->id === (int) auth()->id()) {
+                return redirect()->route('users.index')->with('error', 'You cannot delete your own account.');
+            }
+            app(RoleGrantGuard::class)->protectLastOwnerUser($user, null);
 
-        if (
-            User::where('organization_id', $this->orgId())
-                ->where('is_active', true)
-                ->where('id', '!=', $user->id)
-                ->doesntExist()
-        ) {
-            return redirect()->back()->with('error', 'Cannot delete the last active user in this organization.');
-        }
+            if (
+                User::where('organization_id', $this->orgId())
+                    ->where('is_active', true)
+                    ->where('id', '!=', $user->id)
+                    ->doesntExist()
+            ) {
+                return redirect()->back()->with('error', 'Cannot delete the last active user in this organization.');
+            }
 
-        $dependencyLabels = [];
+            $dependencyLabels = [];
 
-        if (Schema::hasColumn('rentals', 'created_by_user_id') && Rental::where('organization_id', $this->orgId())->where('created_by_user_id', $user->id)->exists()) {
-            $dependencyLabels[] = 'rentals created by this user';
-        }
+            if (Schema::hasColumn('rentals', 'created_by_user_id') && Rental::where('organization_id', $this->orgId())->where('created_by_user_id', $user->id)->exists()) {
+                $dependencyLabels[] = 'rentals created by this user';
+            }
 
-        if (Schema::hasColumn('sales', 'created_by_user_id') && Sale::where('organization_id', $this->orgId())->where('created_by_user_id', $user->id)->exists()) {
-            $dependencyLabels[] = 'sales created by this user';
-        }
+            if (Schema::hasColumn('sales', 'created_by_user_id') && Sale::where('organization_id', $this->orgId())->where('created_by_user_id', $user->id)->exists()) {
+                $dependencyLabels[] = 'sales created by this user';
+            }
 
-        if (Schema::hasColumn('sales', 'created_by') && Sale::where('organization_id', $this->orgId())->where('created_by', $user->id)->exists()) {
-            $dependencyLabels[] = 'sales created by this user';
-        }
+            if (Schema::hasColumn('sales', 'created_by') && Sale::where('organization_id', $this->orgId())->where('created_by', $user->id)->exists()) {
+                $dependencyLabels[] = 'sales created by this user';
+            }
 
-        if (Schema::hasColumn('invoices', 'created_by') && Invoice::where('organization_id', $this->orgId())->where('created_by', $user->id)->exists()) {
-            $dependencyLabels[] = 'invoices created by this user';
-        }
+            if (Schema::hasColumn('invoices', 'created_by') && Invoice::where('organization_id', $this->orgId())->where('created_by', $user->id)->exists()) {
+                $dependencyLabels[] = 'invoices created by this user';
+            }
 
-        if (Schema::hasColumn('deliveries', 'assigned_user_id') && Delivery::where('organization_id', $this->orgId())->where('assigned_user_id', $user->id)->exists()) {
-            $dependencyLabels[] = 'delivery or pickup assignments';
-        }
+            if (Schema::hasColumn('deliveries', 'assigned_user_id') && Delivery::where('organization_id', $this->orgId())->where('assigned_user_id', $user->id)->exists()) {
+                $dependencyLabels[] = 'delivery or pickup assignments';
+            }
 
-        if (!empty($dependencyLabels)) {
-            return redirect()
-                ->back()
-                ->with('error', 'Cannot delete this user because they are linked to ' . implode(', ', array_unique($dependencyLabels)) . '.');
-        }
+            if (!empty($dependencyLabels)) {
+                return redirect()
+                    ->back()
+                    ->with('error', 'Cannot delete this user because they are linked to ' . implode(', ', array_unique($dependencyLabels)) . '.');
+            }
 
-        $user->delete();
+            $user->delete();
 
-        return redirect()->route('users.index')->with('success', 'User deleted successfully.');
+            return redirect()->route('users.index')->with('success', 'User deleted successfully.');
+        });
     }
 }

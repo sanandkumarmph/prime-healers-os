@@ -1,6 +1,7 @@
 @php
     $isEdit = $role->exists;
-    $selectedPermissions = old('permissions', $role->permissions ?? []);
+    $selectedPermissions = old('permissions', array_merge($role->permissions ?? [], ['__special' => $role->effectiveSpecialPermissions()]));
+    $selectedPermissions['__special'] = array_values(array_filter($selectedPermissions['__special'] ?? [], fn ($permission) => array_key_exists($permission, $specialPermissions ?? [])));
     $fieldError = fn (string $field) => $errors->first($field);
     $hasPermissionError = $errors->has('permissions') || collect($errors->keys())->contains(fn ($key) => str_starts_with($key, 'permissions.'));
     $actionLabels = ['read'=>'View','create'=>'Create','update'=>'Edit','delete'=>'Delete'];
@@ -49,6 +50,7 @@
 
     <form method="POST" action="{{ $isEdit ? route('roles.update', $role) : route('roles.store') }}" style="display:grid;gap:14px;" data-role-form>
         @csrf
+        <input type="hidden" name="permissions[__special][]" value="__none">
         @if($isEdit) @method('PUT') @endif
 
         <section class="rb-panel">
@@ -61,6 +63,16 @@
                 <div class="rb-field"><label>Slug</label><input class="rb-input" type="text" name="slug" value="{{ old('slug', $role->slug) }}" style="{{ $errors->has('slug') ? 'border-color:#dc2626;background:#fff7f7;' : '' }}">@if($fieldError('slug'))<div style="margin-top:6px;color:#b91c1c;font-size:12px;">{{ $fieldError('slug') }}</div>@endif</div>
                 <div class="rb-field" style="grid-column:1/-1;"><label>Description</label><textarea class="rb-textarea" name="description" style="{{ $errors->has('description') ? 'border-color:#dc2626;background:#fff7f7;' : '' }}">{{ old('description', $role->description) }}</textarea>@if($fieldError('description'))<div style="margin-top:6px;color:#b91c1c;font-size:12px;">{{ $fieldError('description') }}</div>@endif</div>
                 <div style="grid-column:1/-1;"><label class="rb-active"><input type="checkbox" name="is_active" value="1" @checked(old('is_active', $role->is_active ?? true))><span>Active role</span></label></div>
+                <div class="rb-field" style="grid-column:1/-1;">
+                    <label for="dashboard-access">Dashboard access</label>
+                    <select id="dashboard-access" class="rb-input" name="dashboard_access" aria-describedby="dashboard-access-help">
+                        @foreach(['auto' => 'Automatic — follow existing role permissions', 'allow' => 'Allow — open the role dashboard after sign-in', 'deny' => 'Block — use the first permitted work page'] as $mode => $label)
+                            <option value="{{ $mode }}" @selected(old('dashboard_access', $role->permissions['__dashboard'] ?? 'auto') === $mode)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    <p id="dashboard-access-help" class="rb-panel-sub">Dashboard access does not grant financial data, team analytics or additional work permissions. Widget settings remain separate. An active Super Admin retains dashboard access.</p>
+                    @error('dashboard_access')<p style="color:#b91c1c;">{{ $message }}</p>@enderror
+                </div>
             </div>
         </section>
 

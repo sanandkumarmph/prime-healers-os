@@ -181,6 +181,10 @@ class Role extends Model
     {
         $normalized = [];
 
+        if (in_array('read', $permissions['dashboard'] ?? [], true)) {
+            $normalized['dashboard'] = ['read'];
+        }
+
         foreach (self::MODULES as $module => $label) {
             $actions = collect($permissions[$module] ?? [])
                 ->map(fn ($action) => strtolower((string) $action))
@@ -199,11 +203,26 @@ class Role extends Model
             ->values()
             ->all();
 
-        if ($specialPermissions !== []) {
+        if ($specialPermissions !== [] || array_key_exists('__special', $permissions)) {
             $normalized['__special'] = $specialPermissions;
+        }
+        if (($permissions['__special_explicit'] ?? false) === true) {
+            $normalized['__special'] ??= [];
+            $normalized['__special_explicit'] = true;
+        }
+        if (in_array($permissions['__dashboard'] ?? null, ['auto', 'allow', 'deny'], true)) {
+            $normalized['__dashboard'] = $permissions['__dashboard'];
         }
 
         return $normalized;
+    }
+
+    public static function normalizeExplicitPermissions(array $permissions): array
+    {
+        return self::normalizePermissions(array_merge($permissions, [
+            '__special' => $permissions['__special'] ?? [],
+            '__special_explicit' => true,
+        ]));
     }
 
     public function scopeForOrganization(Builder $query, int $organizationId): Builder
@@ -239,9 +258,19 @@ class Role extends Model
             return false;
         }
 
-        $permissions = $this->permissions ?? [];
-        $specialPermissions = $permissions['__special'] ?? [];
+        return in_array(strtolower(trim($permission)), $this->effectiveSpecialPermissions(), true);
+    }
 
-        return in_array(strtolower(trim($permission)), $specialPermissions, true);
+    public function effectiveSpecialPermissions(): array
+    {
+        $permissions = $this->permissions ?? [];
+
+        $special = $permissions['__special'] ?? [];
+        if (($permissions['__special_explicit'] ?? false) === true
+            || (array_key_exists('__special', $permissions) && $special === [])) {
+            return $special;
+        }
+
+        return array_values(array_unique(array_merge(User::defaultSpecialPermissionsForRole((string) $this->slug), $special)));
     }
 }

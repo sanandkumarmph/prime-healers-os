@@ -48,7 +48,7 @@
             <p style="margin:0; color:#64748b;">Permission matrix and users currently mapped to this role.</p>
         </div>
         <div class="role-show-actions page-header-actions" style="display:flex; gap:10px; flex-wrap:wrap;">
-            @if($canUpdateRoles)
+            @if($canUpdateRoles && app(\App\Services\RoleGrantGuard::class)->mayManage($currentUser, $role))
                 <a href="{{ route('roles.edit', $role) }}" style="display:inline-flex; align-items:center; justify-content:center; padding:11px 16px; border-radius:12px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:600;">Edit</a>
             @endif
             @if($canDeleteRoles)
@@ -75,6 +75,7 @@
         <div style="margin-bottom:18px; padding:14px 16px; border-radius:16px; background:#fff1f2; border:1px solid #fecaca; color:#991b1b;">{{ session('error') }}</div>
     @endif
 
+    <x-access-summary :role="$role" />
     <div class="role-show-layout" style="display:grid; grid-template-columns:0.95fr 1.05fr; gap:18px;">
         <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:22px; padding:22px;">
             <h2 style="margin:0 0 16px; font-size:20px;">Role Summary</h2>

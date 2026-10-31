@@ -29,7 +29,15 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->append(\App\Http\Middleware\SecureHeaders::class);
         $middleware->append(\App\Http\Middleware\EnsureInternalOrganizationContext::class);
-        $middleware->web(append: [\App\Http\Middleware\SerializeFinancialRequests::class]);
+        $middleware->web(append: [
+            \App\Http\Middleware\EnsureActiveAccount::class,
+            \Illuminate\Session\Middleware\AuthenticateSession::class,
+            \App\Http\Middleware\SerializeFinancialRequests::class,
+        ]);
+        $middleware->prependToPriorityList(
+            \Illuminate\Contracts\Session\Middleware\AuthenticatesSessions::class,
+            \App\Http\Middleware\EnsureActiveAccount::class,
+        );
 
         $middleware->alias([
             'module' => \App\Http\Middleware\EnsureModulePermission::class,
