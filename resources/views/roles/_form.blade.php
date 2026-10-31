@@ -61,6 +61,16 @@
                 <span class="pill">{{ $isEdit ? ($role->is_system ? 'System' : 'Custom') : 'Custom' }}</span>
             </div>
             <div class="rb-form-grid">
+                <div class="rb-field" style="grid-column:1/-1;">
+                    <label for="standard-role-preset">Standard role</label>
+                    <select id="standard-role-preset" class="rb-input" data-template-select aria-describedby="standard-role-help">
+                        <option value="">Choose a standard role</option>
+                        @foreach($rolePresets as $key => $preset)
+                            <option value="{{ $key }}">{{ $preset['name'] }}</option>
+                        @endforeach
+                    </select>
+                    <p id="standard-role-help" class="rb-panel-sub">Select a role to fill its name and permissions, then review and save. Choose Custom to configure permissions yourself.@if($isEdit) Changes apply to everyone assigned to this role.@endif</p>
+                </div>
                 <div class="rb-field"><label>Role Name</label><input class="rb-input" type="text" name="name" value="{{ old('name', $role->name) }}" required style="{{ $errors->has('name') ? 'border-color:#dc2626;background:#fff7f7;' : '' }}">@if($fieldError('name'))<div style="margin-top:6px;color:#b91c1c;font-size:12px;">{{ $fieldError('name') }}</div>@endif</div>
                 <div class="rb-field"><label>Slug</label><input class="rb-input" type="text" name="slug" value="{{ old('slug', $role->slug) }}" style="{{ $errors->has('slug') ? 'border-color:#dc2626;background:#fff7f7;' : '' }}">@if($fieldError('slug'))<div style="margin-top:6px;color:#b91c1c;font-size:12px;">{{ $fieldError('slug') }}</div>@endif</div>
                 <div class="rb-field" style="grid-column:1/-1;"><label>Description</label><textarea class="rb-textarea" name="description" style="{{ $errors->has('description') ? 'border-color:#dc2626;background:#fff7f7;' : '' }}">{{ old('description', $role->description) }}</textarea>@if($fieldError('description'))<div style="margin-top:6px;color:#b91c1c;font-size:12px;">{{ $fieldError('description') }}</div>@endif</div>
@@ -87,7 +97,6 @@
                             <button type="button" class="perm-btn primary" data-permission-action="select-all">Select All</button>
                             <button type="button" class="perm-btn" data-permission-action="clear-all">Clear All</button>
                             <button type="button" class="perm-btn" data-permission-action="view-only">View Only</button>
-                            <select class="perm-select" data-template-select aria-label="Apply standard role preset"><option value="">Choose a standard role</option>@foreach($rolePresets as $key => $preset)<option value="{{ $key }}">{{ $preset['name'] }}</option>@endforeach</select>
                             <button type="button" class="perm-btn" data-permission-action="collapse-all">Collapse All</button>
                         </div>
                     </div>
@@ -182,6 +191,8 @@
     }
     function applyTemplate(name){
         const template = templates[name]; if (!template) return;
+        const selector = root.querySelector('[data-template-select]');
+        if (selector) selector.value = name;
         if (name === 'custom') { markDirty(); return; }
         // Role identity determines work scope, so keep it consistent with the chosen preset.
         form.querySelector('[name="name"]').value = template.name;
@@ -200,7 +211,7 @@
         if (box) syncMirrors(box.dataset.module, box.dataset.action, box.checked);
         if (mirror) { const primary = primaryBox(mirror.dataset.module, mirror.dataset.action); if (primary) primary.checked = mirror.checked; syncMirrors(mirror.dataset.module, mirror.dataset.action, mirror.checked); }
         const select = event.target.closest('[data-template-select]');
-        if (select && select.value) { applyTemplate(select.value); select.value = ''; return; }
+        if (select && select.value) { applyTemplate(select.value); return; }
         if (event.target.matches('input, textarea, select')) markDirty();
         updateSummary();
     });
