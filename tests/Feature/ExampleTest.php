@@ -12,10 +12,14 @@ it('redirects guests to login from home', function () {
     $response->assertRedirect(route('login'));
 });
 
-it('redirects authenticated users to dashboard from home', function () {
-    $user = User::factory()->create();
+it('redirects authenticated users to their permitted home page', function (string $role, string $route) {
+    $user = User::factory()->create(['role' => $role]);
 
     $response = $this->actingAs($user)->get('/');
 
-    $response->assertRedirect(route('dashboard'));
-});
+    $response->assertRedirect(route($route));
+})->with([
+    'executive' => ['super_admin', 'dashboard'],
+    'sales' => ['sales', 'enquiries.index'],
+    'unassigned staff' => ['staff', 'profile.edit'],
+]);

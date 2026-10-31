@@ -1,0 +1,141 @@
+{
+  "archive_sha256": "45e5f509abd3fae874d75ce24529ca6baf3810c339ff77e40c74faf5b1eb8afd",
+  "baseline": "80b6616bc63d99519a1983e4adf17f834d92749e",
+  "environment": "PHOS_UAT",
+  "files": [
+    {
+      "baseline_sha256": "e9848e19bcc3c268b191db12d1c4d835b36d684798478e0f7e1777399c0e8788",
+      "path": "app/Http/Controllers/RentalController.php",
+      "sha256": "4a3bdc6bada492c451c62e3738205314d48fc0c5b8240970e52b020a4d203438",
+      "size": 353135
+    },
+    {
+      "baseline_sha256": "e5c7d9c2374ad39065e2318fa3f5133bcbf3169d984bfb9d4f28b3706c3c060b",
+      "path": "app/Http/Controllers/RoleController.php",
+      "sha256": "5e2043c40d82b8835fe9878b888c5b43fddd8178115ad8f5421daf909eec07ed",
+      "size": 8285
+    },
+    {
+      "baseline_sha256": "7e1f938daf31dd931d4ec7dce49c58cf331319c1566e2e8eb7de5197f9d3d1f9",
+      "path": "app/Http/Controllers/UserController.php",
+      "sha256": "1e0dfabe593f2f7bd4c3209fc4e3a0caaf8cfbe664d106258ddd4dad80c2773a",
+      "size": 11195
+    },
+    {
+      "baseline_sha256": null,
+      "path": "app/Http/Middleware/EnsureActiveAccount.php",
+      "sha256": "c001013233d18bd39c79f04c044b8e23d1e1454406c5cc7820bfce8b90ab62ed",
+      "size": 1279
+    },
+    {
+      "baseline_sha256": "8b25deb3ea9d84c62190037cfde2f76391d4fe20734f06f624d5ab20fd696b98",
+      "path": "app/Http/Requests/Auth/LoginRequest.php",
+      "sha256": "4f80d908fe3f483d9c63503b2cdf3d00044cfda4d4be9d6591e8f8422272acb6",
+      "size": 3104
+    },
+    {
+      "baseline_sha256": "6de3ec7c5790a3cb81fc89f40024261c4fede2b6934fba264827531b521a502e",
+      "path": "app/Models/Role.php",
+      "sha256": "5c7aec9c9337f44d1a281ec26a574f450daf1e1285a5379ab992712eb0db28b1",
+      "size": 10010
+    },
+    {
+      "baseline_sha256": "1ed83f4aec5f36b7426cf5ea3d16a83b03a7b59775469fff9a81104bc7e84791",
+      "path": "app/Models/User.php",
+      "sha256": "5cf1efa4fadcb668cc97fcc5a590056a39ace82635aa77bd7d5f7ce896e50ee2",
+      "size": 24390
+    },
+    {
+      "baseline_sha256": "05572e28478da6f7a66f2542cded974b6a4506240be143ac8a28979ff008dec9",
+      "path": "app/Services/DashboardVisibilityService.php",
+      "sha256": "ea9db334f71de7a19f32ef500599b77e45024ffb7ecae7327105dc1e2fc07098",
+      "size": 7234
+    },
+    {
+      "baseline_sha256": "b88440cdbf0e246c999ac5cafcba8848b702e20ee6bc9ed3788610393843b194",
+      "path": "app/Services/DashboardWidgetRegistryService.php",
+      "sha256": "1bb5445ce2790b1f8f7806d56b747e5f139ab4e4a9e11f3d825ea044ffc3dd3f",
+      "size": 13511
+    },
+    {
+      "baseline_sha256": "a4dc26037c665c2e0a2c78bfe00121e6b0a0353f8ea8bf48ffc72dbc83879696",
+      "path": "app/Services/Metrics/DashboardMetricsService.php",
+      "sha256": "2662b7a4d7c13df9282ae3ac169ed7a9d07ce7f3cdc89ee4f03b3f80d6325018",
+      "size": 12394
+    },
+    {
+      "baseline_sha256": "0e6c1c283cce52b169309002e90aa89ee8fabd89ba944cbd67c41f659186dc0b",
+      "path": "app/Services/Metrics/InvoiceMetricsService.php",
+      "sha256": "6e1c5668ecabb67088fb8d4f3553db530e5e26b78b697441c5ed46a1f02df241",
+      "size": 3982
+    },
+    {
+      "baseline_sha256": "bebd9bb9b5327c428a938f92b5cb0efded03dbbe99c525711e7f1556816c7d2b",
+      "path": "app/Services/Metrics/SalesMetricsService.php",
+      "sha256": "e27efb69ded659b3526ab2b6a18061f98e6624ff6d2b5d417bc8a277eb0b2df1",
+      "size": 4989
+    },
+    {
+      "baseline_sha256": null,
+      "path": "app/Services/RoleGrantGuard.php",
+      "sha256": "708ec08072b5befd7d92000b4a5ec2b456b1cb656768d178b27e7a7a5f08101e",
+      "size": 7921
+    },
+    {
+      "baseline_sha256": "777662a84a555d374b22a7c81a0bfc30d6f335777c76a67144ae2d24a79073f2",
+      "path": "bootstrap/app.php",
+      "sha256": "65bbe88484aed98bc97bf15d43c343dd5ac7edba6a4d5f1dedd5fcd9cf8c42ed",
+      "size": 3235
+    },
+    {
+      "baseline_sha256": null,
+      "path": "resources/views/components/access-summary.blade.php",
+      "sha256": "55569d69dc9b32e386e708b81af97c827c00ac7dcbb770e401c4973b47b9c807",
+      "size": 2323
+    },
+    {
+      "baseline_sha256": "1e13670a25ea3acc1d9031e5531b01e37478be823108057ff46b89bfbdfeefbe",
+      "path": "resources/views/dashboard.blade.php",
+      "sha256": "610cc2faa4da7586c9005f641f45ee0f2dbd0ffaf86081fb26bfe74796e23816",
+      "size": 580009
+    },
+    {
+      "baseline_sha256": "0dc97fa6b290f9b3bfffbfbc36a13621e5d0bfc7827f89cd0f4289ad97e9ef66",
+      "path": "resources/views/roles/_form.blade.php",
+      "sha256": "96e2ef9179642c2c64f9139266b91227c2fb7ed83944bf7e74a75f11cd19a808",
+      "size": 33175
+    },
+    {
+      "baseline_sha256": "ea7cdc27be723b2a080cb4859e4dfa797eafb10da8401d47dc415c59392ca04c",
+      "path": "resources/views/roles/index.blade.php",
+      "sha256": "da110892cb37c5bc950a7689f48d0eefd1586e7b20e50ebf9e2166daad36d4fd",
+      "size": 34917
+    },
+    {
+      "baseline_sha256": "55e38ae21ae16f925560d69fcd8a1337057cc7df6529c7f7cbcc3c0b6bb52e59",
+      "path": "resources/views/roles/show.blade.php",
+      "sha256": "5d224306e6c47bff6c707ddba6a3df76b8ddd9bc90e84afe4652f1b1c323d2a9",
+      "size": 9800
+    },
+    {
+      "baseline_sha256": "42ec3c282dc4352272ee564b66b83622934de64cb2d576165649c76e23cb9acc",
+      "path": "resources/views/users/index.blade.php",
+      "sha256": "8a7aa61529e80b285af5b9198e8249a16e9c78bb3b88dbd6b4325e165053ad28",
+      "size": 10419
+    },
+    {
+      "baseline_sha256": "7a3ae7034220370ab6c1e7a294252638cae37169658805f886bacdcd33713397",
+      "path": "resources/views/users/show.blade.php",
+      "sha256": "e5014d240c6f7665d8acea4f123be09bed6e2f9f4a76b408c152b0f64ae1b266",
+      "size": 6928
+    },
+    {
+      "baseline_sha256": "168b508132fc75ba59792475a7eda3896b12d69066b433afd3a74d384f8cd86d",
+      "path": "routes/web.php",
+      "sha256": "b29def31ef9ddd728fc8fe2c6ec5f3630cf32dacd4607f8c0cf529ac7e740777",
+      "size": 34992
+    }
+  ],
+  "format": 1,
+  "release": "4b51ae57671c4ca184debe5b3c6573b0cfae62cc"
+}

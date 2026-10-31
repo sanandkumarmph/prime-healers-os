@@ -60,6 +60,12 @@ jobs:
       - name: Test password visibility package and source-only recovery offline
         run: python3 -I -B -m unittest discover -s ops/phos-password-visibility-uat -p 'test_deploy.py' -v
 
+      - name: Test role-access package and recovery offline
+        run: python3 -I -B -m unittest discover -s ops/phos-role-access-uat -p 'test_deploy.py' -v
+
+      - name: Test role-access activation and recovery in disposable Linux fixtures
+        run: sudo python3 -I -B -m unittest discover -s ops/phos-role-access-uat -p 'test_linux_coordinator.py' -v
+
       - name: Install npm dependencies
         run: npm ci
 
