@@ -1081,6 +1081,9 @@
             word-break:break-word;
         }
     }
+    @media (max-width:360px) {
+        .product-mobile-stock-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    }
 </style>
 
 @section('content')
@@ -1133,11 +1136,11 @@
                 <div class="product-mobile-price-band">
                     <div class="product-mobile-price-item">
                         <span>Sale Price</span>
-                        <strong>{{ $product->sale_price !== null ? $rupee . number_format((float) $product->sale_price, 0) : 'â€”' }}</strong>
+                        <strong>{{ $product->sale_price !== null ? $rupee . number_format((float) $product->sale_price, 0) : '—' }}</strong>
                     </div>
                     <div class="product-mobile-price-item">
                         <span>Rental Price</span>
-                        <strong>{{ $canRent && $product->price_per_day !== null ? $rupee . number_format((float) $product->price_per_day, 0) . ' / day' : 'â€”' }}</strong>
+                        <strong>{{ $canRent && $product->price_per_day !== null ? $rupee . number_format((float) $product->price_per_day, 0) . ' / day' : '—' }}</strong>
                     </div>
                 </div>
             </section>
@@ -1203,7 +1206,7 @@
                 <details open>
                     <summary>
                         <span class="product-mobile-section-title"><span>i</span><span>Overview</span></span>
-                        <span>âŒƒ</span>
+                        <span aria-hidden="true">⌃</span>
                     </summary>
                     <div class="product-mobile-section-body">
                         <div class="product-mobile-detail-grid">
@@ -1214,7 +1217,7 @@
                     </div>
                 </details>
                 <details>
-                    <summary><span class="product-mobile-section-title"><span>â–¡</span><span>Inventory</span></span><span>âŒ„</span></summary>
+                    <summary><span class="product-mobile-section-title"><span aria-hidden="true">□</span><span>Inventory</span></span><span aria-hidden="true">⌄</span></summary>
                     <div class="product-mobile-section-body">
                         <div class="product-mobile-detail-grid">
                             <div class="product-mobile-detail"><span>Available</span><strong>{{ number_format($availableForRentCount + $saleAvailableCount) }}</strong></div>
@@ -1227,7 +1230,7 @@
                     </div>
                 </details>
                 <details>
-                    <summary><span class="product-mobile-section-title"><span>{{ $rupee }}</span><span>Pricing</span></span><span>âŒ„</span></summary>
+                    <summary><span class="product-mobile-section-title"><span aria-hidden="true">{{ $rupee }}</span><span>Pricing</span></span><span aria-hidden="true">⌄</span></summary>
                     <div class="product-mobile-section-body">
                         <div class="product-mobile-detail-grid">
                             @forelse($mobilePricingDetails as $detail)
@@ -1239,7 +1242,7 @@
                     </div>
                 </details>
                 <details id="mobile-product-assets">
-                    <summary><span class="product-mobile-section-title"><span>â—‡</span><span>Assets ({{ number_format($rentalAssetCount + $saleUnitCount) }})</span></span><span>âŒ„</span></summary>
+                    <summary><span class="product-mobile-section-title"><span aria-hidden="true">◇</span><span>Assets ({{ number_format($rentalAssetCount + $saleUnitCount) }})</span></span><span aria-hidden="true">⌄</span></summary>
                     <div class="product-mobile-section-body">
                         <div class="product-mobile-asset-list">
                             @forelse($snapshotAssets as $asset)
@@ -1258,7 +1261,7 @@
                     </div>
                 </details>
                 <details id="mobile-product-activity">
-                    <summary><span class="product-mobile-section-title"><span>â—·</span><span>Activity</span></span><span>âŒ„</span></summary>
+                    <summary><span class="product-mobile-section-title"><span aria-hidden="true">◷</span><span>Activity</span></span><span aria-hidden="true">⌄</span></summary>
                     <div class="product-mobile-section-body">
                         <div class="product-mobile-activity-list">
                             @forelse($product->inventoryConversions->take(5) as $conversion)
@@ -1276,7 +1279,7 @@
                     </div>
                 </details>
                 <details>
-                    <summary><span class="product-mobile-section-title"><span>â–£</span><span>Documents</span></span><span>âŒ„</span></summary>
+                    <summary><span class="product-mobile-section-title"><span aria-hidden="true">▣</span><span>Documents</span></span><span aria-hidden="true">⌄</span></summary>
                     <div class="product-mobile-section-body">
                         <div class="product-mobile-detail"><strong>No product documents attached.</strong></div>
                     </div>
