@@ -315,7 +315,7 @@
             'href' => $mergeDashboardQuery('invoices.index', ['status' => 'open']),
             'tone' => 'blue',
             'icon' => 'payment',
-            'visible' => $canViewFinance,
+            'visible' => (auth()->user()?->canViewDues() ?? false),
         ],
         [
             'widget_key' => 'primary_pending_pickups',
@@ -686,7 +686,7 @@
             'href' => $mergeDashboardQuery('invoices.index', ['status' => 'overdue']),
             'icon' => 'payment',
             'tone' => 'red',
-            'visible' => $canViewFinance,
+            'visible' => (auth()->user()?->canViewDues() ?? false),
         ],
         [
             'widget_key' => 'snapshot_asset_alerts',
@@ -1874,6 +1874,7 @@
         ],
         [
             'label' => 'Revenue Center',
+            'visible' => $canViewFinance,
             'copy' => 'Sales pulse, finance summary, invoice pressure, and collection actions.',
             'links' => collect([
                 ['label' => 'Revenue Center', 'href' => '#sales-pulse-panel'],
@@ -7695,6 +7696,7 @@
                 </div>
             </details>
 
+            @if($canViewFinance)
             <details class="dashboard-mobile-section">
                 <summary class="dashboard-mobile-summary">
                     <div>
@@ -7728,6 +7730,7 @@
                     @endif
                 </div>
             </details>
+            @endif
 
             <details class="dashboard-mobile-section">
                 <summary class="dashboard-mobile-summary">

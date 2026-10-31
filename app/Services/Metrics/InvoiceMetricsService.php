@@ -14,8 +14,9 @@ class InvoiceMetricsService
     {
     }
 
-    public function summary(Builder $invoiceQuery, ?Carbon $today = null, bool $includeAmounts = true): array
+    public function summary(Builder $invoiceQuery, ?Carbon $today = null, bool $includeAmounts = true, ?bool $includeDues = null): array
     {
+        $includeDues ??= $includeAmounts;
         $today = ($today ?? Carbon::today())->copy()->startOfDay();
         $openStatuses = ['unpaid', 'partial', 'overdue'];
 
@@ -23,7 +24,7 @@ class InvoiceMetricsService
         $paidInvoices = (clone $invoiceQuery)->where('payment_status', 'paid')->count();
         $openInvoices = (clone $invoiceQuery)->whereIn('payment_status', $openStatuses)->count();
         $overdueInvoices = (clone $invoiceQuery)->overdue($today)->count();
-        $outstandingAmount = $includeAmounts ? round((float) ((clone $invoiceQuery)->whereIn('payment_status', $openStatuses)->sum('balance_amount') ?? 0), 2) : 0.0;
+        $outstandingAmount = $includeDues ? round((float) ((clone $invoiceQuery)->whereIn('payment_status', $openStatuses)->sum('balance_amount') ?? 0), 2) : 0.0;
         $totalBilled = $includeAmounts ? round((float) ((clone $invoiceQuery)->sum('total_amount') ?? 0), 2) : 0.0;
         $collections = $includeAmounts ? $this->collectionMetrics->summary(
             Payment::query()
@@ -43,7 +44,7 @@ class InvoiceMetricsService
                 ->whereIn('payment_status', $openStatuses)
                 ->count();
 
-            $salesOutstandingAmount = $includeAmounts ? round((float) ((clone $invoiceQuery)
+            $salesOutstandingAmount = $includeDues ? round((float) ((clone $invoiceQuery)
                 ->whereIn('id', $salesInvoiceIds->all())
                 ->whereIn('payment_status', $openStatuses)
                 ->sum('balance_amount') ?? 0), 2) : 0.0;

@@ -177,7 +177,7 @@ class TabbedExecutiveDashboardRegressionTest extends TestCase
         $response = $this->actingAs($finance)->get(route('dashboard', ['dashboard_tab' => 'team']))->assertOk();
         $xpath = $this->xpath($response);
 
-        $this->assertContains('revenue', $this->tabNames($xpath));
+        $this->assertNotContains('revenue', $this->tabNames($xpath));
         $this->assertNotContains('team', $this->tabNames($xpath));
         $this->assertSame(0, $xpath->query('//*[@data-dashboard-panel="team"]')->length);
         $response->assertDontSee('id="team-performance"', false);

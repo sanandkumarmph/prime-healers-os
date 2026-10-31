@@ -234,8 +234,8 @@ class AuthorizationPolicyRegressionTest extends TestCase
             'role' => 'admin',
         ]);
 
-        $this->assertTrue(Gate::forUser($reportUser)->allows('viewAny', ReportController::class));
-        $this->assertTrue(Gate::forUser($reportUser)->allows('export', ReportController::class));
+        $this->assertFalse(Gate::forUser($reportUser)->allows('viewAny', ReportController::class));
+        $this->assertFalse(Gate::forUser($reportUser)->allows('export', ReportController::class));
         $this->assertFalse(Gate::forUser($deliveryUser)->allows('viewAny', ReportController::class));
         $this->assertFalse(Gate::forUser($deliveryUser)->allows('export', ReportController::class));
 

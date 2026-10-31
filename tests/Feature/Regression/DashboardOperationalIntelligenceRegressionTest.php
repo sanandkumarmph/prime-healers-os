@@ -590,7 +590,7 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
             ->assertDontSeeText('Collections This Month');
     }
 
-    public function test_finance_dashboard_can_access_dashboard_and_see_finance_summary(): void
+    public function test_finance_dashboard_can_work_without_consolidated_finance_summary(): void
     {
         $organization = TestData::organization();
         $financeRole = Role::create([
@@ -598,6 +598,7 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
             'name' => 'Finance User',
             'slug' => User::ROLE_FINANCE,
             'permissions' => [
+                'customers' => ['read'],
                 'invoices' => ['read', 'update'],
                 'payments' => ['read', 'create', 'update'],
             ],
@@ -615,10 +616,10 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
         $response = $this->actingAs($financeUser)->get(route('dashboard'));
 
         $response->assertOk()
-            ->assertSeeText('Revenue Center')
-            ->assertSeeText('Revenue Mix')
-            ->assertSeeText('Cash Position')
-            ->assertSeeText('Invoice Health')
+            ->assertDontSeeText('Revenue Center')
+            ->assertDontSeeText('Revenue Mix')
+            ->assertDontSeeText('Cash Position')
+            ->assertDontSeeText('Invoice Health')
             ->assertSeeText('Record Payment')
             ->assertDontSeeText('Staff Workload')
             ->assertDontSeeText('Business Partner Signals')
@@ -632,14 +633,14 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
         $financeRole = Role::create([
             'organization_id' => $organization->id,
             'name' => 'Vendor Finance User',
-            'slug' => User::ROLE_FINANCE,
+            'slug' => User::ROLE_ADMIN_OPERATIONS,
             'permissions' => [
                 'rentals' => ['read'],
                 'sales' => ['read'],
                 'invoices' => ['read'],
                 'payments' => ['read'],
                 'vendors' => ['read'],
-                '__special' => ['vendor_reports.view', 'vendor_costs.view'],
+                '__special' => ['vendor_reports.view', 'vendor_costs.view', 'finance.view_revenue'],
             ],
         ]);
 

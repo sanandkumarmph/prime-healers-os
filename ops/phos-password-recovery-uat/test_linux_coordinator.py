@@ -139,6 +139,13 @@ class NarrowCoordinatorLinux(unittest.TestCase):
             entry=mail.snapshot(self.app/name)
             entries[label]={key:value for key,value in entry.items() if key!='data'}
             mail.atomic(mail_backup/(label+'.before'),entry['data'],0,0,0o600)
+        # Keep the originals allocated: Linux may otherwise reuse an unlinked
+        # inode during the two atomic replacements and invalidate this fixture's
+        # intended different-identity assertion despite correct restoration.
+        held_environment=(self.app/'.env').open('rb')
+        held_cache=(self.app/'bootstrap/cache/config.php').open('rb')
+        self.addCleanup(held_environment.close)
+        self.addCleanup(held_cache.close)
         env_before=d.signature(self.app/'.env')
         cache_before=d.signature(self.app/'bootstrap/cache/config.php')
         mail.atomic(self.app/'.env',b'APP_ENV=uat\nMAIL_PASSWORD="synthetic-mail-change"\n',5006,5006,0o600)

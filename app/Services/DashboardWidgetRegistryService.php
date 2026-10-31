@@ -45,7 +45,8 @@ class DashboardWidgetRegistryService
         return $widgets
             ->map(function (DashboardWidget $widget) use ($role, $overrides) {
                 $override = $overrides->get($widget->id);
-                $enabled = $override?->is_enabled ?? $this->defaultEnabledForRoleSlug($role->slug ?: $role->name, $widget->widget_key);
+                $enabled = $override?->is_enabled ?? ($widget->widget_key === 'primary_outstanding_dues'
+                    || $this->defaultEnabledForRoleSlug($role->slug ?: $role->name, $widget->widget_key));
                 $sortOrder = $override?->sort_order ?? $widget->sort_order;
 
                 return [
@@ -290,6 +291,17 @@ class DashboardWidgetRegistryService
             'snapshot_asset_alerts',
             'section_inventory_intelligence',
         ];
+
+        if ($item['widget_key'] === 'primary_outstanding_dues') {
+            return $user->canViewDues();
+        }
+        if (! $user->canViewConsolidatedFinance() && in_array($item['widget_key'], [
+            'kpi_collections_this_month', 'snapshot_collections_today', 'section_finance_summary',
+            'section_recent_payments', 'section_sales_overview', 'section_business_partner_signals',
+            'section_organization_analytics',
+        ], true)) {
+            return false;
+        }
 
         $requiredPermission = $this->requiredPermissionForWidget($item['widget_key']);
 

@@ -51,7 +51,7 @@ class DashboardVisibilityService
             'warehouse_focused' => $isWarehouseFocused,
             'finance_focused' => $isFinanceFocused,
             'sales_focused' => $isSalesFocused,
-            'finance_widgets' => $canViewFinanceWidgets,
+            'finance_widgets' => $user->canViewFinanceDashboard() && $canViewFinanceWidgets,
             'staff_workload' => in_array('section_staff_workload', $widgetKeys, true),
             'business_signals' => in_array('section_business_partner_signals', $widgetKeys, true),
             'inventory_intelligence' => in_array('section_inventory_intelligence', $widgetKeys, true),
@@ -73,7 +73,7 @@ class DashboardVisibilityService
             return false;
         }
 
-        return $this->containsWidget($this->widgetRegistry()->widgetKeysForUser($user), [
+        return $user->canViewFinanceDashboard() && $this->containsWidget($this->widgetRegistry()->widgetKeysForUser($user), [
             'primary_outstanding_dues',
             'kpi_outstanding_invoices',
             'kpi_unpaid_renewal_invoices',
@@ -177,11 +177,13 @@ class DashboardVisibilityService
 
     public function isFinanceFocused(?User $user): bool
     {
-        if (!$user) {
+        if (!$user || !$user->hasActiveAccess()) {
             return false;
         }
 
-        return $this->canViewFinanceWidgets($user)
+        return (($user->effective_role === User::ROLE_FINANCE
+                && $user->canAccessAnyModule(['invoices', 'payments'], 'read'))
+                || $this->canViewFinanceWidgets($user))
             && !$user->canAccessModule('deliveries', 'read')
             && !$user->canAccessModule('assets', 'read')
             && !$user->canAccessModule('warehouses', 'read');

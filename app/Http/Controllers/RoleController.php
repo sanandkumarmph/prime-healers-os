@@ -79,6 +79,7 @@ class RoleController extends Controller
             })
             ->with(['users' => fn ($query) => $query->where('organization_id', $organizationId)->select(['id', 'role_id', 'name', 'email', 'phone', 'is_active'])])
             ->withCount(['users' => fn ($query) => $query->where('organization_id', $organizationId)])
+            ->inAccessOrder()
             ->orderByDesc('is_system')
             ->orderBy('name')
             ->paginate(15)

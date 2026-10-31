@@ -177,6 +177,32 @@ class Role extends Model
         ];
     }
 
+    /** Explicit presets for newly configured roles; never rewrite existing roles. */
+    public static function accessPresets(): array
+    {
+        $defaults = self::defaultSystemRoleTemplates();
+        $preset = fn (string $name, string $slug, array $modules, array $special = []) => [
+            'name' => $name, 'slug' => $slug, 'modules' => $modules, 'special' => $special,
+        ];
+
+        return [
+            'super_admin' => $preset('Super Admin', 'super_admin', $defaults['super_admin']['permissions'], array_keys(self::SPECIAL_PERMISSIONS)),
+            'admin' => $preset('Admin', 'admin_operations', array_merge($defaults['admin_operations']['permissions'], ['users' => self::ACTIONS, 'roles' => self::ACTIONS]), array_keys(self::SPECIAL_PERMISSIONS)),
+            'sales' => $preset('Sales', 'sales', $defaults['sales']['permissions'], ['finance.view_dues', 'invoices.print']),
+            'service' => $preset('Service', 'service', [
+                'customers' => ['read', 'update'], 'products' => ['read'], 'assets' => ['read'],
+                'rentals' => ['read', 'update'], 'deliveries' => ['read', 'create', 'update'],
+                'invoices' => ['read'],
+            ], ['finance.view_dues']),
+            'delivery' => $preset('Delivery', 'delivery', $defaults['delivery']['permissions']),
+            'finance' => $preset('Accounts / Finance', 'finance', [
+                'customers' => ['read'], 'rentals' => ['read'], 'sales' => ['read'],
+                'invoices' => ['read', 'create', 'update'], 'payments' => ['read', 'create', 'update'],
+            ], ['finance.view_dues', 'invoices.print', 'cash.receive']),
+            'custom' => $preset('Custom', 'custom', []),
+        ];
+    }
+
     public static function normalizePermissions(array $permissions): array
     {
         $normalized = [];
@@ -223,6 +249,11 @@ class Role extends Model
             '__special' => $permissions['__special'] ?? [],
             '__special_explicit' => true,
         ]));
+    }
+
+    public function scopeInAccessOrder(Builder $query): Builder
+    {
+        return $query->orderByRaw("CASE slug WHEN 'super_admin' THEN 0 WHEN 'admin_operations' THEN 1 WHEN 'admin' THEN 1 WHEN 'sales' THEN 2 WHEN 'service' THEN 3 WHEN 'delivery' THEN 4 WHEN 'finance' THEN 5 ELSE 6 END");
     }
 
     public function scopeForOrganization(Builder $query, int $organizationId): Builder

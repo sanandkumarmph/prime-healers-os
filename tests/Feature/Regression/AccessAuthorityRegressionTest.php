@@ -81,7 +81,7 @@ class AccessAuthorityRegressionTest extends TestCase
         $organization = TestData::organization();
         $legacyRole = $this->role($organization->id, User::ROLE_FINANCE, ['invoices' => ['read'], 'payments' => ['read']]);
         $legacy = TestData::user($organization, ['role' => User::ROLE_FINANCE, 'role_id' => $legacyRole->id]);
-        $this->assertTrue($legacy->canViewFinanceDashboard());
+        $this->assertFalse($legacy->canViewFinanceDashboard());
         $this->assertTrue($legacy->hasPermission('invoices.export'));
         $this->assertArrayNotHasKey('__special', $legacyRole->fresh()->permissions);
 
@@ -200,7 +200,8 @@ class AccessAuthorityRegressionTest extends TestCase
         $this->deleteJson(route('roles.destroy', $stronger))->assertForbidden();
         $this->assertSame($original, $stronger->fresh()->getRawOriginal());
         $this->assertTrue($assigned->fresh()->hasActiveAccess());
-        $this->assertTrue($assigned->fresh()->hasPermission('finance.view_profit'));
+        $this->assertFalse($assigned->fresh()->hasPermission('finance.view_profit'));
+        $this->assertContains('finance.view_profit', $stronger->fresh()->permissions['__special']);
     }
 
     public function test_inactive_stronger_role_is_protected_but_super_admin_can_still_delete_it(): void
@@ -472,7 +473,7 @@ class AccessAuthorityRegressionTest extends TestCase
             $matrix['system_templates'][$slug] = $this->capabilitySnapshot($user);
         }
         $this->assertTrue($matrix['legacy_profiles'][User::ROLE_SUPER_ADMIN]['team_performance']);
-        $this->assertTrue($matrix['legacy_profiles'][User::ROLE_FINANCE]['finance_dashboard']);
+        $this->assertFalse($matrix['legacy_profiles'][User::ROLE_FINANCE]['finance_dashboard']);
         $this->assertFalse($matrix['legacy_profiles'][User::ROLE_ADMIN_OPERATIONS]['finance_dashboard']);
         $this->assertTrue($matrix['legacy_profiles'][User::ROLE_ADMIN_OPERATIONS]['management_analytics']);
         $this->assertTrue($matrix['legacy_profiles'][User::ROLE_SALES]['record_finance']);
