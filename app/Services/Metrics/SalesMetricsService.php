@@ -9,14 +9,14 @@ use Illuminate\Support\Facades\DB;
 
 class SalesMetricsService
 {
-    public function summary(Builder $salesQuery, int $organizationId, bool $hasInvoiceSaleColumn = false): array
+    public function summary(Builder $salesQuery, int $organizationId, bool $hasInvoiceSaleColumn = false, bool $includeAmounts = true): array
     {
         $totalSales = (clone $salesQuery)->count();
         $paidSalesCount = (clone $salesQuery)->where('payment_status', 'paid')->count();
         $pendingSalesCount = (clone $salesQuery)->whereIn('payment_status', ['pending', 'partial'])->count();
-        $totalSalesAmount = round((float) ((clone $salesQuery)->sum('sale_amount') ?? 0), 2);
-        $totalTransportationAmount = round((float) ((clone $salesQuery)->sum('shipping_charges') ?? 0), 2);
-        $receivables = $this->receivablesSnapshot($salesQuery, $organizationId, $hasInvoiceSaleColumn);
+        $totalSalesAmount = $includeAmounts ? round((float) ((clone $salesQuery)->sum('sale_amount') ?? 0), 2) : 0.0;
+        $totalTransportationAmount = $includeAmounts ? round((float) ((clone $salesQuery)->sum('shipping_charges') ?? 0), 2) : 0.0;
+        $receivables = $this->receivablesSnapshot($salesQuery, $organizationId, $hasInvoiceSaleColumn, $includeAmounts);
         $pendingSalesAmount = (float) ($receivables['totalPendingSalesAmount'] ?? 0);
         $paidSalesAmount = round(max($totalSalesAmount - $pendingSalesAmount, 0), 2);
 
@@ -32,9 +32,9 @@ class SalesMetricsService
         ]);
     }
 
-    public function receivablesSnapshot(Builder $salesQuery, int $organizationId, bool $hasInvoiceSaleColumn = false): array
+    public function receivablesSnapshot(Builder $salesQuery, int $organizationId, bool $hasInvoiceSaleColumn = false, bool $includeAmounts = true): array
     {
-        $salesCollection = (clone $salesQuery)->get(['id', 'sale_amount']);
+        $salesCollection = (clone $salesQuery)->get($includeAmounts ? ['id', 'sale_amount'] : ['id']);
         $saleIds = $salesCollection
             ->pluck('id')
             ->filter()
@@ -92,10 +92,10 @@ class SalesMetricsService
             ->filter(fn ($invoice) => in_array($invoice->payment_status, ['unpaid', 'partial', 'overdue'], true))
             ->unique('invoice_id');
 
-        $outstandingInvoiceAmount = round((float) $outstandingInvoices->sum(fn ($invoice) => (float) ($invoice->balance_amount ?? 0)), 2);
+        $outstandingInvoiceAmount = $includeAmounts ? round((float) $outstandingInvoices->sum(fn ($invoice) => (float) ($invoice->balance_amount ?? 0)), 2) : 0.0;
         $unbilledSales = $salesCollection
             ->filter(fn (Sale $sale) => !$linkedSaleIds->contains((int) $sale->id));
-        $unbilledSalesAmount = round((float) $unbilledSales->sum(fn (Sale $sale) => (float) ($sale->sale_amount ?? 0)), 2);
+        $unbilledSalesAmount = $includeAmounts ? round((float) $unbilledSales->sum(fn (Sale $sale) => (float) ($sale->sale_amount ?? 0)), 2) : 0.0;
 
         return [
             'outstandingInvoiceCount' => (int) $outstandingInvoices->count(),

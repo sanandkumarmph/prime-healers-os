@@ -48,10 +48,9 @@ class LoginRequest extends FormRequest
             ->where('email', $this->string('email')->toString())
             ->first();
 
-        if ($user && array_key_exists('is_active', $user->getAttributes()) && !$user->is_active) {
+        if ($user && !$user->hasActiveAccess()) {
             RateLimiter::hit($this->throttleKey());
-            Log::warning('Inactive user login blocked.', [
-                'email' => $user->email,
+            Log::warning('Inactive account or role login blocked.', [
                 'user_id' => $user->id,
                 'ip' => $this->ip(),
             ]);

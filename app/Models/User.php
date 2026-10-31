@@ -71,32 +71,32 @@ class User extends Authenticatable
 
     public function isSuperAdmin(): bool
     {
-        return $this->effective_role === self::ROLE_SUPER_ADMIN;
+        return $this->hasActiveAccess() && $this->effective_role === self::ROLE_SUPER_ADMIN;
     }
 
     public function isAdminOperations(): bool
     {
-        return $this->effective_role === self::ROLE_ADMIN_OPERATIONS;
+        return $this->hasActiveAccess() && $this->effective_role === self::ROLE_ADMIN_OPERATIONS;
     }
 
     public function isSales(): bool
     {
-        return $this->effective_role === self::ROLE_SALES;
+        return $this->hasActiveAccess() && $this->effective_role === self::ROLE_SALES;
     }
 
     public function isSalesRenewals(): bool
     {
-        return $this->effective_role === self::ROLE_SALES_RENEWALS;
+        return $this->hasActiveAccess() && $this->effective_role === self::ROLE_SALES_RENEWALS;
     }
 
     public function isDelivery(): bool
     {
-        return $this->effective_role === self::ROLE_DELIVERY;
+        return $this->hasActiveAccess() && $this->effective_role === self::ROLE_DELIVERY;
     }
 
     public function isVendor(): bool
     {
-        return $this->effective_role === self::ROLE_VENDOR;
+        return $this->hasActiveAccess() && $this->effective_role === self::ROLE_VENDOR;
     }
 
     public function canManageProducts(): bool
@@ -203,11 +203,45 @@ class User extends Authenticatable
 
     public function getEffectiveRoleAttribute(): string
     {
-        return $this->assignedRole?->slug ?: ($this->role ?: 'staff');
+        if ($this->role_id !== null) {
+            $role = $this->assignedRole;
+
+            return $role && (int) $role->organization_id === (int) $this->organization_id
+                ? ($role->slug ?: 'staff')
+                : 'staff';
+        }
+
+        return $this->role ?: 'staff';
+    }
+
+    public function hasActiveAccess(): bool
+    {
+        if (array_key_exists('is_active', $this->attributes) && ! $this->is_active) {
+            return false;
+        }
+
+        if ($this->role_id === null) {
+            return true;
+        }
+
+        $role = $this->assignedRole;
+
+        return $role !== null
+            && (int) $role->getKey() === (int) $this->role_id
+            && (int) $this->organization_id > 0
+            && (int) $role->organization_id === (int) $this->organization_id
+            && $role->is_active;
     }
 
     public function hasModulePermission(string $module, string $action = 'read'): bool
     {
+        if (! $this->hasActiveAccess()) {
+            return false;
+        }
+
+        $module = strtolower(trim($module));
+        $action = strtolower(trim($action));
+
         if ($this->effective_role === self::ROLE_SUPER_ADMIN) {
             return true;
         }
@@ -224,12 +258,12 @@ class User extends Authenticatable
         $module = strtolower(trim($module));
         $action = strtolower(trim($action));
 
-        if ($this->effective_role === self::ROLE_SUPER_ADMIN) {
-            return true;
+        if (! $this->hasActiveAccess()) {
+            return false;
         }
 
-        if (array_key_exists('is_active', $this->attributes) && !$this->is_active) {
-            return false;
+        if ($this->effective_role === self::ROLE_SUPER_ADMIN) {
+            return true;
         }
 
         if ($module === 'dashboard') {
@@ -255,16 +289,12 @@ class User extends Authenticatable
     {
         $permission = strtolower(trim($permission));
 
-        if ($permission === '') {
+        if ($permission === '' || ! $this->hasActiveAccess()) {
             return false;
         }
 
         if ($this->effective_role === self::ROLE_SUPER_ADMIN) {
             return true;
-        }
-
-        if (array_key_exists('is_active', $this->attributes) && !$this->is_active) {
-            return false;
         }
 
         if (str_contains($permission, '.')) {
@@ -278,6 +308,10 @@ class User extends Authenticatable
                 return $this->hasModulePermission($group, $action)
                     || $this->legacyRoleAllows($group, $action);
             }
+        }
+
+        if ($this->assignedRole && array_key_exists($permission, Role::specialPermissionOptions())) {
+            return $this->assignedRole->allowsSpecialPermission($permission);
         }
 
         if ($this->assignedRole?->allowsSpecialPermission($permission)) {
@@ -389,8 +423,8 @@ class User extends Authenticatable
     public function defaultRedirectRoute(): string
     {
         $candidates = [
-            'dashboard' => fn () => $this->hasPermission('dashboard.main'),
-            'inventory.dashboard' => fn () => $this->hasPermission('dashboard.inventory'),
+            'dashboard' => fn () => $this->canAccessDashboard() && ($this->hasPermission('dashboard.main') || $this->hasModulePermission('dashboard', 'read') || ($this->assignedRole?->permissions['__dashboard'] ?? 'auto') === 'allow'),
+            'inventory.dashboard' => fn () => $this->canAccessDashboard() && $this->hasPermission('dashboard.inventory'),
             'enquiries.index' => fn () => $this->canAccessModule('enquiries', 'read'),
             'rentals.index' => fn () => $this->canAccessModule('rentals', 'read'),
             'deliveries.index' => fn () => $this->canAccessModule('deliveries', 'read'),
@@ -441,21 +475,31 @@ class User extends Authenticatable
 
     private function matchesLegacyRoles(array $roles): bool
     {
-        return in_array($this->effective_role, $roles, true);
+        return $this->hasActiveAccess() && in_array($this->effective_role, $roles, true);
     }
 
     public function canAccessDashboard(): bool
     {
-        if (array_key_exists('is_active', $this->attributes) && !$this->is_active) {
+        if (! $this->hasActiveAccess()) {
             return false;
+        }
+
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        $access = $this->assignedRole?->permissions['__dashboard'] ?? 'auto';
+        if ($access !== 'auto') {
+            return $access === 'allow';
         }
 
         return true
             && (
                 $this->hasPermission('dashboard.main')
             || $this->hasPermission('dashboard.inventory')
-            || $this->legacyRoleAllows('dashboard', 'read')
-            || $this->legacyRoleAllows('inventory', 'read')
+            || $this->hasModulePermission('dashboard', 'read')
+            || (! $this->assignedRole && $this->legacyRoleAllows('dashboard', 'read'))
+            || (! $this->assignedRole && $this->legacyRoleAllows('inventory', 'read'))
             || $this->canAccessAnyModule([
                 'customers',
                 'rentals',
@@ -678,6 +722,14 @@ class User extends Authenticatable
                 'scope.all',
             ],
         ];
+    }
+
+    public static function defaultSpecialPermissionsForRole(string $role): array
+    {
+        return array_values(array_intersect(
+            (new static)->roleExtraPermissions()[$role] ?? [],
+            array_keys(Role::specialPermissionOptions()),
+        ));
     }
 
     private function roleScopeMatrix(): array

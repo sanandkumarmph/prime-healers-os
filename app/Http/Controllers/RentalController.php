@@ -4294,6 +4294,21 @@ class RentalController extends Controller
         );
     }
 
+    private function scopeDashboardTaskRecords($query, ?int $assignedUserId, ?string $taskRelation = null)
+    {
+        if ($assignedUserId === null) {
+            return $query;
+        }
+        if (!$this->hasDeliveryAssignedUserColumn()) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        $assignedTask = fn ($tasks) => $tasks->where('organization_id', $this->orgId())
+            ->where('assigned_user_id', $assignedUserId);
+
+        return $taskRelation === null ? $assignedTask($query) : $query->whereHas($taskRelation, $assignedTask);
+    }
+
     private function filteredDeliveryQuery(Request $request, bool $includeRelations = false)
     {
         $query = Delivery::query()
@@ -4474,7 +4489,7 @@ class RentalController extends Controller
         ];
     }
 
-    private function monthlyDashboardTrend(Request $request, int $months = 6): array
+    private function monthlyDashboardTrend(Request $request, int $months = 6, bool $includeAmounts = true): array
     {
         $startMonth = Carbon::today()->startOfMonth()->subMonths($months - 1);
         $labels = collect(range(0, $months - 1))
@@ -4498,12 +4513,14 @@ class RentalController extends Controller
 
         $monthPeriodExpression = $this->yearMonthExpression('start_date');
         $salesPeriodExpression = $this->yearMonthExpression('sale_date');
+        $rentalAmountExpression = $includeAmounts ? 'SUM(COALESCE(rental_amount, 0) + COALESCE(deposit_amount, 0) + COALESCE(transport_amount, 0) + COALESCE(other_amount, 0))' : '0';
+        $salesAmountExpression = $includeAmounts ? 'SUM(COALESCE(sale_amount, 0))' : '0';
 
         $rentalRows = (clone $rentalAggregateQuery)
             ->whereDate('start_date', '>=', $startMonth->toDateString())
             ->selectRaw("
                 {$monthPeriodExpression} as period,
-                SUM(COALESCE(rental_amount, 0) + COALESCE(deposit_amount, 0) + COALESCE(transport_amount, 0) + COALESCE(other_amount, 0)) as total,
+                {$rentalAmountExpression} as total,
                 COUNT(*) as orders_count
             ")
             ->groupBy('period')
@@ -4512,7 +4529,7 @@ class RentalController extends Controller
 
         $salesRows = $this->filteredSalesQuery($request, false)
             ->whereDate('sale_date', '>=', $startMonth->toDateString())
-            ->selectRaw("{$salesPeriodExpression} as period, SUM(COALESCE(sale_amount, 0)) as total, COUNT(*) as orders_count")
+            ->selectRaw("{$salesPeriodExpression} as period, {$salesAmountExpression} as total, COUNT(*) as orders_count")
             ->groupBy('period')
             ->get()
             ->keyBy('period');
@@ -4675,10 +4692,12 @@ class RentalController extends Controller
 
     private function streamRentalsCsv($rentals, string $filename)
     {
-        return response()->streamDownload(function () use ($rentals) {
+        $canViewRecordFinance = auth()->user()?->canViewRecordFinance() ?? false;
+
+        return response()->streamDownload(function () use ($rentals, $canViewRecordFinance) {
             $output = fopen('php://output', 'w');
 
-            fputcsv($output, [
+            $headers = [
                 'Rental ID',
                 'Customer Name',
                 'Phone',
@@ -4693,17 +4712,17 @@ class RentalController extends Controller
                 'Rental Status',
                 'Delivery Status',
                 'Pickup Status',
-                'Total Amount',
-                'Transport Amount',
-                'Deposit Amount',
-                'Other Charges',
-            ]);
+            ];
+            if ($canViewRecordFinance) {
+                array_push($headers, 'Total Amount', 'Transport Amount', 'Deposit Amount', 'Other Charges');
+            }
+            fputcsv($output, $headers);
 
             foreach ($rentals as $rental) {
                 $deliveryRecord = $rental->deliveryRecord;
                 $pickupRecord = $rental->pickupRecord;
 
-                fputcsv($output, [
+                $row = [
                     $rental->id,
                     $rental->customer_name,
                     $rental->phone,
@@ -4718,11 +4737,16 @@ class RentalController extends Controller
                     $rental->status,
                     $deliveryRecord?->status ?? '',
                     $pickupRecord?->status ?? '',
-                    (float) ($rental->rental_amount ?? 0) + (float) ($rental->deposit_amount ?? 0) + (float) ($rental->transport_amount ?? 0) + (float) ($rental->other_amount ?? 0),
-                    $rental->transport_amount ?? 0,
-                    $rental->deposit_amount ?? 0,
-                    $rental->other_amount ?? 0,
-                ]);
+                ];
+                if ($canViewRecordFinance) {
+                    array_push($row,
+                        (float) ($rental->rental_amount ?? 0) + (float) ($rental->deposit_amount ?? 0) + (float) ($rental->transport_amount ?? 0) + (float) ($rental->other_amount ?? 0),
+                        $rental->transport_amount ?? 0,
+                        $rental->deposit_amount ?? 0,
+                        $rental->other_amount ?? 0,
+                    );
+                }
+                fputcsv($output, $row);
             }
 
             fclose($output);
@@ -4743,14 +4767,19 @@ class RentalController extends Controller
     public function dashboard(Request $request)
     {
         $currentUser = auth()->user();
+        abort_unless($currentUser?->canAccessDashboard(), 403);
+
         $dashboardVisibility = $this->dashboardVisibility()->forUser($currentUser);
         $canViewFinance = (bool) ($dashboardVisibility['finance_widgets'] ?? false);
+        $canViewRecordFinance = (bool) ($currentUser?->canViewRecordFinance() ?? false);
         $canViewStaffWorkload = (bool) ($dashboardVisibility['staff_workload'] ?? false);
         $canViewBusinessSignals = (bool) ($dashboardVisibility['business_signals'] ?? false);
         $canViewInventoryIntelligence = (bool) ($dashboardVisibility['inventory_intelligence'] ?? false);
         $canViewOrganizationAnalytics = (bool) ($dashboardVisibility['organization_analytics'] ?? false);
         $canViewVendorCosts = (bool) ($currentUser?->canViewProfitability() ?? false);
         $canReadDeliveries = $currentUser?->canAccessModule('deliveries', 'read') ?? false;
+        $assignedDashboardUserId = ((bool) ($dashboardVisibility['delivery_focused'] ?? false)
+            || ($currentUser?->hasScope('assigned', 'deliveries') ?? false)) ? (int) $currentUser->id : null;
         $restrictDashboardToSelfCreated = (bool) ($currentUser?->hasScope('self_created', 'rentals') ?? false);
         $restrictDashboardToAssignedFollowUps = (bool) (
             ($currentUser?->hasScope('assigned', 'deliveries') ?? false)
@@ -4786,6 +4815,9 @@ class RentalController extends Controller
             $recentRentalsQuery->where('created_by_user_id', $currentUser->id);
             $dashboardSummaryQuery->where('created_by_user_id', $currentUser->id);
         }
+
+        // Organization aggregates retain their existing scope; identifiable queue rows follow task ownership.
+        $recentRentalsQuery = $this->scopeDashboardTaskRecords($recentRentalsQuery, $assignedDashboardUserId, 'deliveries');
 
         $recentRentals = $this->applyRentalSorting(
             $recentRentalsQuery,
@@ -4918,7 +4950,8 @@ class RentalController extends Controller
         $salesSummary = $this->dashboardMetrics()->salesSummary(
             $salesQuery,
             $this->orgId(),
-            Schema::hasColumn('invoices', 'sale_id')
+            Schema::hasColumn('invoices', 'sale_id'),
+            $canViewFinance
         );
 
         $totalSales = (int) ($salesSummary['totalSales'] ?? 0);
@@ -4929,10 +4962,10 @@ class RentalController extends Controller
             ->whereYear('sale_date', $today->year)
             ->whereMonth('sale_date', $today->month)
             ->count();
-        $salesThisMonthAmount = (clone $salesQuery)
+        $salesThisMonthAmount = $canViewFinance ? (clone $salesQuery)
             ->whereYear('sale_date', $today->year)
             ->whereMonth('sale_date', $today->month)
-            ->sum('sale_amount');
+            ->sum('sale_amount') : 0.0;
         $totalSalesAmount = (float) ($salesSummary['totalSalesAmount'] ?? 0);
         $paidSalesAmount = (float) ($salesSummary['paidSalesAmount'] ?? 0);
         $pendingSalesAmount = (float) ($salesSummary['pendingSalesAmount'] ?? 0);
@@ -4948,7 +4981,7 @@ class RentalController extends Controller
             ->limit(5)
             ->get();
 
-        $invoiceSummary = $this->dashboardMetrics()->invoiceSummary($invoiceQuery, $today);
+        $invoiceSummary = $this->dashboardMetrics()->invoiceSummary($invoiceQuery, $today, $canViewFinance);
         $totalInvoices = (int) ($invoiceSummary['totalInvoices'] ?? 0);
         $openInvoiceCount = (int) ($invoiceSummary['openInvoices'] ?? 0);
         $unpaidInvoiceCount = (int) ($invoiceSummary['openInvoices'] ?? 0);
@@ -4956,13 +4989,13 @@ class RentalController extends Controller
         $totalBilledAmount = (float) ($invoiceSummary['totalBilled'] ?? 0);
         $outstandingDueAmount = (float) ($invoiceSummary['outstandingAmount'] ?? 0);
         $unpaidInvoiceAmount = (float) ($invoiceSummary['outstandingAmount'] ?? 0);
-        $pendingReceivables = $this->dashboardPendingReceivablesSnapshot(
+        $pendingReceivables = $canViewFinance ? $this->dashboardPendingReceivablesSnapshot(
             $dashboardRentalCollection,
             $invoiceQuery,
             $salesQuery,
             $today
-        );
-        $renewalFinance = $this->renewalFinanceSnapshot($dashboardRentalCollection->pluck('id'));
+        ) : [];
+        $renewalFinance = $canViewFinance ? $this->renewalFinanceSnapshot($dashboardRentalCollection->pluck('id')) : [];
         $renewalCenterBaseQuery = $this->filteredRentalQuery(Request::create('/dashboard', 'GET', array_merge($request->query(), [
             'status' => null,
             'filter' => null,
@@ -5113,6 +5146,10 @@ class RentalController extends Controller
             $returnsDueTodayQuery->where('created_by_user_id', $currentUser->id);
         }
 
+        $endingSoonRentalsQuery = $this->scopeDashboardTaskRecords($endingSoonRentalsQuery, $assignedDashboardUserId, 'deliveries');
+        $overdueRentalsQuery = $this->scopeDashboardTaskRecords($overdueRentalsQuery, $assignedDashboardUserId, 'deliveries');
+        $returnsDueTodayQuery = $this->scopeDashboardTaskRecords($returnsDueTodayQuery, $assignedDashboardUserId, 'deliveries');
+
         $endingSoonRentals = $endingSoonRentalsQuery->latest()->limit(5)->get();
         $overdueRentals = $overdueRentalsQuery->latest()->limit(5)->get();
         $returnsDueToday = $returnsDueTodayQuery->latest()->limit(5)->get();
@@ -5197,8 +5234,8 @@ class RentalController extends Controller
                 ->limit(5)
                 ->get();
 
-            $recentFollowUps = FollowUp::query()
-                ->where('organization_id', $this->orgId())
+            $recentFollowUpsQuery = FollowUp::query()->where('organization_id', $this->orgId());
+            $recentFollowUps = $this->dashboardMetrics()->scopeFollowUpVisibility($recentFollowUpsQuery, $currentUser)
                 ->with(['assignedUser', 'customer', 'businessPartner', 'partnerClient', 'rental.product', 'sale.product'])
                 ->latest('updated_at')
                 ->limit(5)
@@ -5212,7 +5249,7 @@ class RentalController extends Controller
                 ->count()
             : 0;
 
-        $todayRenewalItems = (clone $renewalCenterBaseQuery)
+        $todayRenewalItems = $this->scopeDashboardTaskRecords(clone $renewalCenterBaseQuery, $assignedDashboardUserId, 'deliveries')
             ->with([
                 'product:id,name',
                 'customer' => fn ($query) => $query->select(Customer::relationSelectColumns()),
@@ -5224,8 +5261,7 @@ class RentalController extends Controller
             ->limit(5)
             ->get();
 
-        $todayPickupItems = Delivery::query()
-            ->where('organization_id', $this->orgId())
+        $todayPickupItems = $this->scopeDashboardTaskRecords(Delivery::query()->where('organization_id', $this->orgId()), $assignedDashboardUserId)
             ->where('type', 'pickup')
             ->whereIn('status', ['pending', 'in_progress'])
             ->when(Schema::hasColumn('deliveries', 'pickup_status'), fn ($query) => $query->whereNotIn('pickup_status', ['failed_attempt', 'cancelled', 'picked_up']))
@@ -5246,8 +5282,7 @@ class RentalController extends Controller
             ->limit(5)
             ->get();
 
-        $todayDeliveryItems = Delivery::query()
-            ->where('organization_id', $this->orgId())
+        $todayDeliveryItems = $this->scopeDashboardTaskRecords(Delivery::query()->where('organization_id', $this->orgId()), $assignedDashboardUserId)
             ->where('type', 'delivery')
             ->whereIn('status', ['pending', 'in_progress'])
             ->whereDate('scheduled_at', $today)
@@ -5286,6 +5321,12 @@ class RentalController extends Controller
 
         $recentCustomers = Customer::query()
             ->where('organization_id', $this->orgId())
+            ->when($assignedDashboardUserId !== null, function ($query) use ($assignedDashboardUserId): void {
+                $query->where(function ($customers) use ($assignedDashboardUserId): void {
+                    $customers->whereHas('rentals', fn ($rentals) => $this->scopeDashboardTaskRecords($rentals, $assignedDashboardUserId, 'deliveries'))
+                        ->orWhereHas('sales', fn ($sales) => $this->scopeDashboardTaskRecords($sales, $assignedDashboardUserId, 'deliveries'));
+                });
+            })
             ->latest('id')
             ->limit(5)
             ->get(Customer::relationSelectColumns(['created_at']));
@@ -5323,6 +5364,13 @@ class RentalController extends Controller
         if (Schema::hasTable('activity_logs')) {
             $recentActivitiesQuery = ActivityLog::query()
                 ->where('organization_id', $this->orgId())
+                ->when($assignedDashboardUserId !== null, function ($query) use ($assignedDashboardUserId): void {
+                    $query->where(function ($activities) use ($assignedDashboardUserId): void {
+                        $activities->whereHas('delivery', fn ($tasks) => $this->scopeDashboardTaskRecords($tasks, $assignedDashboardUserId))
+                            ->orWhereHas('rental', fn ($rentals) => $this->scopeDashboardTaskRecords($rentals, $assignedDashboardUserId, 'deliveries'))
+                            ->orWhereHas('sale', fn ($sales) => $this->scopeDashboardTaskRecords($sales, $assignedDashboardUserId, 'deliveries'));
+                    });
+                })
                 ->with('user');
 
             if (!(auth()->user()?->canAccessModule('payments', 'read') ?? false)) {
@@ -5512,7 +5560,7 @@ class RentalController extends Controller
                 ->map(fn ($items, $cityName) => [
                     'label' => $cityName,
                     'count' => $items->count(),
-                    'total_amount' => $items->sum(fn ($rental) => (float) ($rental->rental_amount ?? 0) + (float) ($rental->deposit_amount ?? 0) + (float) ($rental->transport_amount ?? 0) + (float) ($rental->other_amount ?? 0)),
+                    'total_amount' => $canViewFinance ? $items->sum(fn ($rental) => (float) ($rental->rental_amount ?? 0) + (float) ($rental->deposit_amount ?? 0) + (float) ($rental->transport_amount ?? 0) + (float) ($rental->other_amount ?? 0)) : 0.0,
                 ])
                 ->sortByDesc('total_amount')
                 ->take(8)
@@ -5540,7 +5588,7 @@ class RentalController extends Controller
                     'label' => $vendorName,
                     'count' => $items->count(),
                     'vendor_id' => $items->pluck('vendor_id')->filter()->first(),
-                    'total_amount' => $items->sum(fn ($row) => (float) ($row['rental']->rental_amount ?? 0) + (float) ($row['rental']->deposit_amount ?? 0) + (float) ($row['rental']->transport_amount ?? 0) + (float) ($row['rental']->other_amount ?? 0)),
+                    'total_amount' => $canViewFinance ? $items->sum(fn ($row) => (float) ($row['rental']->rental_amount ?? 0) + (float) ($row['rental']->deposit_amount ?? 0) + (float) ($row['rental']->transport_amount ?? 0) + (float) ($row['rental']->other_amount ?? 0)) : 0.0,
                 ])
                 ->sortByDesc('total_amount')
                 ->take(8)
@@ -5552,7 +5600,7 @@ class RentalController extends Controller
                     'label' => $warehouseName,
                     'count' => $items->count(),
                     'warehouse_id' => optional($items->first()->dispatchWarehouse)->id,
-                    'total_amount' => $items->sum(fn ($rental) => (float) ($rental->rental_amount ?? 0) + (float) ($rental->deposit_amount ?? 0) + (float) ($rental->transport_amount ?? 0) + (float) ($rental->other_amount ?? 0)),
+                    'total_amount' => $canViewFinance ? $items->sum(fn ($rental) => (float) ($rental->rental_amount ?? 0) + (float) ($rental->deposit_amount ?? 0) + (float) ($rental->transport_amount ?? 0) + (float) ($rental->other_amount ?? 0)) : 0.0,
                 ])
                 ->sortByDesc('total_amount')
                 ->take(8)
@@ -5565,7 +5613,7 @@ class RentalController extends Controller
                 ->orderByDesc('rental_date')
                 ->limit(10)
                 ->get();
-            $monthlyTrend = $this->monthlyDashboardTrend($baseFilterRequest);
+            $monthlyTrend = $this->monthlyDashboardTrend($baseFilterRequest, 6, $canViewFinance);
         }
 
         $collectionsTrend = $canViewFinance
@@ -5650,10 +5698,10 @@ class RentalController extends Controller
 
         $filterOptions = $this->filterOptionData();
         $totalRentals = (int) ($rentalSummary['totalRentals'] ?? 0);
-        $totalRentalValue = (clone $summaryQuery)->sum('rental_amount');
-        $totalDepositValue = (clone $summaryQuery)->sum('deposit_amount');
-        $totalTransportValue = (clone $summaryQuery)->sum('transport_amount');
-        $totalOtherValue = (clone $summaryQuery)->sum('other_amount');
+        $totalRentalValue = $canViewFinance ? (clone $summaryQuery)->sum('rental_amount') : 0.0;
+        $totalDepositValue = $canViewFinance ? (clone $summaryQuery)->sum('deposit_amount') : 0.0;
+        $totalTransportValue = $canViewFinance ? (clone $summaryQuery)->sum('transport_amount') : 0.0;
+        $totalOtherValue = $canViewFinance ? (clone $summaryQuery)->sum('other_amount') : 0.0;
         $dashboardOrderMetricsScope = (
             $restrictDashboardToSelfCreated
             || (bool) ($dashboardVisibility['sales_focused'] ?? false)
@@ -5669,7 +5717,7 @@ class RentalController extends Controller
         ) ? 'assigned' : 'organization';
         $dashboardIntegritySummary = $this->dashboardMetrics()->integritySummary($this->orgId());
 
-        return view('dashboard', array_merge($filterOptions, compact(
+        $dashboardData = array_merge($filterOptions, compact(
             'search',
             'city',
             'vendorId',
@@ -5830,27 +5878,48 @@ class RentalController extends Controller
             'teamPerformanceCity',
             'teamPerformanceRole',
             'teamPerformancePeriodLabel'
-        )));
+        ));
+
+        return view('dashboard', $canViewRecordFinance ? $dashboardData : $this->redactDashboardRecordFinance($dashboardData));
+    }
+
+    private function redactDashboardRecordFinance(mixed $value, ?\SplObjectStorage $seen = null): mixed
+    {
+        $seen ??= new \SplObjectStorage;
+        $financialKey = fn ($key) => is_string($key)
+            && preg_match('/amount|price|cost|margin|profit|balance|charges/i', $key)
+            && ! preg_match('/count|quantity|percent|_id$/i', $key);
+
+        if ($value instanceof \Illuminate\Database\Eloquent\Model) {
+            if ($seen->contains($value)) {
+                return $value;
+            }
+            $seen->attach($value);
+            foreach ($value->getAttributes() as $key => $attribute) {
+                if ($financialKey($key) && is_numeric($attribute)) {
+                    $value->setAttribute($key, 0);
+                } elseif (in_array($value->getCasts()[$key] ?? '', ['array', 'json', 'object'], true)) {
+                    $value->setAttribute($key, $this->redactDashboardRecordFinance($value->getAttribute($key), $seen));
+                }
+            }
+            foreach ($value->getRelations() as $key => $relation) {
+                $value->setRelation($key, $this->redactDashboardRecordFinance($relation, $seen));
+            }
+        } elseif ($value instanceof \Illuminate\Support\Collection) {
+            return $value->map(fn ($item) => $this->redactDashboardRecordFinance($item, $seen));
+        } elseif (is_array($value)) {
+            foreach ($value as $key => $item) {
+                $value[$key] = $financialKey($key) && is_numeric($item)
+                    ? 0 : $this->redactDashboardRecordFinance($item, $seen);
+            }
+        }
+
+        return $value;
     }
 
     private function canViewDashboardTeamPerformance(?User $user): bool
     {
-        if (! $user) {
-            return false;
-        }
-
-        $roleValues = collect([
-            $user->effective_role ?? null,
-            $user->role ?? null,
-            $user->assignedRole?->slug,
-            $user->assignedRole?->name,
-        ])
-            ->filter()
-            ->map(fn ($role) => Str::of((string) $role)->lower()->replace([' ', '-'], '_')->toString())
-            ->unique();
-
-        return $roleValues->contains(User::ROLE_SUPER_ADMIN)
-            || $roleValues->contains('superadmin');
+        return $user?->isSuperAdmin() ?? false;
     }
     private function resolveDashboardTeamPerformancePeriod(string $period, string $fromDate, string $toDate, Carbon $today): array
     {
@@ -6167,10 +6236,15 @@ class RentalController extends Controller
 
     public function exportDashboardCsv(Request $request)
     {
+        abort_unless($request->user()?->canAccessModule('rentals', 'read'), 403);
         $sortBy = trim((string) $request->get('sort_by', 'priority'));
+        $query = $this->filteredRentalQuery($request, true);
+        if ($request->user()->hasScope('self_created', 'rentals') && Schema::hasColumn('rentals', 'created_by_user_id')) {
+            $query->where('created_by_user_id', $request->user()->id);
+        }
 
         $rentals = $this->applyRentalSorting(
-            $this->filteredRentalQuery($request, true),
+            $query,
             $sortBy === 'priority' ? 'latest' : $sortBy
         )
             ->get();
