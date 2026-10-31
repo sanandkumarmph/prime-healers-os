@@ -1,5 +1,5 @@
 {
-  "archive_sha256": "2573ef62427a03f399281d884730055829bf3f52f1c1ae564f235d2058e88c96",
+  "archive_sha256": "ce0026a8abf084ea3d9537d10f075ec342dabe82cc7ab8968431454680fea647",
   "baseline": "80b6616bc63d99519a1983e4adf17f834d92749e",
   "environment": "PHOS_UAT",
   "files": [
@@ -56,6 +56,12 @@
       "path": "app/Models/User.php",
       "sha256": "5cf1efa4fadcb668cc97fcc5a590056a39ace82635aa77bd7d5f7ce896e50ee2",
       "size": 24390
+    },
+    {
+      "baseline_sha256": "05ef2af6f22b7d14318f2058acae4ace97bf873d90ad58bddfe918ae26fd3a2a",
+      "path": "app/Providers/AppServiceProvider.php",
+      "sha256": "3cb9c32561f8f4a55c67f82b81a9829a3a3b8c49b7186e697e87d28a3a228f8b",
+      "size": 13802
     },
     {
       "baseline_sha256": "05572e28478da6f7a66f2542cded974b6a4506240be143ac8a28979ff008dec9",
@@ -149,5 +155,5 @@
     }
   ],
   "format": 1,
-  "release": "f162ea25a90df3b8cae15d91eddacfcb917b5525"
+  "release": "b62d46ac10cfbc620a102bf7578a92b2f9ccac7f"
 }

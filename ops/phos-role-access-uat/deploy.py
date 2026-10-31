@@ -40,9 +40,9 @@ MAX_TREE=256*1024*1024
 CACHE_NAMES=('config.php','routes-v7.php')
 NEW_PARENT='app/Services'
 ACTIVATION_REVIEW_COMPLETE=True
-PACKAGE_RELEASE='f162ea25a90df3b8cae15d91eddacfcb917b5525'
-PACKAGE_MANIFEST_SHA='95a196f4a008c400220210f2eef10d9637ac5c8726f4c846ca9bb09f5e2ee7b4'
-PACKAGE_ARCHIVE_SHA='2573ef62427a03f399281d884730055829bf3f52f1c1ae564f235d2058e88c96'
+PACKAGE_RELEASE='b62d46ac10cfbc620a102bf7578a92b2f9ccac7f'
+PACKAGE_MANIFEST_SHA='83d44bc6f4cc0a72338b1eec6134acc64d64c8692cdd586ab92e3412ae3b5b84'
+PACKAGE_ARCHIVE_SHA='ce0026a8abf084ea3d9537d10f075ec342dabe82cc7ab8968431454680fea647'
 LOG_ROOT=None
 LOCK_PATHS=(Path('/root/phos-tabbed-dashboard-deploy.lock'),Path('/root/phos-zoho-mail-uat.lock'))
 BASELINE_HASHES={'app/Http/Controllers/Auth/AuthenticatedSessionController.php': 'f2154bfcde158b2ca1e60bf1e14e6da8035fe4c171ce4579c9138e2e3c97d309',
@@ -54,6 +54,7 @@ BASELINE_HASHES={'app/Http/Controllers/Auth/AuthenticatedSessionController.php':
  'app/Http/Requests/Auth/LoginRequest.php': '8b25deb3ea9d84c62190037cfde2f76391d4fe20734f06f624d5ab20fd696b98',
  'app/Models/Role.php': '6de3ec7c5790a3cb81fc89f40024261c4fede2b6934fba264827531b521a502e',
  'app/Models/User.php': '1ed83f4aec5f36b7426cf5ea3d16a83b03a7b59775469fff9a81104bc7e84791',
+ 'app/Providers/AppServiceProvider.php': '05ef2af6f22b7d14318f2058acae4ace97bf873d90ad58bddfe918ae26fd3a2a',
  'app/Services/DashboardVisibilityService.php': '05572e28478da6f7a66f2542cded974b6a4506240be143ac8a28979ff008dec9',
  'app/Services/DashboardWidgetRegistryService.php': 'b88440cdbf0e246c999ac5cafcba8848b702e20ee6bc9ed3788610393843b194',
  'app/Services/Metrics/DashboardMetricsService.php': 'a4dc26037c665c2e0a2c78bfe00121e6b0a0353f8ea8bf48ffc72dbc83879696',
@@ -643,7 +644,7 @@ class NarrowDirectoryRecovery:
 def immutable_snapshot(root):
     names=['.env','composer.json','composer.lock','package.json','package-lock.json','vendor/autoload.php',
         'vendor/composer/installed.php','vendor/composer/installed.json','bootstrap/cache/packages.php','bootstrap/cache/services.php']
-    names += ['app/Http/Controllers/Auth/NewPasswordController.php', 'app/Http/Controllers/Auth/PasswordResetLinkController.php', 'app/Http/Middleware/PasswordRecoveryHeaders.php', 'app/Services/Auth/PasswordRecovery.php', 'app/Services/Auth/RevokeAccountSessions.php', 'app/Providers/AppServiceProvider.php', 'config/mail.php', 'routes/auth.php', 'resources/views/auth/forgot-password.blade.php', 'resources/views/auth/login.blade.php', 'resources/views/auth/reset-password.blade.php', 'resources/views/components/password-input.blade.php']
+    names += ['app/Http/Controllers/Auth/NewPasswordController.php', 'app/Http/Controllers/Auth/PasswordResetLinkController.php', 'app/Http/Middleware/PasswordRecoveryHeaders.php', 'app/Services/Auth/PasswordRecovery.php', 'app/Services/Auth/RevokeAccountSessions.php', 'config/mail.php', 'routes/auth.php', 'resources/views/auth/forgot-password.blade.php', 'resources/views/auth/login.blade.php', 'resources/views/auth/reset-password.blade.php', 'resources/views/components/password-input.blade.php']
     for folder in ('public/build','public/css','public/js'):
         path=root/folder
         no_links(path)
