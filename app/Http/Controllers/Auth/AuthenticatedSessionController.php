@@ -30,6 +30,16 @@ class AuthenticatedSessionController extends Controller
         $request->session()->regenerate();
         InternalOrganization::ensureUserAssigned($request->user());
 
+        // A bookmarked dashboard can survive in the guest's intended URL even
+        // after an administrator removes dashboard access from this role.
+        if (! $request->user()->canAccessDashboard()) {
+            $intended = $request->session()->get('url.intended');
+            $path = is_string($intended) ? parse_url($intended, PHP_URL_PATH) : null;
+            if (in_array(rtrim((string) $path, '/'), ['/dashboard', '/business-overview'], true)) {
+                $request->session()->forget('url.intended');
+            }
+        }
+
         return redirect()->intended($request->user()->defaultRedirectPath());
     }
 

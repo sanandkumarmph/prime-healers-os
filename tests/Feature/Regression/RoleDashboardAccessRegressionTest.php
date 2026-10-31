@@ -123,4 +123,15 @@ class RoleDashboardAccessRegressionTest extends TestCase
         $this->actingAs($worker->fresh())->getJson('/profile')->assertForbidden();
         $this->assertGuest();
     }
+
+    public function test_dashboard_denied_login_uses_permitted_work_page_instead_of_a_saved_dashboard_bookmark(): void
+    {
+        $organization = TestData::organization();
+        $role = $this->role($organization->id, User::ROLE_DELIVERY, ['deliveries' => ['read'], '__dashboard' => 'deny']);
+        $worker = TestData::user($organization, ['role_id' => $role->id, 'role' => $role->slug]);
+        $this->withSession(['url.intended' => route('dashboard', ['dashboard_tab' => 'team'])])
+            ->post('/login', ['email' => $worker->email, 'password' => 'password'])
+            ->assertRedirect(route('deliveries.index'));
+        $this->assertAuthenticatedAs($worker);
+    }
 }
