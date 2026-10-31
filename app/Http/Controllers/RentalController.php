@@ -794,7 +794,8 @@ class RentalController extends Controller
             return null;
         }
 
-        if ($delivery->assignedUser && method_exists($delivery->assignedUser, 'isVendor') && $delivery->assignedUser->isVendor()) {
+        // Historical attribution follows the recorded assignment, not current login access.
+        if ((int) $delivery->organization_id > 0 && $delivery->assignedUser && (int) $delivery->assignedUser->organization_id === (int) $delivery->organization_id) {
             return $delivery->assignedUser->name;
         }
 
@@ -4802,11 +4803,11 @@ class RentalController extends Controller
             ->with([
                 'customer:id,name,city',
                 'dispatchWarehouse:id,name',
-                'deliveryRecord:id,rental_id,type,status,assigned_user_id,assigned_staff_id,third_party_name,assignment_type,completed_at,updated_at',
-                'deliveryRecord.assignedUser:id,name',
+                'deliveryRecord:id,organization_id,rental_id,type,status,assigned_user_id,assigned_staff_id,third_party_name,assignment_type,completed_at,updated_at',
+                'deliveryRecord.assignedUser:id,name,organization_id',
                 'deliveryRecord.assignedStaff:id,name,assignment_role',
-                'pickupRecord:id,rental_id,type,status,assigned_user_id,assigned_staff_id,third_party_name,assignment_type,completed_at,updated_at',
-                'pickupRecord.assignedUser:id,name',
+                'pickupRecord:id,organization_id,rental_id,type,status,assigned_user_id,assigned_staff_id,third_party_name,assignment_type,completed_at,updated_at',
+                'pickupRecord.assignedUser:id,name,organization_id',
                 'pickupRecord.assignedStaff:id,name,assignment_role',
             ]);
 
