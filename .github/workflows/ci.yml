@@ -84,6 +84,9 @@ jobs:
       - name: Test deployment coordinator in disposable Linux ownership fixtures
         run: sudo python3 -I -B -m unittest discover -s ops/phos-access-security-uat/dependency -p 'test_linux_coordinator.py' -v
 
+      - name: Test consolidated UAT deployment and recovery in disposable fixtures
+        run: sudo python3 -I -B -m unittest discover -s ops/phos-consolidated-uat -p 'test_*.py' -v
+
       - name: Build frontend assets
         run: npm run build
 

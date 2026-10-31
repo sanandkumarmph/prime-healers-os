@@ -14,6 +14,7 @@ class PdfBrowsershotConfigurator
         $browsershot->setNodeBinary((string) config('pdf.node_binary', 'node'));
         $browsershot->setCustomTempPath($this->tempPath());
         $browsershot->setOption('headless', true);
+        $browsershot->usePipe();
         $browsershot->dismissDialogs();
 
         $nodeModulePath = trim((string) config('pdf.node_module_path', ''));

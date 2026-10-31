@@ -49,6 +49,7 @@ class PdfBrowsershotConfiguratorTest extends TestCase
             $command = $shot->createPdfCommand();
 
             $this->assertSame('pdf', $command['action']);
+            $this->assertTrue($command['options']['pipe']);
             $this->assertSame('https://example.test/invoice', $command['url']);
             $this->assertFalse($command['options']['acceptInsecureCerts'] ?? false);
             $this->assertFalse($command['options']['ignoreHTTPSErrors'] ?? false);
