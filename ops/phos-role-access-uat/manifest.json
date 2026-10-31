@@ -1,8 +1,14 @@
 {
-  "archive_sha256": "45e5f509abd3fae874d75ce24529ca6baf3810c339ff77e40c74faf5b1eb8afd",
+  "archive_sha256": "468ae788a546dd26a3395b432968bc7a84d5dc9b5351d0c31919cbbd0ab9649e",
   "baseline": "80b6616bc63d99519a1983e4adf17f834d92749e",
   "environment": "PHOS_UAT",
   "files": [
+    {
+      "baseline_sha256": "f2154bfcde158b2ca1e60bf1e14e6da8035fe4c171ce4579c9138e2e3c97d309",
+      "path": "app/Http/Controllers/Auth/AuthenticatedSessionController.php",
+      "sha256": "665b8119ed7361bb1c0bf0cd035aa4c73c04f6ffab5b17b62adcd88049f96584",
+      "size": 1696
+    },
     {
       "baseline_sha256": "e9848e19bcc3c268b191db12d1c4d835b36d684798478e0f7e1777399c0e8788",
       "path": "app/Http/Controllers/RentalController.php",
@@ -137,5 +143,5 @@
     }
   ],
   "format": 1,
-  "release": "4b51ae57671c4ca184debe5b3c6573b0cfae62cc"
+  "release": "61ac958c6b40171e75e83e42eb836c6a6fe648b6"
 }

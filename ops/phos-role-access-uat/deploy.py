@@ -40,12 +40,13 @@ MAX_TREE=256*1024*1024
 CACHE_NAMES=('config.php','routes-v7.php')
 NEW_PARENT='app/Services'
 ACTIVATION_REVIEW_COMPLETE=True
-PACKAGE_RELEASE='4b51ae57671c4ca184debe5b3c6573b0cfae62cc'
-PACKAGE_MANIFEST_SHA='a73d03d0cf881fab3a8cea3d26300f21fdd54d41e37d5cf443ccd8b3e2bdf2f4'
-PACKAGE_ARCHIVE_SHA='45e5f509abd3fae874d75ce24529ca6baf3810c339ff77e40c74faf5b1eb8afd'
+PACKAGE_RELEASE='61ac958c6b40171e75e83e42eb836c6a6fe648b6'
+PACKAGE_MANIFEST_SHA='a7417ff3caed6c70ed6eacb68eac4b9d6f8c811b38d8c625a9615a6ce6c616d9'
+PACKAGE_ARCHIVE_SHA='468ae788a546dd26a3395b432968bc7a84d5dc9b5351d0c31919cbbd0ab9649e'
 LOG_ROOT=None
 LOCK_PATHS=(Path('/root/phos-tabbed-dashboard-deploy.lock'),Path('/root/phos-zoho-mail-uat.lock'))
-BASELINE_HASHES={'app/Http/Controllers/RentalController.php': 'e9848e19bcc3c268b191db12d1c4d835b36d684798478e0f7e1777399c0e8788',
+BASELINE_HASHES={'app/Http/Controllers/Auth/AuthenticatedSessionController.php': 'f2154bfcde158b2ca1e60bf1e14e6da8035fe4c171ce4579c9138e2e3c97d309',
+ 'app/Http/Controllers/RentalController.php': 'e9848e19bcc3c268b191db12d1c4d835b36d684798478e0f7e1777399c0e8788',
  'app/Http/Controllers/RoleController.php': 'e5c7d9c2374ad39065e2318fa3f5133bcbf3169d984bfb9d4f28b3706c3c060b',
  'app/Http/Controllers/UserController.php': '7e1f938daf31dd931d4ec7dce49c58cf331319c1566e2e8eb7de5197f9d3d1f9',
  'app/Http/Middleware/EnsureActiveAccount.php': None,

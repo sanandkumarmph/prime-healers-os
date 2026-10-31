@@ -42,8 +42,8 @@ class Fixture(unittest.TestCase):
 
 class PackageTests(Fixture):
     def test_review_boundary_and_exact_role_paths(self):
-        self.assertEqual(d.PACKAGE_RELEASE,'4b51ae57671c4ca184debe5b3c6573b0cfae62cc')
-        self.assertEqual(len(d.BASELINE_HASHES),22)
+        self.assertEqual(d.PACKAGE_RELEASE,'61ac958c6b40171e75e83e42eb836c6a6fe648b6')
+        self.assertEqual(len(d.BASELINE_HASHES),23)
         self.assertEqual(sum(value is None for value in d.BASELINE_HASHES.values()),3)
         with patch.object(d,'PACKAGE_RELEASE',None),self.assertRaises(d.Refused):d.load_package(self.root)
         with patch.object(d,'ACTIVATION_REVIEW_COMPLETE',False):

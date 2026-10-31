@@ -1,6 +1,6 @@
 # Role-access UAT batch
 
-This separate batch activates only the 22 reviewed role-access source files from the pinned application release in `manifest.json`. It expects the completed password-recovery and password-visibility batches. It does not rewrite user/role records or install dependencies, assets, migrations or mail settings.
+This separate batch activates only the 23 reviewed role-access source files from the pinned application release in `manifest.json`. It expects the completed password-recovery and password-visibility batches. It does not rewrite user/role records or install dependencies, assets, migrations or mail settings.
 
 The coordinator derives from the tested password-recovery source/cache installer. Destination directories must already exist. It verifies the fixed UAT identity, database-session configuration, private runtime permissions, source hashes and presence of a valid active Super Admin before activation. It uses the same deployment/mail locks as earlier batches.
 
