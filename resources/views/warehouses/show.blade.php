@@ -91,4 +91,6 @@
             {{ $assets->links() }}
         </div>
     </div>
+
+@include('partials.record-timestamps', ['timestampRecord' => $warehouse, 'timestampFields' => ['created_at' => 'Created', 'updated_at' => 'Last updated']])
 @endsection

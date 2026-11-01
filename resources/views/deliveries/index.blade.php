@@ -1903,7 +1903,7 @@
                                             <strong class="{{ $isOverdue ? 'ops-schedule-danger' : '' }}">{{ $schedulePrimary }}</strong>
                                             <span class="ops-muted">{{ $scheduleCopy }}</span>
                                             @if($delivery->completed_at && $delivery->status === 'completed')
-                                                <span class="ops-muted">Closed {{ $delivery->completed_at->format('d M h:i A') }}</span>
+                                                <span class="ops-muted">Closed {{ $delivery->completed_at?->copy()->timezone('Asia/Kolkata')->format('d M Y, h:i:s A \I\S\T') }}</span>
                                             @endif
                                         </div>
                                     </td>

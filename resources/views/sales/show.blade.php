@@ -1593,7 +1593,7 @@
                     <div class="sale-mobile-info"><span>Assigned</span><strong>{{ $saleDeliveryAssigneeLabel }}</strong></div>
                     <div class="sale-mobile-info"><span>Source</span><strong>{{ $saleFulfilmentSourceLabel }}</strong></div>
                     <div class="sale-mobile-info"><span>Scheduled</span><strong>{{ $deliveryRecord?->scheduled_date ? \Carbon\Carbon::parse($deliveryRecord->scheduled_date)->format('d M Y') : 'Not set' }}</strong></div>
-                    <div class="sale-mobile-info"><span>Completed</span><strong>{{ $deliveryRecord?->completed_at ? \Carbon\Carbon::parse($deliveryRecord->completed_at)->format('d M Y') : 'Pending' }}</strong></div>
+                    <div class="sale-mobile-info"><span>Completed</span><strong>{{ $deliveryRecord?->completed_at ? \App\Support\ActionTimestamp::label($deliveryRecord->completed_at) : 'Pending' }}</strong></div>
                     <div class="sale-mobile-info"><span>Location</span><strong>{{ $deliveryContactAddress ?: 'Not set' }}</strong></div>
                 </div>
             </div>
@@ -1840,7 +1840,7 @@
                 <div class="sale-mini-line"><span>Fulfilled By</span><strong>{{ $saleFulfilledByLabel }}</strong></div>
                 <div class="sale-mini-line"><span>Source</span><strong>{{ $saleFulfilmentSourceLabel }}</strong></div>
                 <div class="sale-mini-line"><span>Scheduled Date</span><strong>{{ $deliveryRecord?->scheduled_date ? \Carbon\Carbon::parse($deliveryRecord->scheduled_date)->format('d M Y') : 'Not set' }}</strong></div>
-                <div class="sale-mini-line"><span>Completed Date</span><strong>{{ $deliveryRecord?->completed_at ? \Carbon\Carbon::parse($deliveryRecord->completed_at)->format('d M Y') : 'Pending' }}</strong></div>
+                <div class="sale-mini-line"><span>Completed Date</span><strong>{{ $deliveryRecord?->completed_at ? \App\Support\ActionTimestamp::label($deliveryRecord->completed_at) : 'Pending' }}</strong></div>
             </div>
         </article>
     </div>
@@ -2009,7 +2009,7 @@
                         <div class="sale-payment-history-item">
                             <div>
                                 <span style="display:block; color:#64748b; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;">Date</span>
-                                <strong>{{ optional($payment->payment_date)->format('d M Y') ?: '-' }}</strong>
+                                <strong>{{ optional($payment->payment_date)->format('d M Y') ?: '-' }}<small style="display:block; font-size:11px; color:#64748b;">Recorded @include('partials.action-time', ['actionAt' => $payment->created_at, 'clockOnly' => false])</small></strong>
                             </div>
                             <div>
                                 <strong>{{ $payment->paymentMethodLabel() }}</strong>
@@ -2249,7 +2249,9 @@
 </div>
 
 <div class="section-nav-target" id="sale-activity-timeline">
-    @include('partials.activity-timeline', [
+
+
+@include('partials.activity-timeline', [
         'timeline' => $activityLogs ?? collect(),
         'title' => 'Operations History',
         'subtitle' => 'Invoice, payment status, delivery, and order updates linked to this sale.',
@@ -2262,4 +2264,5 @@
 </div>
 
 @include('partials.follow-up-modal')
+@include('partials.record-timestamps', ['timestampRecord' => $sale, 'timestampFields' => ['created_at' => 'Created', 'updated_at' => 'Last updated']])
 @endsection

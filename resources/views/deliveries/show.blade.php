@@ -3873,7 +3873,9 @@
         </div>
     </div>
 
-    @include('partials.activity-timeline', [
+
+
+@include('partials.activity-timeline', [
         'logs' => $activityLogs ?? collect(),
         'title' => 'Operations History',
         'subtitle' => 'Assignment, start, completion, and linked order updates for this task.',
@@ -5073,4 +5075,5 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 @endpush
+@include('partials.record-timestamps', ['timestampRecord' => $delivery, 'timestampFields' => ['created_at' => 'Created', 'updated_at' => 'Last updated', 'completed_at' => 'Completed', 'failed_attempt_at' => 'Failed attempt', 'last_pickup_note_at' => 'Pickup note added']])
 @endsection

@@ -13,7 +13,7 @@
     $canAddNote = $canAddNote ?? filled($noteAction);
     $anchorId = $anchorId ?? 'activity-timeline';
     $emptyMessage = $emptyMessage ?? 'No activity has been logged for this record yet.';
-    $groupedTimeline = $timelineItems->groupBy(fn ($log) => optional($log->created_at)->format('Y-m-d') ?: 'undated');
+    $groupedTimeline = $timelineItems->groupBy(fn ($log) => \App\Support\ActionTimestamp::ist($log->created_at)?->format('Y-m-d') ?: 'undated');
     $noteDetailsOpen = $errors->has('note') || $errors->has('note_type');
     $timelineItemCount = $timelineItems->count();
     $latestTimelineItem = $timelineItems->first();
@@ -344,7 +344,7 @@
                 <p>
                     <strong>Latest:</strong> {{ $latestTimelineLabel }}
                     @if($latestTimelineAgo)
-                        <span style="color:#64748b;">&bull; {{ $latestTimelineAgo }}</span>
+                        <span style="color:#64748b;">&bull; {{ $latestTimelineAgo }} &bull; @include('partials.action-time', ['actionAt' => $latestTimelineItem->created_at, 'clockOnly' => false])</span>
                     @endif
                 </p>
             </div>
@@ -435,8 +435,8 @@
                         @endphp
                         <article class="timeline-item">
                             <div class="timeline-time">
-                                <strong>{{ optional($log->created_at)->format('h:i A') }}</strong>
-                                <span>{{ optional($log->created_at)->format('D') }}</span>
+                                <strong>@include('partials.action-time', ['actionAt' => $log->created_at, 'clockOnly' => true])</strong>
+                                <span>{{ \App\Support\ActionTimestamp::ist($log->created_at)?->format('D') }}</span>
                             </div>
                             <div class="timeline-body">
                                 <div class="timeline-title-row">

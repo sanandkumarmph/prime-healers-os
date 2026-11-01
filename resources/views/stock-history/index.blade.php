@@ -171,7 +171,7 @@
                         @endphp
                         <article class="movement-row tone-{{ $config['tone'] }}" data-stock-movement-row>
                             <span class="movement-dot" aria-hidden="true">{!! $iconSvg($config['icon']) !!}</span>
-                            <div class="movement-time">{{ optional($movement->movement_at)->format('h:i A') ?: '--' }}</div>
+                            <div class="movement-time">{{ \App\Support\ActionTimestamp::label($movement->movement_at) ?: '--' }}</div>
                             <div class="movement-type"><strong>{{ $config['label'] }}</strong><span class="movement-desc">{{ $movement->notes ?: $config['desc'] }}</span><span class="status-pill tone-{{ $config['tone'] }}">{{ $statusLabel($movement->to_status ?: $movement->movement_type) }}</span></div>
                                                         <div class="product-cell">
                                 <span class="product-thumb" aria-hidden="true">
@@ -193,7 +193,7 @@
                                 </div>
                             </div>
                             <div class="route-cell"><span class="route-label"><small>From</small><strong>{{ $fromText }}</strong></span><span class="route-arrow">to</span><span class="route-label"><small>To</small><strong>{{ $toText }}</strong></span></div>
-                            <div class="performed-cell"><span class="actor-avatar" aria-hidden="true">{{ $actorInitials }}</span><span style="min-width:0;"><strong>{{ $actorName }}</strong><span class="stock-muted">{{ optional($movement->movement_at)->format('h:i A') ?: '' }}</span></span></div>
+                            <div class="performed-cell"><span class="actor-avatar" aria-hidden="true">{{ $actorInitials }}</span><span style="min-width:0;"><strong>{{ $actorName }}</strong><span class="stock-muted">{{ \App\Support\ActionTimestamp::label($movement->movement_at) ?: '' }}</span></span></div>
                             <div class="desktop-movement-actions" aria-label="Movement actions">
                                 <button type="button" class="stock-icon-btn" data-stock-open-details="view" aria-label="View movement summary" title="View">{!! $iconSvg('eye') !!}</button>
                                 @if($movement->asset_id || $movement->product_id)
@@ -213,7 +213,7 @@
                                 <div class="details-panel" data-stock-popover-panel role="dialog" aria-modal="false" aria-label="Movement details">
                                     <div class="detail-sheet-title" data-detail-title>Movement Details</div>
                                     <div class="detail-line detail-summary"><span>Movement</span><strong>{{ $config['label'] }}</strong></div>
-                                    <div class="detail-line detail-timeline"><span>Timestamp</span><strong>{{ optional($movement->movement_at)->format('d M Y, h:i A') ?: 'Not set' }}</strong></div>
+                                    <div class="detail-line detail-timeline"><span>Timestamp</span><strong>{{ \App\Support\ActionTimestamp::label($movement->movement_at) ?: 'Not set' }}</strong></div>
                                     <div class="detail-line detail-summary"><span>Product</span><strong>{{ $productName }}</strong></div>
                                     <div class="detail-line detail-summary"><span>Quantity</span><strong>{{ $movement->quantity }}</strong></div>
                                     <div class="detail-line detail-timeline"><span>From</span><strong>{{ $fromText }}</strong></div>
@@ -294,7 +294,7 @@
                             $actorName = $movement->performedBy?->name ?: 'System';
                             $actorInitials = collect(explode(' ', $actorName))->filter()->map(fn($part) => mb_substr($part, 0, 1))->take(2)->implode('') ?: 'S';
                         @endphp
-                        <div class="activity-row tone-{{ $config['tone'] }}"><span class="actor-avatar tone-box" aria-hidden="true">{{ $actorInitials }}</span><div style="min-width:0;"><strong style="display:block;font-size:13px;color:#0f172a;">{{ $actorName }}</strong><span class="stock-muted">{{ $config['label'] }} - {{ optional($movement->movement_at)->format('h:i A') }}</span></div></div>
+                        <div class="activity-row tone-{{ $config['tone'] }}"><span class="actor-avatar tone-box" aria-hidden="true">{{ $actorInitials }}</span><div style="min-width:0;"><strong style="display:block;font-size:13px;color:#0f172a;">{{ $actorName }}</strong><span class="stock-muted">{{ $config['label'] }} - {{ \App\Support\ActionTimestamp::label($movement->movement_at) }}</span></div></div>
                     @empty
                         <p class="stock-muted">No recent activity.</p>
                     @endforelse
