@@ -57,7 +57,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/knowledge/categories/{category}', [KnowledgeController::class, 'category'])->name('knowledge.categories.show');
 
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
-    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::patch('/profile', [ProfileController::class, 'update'])->middleware('throttle:account-security')->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->middleware('throttle:account-security')->name('profile.destroy');
 
     Route::post('/products/{product}/convert-to-rental', [ProductController::class, 'convertToRental'])

@@ -4,13 +4,18 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\ProfileUpdateRequest;
 use App\Models\Organization;
+use App\Models\User;
 use App\Services\RoleGrantGuard;
 use App\Services\Auth\RevokeAccountSessions;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class ProfileController extends Controller
@@ -30,13 +35,30 @@ class ProfileController extends Controller
      */
     public function update(ProfileUpdateRequest $request): RedirectResponse
     {
-        $request->user()->fill($request->validated());
+        $emailChanged = DB::transaction(function () use ($request) {
+            $user = User::query()->whereKey($request->user()->id)->lockForUpdate()->firstOrFail();
+            abort_unless($user->hasActiveAccess(), 403);
+            $emailChanged = $user->email !== $request->validated('email');
+            if ($emailChanged) {
+                if (!Hash::check((string) $request->input('current_password'), $user->password)) {
+                    throw ValidationException::withMessages(['current_password' => __('auth.password')]);
+                }
+                Password::deleteToken($user);
+                $newAddress = clone $user;
+                $newAddress->email = $request->validated('email');
+                Password::deleteToken($newAddress);
+                $user->email_verified_at = null;
+                $user->remember_token = Str::random(60);
+                app(RevokeAccountSessions::class)->forUser($user);
+            }
+            $user->fill($request->safe()->only(['name', 'email']))->save();
+            $request->user()->setRawAttributes($user->getAttributes(), true);
 
-        if ($request->user()->isDirty('email')) {
-            $request->user()->email_verified_at = null;
+            return $emailChanged;
+        });
+        if ($emailChanged) {
+            $request->session()->regenerate();
         }
-
-        $request->user()->save();
 
         return Redirect::route('profile.edit')->with('status', 'profile-updated');
     }

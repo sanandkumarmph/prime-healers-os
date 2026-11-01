@@ -83,6 +83,26 @@ class ApplicationSecurityHardeningTest extends TestCase
         $this->get(route('profile.edit'))->assertOk();
     }
 
+    public function test_email_change_requires_password_and_invalidates_old_recovery_token(): void
+    {
+        $user = TestData::user();
+        $before = $user->email;
+        $token = \Illuminate\Support\Facades\Password::createToken($user);
+        \Illuminate\Support\Facades\Password::createToken(new User(['email' => 'new-login@example.test']));
+        $oldRemember = $user->remember_token;
+        $data = ['name' => 'Updated name', 'email' => 'new-login@example.test'];
+        $this->actingAs($user)->patch(route('profile.update'), $data)->assertSessionHasErrors('current_password');
+        $this->assertSame($before, $user->fresh()->email);
+        $this->patch(route('profile.update'), $data + ['current_password' => 'incorrect'])->assertSessionHasErrors('current_password');
+        $this->assertSame($before, $user->fresh()->email);
+        $this->patch(route('profile.update'), $data + ['current_password' => 'password'])->assertSessionHasNoErrors()->assertRedirect(route('profile.edit'));
+        $this->assertSame('new-login@example.test', $user->fresh()->email);
+        $this->assertNotSame($oldRemember, $user->fresh()->remember_token);
+        $this->assertDatabaseMissing('password_reset_tokens', ['email' => $before]);
+        $this->assertDatabaseMissing('password_reset_tokens', ['email' => 'new-login@example.test']);
+        $this->assertNull($user->fresh()->email_verified_at);
+    }
+
     public function test_password_confirmation_and_login_have_independent_abuse_limits(): void
     {
         foreach (range(1, 30) as $attempt) {

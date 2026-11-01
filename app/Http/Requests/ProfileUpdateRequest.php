@@ -18,6 +18,8 @@ class ProfileUpdateRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
+            'current_password' => $this->input('email') !== $this->user()->email
+                ? ['required', 'string', 'current_password'] : ['nullable', 'string'],
             'email' => [
                 'required',
                 'string',
