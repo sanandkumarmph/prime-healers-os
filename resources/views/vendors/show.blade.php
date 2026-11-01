@@ -312,4 +312,6 @@
         </div>
     </div>
 </div>
+
+@include('partials.record-timestamps', ['timestampRecord' => $vendor, 'timestampFields' => ['created_at' => 'Created', 'updated_at' => 'Last updated', 'deactivated_at' => 'Deactivated']])
 @endsection

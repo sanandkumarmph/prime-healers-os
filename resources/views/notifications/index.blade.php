@@ -151,7 +151,7 @@
                                 <span class="topbar-bell-priority {{ in_array($priority, ['high', 'urgent'], true) ? 'is-high' : ($priority === 'medium' ? 'is-medium' : '') }}">
                                     {{ strtoupper($priority) }}
                                 </span>
-                                <span class="topbar-bell-time">{{ $notification['time_ago'] ?? '' }}</span>
+                                <span class="topbar-bell-time">{{ $notification['time_ago'] ?? '' }} &bull; @include('partials.action-time', ['actionAt' => $notification['created_at'] ?? null, 'clockOnly' => false])</span>
                             </div>
                         </div>
                         <div class="notifications-actions">

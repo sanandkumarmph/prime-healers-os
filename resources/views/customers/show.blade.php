@@ -290,7 +290,7 @@
         ['label' => 'City', 'value' => $customer->city ?: '-'],
         ['label' => 'Address', 'value' => $customer->address ?: '-'],
         ['label' => 'Email', 'value' => $customer->email ?: '-'],
-        ['label' => 'Created', 'value' => optional($customer->created_at)->format('d M Y') ?: '-'],
+        ['label' => 'Created', 'value' => \App\Support\ActionTimestamp::label($customer->created_at) ?: '-'],
         ['label' => 'ID Proof', 'value' => $proofUrl ? 'Available' : 'Not uploaded'],
     ])->values();
     $customerMobileQuickActions = collect();
@@ -893,7 +893,7 @@
                                 <span class="badge" style="{{ $statusBadge($sale->payment_status ?? 'pending') }}">{{ $sale->payment_status ?? 'pending' }}</span>
                             </div>
                             <div class="customer-mobile-record-meta">{{ $sale->product->name ?? 'Sale item' }}</div>
-                            <div class="customer-mobile-record-meta">{{ optional($sale->created_at)->format('d M Y') ?: '-' }}</div>
+                            <div class="customer-mobile-record-meta">{{ \App\Support\ActionTimestamp::label($sale->created_at) ?: '-' }}</div>
                             <div class="customer-mobile-record-meta">{{ $currency($sale->sale_amount ?? 0) }}</div>
                             <div class="customer-mobile-record-actions">
                                 @if(\Illuminate\Support\Facades\Route::has('sales.show'))
@@ -1020,7 +1020,7 @@
                             $eventDate = data_get($entry, 'occurred_at') ?? data_get($entry, 'created_at') ?? data_get($entry, 'date');
                             $eventTitle = data_get($entry, 'title') ?? data_get($entry, 'label') ?? data_get($entry, 'event') ?? 'Activity';
                             $eventDescription = data_get($entry, 'description') ?? data_get($entry, 'summary') ?? data_get($entry, 'message') ?? data_get($entry, 'details');
-                            $eventDateLabel = $eventDate ? \Illuminate\Support\Carbon::parse($eventDate)->format('d M Y, h:i A') : 'Recent';
+                            $eventDateLabel = \App\Support\ActionTimestamp::label($eventDate);
                         @endphp
                         <div class="customer-mobile-timeline-item">
                             <div class="customer-mobile-timeline-date">{{ $eventDateLabel }}</div>
@@ -1448,7 +1448,9 @@
         </div>
 
         <div class="span-12 section-nav-target" id="customer-timeline">
-    @include('partials.activity-timeline', [
+
+
+@include('partials.activity-timeline', [
         'timeline' => $activityTimeline ?? collect(),
         'title' => 'Timeline',
                 'subtitle' => 'Rentals, sales, invoices, payments, deliveries, reminders, and notes linked to this customer.',
@@ -1471,4 +1473,5 @@
     'actions' => $mobilePrimaryActions->all(),
     'moreActions' => $mobileMoreActions->all(),
 ])
+@include('partials.record-timestamps', ['timestampRecord' => $customer, 'timestampFields' => ['created_at' => 'Created', 'updated_at' => 'Last updated']])
 @endsection

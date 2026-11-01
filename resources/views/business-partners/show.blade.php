@@ -349,7 +349,9 @@
     </div>
 
     <div class="section-nav-target" id="business-partner-timeline">
-        @include('partials.activity-timeline', [
+
+
+@include('partials.activity-timeline', [
             'timeline' => $activityTimeline ?? collect(),
             'title' => 'Timeline',
             'subtitle' => 'Partner setup, actual clients, rentals, sales, reminders, and follow-up history.',
@@ -362,4 +364,5 @@
     </div>
 </div>
 @include('partials.follow-up-modal')
+@include('partials.record-timestamps', ['timestampRecord' => $businessPartner, 'timestampFields' => ['created_at' => 'Created', 'updated_at' => 'Last updated']])
 @endsection

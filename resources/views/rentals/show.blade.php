@@ -621,11 +621,11 @@
     $paymentStatusLabel = $rentalInvoiceStatus ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus)) : 'Pending';
     $latestPayment = ($rental->payments ?? collect())->sortByDesc('payment_date')->sortByDesc('id')->first();
     $lifecycleSteps = collect([
-        ['label' => 'Created', 'meta' => optional($rental->created_at)->format('d M Y') ?: 'Logged', 'tone' => 'done'],
-        ['label' => 'Delivered', 'meta' => $deliveryRecord?->completed_at ? $deliveryRecord->completed_at->format('d M Y') : $deliveryStatusLabel($rental->deliveryStatus()), 'tone' => $rental->deliveryStatus() === 'completed' ? 'done' : ($hasOpenDeliveryTask ? 'active' : 'pending')],
+        ['label' => 'Created', 'meta' => \App\Support\ActionTimestamp::label($rental->created_at) ?: 'Logged', 'tone' => 'done'],
+        ['label' => 'Delivered', 'meta' => $deliveryRecord?->completed_at ? \App\Support\ActionTimestamp::label($deliveryRecord->completed_at) : $deliveryStatusLabel($rental->deliveryStatus()), 'tone' => $rental->deliveryStatus() === 'completed' ? 'done' : ($hasOpenDeliveryTask ? 'active' : 'pending')],
         ['label' => 'Active', 'meta' => ucfirst(str_replace('_', ' ', $operationalStatus)), 'tone' => in_array($operationalStatus, ['active', 'delivery_pending'], true) ? 'active' : ($operationalStatus === 'returned' ? 'done' : ($isHotlisted ? 'problem' : 'pending'))],
         ['label' => 'Return Due', 'meta' => optional($rental->end_date)->format('d M Y') ?: 'Not set', 'tone' => $daysUntilEnd !== null && $daysUntilEnd < 0 ? 'problem' : ($daysUntilEnd !== null && $daysUntilEnd <= 2 ? 'warn' : 'pending')],
-        ['label' => 'Completed', 'meta' => $rental->returned_at ? $rental->returned_at->format('d M Y') : 'Pending', 'tone' => $operationalStatus === 'returned' ? 'done' : 'pending'],
+        ['label' => 'Completed', 'meta' => $rental->returned_at ? \App\Support\ActionTimestamp::label($rental->returned_at) : 'Pending', 'tone' => $operationalStatus === 'returned' ? 'done' : 'pending'],
     ]);
     $workflowSteps = collect([
         [
@@ -633,7 +633,7 @@
             'status' => ucfirst(str_replace('_', ' ', $operationalStatus)),
             'person' => $rental->createdBy->name ?? 'System',
             'scheduled' => optional($rental->start_date)->format('d M Y') ?: 'Not set',
-            'completed' => optional($rental->created_at)->format('d M Y h:i A') ?: null,
+            'completed' => \App\Support\ActionTimestamp::label($rental->created_at) ?: null,
             'tone' => $isHotlisted ? 'problem' : 'done',
             'action' => $canUpdateRentals ? ['label' => 'Edit', 'href' => route('rentals.edit', $rental)] : null,
         ],
@@ -642,7 +642,7 @@
             'status' => $deliveryStatusLabel($rental->deliveryStatus()),
             'person' => $deliveryAssigneeLabel,
             'scheduled' => $deliveryRecord?->scheduled_at ? $deliveryRecord->scheduled_at->format('d M Y h:i A') : 'Not scheduled',
-            'completed' => $deliveryRecord?->completed_at ? $deliveryRecord->completed_at->format('d M Y h:i A') : null,
+            'completed' => $deliveryRecord?->completed_at ? $deliveryRecord->completed_at?->copy()->timezone('Asia/Kolkata')->format('d M Y, h:i:s A \I\S\T') : null,
             'tone' => $rental->deliveryStatus() === 'completed' ? 'done' : ($hasOpenDeliveryTask ? 'active' : 'pending'),
             'action' => $deliveryRecord ? ['label' => 'Open', 'href' => route('deliveries.show', $deliveryRecord)] : (($canCreateDeliveries && $hasPendingDeliveryItems) ? ['label' => 'Assign', 'href' => route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'delivery'])] : null),
         ],
@@ -660,7 +660,7 @@
             'status' => ucfirst(str_replace('_', ' ', $rental->pickupStatus() ?: 'pending')),
             'person' => $pickupAssigneeLabel,
             'scheduled' => $pickupRecord?->scheduled_at ? $pickupRecord->scheduled_at->format('d M Y h:i A') : 'Not scheduled',
-            'completed' => $pickupRecord?->completed_at ? $pickupRecord->completed_at->format('d M Y h:i A') : null,
+            'completed' => $pickupRecord?->completed_at ? $pickupRecord->completed_at?->copy()->timezone('Asia/Kolkata')->format('d M Y, h:i:s A \I\S\T') : null,
             'tone' => in_array($rental->pickupStatus(), ['completed', 'picked_up', 'returned'], true) ? 'done' : ($hasOpenPickupTask ? 'active' : ($isHotlisted ? 'problem' : 'pending')),
             'action' => $pickupRecord ? ['label' => 'Open', 'href' => route('deliveries.show', $pickupRecord)] : ($canAssignPickup ? ['label' => 'Schedule', 'button' => true, 'attributes' => ['data-open-pickup-modal' => true]] : null),
         ],
@@ -668,7 +668,7 @@
             'label' => 'Return Verification',
             'status' => $returnVerificationStatusLabel,
             'person' => $pickupAssigneeLabel,
-            'scheduled' => $rental->returned_at ? $rental->returned_at->format('d M Y h:i A') : 'After pickup',
+            'scheduled' => $rental->returned_at ? $rental->returned_at?->copy()->timezone('Asia/Kolkata')->format('d M Y, h:i:s A \I\S\T') : 'After pickup',
             'completed' => $returnVerificationCompletedAt,
             'tone' => $returnVerificationTone,
             'action' => $returnVerificationAction,
@@ -4048,7 +4048,7 @@
                     <div class="ph-rental-accordion-body">
                         @forelse($timelinePreview->take(5) as $log)
                             <div class="ph-rental-mobile-line">
-                                <span>{{ optional($log->created_at)->format('d M h:i A') }}</span>
+                                <span>{{ \App\Support\ActionTimestamp::label($log->created_at) }}</span>
                                 <strong>{{ \Illuminate\Support\Str::limit($log->description ?? ucfirst(str_replace(['_', '.'], ' ', $log->action ?? 'Activity')), 32) }}</strong>
                             </div>
                         @empty
@@ -4288,7 +4288,7 @@
                                     <strong>{{ \Illuminate\Support\Str::limit($log->description ?? ucfirst(str_replace(['_', '.'], ' ', $log->action ?? 'Activity')), 44) }}</strong>
                                     <span>{{ $log->causer?->name ?? 'System' }}</span>
                                 </div>
-                                <time>{{ optional($log->created_at)->format('d M h:i A') }}</time>
+                                <time>{{ \App\Support\ActionTimestamp::label($log->created_at) }}</time>
                             </div>
                         @empty
                             <div class="rental-line-item"><span>No recent activity</span><strong>-</strong></div>
@@ -4427,7 +4427,7 @@
                                 @forelse(($rental->payments ?? collect())->sortByDesc('payment_date')->sortByDesc('id')->take(8) as $payment)
                                     <div class="rcc-payment-line">
                                         <div>
-                                            <strong>{{ optional($payment->payment_date)->format('d M Y') ?: 'Date not set' }}</strong>
+                                            <strong>{{ optional($payment->payment_date)->format('d M Y') ?: 'Date not set' }}<small style="display:block;font-weight:400;">Recorded @include('partials.action-time', ['actionAt' => $payment->created_at, 'clockOnly' => false])</small></strong>
                                             <div>{{ $payment->reversal_of_payment_id ? 'Correction of receipt #'.$payment->reversal_of_payment_id : 'Receipt #'.$payment->id.(($rental->payments ?? collect())->firstWhere('reversal_of_payment_id', $payment->id) ? ' — Reversed' : '') }}</div>
                                             <div>{{ ucfirst(str_replace('_', ' ', $payment->payment_method ?? 'payment')) }}{{ $payment->invoice?->invoice_number ? '  -  ' . $payment->invoice->invoice_number : '' }}</div>
                                             @if(filled($payment->notes ?? null))
@@ -4531,7 +4531,7 @@
             <div class="rcc-timeline-list">
                 @forelse($timelinePreview as $log)
                     <div class="rcc-timeline-item">
-                        <time>{{ optional($log->created_at)->format('d M Y h:i A') }}</time>
+                        <time>{{ \App\Support\ActionTimestamp::label($log->created_at) }}</time>
                         <div>
                             <strong>{{ $log->description ?? ucfirst(str_replace(['_', '.'], ' ', $log->action ?? 'Activity')) }}</strong>
                             @if(!empty($log->properties) && is_array($log->properties))
@@ -4558,7 +4558,7 @@
                 <div class="rcc-timeline-list" style="padding:0;">
                     @foreach(($activityLogs ?? collect())->take(20) as $log)
                         <div class="rcc-timeline-item">
-                            <time>{{ optional($log->created_at)->format('d M Y h:i A') }}</time>
+                            <time>{{ \App\Support\ActionTimestamp::label($log->created_at) }}</time>
                             <div>
                                 <strong>{{ $log->description ?? ucfirst(str_replace(['_', '.'], ' ', $log->action ?? 'Activity')) }}</strong>
                             </div>
@@ -4932,6 +4932,8 @@
     </div>
 </div>
     --}}
+
+@include('partials.record-timestamps', ['timestampRecord' => $rental, 'timestampFields' => ['created_at' => 'Created', 'updated_at' => 'Last updated', 'returned_at' => 'Rental closed']])
 @endsection
 
 @push('scripts')

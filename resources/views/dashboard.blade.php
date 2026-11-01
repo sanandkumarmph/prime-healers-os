@@ -1112,7 +1112,7 @@
             'title' => 'Payment received  /  ' . (optional($payment->customer)->name ?? 'Customer'),
             'meta' => optional($payment->invoice)->invoice_number ?? 'Payment entry',
             'amount' => $currency($payment->amount ?? 0),
-            'timestamp' => optional($payment->payment_date)?->format('d M Y') ?? 'Recent',
+            'timestamp' => 'Payment date: ' . (optional($payment->payment_date)?->format('d M Y') ?? 'Not recorded') . ' · Recorded: ' . \App\Support\ActionTimestamp::label($payment->created_at),
             'badge' => 'Payment',
             'href' => $invoiceIndexUrl ? route('invoices.index', ['search' => $payment->invoice->invoice_number ?? null]) : $dashboardUrl,
         ]))
@@ -1120,7 +1120,7 @@
             'title' => 'Sales order  /  SALE-' . $sale->id,
             'meta' => optional($sale->customer)->name ?? 'Customer',
             'amount' => $currency($sale->sale_amount ?? 0),
-            'timestamp' => optional($sale->sale_date)?->format('d M Y') ?? 'Recent',
+            'timestamp' => 'Sale date: ' . (optional($sale->sale_date)?->format('d M Y') ?? 'Not recorded') . ' · Recorded: ' . \App\Support\ActionTimestamp::label($sale->created_at),
             'badge' => 'Sales',
             'href' => $salesIndexUrl ?: $dashboardUrl,
         ]))
@@ -1255,7 +1255,7 @@
             return [
                 'title' => \Illuminate\Support\Str::headline(str_replace('.', ' ', (string) $activity->action)),
                 'meta' => $activity->description ?: 'Inventory event recorded.',
-                'time' => optional($activity->created_at)?->diffForHumans() ?? 'Recently',
+                'time' => 'Recorded: ' . \App\Support\ActionTimestamp::label($activity->created_at),
                 'href' => $inventoryUrl,
             ];
         })
@@ -1388,35 +1388,35 @@
         'all' => $recentActivitiesSummary->map(fn ($activity) => [
             'title' => \Illuminate\Support\Str::headline(str_replace('.', ' ', (string) $activity->action)),
             'meta' => $activity->description ?: 'Activity recorded in the operational timeline.',
-            'time' => optional($activity->created_at)?->diffForHumans() ?? 'Recently',
+            'time' => 'Recorded: ' . \App\Support\ActionTimestamp::label($activity->created_at),
             'tone' => 'blue',
             'href' => $dashboardUrl,
         ])->values()->all(),
         'rentals' => $recentRentalsSummary->map(fn ($rental) => [
             'title' => 'Rental #' . $rental->id . '  /  ' . ($rental->customer_name ?? optional($rental->customer)->name ?? 'Customer'),
             'meta' => (optional($rental->product)->name ?? 'Product') . '  /  ' . $currency((float) ($rental->rental_amount ?? 0)),
-            'time' => optional($rental->created_at)?->diffForHumans() ?? 'Recently',
+            'time' => 'Created: ' . \App\Support\ActionTimestamp::label($rental->created_at),
             'tone' => 'violet',
             'href' => route('rentals.show', $rental),
         ])->values()->all(),
         'payments' => $recentPaymentsSummary->map(fn ($payment) => [
             'title' => 'Payment received from ' . ($payment->customer->name ?? 'Customer'),
             'meta' => ($payment->invoice->invoice_number ?? 'Invoice') . '  /  ' . $currency((float) ($payment->amount ?? 0)),
-            'time' => optional($payment->payment_date)?->format('d M Y') ?? 'Recently',
+            'time' => 'Payment date: ' . (optional($payment->payment_date)?->format('d M Y') ?? 'Not recorded') . ' · Recorded: ' . \App\Support\ActionTimestamp::label($payment->created_at),
             'tone' => 'green',
             'href' => $invoiceIndexUrl ? route('invoices.index', ['search' => $payment->invoice->invoice_number ?? null]) : $dashboardUrl,
         ])->values()->all(),
         'tasks' => $recentDeliveriesSummary->map(fn ($task) => [
             'title' => ucfirst((string) $task->type) . ' #' . $task->id . '  /  ' . ($task->linkedCustomerName() ?: 'Customer'),
             'meta' => optional($task->scheduled_at)?->format('d M, h:i A') ?? 'Schedule pending',
-            'time' => optional($task->updated_at)?->diffForHumans() ?? 'Recently',
+            'time' => 'Last updated: ' . \App\Support\ActionTimestamp::label($task->updated_at),
             'tone' => 'amber',
             'href' => route('deliveries.show', $task),
         ])->values()->all(),
         'alerts' => $highPriorityFollowUpSummary->map(fn ($followUp) => [
             'title' => $followUp->title ?: 'High priority follow-up',
             'meta' => $followUp->note ?: ($followUp->customer?->name ?? $followUp->businessPartner?->displayName() ?? 'Customer coordination'),
-            'time' => optional($followUp->due_at)?->diffForHumans() ?? 'Today',
+            'time' => 'Due: ' . \App\Support\ActionTimestamp::label($followUp->due_at) . ' · Created: ' . \App\Support\ActionTimestamp::label($followUp->created_at),
             'tone' => 'red',
             'href' => $communicationCenterUrl ? route('communication-center.index', ['priority' => 'high']) : $dashboardUrl,
         ])->values()->all(),

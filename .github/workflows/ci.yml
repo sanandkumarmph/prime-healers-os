@@ -120,3 +120,20 @@ jobs:
         env:
           PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
           PHOS_MOBILE_LAYOUT_RENDER_DIR: ${{ runner.temp }}/phos-mobile-layout-fixtures
+
+      - name: Render synthetic action timestamp pages
+        run: vendor/bin/pest tests/Feature/Regression/ActionTimestampsRegressionTest.php
+        env:
+          APP_ENV: testing
+          CACHE_STORE: array
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ":memory:"
+          QUEUE_CONNECTION: sync
+          SESSION_DRIVER: array
+          PHOS_ACTION_TIMESTAMPS_RENDER_DIR: ${{ runner.temp }}/phos-action-timestamps
+
+      - name: Test action timestamp readability and browser timezone independence
+        run: node --test tests/Browser/ActionTimestampsTest.cjs
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
+          PHOS_ACTION_TIMESTAMPS_RENDER_DIR: ${{ runner.temp }}/phos-action-timestamps

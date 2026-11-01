@@ -132,10 +132,10 @@
                             </div>
                         </div>
                         <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; color:#64748b; font-size:12px; font-weight:700;">
-                            <span>{{ optional($article->published_at)->format('d M Y') ?: optional($article->updated_at)->format('d M Y') }}</span>
+                            <span>{{ \App\Support\ActionTimestamp::label($article->published_at) ?: \App\Support\ActionTimestamp::label($article->updated_at) }}</span>
                             @if($article->updated_at && $article->updated_at != $article->published_at)
                                 <span>&bull;</span>
-                                <span>Updated {{ $article->updated_at->format('d M Y') }}</span>
+                                <span>Updated {{ \App\Support\ActionTimestamp::label($article->updated_at) }}</span>
                             @endif
                         </div>
                     </a>
