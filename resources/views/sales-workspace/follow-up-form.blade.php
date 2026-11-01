@@ -1,5 +1,5 @@
 @php
-    $tz = $enquiry->organization->timezone ?: 'UTC';
+    $tz = config('app.timezone', 'Asia/Kolkata');
     $followSubject = isset($quote) ? 'Follow up on '.$quote->number() : 'Follow up on '.$enquiry->subject;
     $tomorrow = now($tz)->addDay()->setTime(10,0)->format('Y-m-d\TH:i');
 @endphp

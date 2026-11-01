@@ -30,12 +30,12 @@
         <button class="sw-btn" type="submit">I have sent this quotation</button>
         <p class="sw-meta">Opening a message or copying the link does not mark it as sent.</p>
     </form>
-    @elseif($quote->shared_at)<p class="sw-meta">Marked as sent via {{ $quote->shared_channel }} on {{ $quote->shared_at->timezone($quote->snapshot['timezone'])->format('d M, H:i') }}.</p>@endif
-    <details><summary>Link details</summary><p class="sw-meta">Expires at the end of {{ $quote->valid_until->format('d M Y') }} ({{ $quote->snapshot['timezone'] }}). Anyone with the link can view and respond.</p><p class="sw-meta">{{ $quote->viewed_at ? 'Link first opened: '.$quote->viewed_at->timezone($quote->snapshot['timezone'])->format('d M, H:i') : 'Customer link not opened yet' }}. Opening a link is not proof of customer identity.</p></details>
+    @elseif($quote->shared_at)<p class="sw-meta">Marked as sent via {{ $quote->shared_channel }} on {{ $quote->shared_at->timezone(config('app.timezone'))->format('d M, H:i') }}.</p>@endif
+    <details><summary>Link details</summary><p class="sw-meta">Expires {{ $quote->expiresAt()->timezone(config('app.timezone'))->format('d M Y, h:i A') }} IST. Anyone with the link can view and respond.</p><p class="sw-meta">{{ $quote->viewed_at ? 'Link first opened: '.$quote->viewed_at->timezone(config('app.timezone'))->format('d M, H:i') : 'Customer link not opened yet' }}. Opening a link is not proof of customer identity.</p></details>
 </section>
 @if($quote->status==='sent')<section class="sw-panel"><h2>Follow-up <span class="sw-meta">Optional</span></h2>
 @php($nextFollowUp=$enquiry->followUps()->whereNull('completed_at')->orderBy('due_at')->first())
-@if($nextFollowUp)<p class="sw-meta">Next: {{ $nextFollowUp->subject }} · {{ $nextFollowUp->due_at->timezone($enquiry->organization->timezone ?: 'UTC')->format('d M, H:i') }} <a href="{{ route('enquiries.show',$enquiry) }}">Manage</a></p>
+@if($nextFollowUp)<p class="sw-meta">Next: {{ $nextFollowUp->subject }} · {{ $nextFollowUp->due_at->timezone(config('app.timezone'))->format('d M, H:i') }} <a href="{{ route('enquiries.show',$enquiry) }}">Manage</a></p>
 @else @include('sales-workspace.follow-up-form') @endif
 </section>@endif
 @endif

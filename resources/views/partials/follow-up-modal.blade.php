@@ -189,13 +189,18 @@
             const priorityField = modal.querySelector('[name="priority"]');
             const assignedUserField = modal.querySelector('[name="assigned_user_id"]');
             const hiddenFields = ['customer_id', 'business_partner_id', 'partner_client_id', 'rental_id', 'sale_id', 'invoice_id', 'delivery_id'];
-            const now = new Date();
-            const defaultDue = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            const defaultDueAt = () => {
+                const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+                    timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit',
+                    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+                }).formatToParts(new Date()).map(part => [part.type, part.value]));
+                return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+            };
 
             const resetForm = () => {
                 form.reset();
-                if (dueField && !dueField.value) {
-                    dueField.value = defaultDue;
+                if (dueField) {
+                    dueField.value = defaultDueAt();
                 }
                 hiddenFields.forEach((field) => {
                     const input = form.querySelector(`[name="${field}"]`);
@@ -334,7 +339,7 @@
                             </select>
                         </div>
                         <div class="ph-followup-field">
-                            <label for="{{ $followUpModalId }}-due">Due Date & Time</label>
+                            <label for="{{ $followUpModalId }}-due">Due Date & Time (IST)</label>
                             <input id="{{ $followUpModalId }}-due" class="ph-followup-input" type="datetime-local" name="due_at" value="{{ old('due_at', now()->format('Y-m-d\TH:i')) }}">
                         </div>
                     </div>

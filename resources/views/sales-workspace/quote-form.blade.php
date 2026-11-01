@@ -33,7 +33,7 @@
                 <section class="sw-panel">
                     <div class="sw-fields">
                         <div class="sw-field"><label for="kind">Order type *</label><select id="kind" name="kind"><option value="rental" @selected($kind==='rental')>Rental</option><option value="sale" @selected($kind==='sale')>Sale</option></select>@error('kind')<span class="sw-overdue">{{ $message }}</span>@enderror</div>
-                        <div class="sw-field"><label for="valid_until">Valid until *</label><input id="valid_until" name="valid_until" type="date" value="{{ old('valid_until',$quote?->valid_until->toDateString() ?? now($enquiry->organization->timezone ?: 'UTC')->addDays(7)->toDateString()) }}" required></div>
+                        <div class="sw-field"><label for="valid_until">Valid until *</label><input id="valid_until" name="valid_until" type="date" value="{{ old('valid_until',$quote?->valid_until->toDateString() ?? now(config('app.timezone'))->addDays(7)->toDateString()) }}" required></div>
                         <div class="sw-field" data-rental-dates><label for="start_date">Rental start *</label><input type="date" name="start_date" id="start_date" value="{{ old('start_date',$s['start_date'] ?? '') }}"></div>
                         <div class="sw-field" data-rental-dates><label for="end_date">Rental end *</label><input type="date" name="end_date" id="end_date" value="{{ old('end_date',$s['end_date'] ?? '') }}"></div>
                     </div>
