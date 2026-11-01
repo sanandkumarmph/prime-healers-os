@@ -29,6 +29,11 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
         InternalOrganization::ensureUserAssigned($request->user());
+        if ($request->session()->has('url.intended')) {
+            $request->session()->put('url.intended', \App\Support\LocalRedirect::path(
+                $request->session()->get('url.intended'), $request->user()->defaultRedirectPath()
+            ));
+        }
 
         // A bookmarked dashboard can survive in the guest's intended URL even
         // after an administrator removes dashboard access from this role.

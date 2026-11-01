@@ -149,7 +149,7 @@ class StockHistoryController extends Controller
 
         return response()->streamDownload(function () use ($movements) {
             $output = fopen('php://output', 'w');
-            fputcsv($output, [
+            \App\Support\SafeCsv::row($output, [
                 'Movement At',
                 'Type',
                 'Product',
@@ -169,7 +169,7 @@ class StockHistoryController extends Controller
             ]);
 
             foreach ($movements as $movement) {
-                fputcsv($output, [
+                \App\Support\SafeCsv::row($output, [
                     optional($movement->movement_at)->format('Y-m-d H:i:s'),
                     $movement->movement_type,
                     trim(collect([

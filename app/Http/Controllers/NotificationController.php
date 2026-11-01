@@ -55,7 +55,7 @@ class NotificationController extends Controller
         abort_unless($this->notifications->markAsRead($user, $notification), 404);
 
         if (!$request->expectsJson()) {
-            return redirect($request->input('redirect_to', route('notifications.index')));
+            return redirect(\App\Support\LocalRedirect::path($request->input('redirect_to'), route('notifications.index')));
         }
 
         return response()->json([
@@ -72,7 +72,7 @@ class NotificationController extends Controller
         $updated = $this->notifications->markAllAsRead($user);
 
         if (!$request->expectsJson()) {
-            return redirect($request->input('redirect_to', route('notifications.index')));
+            return redirect(\App\Support\LocalRedirect::path($request->input('redirect_to'), route('notifications.index')));
         }
 
         return response()->json([

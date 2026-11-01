@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->trustHosts(at: fn () => ['^'.preg_quote((string) parse_url((string) config('app.url'), PHP_URL_HOST), '/').'$'], subdomains: false);
         $middleware->redirectGuestsTo(fn () => route('login'));
         $middleware->redirectUsersTo(function ($request) {
             $user = $request->user();

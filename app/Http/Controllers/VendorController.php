@@ -163,7 +163,7 @@ class VendorController extends Controller
 
         return response()->streamDownload(function () use ($vendors) {
             $handle = fopen('php://output', 'w');
-            fputcsv($handle, [
+            \App\Support\SafeCsv::row($handle, [
                 'Name',
                 'Contact Person',
                 'Phone',
@@ -182,7 +182,7 @@ class VendorController extends Controller
             ]);
 
             foreach ($vendors as $vendor) {
-                fputcsv($handle, [
+                \App\Support\SafeCsv::row($handle, [
                     $vendor->name,
                     $vendor->contact_person,
                     $vendor->phone,

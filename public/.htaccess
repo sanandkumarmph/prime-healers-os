@@ -5,6 +5,14 @@
 
     RewriteEngine On
 
+    # Static storage files bypass Laravel policies. Private proof namespaces must
+    # only be streamed through the authorized application routes.
+    RewriteRule ^storage/(customer-id-proofs|delivery-proofs)(/|$) - [F,L,NC]
+
+    # Preserve ACME challenges while denying hidden configuration and repository files.
+    RewriteRule (^|/)\.(?!well-known(/|$)) - [F,L]
+    RewriteRule ^(composer\.(json|lock)|package(-lock)?\.json|phpunit\.xml|artisan)$ - [F,L,NC]
+
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]

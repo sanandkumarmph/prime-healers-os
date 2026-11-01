@@ -3,9 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ProfileUpdateRequest;
+use App\Models\Organization;
+use App\Services\RoleGrantGuard;
+use App\Services\Auth\RevokeAccountSessions;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\View\View;
 
@@ -48,9 +52,18 @@ class ProfileController extends Controller
 
         $user = $request->user();
 
-        Auth::logout();
-
-        $user->delete();
+        // Use the same organization lock as user/role administration so two
+        // concurrent owner deletions cannot both pass the last-owner check.
+        DB::transaction(function () use ($user) {
+            Organization::query()->whereKey($user->organization_id)->lockForUpdate()->firstOrFail();
+            $user->refresh()->unsetRelation('assignedRole');
+            app(RoleGrantGuard::class)->protectLastOwnerUser($user, null);
+            app(RevokeAccountSessions::class)->forUser($user);
+            // Logout rotates the remember token; do it before deletion so the
+            // guard cannot save (and reinsert) an already-deleted user model.
+            Auth::logout();
+            $user->delete();
+        });
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();

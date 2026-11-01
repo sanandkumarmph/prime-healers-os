@@ -14,7 +14,6 @@ class PdfBrowsershotConfigurator
         $browsershot->setNodeBinary((string) config('pdf.node_binary', 'node'));
         $browsershot->setCustomTempPath($this->tempPath());
         $browsershot->setOption('headless', true);
-        $browsershot->ignoreHttpsErrors();
         $browsershot->dismissDialogs();
 
         $nodeModulePath = trim((string) config('pdf.node_module_path', ''));
@@ -95,10 +94,23 @@ class PdfBrowsershotConfigurator
             $arguments[] = 'disable-setuid-sandbox';
         }
 
-        return array_values(array_unique(array_filter(
+        $arguments = array_values(array_unique(array_filter(
             array_map(fn ($argument) => trim((string) $argument), $arguments),
             fn (string $argument) => $argument !== ''
         )));
+
+        if (! $this->disableSandbox()) {
+            // Legacy Linux flags cannot survive an explicit request for the
+            // Chromium sandbox: single-process/no-zygote also prevent its startup.
+            $arguments = array_values(array_filter($arguments, function (string $argument): bool {
+                $name = strtolower(explode('=', ltrim($argument, '-'), 2)[0]);
+
+                return ! str_contains($name, 'sandbox')
+                    && ! in_array($name, ['single-process', 'no-zygote'], true);
+            }));
+        }
+
+        return $arguments;
     }
 
     public function environmentOptions(): array

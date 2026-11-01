@@ -4717,7 +4717,7 @@ class RentalController extends Controller
             if ($canViewRecordFinance) {
                 array_push($headers, 'Total Amount', 'Transport Amount', 'Deposit Amount', 'Other Charges');
             }
-            fputcsv($output, $headers);
+            \App\Support\SafeCsv::row($output, $headers);
 
             foreach ($rentals as $rental) {
                 $deliveryRecord = $rental->deliveryRecord;
@@ -4747,7 +4747,7 @@ class RentalController extends Controller
                         $rental->other_amount ?? 0,
                     );
                 }
-                fputcsv($output, $row);
+                \App\Support\SafeCsv::row($output, $row);
             }
 
             fclose($output);
