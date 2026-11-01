@@ -2717,7 +2717,8 @@
     }
     .rental-overview-grid-v2 {
         display:grid;
-        grid-template-columns:1.05fr 1fr 1fr .95fr 1.15fr;
+        grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));
+        align-items:start;
         gap:10px;
         padding:12px;
     }
@@ -2763,7 +2764,7 @@
     }
     .rental-line-item {
         display:grid;
-        grid-template-columns:minmax(0,1fr) auto;
+        grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);
         gap:10px;
         align-items:start;
         color:#475569;
@@ -2782,13 +2783,23 @@
     }
     .rental-activity-mini-row {
         display:grid;
-        grid-template-columns:24px minmax(0,1fr) auto;
+        grid-template-columns:24px minmax(0,1fr);
         gap:8px;
         align-items:start;
         padding-top:8px;
         border-top:1px solid #edf2f7;
     }
     .rental-activity-mini-row:first-child { border-top:0; padding-top:0; }
+    .rental-activity-mini-copy {
+        display:grid;
+        gap:3px;
+        min-width:0;
+        overflow-wrap:anywhere;
+    }
+    .rental-activity-mini-copy time {
+        display:block;
+        font-variant-numeric:tabular-nums;
+    }
     .rental-activity-dot {
         display:grid;
         place-items:center;
@@ -3137,13 +3148,10 @@
         .rental-exec-cell:nth-child(5),
         .rental-exec-cell:nth-child(6) { border-top:1px solid #e5edf6; }
         .rental-kpi-strip { grid-template-columns:repeat(3,minmax(0,1fr)); }
-        .rental-overview-grid-v2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
-        .rental-overview-card-v2:last-child { grid-column:1 / -1; }
     }
     @media (max-width: 900px) {
         .rental-exec-grid,
-        .rental-kpi-strip,
-        .rental-overview-grid-v2 { grid-template-columns:1fr; }
+        .rental-kpi-strip { grid-template-columns:1fr; }
         .rental-exec-cell { border-left:0; border-top:1px solid #e5edf6; }
         .rental-exec-cell:first-child { border-top:0; }
         .rental-exec-top { align-items:flex-start; flex-direction:column; }
@@ -4047,9 +4055,12 @@
                     </summary>
                     <div class="ph-rental-accordion-body">
                         @forelse($timelinePreview->take(5) as $log)
-                            <div class="ph-rental-mobile-line">
-                                <span>{{ \App\Support\ActionTimestamp::label($log->created_at) }}</span>
-                                <strong>{{ \Illuminate\Support\Str::limit($log->description ?? ucfirst(str_replace(['_', '.'], ' ', $log->action ?? 'Activity')), 32) }}</strong>
+                            <div class="rental-activity-mini-row">
+                                <span class="rental-activity-dot" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg></span>
+                                <div class="rental-activity-mini-copy">
+                                    <strong>{{ \Illuminate\Support\Str::limit($log->description ?? ucfirst(str_replace(['_', '.'], ' ', $log->action ?? 'Activity')), 32) }}</strong>
+                                    @include('partials.action-time', ['actionAt' => $log->created_at])
+                                </div>
                             </div>
                         @empty
                             <div class="ph-rental-mobile-line"><span>No activity yet.</span><strong>-</strong></div>
@@ -4284,11 +4295,11 @@
                         @forelse($desktopRecentActivity as $log)
                             <div class="rental-activity-mini-row">
                                 <span class="rental-activity-dot" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg></span>
-                                <div>
+                                <div class="rental-activity-mini-copy">
                                     <strong>{{ \Illuminate\Support\Str::limit($log->description ?? ucfirst(str_replace(['_', '.'], ' ', $log->action ?? 'Activity')), 44) }}</strong>
                                     <span>{{ $log->causer?->name ?? 'System' }}</span>
+                                    @include('partials.action-time', ['actionAt' => $log->created_at])
                                 </div>
-                                <time>{{ \App\Support\ActionTimestamp::label($log->created_at) }}</time>
                             </div>
                         @empty
                             <div class="rental-line-item"><span>No recent activity</span><strong>-</strong></div>
