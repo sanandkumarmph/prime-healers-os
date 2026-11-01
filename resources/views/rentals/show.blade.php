@@ -5126,7 +5126,7 @@
                 return;
             }
 
-            const endDate = new Date(activeCurrentEndDate + 'T00:00:00');
+            const endDate = new Date(activeCurrentEndDate + 'T00:00:00Z');
 
             if (Number.isNaN(endDate.getTime())) {
                 return;
@@ -5134,27 +5134,27 @@
 
             switch (durationPreset.value) {
                 case '7_days':
-                    endDate.setDate(endDate.getDate() + 7);
+                    endDate.setUTCDate(endDate.getUTCDate() + 7);
                     break;
                 case '15_days':
-                    endDate.setDate(endDate.getDate() + 15);
+                    endDate.setUTCDate(endDate.getUTCDate() + 15);
                     break;
                 case '30_days':
-                    endDate.setDate(endDate.getDate() + 30);
+                    endDate.setUTCDate(endDate.getUTCDate() + 30);
                     break;
                 case '3_months':
-                    endDate.setMonth(endDate.getMonth() + 3);
+                    endDate.setUTCMonth(endDate.getUTCMonth() + 3);
                     break;
                 case '6_months':
-                    endDate.setMonth(endDate.getMonth() + 6);
+                    endDate.setUTCMonth(endDate.getUTCMonth() + 6);
                     break;
                 default:
                     return;
             }
 
-            const year = endDate.getFullYear();
-            const month = String(endDate.getMonth() + 1).padStart(2, '0');
-            const day = String(endDate.getDate()).padStart(2, '0');
+            const year = endDate.getUTCFullYear();
+            const month = String(endDate.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(endDate.getUTCDate()).padStart(2, '0');
             newEndDateInput.value = `${year}-${month}-${day}`;
         };
 

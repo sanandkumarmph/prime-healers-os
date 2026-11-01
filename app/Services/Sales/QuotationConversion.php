@@ -30,7 +30,7 @@ class QuotationConversion
             'phone' => $s['recipient']['phone'], 'address' => $s['recipient']['address'],
             'tax_type' => $s['tax_type'], 'fulfilment_source' => 'in_house'];
         if ($quote->kind === 'sale') {
-            return $data + ['sale_date' => now($s['timezone'])->toDateString(), 'shipping_charges' => $s['transport'], 'payment_status' => 'pending',
+            return $data + ['sale_date' => now(config('app.timezone'))->toDateString(), 'shipping_charges' => $s['transport'], 'payment_status' => 'pending',
                 'sale_items' => array_map(fn ($l) => ['product_id' => $l['product_id'], 'quantity' => $l['quantity'], 'unit_price' => $l['rate'],
                     'discount_amount' => 0, 'tax_percentage' => $l['tax_rate'], 'tax_calculation_mode' => $l['tax_mode'], 'tax_type' => $s['tax_type']], $s['lines'])];
         }

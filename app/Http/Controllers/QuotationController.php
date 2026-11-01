@@ -97,7 +97,7 @@ class QuotationController extends Controller
         abort_if(auth()->user()->scopeType('quotations') !== 'all' && (int) $e->owner_id !== (int) auth()->id(), 404);
                 abort_if(in_array($quote->status, ['converted', 'superseded', 'draft'], true), 409);
                 $next = $e->quotations()->create(['organization_id' => $quote->organization_id, 'revision' => $quote->revision + 1,
-                    'kind' => $quote->kind, 'valid_until' => now($quote->snapshot['timezone'])->addDays(7)->toDateString(), 'snapshot' => $quote->snapshot]);
+                    'kind' => $quote->kind, 'valid_until' => now(config('app.timezone'))->addDays(7)->toDateString(), 'snapshot' => $quote->snapshot]);
                 $quote->update(['status' => 'superseded', 'lock_version' => $quote->lock_version + 1]);
                 $e->update(['stage' => 'qualified', 'lock_version' => $e->lock_version + 1]);
                 $this->workspace->event($e, 'quotation.revised', $next->number().' created from '.$quote->number().'. The earlier link and acceptance are no longer valid.');

@@ -4290,7 +4290,7 @@
                 });
                 localStorage.setItem(draftKey, JSON.stringify({ savedAt: new Date().toISOString(), payload }));
                 saveDraftButton.textContent = 'Draft Saved';
-                setDraftStatus('Draft saved locally at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '.');
+                setDraftStatus('Draft saved locally at ' + new Date().toLocaleTimeString('en-IN', { timeZone: @json(config('app.timezone')), hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) + '.');
                 window.setTimeout(() => {
                     saveDraftButton.textContent = originalLabel;
                 }, 1800);
@@ -5986,8 +5986,8 @@
                 return 0;
             }
 
-            const startDate = new Date(startDateInput.value + 'T00:00:00');
-            const endDate = new Date(endDateInput.value + 'T00:00:00');
+            const startDate = new Date(startDateInput.value + 'T00:00:00Z');
+            const endDate = new Date(endDateInput.value + 'T00:00:00Z');
 
             if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate < startDate) {
                 return 0;
@@ -6310,7 +6310,7 @@
                 return;
             }
 
-            const startDate = new Date(startDateInput.value + 'T00:00:00');
+            const startDate = new Date(startDateInput.value + 'T00:00:00Z');
 
             if (Number.isNaN(startDate.getTime())) {
                 return;
@@ -6320,29 +6320,29 @@
 
             switch (durationPresetSelect.value) {
                 case '7_days':
-                    endDate.setDate(endDate.getDate() + 6);
+                    endDate.setUTCDate(endDate.getUTCDate() + 6);
                     break;
                 case '15_days':
-                    endDate.setDate(endDate.getDate() + 14);
+                    endDate.setUTCDate(endDate.getUTCDate() + 14);
                     break;
                 case '30_days':
-                    endDate.setDate(endDate.getDate() + 29);
+                    endDate.setUTCDate(endDate.getUTCDate() + 29);
                     break;
                 case '3_months':
-                    endDate.setMonth(endDate.getMonth() + 3);
-                    endDate.setDate(endDate.getDate() - 1);
+                    endDate.setUTCMonth(endDate.getUTCMonth() + 3);
+                    endDate.setUTCDate(endDate.getUTCDate() - 1);
                     break;
                 case '6_months':
-                    endDate.setMonth(endDate.getMonth() + 6);
-                    endDate.setDate(endDate.getDate() - 1);
+                    endDate.setUTCMonth(endDate.getUTCMonth() + 6);
+                    endDate.setUTCDate(endDate.getUTCDate() - 1);
                     break;
                 default:
                     return;
             }
 
-            const year = endDate.getFullYear();
-            const month = String(endDate.getMonth() + 1).padStart(2, '0');
-            const day = String(endDate.getDate()).padStart(2, '0');
+            const year = endDate.getUTCFullYear();
+            const month = String(endDate.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(endDate.getUTCDate()).padStart(2, '0');
 
             endDateInput.value = `${year}-${month}-${day}`;
             syncPrimaryRentalAmount(true);
@@ -7628,8 +7628,8 @@
                     rentalItems[index].start_date = startInputEl?.value || '';
                     rentalItems[index].end_date = endInputEl?.value || '';
                     if (rentalItems[index].start_date && rentalItems[index].end_date) {
-                        const start = new Date(rentalItems[index].start_date + 'T00:00:00');
-                        const end = new Date(rentalItems[index].end_date + 'T00:00:00');
+                        const start = new Date(rentalItems[index].start_date + 'T00:00:00Z');
+                        const end = new Date(rentalItems[index].end_date + 'T00:00:00Z');
                         if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end >= start) {
                             rentalItems[index].duration_days = Math.floor((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
                             if (durationInputEl) durationInputEl.value = rentalItems[index].duration_days;

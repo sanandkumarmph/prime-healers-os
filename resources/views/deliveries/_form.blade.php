@@ -317,7 +317,7 @@
             </div>
 
             <div class="ops-field span-4 {{ $hasFieldError('scheduled_at') ? 'is-error' : '' }}">
-                <label for="scheduled_at">Scheduled At</label>
+                <label for="scheduled_at">Scheduled At (IST)</label>
                 <input
                     type="datetime-local"
                     name="scheduled_at"
