@@ -74,6 +74,8 @@ jobs:
 
       - name: Test dashboard browser navigation
         run: node --test tests/Browser/*Test.cjs
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
 
       - name: Prepare environment file
         run: |

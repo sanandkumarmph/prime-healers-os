@@ -74,7 +74,7 @@ class PhosDeliverySubmissionTest extends TestCase
         $this->task->update(['status'=>'in_progress']);
         $data=$this->location()+['confirm_partial'=>1,'completion_confirmed'=>1,
             'delivery_device_photos'=>[UploadedFile::fake()->image('device.jpg',60,40)],
-            'premises_photo'=>UploadedFile::fake()->image('location.jpg',60,40),'signature_data'=>$this->signature(true)];
+            'premises_photo'=>UploadedFile::fake()->image('location.jpg',60,40),'signature_signer_name'=>'Synthetic signer','signature_data'=>$this->signature(true)];
         $this->put(route('deliveries.complete',$this->task),$data)->assertSessionHasErrors('signature_data');
         $this->assertSame('in_progress',$this->task->fresh()->status);
         $this->assertDatabaseCount('delivery_proofs',0); $this->assertDatabaseCount('delivery_workflow_submissions',0);
@@ -89,7 +89,7 @@ class PhosDeliverySubmissionTest extends TestCase
         $premises=UploadedFile::fake()->image('location.jpg',60,40)->getContent();
         $payload=fn()=> $location+['confirm_partial'=>1,'completion_confirmed'=>1,
             'delivery_device_photos'=>[UploadedFile::fake()->createWithContent('device.jpg',$device)],
-            'premises_photo'=>UploadedFile::fake()->createWithContent('location.jpg',$premises),'signature_data'=>$this->signature()];
+            'premises_photo'=>UploadedFile::fake()->createWithContent('location.jpg',$premises),'signature_signer_name'=>'Synthetic signer','signature_data'=>$this->signature()];
         $this->put(route('deliveries.complete',$this->task),$payload())->assertSessionHasNoErrors();
         $count=DeliveryProof::count(); $files=Storage::disk('local')->allFiles();
         $this->put(route('deliveries.complete',$this->task),$payload())->assertSessionHasNoErrors();
@@ -104,7 +104,7 @@ class PhosDeliverySubmissionTest extends TestCase
         $this->task->update(['status'=>'in_progress']);
         $data=$this->location()+['confirm_partial'=>1,'completion_confirmed'=>1,
             'delivery_device_photos'=>array_map(fn($i)=>UploadedFile::fake()->image('device-'.$i.'.jpg',60,40),range(1,4)),
-            'premises_photo'=>UploadedFile::fake()->image('location.jpg',60,40),'signature_data'=>$this->signature()];
+            'premises_photo'=>UploadedFile::fake()->image('location.jpg',60,40),'signature_signer_name'=>'Synthetic signer','signature_data'=>$this->signature()];
         $this->put(route('deliveries.complete',$this->task),$data)->assertSessionHasErrors('delivery_device_photos');
         $this->assertSame('in_progress',$this->task->fresh()->status);
         $this->assertDatabaseCount('delivery_proofs',0); $this->assertSame([],Storage::disk('local')->allFiles());
@@ -140,7 +140,7 @@ class PhosDeliverySubmissionTest extends TestCase
         $this->task->update(['status'=>'in_progress']);
         $data=$this->location()+['confirm_partial'=>1,'completion_confirmed'=>1,
             'delivery_device_photos'=>[UploadedFile::fake()->image('device.jpg',60,40)],
-            'premises_photo'=>UploadedFile::fake()->image('location.jpg',60,40),'signature_data'=>$this->signature(false,6)];
+            'premises_photo'=>UploadedFile::fake()->image('location.jpg',60,40),'signature_signer_name'=>'Synthetic signer','signature_data'=>$this->signature(false,6)];
         $this->put(route('deliveries.complete',$this->task),$data)->assertSessionHasNoErrors();
         $this->assertSame('completed',$this->task->fresh()->status);
         $proof=DeliveryProof::where('proof_type',DeliveryProof::TYPE_SIGNATURE)->sole();

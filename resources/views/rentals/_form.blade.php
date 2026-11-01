@@ -4229,6 +4229,14 @@
             syncMissingStepMessage(stepName);
             updateMissingChecklist(stepName);
         };
+        // Availability can finish loading after the review panel is opened.
+        // Keep the phone action in sync with the primary save action as well
+        // as with input events; otherwise it can remain disabled indefinitely.
+        if (rentalSubmitButton && mobileSaveButton) {
+            new MutationObserver(() => updateMobileActionBar()).observe(rentalSubmitButton, {
+                attributes: true, attributeFilter: ['disabled'],
+            });
+        }
         mobileSaveButton?.addEventListener('click', (event) => {
             if (rentalSubmitButton?.disabled) {
                 event.preventDefault();
