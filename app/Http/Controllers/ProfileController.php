@@ -46,6 +46,7 @@ class ProfileController extends Controller
      */
     public function destroy(Request $request): RedirectResponse
     {
+        abort_unless($request->user()?->isSuperAdmin(), 403, 'Only a Super Admin can delete their profile.');
         $request->validateWithBag('userDeletion', [
             'password' => ['required', 'current_password'],
         ]);
@@ -57,6 +58,7 @@ class ProfileController extends Controller
         DB::transaction(function () use ($user) {
             Organization::query()->whereKey($user->organization_id)->lockForUpdate()->firstOrFail();
             $user->refresh()->unsetRelation('assignedRole');
+            abort_unless($user->isSuperAdmin(), 403, 'Only a Super Admin can delete their profile.');
             app(RoleGrantGuard::class)->protectLastOwnerUser($user, null);
             app(RevokeAccountSessions::class)->forUser($user);
             // Logout rotates the remember token; do it before deletion so the

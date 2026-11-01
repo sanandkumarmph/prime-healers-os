@@ -304,6 +304,7 @@
         </div>
     </div>
 
+    @if($user->isSuperAdmin())
     <div class="profile-card">
         <div class="profile-card-head">
             <h2>Delete Account</h2>
@@ -330,5 +331,6 @@
             </form>
         </div>
     </div>
+    @endif
 </div>
 @endsection

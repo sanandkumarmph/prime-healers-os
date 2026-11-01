@@ -50,6 +50,22 @@ class ApplicationSecurityHardeningTest extends TestCase
         $this->assertNull($owner->fresh());
     }
 
+    public function test_non_super_admin_roles_cannot_delete_their_profile_even_with_the_correct_password(): void
+    {
+        $organization = TestData::organization();
+        foreach (['admin', 'sales', 'service', 'delivery', 'finance', 'custom'] as $preset) {
+            $role = new Role(['organization_id' => $organization->id, 'is_active' => true]);
+            $configuration = Role::accessPresets()[$preset];
+            $role->fill(['name' => $configuration['name'], 'slug' => $configuration['slug'], 'permissions' => Role::normalizeExplicitPermissions($configuration['modules'] + ['__special' => $configuration['special']])]);
+            $role->save();
+            $user = TestData::user($organization, ['role_id' => $role->id, 'role' => $preset]);
+            $this->actingAs($user)->get(route('profile.edit'))->assertOk()->assertDontSee('Delete Account');
+            $this->delete(route('profile.destroy'), ['password' => 'password'])->assertForbidden();
+            $this->assertNotNull($user->fresh());
+            $this->assertAuthenticatedAs($user);
+        }
+    }
+
     public function test_password_change_rotates_remember_token_and_revokes_only_this_users_database_sessions(): void
     {
         $user = TestData::user(null, ['remember_token' => 'old-remember-token']);
