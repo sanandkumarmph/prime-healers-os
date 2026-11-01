@@ -89,4 +89,17 @@ class IstInputDefaultsRegressionTest extends TestCase
         $this->assertSame('UTC', $quote->snapshot['timezone']);
         $this->assertSame('2026-10-30', $quote->valid_until->toDateString());
     }
+
+    public function test_a_new_sale_from_a_legacy_utc_quote_defaults_to_the_current_ist_date(): void
+    {
+        $this->travelTo(Carbon::parse('2026-10-30 00:15:00', 'Asia/Kolkata'));
+        $quote = new Quotation(['kind' => 'sale', 'snapshot' => ['timezone' => 'UTC', 'customer_id' => 1,
+            'recipient' => ['name' => 'Synthetic customer', 'phone' => '', 'address' => ''],
+            'tax_type' => 'igst', 'transport' => 0, 'lines' => []]]);
+        $before = $quote->getAttributes();
+        $data = app(\App\Services\Sales\QuotationConversion::class)->prefill($quote);
+        $this->assertSame('2026-10-30', $data['sale_date']);
+        $this->assertSame($before, $quote->getAttributes());
+        $this->travelBack();
+    }
 }
