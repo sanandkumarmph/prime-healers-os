@@ -21,8 +21,8 @@ class PdfBrowsershotConfiguratorTest extends TestCase
         $tempPath = $configurator->tempPath();
         $userDataDir = $configurator->userDataDir();
 
-        $this->assertSame(storage_path('app/pdf-runtime/tmp'), $tempPath);
-        $this->assertSame(storage_path('app/pdf-runtime/profile'), $userDataDir);
+        $this->assertSame(str_replace('\\', '/', storage_path('app/pdf-runtime/tmp')), str_replace('\\', '/', $tempPath));
+        $this->assertSame(str_replace('\\', '/', storage_path('app/pdf-runtime/profile')), str_replace('\\', '/', $userDataDir));
         $this->assertTrue(File::isDirectory($tempPath));
         $this->assertTrue(File::isDirectory($userDataDir));
     }
@@ -31,6 +31,63 @@ class PdfBrowsershotConfiguratorTest extends TestCase
     {
         $this->assertSame('invoices.print', config('pdf.browsershot_view'));
         $this->assertSame('invoices.pdf-dompdf', config('pdf.dompdf_view'));
+    }
+
+    public function test_short_runtime_root_applies_to_blank_temp_and_profile_settings(): void
+    {
+        $root = storage_path('framework/testing/pdf-'.bin2hex(random_bytes(5)));
+        config(['pdf.runtime_path' => $root, 'pdf.temp_path' => '', 'pdf.user_data_dir' => '']);
+        try {
+            $configurator = app(PdfBrowsershotConfigurator::class);
+            $this->assertSame($root.DIRECTORY_SEPARATOR.'tmp', $configurator->tempPath());
+            $this->assertSame($root.DIRECTORY_SEPARATOR.'profile', $configurator->userDataDir());
+        } finally {
+            File::deleteDirectory($root);
+        }
+    }
+
+    public function test_relative_traversing_and_control_character_paths_are_rejected(): void
+    {
+        foreach (['node_modules', '../pdf', storage_path('tmp/../private'), "/tmp/pdf\nunsafe"] as $path) {
+            config(['pdf.temp_path' => $path]);
+            try {
+                app(PdfBrowsershotConfigurator::class)->tempPath();
+                $this->fail('Unsafe PDF path was accepted.');
+            } catch (\RuntimeException $exception) {
+                $this->assertStringContainsString('absolute', $exception->getMessage());
+            }
+        }
+    }
+
+    public function test_render_profiles_are_unique_and_cleaned_when_rendering_fails(): void
+    {
+        $root = storage_path('framework/testing/pdf-'.bin2hex(random_bytes(5)));
+        config(['pdf.runtime_path' => $root, 'pdf.temp_path' => '', 'pdf.user_data_dir' => '',
+            'pdf.browser_path' => null, 'pdf.node_module_path' => base_path('node_modules')]);
+        $configurator = app(PdfBrowsershotConfigurator::class);
+        try {
+            $first = $configurator->configure(Browsershot::html('<p>One</p>'))->createPdfCommand();
+            $second = $configurator->configure(Browsershot::html('<p>Two</p>'))->createPdfCommand();
+            $profile = fn (array $command) => substr(current(array_filter($command['options']['args'],
+                fn (string $argument) => str_starts_with($argument, '--user-data-dir='))), strlen('--user-data-dir='));
+            $a = $profile($first);
+            $b = $profile($second);
+            $this->assertNotSame($a, $b);
+            $this->assertDirectoryExists($a);
+            $this->assertDirectoryExists($b);
+            $cwd = getcwd();
+            try {
+                $configurator->runInPdfWorkingDirectory(fn () => throw new \RuntimeException('Synthetic render failure'));
+            } catch (\RuntimeException $exception) {
+                $this->assertSame('Synthetic render failure', $exception->getMessage());
+            }
+            $this->assertSame($cwd, getcwd());
+            $this->assertDirectoryDoesNotExist($a);
+            $this->assertDirectoryDoesNotExist($b);
+            $this->assertDirectoryExists(dirname($a));
+        } finally {
+            File::deleteDirectory($root);
+        }
     }
 
     public function test_pdf_command_keeps_tls_verification_with_existing_sandbox_configuration(): void
@@ -49,6 +106,7 @@ class PdfBrowsershotConfiguratorTest extends TestCase
             $command = $shot->createPdfCommand();
 
             $this->assertSame('pdf', $command['action']);
+            $this->assertTrue($command['options']['pipe']);
             $this->assertSame('https://example.test/invoice', $command['url']);
             $this->assertFalse($command['options']['acceptInsecureCerts'] ?? false);
             $this->assertFalse($command['options']['ignoreHTTPSErrors'] ?? false);
