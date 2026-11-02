@@ -110,7 +110,9 @@ class QuotationController extends Controller
                 }
                 $this->workspace->assertRegion($quote);
                 if ($quote->expired()) throw ValidationException::withMessages(['workspace' => 'Update the quotation validity before sharing.']);
-                $quote->update(['status' => 'sent', 'sent_at' => now(), 'lock_version' => $quote->lock_version + 1]);
+                $snapshot = $quote->snapshot;
+                $snapshot['sender'] = app(\App\Services\Sales\QuotationSharing::class)->sender($request->user(), $e->organization);
+                $quote->update(['snapshot' => $snapshot, 'status' => 'sent', 'sent_at' => now(), 'lock_version' => $quote->lock_version + 1]);
                 $e->update(['stage' => 'quoted', 'lock_version' => $e->lock_version + 1]);
                 $this->workspace->event($e, 'quotation.finalised', $quote->number().' ready to share. Customer link enabled; no message sent automatically.');
             } elseif ($data['action'] === 'mark_shared') {

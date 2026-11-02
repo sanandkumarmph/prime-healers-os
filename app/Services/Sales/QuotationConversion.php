@@ -35,7 +35,8 @@ class QuotationConversion
                     'discount_amount' => 0, 'tax_percentage' => $l['tax_rate'], 'tax_calculation_mode' => $l['tax_mode'], 'tax_type' => $s['tax_type']], $s['lines'])];
         }
         $days = (int) Carbon::parse($s['start_date'])->diffInDays(Carbon::parse($s['end_date'])) + 1;
-        $primary = $s['lines'][0];
+        $rentalLines = $this->lines($quote, 'rental');
+        $primary = $rentalLines[0];
         return $data + ['product_id' => $primary['product_id'], 'quantity' => $primary['quantity'],
             'start_date' => $s['start_date'], 'end_date' => $s['end_date'], 'duration_days' => $days,
             'duration_unit' => 'days', 'duration_preset' => 'custom', 'deposit_amount' => $s['deposit'],
@@ -45,7 +46,15 @@ class QuotationConversion
             'rental_items' => array_map(fn ($l) => ['product_id' => $l['product_id'], 'quantity' => $l['quantity'],
                 'unit_rental_amount' => number_format($l['rate'], 2, '.', ''), 'gst_rate' => $l['tax_rate'],
                 'gst_mode' => $l['tax_mode'], 'tax_type' => $s['tax_type'], 'start_date' => $s['start_date'],
-                'end_date' => $s['end_date'], 'duration_days' => $days, 'duration_unit' => 'days'], array_slice($s['lines'], 1))];
+                'end_date' => $s['end_date'], 'duration_days' => $days, 'duration_unit' => 'days'], array_slice($rentalLines, 1)),
+            'sale_items' => array_map(fn ($l) => ['product_id' => $l['product_id'], 'quantity' => $l['quantity'],
+                'unit_price' => number_format($l['rate'], 2, '.', ''), 'gst_rate' => $l['tax_rate'],
+                'gst_mode' => $l['tax_mode'], 'tax_type' => $s['tax_type']], $this->lines($quote, 'sale'))];
+    }
+
+    private function lines(Quotation $quote, string $type): array
+    {
+        return array_values(array_filter($quote->snapshot['lines'], fn ($line) => ($line['line_type'] ?? $quote->kind) === $type));
     }
 
     private function eligible(Quotation $quote, string $kind): void
@@ -80,7 +89,7 @@ class QuotationConversion
             if ($kind === 'rental') {
                 if ((float) $request->input('deposit_amount', 0) !== (float) $s['deposit']
                     || (float) $request->input('transport_amount', 0) !== (float) $s['transport']
-                    || (float) $request->input('other_amount', 0) !== 0.0 || $request->input('sale_items', [])) $this->mismatch();
+                    || (float) $request->input('other_amount', 0) !== 0.0) $this->mismatch();
             } elseif ((float) $request->input('shipping_charges', 0) !== (float) $s['transport'] || $request->input('payment_status') !== 'pending') $this->mismatch();
             $request->attributes->set('conversion_quote', $quote);
             try {
@@ -95,14 +104,15 @@ class QuotationConversion
         });
     }
 
-    public function assertLines(Request $request, string $kind, array $lines): void
+    public function assertLines(Request $request, string $kind, array $lines, array $saleLines = []): void
     {
         $quote = $request->attributes->get('conversion_quote');
         if (!$quote) return;
         $s = $quote->snapshot;
-        if (count($lines) !== count($s['lines'])) $this->mismatch();
+        $expectedLines = $this->lines($quote, $kind);
+        if (count($lines) !== count($expectedLines)) $this->mismatch();
         foreach (array_values($lines) as $i => $line) {
-            $expected = $s['lines'][$i];
+            $expected = $expectedLines[$i];
             $actual = ['product_id' => (int) $line['product_id'], 'quantity' => (int) $line['quantity'],
                 'rate' => (float) $line[$kind === 'rental' ? 'unit_rental_amount' : 'unit_price'],
                 'tax_rate' => (float) $line[$kind === 'rental' ? 'gst_rate' : 'tax_percentage'],
@@ -111,6 +121,17 @@ class QuotationConversion
             if ($line['tax_type'] !== $s['tax_type'] || (float) ($line['discount_amount'] ?? 0) !== 0.0) $this->mismatch();
             if ($kind === 'rental' && ($line['start_date'] !== $s['start_date'] || $line['end_date'] !== $s['end_date']
                 || (int) $line['duration_days'] !== (int) Carbon::parse($s['start_date'])->diffInDays(Carbon::parse($s['end_date'])) + 1)) $this->mismatch();
+        }
+        if ($kind === 'rental') {
+            $expectedSales = $this->lines($quote, 'sale');
+            if (count($saleLines) !== count($expectedSales)) $this->mismatch();
+            foreach (array_values($saleLines) as $i => $line) {
+                $expected = $expectedSales[$i];
+                foreach (['product_id' => 'product_id', 'quantity' => 'quantity', 'unit_price' => 'rate', 'gst_rate' => 'tax_rate', 'gst_mode' => 'tax_mode'] as $actualKey => $expectedKey) {
+                    if ($line[$actualKey] != $expected[$expectedKey]) $this->mismatch();
+                }
+                if ($line['tax_type'] !== $s['tax_type']) $this->mismatch();
+            }
         }
         $request->attributes->set('conversion_lines_checked', true);
     }

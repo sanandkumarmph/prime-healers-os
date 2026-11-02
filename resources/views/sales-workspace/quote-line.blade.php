@@ -1,4 +1,6 @@
-<div class="sw-line-card" data-quote-line><div class="sw-line-fields">
+<div class="sw-line-card" data-quote-line>
+<div class="sw-field" style="max-width:240px;margin-bottom:12px"><label for="line-type-{{ $i }}">Charge type</label><select id="line-type-{{ $i }}" name="lines[{{ $i }}][line_type]" data-line-field="line_type"><option value="rental" @selected(($line['line_type'] ?? $kind)==='rental')>Rental</option><option value="sale" @selected(($line['line_type'] ?? $kind)==='sale')>One-time purchase</option></select></div>
+<div class="sw-line-fields">
 <div class="sw-field"><label for="product-{{ $i }}">Product *</label><select id="product-{{ $i }}" name="lines[{{ $i }}][product_id]" data-line-field="product_id" required><option value="">Select product</option>@foreach($products as $p)<option value="{{ $p->id }}" @selected((string)($line['product_id'] ?? '')===(string)$p->id)>{{ $p->name }}</option>@endforeach</select></div>
 <div class="sw-field"><label for="qty-{{ $i }}">Qty *</label><input id="qty-{{ $i }}" name="lines[{{ $i }}][quantity]" data-line-field="quantity" type="number" min="1" max="10000" step="1" value="{{ $line['quantity'] ?? 1 }}" required></div>
 <div class="sw-field"><label for="rate-{{ $i }}">Unit price *</label><input id="rate-{{ $i }}" name="lines[{{ $i }}][rate]" data-line-field="rate" type="number" min="0" max="9999999.99" step="0.01" value="{{ $line['rate'] ?? 0 }}" required></div>

@@ -61,10 +61,19 @@ test('mobile rental create and edit submit the owning form and follow availabili
                 assert.equal(await page.$eval(selector,button=>button.form?.id),'rentalCreateForm');
                 if(mobile){
                     // Async availability updates the primary action after an input event.
-                    await page.$eval('#rentalSubmitButton',button=>{button.disabled=true;});
-                    await page.waitForFunction(()=>document.getElementById('rentalMobileSaveButton').disabled);
-                    await page.$eval('#rentalSubmitButton',button=>{button.disabled=false;});
-                    await page.waitForFunction(()=>!document.getElementById('rentalMobileSaveButton').disabled);
+                    // Check the observer in the same task/microtask turn. A pending
+                    // availability response may legitimately change it on the next
+                    // task, so a later polling callback can miss the tested state.
+                    assert.equal(await page.$eval('#rentalSubmitButton',async button=>{
+                        button.disabled=true;
+                        await new Promise(resolve=>queueMicrotask(resolve));
+                        return document.getElementById('rentalMobileSaveButton').disabled;
+                    }),true);
+                    assert.equal(await page.$eval('#rentalSubmitButton',async button=>{
+                        button.disabled=false;
+                        await new Promise(resolve=>queueMicrotask(resolve));
+                        return document.getElementById('rentalMobileSaveButton').disabled;
+                    }),false);
                 }
                 await page.click(selector);
                 const submissions=await page.evaluate(()=>window.rentalSubmits);
