@@ -13,7 +13,7 @@ class SimpleCylinderRefills
     private function fail(string $text): never {throw ValidationException::withMessages(['refill'=>$text]);}
     private function workflow(): CylinderWorkflow {return app(CylinderWorkflow::class);}
     private function fingerprint(array $data): string {unset($data['request_id'],$data['lock_version']);ksort($data);return hash('sha256',json_encode($data,JSON_THROW_ON_ERROR));}
-    public function driver(User $user): bool {return in_array($user->effective_role,[User::ROLE_DELIVERY,User::ROLE_DELIVERY_EXECUTIVE,User::ROLE_VENDOR,User::ROLE_THIRD_PARTY],true);}
+    public function driver(User $user): bool {return in_array($user->effective_role,[User::ROLE_DELIVERY,User::ROLE_DELIVERY_EXECUTIVE,User::ROLE_VENDOR,User::ROLE_THIRD_PARTY,'pickup'],true);}
     public function query(User $user)
     {
         $module=$user->canAccessModule('deliveries','read')?'deliveries':'invoices';
@@ -52,9 +52,7 @@ class SimpleCylinderRefills
             $product=Product::where('organization_id',$user->organization_id)->lockForUpdate()->findOrFail($data['product_id']);
             if(CylinderRefill::where('rental_id',$rental->id)->where('product_id',$product->id)->where('status','open')->exists())$this->fail('A refill for this size is already open. Update it below and record the empty return.');
             if(CylinderJob::where('rental_id',$rental->id)->where('status','open')->exists())$this->fail('Complete or cancel the earlier cylinder service before booking another refill.');
-            $assignee=User::where('organization_id',$user->organization_id)->findOrFail($data['assigned_user_id']);
-            if(!$assignee->canAccessModule('deliveries','update'))$this->fail('Choose active delivery staff with task-update access.');
-            if($user->scopeType('deliveries')!=='all'&&(int)$assignee->id!==(int)$user->id)abort(403);
+            $assignment=app(RefillDeliveryAssignments::class)->resolve($user,$data);
             $incoming=[];$outgoing=[];$tracked=$product->tracksRentalStock();$qty=(int)$data['quantity'];
             if($tracked){
                 $lineIds=$rental->rentalItems->where('product_id',$product->id)->flatMap(fn($line)=>$line->asset_ids??[])->map(fn($id)=>(int)$id)->all();
@@ -78,12 +76,12 @@ class SimpleCylinderRefills
                 $product->decrement('available_quantity',$qty);
             }
             $refill=CylinderRefill::create(['organization_id'=>$user->organization_id,'rental_id'=>$rental->id,'product_id'=>$product->id,'capacity_label'=>$product->name,
-                'assigned_user_id'=>$assignee->id,'created_by_user_id'=>$user->id,'request_id'=>$data['request_id'],'request_fingerprint'=>$fingerprint,
+                'created_by_user_id'=>$user->id,'request_id'=>$data['request_id'],'request_fingerprint'=>$fingerprint,
                 'mode'=>$data['mode'],'stock_mode'=>$tracked?'asset':'quantity','quantity'=>$qty,'incoming_asset_ids'=>$incoming,'outgoing_asset_ids'=>$outgoing,
                 'serial_reference'=>$data['serial_reference']??null,'scheduled_at'=>$data['scheduled_at'],'refill_charge'=>$data['refill_charge'],
-                'transport_charge'=>$data['transport_charge'],'tax_rate'=>$data['tax_rate'],'tax_type'=>'cgst_sgst','notes'=>$data['notes']??null]);
-            $this->event($user,$refill,'booked',$qty,(string)Str::uuid(),['serial_reference'=>$data['serial_reference']??null]);
-            $this->notify($refill,$assignee);
+                'transport_charge'=>$data['transport_charge'],'tax_rate'=>$data['tax_rate'],'tax_type'=>'cgst_sgst','notes'=>$data['notes']??null]+$assignment);
+            $this->event($user,$refill,'booked',$qty,(string)Str::uuid(),['serial_reference'=>$data['serial_reference']??null,'assignment'=>$assignment]);
+            $this->notify($refill);
             return $refill;
         });
     }
@@ -94,10 +92,12 @@ class SimpleCylinderRefills
         if($custody==='customer'&&($c->custody!=='customer'||((int)$c->reserved_for_rental_id!==$rentalId&&$c->reserved_for_rental_id)))$this->fail('This cylinder is recorded elsewhere. Review the original delivery.');
         $c->update(['reserved_for_rental_id'=>$rentalId]);return $c;
     }
-    private function notify(CylinderRefill $refill,User $user): void
+    private function notify(CylinderRefill $refill): void
     {
+        $user=User::where('organization_id',$refill->organization_id)->find($refill->assigned_user_id);
+        if(!$user||!$user->canAccessModule('deliveries','read')||!$user->canAccessModule('deliveries','update'))return;
         app(NotificationCenterService::class)->notifyUser($user,['title'=>'Cylinder refill assigned','message'=>'Deliver '.$refill->quantity.' cylinder(s) and collect the empty cylinder(s).',
-            'url'=>route('cylinder-refills.tasks'),'event_type'=>'cylinder_refill.assigned','priority'=>'medium']);
+            'action_url'=>route('cylinder-refills.tasks'),'type'=>'cylinder_refill.assigned','priority'=>'medium']);
     }
     private function event(User $user,CylinderRefill $refill,string $action,int $qty,string $request,array $details=[],?string $fingerprint=null): void
     {
@@ -186,16 +186,15 @@ class SimpleCylinderRefills
                 }
                 $refill->status='cancelled';$qty=0;
             }elseif($action==='reassign'){
-                $assignee=User::where('organization_id',$user->organization_id)->findOrFail($data['assigned_user_id']??0);
-                if(!$assignee->canAccessModule('deliveries','update'))$this->fail('Choose active delivery staff.');
-                if($user->scopeType('deliveries')!=='all'&&(int)$assignee->id!==(int)$user->id)abort(403);
-                $refill->assigned_user_id=$assignee->id;$this->notify($refill,$assignee);$qty=0;
+                $previousAssignment=$refill->only(['assignment_type','assigned_user_id','assigned_staff_id','assigned_vendor_id','assignment_name','assignment_contact','assignment_phone']);
+                $refill->fill(app(RefillDeliveryAssignments::class)->resolve($user,$data));$this->notify($refill);$qty=0;
             }else $this->fail('Choose a valid refill action.');
             if($refill->status!=='cancelled'&&$refill->delivered_quantity===$refill->quantity&&$refill->received_quantity===$refill->quantity){$refill->status='completed';$refill->completed_at??=now();}
             $refill->lock_version++;$refill->save();
             if($refill->stock_mode==='asset')$product->syncLegacyStockFields();
             $details=['notes'=>$data['notes']??null,'serial_reference'=>$data['serial_reference']??null,'warehouse_id'=>$warehouse?->id,'assigned_user_id'=>$refill->assigned_user_id,
                 'delivered'=>$refill->delivered_quantity,'picked_up'=>$refill->collected_quantity,'received_back'=>$refill->received_quantity,'refilled'=>$refill->refilled_quantity];
+            if($action==='reassign')$details+=['previous_assignment'=>$previousAssignment,'assignment'=>$refill->only(['assignment_type','assigned_user_id','assigned_staff_id','assigned_vendor_id','assignment_name','assignment_contact','assignment_phone'])];
             $this->event($user,$refill,$action,$qty,$data['request_id'],$details,$fingerprint);
             $recorder=app(StockMovementRecorder::class);
             foreach($assets as$asset){$recorder->recordForAsset($asset,$movement,1,['rental_id'=>$rental->id,'performed_by_user_id'=>$user->id,'notes'=>'Cylinder refill #'.$refill->id.': '.$action]);
