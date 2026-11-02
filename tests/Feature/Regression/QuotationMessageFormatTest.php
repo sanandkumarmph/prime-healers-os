@@ -24,14 +24,14 @@ class QuotationMessageFormatTest extends TestCase
     {
         $q=$this->quote();$before=$q->snapshot;
         $text=app(QuotationSharing::class)->message($q,'https://example.test/private-quotation');
-        foreach (['*Prime Healers*','*Rental quotation · Q-00042-R1*','Hi Synthetic prospect,','*Rental (30 days)*',
-            '*One-time purchases*','Rental & items: ₹3,650.00','*Quotation total: ₹4,250.00*','Refundable deposit: ₹2,000.00',
-            '*Total including deposit: ₹6,250.00*','_Product prices include GST 5%._',"Regards,\nSynthetic Salesperson"] as $part) {
+        foreach (['*Prime Healers*','*Rental quotation · Q-00042-R1*','Hi Synthetic prospect,','*Rental — 30 days*',
+            '*One-time purchases*','Rental & items: ₹3,650.00','*Quotation total: ₹4,250.00*','Refundable security deposit: ₹2,000.00',
+            '*Total including deposit: ₹6,250.00*','_Product prices include GST._',"Regards,\nSynthetic Salesperson"] as $part) {
             $this->assertStringContainsString($part,$text);
         }
         $this->assertSame(1,substr_count($text,'Synthetic Legal Company Ltd'));
         $this->assertSame(1,substr_count($text,'https://example.test/private-quotation'));
-        $this->assertStringNotContainsString(' | ',$text);$this->assertSame($before,$q->snapshot);
+        $this->assertStringNotContainsString(' | ',$text);$this->assertStringNotContainsString('%',$text);$this->assertSame($before,$q->snapshot);
         if ($folder=getenv('PHOS_QUOTE_MESSAGE_PREVIEW_DIR')) {
             if(!is_dir($folder))mkdir($folder,0700,true);
             file_put_contents($folder.'/synthetic-whatsapp-message.txt',$text);
@@ -43,9 +43,10 @@ class QuotationMessageFormatTest extends TestCase
         $lines=$this->quote()->snapshot['lines'];
         $lines[0]=array_replace($lines[0],['rate'=>100,'total'=>118,'tax_mode'=>'exclusive','tax_rate'=>18]);
         $text=app(QuotationSharing::class)->message($this->quote(['lines'=>$lines,'total'=>868,'payable_with_deposit'=>2868]),'https://example.test/q');
-        $this->assertStringContainsString('1 × ₹100.00 + GST 18% = *₹118.00*',$text);
-        $this->assertStringContainsString('(GST 5% included)',$text);
-        $this->assertStringNotContainsString('_Product prices include GST 5%._',$text);
+        $this->assertStringContainsString('1 × ₹100.00 + GST = *₹118.00*',$text);
+        $this->assertStringContainsString('(GST included)',$text);
+        $this->assertStringNotContainsString('_Product prices include GST._',$text);
+        $this->assertStringNotContainsString('%',$text);
         $this->assertStringContainsString('Rental & items: ₹268.00',$text);
         $this->assertStringContainsString('*Quotation total: ₹868.00*',$text);
     }
@@ -58,8 +59,8 @@ class QuotationMessageFormatTest extends TestCase
         $text=app(QuotationSharing::class)->message($q,'https://example.test/q');
         $this->assertStringContainsString('*Sales quotation · Q-00042-R1*',$text);
         $this->assertStringContainsString('*Products*',$text);$this->assertStringContainsString('USD 150.00',$text);
-        $this->assertStringNotContainsString('Refundable deposit',$text);$this->assertStringNotContainsString('Regards,',$text);
-        $this->assertStringNotContainsString('Rental (',$text);
+        $this->assertStringNotContainsString('Refundable security deposit',$text);$this->assertStringNotContainsString('Regards,',$text);
+        $this->assertStringNotContainsString('Rental —',$text);
     }
 
     public function test_dynamic_labels_cannot_insert_whatsapp_sections_and_legal_name_is_not_repeated(): void

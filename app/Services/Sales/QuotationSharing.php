@@ -19,15 +19,14 @@ class QuotationSharing
         $clean = fn ($value) => trim(preg_replace('/[\r\n\x00-\x1F*_~`]+/u', ' ', (string) $value) ?? '');
         $money = fn ($value) => ($s['currency'] === 'INR' ? '₹' : $s['currency'].' ').number_format((float) $value, 2);
         $taxLabel = $clean($s['tax_label'] ?? 'Tax');
-        $rates = collect($s['lines'])->map(fn ($line) => (float) $line['tax_rate'])->unique()->values();
-        $uniformInclusive = $rates->count() === 1 && collect($s['lines'])->every(fn ($line) => $line['tax_mode'] === 'inclusive');
+        $allInclusive = collect($s['lines'])->every(fn ($line) => $line['tax_mode'] === 'inclusive');
         $rows = ['*Prime Healers*', '*'.($quote->kind === 'rental' ? 'Rental' : 'Sales').' quotation · '.$quote->number().'*', '',
             'Hi '.$clean($s['recipient']['name']).','];
         if ($quote->kind === 'rental') {
             $from = CarbonImmutable::parse($s['start_date']);
             $to = CarbonImmutable::parse($s['end_date']);
             $rows[] = '';
-            $rows[] = '*Rental ('.((int) $from->diffInDays($to) + 1).' days)*';
+            $rows[] = '*Rental — '.((int) $from->diffInDays($to) + 1).' days*';
             $rows[] = $from->format('d M Y').' – '.$to->format('d M Y');
         }
         foreach (['rental', 'sale'] as $type) {
@@ -43,22 +42,22 @@ class QuotationSharing
                     $detail = '  Qty 1 · *'.$money($line['total']).'*';
                 } else {
                     $detail = '  '.$line['quantity'].' × '.$money($line['rate']);
-                    if ($line['tax_mode'] === 'exclusive') $detail .= ' + '.$taxLabel.' '.(float) $line['tax_rate'].'%';
+                    if ($line['tax_mode'] === 'exclusive') $detail .= ' + '.$taxLabel;
                     $detail .= ' = *'.$money($line['total']).'*';
                 }
-                if (!$uniformInclusive && $line['tax_mode'] === 'inclusive') $detail .= ' ('.$taxLabel.' '.(float) $line['tax_rate'].'% included)';
+                if (!$allInclusive && $line['tax_mode'] === 'inclusive') $detail .= ' ('.$taxLabel.' included)';
                 $rows[] = $detail;
             }
         }
         $rows[] = '';
         $rows[] = '*Amount summary*';
         $rows[] = ($quote->kind === 'rental' ? 'Rental & items: ' : 'Products: ').$money(array_sum(array_column($s['lines'], 'total')));
-        $rows[] = $uniformInclusive ? '_Product prices include '.$taxLabel.' '.$rates->first().'%._' : '_Product line totals include applicable '.$taxLabel.'._';
+        $rows[] = $allInclusive ? '_Product prices include '.$taxLabel.'._' : '_Product line totals include applicable '.$taxLabel.'._';
         $rows[] = 'Delivery / transport: '.$money($s['transport']);
         $rows[] = '*Quotation total: '.$money($s['total']).'*';
         if ($quote->kind === 'rental') {
             $rows[] = '';
-            $rows[] = 'Refundable deposit: '.$money($s['deposit']);
+            $rows[] = 'Refundable security deposit: '.$money($s['deposit']);
             $rows[] = '*Total including deposit: '.$money($s['payable_with_deposit']).'*';
         }
         $rows[] = '';
