@@ -1155,6 +1155,11 @@ class AssetController extends Controller
         }
 
         DB::transaction(function () use ($request, $asset, $validated, $state, $conditionAfter, $accessories) {
+            // Physical inspection alone does not confirm a cylinder's contents.
+            // Keep it blocked until warehouse receipt/refill is recorded.
+            if (\App\Models\Cylinder::hasTable() && $asset->cylinder && $state['asset_status'] === Asset::STATUS_AVAILABLE) {
+                $state['asset_status'] = Asset::STATUS_MAINTENANCE;
+            }
             $previousStatus = $asset->asset_status;
             $previousCondition = $asset->condition_status;
             $rentalAssignment = $this->latestReturnedRentalAssignment($asset->loadMissing([
@@ -1242,6 +1247,7 @@ class AssetController extends Controller
             }
         });
 
+        if (\App\Models\Cylinder::hasTable() && $asset->cylinder) return redirect()->route('cylinder-services.stock')->with('success', 'Cylinder inspected. Confirm its contents and warehouse receipt before making it available.');
         return redirect()->route('assets.pending-verification')->with('success', 'Returned asset verified successfully.');
     }
 

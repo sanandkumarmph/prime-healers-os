@@ -69,12 +69,18 @@ class RentalAvailability
             if (! $locationUnknown && $product->tracksRentalStock()) {
                 $assets = Asset::where('organization_id', $user->organization_id)->where('product_id', $product->id)
                     ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)->whereIn('warehouse_id', $warehouseIds)
+                    ->when(\App\Models\Cylinder::hasTable(), fn ($q) => $q->with('cylinder'))
                     ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
                     ->when($this->cityScoped($user), fn ($q) => $q->whereIn('warehouse_id', $warehouseIds))->get();
                 // Do not hide inconsistent assignments: they block the unit instead of making it look available.
                 $assignments = RentalAsset::with('rental.rentalItems')->whereIn('asset_id', $assets->pluck('id'))
                     ->whereNull('returned_at')->get()->groupBy('asset_id');
                 foreach ($assets as $asset) {
+                    if (\App\Models\Cylinder::hasTable() && $asset->cylinder && ($asset->cylinder->contents !== 'full'
+                        || $asset->cylinder->custody !== 'warehouse' || $asset->cylinder->reserved_for_rental_id)) {
+                        $counts['unavailable']++;
+                        continue;
+                    }
                     if ($asset->condition_status !== 'good' || ! in_array($asset->asset_status, ['available', 'reserved', 'rented'], true)) {
                         $counts['unavailable']++;
 

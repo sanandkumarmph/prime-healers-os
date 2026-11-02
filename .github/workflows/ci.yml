@@ -154,6 +154,17 @@ jobs:
         env:
           PHOS_QUOTE_ENHANCEMENT_RENDER_DIR: ${{ runner.temp }}/phos-quotation-sharing
 
+      - name: Render synthetic cylinder services
+        run: vendor/bin/pest tests/Feature/Regression/CylinderWorkflowTest.php --do-not-cache-result
+        env:
+          PHOS_CYLINDER_RENDER_DIR: ${{ runner.temp }}/phos-cylinder-services
+
+      - name: Test cylinder service layouts and signature controls
+        run: node --test tests/Browser/CylinderWorkflowTest.cjs
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
+          PHOS_CYLINDER_RENDER_DIR: ${{ runner.temp }}/phos-cylinder-services
+
       - name: Test quotation duration pricing availability and WhatsApp preview
         run: node --test tests/Browser/QuotationSharingEnhancementTest.cjs
         env:

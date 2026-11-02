@@ -1419,6 +1419,7 @@
                     </div>
                 </form>
             </x-phos-list-filter>
+            @if(\App\Models\Cylinder::hasTable())<a href="{{ route('cylinder-services.index') }}" class="rn-btn">Cylinder services</a>@endif
             @if($canCreateDeliveries && \Illuminate\Support\Facades\Route::has('deliveries.create'))
                 <a href="{{ route('deliveries.create') }}" class="rn-btn-primary">+ Add Assignment</a>
             @endif

@@ -90,12 +90,14 @@ class DeliveryWorkflowService
     public function releaseSpecificRentalAssets(int $organizationId, Rental $rental, array $assetIds, ?string $returnedAt = null): void
     {
         $assetIds = array_values(array_unique(array_map('intval', array_filter($assetIds))));
+        app(\App\Services\Cylinders\CylinderWorkflow::class)->guardOrdinaryReturn($rental, $assetIds);
 
         if (empty($assetIds)) {
             return;
         }
 
         $timestamp = $returnedAt ?: now();
+        app(\App\Services\Cylinders\CylinderWorkflow::class)->recordOrdinaryReturn($organizationId, $assetIds);
 
         Asset::query()
             ->where('organization_id', $organizationId)
@@ -199,6 +201,7 @@ class DeliveryWorkflowService
             Asset::query()
                 ->where('organization_id', $organizationId)
                 ->whereIn('id', $rentedIds)
+                ->when(\App\Models\Cylinder::hasTable(), fn ($q) => $q->whereDoesntHave('cylinder'))
                 ->update(['asset_status' => 'rented']);
         }
 
@@ -206,8 +209,10 @@ class DeliveryWorkflowService
             Asset::query()
                 ->where('organization_id', $organizationId)
                 ->whereIn('id', $reservedIds)
+                ->when(\App\Models\Cylinder::hasTable(), fn ($q) => $q->whereDoesntHave('cylinder'))
                 ->update(['asset_status' => 'reserved']);
         }
+        app(\App\Services\Cylinders\CylinderWorkflow::class)->syncOrdinaryAssignment($organizationId, $rental, $rentedIds, $reservedIds);
     }
 
     public function syncAssignedAssetStatuses(int $organizationId, Delivery $delivery, bool $hasSaleColumn): void
@@ -291,6 +296,10 @@ class DeliveryWorkflowService
 
     public function releaseRentalAssetsForReturn(int $organizationId, Rental $rental, ?string $returnedAt = null): void
     {
+        $cylinders = app(\App\Services\Cylinders\CylinderWorkflow::class);
+        $ids = $rental->activeRentalAssets()->pluck('asset_id')->all();
+        $cylinders->guardOrdinaryReturn($rental, $ids);
+        $cylinders->recordOrdinaryReturn($organizationId, $ids);
         if (!\App\Models\RentalAsset::hasTable()) {
             return;
         }
@@ -348,6 +357,10 @@ class DeliveryWorkflowService
 
     public function finalizePickupCompletionForRental(int $organizationId, Rental $rental, ?string $returnedAt = null, ?int $deliveryId = null): void
     {
+        $cylinders = app(\App\Services\Cylinders\CylinderWorkflow::class);
+        $ids = $rental->activeRentalAssets()->pluck('asset_id')->all();
+        $cylinders->guardOrdinaryReturn($rental, $ids);
+        if (!Rental::hasRentalItemsTable()) $cylinders->recordOrdinaryReturn($organizationId, $ids);
         $timestamp = $returnedAt ?: now()->toDateTimeString();
         $processedAssetIds = [];
 

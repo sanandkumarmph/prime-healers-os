@@ -696,6 +696,43 @@ class InvoiceController extends Controller
         ));
     }
 
+    public function cylinderService(Request $request, \App\Models\CylinderJob $job)
+    {
+        $this->authorize('create', Invoice::class);
+        $workflow = app(\App\Services\Cylinders\CylinderWorkflow::class);
+        $workflow->authorize($request->user(), 'read', $job);
+        $workflow->atomic($request->user(), function () use ($job) {
+            $job = \App\Models\CylinderJob::lockForUpdate()->findOrFail($job->id);
+            if ($job->invoice_id) return;
+            abort_unless($job->status === 'completed', 409, 'Complete the cylinder handover and warehouse receipt before invoicing.');
+            $rental = $job->rental; $organization = Organization::findOrFail($this->orgId());
+            $input = ['invoice_number' => 'INV-CYL-'.str_pad((string) $job->id, 8, '0', STR_PAD_LEFT),
+                'invoice_date' => today()->toDateString(), 'due_date' => today()->toDateString(),
+                'customer_id' => $rental->customer_id, 'reference_number' => 'Cylinder service #'.$job->id.' / Rental #'.$rental->id,
+                'bill_to_name' => $rental->billingContactName(), 'bill_to_phone' => $rental->billingContactPhone(),
+                'bill_to_email' => $rental->billingContactEmail(), 'bill_to_address' => $rental->billingContactAddress(),
+                'bill_to_city' => $rental->billingContactCity(), 'bill_to_state' => $rental->billingContactState(), 'bill_to_pincode' => $rental->billingContactPincode(),
+                'place_of_supply_state' => $rental->deliveryContactState() ?: $rental->billingContactState(),
+                'ship_to_name' => $rental->deliveryContactName(), 'ship_to_phone' => $rental->deliveryContactPhone(),
+                'ship_to_address' => $rental->deliveryContactAddress(), 'ship_to_city' => $rental->deliveryContactCity(),
+                'ship_to_state' => $rental->deliveryContactState(), 'ship_to_pincode' => $rental->deliveryContactPincode(),
+                'tax_calculation_mode' => 'inclusive', 'paid_amount' => 0, 'deposit_amount' => 0,
+                'item_description' => ['Oxygen cylinder refill service', 'Cylinder service transportation'],
+                'item_source_type' => ['refill', 'refill'], 'item_source_id' => [$job->id, $job->id],
+                'item_quantity' => [1, 1], 'item_rate' => [$job->refill_charge, $job->transport_charge],
+                'item_tax_percentage' => [$job->tax_rate, $job->tax_rate], 'notes' => 'Cylinder job #'.$job->id.'. Rental charges and security deposit are billed separately.'];
+            $invoiceRequest = new Request($input);
+            $this->validateInvoice($invoiceRequest);
+            [$invoiceData, $items] = $this->prepareInvoiceData($invoiceRequest, $organization, $this->orgId());
+            $invoice = Invoice::create($invoiceData);
+            foreach ($items as $item) $invoice->items()->create($item);
+            $invoice->syncFinancialStatus();
+            $job->update(['invoice_id' => $invoice->id, 'lock_version' => $job->lock_version + 1]);
+            ActivityLogger::log('invoice.created', $invoice, ['cylinder_job_id' => $job->id], 'Cylinder service invoice created.');
+        });
+        return redirect()->route('cylinder-services.show', $job)->with('success', 'Cylinder service invoice is available. Record payments through the existing payment workflow.');
+    }
+
     public function store(Request $request)
     {
         $this->authorize('create', Invoice::class);
