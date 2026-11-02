@@ -283,7 +283,7 @@ class CylinderWorkflowTest extends TestCase
 
     public function test_replacement_delivery_refuses_a_rental_serial_changed_after_booking(): void
     {
-        $job=$this->service->create($this->owner,$this->rental,$this->payload());
+        $job=$this->service->create($this->owner,$this->rental,$this->payload())->fresh();
         $this->rental->rentalItems()->sole()->update(['asset_ids'=>[]]);
         $this->post(route('cylinder-services.action',$job),['request_id'=>(string)Str::uuid(),'lock_version'=>$job->lock_version,
             'action'=>'full_delivered','scanned_code'=>$this->b->asset->serial_number,'signature_reason'=>'Synthetic test'])->assertSessionHasErrors('cylinder');
