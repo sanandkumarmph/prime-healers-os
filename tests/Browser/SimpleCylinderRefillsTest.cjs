@@ -36,7 +36,17 @@ test('refill popup stays on rental, needs no serial, and delivery tasks show no 
    assert.equal(await page.$eval('.cr-book [name=refill_charge]',el=>el.value),'600',`charge entry at ${width}`);
    await page.click('.cr-book [name=transport_charge]');await page.keyboard.down('Control');await page.keyboard.press('A');await page.keyboard.up('Control');await page.keyboard.press('Backspace');await page.keyboard.type('100');
    assert.equal(await page.$eval('.cr-book [name=transport_charge]',el=>el.value),'100');
-   const staff=await page.$eval('.cr-book [name=assigned_user_id]',el=>[...el.options].find(o=>o.value).value);await page.select('.cr-book [name=assigned_user_id]',staff);
+   assert.deepEqual(await page.$$eval('.cr-book [name=assignment_type] option',options=>options.map(o=>o.textContent)),['Internal team','Third party','Vendor']);
+   const initial=await page.$eval('.cr-book [name=assignment_target]',el=>[...el.options].filter(o=>o.value&&!o.disabled).map(o=>o.textContent));
+   assert.equal(initial.length,1);assert.match(initial[0],/Synthetic delivery driver/);
+   await page.select('.cr-book [name=assignment_type]','third_party');await page.select('.cr-book [name=assignment_target]','manual');
+   assert.equal(await page.$eval('.cr-book [name=third_party_name]',el=>el.required&&!el.disabled),true);
+   if(width===390){await page.type('.cr-book [name=third_party_name]','Phone test transporter');await page.type('.cr-book [name=third_party_phone]','+919876543210');}
+   else{
+    await page.select('.cr-book [name=assignment_type]',width===768?'vendor':'delivery_team');
+    assert.equal(await page.$eval('.cr-book [name=third_party_name]',el=>el.disabled),true);
+    const choice=await page.$eval('.cr-book [name=assignment_target]',el=>[...el.options].find(o=>o.value&&!o.disabled).value);await page.select('.cr-book [name=assignment_target]',choice);
+   }
    await page.$eval('.cr-book .cr-primary',el=>el.click());await page.waitForSelector('[data-cylinder-refill-dialog] .cr-card');
    assert.equal(new URL(page.url()).pathname,'/rentals/1');
    assert.match(await page.$eval('[data-cylinder-refill-body]',el=>el.textContent),/1 empty cylinder\(s\) still need to be received back/);
@@ -48,6 +58,6 @@ test('refill popup stays on rental, needs no serial, and delivery tasks show no 
    assert.match(await page.$eval('[data-cylinder-task-content]',el=>el.textContent),/Empty cylinder picked up/);
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`task overflow at ${width}`);
   }
-  assert.deepEqual(errors,[]);for(const post of posts){assert.ok(post.path.endsWith('/cylinder-refills'));assert.match(post.body,/name="refill_charge"\r\n\r\n600/);}
+  assert.deepEqual(errors,[]);for(const [index,post] of posts.entries()){assert.ok(post.path.endsWith('/cylinder-refills'));assert.match(post.body,/name="refill_charge"\r\n\r\n600/);assert.match(post.body,new RegExp('name="assignment_type"\\r\\n\\r\\n'+['delivery_team','third_party','vendor','delivery_team'][index]));if(index===1)assert.match(post.body,/Phone test transporter/);else assert.doesNotMatch(post.body,/name="third_party_name"/);}
  }finally{if(browser)await browser.close();await new Promise(r=>server.close(r));}
 });

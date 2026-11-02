@@ -1,7 +1,7 @@
 <?php
 namespace Tests\Feature\Regression;
-use App\Models\{Asset,Customer,Cylinder,CylinderRefill,CylinderRefillEvent,Invoice,Product,Rental,RentalAsset,RentalItem,User,Warehouse};
-use App\Services\Cylinders\SimpleCylinderRefills;
+use App\Models\{Asset,Customer,Cylinder,CylinderRefill,CylinderRefillEvent,Invoice,Product,Rental,RentalAsset,RentalItem,Staff,User,Vendor,Warehouse};
+use App\Services\Cylinders\{SimpleCylinderRefills,RefillDeliveryAssignments};
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\Support\TestData;
@@ -116,6 +116,8 @@ class SimpleCylinderRefillsTest extends TestCase
     }
     public function test_rendered_popup_and_task_fixtures_contain_all_controls_without_serial_requirement(): void
     {
+        Vendor::create(['organization_id'=>$this->owner->organization_id,'name'=>'Synthetic medical supply vendor','is_active'=>true]);
+        Staff::create(['organization_id'=>$this->owner->organization_id,'name'=>'Synthetic external transporter','role'=>'third_party','assignment_role'=>'third_party','is_assignment_enabled'=>true,'status'=>'active']);
         $this->render('rental',$this->get(route('rentals.show',$this->rental))->assertOk());
         $this->render('popup',$this->get(route('cylinder-refills.popup',$this->rental))->assertOk());
         $folder=getenv('PHOS_SIMPLE_REFILL_RENDER_DIR');if($folder)file_put_contents($folder.'/popup-fragment.html',$this->getJson(route('cylinder-refills.popup',$this->rental))->json('html'));
@@ -161,5 +163,87 @@ class SimpleCylinderRefillsTest extends TestCase
             $this->assertTrue(collect($indexes)->contains(fn($key)=>$key['unique']&&$key['columns']===['organization_id','request_id']));
         }
         $this->assertTrue(collect(\Illuminate\Support\Facades\Schema::getColumns('cylinder_refills'))->firstWhere('name','serial_reference')['nullable']);
+    }
+    public function test_assignment_choices_exclude_admins_and_sales_and_group_only_active_delivery_people(): void
+    {
+        TestData::user($this->owner->organization,['role'=>User::ROLE_SALES]);
+        TestData::user($this->owner->organization,['role'=>User::ROLE_DELIVERY,'is_active'=>false]);
+        $vendor=TestData::user($this->owner->organization,['role'=>User::ROLE_VENDOR]);
+        $third=TestData::user($this->owner->organization,['role'=>User::ROLE_THIRD_PARTY]);
+        $options=collect(app(RefillDeliveryAssignments::class)->options($this->owner));
+        $this->assertSame(['user:'.$this->driver->id],$options->where('type','delivery_team')->pluck('value')->all());
+        $this->assertSame('vendor',$options->firstWhere('value','user:'.$vendor->id)['type']);
+        $this->assertSame('third_party',$options->firstWhere('value','user:'.$third->id)['type']);
+        $this->assertNotContains('user:'.$this->owner->id,$options->pluck('value'));
+        $this->getJson(route('cylinder-refills.popup',$this->rental))->assertOk()->assertSee('Internal team')->assertSee('Third party')->assertSee('Vendor');
+    }
+    public static function externalLogins(): array {return [['vendor'],['third_party']];}
+    #[\PHPUnit\Framework\Attributes\DataProvider('externalLogins')]
+    public function test_external_login_receives_own_refill_task_and_no_other_delivery_user_can_access_it(string $type): void
+    {
+        $user=TestData::user($this->owner->organization,['role'=>$type]);$data=$this->data();unset($data['assigned_user_id']);
+        $data+=['assignment_type'=>$type,'assignment_target'=>'user:'.$user->id];
+        $this->postJson(route('cylinder-refills.store',$this->rental),$data)->assertOk();$refill=CylinderRefill::sole();
+        $this->assertSame($user->id,$refill->assigned_user_id);$this->assertSame($type,$refill->assignment_type);
+        $this->assertSame(0,$this->service->query($this->driver)->count());
+        $this->actingAs($user)->get(route('cylinder-refills.tasks'))->assertOk()->assertSeeText('Refill delivered')->assertDontSeeText('Total ₹');
+        $this->postJson(route('cylinder-refills.change',$refill),['request_id'=>(string)Str::uuid(),'lock_version'=>0,'action'=>'deliver','quantity'=>1,'task_view'=>1])->assertOk();
+        $notification=$user->notifications()->where('data->type','cylinder_refill.assigned')->sole();
+        $this->assertSame(route('cylinder-refills.tasks'),$notification->data['action_url']);
+    }
+    public static function externalRecords(): array {return [['staff'],['vendor'],['manual']];}
+    #[\PHPUnit\Framework\Attributes\DataProvider('externalRecords')]
+    public function test_external_provider_without_login_keeps_stock_progress_and_snapshot_without_fake_user(string $kind): void
+    {
+        $data=$this->data();unset($data['assigned_user_id']);$users=User::count();
+        if($kind==='staff'){$record=Staff::create(['organization_id'=>$this->owner->organization_id,'name'=>'External vendor staff','role'=>'vendor','assignment_role'=>'vendor','is_assignment_enabled'=>true,'status'=>'active']);$data+=['assignment_type'=>'vendor','assignment_target'=>'staff:'.$record->id];}
+        elseif($kind==='vendor'){$record=Vendor::create(['organization_id'=>$this->owner->organization_id,'name'=>'External vendor master','is_active'=>true]);$data+=['assignment_type'=>'vendor','assignment_target'=>'vendor:'.$record->id];}
+        else $data+=['assignment_type'=>'third_party','assignment_target'=>'manual','third_party_name'=>'Independent transporter','third_party_phone'=>'+919876543210'];
+        $this->postJson(route('cylinder-refills.store',$this->rental),$data)->assertOk()->assertSee('no assigned PHOS login');
+        $this->postJson(route('cylinder-refills.store',$this->rental),$data)->assertOk();$refill=CylinderRefill::sole();
+        $this->assertNull($refill->assigned_user_id);$this->assertSame($users,User::count());$this->assertSame(0,$this->service->query($this->driver)->count());
+        $this->assertSame($kind==='staff'?$record->id:null,$refill->assigned_staff_id);
+        $this->assertSame($kind==='vendor'?$record->id:null,$refill->assigned_vendor_id);
+        $snapshot=$refill->delivery_assignee_name;if(isset($record))$record->update(['name'=>'Renamed provider']);
+        $this->assertSame($snapshot,$refill->fresh()->delivery_assignee_name);
+        foreach(['deliver','collect_empty','receive_empty']as$action)$refill=$this->change($refill,$action);
+        $this->assertSame('completed',$refill->status);$this->assertSame(0,$refill->pending_empty_quantity);
+        $this->assertSame('empty',$this->incoming->fresh()->cylinder->contents);
+        $this->assertSame($snapshot,$refill->events()->where('action','booked')->sole()->details['assignment']['assignment_name']);
+    }
+    public function test_wrong_type_foreign_inactive_and_disabled_provider_assignments_are_refused_before_stock_reservation(): void
+    {
+        $foreign=Vendor::create(['organization_id'=>TestData::organization()->id,'name'=>'Foreign vendor','is_active'=>true]);
+        $inactive=Vendor::create(['organization_id'=>$this->owner->organization_id,'name'=>'Inactive vendor','is_active'=>false]);
+        $staff=Staff::create(['organization_id'=>$this->owner->organization_id,'name'=>'Disabled vendor','role'=>'vendor','assignment_role'=>'vendor','is_assignment_enabled'=>false,'status'=>'active']);
+        foreach([['delivery_team','user:'.$this->owner->id],['vendor','user:'.$this->driver->id],['vendor','vendor:'.$foreign->id],['vendor','vendor:'.$inactive->id],['vendor','staff:'.$staff->id],['third_party','manual']]as[$type,$target]){
+            $data=$this->data();unset($data['assigned_user_id']);$data+=['assignment_type'=>$type,'assignment_target'=>$target];
+            $this->postJson(route('cylinder-refills.store',$this->rental),$data)->assertUnprocessable();
+        }
+        $this->assertDatabaseCount('cylinder_refills',0);$this->assertSame('available',$this->outgoing->fresh()->asset_status);
+    }
+    public function test_reassignment_switches_provider_types_without_moving_stock_and_preserves_previous_assignment(): void
+    {
+        $refill=$this->service->book($this->owner,$this->rental,$this->data())->fresh();
+        $data=['request_id'=>(string)Str::uuid(),'lock_version'=>0,'action'=>'reassign','assignment_type'=>'third_party','assignment_target'=>'manual','third_party_name'=>'Outside transporter'];
+        $this->postJson(route('cylinder-refills.change',$refill),$data)->assertOk();$this->postJson(route('cylinder-refills.change',$refill),$data)->assertOk();
+        $this->assertSame(0,$this->service->query($this->driver)->count());$this->assertSame('reserved',$this->outgoing->fresh()->asset_status);
+        $this->assertSame($this->driver->id,$refill->events()->where('action','reassign')->sole()->details['previous_assignment']['assigned_user_id']);
+        $refill=$this->service->change($this->owner,$refill->fresh(),['request_id'=>(string)Str::uuid(),'lock_version'=>1,'action'=>'reassign','assignment_type'=>'delivery_team','assignment_target'=>'user:'.$this->driver->id]);
+        $this->assertSame($this->driver->id,$refill->assigned_user_id);$this->assertNull($refill->assigned_vendor_id);$this->assertNull($refill->assigned_staff_id);$this->assertNull($refill->assignment_phone);
+        $this->assertSame(1,$this->service->query($this->driver)->count());
+    }
+    public function test_assignment_migration_preserves_existing_refills_and_blocks_removal_after_new_assignments(): void
+    {
+        $refill=$this->service->book($this->owner,$this->rental,$this->data())->fresh();
+        $migration=require database_path('migrations/2026_11_02_220000_add_cylinder_refill_delivery_assignment.php');
+        try{$migration->down();$this->fail('Assignment history must block schema removal.');}catch(\RuntimeException $error){$this->assertStringContainsString('in use',$error->getMessage());}
+        \Illuminate\Support\Facades\DB::table('cylinder_refills')->where('id',$refill->id)->update(['assignment_type'=>null,'assignment_name'=>null,'assignment_phone'=>null,'assignment_contact'=>null]);
+        $before=$refill->fresh()->only(['id','assigned_user_id','quantity','status','refill_charge','lock_version','created_at','updated_at']);$events=CylinderRefillEvent::count();
+        if(\Illuminate\Support\Facades\DB::getDriverName()==='sqlite')\Illuminate\Support\Facades\DB::statement('PRAGMA defer_foreign_keys=ON');
+        $migration->down();$migration->up();
+        if(\Illuminate\Support\Facades\DB::getDriverName()==='sqlite')$this->assertSame([],\Illuminate\Support\Facades\DB::select('PRAGMA foreign_key_check'));
+        $this->assertEquals($before,$refill->fresh()->only(array_keys($before)));$this->assertSame($events,CylinderRefillEvent::count());
+        $this->assertSame($this->driver->name,$refill->fresh()->delivery_assignee_name);$this->assertNull($refill->fresh()->assignment_type);
     }
 }
