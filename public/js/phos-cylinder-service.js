@@ -1,5 +1,24 @@
 (() => {
     'use strict';
+    document.querySelectorAll('[data-cylinder-booking]').forEach(form => {
+        const mode=form.querySelector('[name=mode]'), incoming=form.querySelector('[name=incoming_cylinder_id]');
+        const outgoing=form.querySelector('[name=outgoing_cylinder_id]'), message=form.querySelector('[data-cylinder-replacement-message]');
+        const update=()=>{
+            const same=mode.value==='same', product=incoming.selectedOptions[0]?.dataset.productId;
+            let ready=0;
+            [...outgoing.options].forEach(option=>{
+                if(!option.value)return;
+                option.hidden=option.dataset.productId!==product;option.disabled=option.hidden;
+                if(!option.hidden)ready++;
+            });
+            if(same || outgoing.selectedOptions[0]?.disabled)outgoing.value='';
+            outgoing.disabled=same;outgoing.required=!same;
+            outgoing.setCustomValidity(!same&&!ready?'No full, inspected replacement of this product is ready. Check cylinder readiness or choose same-cylinder refill.':'');
+            message.textContent=same?'The original customer cylinder will be refilled and returned. No replacement is required.':
+                ready?'Choose the full cylinder you will deliver to the customer.':'No replacement is ready for this product. Check cylinder readiness or select Refill and return the same cylinder.';
+        };
+        mode.addEventListener('change',update);incoming.addEventListener('change',update);update();
+    });
     document.querySelectorAll('[data-cylinder-step]').forEach(form => {
         const canvas = form.querySelector('[data-cylinder-signature]');
         if (!canvas) return;

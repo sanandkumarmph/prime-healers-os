@@ -48,7 +48,9 @@ class CylinderServiceController extends Controller
             'incoming_cylinder_id' => 'required|integer', 'outgoing_cylinder_id' => 'nullable|required_if:mode,exchange|integer',
             'assigned_user_id' => 'required|integer', 'scheduled_at' => 'required|date_format:Y-m-d\TH:i',
             'refill_charge' => 'required|numeric|min:0|max:999999.99', 'transport_charge' => 'required|numeric|min:0|max:999999.99',
-            'tax_rate' => 'required|numeric|in:0,5,12,18,28', 'tax_type' => 'required|in:cgst_sgst,igst', 'notes' => 'nullable|string|max:2000']);
+            'tax_rate' => 'required|numeric|in:0,5,12,18,28', 'tax_type' => 'required|in:cgst_sgst,igst', 'notes' => 'nullable|string|max:2000'],
+            ['outgoing_cylinder_id.required_if'=>'Choose a full, inspected replacement cylinder for an exchange. To refill the original cylinder, select Refill and return the same cylinder.'],
+            ['outgoing_cylinder_id'=>'replacement cylinder','incoming_cylinder_id'=>'customer cylinder']);
         $job = $this->workflow->create($request->user(), $rental, $data);
         return redirect()->route('cylinder-services.show', $job)->with('success', 'Cylinder service booked. Rental quantity and deposit are unchanged.');
     }
@@ -137,7 +139,7 @@ class CylinderServiceController extends Controller
 
     public function stockAction(Request $request, Cylinder $cylinder)
     {
-        $data = $request->validate(['request_id' => 'required|uuid', 'action' => 'required|in:inspection_recorded,return_received,sent_for_refill,received_full',
+        $data = $request->validate(['request_id' => 'required|uuid', 'action' => 'required|in:ready_confirmed,inspection_recorded,return_received,sent_for_refill,received_full',
             'scanned_code' => 'required|string|max:255', 'warehouse_id' => 'required|integer', 'contents' => 'nullable|in:full,empty',
             'inspection_confirmed' => 'nullable|boolean', 'notes' => 'nullable|string|max:2000']);
         $this->workflow->stockAction($request->user(), $cylinder, $data);

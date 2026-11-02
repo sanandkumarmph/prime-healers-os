@@ -347,6 +347,7 @@ class CylinderWorkflow
                 abort_unless(hash_equals($old->request_fingerprint, $fingerprint), 409);
                 return $cylinder;
             }
+            $cylinder->setRelation('asset', Asset::where('organization_id',$user->organization_id)->lockForUpdate()->findOrFail($cylinder->asset_id));
             if ($cylinder->reserved_for_rental_id || $cylinder->asset->activeRentalAssignments()->exists()
                 || CylinderJob::where('status', 'open')->where(fn ($q) => $q->where('incoming_cylinder_id', $cylinder->id)->orWhere('outgoing_cylinder_id', $cylinder->id))->exists()) {
                 $this->fail('This cylinder is assigned or reserved. Continue from its rental service job.');
@@ -354,7 +355,17 @@ class CylinderWorkflow
             if (!in_array(trim($data['scanned_code']), array_filter([$cylinder->asset->serial_number, $cylinder->asset->barcode_value]), true)) $this->fail('The serial/barcode does not match this cylinder.');
             $warehouse = Warehouse::where('organization_id', $user->organization_id)->where('is_active', true)->findOrFail($data['warehouse_id']);
             $before = $cylinder->asset->asset_status;
+            $conditionBefore = $cylinder->asset->condition_status;
             switch ($data['action']) {
+                case 'ready_confirmed':
+                    if ($cylinder->custody !== 'warehouse' || $cylinder->contents !== 'full' || empty($data['inspection_confirmed'])
+                        || !$this->isCylinderProduct($cylinder->asset->product) || !$cylinder->asset->isRentalStock()
+                        || !in_array($cylinder->asset->asset_status, [Asset::STATUS_AVAILABLE, Asset::STATUS_MAINTENANCE, Asset::STATUS_AWAITING_VERIFICATION], true)
+                        || !in_array($conditionBefore, [Asset::CONDITION_STATUS_NEW, Asset::CONDITION_STATUS_GOOD], true)) {
+                        $this->fail('Confirm inspection of a full warehouse cylinder in New or Good condition. Damaged or repair cylinders must be resolved on the asset first.');
+                    }
+                    $cylinder->asset->update(['condition_status'=>Asset::CONDITION_STATUS_GOOD]);
+                    break;
                 case 'inspection_recorded':
                     if ($cylinder->custody !== 'warehouse' || $cylinder->contents !== 'unknown' || empty($data['inspection_confirmed'])) $this->fail('Inspect this warehouse cylinder before confirming its contents.');
                     if (!in_array($data['contents'] ?? '', ['empty', 'full'], true)) $this->fail('Confirm whether the cylinder is full or empty.');
@@ -379,7 +390,8 @@ class CylinderWorkflow
             $ready = $cylinder->contents === 'full' && $cylinder->custody === 'warehouse' && $cylinder->asset->condition_status === 'good';
             $cylinder->asset->update(['warehouse_id' => $warehouse->id, 'asset_status' => $ready ? Asset::STATUS_AVAILABLE : Asset::STATUS_MAINTENANCE]);
             $this->event($user, $cylinder, null, $data['action'], ['contents' => $cylinder->contents, 'custody' => $cylinder->custody,
-                'warehouse_id' => $warehouse->id, 'notes' => $data['notes'] ?? ''], $data['request_id'], $fingerprint);
+                'warehouse_id' => $warehouse->id, 'condition_before'=>$conditionBefore, 'condition_after'=>$cylinder->asset->condition_status,
+                'inspection_confirmed'=>!empty($data['inspection_confirmed']), 'notes' => $data['notes'] ?? ''], $data['request_id'], $fingerprint);
             app(StockMovementRecorder::class)->recordForAsset($cylinder->asset, 'manual_adjustment', 1,
                 ['from_status' => $before, 'to_status' => $cylinder->asset->asset_status, 'performed_by_user_id' => $user->id, 'notes' => 'Cylinder: '.$data['action']]);
             $cylinder->asset->product?->syncLegacyStockFields();
