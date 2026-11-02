@@ -50,8 +50,8 @@ test('mixed quotation duration controls preserve prices and check only rental av
    await page.goto(origin+'/shared',{waitUntil:'networkidle0'});
    const link=await page.$eval('[data-share-channel=whatsapp]',e=>e.href);
    const parsed=new URL(link);assert.equal(parsed.hostname,'wa.me');assert.equal(parsed.pathname,'/919876543210');
-   const message=parsed.searchParams.get('text');assert.ok(message.includes('Nasal cannula')&&message.includes('Regards, Meera Sender'));
-   assert.ok(message.includes('Refundable deposit')&&message.includes('INR 1,750.00'));
+   const message=parsed.searchParams.get('text');assert.ok(message.includes('Nasal cannula')&&message.includes('Regards,\nMeera Sender'));
+   assert.ok(message.includes('Refundable deposit')&&message.includes('₹1,750.00'));
    assert.equal(await page.$eval('#quote-message',e=>e.value),message.replaceAll(new URL(fixture.url).origin,origin));
   }
   assert.deepEqual(errors,[]);assert.equal(requests.length,4);

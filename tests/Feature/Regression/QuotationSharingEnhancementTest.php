@@ -88,7 +88,7 @@ class QuotationSharingEnhancementTest extends TestCase
         $response = $this->get(route('quotations.show', $q))->assertOk()->assertSee('Meera Sender')->assertSee('data-quotation-signoff', false)
             ->assertSee('https://wa.me/919876543210?text=', false)->assertSee('Preview message and sender sign-off');
         $text = app(QuotationSharing::class)->message($q, 'https://example.test/private-quote');
-        foreach (['Oxygen concentrator', 'Nasal cannula', 'One-time purchase', '(7 days)', 'INR 1,750.00', 'Refundable deposit', 'Regards, Meera Sender', '+918000000001'] as $fragment) $this->assertStringContainsString($fragment, $text);
+        foreach (['Oxygen concentrator', 'Nasal cannula', 'One-time purchase', '(7 days)', '₹1,750.00', 'Refundable deposit', "Regards,\nMeera Sender", '+918000000001'] as $fragment) $this->assertStringContainsString($fragment, $text);
         $this->assertStringNotContainsString('Later profile change', $text);
         $this->assertNull($q->fresh()->shared_at);
         Mail::assertNothingSent();
