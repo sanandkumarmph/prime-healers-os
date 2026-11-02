@@ -7,9 +7,9 @@
 <form method="post" action="{{ route('cylinder-refills.store',$rental) }}" data-cylinder-refill-form class="cr-book">@csrf
 <input type="hidden" name="request_id" value="{{ (string)Str::uuid() }}">
 <div class="cr-grid"><label>Cylinder size / capacity<select name="product_id" required>@foreach($capacities  as $row)<option value="{{ $row['product']->id }}" data-issued="{{ $row['issued'] }}">{{ $row['product']->name }}</option>@endforeach</select><small data-refill-issued>Previously issued: {{ $capacities->first()['issued'] }} cylinder(s)</small></label>
-<label>Quantity<input name="quantity" type="number" min="1" max="{{ max(1,$capacities->first()['issued']) }}" value="1" required></label>
-<label>Refill charges — total (₹, GST included)<input name="refill_charge" type="number" min="0" max="999999.99" step="0.01" required></label>
-<label>Transportation (₹, GST included)<input name="transport_charge" type="number" min="0" max="999999.99" step="0.01" value="0" required></label>
+<label>Quantity<input name="quantity" type="number" data-no-auto-select min="1" max="{{ max(1,$capacities->first()['issued']) }}" value="1" required></label>
+<label>Refill charges — total (₹, GST included)<input name="refill_charge" type="number" data-no-auto-select min="0" max="999999.99" step="0.01" required></label>
+<label>Transportation (₹, GST included)<input name="transport_charge" type="number" data-no-auto-select min="0" max="999999.99" step="0.01" value="0" required></label>
 <label>Assign delivery<select name="assigned_user_id" required><option value="">Choose delivery staff</option>@foreach($staff  as $person)<option value="{{ $person->id }}">{{ $person->name }}</option>@endforeach</select></label>
 <label>Delivery date &amp; time (IST)<input name="scheduled_at" type="datetime-local" value="{{ now()->format('Y-m-d\TH:i') }}" required></label></div>
 <details class="cr-options"><summary>Options · serial number is optional</summary><div class="cr-grid"><label>Refill method<select name="mode"><option value="exchange">Deliver full cylinder and collect the empty</option><option value="same">Collect, refill and return the same cylinder</option></select></label><label>Serial / reference (optional)<input name="serial_reference" maxlength="500"></label>

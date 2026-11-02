@@ -32,9 +32,9 @@ test('refill popup stays on rental, needs no serial, and delivery tasks show no 
    assert.match(await page.$eval('.cr-book [name=product_id]',el=>el.selectedOptions[0].textContent),/4.5 litres/);
    assert.match(await page.$eval('[data-refill-issued]',el=>el.textContent),/Previously issued: 1/);
    if(width===390)await page.screenshot({path:path.join(folder,'simple-refill-popup-390.png'),fullPage:true});
-   await page.click('.cr-book [name=refill_charge]');await page.keyboard.type('600',{delay:60});
-   assert.equal(await page.$eval('.cr-book [name=refill_charge]',el=>el.value),'600');
-   await page.click('.cr-book [name=transport_charge]',{clickCount:3});await page.keyboard.type('100',{delay:60});
+   await page.click('.cr-book [name=refill_charge]');await page.keyboard.type('600');
+   assert.equal(await page.$eval('.cr-book [name=refill_charge]',el=>el.value),'600',`charge entry at ${width}`);
+   await page.click('.cr-book [name=transport_charge]');await page.keyboard.down('Control');await page.keyboard.press('A');await page.keyboard.up('Control');await page.keyboard.press('Backspace');await page.keyboard.type('100');
    assert.equal(await page.$eval('.cr-book [name=transport_charge]',el=>el.value),'100');
    const staff=await page.$eval('.cr-book [name=assigned_user_id]',el=>[...el.options].find(o=>o.value).value);await page.select('.cr-book [name=assigned_user_id]',staff);
    await page.$eval('.cr-book .cr-primary',el=>el.click());await page.waitForSelector('[data-cylinder-refill-dialog] .cr-card');
