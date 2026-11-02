@@ -113,6 +113,7 @@ class CylinderWorkflow
             $rental = Rental::where('organization_id', $user->organization_id)->lockForUpdate()->findOrFail($rental->id);
             if ($rental->status !== 'active') $this->fail('Cylinder service requires an active rental.');
             if ($rental->isVendorSupplied()) $this->fail('Cylinder services support PHOS-owned rental cylinders only.');
+            if(\App\Models\CylinderRefill::available() && \App\Models\CylinderRefill::where('rental_id',$rental->id)->where('status','open')->exists())$this->fail('A refill is already open. Continue it from the rental popup.');
             $fingerprint = $this->fingerprint($data + ['rental_id' => $rental->id]);
             if ($existing = CylinderJob::where('organization_id', $user->organization_id)->where('request_id', $data['request_id'])->first()) {
                 $this->authorize($user, 'read', $existing);
@@ -139,7 +140,7 @@ class CylinderWorkflow
             if ($data['mode'] === 'exchange') {
                 if ($incoming->id === $outgoing->id || $incoming->asset->product_id !== $outgoing->asset->product_id) $this->fail('Choose a different full cylinder of the same product.');
                 if ($outgoing->contents !== 'full' || $outgoing->custody !== 'warehouse'
-                    || !Asset::whereKey($outgoing->asset_id)->rentalReady()->exists()) $this->fail('The replacement cylinder must be full, inspected and ready in the warehouse.');
+                    || $outgoing->asset->condition_status!=='good' || !Asset::whereKey($outgoing->asset_id)->rentalReady()->exists()) $this->fail('The replacement cylinder must be full, inspected and ready in the warehouse.');
                 $outgoing->update(['reserved_for_rental_id' => $rental->id]);
                 $outgoing->asset->update(['asset_status' => Asset::STATUS_RESERVED]);
                 $outgoing->asset->product?->syncLegacyStockFields();
@@ -313,6 +314,7 @@ class CylinderWorkflow
 
     public function guardOrdinaryReturn(Rental $rental, array $assetIds): void
     {
+        if(\App\Models\CylinderRefill::available() && \App\Models\CylinderRefill::where('rental_id',$rental->id)->where('status','open')->exists())$this->fail('Record the refill delivery and empty-cylinder return in the rental popup before an ordinary pickup.');
         if (!Cylinder::hasTable()) return;
         if (CylinderJob::where('rental_id', $rental->id)->where('status', 'open')->where(fn ($q) => $q
             ->whereHas('incoming', fn ($c) => $c->whereIn('asset_id', $assetIds))

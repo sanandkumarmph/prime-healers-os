@@ -227,12 +227,12 @@ class CylinderWorkflowTest extends TestCase
     {
         $response=$this->get(route('rentals.show',$this->rental))->assertOk();
         $this->assertSame(2,substr_count($response->getContent(),'aria-label="Cylinder refill and exchange"'));
-        $response->assertSeeText('Book refill / exchange')->assertSeeText('View cylinder history');
+        $response->assertSeeText('Refill cylinder')->assertSeeText('Refill history');
         $role=\App\Models\Role::create(['organization_id'=>$this->owner->organization_id,'name'=>'Synthetic rental read only','slug'=>'synthetic-rental-read','is_active'=>true,
             'permissions'=>['rentals'=>['read'],'__special'=>['scope.all'],'__special_explicit'=>true]]);
         $reader=TestData::user($this->owner->organization,['role_id'=>$role->id,'role'=>'custom']);
         $this->actingAs($reader)->withSession(['password_hash_web'=>$reader->getAuthPassword()])->get(route('rentals.show',$this->rental))->assertOk()
-            ->assertDontSeeText('Book refill / exchange')->assertDontSeeText('View cylinder history');
+            ->assertDontSeeText('Refill cylinder')->assertDontSeeText('Refill history');
         $this->get(route('cylinder-services.create',$this->rental))->assertForbidden();
     }
 
@@ -351,12 +351,12 @@ class CylinderWorkflowTest extends TestCase
     {
         $other=$this->product->replicate();$other->name='Synthetic oxygen concentrator';$other->save();
         $this->rental->rentalItems()->sole()->update(['product_id'=>$other->id]);
-        $this->get(route('rentals.show',$this->rental))->assertOk()->assertDontSeeText('Book refill / exchange')->assertDontSeeText('View cylinder history');
+        $this->get(route('rentals.show',$this->rental))->assertOk()->assertDontSeeText('Refill cylinder')->assertDontSeeText('Refill history');
         $this->get(route('cylinder-services.create',$this->rental))->assertStatus(422);
         RentalItem::create(['organization_id'=>$this->owner->organization_id,'rental_id'=>$this->rental->id,'product_id'=>$this->product->id,'quantity'=>1,'asset_ids'=>[$this->a->asset_id]]);
-        $this->get(route('rentals.show',$this->rental))->assertOk()->assertSeeText('Book refill / exchange');
+        $this->get(route('rentals.show',$this->rental))->assertOk()->assertSeeText('Refill cylinder');
         $legacy=$this->rental->replicate();$legacy->save();
-        $this->get(route('rentals.show',$legacy))->assertOk()->assertSeeText('Book refill / exchange');
+        $this->get(route('rentals.show',$legacy))->assertOk()->assertSeeText('Refill cylinder');
     }
 
     public function test_registration_picker_and_server_validation_exclude_non_cylinders_and_invalid_serials(): void

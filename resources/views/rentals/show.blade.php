@@ -3722,6 +3722,7 @@
     @media(max-width:640px) {.rcc-shell .rcc-cylinder-panel {padding:14px;gap:12px;}.rcc-shell .rcc-cylinder-copy {flex-basis:100%;}.rcc-shell .rcc-cylinder-actions {display:grid;grid-template-columns:minmax(0,1fr);width:100%;}}
 </style>
 
+@include('cylinder-refills.modal')
 <div class="container detail-page rcc-shell">
     @if($errors->any() && !$renewalValidationFailed)
         <div id="rental-validation-errors" role="alert" tabindex="-1" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;padding:12px 14px;border-radius:12px;">

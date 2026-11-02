@@ -1425,7 +1425,12 @@
         </div>
     </div>
 
-    @if(\App\Models\Cylinder::hasTable())<nav aria-label="Cylinder services" style="display:flex;justify-content:flex-end;min-width:0;margin:8px 0"><a href="{{ route('cylinder-services.index') }}" class="rn-btn">Cylinder services →</a></nav>@endif
+    @if(\App\Models\CylinderRefill::available())
+    <link rel="stylesheet" href="{{ asset('css/phos-cylinder-refills.css') }}?v={{ hash_file('sha256',public_path('css/phos-cylinder-refills.css')) }}">
+    <script src="{{ asset('js/phos-cylinder-refills.js') }}?v={{ hash_file('sha256',public_path('js/phos-cylinder-refills.js')) }}" defer></script>
+    <section aria-label="Cylinder refill and empty pickup tasks" style="min-width:0;margin:12px 0"><a href="{{ route('cylinder-refills.tasks') }}" class="rn-btn">Cylinder refills &amp; empty pickup →</a>
+    @if(isset($refillTasks) && $refillTasks->isNotEmpty())@include('cylinder-refills.tasks-content')@endif</section>
+    @endif
     @if(session('success'))
         <div class="ops-flash-success">{{ session('success') }}</div>
     @endif

@@ -696,6 +696,35 @@ class InvoiceController extends Controller
         ));
     }
 
+    public function simpleCylinderRefill(Request $request, \App\Models\CylinderRefill $refill)
+    {
+        $this->authorize('create',Invoice::class);
+        $service=app(\App\Services\Cylinders\SimpleCylinderRefills::class);$service->authorize($request->user(),$refill);
+        app(\App\Services\Cylinders\CylinderWorkflow::class)->atomic($request->user(),function()use($refill){
+            $refill=\App\Models\CylinderRefill::lockForUpdate()->findOrFail($refill->id);if($refill->invoice_id)return;
+            abort_unless($refill->status!=='cancelled'&&$refill->delivered_quantity===$refill->quantity,409,'Record the refill delivered before invoicing.');
+            $rental=$refill->rental;$organization=Organization::findOrFail($this->orgId());
+            $input=['invoice_number'=>'INV-REFILL-'.str_pad((string)$refill->id,8,'0',STR_PAD_LEFT),
+                'invoice_date'=>today()->toDateString(),'due_date'=>today()->toDateString(),'customer_id'=>$rental->customer_id,
+                'reference_number'=>'Cylinder refill #'.$refill->id.' / Rental #'.$rental->id,
+                'bill_to_name'=>$rental->billingContactName(),'bill_to_phone'=>$rental->billingContactPhone(),'bill_to_email'=>$rental->billingContactEmail(),
+                'bill_to_address'=>$rental->billingContactAddress(),'bill_to_city'=>$rental->billingContactCity(),'bill_to_state'=>$rental->billingContactState(),'bill_to_pincode'=>$rental->billingContactPincode(),
+                'place_of_supply_state'=>$rental->deliveryContactState()?:$rental->billingContactState(),'ship_to_name'=>$rental->deliveryContactName(),'ship_to_phone'=>$rental->deliveryContactPhone(),
+                'ship_to_address'=>$rental->deliveryContactAddress(),'ship_to_city'=>$rental->deliveryContactCity(),'ship_to_state'=>$rental->deliveryContactState(),'ship_to_pincode'=>$rental->deliveryContactPincode(),
+                'tax_calculation_mode'=>'inclusive','paid_amount'=>0,'deposit_amount'=>0,
+                'item_description'=>['Cylinder refill — '.$refill->capacity_label.' ('.$refill->quantity.')','Refill transportation'],
+                'item_source_type'=>['refill','refill'],'item_source_id'=>[$refill->id,$refill->id],'item_quantity'=>[1,1],
+                'item_rate'=>[$refill->refill_charge,$refill->transport_charge],'item_tax_percentage'=>[$refill->tax_rate,$refill->tax_rate],
+                'notes'=>'Refill #'.$refill->id.'. Rental period and deposit are unchanged.'];
+            $invoiceRequest=new Request($input);$this->validateInvoice($invoiceRequest);
+            [$invoiceData,$items]=$this->prepareInvoiceData($invoiceRequest,$organization,$this->orgId());
+            $invoice=Invoice::create($invoiceData);foreach($items as$item)$invoice->items()->create($item);$invoice->syncFinancialStatus();
+            $refill->update(['invoice_id'=>$invoice->id,'lock_version'=>$refill->lock_version+1]);
+            ActivityLogger::log('invoice.created',$invoice,['cylinder_refill_id'=>$refill->id],'Cylinder refill invoice created.');
+        });
+        return app(CylinderRefillController::class)->renderForRental($request,$refill->rental,'Service invoice created. Use the existing payment workflow to record collections.');
+    }
+
     public function cylinderService(Request $request, \App\Models\CylinderJob $job)
     {
         $this->authorize('create', Invoice::class);

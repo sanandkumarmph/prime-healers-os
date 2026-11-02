@@ -82,7 +82,7 @@ class RentalAvailability
                         $counts['unavailable']++;
                         continue;
                     }
-                    if ($asset->condition_status !== 'good' || ! in_array($asset->asset_status, ['available', 'reserved', 'rented'], true)) {
+                    if (!($asset->condition_status==='good' || ($hasCylinders && $asset->cylinder && $asset->condition_status==='new')) || ! in_array($asset->asset_status, ['available', 'reserved', 'rented'], true)) {
                         $counts['unavailable']++;
 
                         continue;

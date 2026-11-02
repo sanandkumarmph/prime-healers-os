@@ -1765,6 +1765,12 @@ class DeliveryController extends Controller
             ->orderBy('city')
             ->pluck('city');
 
+        $refillTasks=\App\Models\CylinderRefill::available()
+            ? app(\App\Services\Cylinders\SimpleCylinderRefills::class)->query($request->user())->where('status','open')
+                ->where(fn($q)=>$q->whereColumn('delivered_quantity','<','quantity')->orWhereColumn('collected_quantity','<','quantity'))
+                ->with(['product','rental.customer','assignee'])->orderBy('scheduled_at')->limit(6)->get()
+            : collect();
+
         return view('deliveries.index', compact(
             'tab',
             'search',
@@ -1809,7 +1815,8 @@ class DeliveryController extends Controller
             'assignableUsers',
             'assignableStaffMembers',
             'warehouseOptions',
-            'areaOptions'
+            'areaOptions',
+            'refillTasks'
         ));
     }
 
