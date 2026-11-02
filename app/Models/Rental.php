@@ -12,6 +12,15 @@ use Illuminate\Support\Facades\Schema;
 
 class Rental extends Model
 {
+    protected static function booted(): void
+    {
+        static::saving(function (Rental $rental) {
+            if ($rental->exists && $rental->isDirty('status') && in_array($rental->status, ['returned', 'cancelled', 'closed', 'completed'], true)
+                && Cylinder::hasTable() && CylinderJob::where('rental_id', $rental->id)->where('status', 'open')->exists()) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['status' => 'Complete or cancel the open cylinder service before closing this rental.']);
+            }
+        });
+    }
     protected static ?bool $hasReminderLogsTable = null;
     protected static ?bool $hasRenewalsTable = null;
     protected static ?bool $hasSaleItemsTable = null;

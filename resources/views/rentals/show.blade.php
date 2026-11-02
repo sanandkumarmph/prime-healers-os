@@ -4314,6 +4314,8 @@
             <div class="rcc-section-head">
                 <div>
                     <h2>Operations Workspace</h2>
+                    @if($canCreateDeliveries && $canUpdateRentals && $rental->status === 'active' && \App\Models\Cylinder::hasTable())<a class="rcc-btn" href="{{ route('cylinder-services.create',$rental) }}">Cylinder refill / exchange</a>@endif
+                    @if(\App\Models\Cylinder::hasTable() && (auth()->user()->canAccessModule('deliveries','read') || auth()->user()->canViewDues()))<a class="rcc-btn" href="{{ route('cylinder-services.index',['rental_id'=>$rental->id]) }}">Cylinder service history</a>@endif
                     <p>Rental, delivery, active usage, pickup, and return verification in one operational row.</p>
                 </div>
             </div>

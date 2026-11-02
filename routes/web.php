@@ -236,6 +236,17 @@ Route::middleware('auth')->group(function () {
         ->middleware('module:payments,delete')
         ->name('payments.destroy');
 
+    Route::get('/cylinder-services', [\App\Http\Controllers\CylinderServiceController::class, 'index'])->name('cylinder-services.index');
+    Route::get('/cylinder-services/stock', [\App\Http\Controllers\CylinderServiceController::class, 'stock'])->name('cylinder-services.stock');
+    Route::post('/cylinder-services/stock', [\App\Http\Controllers\CylinderServiceController::class, 'register'])->name('cylinder-services.register');
+    Route::post('/cylinder-services/stock/{cylinder}', [\App\Http\Controllers\CylinderServiceController::class, 'stockAction'])->name('cylinder-services.stock-action');
+    Route::get('/rentals/{rental}/cylinder-services/create', [\App\Http\Controllers\CylinderServiceController::class, 'create'])->name('cylinder-services.create');
+    Route::post('/rentals/{rental}/cylinder-services', [\App\Http\Controllers\CylinderServiceController::class, 'store'])->name('cylinder-services.store');
+    Route::get('/cylinder-services/{job}', [\App\Http\Controllers\CylinderServiceController::class, 'show'])->name('cylinder-services.show');
+    Route::post('/cylinder-services/{job}/action', [\App\Http\Controllers\CylinderServiceController::class, 'action'])->name('cylinder-services.action');
+    Route::get('/cylinder-services/{job}/signatures/{event}', [\App\Http\Controllers\CylinderServiceController::class, 'signature'])->name('cylinder-services.signature');
+    Route::post('/cylinder-services/{job}/invoice', [InvoiceController::class, 'cylinderService'])->name('cylinder-services.invoice');
+
     Route::get('/deliveries/assigned', [DeliveryController::class, 'assigned'])
         ->middleware('module:deliveries,read')
         ->name('deliveries.assigned');

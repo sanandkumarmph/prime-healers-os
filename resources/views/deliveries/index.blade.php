@@ -1425,6 +1425,7 @@
         </div>
     </div>
 
+    @if(\App\Models\Cylinder::hasTable())<nav aria-label="Cylinder services" style="display:flex;justify-content:flex-end;min-width:0;margin:8px 0"><a href="{{ route('cylinder-services.index') }}" class="rn-btn">Cylinder services →</a></nav>@endif
     @if(session('success'))
         <div class="ops-flash-success">{{ session('success') }}</div>
     @endif
