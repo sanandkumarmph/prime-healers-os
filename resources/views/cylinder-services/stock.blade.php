@@ -2,7 +2,7 @@
 @section('content')
 <div class="cyl-page">@include('cylinder-services.style')
 <header class="cyl-head"><div><h1>Cylinder stock</h1><p>Track each existing PHOS cylinder by its permanent serial number.</p></div><a class="cyl-button" href="{{ route('cylinder-services.index') }}">Services</a></header>
-<details class="cyl-card"><summary>Register existing PHOS-owned cylinder</summary><p>Select only PHOS-owned oxygen rental cylinders. Registration does not purchase, duplicate or add a new asset.</p><form method="post" action="{{ route('cylinder-services.register') }}">@csrf
+<details class="cyl-card" id="cylinder-registration" @if(request()->boolean('register')) open @endif><summary>Register existing PHOS-owned cylinder</summary><p>Select only PHOS-owned oxygen rental cylinders. Registration does not purchase, duplicate or add a new asset.</p><form method="post" action="{{ route('cylinder-services.register') }}">@csrf
 <label>Existing rental asset<select name="asset_id" required><option value="">Choose asset</option>@foreach($assets as $asset)<option value="{{ $asset->id }}">{{ $asset->serial_number }} · {{ $asset->product?->name }} · {{ $asset->asset_status }}</option>@endforeach</select></label>
 <label>Confirmed contents<select name="contents"><option value="unknown">Not confirmed</option><option value="full">Full</option><option value="empty">Empty</option></select></label><button type="submit">Register cylinder</button></form></details>
 <div class="cyl-grid">@forelse($cylinders as $c)<section class="cyl-card"><h2>{{ $c->asset->serial_number }}</h2><p>{{ $c->asset->product?->name }} · {{ ucfirst($c->contents) }} · {{ str_replace('_',' ',$c->custody) }}</p>
