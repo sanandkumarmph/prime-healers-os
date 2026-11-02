@@ -2,7 +2,7 @@
     $canBookCylinder = $canCreateDeliveries && $canUpdateRentals && $rental->status === 'active';
     $canReadCylinders = auth()->user()->canAccessModule('deliveries','read') || (auth()->user()->canViewDues() && auth()->user()->canAccessModule('rentals','read') && auth()->user()->canAccessModule('invoices','read'));
 @endphp
-@if(\App\Models\Cylinder::hasTable() && ($canBookCylinder || $canReadCylinders))
+@if(\App\Models\Cylinder::hasTable() && ($canBookCylinder || $canReadCylinders) && app(\App\Services\Cylinders\CylinderWorkflow::class)->rentalHasCylinder($rental))
 <section class="rcc-cylinder-panel" aria-label="Cylinder refill and exchange">
     <div class="rcc-cylinder-copy"><h3>Cylinder refill &amp; exchange</h3><p>Exchange a full cylinder for an empty one, or refill and return the same cylinder.</p></div>
     <div class="rcc-cylinder-actions">

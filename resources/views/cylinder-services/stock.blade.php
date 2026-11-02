@@ -2,9 +2,26 @@
 @section('content')
 <div class="cyl-page">@include('cylinder-services.style')
 <header class="cyl-head"><div><h1>Cylinder stock</h1><p>Track each existing PHOS cylinder by its permanent serial number.</p></div><a class="cyl-button" href="{{ route('cylinder-services.index') }}">Services</a></header>
-<details class="cyl-card" id="cylinder-registration" @if(request()->boolean('register')) open @endif><summary>Register existing PHOS-owned cylinder</summary><p>Select only PHOS-owned oxygen rental cylinders. Registration does not purchase, duplicate or add a new asset.</p><form method="post" action="{{ route('cylinder-services.register') }}">@csrf
-<label>Existing rental asset<select name="asset_id" required><option value="">Choose asset</option>@foreach($assets as $asset)<option value="{{ $asset->id }}">{{ $asset->serial_number }} · {{ $asset->product?->name }} · {{ $asset->asset_status }}</option>@endforeach</select></label>
-<label>Confirmed contents<select name="contents"><option value="unknown">Not confirmed</option><option value="full">Full</option><option value="empty">Empty</option></select></label><button type="submit">Register cylinder</button></form></details>
+@if($rental)<p class="cyl-context">Registering for Rental #{{ $rental->id }} · {{ $rental->billingContactName() }}. The picker shows only cylinder products on this rental.</p>@endif
+@if($registered)
+<section class="cyl-card cyl-registration-result" id="cylinder-{{ $registered->id }}" aria-labelledby="cylinder-result-title">
+<span class="cyl-badge">Registered</span><h2 id="cylinder-result-title">Cylinder {{ $registered->asset->serial_number }}</h2><p>{{ $registered->asset->product?->name }} · {{ ucfirst($registered->contents) }} · {{ str_replace('_',' ',$registered->custody) }}</p>
+@php $linkedRental=$registered->reservedRental; @endphp
+@if($registered->custody==='customer' && $linkedRental)
+<p>The cylinder is recorded with the customer on Rental #{{ $linkedRental->id }}.</p>
+@if($linkedRental->status==='active' && auth()->user()->canAccessModule('deliveries','create') && \Illuminate\Support\Facades\Gate::allows('update',$linkedRental))<a class="cyl-button cyl-button-primary" href="{{ route('cylinder-services.create',$linkedRental) }}">Continue to refill / exchange</a>@endif
+@elseif($registered->contents==='unknown')<p>Next: inspect and confirm the cylinder contents and condition using its stock step below. It remains unavailable until confirmed full and inspected.</p>
+@elseif($registered->custody==='warehouse' && $registered->contents==='empty')<p>Next: send this empty cylinder for refill using its stock step below.</p>
+@elseif($registered->custody==='warehouse')<p>Registration is complete. This cylinder is still at the warehouse. Assign its serial and complete delivery before booking a customer refill or exchange.</p>
+@endif
+@if(($rental || $linkedRental) && \Illuminate\Support\Facades\Gate::allows('view',$rental ?: $linkedRental))<a class="cyl-button" href="{{ route('rentals.show',$rental ?: $linkedRental) }}#rental-products-section">Check rental assignment &amp; delivery</a>@endif
+</section>
+@endif
+<details class="cyl-card" id="cylinder-registration" @if(request()->boolean('register') || $errors->any()) open @endif><summary>Register existing PHOS-owned cylinder</summary><p>Only oxygen-cylinder products with tracked rental assets and permanent serial numbers are listed. Equipment and accessories are excluded. Cylinders already registered appear below.</p><form method="post" action="{{ route('cylinder-services.register') }}">@csrf
+@if($rental)<input type="hidden" name="rental_id" value="{{ $rental->id }}">@endif
+<label>Existing cylinder asset<select name="asset_id" required @disabled($assets->isEmpty())><option value="">Choose cylinder serial</option>@foreach($assets as $asset)<option value="{{ $asset->id }}" @selected((int)old('asset_id')===(int)$asset->id)>{{ $asset->serial_number }} · {{ $asset->product?->name }} · {{ $asset->asset_status }}</option>@endforeach</select></label>
+@if($assets->isEmpty())<p role="status">No unregistered cylinder assets match{{ $rental ? ' this rental' : '' }}. Check the registered cylinders below, or ask your asset manager to check the product category, rental tracking and permanent serial number.</p>@endif
+<label>Confirmed contents<select name="contents">@foreach(['unknown'=>'Not confirmed','full'=>'Full','empty'=>'Empty'] as $key=>$label)<option value="{{ $key }}" @selected(old('contents','unknown')===$key)>{{ $label }}</option>@endforeach</select></label><button type="submit" @disabled($assets->isEmpty())>Register cylinder</button></form></details>
 <div class="cyl-grid">@forelse($cylinders as $c)<section class="cyl-card"><h2>{{ $c->asset->serial_number }}</h2><p>{{ $c->asset->product?->name }} · {{ ucfirst($c->contents) }} · {{ str_replace('_',' ',$c->custody) }}</p>
 @if(!$c->reserved_for_rental_id && !$c->asset->activeRentalAssignments()->exists())
 @php $step = match(true) { $c->custody==='warehouse' && $c->contents==='unknown'=>'inspection_recorded', $c->custody==='in_transit' && $c->contents==='unknown'=>'return_received', $c->custody==='warehouse' && $c->contents==='empty'=>'sent_for_refill', $c->custody==='refiller' && $c->contents==='refilling'=>'received_full', default=>null }; @endphp

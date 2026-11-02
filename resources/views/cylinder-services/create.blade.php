@@ -12,7 +12,7 @@
 <li><strong>Book refill or exchange</strong><span>Return here to collect and refill the same cylinder, or exchange it for an available full cylinder of the same product.</span></li>
 </ol>
 <div class="cyl-setup-actions">
-@if(auth()->user()->canAccessModule('assets','update') && auth()->user()->scopeType('assets')==='all')<a class="cyl-button cyl-button-primary" href="{{ route('cylinder-services.stock',['register'=>1]) }}#cylinder-registration">Register / view cylinders</a>@else<p>Ask your asset manager to register and check the cylinder serial.</p>@endif
+@if(auth()->user()->canAccessModule('assets','update') && auth()->user()->scopeType('assets')==='all')<a class="cyl-button cyl-button-primary" href="{{ route('cylinder-services.stock',['register'=>1,'rental_id'=>$rental->id]) }}#cylinder-registration">Register / view cylinders</a>@else<p>Ask your asset manager to register and check the cylinder serial.</p>@endif
 <a class="cyl-button" href="{{ route('rentals.show',$rental) }}#rental-products-section">Check rental products &amp; serials</a>
 </div></section>
 @else
