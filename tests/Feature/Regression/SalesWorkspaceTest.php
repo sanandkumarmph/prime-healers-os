@@ -91,13 +91,14 @@ class SalesWorkspaceTest extends TestCase
         $this->assertNotNull($q->fresh()->viewed_at);
     }
 
-    public function test_enquiry_can_be_captured_without_customer_but_sharing_requires_one(): void
+    public function test_enquiry_contact_can_receive_a_quotation_without_customer_registration(): void
     {
         $e = $this->enquiry(['customer_id' => null]);
         $this->post(route('quotations.store', $e), $this->payload())->assertSessionHasNoErrors();
         $q = $e->quotations()->sole();
-        $this->post(route('quotations.action', $q), ['action' => 'send', 'lock_version' => 1])->assertSessionHasErrors('workspace');
-        $this->assertSame('draft', $q->fresh()->status);
+        $this->post(route('quotations.action', $q), ['action' => 'send', 'lock_version' => 1])->assertSessionHasNoErrors();
+        $this->assertSame('sent', $q->fresh()->status);
+        $this->assertNull($q->fresh()->snapshot['customer_id']);
     }
 
     public function test_server_calculates_prices_and_ignores_forged_totals(): void

@@ -26,28 +26,13 @@
         const option = select.selectedOptions[0];
         document.getElementById('customer-selection-note').textContent = select.value
             ? 'Addressed to '+(option.dataset.name || option.textContent)+'. Your changes are applied when you save.'
-            : 'Select the billing recipient. You can still save a draft without one.';
+            : 'Addressed to the enquiry contact. No customer record or full address is needed to prepare and share this quotation.';
         suggestions.hidden = !!select.value;
         const label = document.getElementById('recipient-label');
-        if (label) label.textContent = (select.value ? (option.dataset.name || option.textContent) : 'Select or add customer')+' · Change';
+        if (label) label.textContent = (select.value ? (option.dataset.name || option.textContent) : contact.name || 'Enquiry contact')+' · Change';
         const summary = document.getElementById('quote-recipient');
-        if (summary) summary.textContent = select.value ? (option.dataset.name || option.textContent) : 'Choose a recipient';
+        if (summary) summary.textContent = select.value ? (option.dataset.name || option.textContent) : contact.name || 'Enquiry contact';
     };
     select.addEventListener('change', update); update();
-    const capture = document.getElementById('enquiry-form');
-    document.getElementById('salesQuickCustomerForm')?.addEventListener('quick-customer:prefill', event => {
-        if (!capture) return;
-        const form = event.target;
-        form.elements.first_name.value = capture.elements.name.value;
-        form.elements.email.value = capture.elements.email.value;
-        const phone = capture.elements.phone.value.trim();
-        const codes = {{ Illuminate\Support\Js::from(array_keys(\App\Support\PhoneNumber::countryCodeOptions())) }};
-        const code = phone.startsWith('+') ? codes.sort((a,b)=>b.length-a.length).find(code => ('+'+digits(phone)).startsWith(code)) : null;
-        if (code) {
-            form.elements.phone_country_code.value = code;
-            form.elements.phone_country_code.dispatchEvent(new Event('change', {bubbles:true}));
-            form.elements.phone.value = digits(phone).slice(code.length-1);
-        } else form.elements.phone.value = phone.startsWith('+') ? '' : digits(phone);
-    });
 })();
 </script>

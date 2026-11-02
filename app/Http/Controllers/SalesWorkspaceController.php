@@ -68,16 +68,11 @@ class SalesWorkspaceController extends Controller
         abort_unless($request->user()->canAccessModule('enquiries', 'create'), 403);
         $data = $this->input($request);
         $request->validate(['next' => 'nullable|in:enquiry,quotation']);
-        if ($request->input('next') === 'quotation') {
-            abort_unless($request->user()->canAccessModule('quotations', 'create') && $request->user()->canAccessModule('enquiries', 'update'), 403);
-            abort_if($request->user()->scopeType('quotations') !== 'all' && (int) $data['owner_id'] !== (int) $request->user()->id, 403);
-        }
         $enquiry = $this->workspace->atomic($request->user()->organization_id, function () use ($request, $data) {
             $enquiry = Enquiry::create($data + ['organization_id' => $request->user()->organization_id, 'created_by_user_id' => $request->user()->id]);
             $this->workspace->event($enquiry, 'enquiry.created', 'Enquiry captured and assigned to '.$enquiry->owner->name.'.');
             return $enquiry;
         });
-        if ($request->input('next') === 'quotation') return redirect()->route('quotations.create', $enquiry);
         return redirect()->route('enquiries.show', $enquiry)->with('success', 'Enquiry created. Set the next follow-up or prepare a quotation.');
     }
 
