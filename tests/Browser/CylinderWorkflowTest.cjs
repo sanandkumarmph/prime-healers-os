@@ -44,7 +44,16 @@ test('cylinder service forms fit phones and capture and clear a named signature'
      for(const a of controls[0].links){assert.ok(a.height>=44&&a.font>=14,`readable touch button at ${width}`);assert.ok(a.left>=0&&a.right<=width+1);}
      assert.notEqual(controls[0].links[0].background,controls[0].links[1].background);
      assert.ok(controls[0].links[0].href.includes('/cylinder-services/create'));
+     for(const index of [0,1]){
+      const reachable=await page.evaluate(index=>{
+       const el=[...document.querySelectorAll('.rcc-cylinder-panel')].find(el=>el.getBoundingClientRect().height>0).querySelectorAll('a')[index];
+       el.scrollIntoView({block:'center'});const r=el.getBoundingClientRect();
+       return document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)?.closest('a')===el;
+      },index);
+      assert.equal(reachable,true,`cylinder action ${index} is not covered by fixed mobile controls at ${width}`);
+     }
      const panel=await page.evaluateHandle(()=>[...document.querySelectorAll('.rcc-cylinder-panel')].find(el=>el.getBoundingClientRect().height>0));
+     await page.evaluate(el=>el.scrollIntoView({block:'center'}),panel);
      if([390,1440].includes(width))await panel.screenshot({path:path.join(folder,`cylinder-rental-actions-${width}.png`)});
     }
    }
