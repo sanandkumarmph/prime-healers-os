@@ -165,6 +165,17 @@ jobs:
           PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
           PHOS_CYLINDER_RENDER_DIR: ${{ runner.temp }}/phos-cylinder-services
 
+      - name: Render simplified refill popup and driver tasks
+        run: vendor/bin/pest tests/Feature/Regression/SimpleCylinderRefillsTest.php --do-not-cache-result
+        env:
+          PHOS_SIMPLE_REFILL_RENDER_DIR: ${{ runner.temp }}/phos-simple-refills
+
+      - name: Test refill booking inside rental popup on phones and desktop
+        run: node --test tests/Browser/SimpleCylinderRefillsTest.cjs
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
+          PHOS_SIMPLE_REFILL_RENDER_DIR: ${{ runner.temp }}/phos-simple-refills
+
       - name: Test quotation duration pricing availability and WhatsApp preview
         run: node --test tests/Browser/QuotationSharingEnhancementTest.cjs
         env:
@@ -214,7 +225,7 @@ jobs:
       - run: cp .env.example .env
       - run: php artisan key:generate
       - name: Test cylinder migration, serial movements and billing on MariaDB
-        run: vendor/bin/pest tests/Feature/Regression/CylinderWorkflowTest.php --do-not-cache-result
+        run: vendor/bin/pest tests/Feature/Regression/CylinderWorkflowTest.php tests/Feature/Regression/SimpleCylinderRefillsTest.php --do-not-cache-result
         env:
           APP_ENV: testing
           CACHE_STORE: array

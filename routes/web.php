@@ -236,6 +236,11 @@ Route::middleware('auth')->group(function () {
         ->middleware('module:payments,delete')
         ->name('payments.destroy');
 
+    Route::get('/rentals/{rental}/cylinder-refills', [\App\Http\Controllers\CylinderRefillController::class, 'renderForRental'])->name('cylinder-refills.popup');
+    Route::post('/rentals/{rental}/cylinder-refills', [\App\Http\Controllers\CylinderRefillController::class, 'store'])->name('cylinder-refills.store');
+    Route::post('/cylinder-refills/{refill}/progress', [\App\Http\Controllers\CylinderRefillController::class, 'change'])->name('cylinder-refills.change');
+    Route::post('/cylinder-refills/{refill}/invoice', [InvoiceController::class, 'simpleCylinderRefill'])->name('cylinder-refills.invoice');
+    Route::get('/deliveries/cylinder-refills', [\App\Http\Controllers\CylinderRefillController::class, 'tasks'])->name('cylinder-refills.tasks');
     Route::get('/cylinder-services', [\App\Http\Controllers\CylinderServiceController::class, 'index'])->name('cylinder-services.index');
     Route::get('/cylinder-services/stock', [\App\Http\Controllers\CylinderServiceController::class, 'stock'])->name('cylinder-services.stock');
     Route::post('/cylinder-services/stock', [\App\Http\Controllers\CylinderServiceController::class, 'register'])->name('cylinder-services.register');

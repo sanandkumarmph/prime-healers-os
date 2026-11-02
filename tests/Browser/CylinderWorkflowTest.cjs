@@ -61,11 +61,11 @@ test('cylinder service forms fit phones and capture and clear a named signature'
       text:el.textContent,links:[...el.querySelectorAll('a')].map(a=>{const r=a.getBoundingClientRect(),s=getComputedStyle(a);return {left:r.left,right:r.right,height:r.height,font:parseFloat(s.fontSize),background:s.backgroundColor,color:s.color,href:a.getAttribute('href')};})
      })));
      assert.equal(controls.length,1,`one visible cylinder panel at ${width}`);
-     assert.match(controls[0].text,/Book refill \/ exchange/);
+     assert.match(controls[0].text,/Refill cylinder/);
      assert.equal(controls[0].links.length,2);
      for(const a of controls[0].links){assert.ok(a.height>=44&&a.font>=14,`readable touch button at ${width}`);assert.ok(a.left>=0&&a.right<=width+1);}
      assert.notEqual(controls[0].links[0].background,controls[0].links[1].background);
-     assert.ok(controls[0].links[0].href.includes('/cylinder-services/create'));
+     assert.ok(controls[0].links[0].href.includes('/cylinder-refills'));
      for(const index of [0,1]){
       const reachable=await page.evaluate(index=>{
        const el=[...document.querySelectorAll('.rcc-cylinder-panel')].find(el=>el.getBoundingClientRect().height>0).querySelectorAll('a')[index];

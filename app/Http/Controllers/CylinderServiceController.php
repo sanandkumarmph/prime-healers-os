@@ -35,7 +35,7 @@ class CylinderServiceController extends Controller
             ->whereHas('asset', fn ($q) => $q->whereIn('product_id', $productIds))
             ->whereHas('asset.activeRentalAssignments', fn ($q) => $q->where('rental_id', $rental->id))->get();
         $outgoing = Cylinder::with('asset.product')->where('organization_id', $user->organization_id)
-            ->where('contents', 'full')->where('custody', 'warehouse')->whereHas('asset', fn ($q) => $q->rentalReady()->whereIn('product_id', $productIds))->get();
+            ->where('contents', 'full')->where('custody', 'warehouse')->whereHas('asset', fn ($q) => $q->rentalReady()->where('condition_status','good')->whereIn('product_id', $productIds))->get();
         $staff = User::where('organization_id', $user->organization_id)->where('is_active', true)
             ->when($user->scopeType('deliveries') !== 'all', fn ($q) => $q->whereKey($user->id))->get()
             ->filter(fn ($u) => $u->canAccessModule('deliveries', 'update'));

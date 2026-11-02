@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
+@include('cylinder-refills.dashboard-tasks')
 @php
     $currentUser = auth()->user();
     $dashboardVisibility = $dashboardVisibility ?? [];
