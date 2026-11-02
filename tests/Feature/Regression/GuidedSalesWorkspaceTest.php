@@ -54,21 +54,22 @@ class GuidedSalesWorkspaceTest extends TestCase
         }
     }
 
-    public function test_enquiry_shortcut_persists_intent_and_opens_quote_without_qualifying(): void
+    public function test_saved_enquiry_keeps_intent_and_quote_remains_an_explicit_next_step(): void
     {
         $e=$this->enquiry(['intent'=>'sale','next'=>'quotation']);
         $this->assertSame('new',$e->stage);
         $this->assertSame('sale',$e->intent);
-        $this->get(route('quotations.create',$e))->assertOk()->assertSee('data-original-kind="sale"',false)->assertSee('Select or add customer');
+        $this->get(route('quotations.create',$e))->assertOk()->assertSee('data-original-kind="sale"',false)->assertSee('Use enquiry contact');
         $this->assertDatabaseCount('quotations',0);
     }
 
-    public function test_shortcut_cannot_bypass_quotation_permissions_or_create_an_orphan_enquiry(): void
+    public function test_legacy_shortcut_only_saves_enquiry_and_does_not_bypass_quote_permissions(): void
     {
         $role=Role::create(['organization_id'=>$this->owner->organization_id,'name'=>'Capture only','slug'=>'capture_only','scope_type'=>'all','is_active'=>true,'permissions'=>['enquiries'=>['read','create','update']]]);
         $user=TestData::user($this->owner->organization,['role_id'=>$role->id]);
-        $this->actingAs($user)->post(route('enquiries.store'),['name'=>'Test','subject'=>'Test','owner_id'=>$user->id,'next'=>'quotation'])->assertForbidden();
-        $this->assertDatabaseCount('enquiries',0);
+        $this->actingAs($user)->post(route('enquiries.store'),['name'=>'Test','subject'=>'Test','owner_id'=>$user->id,'next'=>'quotation'])->assertRedirect(route('enquiries.show',1));
+        $this->get(route('quotations.create',1))->assertForbidden();
+        $this->assertDatabaseCount('enquiries',1); $this->assertDatabaseCount('quotations',0);
     }
 
     public function test_inline_recipient_link_and_snapshot_are_saved_together_then_review_opens(): void
@@ -86,12 +87,10 @@ class GuidedSalesWorkspaceTest extends TestCase
     public function test_unlinked_customer_is_suggested_and_prefilled_but_never_auto_attached(): void
     {
         $e=$this->enquiry(['email'=>null]);
-        $this->fixture('sw-guided-unlinked',$this->get(route('quotations.create',$e))->assertOk()->assertSee('value="Asha Rao"',false));
+        $this->fixture('sw-guided-unlinked',$this->get(route('quotations.create',$e))->assertOk()->assertSee('Use enquiry contact')->assertDontSee('salesQuickCustomerForm'));
         $this->assertNull($e->fresh()->customer_id);
-        $this->post(route('quotations.store',$e),$this->payload($e,['customer_id'=>null,'next'=>'review']))->assertSessionHasErrors('customer_id');
-        $this->assertDatabaseCount('quotations',0);
-        $this->flushSession();
-        $this->post(route('quotations.store',$e),$this->payload($e,['customer_id'=>null,'next'=>'save']))->assertSessionHasNoErrors();
+        $this->post(route('quotations.store',$e),$this->payload($e,['customer_id'=>null,'next'=>'review']))->assertSessionHasNoErrors()->assertSessionHas('review_ready',true);
+        $this->assertDatabaseCount('quotations',1);
         $this->assertNull($e->quotations()->sole()->snapshot['customer_id']);
     }
 

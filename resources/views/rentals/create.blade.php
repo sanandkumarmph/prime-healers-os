@@ -16,6 +16,7 @@
     'quickFormId' => 'rentalQuickCustomerForm',
     'quickSelectTarget' => 'customer_id',
     'quickRoute' => route('rentals.customers.quick-store'),
+    'quickPrefill' => request()->attributes->get('conversion_quote')?->snapshot['recipient'] ?? [],
 ])
 @include('partials.business-partner-quick-modals', [
     'quickPartnerModalId' => 'rentalBusinessPartnerModal',

@@ -83,8 +83,12 @@ class QuotationConversion
             $this->eligible($quote, $kind);
             if ((int) $quote->lock_version !== $request->integer('quotation_version')) $this->mismatch();
             $s = $quote->snapshot;
+            if (!$s['customer_id']) {
+                $request->validate(['quotation_recipient_confirmed' => 'accepted',
+                    'customer_id' => ['required', 'integer', \Illuminate\Validation\Rule::exists('customers', 'id')->where('organization_id', $quote->organization_id)]]);
+            }
             if ($request->input('customer_type', 'direct_customer') !== 'direct_customer'
-                || (int) $request->input('customer_id') !== (int) $s['customer_id']
+                || ($s['customer_id'] && (int) $request->input('customer_id') !== (int) $s['customer_id'])
                 || $request->filled('rental_id') || $request->filled('business_partner_id') || $request->filled('partner_client_id')) $this->mismatch();
             if ($kind === 'rental') {
                 if ((float) $request->input('deposit_amount', 0) !== (float) $s['deposit']
@@ -143,7 +147,7 @@ class QuotationConversion
         if (!$request->attributes->get('conversion_lines_checked')) throw new \LogicException('Quotation lines were not checked.');
         $quote->update(['status' => 'converted', 'order_type' => $quote->kind, 'order_id' => $order->id, 'lock_version' => $quote->lock_version + 1]);
         $e = $quote->enquiry;
-        $e->update(['stage' => 'won', 'lock_version' => $e->lock_version + 1]);
+        $e->update(['stage' => 'won', 'customer_id' => $order->customer_id, 'lock_version' => $e->lock_version + 1]);
         $e->followUps()->whereNull('completed_at')->update(['completed_at' => now(), 'outcome' => 'cancelled', 'completion_note' => 'Order created from accepted quotation.']);
         $this->workspace->event($e, 'quotation.converted', $quote->number().' converted to '.$quote->kind.' #'.$order->id.'.');
         $request->attributes->set('conversion_finished', true);
