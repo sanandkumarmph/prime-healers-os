@@ -209,7 +209,7 @@ class CylinderWorkflowTest extends TestCase
         $response=$this->get(route('cylinder-services.create',$this->rental))->assertOk()
             ->assertSeeText("Link the customer's cylinder before booking",false)
             ->assertSeeText('Register the existing cylinder')->assertSeeText('Confirm assignment and delivery')
-            ->assertSee('href="'.route('cylinder-services.stock',['register'=>1]).'#cylinder-registration"',false)
+            ->assertSee('href="'.e(route('cylinder-services.stock',['register'=>1,'rental_id'=>$this->rental->id])).'#cylinder-registration"',false)
             ->assertSee('href="'.route('rentals.show',$this->rental).'#rental-products-section"',false)
             ->assertDontSee('name="incoming_cylinder_id"',false);
         $folder=getenv('PHOS_CYLINDER_RENDER_DIR');
@@ -324,5 +324,99 @@ class CylinderWorkflowTest extends TestCase
         $this->assertNull($job->fresh()->delivered_at);
         $this->assertFalse($this->b->asset->activeRentalAssignments()->exists());
         $this->assertSame('warehouse',$this->b->fresh()->custody);
+    }
+
+    private function unregisteredAsset(Product $product, string $serial, string $status='available'): Asset
+    {
+        return Asset::create(['organization_id'=>$product->organization_id,'warehouse_id'=>$this->warehouse->id,'product_id'=>$product->id,
+            'serial_number'=>$serial,'asset_stage'=>'rental_stock','asset_status'=>$status,'condition_status'=>'good']);
+    }
+
+    public function test_cylinder_product_recognition_excludes_other_equipment_and_accessories(): void
+    {
+        foreach(['4.5LRTS OXYGEN CYLINDER','Oxygen Cylinder 10 lpm','Medical O2 Cylinder'] as $name){
+            $product=new Product(['name'=>$name]);$product->setRelation('categoryMaster',null);
+            $this->assertTrue($this->service->isCylinderProduct($product),$name);
+        }
+        foreach(['Oxygen concentrator','Hospital bed','Oxygen cylinder regulator','Oxygen cylinder trolley','Nasal cannula','Oxygen cylinder refill service'] as $name){
+            $product=new Product(['name'=>$name]);$product->setRelation('categoryMaster',null);
+            $this->assertFalse($this->service->isCylinderProduct($product),$name);
+        }
+        $product=new Product(['name'=>'4.5L unit','category'=>'Oxygen Cylinders']);$product->setRelation('categoryMaster',null);
+        $this->assertTrue($this->service->isCylinderProduct($product));
+    }
+
+    public function test_only_cylinder_rentals_show_actions_including_mixed_and_legacy_rentals(): void
+    {
+        $other=$this->product->replicate();$other->name='Synthetic oxygen concentrator';$other->save();
+        $this->rental->rentalItems()->sole()->update(['product_id'=>$other->id]);
+        $this->get(route('rentals.show',$this->rental))->assertOk()->assertDontSeeText('Book refill / exchange')->assertDontSeeText('View cylinder history');
+        $this->get(route('cylinder-services.create',$this->rental))->assertStatus(422);
+        RentalItem::create(['organization_id'=>$this->owner->organization_id,'rental_id'=>$this->rental->id,'product_id'=>$this->product->id,'quantity'=>1,'asset_ids'=>[$this->a->asset_id]]);
+        $this->get(route('rentals.show',$this->rental))->assertOk()->assertSeeText('Book refill / exchange');
+        $legacy=$this->rental->replicate();$legacy->save();
+        $this->get(route('rentals.show',$legacy))->assertOk()->assertSeeText('Book refill / exchange');
+    }
+
+    public function test_registration_picker_and_server_validation_exclude_non_cylinders_and_invalid_serials(): void
+    {
+        $allowed=$this->unregisteredAsset($this->product,'UAT-ELIGIBLE-OXY');
+        $bed=$this->product->replicate();$bed->name='Synthetic hospital bed';$bed->save();
+        $wrong=$this->unregisteredAsset($bed,'UAT-NON-CYLINDER');
+        $pending=$this->unregisteredAsset($this->product,Asset::SERIAL_PENDING_PREFIX.'SYNTHETIC');
+        $this->get(route('cylinder-services.stock'))->assertOk()->assertViewHas('assets',fn($assets)=>$assets->modelKeys()===[$allowed->id]);
+        $before=[Cylinder::count(),CylinderEvent::count(),$wrong->fresh()->getRawOriginal()];
+        $this->post(route('cylinder-services.register'),['asset_id'=>$wrong->id,'contents'=>'full'])->assertSessionHasErrors('cylinder');
+        $this->assertSame($before,[Cylinder::count(),CylinderEvent::count(),$wrong->fresh()->getRawOriginal()]);
+    }
+
+    public function test_registration_context_filters_rental_products_and_rejects_forged_context(): void
+    {
+        $allowed=$this->unregisteredAsset($this->product,'UAT-SCOPED-OXY');
+        $otherProduct=$this->product->replicate();$otherProduct->name='Oxygen cylinder other size';$otherProduct->save();
+        $wrong=$this->unregisteredAsset($otherProduct,'UAT-OTHER-SIZE');
+        $otherRental=$this->rental->replicate();$otherRental->save();
+        $otherAsset=$this->unregisteredAsset($this->product,'UAT-OTHER-CUSTOMER','rented');
+        RentalAsset::create(['organization_id'=>$this->owner->organization_id,'rental_id'=>$otherRental->id,'asset_id'=>$otherAsset->id,'assigned_at'=>now()]);
+        $this->get(route('cylinder-services.stock',['rental_id'=>$this->rental->id]))->assertOk()->assertViewHas('assets',fn($assets)=>$assets->modelKeys()===[$allowed->id]);
+        $this->post(route('cylinder-services.register'),['rental_id'=>$this->rental->id,'asset_id'=>$wrong->id,'contents'=>'full'])->assertSessionHasErrors('asset_id');
+        $this->assertDatabaseMissing('cylinders',['asset_id'=>$wrong->id]);
+        $this->post(route('cylinder-services.register'),['rental_id'=>$this->rental->id,'asset_id'=>$otherAsset->id,'contents'=>'full'])->assertSessionHasErrors('asset_id');
+        $this->assertDatabaseMissing('cylinders',['asset_id'=>$otherAsset->id]);
+        $foreign=$this->rental->replicate();$foreign->organization_id=TestData::organization()->id;$foreign->save();
+        $this->get(route('cylinder-services.stock',['rental_id'=>$foreign->id]))->assertNotFound();
+        $this->post(route('cylinder-services.register'),['rental_id'=>$foreign->id,'asset_id'=>$allowed->id,'contents'=>'full'])->assertNotFound();
+    }
+
+    public function test_warehouse_registration_shows_serial_status_and_next_step_and_is_retry_safe(): void
+    {
+        $asset=$this->unregisteredAsset($this->product,'UAT-REGISTERED-WAREHOUSE');
+        $data=['asset_id'=>$asset->id,'contents'=>'full'];
+        $this->post(route('cylinder-services.register'),$data)->assertRedirect();
+        $c=Cylinder::where('asset_id',$asset->id)->sole();
+        $this->post(route('cylinder-services.register'),$data)->assertRedirect(route('cylinder-services.stock',['registered'=>$c->id]).'#cylinder-'.$c->id)
+            ->assertSessionHas('success',fn($message)=>str_contains($message,$asset->serial_number));
+        $response=$this->get(route('cylinder-services.stock',['registered'=>$c->id]))->assertOk()->assertSeeText($asset->serial_number)
+            ->assertSeeText('This cylinder is still at the warehouse.')->assertViewHas('registered',fn($registered)=>$registered->id===$c->id);
+        $this->assertSame(1,$c->events()->where('action','registered')->count());
+        $folder=getenv('PHOS_CYLINDER_RENDER_DIR');if($folder){if(!is_dir($folder))mkdir($folder,0700,true);file_put_contents($folder.'/registered.html',$response->getContent());}
+        $this->actingAs(TestData::user())->get(route('cylinder-services.stock',['registered'=>$c->id]))->assertNotFound();
+    }
+
+    public function test_customer_registration_returns_to_booking_and_can_create_refill_without_duplicating_assets(): void
+    {
+        $rental=$this->rental->replicate();$rental->save();
+        $asset=$this->unregisteredAsset($this->product,'UAT-CUSTOMER-CYLINDER','rented');
+        RentalAsset::create(['organization_id'=>$this->owner->organization_id,'rental_id'=>$rental->id,'asset_id'=>$asset->id,'assigned_at'=>now()]);
+        RentalItem::create(['organization_id'=>$this->owner->organization_id,'rental_id'=>$rental->id,'product_id'=>$this->product->id,'quantity'=>1,'asset_ids'=>[$asset->id]]);
+        $counts=[Asset::count(),Rental::count()];
+        $this->post(route('cylinder-services.register'),['rental_id'=>$rental->id,'asset_id'=>$asset->id,'contents'=>'full'])
+            ->assertRedirect(route('cylinder-services.create',$rental))->assertSessionHas('success',fn($message)=>str_contains($message,$asset->serial_number));
+        $c=Cylinder::where('asset_id',$asset->id)->sole();
+        $this->get(route('cylinder-services.create',$rental))->assertOk()->assertSeeText($asset->serial_number)->assertViewHas('incoming',fn($items)=>$items->modelKeys()===[$c->id]);
+        $data=$this->payload('same');$data['incoming_cylinder_id']=$c->id;
+        $this->post(route('cylinder-services.store',$rental),$data)->assertSessionHasNoErrors()->assertRedirect();
+        $this->assertDatabaseHas('cylinder_jobs',['rental_id'=>$rental->id,'incoming_cylinder_id'=>$c->id,'mode'=>'same']);
+        $this->assertSame($counts,[Asset::count(),Rental::count()]);
     }
 }

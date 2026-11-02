@@ -2,7 +2,7 @@
 
 namespace App\Services\Cylinders;
 
-use App\Models\{Asset, Cylinder, CylinderEvent, CylinderJob, Organization, Rental, RentalAsset, User, Warehouse};
+use App\Models\{Asset, Cylinder, CylinderEvent, CylinderJob, Organization, Product, Rental, RentalAsset, User, Warehouse};
 use App\Services\Deliveries\SignatureCapture;
 use App\Services\Inventory\StockMovementRecorder;
 use Illuminate\Support\Facades\{DB, Gate, Storage};
@@ -12,6 +12,41 @@ use Illuminate\Validation\ValidationException;
 class CylinderWorkflow
 {
     private function fail(string $message): never { throw ValidationException::withMessages(['cylinder' => $message]); }
+
+    public function isCylinderProduct(?Product $product): bool
+    {
+        if (!$product) return false;
+        $normalize = fn ($value) => trim(preg_replace('/[^a-z0-9]+/', ' ', strtolower((string) $value)));
+        $name = $normalize($product->name);
+        // Accessories and refill-charge products must never become physical cylinders.
+        if (preg_match('/\b(concentrator|cpap|bipap|bed|wheelchair|walker|suction|accessor(?:y|ies)|cannula|mask|regulator|trolley|flowmeter|flow meter|humidifier|stand|cart|valve|adapter|key|wrench|tubing|connector|gauge|refill|refilling|charge|service)\b/', $name)) return false;
+        $category = $normalize($product->category);
+        $master = $product->categoryMaster;
+        if ($master && (int) $master->organization_id === (int) $product->organization_id) $category = $normalize($master->name);
+        return (bool) preg_match('/\b(?:oxygen|o2)\b.*\bcylinders?\b|\bcylinders?\b.*\b(?:oxygen|o2)\b/', $name)
+            || in_array($category, ['oxygen cylinder','oxygen cylinders','medical oxygen cylinder','medical oxygen cylinders'], true);
+    }
+
+    public function cylinderProductIds(int $organizationId): array
+    {
+        return Product::with('categoryMaster')->where('organization_id', $organizationId)->get()
+            ->filter(fn ($product) => $this->isCylinderProduct($product))->values()->modelKeys();
+    }
+
+    public function rentalProductIds(Rental $rental): array
+    {
+        $ids = $rental->rentalItems->isNotEmpty() ? $rental->rentalItems->pluck('product_id')->all() : [$rental->product_id];
+        return array_values(array_unique(array_filter(array_map('intval', $ids))));
+    }
+
+    public function rentalHasCylinder(Rental $rental): bool
+    {
+        $rental->loadMissing(['product.categoryMaster','rentalItems.product.categoryMaster']);
+        if ($rental->isVendorSupplied()) return false;
+        return $rental->rentalItems->isNotEmpty()
+            ? $rental->rentalItems->contains(fn ($item) => $this->isCylinderProduct($item->product))
+            : $this->isCylinderProduct($rental->product);
+    }
 
     public function authorize(User $user, string $action, ?CylinderJob $job = null): void
     {
@@ -44,6 +79,7 @@ class CylinderWorkflow
         $this->authorizeStock($user);
         return $this->atomic($user, function () use ($user, $assetId, $contents) {
             $asset = Asset::where('organization_id', $user->organization_id)->lockForUpdate()->findOrFail($assetId);
+            if (!$this->isCylinderProduct($asset->product)) $this->fail('Only oxygen-cylinder products can be registered here. Choose the cylinder asset, not other equipment or accessories.');
             if (!$asset->isRentalStock() || !$asset->product?->tracksRentalStock() || $asset->asset_status === Asset::STATUS_RETIRED || str_starts_with($asset->serial_number ?? '', Asset::SERIAL_PENDING_PREFIX)
                 || blank($asset->serial_number)) $this->fail('Register a PHOS-owned rental asset with its actual cylinder serial number first.');
             if (!in_array($contents, ['full', 'empty', 'unknown'], true)) $this->fail('Choose the cylinder contents.');
@@ -84,6 +120,7 @@ class CylinderWorkflow
                 return $existing;
             }
             $incoming = Cylinder::with('asset')->where('organization_id', $user->organization_id)->lockForUpdate()->findOrFail($data['incoming_cylinder_id']);
+            if (!$this->isCylinderProduct($incoming->asset->product)) $this->fail('This registered asset is not an oxygen-cylinder product. Ask an asset manager to review its classification.');
             if (!$rental->activeRentalAssets()->where('asset_id', $incoming->asset_id)->exists()) $this->fail('The empty cylinder must be assigned to this rental.');
             $line = $rental->rentalItems()->where('product_id', $incoming->asset->product_id)->get()
                 ->first(fn ($item) => in_array((int) $incoming->asset_id, array_map('intval', $item->asset_ids ?? []), true));

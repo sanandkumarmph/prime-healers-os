@@ -29,10 +29,13 @@ class CylinderServiceController extends Controller
     {
         $user = $request->user(); $this->workflow->authorize($user, 'create'); Gate::authorize('update', $rental);
         abort_unless((int) $rental->organization_id === (int) $user->organization_id, 404);
+        abort_unless($this->workflow->rentalHasCylinder($rental), 422, 'This rental has no oxygen-cylinder product.');
+        $productIds = array_values(array_intersect($this->workflow->cylinderProductIds($user->organization_id), $this->workflow->rentalProductIds($rental)));
         $incoming = Cylinder::with('asset.product')->where('organization_id', $user->organization_id)->where('custody', 'customer')
+            ->whereHas('asset', fn ($q) => $q->whereIn('product_id', $productIds))
             ->whereHas('asset.activeRentalAssignments', fn ($q) => $q->where('rental_id', $rental->id))->get();
         $outgoing = Cylinder::with('asset.product')->where('organization_id', $user->organization_id)
-            ->where('contents', 'full')->where('custody', 'warehouse')->whereHas('asset', fn ($q) => $q->rentalReady())->get();
+            ->where('contents', 'full')->where('custody', 'warehouse')->whereHas('asset', fn ($q) => $q->rentalReady()->whereIn('product_id', $productIds))->get();
         $staff = User::where('organization_id', $user->organization_id)->where('is_active', true)
             ->when($user->scopeType('deliveries') !== 'all', fn ($q) => $q->whereKey($user->id))->get()
             ->filter(fn ($u) => $u->canAccessModule('deliveries', 'update'));
@@ -83,19 +86,53 @@ class CylinderServiceController extends Controller
     {
         $this->workflow->authorizeStock($request->user());
         $org = $request->user()->organization_id;
+        $rental = $this->registrationRental($request);
+        $productIds = $this->workflow->cylinderProductIds($org);
+        if ($rental) $productIds = array_values(array_intersect($productIds, $this->workflow->rentalProductIds($rental)));
         $cylinders = Cylinder::with(['asset.product', 'events' => fn ($q) => $q->latest('id')])->where('organization_id', $org)->latest('id')->paginate(20);
         $assets = Asset::with('product')->where('organization_id', $org)->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
             ->where('asset_status', '!=', Asset::STATUS_RETIRED)->whereHas('product', fn ($q) => $q->whereIn('stock_mode', ['tracked_rental','tracked_both']))
-            ->whereDoesntHave('cylinder')->orderBy('serial_number')->get();
+            ->whereIn('product_id', $productIds)->whereDoesntHave('cylinder')
+            ->when($rental, fn ($q) => $q->whereDoesntHave('activeRentalAssignments', fn ($assigned) => $assigned->where('rental_id','!=',$rental->id)))
+            ->orderBy('serial_number')->get()
+            ->filter(fn ($asset) => filled($asset->serial_number) && !str_starts_with($asset->serial_number, Asset::SERIAL_PENDING_PREFIX))->values();
+        $registered = $request->filled('registered') ? Cylinder::with(['asset.product','reservedRental'])->where('organization_id', $org)->findOrFail($request->integer('registered')) : null;
         $warehouses = Warehouse::where('organization_id', $org)->where('is_active', true)->get();
-        return view('cylinder-services.stock', compact('cylinders', 'assets', 'warehouses'));
+        return view('cylinder-services.stock', compact('cylinders', 'assets', 'warehouses', 'rental', 'registered'));
+    }
+
+    private function registrationRental(Request $request): ?Rental
+    {
+        if (!$request->filled('rental_id')) return null;
+        $request->validate(['rental_id'=>'required|integer|min:1']);
+        $rental = Rental::where('organization_id', $request->user()->organization_id)->findOrFail($request->integer('rental_id'));
+        Gate::authorize('view', $rental);
+        abort_unless($this->workflow->rentalHasCylinder($rental), 422, 'This rental has no oxygen-cylinder product.');
+        return $rental;
     }
 
     public function register(Request $request)
     {
+        $this->workflow->authorizeStock($request->user());
         $data = $request->validate(['asset_id' => 'required|integer', 'contents' => 'required|in:full,empty,unknown']);
-        $this->workflow->register($request->user(), $data['asset_id'], $data['contents']);
-        return back()->with('success', 'Existing PHOS asset registered as a cylinder. No new asset was created.');
+        $rental = $this->registrationRental($request);
+        if ($rental) {
+            $asset = Asset::where('organization_id', $request->user()->organization_id)->findOrFail($data['asset_id']);
+            if (!in_array((int) $asset->product_id, $this->workflow->rentalProductIds($rental), true)) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['asset_id'=>'Choose an oxygen cylinder belonging to a product on this rental.']);
+            }
+            if ($asset->activeRentalAssignments()->where('rental_id','!=',$rental->id)->exists()) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['asset_id'=>'This cylinder is assigned to another rental. Choose this customer\'s cylinder or unassigned stock.']);
+            }
+        }
+        $cylinder = $this->workflow->register($request->user(), $data['asset_id'], $data['contents']);
+        $message = 'Cylinder '.$cylinder->asset->serial_number.' is registered. '.ucfirst($cylinder->contents).' · '.str_replace('_',' ', $cylinder->custody).'.';
+        if ($rental && $cylinder->custody === 'customer' && (int) $cylinder->reserved_for_rental_id === (int) $rental->id
+            && $request->user()->canAccessModule('deliveries','create') && $request->user()->canAccessModule('rentals','update')) {
+            return redirect()->route('cylinder-services.create', $rental)->with('success', $message.' You can now book its refill or exchange.');
+        }
+        return redirect()->to(route('cylinder-services.stock', array_filter(['registered'=>$cylinder->id,'rental_id'=>$rental?->id])).'#cylinder-'.$cylinder->id)
+            ->with('success', $message.' See its status and next step below.');
     }
 
     public function stockAction(Request $request, Cylinder $cylinder)
