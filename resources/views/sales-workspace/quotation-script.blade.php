@@ -108,13 +108,6 @@
         filterProducts(); dirty(); list.lastElementChild.querySelector('select').focus(); recalc();
     });
     form.elements.transport.addEventListener('input',recalc); form.elements.deposit.addEventListener('input',recalc);
-    form.addEventListener('submit', event => {
-        if (event.submitter?.value === 'review' && !form.elements.customer_id.value) {
-            event.preventDefault(); document.querySelector('.sw-recipient').open = true;
-            document.getElementById('customer-selection-note').textContent = 'Select a recipient or add a customer here before reviewing.';
-            form.elements.customer_id.focus();
-        }
-    });
     document.querySelectorAll('[data-close-review]').forEach(button => button.addEventListener('click', () => review.close()));
     document.getElementById('quote-duration').addEventListener('change', event => {
         const from = date(form.elements.start_date.value), days = Number(event.target.value);

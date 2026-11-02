@@ -15,6 +15,7 @@
     <header class="sw-head"><div><div class="sw-eyebrow">{{ $quote?->number() ?? 'New quotation' }}</div><h1>Prepare quotation</h1><p class="sw-muted">{{ $enquiry->subject }} · Contact: {{ $enquiry->name }}</p></div>@if($quote)<a class="sw-btn" id="saved-draft-pdf" href="{{ route('quotations.pdf',$quote) }}">Saved draft PDF</a>@endif</header>
     @include('sales-workspace.alerts')
     <p class="sw-guide"><strong>Next:</strong> Confirm the recipient and prices, then review before sharing.</p>
+    <p class="sw-meta">A full address and customer registration are not required for a quotation. Complete customer and delivery details after order confirmation.</p>
     <form method="post" action="{{ $quote ? route('quotations.update',$quote) : route('quotations.store',$enquiry) }}" id="quotation-form" data-original-kind="{{ $originalKind }}">
         @csrf
         @if($quote)@method('PUT')<input type="hidden" name="lock_version" value="{{ old('lock_version',$quote->lock_version) }}">@endif
@@ -24,8 +25,8 @@
         <div class="sw-grid sw-editor">
             <div>
                 <section class="sw-panel">
-                    <details class="sw-recipient" @if(!$selectedRecipient || $errors->has('customer_id')) open @endif>
-                        <summary>Quotation addressed to <span class="sw-meta" id="recipient-label">{{ $customers->firstWhere('id',(int)$selectedRecipient)?->name ?: 'Select or add customer' }} · Change</span></summary>
+                    <details class="sw-recipient" @if($errors->has('customer_id')) open @endif>
+                        <summary>Quotation addressed to <span class="sw-meta" id="recipient-label">{{ $customers->firstWhere('id',(int)$selectedRecipient)?->name ?: $enquiry->name }} · Change</span></summary>
                         <p class="sw-meta">Enquiry contact: {{ $enquiry->name }}{{ $enquiry->phone ? ' · '.$enquiry->phone : '' }}</p>
                         @include('sales-workspace.customer-picker')
                     </details>
@@ -63,7 +64,7 @@
             </div>
             <aside><section class="sw-panel sw-sticky-summary">
                 <h2>Summary <span class="sw-meta">{{ $enquiry->organization->currency_code ?: 'INR' }}</span></h2>
-                <p id="quote-recipient" class="sw-muted">{{ $customers->firstWhere('id',(int)$selectedRecipient)?->name ?: 'Choose a recipient' }}</p>
+                <p id="quote-recipient" class="sw-muted">{{ $customers->firstWhere('id',(int)$selectedRecipient)?->name ?: $enquiry->name }}</p>
                 <div class="sw-field"><label for="transport">Delivery / transport</label><input id="transport" type="number" name="transport" value="{{ old('transport',$s['transport'] ?? 0) }}" min="0" max="99999999.99" step="0.01" required></div>
                 <div class="sw-field" data-rental-dates style="margin-top:10px"><label for="deposit">Refundable deposit</label><input id="deposit" type="number" name="deposit" value="{{ old('deposit',$s['deposit'] ?? 0) }}" min="0" max="99999999.99" step="0.01" required></div>
                 <details><summary>Tax settings</summary><div class="sw-field"><label for="tax_type">Tax split</label><select id="tax_type" name="tax_type"><option value="cgst_sgst" @selected(old('tax_type',$s['tax_type'] ?? 'cgst_sgst')==='cgst_sgst')>CGST + SGST</option><option value="igst" @selected(old('tax_type',$s['tax_type'] ?? '')==='igst')>IGST / single tax</option></select></div></details>
@@ -75,7 +76,7 @@
         </div>
     </form>
     <template id="quote-line-template">@include('sales-workspace.quote-line',['i'=>'__INDEX__','line'=>['product_id'=>'','quantity'=>1,'rate'=>0,'tax_rate'=>0,'tax_mode'=>'inclusive']])</template>
-    @if($quote && $quote->snapshot['customer_id'])
+    @if($quote)
     <dialog id="quotation-review" class="sw-review" aria-labelledby="review-title" data-open="{{ session('review_ready') ? '1' : '0' }}">
         <header class="sw-review-head"><div><h2 id="review-title">Review quotation</h2><p class="sw-meta">Check the recipient, order type and total.</p></div><button type="button" class="sw-btn" data-close-review>Back to editing</button></header>
         @include('sales-workspace.quote-document')
@@ -83,9 +84,6 @@
     </dialog>
     @endif
 </div>
-@if(auth()->user()->canAccessModule('customers','create'))
-@include('customers.partials.quick-create-modal', ['quickModalId'=>'salesQuickCustomerModal','quickFormId'=>'salesQuickCustomerForm','quickSelectTarget'=>'customer_id','quickPrefill'=>['name'=>$enquiry->name,'phone'=>$enquiry->phone,'email'=>$enquiry->email]])
-@endif
 @endsection
 @push('scripts')
 @include('sales-workspace.customer-script')

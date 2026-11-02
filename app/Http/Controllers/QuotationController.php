@@ -105,8 +105,10 @@ class QuotationController extends Controller
             }
             if ($data['action'] === 'send') {
                 abort_unless($quote->status === 'draft', 409);
-                if (!$quote->snapshot['customer_id'] || (int) $quote->snapshot['customer_id'] !== (int) $e->customer_id) {
-                    throw ValidationException::withMessages(['workspace' => 'Select the quotation recipient here, then review and save the draft before sharing.']);
+                $contact = ['name' => $e->name, 'phone' => $e->phone, 'email' => $e->email];
+                if ((int) ($quote->snapshot['customer_id'] ?? 0) !== (int) $e->customer_id
+                    || (!$e->customer_id && ($quote->snapshot['contact'] ?? null) !== $contact)) {
+                    throw ValidationException::withMessages(['workspace' => 'The recipient or enquiry contact changed. Review and save the draft again before sharing.']);
                 }
                 $this->workspace->assertRegion($quote);
                 if ($quote->expired()) throw ValidationException::withMessages(['workspace' => 'Update the quotation validity before sharing.']);

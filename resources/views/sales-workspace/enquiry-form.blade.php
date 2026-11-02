@@ -25,13 +25,9 @@
             </div>
         </details>
         <footer class="sw-footer"><a href="{{ $enquiry ? route('enquiries.show',$enquiry) : route('enquiries.index') }}">Cancel</a><div class="sw-actions">
-            <button class="sw-btn {{ $enquiry ? 'sw-primary' : '' }}" name="next" value="enquiry">{{ $enquiry ? 'Save changes' : 'Save enquiry' }}</button>
-            @if(!$enquiry && auth()->user()->canAccessModule('quotations','create') && auth()->user()->canAccessModule('enquiries','update'))<button class="sw-btn sw-primary" name="next" value="quotation">Save & create quotation</button>@endif
+            <button class="sw-btn sw-primary" name="next" value="enquiry">{{ $enquiry ? 'Save changes' : 'Save enquiry' }}</button>
         </div></footer>
     </form>
 </div>
-@if(auth()->user()->canAccessModule('customers','create'))
-@include('customers.partials.quick-create-modal', ['quickModalId'=>'salesQuickCustomerModal','quickFormId'=>'salesQuickCustomerForm','quickSelectTarget'=>'customer_id','quickPrefill'=>['name'=>$enquiry?->name,'phone'=>$enquiry?->phone,'email'=>$enquiry?->email]])
-@endif
 @endsection
 @push('scripts')@include('sales-workspace.customer-script')@endpush

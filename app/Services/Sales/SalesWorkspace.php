@@ -77,9 +77,6 @@ class SalesWorkspace
                 $this->event($enquiry, 'enquiry.customer', 'Quotation recipient selected. Finalised quotation revisions remain unchanged.');
             }
         }
-        if ($request->input('next') === 'review' && !$enquiry->customer_id) {
-            throw ValidationException::withMessages(['customer_id' => 'Select a customer or add one here to review and share. You can still save a draft.']);
-        }
     }
 
     /** Organisation first, then enquiry, then quotation: the same boundary as financial order writes. */

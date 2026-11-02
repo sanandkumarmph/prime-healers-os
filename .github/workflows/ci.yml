@@ -159,3 +159,14 @@ jobs:
         env:
           PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
           PHOS_QUOTE_ENHANCEMENT_RENDER_DIR: ${{ runner.temp }}/phos-quotation-sharing
+
+      - name: Render enquiry-first and prospect quotation pages
+        run: vendor/bin/pest tests/Feature/Regression/ProspectQuotationFlowTest.php --do-not-cache-result
+        env:
+          PHOS_PROSPECT_RENDER_DIR: ${{ runner.temp }}/phos-prospect-quotation
+
+      - name: Test prospect quotation capture review and confirmed customer stage
+        run: node --test tests/Browser/ProspectQuotationFlowTest.cjs
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
+          PHOS_PROSPECT_RENDER_DIR: ${{ runner.temp }}/phos-prospect-quotation
