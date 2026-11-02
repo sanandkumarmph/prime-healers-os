@@ -6,7 +6,7 @@ test('cylinder service forms fit phones and capture and clear a named signature'
  const server=http.createServer((req,res)=>{
   if(req.method!=='GET'){writes.push(req.method);res.writeHead(405).end();return;}
   const url=new URL(req.url,origin),name=url.pathname.slice(1);
-  if(['job','create','create-empty','stock','stock-register','registered','index','rental'].includes(name)){
+  if(['job','create','create-empty','create-no-ready','stock','stock-register','stock-readiness','registered','index','rental'].includes(name)){
    const html=fs.readFileSync(path.join(folder,name+'.html'),'utf8').replaceAll('http://127.0.0.1:8000',origin).replaceAll('http://localhost',origin);
    res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'}).end(html);return;
   }
@@ -22,7 +22,7 @@ test('cylinder service forms fit phones and capture and clear a named signature'
   await page.setRequestInterception(true);page.on('request',r=>r.url().startsWith(origin+'/')||r.url().startsWith('data:')?r.continue():r.respond({status:200,contentType:'text/css',body:''}));
   for(const width of [320,390,768,1440]){
    await page.setViewport({width,height:950,deviceScaleFactor:2});
-   for(const name of ['create','create-empty','stock','stock-register','registered','index','rental','job']){
+   for(const name of ['create','create-empty','create-no-ready','stock','stock-register','stock-readiness','registered','index','rental','job']){
     await page.goto(origin+'/'+name,{waitUntil:'networkidle0'});
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`${name} overflows at ${width}`);
     if(name==='create-empty'){
@@ -32,6 +32,23 @@ test('cylinder service forms fit phones and capture and clear a named signature'
      if(width===390)await page.screenshot({path:path.join(folder,'cylinder-setup-390.png'),fullPage:true});
     }
     if(name==='stock-register')assert.equal(await page.$eval('#cylinder-registration',el=>el.open),true);
+    if(name==='create-no-ready'){
+     assert.match(await page.$eval('[data-cylinder-replacement-message]',el=>el.textContent),/No replacement is ready/);
+     assert.equal(await page.$eval('[name=outgoing_cylinder_id]',el=>el.checkValidity()),false);
+     await page.select('[name=mode]','same');
+     assert.equal(await page.$eval('[name=outgoing_cylinder_id]',el=>el.disabled),true);
+     assert.equal(await page.$eval('[name=outgoing_cylinder_id]',el=>el.required),false);
+     assert.match(await page.$eval('[data-cylinder-replacement-message]',el=>el.textContent),/No replacement is required/);
+     await page.select('[name=mode]','exchange');
+     assert.equal(await page.$eval('[name=outgoing_cylinder_id]',el=>el.required),true);
+    }
+    if(name==='create'){
+     assert.equal(await page.$eval('[name=outgoing_cylinder_id]',el=>el.required),true);
+     assert.equal(await page.$eval('[name=outgoing_cylinder_id]',el=>el.checkValidity()),false);
+     const choice=await page.$eval('[name=outgoing_cylinder_id]',el=>[...el.options].find(o=>o.value&&!o.disabled).value);
+     await page.select('[name=outgoing_cylinder_id]',choice);
+     assert.equal(await page.$eval('[name=outgoing_cylinder_id]',el=>el.checkValidity()),true);
+    }
     if(name==='registered'){
      const result=await page.$eval('.cyl-registration-result',el=>el.textContent);
      assert.match(result,/UAT-REGISTERED-WAREHOUSE/);assert.match(result,/still at the warehouse/);

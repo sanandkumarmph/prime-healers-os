@@ -190,13 +190,14 @@ class CylinderWorkflowTest extends TestCase
 
     public function test_mobile_fixture_pages_render_without_raw_template_code(): void
     {
+        $booking=$this->get(route('cylinder-services.create',$this->rental))->assertOk();
         $job=$this->service->create($this->owner,$this->rental,$this->payload());
         $folder=getenv('PHOS_CYLINDER_RENDER_DIR');
         if ($folder && !is_dir($folder)) mkdir($folder,0700,true);
         foreach (['job'=>route('cylinder-services.show',$job),'create'=>route('cylinder-services.create',$this->rental),
             'stock'=>route('cylinder-services.stock'),'index'=>route('cylinder-services.index'),
             'rental'=>route('rentals.show',$this->rental),'stock-register'=>route('cylinder-services.stock',['register'=>1])] as $name=>$url) {
-            $response=$this->get($url)->assertOk();
+            $response=$name==='create' ? $booking : $this->get($url)->assertOk();
             $response->assertDontSee('@foreach')->assertDontSee('@if');
             if($folder) file_put_contents($folder.'/'.$name.'.html',$response->getContent());
         }
@@ -418,5 +419,50 @@ class CylinderWorkflowTest extends TestCase
         $this->post(route('cylinder-services.store',$rental),$data)->assertSessionHasNoErrors()->assertRedirect();
         $this->assertDatabaseHas('cylinder_jobs',['rental_id'=>$rental->id,'incoming_cylinder_id'=>$c->id,'mode'=>'same']);
         $this->assertSame($counts,[Asset::count(),Rental::count()]);
+    }
+
+    public function test_full_new_warehouse_cylinder_becomes_a_replacement_only_after_explicit_inspection(): void
+    {
+        $this->b->asset->update(['asset_status'=>'maintenance','condition_status'=>'new']);
+        $page=$this->get(route('cylinder-services.create',$this->rental))->assertOk()->assertViewHas('outgoing',fn($items)=>$items->isEmpty())
+            ->assertSeeText('No replacement cylinder is ready for exchange.');
+        $stock=$this->get(route('cylinder-services.stock',['rental_id'=>$this->rental->id]))->assertOk()->assertSeeText('Inspect and mark ready for exchange')->assertSeeText('Not ready for exchange');
+        $folder=getenv('PHOS_CYLINDER_RENDER_DIR');if($folder){if(!is_dir($folder))mkdir($folder,0700,true);file_put_contents($folder.'/create-no-ready.html',$page->getContent());file_put_contents($folder.'/stock-readiness.html',$stock->getContent());}
+        $data=['request_id'=>(string)Str::uuid(),'action'=>'ready_confirmed','scanned_code'=>$this->b->asset->serial_number,'warehouse_id'=>$this->warehouse->id];
+        $this->post(route('cylinder-services.stock-action',$this->b),$data)->assertSessionHasErrors('cylinder');
+        $this->assertSame('maintenance',$this->b->asset->fresh()->asset_status);
+        $this->assertSame('new',$this->b->asset->fresh()->condition_status);
+        $data['inspection_confirmed']=true;
+        $this->post(route('cylinder-services.stock-action',$this->b),$data)->assertSessionHasNoErrors();
+        $this->post(route('cylinder-services.stock-action',$this->b),$data)->assertSessionHasNoErrors();
+        $this->assertTrue(Asset::whereKey($this->b->asset_id)->rentalReady()->exists());
+        $event=$this->b->events()->where('action','ready_confirmed')->sole();
+        $this->assertSame('new',$event->details['condition_before']);$this->assertSame('good',$event->details['condition_after']);
+        $this->get(route('cylinder-services.create',$this->rental))->assertOk()->assertViewHas('outgoing',fn($items)=>$items->modelKeys()===[$this->b->id]);
+        $this->post(route('cylinder-services.store',$this->rental),$this->payload())->assertSessionHasNoErrors()->assertRedirect();
+    }
+
+    public function test_readiness_does_not_release_damaged_or_reserved_cylinders_and_requires_stock_access(): void
+    {
+        $data=['request_id'=>(string)Str::uuid(),'action'=>'ready_confirmed','scanned_code'=>$this->b->asset->serial_number,'warehouse_id'=>$this->warehouse->id,'inspection_confirmed'=>true];
+        foreach(['damaged','needs_repair','fair','retired'] as $condition){
+            $this->b->asset->update(['asset_status'=>'maintenance','condition_status'=>$condition]);
+            $this->post(route('cylinder-services.stock-action',$this->b),$data)->assertSessionHasErrors('cylinder');
+            $this->assertSame($condition,$this->b->asset->fresh()->condition_status);
+        }
+        $this->b->asset->update(['asset_status'=>'maintenance','condition_status'=>'new']);
+        $this->b->update(['reserved_for_rental_id'=>$this->rental->id]);
+        $this->post(route('cylinder-services.stock-action',$this->b),$data)->assertSessionHasErrors('cylinder');
+        $this->assertSame(0,$this->b->events()->where('action','ready_confirmed')->count());
+        $worker=TestData::user($this->owner->organization,['role'=>User::ROLE_DELIVERY]);
+        $this->actingAs($worker)->post(route('cylinder-services.stock-action',$this->b),$data)->assertForbidden();
+    }
+
+    public function test_missing_exchange_replacement_uses_a_clear_validation_message_and_same_refill_needs_none(): void
+    {
+        $data=$this->payload();$data['outgoing_cylinder_id']=null;
+        $this->post(route('cylinder-services.store',$this->rental),$data)->assertSessionHasErrors(['outgoing_cylinder_id'=>'Choose a full, inspected replacement cylinder for an exchange. To refill the original cylinder, select Refill and return the same cylinder.']);
+        $data['mode']='same';
+        $this->post(route('cylinder-services.store',$this->rental),$data)->assertSessionHasNoErrors()->assertRedirect();
     }
 }
