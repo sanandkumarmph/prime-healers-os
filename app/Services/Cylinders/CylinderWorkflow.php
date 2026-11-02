@@ -181,6 +181,7 @@ class CylinderWorkflow
                 switch ($data['action']) {
                     case 'empty_collected':
                         if ($incoming->custody !== 'customer' || $job->collected_at) $this->fail('The empty cylinder has already been collected or is not with this customer.');
+                        if (!RentalAsset::where('rental_id', $job->rental_id)->where('asset_id', $incoming->asset_id)->whereNull('returned_at')->exists()) $this->fail('The cylinder assignment changed. Reconcile the rental before collection.');
                         if (empty($data['confirm_empty'])) $this->fail('Confirm the collected cylinder is empty.');
                         $incoming->update(['contents' => 'empty', 'custody' => 'in_transit', 'reserved_for_rental_id' => $job->mode === 'same' ? $job->rental_id : null]);
                         if ($job->mode === 'exchange') RentalAsset::where('rental_id', $job->rental_id)->where('asset_id', $incoming->asset_id)->whereNull('returned_at')->update(['returned_at' => now(), 'return_condition' => $incoming->asset->condition_status]);
@@ -212,8 +213,11 @@ class CylinderWorkflow
                         if ($job->mode === 'same' && !$job->refilled_at) $this->fail('Complete this cylinder refill before returning it to the customer.');
                         if ($job->mode === 'exchange') {
                             if ($outgoing->asset->activeRentalAssignments()->exists()) $this->fail('The replacement cylinder has another active assignment.');
+                            $lines = $rental->rentalItems()->where('product_id', $incoming->asset->product_id)->lockForUpdate()->get()
+                                ->filter(fn ($item) => in_array((int) $incoming->asset_id, array_map('intval', $item->asset_ids ?? []), true));
+                            if ($lines->count() !== 1) $this->fail('The rental product/serial changed. Reconcile it before delivering the replacement cylinder.');
                             RentalAsset::create(['organization_id' => $user->organization_id, 'rental_id' => $job->rental_id, 'asset_id' => $outgoing->asset_id, 'assigned_at' => now(), 'notes' => 'Cylinder exchange job #'.$job->id]);
-                            foreach ($rental->rentalItems()->where('product_id', $incoming->asset->product_id)->get() as $item) {
+                            foreach ($lines as $item) {
                                 $ids = array_map('intval', $item->asset_ids ?? []);
                                 if (in_array((int) $incoming->asset_id, $ids, true)) $item->update(['asset_ids' => array_map(fn ($id) => $id === (int) $incoming->asset_id ? (int) $outgoing->asset_id : $id, $ids)]);
                             }

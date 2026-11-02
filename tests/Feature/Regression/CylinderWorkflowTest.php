@@ -258,4 +258,37 @@ class CylinderWorkflowTest extends TestCase
         $this->post(route('cylinder-services.action',$job),['request_id'=>(string)Str::uuid(),'lock_version'=>$job->fresh()->lock_version,
             'action'=>'refill_sent','scanned_code'=>$this->a->asset->serial_number])->assertForbidden();
     }
+
+    public function test_schema_has_unique_requests_and_restricts_deleting_referenced_asset_history(): void
+    {
+        $expected=['cylinders'=>['organization_id'=>'organizations','asset_id'=>'assets','reserved_for_rental_id'=>'rentals'],
+            'cylinder_jobs'=>['organization_id'=>'organizations','rental_id'=>'rentals','incoming_cylinder_id'=>'cylinders','outgoing_cylinder_id'=>'cylinders',
+                'assigned_user_id'=>'users','created_by_user_id'=>'users','invoice_id'=>'invoices'],
+            'cylinder_events'=>['organization_id'=>'organizations','cylinder_id'=>'cylinders','cylinder_job_id'=>'cylinder_jobs','user_id'=>'users']];
+        $connection=\Illuminate\Support\Facades\DB::connection();
+        $expectedSchema=$connection->getDriverName()==='sqlite' ? 'main' : $connection->getDatabaseName();
+        foreach($expected as $table=>$wanted) {
+            $found=[];
+            foreach(\Illuminate\Support\Facades\Schema::getForeignKeys($table) as $key) {
+                $this->assertSame(['id'],$key['foreign_columns']);
+                $this->assertContains(strtolower($key['on_delete']),['restrict','no action']);
+                if(isset($key['foreign_schema']))$this->assertSame($expectedSchema,$key['foreign_schema']);
+                $found[$key['columns'][0]]=$key['foreign_table'];
+            }
+            ksort($found);ksort($wanted);$this->assertSame($wanted,$found);
+            $sets=array_values(array_map(fn($index)=>$index['columns'],array_filter(\Illuminate\Support\Facades\Schema::getIndexes($table),fn($index)=>$index['unique'])));
+            foreach(match($table){'cylinders'=>[['asset_id']],'cylinder_jobs'=>[['invoice_id'],['organization_id','request_id']],default=>[['organization_id','request_id'],['cylinder_job_id','action']]} as $set)$this->assertContains($set,$sets);
+        }
+    }
+
+    public function test_replacement_delivery_refuses_a_rental_serial_changed_after_booking(): void
+    {
+        $job=$this->service->create($this->owner,$this->rental,$this->payload());
+        $this->rental->rentalItems()->sole()->update(['asset_ids'=>[]]);
+        $this->post(route('cylinder-services.action',$job),['request_id'=>(string)Str::uuid(),'lock_version'=>$job->lock_version,
+            'action'=>'full_delivered','scanned_code'=>$this->b->asset->serial_number,'signature_reason'=>'Synthetic test'])->assertSessionHasErrors('cylinder');
+        $this->assertNull($job->fresh()->delivered_at);
+        $this->assertFalse($this->b->asset->activeRentalAssignments()->exists());
+        $this->assertSame('warehouse',$this->b->fresh()->custody);
+    }
 }
