@@ -39,7 +39,7 @@ try {
   await page.goto(origin+new URL(fixture.url).pathname+new URL(fixture.url).search,{waitUntil:'networkidle0'});
   check(fixture.page+' body font',await page.evaluate(()=>/Inter|Segoe UI|Arial/i.test(getComputedStyle(document.body).fontFamily)));
   let pipelineValues;
-  for(const width of [1440,768,390,360,320]){
+  for(const width of [1440,1024,768,767,480,390,360,320]){
    await page.setViewport({width,height:width===320?680:width===390?760:1000});
    if(fixture.module==='rentals'&&['create','edit'].includes(fixture.screen)&&width<=390)await page.$eval('[data-rental-mobile-step="customer"]',button=>button.click());
    await page.evaluate(()=>{window.scrollTo(0,0);const main=document.querySelector('.app-shell-main');if(main)main.scrollTop=0;});await pause(70);
@@ -55,6 +55,40 @@ try {
    });
    report.overflow.push({page:fixture.page,width,...layout});
    check(`${fixture.page} content fits ${width}`,layout.offenders.length===0&&layout.documentWidth<=width+1,layout);
+   if(fixture.page==='dashboard-overview'){
+    const centers=await page.$eval('.dashboard-center-groups',grid=>{
+     const box=el=>{const r=el.getBoundingClientRect();return{left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height};};
+     return{columns:getComputedStyle(grid).gridTemplateColumns.split(' ').length,cards:[...grid.querySelectorAll('.dashboard-center-group')].map(card=>{
+      const summary=card.querySelector('summary'),title=summary.querySelector('strong'),copy=summary.querySelector('span');
+      return{box:box(card),title:box(title),copy:box(copy),titleText:title.textContent.trim(),copyText:copy.textContent.trim(),titleFont:parseFloat(getComputedStyle(title).fontSize),copyFont:parseFloat(getComputedStyle(copy).fontSize),fits:summary.scrollWidth<=summary.clientWidth+1};
+     })};
+    });
+    const expected=width<=767?1:width<=1024?2:4;
+    check(`Overview centers have readable responsive columns ${width}`,centers.cards.length===4&&centers.columns===expected&&centers.cards.every(card=>card.fits),{centers});
+    if(width<=767){
+     check(`Overview center headings and descriptions do not squeeze ${width}`,centers.cards.every(card=>card.box.width>=250&&card.titleFont>=14&&card.copyFont>=12&&card.title.height<45&&card.copy.height<80&&card.title.bottom<=card.copy.top&&card.copy.right<=card.box.right),{centers});
+     const figures=await page.$eval('.phos-overview-figures > summary',summary=>{
+      const title=summary.querySelector('strong').getBoundingClientRect(),copy=summary.querySelector('span').getBoundingClientRect(),r=summary.getBoundingClientRect();
+      return{stacked:copy.top>=title.bottom,fits:copy.right<=r.right+1&&copy.bottom<=r.bottom+1};
+     });
+     check(`Overview figures caption stacks below heading ${width}`,figures.stacked&&figures.fits,{figures});
+     const summaries=await page.$$('.dashboard-center-summary');
+     for(const summary of summaries){
+      await summary.focus();await summary.evaluate(el=>el.scrollIntoView({block:'center'}));
+      const reachable=await summary.evaluate(el=>{const r=el.getBoundingClientRect(),hit=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return !!hit&&(hit===el||el.contains(hit));});
+      check(`Overview center summary is reachable ${width}`,reachable);
+      await page.keyboard.press('Enter');
+      const open=await summary.evaluate(el=>el.parentElement.open&&[...el.parentElement.querySelectorAll('a')].every(a=>{const r=a.getBoundingClientRect();return r.width>0&&r.height>=40&&r.left>=el.parentElement.getBoundingClientRect().left&&r.right<=el.parentElement.getBoundingClientRect().right+1;}));
+      check(`Overview center expands with usable links ${width}`,open);
+      await page.keyboard.press('Enter');
+     }
+     if([320,390].includes(width)){
+      const viewport=page.viewport();await page.setViewport({...viewport,height:1000});
+      const target=await page.$('.dashboard-center-groups');await target.screenshot({path:path.join(folder,'screenshots',`dashboard-centers-${width}.png`)});
+      await page.setViewport(viewport);
+     }
+    }
+   }
    if(fixture.module==='products'){
     const text=await page.evaluate(()=>document.body.innerText);
     check(`${fixture.page} readable product labels ${width}`,!['â‚¹','âœ“','âŒ„','âŒƒ','â–¡','â–£','â—‡','â—·','â€”','@php','@endphp','<?php'].some(fragment=>text.includes(fragment)));
