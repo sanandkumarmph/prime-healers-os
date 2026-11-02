@@ -7,7 +7,7 @@
     if (!$lines) $lines = [['product_id'=>'','quantity'=>1,'rate'=>0,'tax_rate'=>0,'tax_mode'=>'inclusive']];
     $originalKind = $quote?->kind ?? $enquiry->intent;
     $kind = old('kind',$originalKind ?: 'rental');
-    $productData = $products->mapWithKeys(fn($p)=>[$p->id=>['name'=>$p->name,'rental'=>(float)($p->rental_price ?: $p->rental_price_30_days ?: 0),'sale'=>(float)$p->sale_price,'tax_rate'=>$p->defaultGstRate(),'tax_mode'=>$p->defaultGstMode(),'can_rent'=>$p->canRent(),'can_sell'=>$p->canSell()]]);
+    $productData = $products->mapWithKeys(fn($p)=>[$p->id=>['name'=>$p->name,'rental'=>(float)($p->rental_price ?: $p->rental_price_30_days ?: 0),'daily'=>(float)$p->price_per_day,'days15'=>(float)$p->rental_price_15_days,'days30'=>(float)$p->rental_price_30_days,'months3'=>(float)$p->rental_price_3_months,'sale'=>(float)$p->sale_price,'tax_rate'=>$p->defaultGstRate(),'tax_mode'=>$p->defaultGstMode(),'can_rent'=>$p->canRent(),'can_sell'=>$p->canSell()]]);
     $selectedRecipient = old('customer_id',$s['customer_id'] ?? $enquiry->customer_id);
 @endphp
 <div class="sw">
@@ -35,6 +35,7 @@
                         <div class="sw-field"><label for="kind">Order type *</label><select id="kind" name="kind"><option value="rental" @selected($kind==='rental')>Rental</option><option value="sale" @selected($kind==='sale')>Sale</option></select>@error('kind')<span class="sw-overdue">{{ $message }}</span>@enderror</div>
                         <div class="sw-field"><label for="valid_until">Valid until *</label><input id="valid_until" name="valid_until" type="date" value="{{ old('valid_until',$quote?->valid_until->toDateString() ?? now(config('app.timezone'))->addDays(7)->toDateString()) }}" required></div>
                         <div class="sw-field" data-rental-dates><label for="start_date">Rental start *</label><input type="date" name="start_date" id="start_date" value="{{ old('start_date',$s['start_date'] ?? '') }}"></div>
+                        <div class="sw-field" data-rental-dates><label for="quote-duration">Duration</label><select id="quote-duration"><option value="custom">Custom dates</option><option value="7">7 days</option><option value="15">15 days</option><option value="30">30 days</option></select></div>
                         <div class="sw-field" data-rental-dates><label for="end_date">Rental end *</label><input type="date" name="end_date" id="end_date" value="{{ old('end_date',$s['end_date'] ?? '') }}"></div>
                     </div>
                     <div id="price-review" class="sw-alert" hidden role="status">
@@ -46,11 +47,13 @@
                 <section class="sw-panel">
                     <h2>Products & pricing</h2>
                     <p class="sw-meta" id="rental-rate-hint">Price per unit for the entire rental period. Confirm the price when changing dates.</p>
+                    <p class="sw-meta" id="quote-duration-note" role="status"></p>
+                    <button type="button" class="sw-btn sw-small" id="quote-period-prices" data-rental-dates>Use saved prices for these dates</button>
                     <div id="quotation-lines">@foreach($lines as $i=>$line)@include('sales-workspace.quote-line',['i'=>$i,'line'=>$line])@endforeach</div>
                     <p id="line-status" role="status" class="sw-meta"></p>
                     <button class="sw-btn sw-small" type="button" id="add-quote-line">+ Add product</button>
                     <div data-rental-dates style="margin-top:16px">
-                        <button type="button" class="sw-btn" data-quote-availability="{{ route('availability.check') }}">Check availability for these dates</button>
+                        <button type="button" class="sw-btn" data-quote-rental-check="{{ route('availability.check') }}">Check rental availability for these dates</button>
                         <a href="{{ route('availability.index') }}" target="_blank" rel="noopener" class="sw-meta">Check by warehouse ↗</a>
                         <div data-quote-availability-results role="status" style="margin-top:12px"></div>
                         <p class="sw-meta">Readiness is checked again when creating the order. Forecasts do not reserve stock.</p>
@@ -87,4 +90,5 @@
 @push('scripts')
 @include('sales-workspace.customer-script')
 @include('sales-workspace.quotation-script')
+<script src="{{ asset('js/phos-quotation-availability.js') }}?v={{ hash_file('sha256', public_path('js/phos-quotation-availability.js')) }}" defer></script>
 @endpush

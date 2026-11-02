@@ -148,3 +148,14 @@ jobs:
         env:
           PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
           PHOS_RENTAL_DETAIL_RENDER_DIR: ${{ runner.temp }}/phos-rental-detail
+
+      - name: Render mixed quotations and sender sign-off
+        run: vendor/bin/pest tests/Feature/Regression/QuotationSharingEnhancementTest.php --do-not-cache-result
+        env:
+          PHOS_QUOTE_ENHANCEMENT_RENDER_DIR: ${{ runner.temp }}/phos-quotation-sharing
+
+      - name: Test quotation duration pricing availability and WhatsApp preview
+        run: node --test tests/Browser/QuotationSharingEnhancementTest.cjs
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
+          PHOS_QUOTE_ENHANCEMENT_RENDER_DIR: ${{ runner.temp }}/phos-quotation-sharing

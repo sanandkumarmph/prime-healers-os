@@ -6850,10 +6850,7 @@ class RentalController extends Controller
             $customerContext = $this->rentalValidatedCustomerContext($request);
             $saleItems = $this->normalizedSaleItems($request);
             $rentalItems = $this->combinedRentalItems($request);
-            app(\App\Services\Sales\QuotationConversion::class)->assertLines($request, 'rental', $rentalItems);
-            if ($request->attributes->get('conversion_quote') && $saleItems !== []) {
-                throw ValidationException::withMessages(['quotation_id' => 'Additional sale products need a separate quotation or order.']);
-            }
+            app(\App\Services\Sales\QuotationConversion::class)->assertLines($request, 'rental', $rentalItems, $saleItems);
             if ($vendorSupplied) {
                 $rentalItems = $this->sanitizedVendorSuppliedRentalItems($rentalItems);
                 $selectedAssets = collect();

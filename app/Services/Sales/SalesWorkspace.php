@@ -125,6 +125,7 @@ class SalesWorkspace
             'deposit' => 'required|numeric|min:0|max:99999999.99|decimal:0,2',
             'lines' => 'required|array|min:1|max:30',
             'lines.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')->where('organization_id', $enquiry->organization_id)],
+            'lines.*.line_type' => 'nullable|in:rental,sale',
             'lines.*.quantity' => 'required|integer|min:1|max:10000',
             'lines.*.rate' => 'required|numeric|min:0|max:9999999.99|decimal:0,2',
             'lines.*.tax_rate' => 'required|numeric|min:0|max:100|decimal:0,2',
@@ -135,8 +136,12 @@ class SalesWorkspace
         $products = Product::where('organization_id', $org->id)->whereIn('id', array_column($data['lines'], 'product_id'))->get()->keyBy('id');
         $lines = [];
         foreach (array_values($data['lines']) as $i => $line) {
+            $lineType = $line['line_type'] ?? $data['kind'];
+            if ($data['kind'] === 'sale' && $lineType !== 'sale') {
+                throw ValidationException::withMessages(['lines.'.$i.'.line_type' => 'Sale quotations can contain one-time purchases only.']);
+            }
             $product = $products->get((int) $line['product_id']);
-            if (!$product || !($data['kind'] === 'rental' ? $product->canRent() : $product->canSell())) {
+            if (!$product || !($lineType === 'rental' ? $product->canRent() : $product->canSell())) {
                 throw ValidationException::withMessages(['lines.'.$i.'.product_id' => 'Choose a product available for this order type.']);
             }
             $allowedRates = collect([0, 5, 12, 18, 28, $product->defaultGstRate()])
@@ -147,9 +152,12 @@ class SalesWorkspace
             $base = round((int) $line['quantity'] * (float) $line['rate'], 2);
             $taxable = $line['tax_mode'] === 'inclusive' ? round($base / (1 + (float) $line['tax_rate'] / 100), 2) : $base;
             $tax = $line['tax_mode'] === 'inclusive' ? round($base - $taxable, 2) : round($base * (float) $line['tax_rate'] / 100, 2);
-            $lines[] = ['product_id' => $product->id, 'name' => $product->name, 'quantity' => (int) $line['quantity'],
+            $lines[] = ['product_id' => $product->id, 'name' => $product->name, 'line_type' => $lineType, 'quantity' => (int) $line['quantity'],
                 'rate' => round((float) $line['rate'], 2), 'tax_rate' => (float) $line['tax_rate'], 'tax_mode' => $line['tax_mode'],
                 'taxable' => $taxable, 'tax' => $tax, 'total' => $line['tax_mode'] === 'inclusive' ? $base : round($base + $tax, 2)];
+        }
+        if ($data['kind'] === 'rental' && !collect($lines)->contains('line_type', 'rental')) {
+            throw ValidationException::withMessages(['lines' => 'Add at least one rental product, or change the order type to Sale.']);
         }
         $deposit = $data['kind'] === 'rental' ? round((float) $data['deposit'], 2) : 0;
         $total = round(array_sum(array_column($lines, 'total')) + (float) $data['transport'], 2);
@@ -160,6 +168,7 @@ class SalesWorkspace
                 'phone' => $customer?->phone ?? $enquiry->phone, 'address' => $customer?->billing_address ?: ($customer?->address ?? ''), 'tax_number' => $customer?->gst_number],
             'issuer' => ['name' => $org->name, 'address' => $org->address, 'email' => $org->email, 'phone' => $org->phone, 'tax_number' => $org->gst_number,
                 'logo' => app(\App\Support\InvoicePdfAssetResolver::class)->logoDataUri($org->logo)],
+            'sender' => app(QuotationSharing::class)->sender(auth()->user(), $org),
             'region' => $this->region($org), 'currency' => $org->currency_code ?: 'INR', 'timezone' => config('app.timezone', 'Asia/Kolkata'),
             'tax_label' => ($org->country_code ?: 'IN') === 'IN' ? 'GST' : 'Tax', 'tax_type' => $data['tax_type'],
             'start_date' => $data['kind'] === 'rental' ? $data['start_date'] : null, 'end_date' => $data['kind'] === 'rental' ? $data['end_date'] : null,

@@ -3,7 +3,8 @@
 @include('sales-workspace.style')
 @php
     $canEdit = auth()->user()->canAccessModule('quotations','update') && auth()->user()->canAccessModule('enquiries','update');
-    $shareText = $quote->snapshot['issuer']['name'].' — quotation '.$quote->number().': '.$shareUrl;
+    $shareText = $shareUrl ? app(\App\Services\Sales\QuotationSharing::class)->message($quote, $shareUrl) : '';
+    $whatsappPhone = preg_replace('/\D/', '', \App\Support\PhoneNumber::normalize($quote->snapshot['recipient']['phone'] ?? null) ?? '');
     $email = filter_var($quote->snapshot['recipient']['email'] ?? '', FILTER_VALIDATE_EMAIL) ?: '';
 @endphp
 <div class="sw"><a href="{{ route('enquiries.show',$enquiry) }}">← Back to enquiry</a><header class="sw-head" style="margin-top:20px"><div><div class="sw-eyebrow">Quotation workspace</div><h1>{{ $quote->number() }}</h1><p class="sw-muted">{{ $enquiry->subject }}</p></div><div class="sw-actions"><a class="sw-btn" href="{{ route('quotations.pdf',$quote) }}">Download PDF</a>
@@ -17,11 +18,12 @@
 <section class="sw-panel"><h2>{{ $quote->shared_at ? 'Shared with customer' : ($quote->status==='sent' ? 'Ready to share' : 'Share quotation') }}</h2>
     <p class="sw-muted">Open a message, check the recipient, then send it from your app.</p>
     <div class="sw-actions">
-        <a class="sw-btn sw-primary" href="https://wa.me/?text={{ rawurlencode($shareText) }}" target="_blank" rel="noopener noreferrer" data-share-channel="whatsapp">WhatsApp</a>
+        <a class="sw-btn sw-primary" href="https://wa.me/{{ $whatsappPhone }}?text={{ rawurlencode($shareText) }}" target="_blank" rel="noopener noreferrer" data-share-channel="whatsapp">WhatsApp</a>
         <a class="sw-btn" href="mailto:{{ $email }}?subject={{ rawurlencode('Quotation '.$quote->number()) }}&amp;body={{ rawurlencode($shareText) }}" data-share-channel="email">Email</a>
         <button class="sw-btn" type="button" id="copy-customer-link">Copy link</button>
     </div>
     <div class="sw-field" style="margin-top:12px"><label for="customer-link">Private customer link</label><input id="customer-link" value="{{ $shareUrl }}" readonly></div>
+    <details><summary>Preview message and sender sign-off</summary><div class="sw-field"><label for="quote-message">Message to customer</label><textarea id="quote-message" rows="12" readonly>{{ $shareText }}</textarea></div><button type="button" class="sw-btn" id="copy-quote-message">Copy message</button><p class="sw-meta" id="message-copy-status" role="status"></p></details>
     <p id="copy-status" class="sw-meta" role="status"></p>
     @if(!$quote->shared_at && $quote->status==='sent')
     <form method="post" action="{{ route('quotations.action',$quote) }}" class="sw-share-confirm">@csrf
@@ -46,4 +48,4 @@
 
 @include('partials.record-timestamps', ['timestampRecord' => $quote, 'timestampFields' => ['created_at' => 'Created', 'updated_at' => 'Last updated', 'sent_at' => 'Finalised', 'shared_at' => 'Shared', 'viewed_at' => 'Viewed', 'accepted_at' => 'Accepted']])
 @endsection
-@push('scripts')<script>document.getElementById('copy-customer-link')?.addEventListener('click',async()=>{const input=document.getElementById('customer-link');try{await navigator.clipboard.writeText(input.value);document.getElementById('copy-status').textContent='Link copied. Send it to the customer, then confirm below.';}catch(error){input.focus();input.select();document.getElementById('copy-status').textContent='Select and copy the link above.';}});document.querySelectorAll('[data-share-channel]').forEach(link=>link.addEventListener('click',()=>{const select=document.getElementById('shared-channel');if(select)select.value=link.dataset.shareChannel;}));</script>@endpush
+@push('scripts')@include('sales-workspace.share-message-script')<script>document.getElementById('copy-customer-link')?.addEventListener('click',async()=>{const input=document.getElementById('customer-link');try{await navigator.clipboard.writeText(input.value);document.getElementById('copy-status').textContent='Link copied. Send it to the customer, then confirm below.';}catch(error){input.focus();input.select();document.getElementById('copy-status').textContent='Select and copy the link above.';}});document.querySelectorAll('[data-share-channel]').forEach(link=>link.addEventListener('click',()=>{const select=document.getElementById('shared-channel');if(select)select.value=link.dataset.shareChannel;}));</script>@endpush
