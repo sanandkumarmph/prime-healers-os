@@ -3709,6 +3709,17 @@
             display:grid;
         }
     }
+    .rcc-shell .rcc-cylinder-panel {display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;margin:0 0 18px;padding:18px;border:1px solid #b8d9ec;border-left:4px solid #0879b8;border-radius:14px;background:#f0f8fd;}
+    .rcc-shell .rcc-cylinder-copy {flex:1 1 260px;min-width:0;}
+    .rcc-shell .rcc-cylinder-copy h3 {margin:0 0 5px;font-size:16px;font-weight:800;color:#123d58;}
+    .rcc-shell .rcc-cylinder-copy p {margin:0;font-size:13px;line-height:1.5;color:#48667b;}
+    .rcc-shell .rcc-cylinder-actions {display:flex;flex-wrap:wrap;gap:10px;min-width:0;}
+    .rcc-shell .rcc-cylinder-action {display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 16px;border:1px solid #94bfd8;border-radius:10px;background:white;color:#075c91;font-size:14px;font-weight:750;line-height:1.4;text-align:center;text-decoration:none;}
+    .rcc-shell .rcc-cylinder-action-primary {background:#0879b8;border-color:#0879b8;color:white;}
+    .rcc-shell .rcc-cylinder-action svg {width:20px;height:20px;flex-shrink:0;}
+    .rcc-shell .rcc-cylinder-action:hover {box-shadow:0 3px 10px #075c9120;}
+    .rcc-shell .rcc-cylinder-action:focus-visible {outline:3px solid #41b6d9;outline-offset:3px;}
+    @media(max-width:640px) {.rcc-shell .rcc-cylinder-panel {padding:14px;gap:12px;}.rcc-shell .rcc-cylinder-copy {flex-basis:100%;}.rcc-shell .rcc-cylinder-actions {display:grid;grid-template-columns:minmax(0,1fr);width:100%;}}
 </style>
 
 <div class="container detail-page rcc-shell">
@@ -3960,6 +3971,7 @@
                         <span class="ph-rental-chevron">v</span>
                     </summary>
                     <div class="ph-rental-accordion-body">
+                        @include('cylinder-services.rental-actions')
                         @foreach($workflowSteps as $step)
                             <div class="ph-rental-mobile-line">
                                 <span>{{ $step['label'] }} - {{ $step['person'] }}</span>
@@ -4314,11 +4326,10 @@
             <div class="rcc-section-head">
                 <div>
                     <h2>Operations Workspace</h2>
-                    @if($canCreateDeliveries && $canUpdateRentals && $rental->status === 'active' && \App\Models\Cylinder::hasTable())<a class="rcc-btn" href="{{ route('cylinder-services.create',$rental) }}">Cylinder refill / exchange</a>@endif
-                    @if(\App\Models\Cylinder::hasTable() && (auth()->user()->canAccessModule('deliveries','read') || auth()->user()->canViewDues()))<a class="rcc-btn" href="{{ route('cylinder-services.index',['rental_id'=>$rental->id]) }}">Cylinder service history</a>@endif
                     <p>Rental, delivery, active usage, pickup, and return verification in one operational row.</p>
                 </div>
             </div>
+            @include('cylinder-services.rental-actions')
             <div class="rcc-workflow">
                 @foreach($workflowSteps as $step)
                     <div class="rcc-workflow-item">

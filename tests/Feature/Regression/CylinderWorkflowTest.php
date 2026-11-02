@@ -194,11 +194,45 @@ class CylinderWorkflowTest extends TestCase
         $folder=getenv('PHOS_CYLINDER_RENDER_DIR');
         if ($folder && !is_dir($folder)) mkdir($folder,0700,true);
         foreach (['job'=>route('cylinder-services.show',$job),'create'=>route('cylinder-services.create',$this->rental),
-            'stock'=>route('cylinder-services.stock'),'index'=>route('cylinder-services.index')] as $name=>$url) {
+            'stock'=>route('cylinder-services.stock'),'index'=>route('cylinder-services.index'),
+            'rental'=>route('rentals.show',$this->rental),'stock-register'=>route('cylinder-services.stock',['register'=>1])] as $name=>$url) {
             $response=$this->get($url)->assertOk();
             $response->assertDontSee('@foreach')->assertDontSee('@if');
             if($folder) file_put_contents($folder.'/'.$name.'.html',$response->getContent());
         }
+    }
+
+    public function test_empty_booking_explains_serial_registration_and_provides_authorized_next_steps_without_writes(): void
+    {
+        $this->a->update(['custody'=>'warehouse']);
+        $before=[$this->a->fresh()->getRawOriginal(),CylinderEvent::count(),CylinderJob::count(),Asset::count()];
+        $response=$this->get(route('cylinder-services.create',$this->rental))->assertOk()
+            ->assertSeeText("Link the customer's cylinder before booking",false)
+            ->assertSeeText('Register the existing cylinder')->assertSeeText('Confirm assignment and delivery')
+            ->assertSee('href="'.route('cylinder-services.stock',['register'=>1]).'#cylinder-registration"',false)
+            ->assertSee('href="'.route('rentals.show',$this->rental).'#rental-products-section"',false)
+            ->assertDontSee('name="incoming_cylinder_id"',false);
+        $folder=getenv('PHOS_CYLINDER_RENDER_DIR');
+        if($folder){if(!is_dir($folder))mkdir($folder,0700,true);file_put_contents($folder.'/create-empty.html',$response->getContent());}
+        $this->assertSame($before,[$this->a->fresh()->getRawOriginal(),CylinderEvent::count(),CylinderJob::count(),Asset::count()]);
+        $role=\App\Models\Role::create(['organization_id'=>$this->owner->organization_id,'name'=>'Synthetic service booking','slug'=>'synthetic-service-booking','is_active'=>true,
+            'permissions'=>['rentals'=>['read','update'],'deliveries'=>['read','create'],'__special'=>['scope.all'],'__special_explicit'=>true]]);
+        $staff=TestData::user($this->owner->organization,['role_id'=>$role->id,'role'=>'custom']);
+        $this->actingAs($staff)->withSession(['password_hash_web'=>$staff->getAuthPassword()])->get(route('cylinder-services.create',$this->rental))->assertOk()
+            ->assertSeeText('Ask your asset manager')->assertDontSeeText('Register / view cylinders');
+    }
+
+    public function test_rental_actions_are_available_in_both_layouts_and_respect_booking_access(): void
+    {
+        $response=$this->get(route('rentals.show',$this->rental))->assertOk();
+        $this->assertSame(2,substr_count($response->getContent(),'aria-label="Cylinder refill and exchange"'));
+        $response->assertSeeText('Book refill / exchange')->assertSeeText('View cylinder history');
+        $role=\App\Models\Role::create(['organization_id'=>$this->owner->organization_id,'name'=>'Synthetic rental read only','slug'=>'synthetic-rental-read','is_active'=>true,
+            'permissions'=>['rentals'=>['read'],'__special'=>['scope.all'],'__special_explicit'=>true]]);
+        $reader=TestData::user($this->owner->organization,['role_id'=>$role->id,'role'=>'custom']);
+        $this->actingAs($reader)->withSession(['password_hash_web'=>$reader->getAuthPassword()])->get(route('rentals.show',$this->rental))->assertOk()
+            ->assertDontSeeText('Book refill / exchange')->assertDontSeeText('View cylinder history');
+        $this->get(route('cylinder-services.create',$this->rental))->assertForbidden();
     }
 
     public function test_registration_distinguishes_reserved_warehouse_stock_from_delivered_customer_stock(): void
