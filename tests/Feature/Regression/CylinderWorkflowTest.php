@@ -200,4 +200,62 @@ class CylinderWorkflowTest extends TestCase
             if($folder) file_put_contents($folder.'/'.$name.'.html',$response->getContent());
         }
     }
+
+    public function test_registration_distinguishes_reserved_warehouse_stock_from_delivered_customer_stock(): void
+    {
+        $asset=Asset::create(['organization_id'=>$this->owner->organization_id,'warehouse_id'=>$this->warehouse->id,'product_id'=>$this->product->id,
+            'serial_number'=>'UAT-OXY-C','asset_stage'=>'rental_stock','asset_status'=>'reserved','condition_status'=>'good']);
+        RentalAsset::create(['organization_id'=>$this->owner->organization_id,'rental_id'=>$this->rental->id,'asset_id'=>$asset->id,'assigned_at'=>now()]);
+        $line=RentalItem::create(['organization_id'=>$this->owner->organization_id,'rental_id'=>$this->rental->id,'product_id'=>$this->product->id,
+            'quantity'=>1,'ordered_quantity'=>1,'delivered_quantity'=>0,'returned_quantity'=>0,'asset_ids'=>[$asset->id],'line_total'=>500]);
+        $c=$this->service->register($this->owner,$asset->id,'full');
+        $this->assertSame('warehouse',$c->custody);$this->assertEquals($this->rental->id,$c->reserved_for_rental_id);
+        $this->assertSame('reserved',$asset->fresh()->asset_status);
+        $data=$this->payload();$data['incoming_cylinder_id']=$c->id;
+        $this->post(route('cylinder-services.store',$this->rental),$data)->assertSessionHasErrors('cylinder');
+        $line->update(['delivered_quantity'=>1]);
+        app(\App\Services\Deliveries\DeliveryWorkflowService::class)->syncRentalProgressAssetStatuses($this->owner->organization_id,$this->rental);
+        $this->assertSame('customer',$c->fresh()->custody);$this->assertSame('rented',$asset->fresh()->asset_status);
+        $this->assertSame(1,$c->events()->where('action','rental_delivered')->count());
+    }
+
+    public function test_ordinary_pickup_keeps_empty_cylinder_unavailable_and_logs_one_return_event_on_retry(): void
+    {
+        $workflow=app(\App\Services\Deliveries\DeliveryWorkflowService::class);
+        for($i=0;$i<2;$i++)$workflow->releaseSpecificRentalAssets($this->owner->organization_id,$this->rental,[$this->a->asset_id]);
+        $this->assertSame('unknown',$this->a->fresh()->contents);$this->assertSame('in_transit',$this->a->fresh()->custody);
+        $this->assertSame('awaiting_verification',$this->a->asset->fresh()->asset_status);
+        $this->assertFalse(Asset::whereKey($this->a->asset_id)->rentalReady()->exists());
+        $this->assertSame(1,$this->a->events()->where('action','rental_returned')->count());
+    }
+
+    public function test_unknown_warehouse_contents_can_be_inspected_without_creating_another_asset(): void
+    {
+        $asset=Asset::create(['organization_id'=>$this->owner->organization_id,'warehouse_id'=>$this->warehouse->id,'product_id'=>$this->product->id,
+            'serial_number'=>'UAT-OXY-UNKNOWN','asset_stage'=>'rental_stock','asset_status'=>'maintenance','condition_status'=>'good']);
+        $c=$this->service->register($this->owner,$asset->id,'unknown');
+        $data=['request_id'=>(string)Str::uuid(),'action'=>'inspection_recorded','scanned_code'=>$asset->serial_number,
+            'warehouse_id'=>$this->warehouse->id,'contents'=>'full','inspection_confirmed'=>true];
+        $this->post(route('cylinder-services.stock-action',$c),$data)->assertSessionHasNoErrors();
+        $this->post(route('cylinder-services.stock-action',$c),$data)->assertSessionHasNoErrors();
+        $this->assertTrue(Asset::whereKey($asset->id)->rentalReady()->exists());
+        $this->assertSame(1,$c->events()->where('action','inspection_recorded')->count());$this->assertDatabaseCount('assets',3);
+    }
+
+    public function test_accounts_role_can_invoice_completed_job_without_operational_or_consolidated_finance_access(): void
+    {
+        $job=$this->service->create($this->owner,$this->rental,$this->payload());
+        foreach(['empty_collected','warehouse_received','full_delivered'] as $action)$job=$this->act($job,$action);
+        $preset=\App\Models\Role::accessPresets()['finance'];
+        $role=\App\Models\Role::create(['organization_id'=>$this->owner->organization_id,'name'=>'Accounts / Finance','slug'=>'finance','is_active'=>true,
+            'permissions'=>$preset['modules']+['__special'=>$preset['special'],'__special_explicit'=>true]]);
+        $staff=TestData::user($this->owner->organization,['role_id'=>$role->id,'role'=>'finance']);
+        $this->assertFalse($staff->canViewFinance());$this->assertTrue($staff->canViewDues());
+        $this->actingAs($staff)->get(route('cylinder-services.show',$job))->assertOk();
+        $this->post(route('cylinder-services.invoice',$job))->assertSessionHasNoErrors()->assertRedirect();
+        $this->assertEquals(350,$job->fresh()->invoice->total_amount);$this->assertNull($job->fresh()->invoice->rental_id);
+        $this->get(route('cylinder-services.stock'))->assertForbidden();
+        $this->post(route('cylinder-services.action',$job),['request_id'=>(string)Str::uuid(),'lock_version'=>$job->fresh()->lock_version,
+            'action'=>'refill_sent','scanned_code'=>$this->a->asset->serial_number])->assertForbidden();
+    }
 }

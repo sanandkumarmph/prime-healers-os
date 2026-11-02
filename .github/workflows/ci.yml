@@ -181,3 +181,49 @@ jobs:
         env:
           PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
           PHOS_PROSPECT_RENDER_DIR: ${{ runner.temp }}/phos-prospect-quotation
+
+  cylinder-mariadb:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-ci-root
+          MARIADB_DATABASE: phos_cylinder_ci
+          MARIADB_USER: phos_ci
+          MARIADB_PASSWORD: synthetic-ci-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -psynthetic-ci-root"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+          extensions: mbstring, dom, fileinfo, pdo_mysql, gd
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.4'
+          cache: npm
+      - run: composer install --no-interaction --prefer-dist --optimize-autoloader
+      - run: npm ci
+      - run: npm run build
+      - run: cp .env.example .env
+      - run: php artisan key:generate
+      - name: Test cylinder migration, serial movements and billing on MariaDB
+        run: vendor/bin/pest tests/Feature/Regression/CylinderWorkflowTest.php --do-not-cache-result
+        env:
+          APP_ENV: testing
+          CACHE_STORE: array
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: phos_cylinder_ci
+          DB_USERNAME: phos_ci
+          DB_PASSWORD: synthetic-ci-password
+          DB_URL: ''
+          SESSION_DRIVER: array
+          MAIL_MAILER: array

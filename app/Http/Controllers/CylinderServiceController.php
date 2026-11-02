@@ -84,7 +84,9 @@ class CylinderServiceController extends Controller
         $this->workflow->authorizeStock($request->user());
         $org = $request->user()->organization_id;
         $cylinders = Cylinder::with(['asset.product', 'events' => fn ($q) => $q->latest('id')])->where('organization_id', $org)->latest('id')->paginate(20);
-        $assets = Asset::where('organization_id', $org)->where('asset_stage', Asset::STAGE_RENTAL_STOCK)->whereDoesntHave('cylinder')->orderBy('serial_number')->get();
+        $assets = Asset::with('product')->where('organization_id', $org)->where('asset_stage', Asset::STAGE_RENTAL_STOCK)
+            ->where('asset_status', '!=', Asset::STATUS_RETIRED)->whereHas('product', fn ($q) => $q->whereIn('stock_mode', ['tracked_rental','tracked_both']))
+            ->whereDoesntHave('cylinder')->orderBy('serial_number')->get();
         $warehouses = Warehouse::where('organization_id', $org)->where('is_active', true)->get();
         return view('cylinder-services.stock', compact('cylinders', 'assets', 'warehouses'));
     }
@@ -98,7 +100,7 @@ class CylinderServiceController extends Controller
 
     public function stockAction(Request $request, Cylinder $cylinder)
     {
-        $data = $request->validate(['request_id' => 'required|uuid', 'action' => 'required|in:return_received,sent_for_refill,received_full',
+        $data = $request->validate(['request_id' => 'required|uuid', 'action' => 'required|in:inspection_recorded,return_received,sent_for_refill,received_full',
             'scanned_code' => 'required|string|max:255', 'warehouse_id' => 'required|integer', 'contents' => 'nullable|in:full,empty',
             'inspection_confirmed' => 'nullable|boolean', 'notes' => 'nullable|string|max:2000']);
         $this->workflow->stockAction($request->user(), $cylinder, $data);

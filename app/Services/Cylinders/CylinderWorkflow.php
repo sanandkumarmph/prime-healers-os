@@ -33,7 +33,8 @@ class CylinderWorkflow
     public function atomic(User $user, callable $callback): mixed
     {
         return DB::transaction(function () use ($user, $callback) {
-            Organization::whereKey($user->organization_id)->lockForUpdate()->firstOrFail();
+            $organization = Organization::whereKey($user->organization_id)->lockForUpdate()->firstOrFail();
+            abort_unless($organization->is_active, 403);
             return $callback();
         }, 3);
     }
@@ -50,8 +51,10 @@ class CylinderWorkflow
             $assignment = $asset->activeRentalAssignments()->first();
             if ($asset->activeRentalAssignments()->count() > 1 || $assignment?->rental?->isVendorSupplied()) $this->fail('Reconcile this PHOS-owned cylinder assignment before registration.');
             if (!$assignment && in_array($asset->asset_status, ['reserved', 'rented'], true)) $this->fail('Reconcile this asset assignment before registering the cylinder.');
+            if ($assignment && !in_array($asset->asset_status, ['reserved', 'rented'], true)) $this->fail('Reconcile this assigned asset status before registering the cylinder.');
+            if ($assignment && $asset->asset_status === Asset::STATUS_RESERVED && $contents !== 'full') $this->fail('Confirm the reserved cylinder is full before registering it for delivery.');
             $cylinder = Cylinder::create(['organization_id' => $user->organization_id, 'asset_id' => $assetId,
-                'contents' => $contents, 'custody' => $assignment ? 'customer' : 'warehouse',
+                'contents' => $contents, 'custody' => $assignment && $asset->asset_status === Asset::STATUS_RENTED ? 'customer' : 'warehouse',
                 'reserved_for_rental_id' => $assignment?->rental_id]);
             if (!$assignment) $asset->update(['asset_status' => $contents === 'full' && $asset->condition_status === 'good' ? Asset::STATUS_AVAILABLE : Asset::STATUS_MAINTENANCE]);
             $this->event($user, $cylinder, null, 'registered', ['contents' => $contents, 'custody' => $cylinder->custody], (string) Str::uuid());
@@ -130,6 +133,10 @@ class CylinderWorkflow
         $written = [];
         try {
             return $this->atomic($user, function () use ($user, $job, $data, &$written) {
+                // A database deadlock may retry this transaction after a signature
+                // was written. Remove only files made by that rolled-back attempt.
+                foreach ($written as $path) Storage::disk('local')->delete($path);
+                $written = [];
                 $job = CylinderJob::where('organization_id', $user->organization_id)->lockForUpdate()->findOrFail($job->id);
                 $this->authorize($user, 'update', $job);
                 $fingerprint = $this->fingerprint($data);
@@ -219,7 +226,8 @@ class CylinderWorkflow
                         if ($job->collected_at || $job->delivered_at) $this->fail('A job with recorded physical movements cannot be cancelled. Complete or reconcile its outstanding steps.');
                         if ($job->mode === 'exchange') {
                             $outgoing->update(['reserved_for_rental_id' => null]);
-                            $outgoing->asset->update(['asset_status' => Asset::STATUS_AVAILABLE]);
+                            $ready = $outgoing->contents === 'full' && $outgoing->custody === 'warehouse' && $outgoing->asset->condition_status === 'good';
+                            $outgoing->asset->update(['asset_status' => $ready ? Asset::STATUS_AVAILABLE : Asset::STATUS_MAINTENANCE]);
                         }
                         $job->status = 'cancelled'; $job->completed_at = now();
                         break;
@@ -251,8 +259,14 @@ class CylinderWorkflow
             if ($cylinder->contents !== 'full') continue;
             if (!$rental->activeRentalAssets()->where('asset_id', $cylinder->asset_id)->exists()) continue;
             $delivered = in_array((int) $cylinder->asset_id, array_map('intval', $rented), true);
-            $cylinder->update(['custody' => $delivered ? 'customer' : 'warehouse', 'reserved_for_rental_id' => $rental->id]);
+            $custody = $delivered ? 'customer' : 'warehouse';
+            $changed = $cylinder->custody !== $custody || (int) $cylinder->reserved_for_rental_id !== (int) $rental->id;
+            $cylinder->update(['custody' => $custody, 'reserved_for_rental_id' => $rental->id]);
             $cylinder->asset->update(['asset_status' => $delivered ? Asset::STATUS_RENTED : Asset::STATUS_RESERVED]);
+            if ($changed && ($actor = auth()->user()) && (int) $actor->organization_id === $organizationId) {
+                $this->event($actor, $cylinder, null, $delivered ? 'rental_delivered' : 'rental_reserved',
+                    ['rental_id' => $rental->id, 'contents' => $cylinder->contents, 'custody' => $custody], (string) Str::uuid());
+            }
         }
     }
 
@@ -269,8 +283,15 @@ class CylinderWorkflow
     public function recordOrdinaryReturn(int $organizationId, array $assetIds): void
     {
         if (!Cylinder::hasTable()) return;
-        Cylinder::where('organization_id', $organizationId)->whereIn('asset_id', $assetIds)
-            ->update(['contents' => 'unknown', 'custody' => 'in_transit', 'reserved_for_rental_id' => null]);
+        foreach (Cylinder::where('organization_id', $organizationId)->whereIn('asset_id', $assetIds)->get() as $cylinder) {
+            if ($cylinder->contents === 'unknown' && $cylinder->custody === 'in_transit' && !$cylinder->reserved_for_rental_id) continue;
+            $rentalId = $cylinder->reserved_for_rental_id;
+            $cylinder->update(['contents' => 'unknown', 'custody' => 'in_transit', 'reserved_for_rental_id' => null]);
+            if (($actor = auth()->user()) && (int) $actor->organization_id === $organizationId) {
+                $this->event($actor, $cylinder, null, 'rental_returned', ['rental_id' => $rentalId,
+                    'contents' => 'unknown', 'custody' => 'in_transit'], (string) Str::uuid());
+            }
+        }
     }
 
     public function stockAction(User $user, Cylinder $cylinder, array $data): Cylinder
@@ -293,6 +314,11 @@ class CylinderWorkflow
             $warehouse = Warehouse::where('organization_id', $user->organization_id)->where('is_active', true)->findOrFail($data['warehouse_id']);
             $before = $cylinder->asset->asset_status;
             switch ($data['action']) {
+                case 'inspection_recorded':
+                    if ($cylinder->custody !== 'warehouse' || $cylinder->contents !== 'unknown' || empty($data['inspection_confirmed'])) $this->fail('Inspect this warehouse cylinder before confirming its contents.');
+                    if (!in_array($data['contents'] ?? '', ['empty', 'full'], true)) $this->fail('Confirm whether the cylinder is full or empty.');
+                    $cylinder->fill(['contents' => $data['contents'], 'custody' => 'warehouse']);
+                    break;
                 case 'return_received':
                     if ($cylinder->custody !== 'in_transit' || $cylinder->contents !== 'unknown' || empty($data['inspection_confirmed'])) $this->fail('Inspect the returned cylinder before recording warehouse receipt.');
                     if (!in_array($data['contents'] ?? '', ['empty', 'full'], true)) $this->fail('Confirm whether the returned cylinder is full or empty.');
