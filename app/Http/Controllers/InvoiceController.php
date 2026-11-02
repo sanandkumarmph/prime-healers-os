@@ -361,7 +361,7 @@ class InvoiceController extends Controller
             $output = fopen('php://output', 'w');
             fwrite($output, "\xEF\xBB\xBF");
 
-            fputcsv($output, [
+            \App\Support\SafeCsv::row($output, [
                 'Invoice No',
                 'Customer',
                 'Customer Phone',
@@ -391,7 +391,7 @@ class InvoiceController extends Controller
             ]);
 
             foreach ($invoices as $invoice) {
-                fputcsv($output, [
+                \App\Support\SafeCsv::row($output, [
                     $invoice->invoice_number,
                     $invoice->bill_to_name ?: ($invoice->customer->name ?? ''),
                     $invoice->bill_to_phone ?: ($invoice->customer->phone ?? ''),

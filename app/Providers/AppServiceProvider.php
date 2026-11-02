@@ -74,6 +74,8 @@ class AppServiceProvider extends ServiceProvider
             Limit::perMinute(2)->by('recovery-email:'.hash('sha256', is_string($request->input('email')) ? strtolower(trim($request->input('email'))) : 'invalid-input')),
         ]);
         RateLimiter::for('password-reset', fn (Request $request) => Limit::perMinute(10)->by('reset-ip:'.$request->ip()));
+        RateLimiter::for('login-ip', fn (Request $request) => Limit::perMinute(30)->by('login-ip:'.$request->ip()));
+        RateLimiter::for('account-security', fn (Request $request) => Limit::perMinute(5)->by('account-security:'.($request->user()?->id ?? $request->ip())));
 
         Paginator::defaultView('vendor.pagination.prime-healers');
         Paginator::defaultSimpleView('vendor.pagination.prime-healers-simple');

@@ -2273,70 +2273,82 @@ class ImportService
             throw new RuntimeException('Unable to open uploaded XLSX file.');
         }
 
-        $sharedStrings = $this->readSharedStrings($zip);
-        $sheetInfo = $this->firstWorksheet($zip);
-        $sheetXml = $sheetInfo['xml'] ?? false;
+        try {
+            \App\Support\SpreadsheetInput::inspect($zip);
+            $sharedStrings = $this->readSharedStrings($zip);
+            $sheetInfo = $this->firstWorksheet($zip);
+            $sheetXml = $sheetInfo['xml'] ?? false;
 
-        if ($sheetXml === false) {
-            $zip->close();
-            throw new RuntimeException('The XLSX file does not contain a readable first worksheet.');
-        }
-
-        $worksheet = simplexml_load_string($sheetXml);
-        $headers = [];
-        $rows = [];
-        $blankRowCount = 0;
-        $rawRowCount = 0;
-        $nonEmptyRowCount = 0;
-        $headerRowNumber = 0;
-        $worksheetRowIndex = 0;
-        $highestRow = 0;
-        $highestColumnIndex = -1;
-
-        foreach ($worksheet?->xpath('/*[local-name()="worksheet"]/*[local-name()="sheetData"]/*[local-name()="row"]') ?? [] as $row) {
-            $worksheetRowIndex++;
-            $cells = [];
-
-            foreach ($row->xpath('./*[local-name()="c"]') ?? [] as $cell) {
-                $reference = (string) $cell['r'];
-                $columnIndex = $this->columnIndexFromReference($reference);
-                $cells[$columnIndex] = $this->xlsxCellValue($cell, $sharedStrings);
-                $highestColumnIndex = max($highestColumnIndex, $columnIndex);
+            if ($sheetXml === false) {
+                throw new RuntimeException('The XLSX file does not contain a readable first worksheet.');
             }
 
-            $rowNumber = (int) ((string) ($row['r'] ?? ''));
-            if ($rowNumber <= 0) {
-                $rowNumber = $worksheetRowIndex;
-            }
-            $highestRow = max($highestRow, $rowNumber);
+            $worksheet = \App\Support\SpreadsheetInput::xml($sheetXml);
+            $headers = [];
+            $rows = [];
+            $blankRowCount = 0;
+            $rawRowCount = 0;
+            $nonEmptyRowCount = 0;
+            $headerRowNumber = 0;
+            $worksheetRowIndex = 0;
+            $highestRow = 0;
+            $highestColumnIndex = -1;
 
-            if ($headers === []) {
-                if ($this->rowIsEmpty($cells)) {
+            foreach ($worksheet?->xpath('/*[local-name()="worksheet"]/*[local-name()="sheetData"]/*[local-name()="row"]') ?? [] as $row) {
+                $worksheetRowIndex++;
+                if ($worksheetRowIndex > 50000) {
+                    throw new RuntimeException('Spreadsheet has more than 50,000 rows. Split it into smaller files.');
+                }
+                $cells = [];
+
+                foreach ($row->xpath('./*[local-name()="c"]') ?? [] as $cell) {
+                    $reference = (string) $cell['r'];
+                    if (!preg_match('/^[A-Z]{1,3}[1-9][0-9]{0,6}$/iD', $reference)) {
+                        throw new RuntimeException('Spreadsheet contains an invalid cell reference.');
+                    }
+                    $columnIndex = $this->columnIndexFromReference($reference);
+                    if ($columnIndex >= 512) {
+                        throw new RuntimeException('Spreadsheet has more than 512 columns. Remove unused columns.');
+                    }
+                    $cells[$columnIndex] = $this->xlsxCellValue($cell, $sharedStrings);
+                    $highestColumnIndex = max($highestColumnIndex, $columnIndex);
+                }
+
+                $rowNumber = (int) ((string) ($row['r'] ?? ''));
+                if ($rowNumber <= 0) {
+                    $rowNumber = $worksheetRowIndex;
+                }
+                $highestRow = max($highestRow, $rowNumber);
+
+                if ($headers === []) {
+                    if ($this->rowIsEmpty($cells)) {
+                        continue;
+                    }
+                    ksort($cells);
+                    $headers = $this->normalizeHeaders(array_values($cells));
+                    $headerRowNumber = $rowNumber;
                     continue;
                 }
-                ksort($cells);
-                $headers = $this->normalizeHeaders(array_values($cells));
-                $headerRowNumber = $rowNumber;
-                continue;
+
+                $rawRowCount++;
+
+                if ($this->rowIsEmpty($cells)) {
+                    $blankRowCount++;
+                    continue;
+                }
+
+                $nonEmptyRowCount++;
+                $ordered = [];
+                for ($index = 0; $index < count($headers); $index++) {
+                    $ordered[$index] = $cells[$index] ?? null;
+                }
+
+                $rows[] = $this->associateRow($headers, $ordered);
             }
 
-            $rawRowCount++;
-
-            if ($this->rowIsEmpty($cells)) {
-                $blankRowCount++;
-                continue;
-            }
-
-            $nonEmptyRowCount++;
-            $ordered = [];
-            for ($index = 0; $index < count($headers); $index++) {
-                $ordered[$index] = $cells[$index] ?? null;
-            }
-
-            $rows[] = $this->associateRow($headers, $ordered);
+        } finally {
+            $zip->close();
         }
-
-        $zip->close();
 
         return [
             'headers' => $headers,
@@ -2353,12 +2365,12 @@ class ImportService
 
     private function firstWorksheet(ZipArchive $zip): array
     {
-        $workbookXml = $zip->getFromName('xl/workbook.xml');
-        $relationshipsXml = $zip->getFromName('xl/_rels/workbook.xml.rels');
+        $workbookXml = \App\Support\SpreadsheetInput::entry($zip, 'xl/workbook.xml');
+        $relationshipsXml = \App\Support\SpreadsheetInput::entry($zip, 'xl/_rels/workbook.xml.rels');
 
         if ($workbookXml !== false && $relationshipsXml !== false) {
-            $workbook = simplexml_load_string($workbookXml);
-            $relationships = simplexml_load_string($relationshipsXml);
+            $workbook = \App\Support\SpreadsheetInput::xml($workbookXml);
+            $relationships = \App\Support\SpreadsheetInput::xml($relationshipsXml);
 
             $firstSheet = ($workbook?->xpath('/*[local-name()="workbook"]/*[local-name()="sheets"]/*[local-name()="sheet"][1]') ?? [])[0] ?? null;
             $sheetRelationshipId = '';
@@ -2385,7 +2397,7 @@ class ImportService
                         ? ltrim($target, '/')
                         : 'xl/' . ltrim(str_replace('\\', '/', $target), '/');
 
-                    $sheetXml = $zip->getFromName($normalizedTarget);
+                    $sheetXml = \App\Support\SpreadsheetInput::entry($zip, $normalizedTarget);
                     if ($sheetXml !== false) {
                         return [
                             'xml' => $sheetXml,
@@ -2396,7 +2408,7 @@ class ImportService
             }
         }
 
-        $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
+        $sheetXml = \App\Support\SpreadsheetInput::entry($zip, 'xl/worksheets/sheet1.xml');
 
         return [
             'xml' => $sheetXml,
@@ -2406,13 +2418,13 @@ class ImportService
 
     private function readSharedStrings(ZipArchive $zip): array
     {
-        $xml = $zip->getFromName('xl/sharedStrings.xml');
+        $xml = \App\Support\SpreadsheetInput::entry($zip, 'xl/sharedStrings.xml');
 
         if ($xml === false) {
             return [];
         }
 
-        $document = simplexml_load_string($xml);
+        $document = \App\Support\SpreadsheetInput::xml($xml);
 
         return collect($document?->xpath('/*[local-name()="sst"]/*[local-name()="si"]') ?? [])
             ->map(function ($stringItem) {

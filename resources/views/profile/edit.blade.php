@@ -239,6 +239,14 @@
                             <div class="profile-error">{{ $message }}</div>
                         @enderror
                     </div>
+                    <div class="profile-field full">
+                        <label for="profile_current_password">Current password to change email</label>
+                        <input id="profile_current_password" class="profile-input" name="current_password" type="password" autocomplete="current-password">
+                        <small>Required only when changing your login email.</small>
+                        @error('current_password')
+                            <div class="profile-error">{{ $message }}</div>
+                        @enderror
+                    </div>
                 </div>
 
                 @if ($user instanceof \Illuminate\Contracts\Auth\MustVerifyEmail && ! $user->hasVerifiedEmail())
@@ -304,6 +312,7 @@
         </div>
     </div>
 
+    @if($user->isSuperAdmin())
     <div class="profile-card">
         <div class="profile-card-head">
             <h2>Delete Account</h2>
@@ -330,5 +339,6 @@
             </form>
         </div>
     </div>
+    @endif
 </div>
 @endsection

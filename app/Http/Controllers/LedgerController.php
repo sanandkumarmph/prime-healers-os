@@ -40,10 +40,10 @@ class LedgerController extends Controller
             $output = fopen('php://output', 'w');
             fwrite($output, "\xEF\xBB\xBF");
 
-            fputcsv($output, ['Date', 'Reference', 'Particulars', 'Debit', 'Credit', 'Running Balance', 'Status']);
+            \App\Support\SafeCsv::row($output, ['Date', 'Reference', 'Particulars', 'Debit', 'Credit', 'Running Balance', 'Status']);
 
             foreach ($statement['entries'] as $entry) {
-                fputcsv($output, [
+                \App\Support\SafeCsv::row($output, [
                     $entry['entry_date']->format('Y-m-d'),
                     $entry['reference'],
                     $entry['particulars'],

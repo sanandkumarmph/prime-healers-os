@@ -1,13 +1,16 @@
 <?php
 
+$runtimePath = rtrim((string) (env('PDF_RUNTIME_PATH') ?: storage_path('app/pdf-runtime')), '/\\');
+
 return [
+    'runtime_path' => $runtimePath,
     'engine' => env('PDF_ENGINE', 'browsershot'),
     'node_binary' => env('PDF_NODE_BINARY', 'node'),
-    'node_module_path' => env('PDF_NODE_MODULE_PATH', base_path('node_modules')),
+    'node_module_path' => env('PDF_NODE_MODULE_PATH') ?: base_path('node_modules'),
     'browser_path' => env('PDF_BROWSER_PATH'),
-    'disable_sandbox' => env('PDF_DISABLE_SANDBOX', DIRECTORY_SEPARATOR !== '\\'),
-    'temp_path' => env('PDF_TEMP_PATH', storage_path('app/pdf-runtime/tmp')),
-    'user_data_dir' => env('PDF_USER_DATA_DIR', storage_path('app/pdf-runtime/profile')),
+    'disable_sandbox' => env('PDF_DISABLE_SANDBOX', false),
+    'temp_path' => env('PDF_TEMP_PATH') ?: $runtimePath.'/tmp',
+    'user_data_dir' => env('PDF_USER_DATA_DIR') ?: $runtimePath.'/profile',
     'currency_symbol' => env('PDF_CURRENCY_SYMBOL', "\u{20B9}"),
     'currency_fallback' => env('PDF_CURRENCY_FALLBACK', 'Rs.'),
     'optimize_images' => env('PDF_OPTIMIZE_IMAGES', true),
@@ -27,13 +30,13 @@ return [
     'environment' => [
         'windows' => [],
         'linux' => [
-            'HOME' => storage_path('app/pdf-runtime/home'),
-            'TMPDIR' => storage_path('app/pdf-runtime/tmp'),
-            'TMP' => storage_path('app/pdf-runtime/tmp'),
-            'TEMP' => storage_path('app/pdf-runtime/tmp'),
-            'XDG_CONFIG_HOME' => storage_path('app/pdf-runtime/xdg-config'),
-            'XDG_CACHE_HOME' => storage_path('app/pdf-runtime/xdg-cache'),
-            'XDG_RUNTIME_DIR' => storage_path('app/pdf-runtime/xdg-runtime'),
+            'HOME' => $runtimePath.'/home',
+            'TMPDIR' => $runtimePath.'/tmp',
+            'TMP' => $runtimePath.'/tmp',
+            'TEMP' => $runtimePath.'/tmp',
+            'XDG_CONFIG_HOME' => $runtimePath.'/xdg-config',
+            'XDG_CACHE_HOME' => $runtimePath.'/xdg-cache',
+            'XDG_RUNTIME_DIR' => $runtimePath.'/xdg-runtime',
         ],
         'macos' => [],
     ],
@@ -43,8 +46,6 @@ return [
         'linux' => [
             'disable-dev-shm-usage',
             'disable-gpu',
-            'no-zygote',
-            'single-process',
             'disable-software-rasterizer',
         ],
         'macos' => [],

@@ -24,6 +24,7 @@ test('profile information can be updated', function () {
         ->patch('/profile', [
             'name' => 'Test User',
             'email' => 'test@example.com',
+            'current_password' => 'password',
         ]);
 
     $response
@@ -54,8 +55,9 @@ test('email verification status is unchanged when the email address is unchanged
     $this->assertNotNull($user->refresh()->email_verified_at);
 });
 
-test('user can delete their account', function () {
-    $user = User::factory()->create();
+test('super admin can delete their account when another owner remains', function () {
+    $user = \Tests\Support\TestData::user();
+    \Tests\Support\TestData::user($user->organization);
 
     $response = $this
         ->actingAs($user)
@@ -72,7 +74,7 @@ test('user can delete their account', function () {
 });
 
 test('correct password must be provided to delete account', function () {
-    $user = User::factory()->create();
+    $user = \Tests\Support\TestData::user();
 
     $response = $this
         ->actingAs($user)

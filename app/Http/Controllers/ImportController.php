@@ -242,9 +242,9 @@ class ImportController extends Controller
 
         return response()->streamDownload(function () use ($rows) {
             $output = fopen('php://output', 'w');
-            fputcsv($output, ['Row Number', 'Status', 'Identifier', 'Reason Type', 'Field', 'Reason', 'Errors', 'Mapped Data']);
+            \App\Support\SafeCsv::row($output, ['Row Number', 'Status', 'Identifier', 'Reason Type', 'Field', 'Reason', 'Errors', 'Mapped Data']);
             foreach ($rows as $row) {
-                fputcsv($output, [
+                \App\Support\SafeCsv::row($output, [
                     $row['row_number'],
                     $row['status'],
                     $row['identifier'] ?? '',

@@ -285,7 +285,7 @@ class NotificationCenterService
             'type' => $data['type'] ?? class_basename($notification->type),
             'title' => $data['title'] ?? 'Operational update',
             'message' => $data['message'] ?? 'A new update is available.',
-            'action_url' => $data['action_url'] ?? null,
+            'action_url' => url(\App\Support\LocalRedirect::path($data['action_url'] ?? null, route('notifications.index'))),
             'priority' => $data['priority'] ?? 'medium',
             'related_type' => $data['related_type'] ?? null,
             'related_id' => $data['related_id'] ?? null,

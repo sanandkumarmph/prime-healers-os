@@ -88,7 +88,7 @@ class PaymentController extends Controller
         return response()->streamDownload(function () use ($payments) {
             $output = fopen('php://output', 'w');
 
-            fputcsv($output, [
+            \App\Support\SafeCsv::row($output, [
                 'Payment Date',
                 'Customer',
                 'Invoice Ref',
@@ -99,7 +99,7 @@ class PaymentController extends Controller
             ]);
 
             foreach ($payments as $payment) {
-                fputcsv($output, [
+                \App\Support\SafeCsv::row($output, [
                     optional($payment->payment_date)->format('Y-m-d'),
                     $payment->customer->name ?? 'N/A',
                     $payment->invoice->invoice_number ?? '',
