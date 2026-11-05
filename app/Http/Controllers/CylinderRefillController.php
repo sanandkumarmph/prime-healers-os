@@ -37,8 +37,17 @@ class CylinderRefillController extends Controller
             'quantity'=>'nullable|integer|min:1|max:100','warehouse_id'=>'nullable|integer',
             'serial_reference'=>'nullable|string|max:500','notes'=>'nullable|string|max:2000']+RefillDeliveryAssignments::rules());
         $refill=$this->service->change($request->user(),$refill,$data);
-        if($request->boolean('task_view'))return $this->taskResponse($request,'Refill progress saved. Remember to collect any outstanding empty cylinders.');
-        return $this->renderForRental($request,$refill->rental,'Refill progress saved.');
+        $booking = 'refill #'.$refill->id;
+        $message = match ($data['action']) {
+            'deliver' => 'Delivery recorded for '.$booking.'.',
+            'collect_empty' => 'Empty cylinder pickup recorded for '.$booking.'.',
+            'receive_empty' => 'Empty cylinder return recorded for '.$booking.'.',
+            'receive_refilled' => 'Full cylinder receipt recorded for '.$booking.'.',
+            'reassign' => 'Assignment updated for '.$booking.'.',
+            'cancel' => 'Refill #'.$refill->id.' cancelled.',
+        };
+        if($request->boolean('task_view'))return $this->taskResponse($request,$message);
+        return $this->renderForRental($request,$refill->rental,$message);
     }
     public function tasks(Request $request){return $this->taskResponse($request);}
     private function taskResponse(Request $request,?string $message=null)

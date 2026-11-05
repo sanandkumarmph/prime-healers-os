@@ -9,7 +9,7 @@ test('refill popup stays on rental, needs no serial, and delivery tasks show no 
    let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
     posts.push({path:url.pathname,body});
     const action=body.match(/name="action"\r\n\r\n([^\r]+)/)?.[1];
-    const fragment=url.pathname.endsWith('/progress')?({'deliver':'delivered','collect_empty':'picked-up'}[action]):'booked';
+    const fragment=url.pathname.endsWith('/progress')?({'deliver':'delivered','collect_empty':'picked-up','receive_empty':'received'}[action]):'booked';
     if(!fragment || !(/^\/cylinder-refills\/\d+\/progress$|^\/rentals\/\d+\/cylinder-refills$/).test(url.pathname)){
      res.writeHead(404,{'Content-Type':'application/json'}).end(JSON.stringify({message:'Unexpected form address'}));return;
     }
@@ -59,14 +59,31 @@ test('refill popup stays on rental, needs no serial, and delivery tasks show no 
    assert.equal(new URL(page.url()).pathname,'/rentals/1');
    assert.match(await page.$eval('[data-cylinder-refill-body]',el=>el.textContent),/1 empty cylinder\(s\) still need to be received back/);
    assert.equal(posts.filter(post=>post.path.endsWith('/cylinder-refills')).length,[320,390,768,1440].indexOf(width)+1);
-   if(width===390){
-    for(const action of ['deliver','collect_empty']){
+   if(width===390||width===1440){
+    const popup='[data-cylinder-refill-dialog]';
+    const history='[data-refill-section$="-history"]';
+    const feedback='[data-cylinder-refill-feedback]';
+    await page.$eval(history,section=>{section.open=true;});
+    for(const [action,message] of [['deliver','Delivery recorded'],['collect_empty','Empty cylinder pickup recorded'],['receive_empty','Empty cylinder return recorded']]){
      const selector=`[data-cylinder-refill-body] form:has(input[name="action"][value="${action}"])`;
+     const button=selector+' button[type=submit]';
+     await page.$eval(button,el=>el.scrollIntoView({block:'center'}));
+     const scrollBefore=await page.$eval(popup,el=>el.scrollTop);
+     assert.ok(scrollBefore>60,'fixture must be scrolled away from the top');
      const saved=page.waitForResponse(response=>response.url().endsWith('/progress')&&response.request().method()==='POST'&&response.ok(),{timeout:5000});
-     await page.$eval(selector+' button[type=submit]',button=>button.click());await saved;
+     await page.click(button);await saved;
      await page.waitForFunction(selector=>!document.querySelector(selector),{},selector);
+     assert.ok(await page.$eval(popup,(el,before)=>Math.abs(el.scrollTop-Math.min(before,el.scrollHeight-el.clientHeight))<=1,scrollBefore),`popup moved after ${action} at ${width}px`);
+     assert.equal(await page.$eval(history,section=>section.open),true);
+     const notice=await page.$eval(feedback,el=>{
+      const bounds=el.getBoundingClientRect(),dialog=el.closest('dialog').getBoundingClientRect();
+      return {text:el.textContent,visible:bounds.height>0&&bounds.bottom<=dialog.bottom&&bounds.top>=dialog.top};
+     });
+     assert.match(notice.text,new RegExp(message+' for refill #'));
+     assert.equal(notice.visible,true,`confirmation is outside the popup after ${action}`);
     }
-    assert.match(await page.$eval('[data-cylinder-refill-body] .cr-progress',element=>element.textContent),/Refill delivered\s*1\/1.*Empty picked up\s*1\/1/s);
+    assert.match(await page.$eval('[data-cylinder-refill-body] .cr-progress',element=>element.textContent),/Refill delivered\s*1\/1.*Empty picked up\s*1\/1.*Empty received back\s*1\/1/s);
+    assert.match(await page.$eval('[data-cylinder-refill-body] .cr-card-head',element=>element.textContent),/Completed/);
    }
    await page.click('[data-close-cylinder-refill]');assert.equal(await page.$eval('[data-cylinder-refill-dialog]',el=>el.open),false);
    await page.goto(origin+'/test-tasks',{waitUntil:'networkidle0'});
@@ -76,6 +93,6 @@ test('refill popup stays on rental, needs no serial, and delivery tasks show no 
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`task overflow at ${width}`);
   }
   assert.deepEqual(errors,[]);for(const [index,post] of posts.filter(post=>post.path.endsWith('/cylinder-refills')).entries()){assert.match(post.body,/name="refill_charge"\r\n\r\n600/);assert.match(post.body,new RegExp('name="assignment_type"\\r\\n\\r\\n'+['delivery_team','third_party','vendor','delivery_team'][index]));if(index===1)assert.match(post.body,/Phone test transporter/);else assert.doesNotMatch(post.body,/name="third_party_name"/);}
-  assert.equal(posts.filter(post=>post.path.endsWith('/progress')).length,2);
+  assert.equal(posts.filter(post=>post.path.endsWith('/progress')).length,6);
  }finally{if(browser)await browser.close();await new Promise(r=>server.close(r));}
 });
