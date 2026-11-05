@@ -1419,6 +1419,9 @@
                     </div>
                 </form>
             </x-phos-list-filter>
+            @if(auth()->user()?->isDelivery() || auth()->user()?->canViewConsolidatedFinance())
+                <a href="{{ route('deliveries.route-plan') }}" class="rn-btn">Plan route</a>
+            @endif
             @if($canCreateDeliveries && \Illuminate\Support\Facades\Route::has('deliveries.create'))
                 <a href="{{ route('deliveries.create') }}" class="rn-btn-primary">+ Add Assignment</a>
             @endif

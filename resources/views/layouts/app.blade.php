@@ -174,6 +174,7 @@
                 ['key' => 'communication_center', 'label' => 'Communication Center', 'icon' => 'customers', 'href' => $safeRoute('communication-center.index'), 'active' => request()->routeIs('communication-center.*'), 'visible' => (!$isDeliveryFacingMenuRole || $currentUser?->isDelivery()) && !$currentUser?->isFinance() && ($currentUser?->canAccessAnyModule(['rentals', 'sales', 'customers', 'deliveries', 'invoices'], 'read') ?? false)],
                 ['key' => 'delivery_asset_entry', 'label' => 'Add an asset', 'icon' => 'assets', 'href' => $safeRoute('deliveries.assets.create'), 'active' => request()->routeIs('deliveries.assets.*'), 'visible' => ($currentUser?->isDelivery() ?? false) && $currentUser->canAccessModule('deliveries', 'update')],
                 ['key' => 'tasks_board', 'label' => 'Tasks Board', 'icon' => 'deliveries', 'href' => $safeRoute('deliveries.index'), 'active' => request()->routeIs('deliveries.*') || request()->routeIs('pickups.*'), 'visible' => $currentUser?->canAccessModule('deliveries', 'read') ?? false],
+                ['key' => 'route_plan', 'label' => 'Route planner', 'icon' => 'deliveries', 'href' => $safeRoute('deliveries.route-plan'), 'active' => request()->routeIs('deliveries.route-plan'), 'visible' => ($currentUser?->isDelivery() || $currentUser?->canViewConsolidatedFinance()) && $currentUser->canAccessModule('deliveries', 'read')],
             ],
         ],
         [

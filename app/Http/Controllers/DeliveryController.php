@@ -2758,6 +2758,36 @@ class DeliveryController extends Controller
             ->with('success', ucfirst($delivery->type) . ' cancelled successfully.');
     }
 
+    public function routePlan(Request $request, \App\Services\DeliveryRoutePlanner $planner)
+    {
+        $this->authorize('viewAny', Delivery::class);
+        $user = $request->user();
+        abort_unless($user->canViewConsolidatedFinance() || $user->isDelivery(), 403);
+        $input = $request->validate(['date' => ['nullable', 'date_format:Y-m-d'], 'driver' => ['nullable', 'integer', 'min:1']]);
+        $date = $input['date'] ?? today()->toDateString();
+        $base = Delivery::query()->where('organization_id', $this->orgId())->openOperational()
+            ->whereDate('scheduled_at', $date)->whereNotNull('assigned_user_id');
+        $drivers = collect();
+        $driver = (int) $user->id;
+        if (!$user->isDelivery()) {
+            $drivers = User::query()->where('organization_id', $this->orgId())
+                ->whereIn('id', (clone $base)->select('assigned_user_id'))
+                ->orderBy('name')->pluck('name', 'id');
+            $driver = (int) ($input['driver'] ?? $drivers->keys()->first());
+            abort_if($driver && !$drivers->has($driver), 404);
+        }
+        $tasks = $base->where('assigned_user_id', $driver)->with([
+            'rental.customer', 'rental.partnerClient', 'sale.customer', 'sale.partnerClient',
+        ])->orderBy('scheduled_at')->orderBy('id')->limit(201)->get();
+        $stops = $planner->plan($tasks->take(200));
+        $maps = $planner->mapLegs($stops);
+
+        return response()->view('deliveries.route-plan', [
+            'date' => $date, 'drivers' => $drivers, 'driver' => $driver, 'stops' => $stops, 'maps' => $maps,
+            'truncated' => $tasks->count() > 200,
+        ])->header('Cache-Control', 'private, no-store');
+    }
+
     public function assigned()
     {
         $this->authorize('viewAny', Delivery::class);

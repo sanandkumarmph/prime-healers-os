@@ -259,6 +259,8 @@ Route::middleware('auth')->group(function () {
         ->middleware('module:deliveries,update')->name('deliveries.assets.create');
     Route::post('/deliveries/assets', [AssetController::class, 'deliveryStore'])
         ->middleware('module:deliveries,update')->name('deliveries.assets.store');
+    Route::get('/deliveries/route-plan', [DeliveryController::class, 'routePlan'])
+        ->middleware('module:deliveries,read')->name('deliveries.route-plan');
     Route::get('/pickups', function () {
         $query = request()->query();
         $query['tab'] = $query['tab'] ?? 'pickups';
