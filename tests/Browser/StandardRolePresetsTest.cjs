@@ -42,11 +42,19 @@ for (const width of [1280, 390]) {
                 }));
                 assert.equal(state.slug, key);
                 assert.ok(state.name);
-                if (['sales', 'service', 'finance'].includes(key)) {
+                if (['sales', 'service'].includes(key)) {
                     assert.ok(state.selected.includes('finance.view_dues'));
                     assert.ok(!state.selected.includes('finance.view_revenue'));
                     assert.ok(!state.selected.includes('finance.view_profit'));
                     assert.ok(!state.modules.includes('roles.update'));
+                }
+                if (key === 'finance') {
+                    assert.ok(state.selected.includes('finance.view_revenue'));
+                    assert.ok(state.selected.includes('finance.view_dues'));
+                    assert.ok(!state.selected.includes('finance.view_profit'));
+                    assert.ok(!state.selected.includes('invoices.export'));
+                    assert.ok(!state.selected.includes('payments.export'));
+                    assert.deepEqual(state.modules.sort(), ['invoices.read', 'payments.read', 'reports.read']);
                 }
                 if (key === 'delivery') assert.deepEqual(state.selected, []);
                 if (key === 'super_admin') assert.ok(state.selected.includes('finance.view_profit'));
