@@ -64,7 +64,9 @@ class QuotationSharing
         $rows[] = 'Valid until: '.CarbonImmutable::parse($quote->valid_until)->format('d M Y');
         $rows[] = 'Availability is confirmed when the order is created.';
         $rows[] = '';
-        $rows[] = '*View quotation & PDF*';
+        $rows[] = $quote->kind === 'rental' && RentalAgreements::enabled()
+            ? '*Review quotation & sign rental terms*'
+            : '*View quotation & PDF*';
         $rows[] = $url;
         if (!empty($s['sender']['name'])) {
             $rows[] = '';

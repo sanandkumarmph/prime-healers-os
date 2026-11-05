@@ -2728,6 +2728,9 @@
     <div class="delivery-detail-header">
         <div>
             <h1>{{ ucfirst($delivery->type) }} #{{ $delivery->id }}</h1>
+            @error('rental_agreement')
+                <p role="alert">{{ $message }}</p>
+            @enderror
             <p>Compact field summary, guided proof, and one clear action path.</p>
             <div class="desktop-task-header-meta" aria-label="Task summary">
                 <span class="status-badge" style="{{ $statusStyle }}">{{ $displayStatusLabel }}</span>

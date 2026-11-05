@@ -4329,6 +4329,7 @@
             </div>
         </section>
 
+        @include('rentals.agreement')
         <section class="rcc-card" id="rental-operations-workspace">
             <div class="rcc-section-head">
                 <div>

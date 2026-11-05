@@ -1,13 +1,16 @@
 <?php
 
-use App\Http\Controllers\{QuotationController, SalesWorkspaceController};
+use App\Http\Controllers\{QuotationController, RentalAgreementController, SalesWorkspaceController};
 use Illuminate\Support\Facades\Route;
 
 Route::get('/q/{quotation}/pdf', [QuotationController::class, 'publicPdf'])->middleware([\App\Http\Middleware\VerifyQuotationLink::class, 'throttle:30,1'])->name('quotation-share.pdf');
 Route::get('/q/{quotation}', [QuotationController::class, 'share'])->middleware([\App\Http\Middleware\VerifyQuotationLink::class, 'throttle:60,1'])->name('quotation-share.show');
 Route::post('/q/{quotation}', [QuotationController::class, 'respond'])->middleware([\App\Http\Middleware\VerifyQuotationLink::class, 'throttle:12,1'])->name('quotation-share.respond');
+Route::get('/rental-agreement/{agreement}', [RentalAgreementController::class, 'show'])->middleware([\App\Http\Middleware\VerifyQuotationLink::class, 'throttle:60,1'])->name('rental-agreement.show');
+Route::post('/rental-agreement/{agreement}', [RentalAgreementController::class, 'sign'])->middleware([\App\Http\Middleware\VerifyQuotationLink::class, 'throttle:12,1'])->name('rental-agreement.sign');
 
 Route::middleware(['auth'])->group(function () {
+    Route::post('/rentals/{rental}/agreement', [RentalAgreementController::class, 'reissue'])->middleware(['verified', 'module:rentals,update'])->name('rentals.agreement.reissue');
     Route::get('/enquiries', [SalesWorkspaceController::class, 'index'])->name('enquiries.index');
     Route::get('/enquiries/create', [SalesWorkspaceController::class, 'create'])->name('enquiries.create');
     Route::post('/enquiries', [SalesWorkspaceController::class, 'store'])->name('enquiries.store');

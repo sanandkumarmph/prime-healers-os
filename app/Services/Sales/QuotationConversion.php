@@ -64,6 +64,9 @@ class QuotationConversion
         if ($quote->kind !== $kind || $quote->status !== 'accepted' || $quote->expired() || $quote->enquiry->closed()) {
             throw ValidationException::withMessages(['quotation_id' => 'Only the current, accepted and unexpired quotation can become an order.']);
         }
+        if ($kind === 'rental' && RentalAgreements::enabled() && !app(RentalAgreements::class)->quotation($quote)?->signed_at) {
+            throw ValidationException::withMessages(['quotation_id' => 'The customer must sign the rental terms before you create this order.']);
+        }
     }
 
     public function run(Request $request, string $kind, callable $create): mixed
@@ -146,6 +149,9 @@ class QuotationConversion
         if (!$quote) return;
         if (!$request->attributes->get('conversion_lines_checked')) throw new \LogicException('Quotation lines were not checked.');
         $e = $quote->enquiry;
+        if ($order instanceof Rental && RentalAgreements::enabled()) {
+            app(RentalAgreements::class)->attach($quote, $order->fresh());
+        }
         $quote->update(['status' => 'converted', 'order_type' => $quote->kind, 'order_id' => $order->id,
             'conversion_source' => $e->source ?: '', 'converted_by_user_id' => $request->user()->id,
             'lock_version' => $quote->lock_version + 1]);

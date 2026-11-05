@@ -405,7 +405,15 @@ class VendorOrderReportController extends Controller
             $validated['vendor_paid_at'] = now();
         }
 
-        app(VendorFulfilmentService::class)->syncCosts($vendorOrderDetail, $validated);
+        app(\App\Services\Finance\OrganizationFinancialTransaction::class)->run($this->orgId(), function () use ($vendorOrderDetail, $validated) {
+            $detail = $vendorOrderDetail->fresh() ?? abort(404);
+            $status = $validated['vendor_order_status'] ?? $detail->vendor_order_status;
+            if (\App\Services\Sales\RentalAgreements::enabled() && $detail->rental_id && $detail->delivery_responsibility === 'vendor_delivery'
+                && $status !== $detail->vendor_order_status && in_array($status, ['in_progress', 'completed'], true)) {
+                app(\App\Services\Sales\RentalAgreements::class)->dispatch($detail->rental);
+            }
+            app(VendorFulfilmentService::class)->syncCosts($detail, $validated);
+        });
 
         return redirect()
             ->back()

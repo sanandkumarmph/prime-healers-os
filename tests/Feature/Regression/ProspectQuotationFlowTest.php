@@ -2,8 +2,8 @@
 
 namespace Tests\Feature\Regression;
 
-use App\Models\{Customer, Enquiry, Product, Quotation, Rental, Sale, Warehouse};
-use App\Services\Sales\{QuotationConversion, SalesWorkspace};
+use App\Models\{Customer, Delivery, Enquiry, Product, Quotation, Rental, RentalAgreement, Sale, Warehouse};
+use App\Services\Sales\{QuotationConversion, RentalAgreements, RentalAgreementTerms, SalesWorkspace};
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Tests\Support\TestData;
@@ -48,6 +48,110 @@ class ProspectQuotationFlowTest extends TestCase
         $this->post(route('quotations.action',$q),['action'=>$action,'lock_version'=>$q->fresh()->lock_version,'contact_name'=>'Synthetic prospect','note'=>'Confirmed by telephone'])
             ->assertSessionHasNoErrors();
         return $q->fresh();
+    }
+
+    private function signature(): string
+    {
+        $image = imagecreatetruecolor(180, 70);
+        imagefill($image, 0, 0, imagecolorallocate($image, 255, 255, 255));
+        $ink = imagecolorallocate($image, 18, 29, 44);
+        imagesetthickness($image, 3);
+        imageline($image, 20, 55, 50, 19, $ink);
+        imageline($image, 50, 19, 110, 49, $ink);
+        imageline($image, 110, 49, 145, 31, $ink);
+        ob_start();
+        imagepng($image);
+        return 'data:image/png;base64,'.base64_encode(ob_get_clean());
+    }
+
+    private function agreementPayload(): array
+    {
+        return [
+            'decision' => 'accepted', 'contact_name' => 'Synthetic signer', 'acknowledge' => 1,
+            'rental_agreement_acknowledged' => 1,
+            'rental_agreement_version' => hash('sha256', RentalAgreementTerms::TEXT),
+            'signature_data' => $this->signature(),
+        ];
+    }
+
+    public function test_rental_signature_is_required_before_conversion_and_saved_on_the_order(): void
+    {
+        config(['app.rental_agreements' => true]);
+        $quote = $this->action($this->draft(), 'send');
+        $url = app(SalesWorkspace::class)->shareUrl($quote);
+        $this->from($url)->post($url, ['decision' => 'accepted', 'contact_name' => 'Synthetic signer', 'acknowledge' => 1])
+            ->assertSessionHasErrors('signature_data');
+        $this->assertSame('sent', $quote->fresh()->status);
+        $quote = $this->action($quote, 'accepted');
+        $this->get(route('quotations.show', $quote))->assertOk()->assertSee('Awaiting customer signature')->assertDontSee('Create rental order');
+        $this->get(route('rentals.create', ['quotation_id' => $quote->id]))->assertSessionHasErrors('quotation_id');
+        $this->fixture('rental-signing', $this->get($url)->assertOk()->assertSee('Prime Healers – Rental T&C')->assertSee('₹100/day')->assertSee('Agree &amp; sign', false));
+        $this->from($url)->post($url, array_replace($this->agreementPayload(), ['rental_agreement_version' => str_repeat('0', 64)]))
+            ->assertSessionHasErrors('rental_agreement_version');
+        $this->from($url)->post($url, array_replace($this->agreementPayload(), ['signature_data' => 'invalid', 'rental_agreement_id_reference' => '0123']))
+            ->assertSessionHasErrors('signature_data');
+        $this->assertNull(session()->getOldInput('signature_data'));
+        $this->assertNull(session()->getOldInput('rental_agreement_id_reference'));
+        $this->assertDatabaseCount('rental_agreements', 0);
+        $this->post($url, $this->agreementPayload())->assertRedirect($url);
+        $agreement = RentalAgreement::sole();
+        $this->assertSame(RentalAgreementTerms::TEXT, $agreement->terms);
+        $this->assertSame('Synthetic signer', $agreement->proof['name']);
+        $this->assertNull($agreement->proof['id_reference']);
+        $this->assertSame($quote->snapshot, $agreement->proof['quotation']);
+        $this->assertStringNotContainsString('Synthetic signer', $agreement->getRawOriginal('proof'));
+        $this->get($url)->assertOk()->assertSee('Rental terms signed')->assertDontSee('Synthetic signer');
+        $this->post($url, array_replace($this->agreementPayload(), ['contact_name' => 'Different name']))->assertRedirect($url);
+        $this->assertSame('Synthetic signer', $agreement->fresh()->proof['name']);
+        $this->get(route('quotations.show', $quote))->assertSee('Create rental order');
+
+        $customer = Customer::create(['organization_id' => $this->owner->organization_id, 'name' => 'Synthetic signer',
+            'phone' => '+919876543210', 'address' => 'Synthetic address', 'state' => 'Karnataka']);
+        $data = array_replace(app(QuotationConversion::class)->prefill($quote->fresh()), ['customer_id' => $customer->id,
+            'quotation_recipient_confirmed' => 1, 'delivery_assignment_type' => 'customer_pickup']);
+        $this->post(route('rentals.store'), $data)->assertSessionHasNoErrors();
+        $rental = Rental::sole();
+        $this->assertEquals($rental->id, $agreement->fresh()->rental_id);
+        $this->get(route('rentals.show', $rental))->assertOk()->assertSee('View signed terms and signature');
+        $this->assertTrue(app(RentalAgreements::class)->signedFor($rental, $agreement->fresh()));
+    }
+
+    public function test_direct_rental_blocks_dispatch_and_invalidates_a_link_after_a_material_edit(): void
+    {
+        config(['app.rental_agreements' => true]);
+        $quote = $this->draft();
+        $customer = Customer::create(['organization_id' => $this->owner->organization_id, 'name' => 'Synthetic renter',
+            'phone' => '+919876543210', 'address' => 'Synthetic address', 'state' => 'Karnataka']);
+        $data = array_replace(app(QuotationConversion::class)->prefill($quote), ['customer_id' => $customer->id,
+            'delivery_assignment_type' => 'customer_pickup', 'enquiry_source' => 'incoming_phone']);
+        unset($data['quotation_id'], $data['quotation_version']);
+        $this->post(route('rentals.store'), $data)->assertSessionHasNoErrors();
+        $rental = Rental::sole();
+        $agreement = RentalAgreement::sole();
+        $agreements = app(RentalAgreements::class);
+        $url = $agreements->link($agreement);
+        $this->get(route('rental-agreement.show', $agreement))->assertForbidden();
+        $this->get(route('rentals.show', $rental))->assertOk()->assertSee('Share on WhatsApp');
+        $delivery = Delivery::where('rental_id', $rental->id)->firstOrFail();
+        try {
+            $delivery->update(['status' => 'in_progress']);
+            $this->fail('Unsigned rental was dispatched.');
+        } catch (\Illuminate\Validation\ValidationException $error) {
+            $this->assertArrayHasKey('rental_agreement', $error->errors());
+        }
+        $this->assertSame('pending', $delivery->fresh()->status);
+        $rental->update(['transport_amount' => 150]);
+        $this->get($url)->assertGone();
+        $this->post(route('rentals.agreement.reissue', $rental))->assertRedirect();
+        $replacement = $agreements->current($rental->fresh());
+        $this->assertNotSame($agreement->id, $replacement->id);
+        $newUrl = $agreements->link($replacement);
+        $this->get($newUrl)->assertOk()->assertSee('Prime Healers – Rental T&C');
+        $this->post($newUrl, $this->agreementPayload() + ['rental_agreement_id_reference' => '0123'])->assertRedirect($newUrl);
+        $this->assertSame('0123', $replacement->fresh()->proof['id_reference']);
+        $this->get($newUrl)->assertOk()->assertSee('Rental terms signed')->assertDontSee('Synthetic signer');
+        $delivery->fresh()->update(['status' => 'in_progress']);
+        $this->assertSame('in_progress', $delivery->fresh()->status);
     }
 
     private function fixture(string $name,$response): void

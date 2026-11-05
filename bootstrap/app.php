@@ -48,6 +48,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->dontFlash(['signature_data', 'rental_agreement_id_reference']);
         $handleExpiredSession = function ($request) {
             if ($request->expectsJson()) {
                 return response()->json([

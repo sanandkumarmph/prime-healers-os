@@ -101,6 +101,14 @@ class Delivery extends Model
 
     protected static function booted(): void
     {
+        static::saving(function (Delivery $delivery): void {
+            if (\App\Services\Sales\RentalAgreements::enabled() && $delivery->rental_id && $delivery->type === 'delivery'
+                && in_array($delivery->status, ['in_progress', 'completed'], true)
+                && $delivery->isDirty(['status', 'rental_id', 'type'])) {
+                app(\App\Services\Sales\RentalAgreements::class)->dispatch($delivery->rental()->first());
+            }
+        });
+
         static::created(function (Delivery $delivery): void {
             $delivery->dispatchAssignmentNotification(null);
         });

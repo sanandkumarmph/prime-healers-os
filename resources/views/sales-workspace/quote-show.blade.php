@@ -6,11 +6,21 @@
     $shareText = $shareUrl ? app(\App\Services\Sales\QuotationSharing::class)->message($quote, $shareUrl) : '';
     $whatsappPhone = preg_replace('/\D/', '', \App\Support\PhoneNumber::normalize($quote->snapshot['recipient']['phone'] ?? null) ?? '');
     $email = filter_var($quote->snapshot['recipient']['email'] ?? '', FILTER_VALIDATE_EMAIL) ?: '';
+    $requiresRentalSignature = $quote->kind === 'rental' && \App\Services\Sales\RentalAgreements::enabled();
 @endphp
 <div class="sw"><a href="{{ route('enquiries.show',$enquiry) }}">← Back to enquiry</a><header class="sw-head" style="margin-top:20px"><div><div class="sw-eyebrow">Quotation workspace</div><h1>{{ $quote->number() }}</h1><p class="sw-muted">{{ $enquiry->subject }}</p></div><div class="sw-actions"><a class="sw-btn" href="{{ route('quotations.pdf',$quote) }}">Download PDF</a>
-@if($canEdit && !$enquiry->closed())@if($quote->status==='draft')<a class="sw-btn" href="{{ route('quotations.edit',$quote) }}">Edit draft</a><form method="post" action="{{ route('quotations.action',$quote) }}">@csrf<input type="hidden" name="lock_version" value="{{ $quote->lock_version }}"><input type="hidden" name="action" value="send"><button class="sw-btn sw-primary">Finalise & share</button></form>@elseif($quote->status==='accepted' && !$quote->expired() && auth()->user()->canAccessModule($quote->kind.'s','create'))<a class="sw-btn sw-primary" href="{{ route($quote->kind.'s.create',['quotation_id'=>$quote->id]) }}">Create {{ $quote->kind }} order</a>@endif @endif
+@if($canEdit && !$enquiry->closed())@if($quote->status==='draft')<a class="sw-btn" href="{{ route('quotations.edit',$quote) }}">Edit draft</a><form method="post" action="{{ route('quotations.action',$quote) }}">@csrf<input type="hidden" name="lock_version" value="{{ $quote->lock_version }}"><input type="hidden" name="action" value="send"><button class="sw-btn sw-primary">Finalise & share</button></form>@elseif($quote->status==='accepted' && !$quote->expired() && (!$requiresRentalSignature || $rentalAgreement?->signed_at) && auth()->user()->canAccessModule($quote->kind.'s','create'))<a class="sw-btn sw-primary" href="{{ route($quote->kind.'s.create',['quotation_id'=>$quote->id]) }}">Create {{ $quote->kind }} order</a>@endif @endif
 @if($quote->status==='converted')@php($orderClass=$quote->order_type==='rental' ? \App\Models\Rental::class : \App\Models\Sale::class)@php($linkedOrder=$orderClass::where('organization_id',$quote->organization_id)->find($quote->order_id))@if($linkedOrder && auth()->user()->can('view',$linkedOrder))<a class="sw-btn sw-primary" href="{{ route($quote->order_type.'s.show',$quote->order_id) }}">View {{ $quote->order_type }} #{{ $quote->order_id }}</a>@endif @endif</div></header>
 @include('sales-workspace.alerts')
+@if($requiresRentalSignature && ($rentalAgreement?->signed_at || $shareUrl))
+    <div class="sw-alert{{ $rentalAgreement?->signed_at ? ' sw-success' : '' }}">
+        @if($rentalAgreement?->signed_at)
+            <strong>Rental terms signed</strong> · {{ $rentalAgreement->signed_at->timezone('Asia/Kolkata')->format('d M Y, h:i A') }} IST
+        @else
+            <strong>Awaiting customer signature.</strong> Share the quotation link so the customer can sign before the rental order is created.
+        @endif
+    </div>
+@endif
 @if($quote->status==='draft')<div class="sw-alert">Review the customer, prices and terms before finalising. Finalised quotations are protected; changes require a new revision.</div>@elseif($quote->status==='superseded')<div class="sw-alert">This is a previous revision. <a href="{{ route('quotations.show',$enquiry->quotations()->latest('revision')->first()) }}">Open the latest quotation</a>.</div>@elseif($quote->expired())<div class="sw-alert">This quotation has expired. Create a revision with a new validity date before continuing.</div>@endif
 <div class="{{ $canEdit && !$enquiry->closed() && $quote->status!=='superseded' ? 'sw-grid sw-share-workspace' : 'sw-document-only' }}"><div>@include('sales-workspace.quote-document')</div><aside>
 @if($shareUrl && $canEdit && !$enquiry->closed())

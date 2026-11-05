@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\{Enquiry, Organization, Product, Quotation};
-use App\Services\Sales\SalesWorkspace;
+use App\Services\Sales\{RentalAgreements, RentalAgreementTerms, SalesWorkspace};
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -78,7 +78,8 @@ class QuotationController extends Controller
             return $this->form($enquiry, $quote);
         }
         $shareUrl = in_array($quote->status, ['sent', 'accepted'], true) && !$quote->expired() ? $this->workspace->shareUrl($quote) : null;
-        return view('sales-workspace.quote-show', compact('quote', 'enquiry', 'shareUrl'));
+        $rentalAgreement = app(RentalAgreements::class)->quotation($quote);
+        return view('sales-workspace.quote-show', compact('quote', 'enquiry', 'shareUrl', 'rentalAgreement'));
     }
 
     public function action(Request $request, int $quotation)
@@ -166,7 +167,11 @@ class QuotationController extends Controller
     {
         $quote = $this->publicQuote($quotation);
         if (!$quote->viewed_at) Quotation::whereKey($quote->id)->whereNull('viewed_at')->update(['viewed_at' => now()]);
-        return response()->view('sales-workspace.quote-public', compact('quote'))
+        $agreement = app(RentalAgreements::class)->quotation($quote);
+        $rentalTerms = RentalAgreements::enabled() && $quote->kind === 'rental'
+            && !$agreement?->signed_at && in_array($quote->status, ['sent', 'accepted'], true)
+            && !$quote->enquiry->closed() ? RentalAgreementTerms::TEXT : null;
+        return response()->view('sales-workspace.quote-public', compact('quote', 'rentalTerms', 'agreement'))
             ->withHeaders(['Cache-Control' => 'private, no-store', 'Referrer-Policy' => 'no-referrer', 'X-Robots-Tag' => 'noindex, nofollow']);
     }
 
@@ -180,10 +185,28 @@ class QuotationController extends Controller
         $quote = $this->publicQuote($quotation);
         $data = $request->validate(['decision' => 'required|in:accepted,declined', 'contact_name' => 'required|string|max:150',
             'note' => 'nullable|string|max:3000', 'acknowledge' => 'accepted']);
-        $this->workspace->atomic($quote->organization_id, function () use ($quote, $data) {
-            $this->workspace->locked($quote->enquiry, false);
-            $this->workspace->decide($quote->fresh(), $data['decision'], $data['contact_name'], $data['note'] ?? '', true);
+        $signing = RentalAgreements::enabled() && $quote->kind === 'rental' && $data['decision'] === 'accepted';
+        $agreements = app(RentalAgreements::class);
+        $proof = $signing ? $agreements->validate($request) : null;
+        $this->workspace->atomic($quote->organization_id, function () use ($quote, $data, $request, $agreements, $proof) {
+            $enquiry = $this->workspace->locked($quote->enquiry, false);
+            $quote = $quote->fresh();
+            if ($proof !== null) {
+                $this->workspace->current($quote);
+                if ($agreements->quotation($quote)?->signed_at && in_array($quote->status, ['accepted', 'converted'], true)) {
+                    return;
+                }
+                abort_if($enquiry->closed() || $quote->expired() || !in_array($quote->status, ['sent', 'accepted'], true), 409);
+                $agreements->verifyTerms($request, RentalAgreementTerms::TEXT);
+                $agreements->acceptQuote($quote, $proof);
+                if ($quote->status === 'accepted') {
+                    $this->workspace->event($enquiry, 'quotation.rental_agreement_signed', $quote->number().' rental terms signed through the customer link.', true);
+                    return;
+                }
+            }
+            $this->workspace->decide($quote, $data['decision'], $data['contact_name'], $data['note'] ?? '', true);
         });
-        return redirect()->to($request->fullUrl())->with('success', 'Your response has been recorded. Thank you.');
+        $message = $signing ? 'Your rental terms are signed. Thank you.' : 'Your response has been recorded. Thank you.';
+        return redirect()->to($request->fullUrl())->with('success', $message);
     }
 }

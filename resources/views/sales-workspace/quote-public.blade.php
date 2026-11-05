@@ -2,5 +2,22 @@
 @include('sales-workspace.alerts',['showSuccess'=>true])
 <div class="sw-actions" style="justify-content:flex-end;margin-bottom:16px"><a class="sw-btn" href="{{ \Illuminate\Support\Facades\URL::temporarySignedRoute('quotation-share.pdf', $quote->expiresAt(), ['quotation'=>$quote->id]) }}">Download PDF</a></div>
 @include('sales-workspace.quote-document',['customerView'=>true])
+@if($rentalTerms)
+    @include('sales-workspace.rental-agreement-sign')
+    @if($quote->status === 'sent')
+        <section class="sw-panel"><details><summary>Decline quotation</summary>
+            <form action="{{ request()->fullUrl() }}" method="post">
+                @csrf
+                <input type="hidden" name="decision" value="declined">
+                <div class="sw-field"><label for="decline-name">Your name *</label><input id="decline-name" name="contact_name" required maxlength="150" autocomplete="name" value="{{ old('contact_name') }}"></div>
+                <p style="margin-top:18px"><label><input type="checkbox" name="acknowledge" value="1" required> I have reviewed this quotation.</label></p>
+                <button class="sw-btn" type="submit">Decline quotation</button>
+            </form>
+        </details></section>
+    @endif
+@elseif($agreement?->signed_at && $quote->status !== 'converted')
+    <section class="sw-panel"><h2>Rental terms signed</h2><p>Thank you. Prime Healers has received your signature.</p></section>
+@else
 @if($quote->status==='sent')<section class="sw-panel"><h2>Respond to this quotation</h2><form action="{{ request()->fullUrl() }}" method="post">@csrf<div class="sw-fields"><div class="sw-field"><label for="contact-name">Your name *</label><input id="contact-name" name="contact_name" required maxlength="150" autocomplete="name" value="{{ old('contact_name') }}"></div><div class="sw-field"><label for="decision">Your response *</label><select id="decision" name="decision" required><option value="">Select a response</option><option value="accepted">Accept quotation</option><option value="declined">Decline quotation</option></select></div><div class="sw-field sw-full"><label for="note">Message to {{ $quote->snapshot['issuer']['name'] }} (optional)</label><textarea name="note" id="note" rows="3" maxlength="3000">{{ old('note') }}</textarea></div></div><p style="margin-top:18px"><label><input type="checkbox" name="acknowledge" value="1" required> I have reviewed this quotation and am authorised to submit this response.</label></p><button class="sw-btn sw-primary">Submit response</button></form></section>@else<section class="sw-panel"><h2>{{ $quote->status==='converted' ? 'Your order has been created' : 'Response recorded: '.$quote->status }}</h2><p>Contact {{ $quote->snapshot['issuer']['name'] }} if you need to make a change.</p></section>@endif
+@endif
 <p class="sw-meta" style="text-align:center">Quotation prepared with PHOS</p></main></body></html>

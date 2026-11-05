@@ -6984,6 +6984,9 @@ class RentalController extends Controller
                 'notes' => $request->input('notes'),
             ]);
             $incentive->save($rental, $credit);
+            if (\App\Services\Sales\RentalAgreements::enabled() && !$request->attributes->has('conversion_quote')) {
+                app(\App\Services\Sales\RentalAgreements::class)->issue($rental->fresh());
+            }
 
             return [$rental, $invoice];
         });
@@ -6996,6 +6999,10 @@ class RentalController extends Controller
         ], 'Rental created and invoice generated.');
 
         app(\App\Services\Sales\QuotationConversion::class)->finish($request, $rental);
+        if (\App\Services\Sales\RentalAgreements::enabled() && !$request->attributes->has('conversion_quote')) {
+            return redirect()->to(route('rentals.show', $rental).'#rental-agreement')
+                ->with('success', 'Rental created. Share the agreement and collect the signature before dispatch.');
+        }
 
         return redirect()
             ->route('rentals.index', ['sort_by' => 'latest'])

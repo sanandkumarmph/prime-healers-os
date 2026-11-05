@@ -609,6 +609,7 @@ class DeliveryWorkflowService
             $syncAssignedAssetStatuses,
             $logActivity
         ) {
+            app(\App\Services\Sales\RentalAgreements::class)->dispatch($rental);
             $item->update([
                 'delivered_quantity' => min($item->ordered_quantity, $item->delivered_quantity_value + $quantity),
             ]);
