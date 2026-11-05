@@ -137,6 +137,10 @@ class QuotationController extends Controller
             }
             return $quote;
         });
+        if ($request->boolean('return_to_enquiry') && in_array($data['action'], ['accepted', 'declined'], true)) {
+            return redirect()->route('enquiries.show', $target->enquiry_id)
+                ->with('success', 'Quotation response recorded.');
+        }
         return redirect()->route($data['action'] === 'revise' ? 'quotations.edit' : 'quotations.show', $target)
             ->with('success', $data['action'] === 'send' ? 'Ready to share. Copy the customer link or download the PDF.' : 'Quotation updated.');
     }

@@ -1,8 +1,4 @@
-@php
-    $agreements = app(\App\Services\Sales\RentalAgreements::class);
-    $agreement = $quote ? $agreements->quotation($quote) : null;
-    $canShareAgreement = $canEdit && auth()->user()->canAccessModule('quotations', 'update');
-@endphp
+@php($canShareAgreement = $canUpdateQuote)
 @if($quote && ($agreements->canIssueForQuote($quote) || $agreement?->signed_at))
     <section class="sw-panel" id="rental-agreement" style="scroll-margin-top:20px">
         <h2>Rental agreement</h2>

@@ -7,4 +7,9 @@
 @media(max-width:1000px){.sw-editor{grid-template-columns:1fr}.sw-sticky-summary{position:static}.sw-editor-actions{grid-template-columns:1fr 1fr}}
 @media(max-width:900px){.sw-share-workspace>aside{order:-1}.sw-line-fields{grid-template-columns:repeat(2,minmax(0,1fr))}.sw-line-fields>.sw-field:first-child{grid-column:1/-1}}
 @media(max-width:600px){.sw-panel{padding:14px}.sw-metric strong{display:block;margin:0}.sw-stage li{padding:8px 3px;font-size:11px}.sw-review-head,.sw-review-footer{padding:12px;align-items:stretch;flex-direction:column;gap:8px}.sw-review-footer .sw-btn{width:100%}.sw-review-footer p{font-size:11px}.sw-review .sw-head{gap:8px}.sw-editor-actions{grid-template-columns:1fr}}
+.sw .sw-stage li { padding: 0; }
+.sw .sw-stage a { display: flex; min-height: 44px; padding: 6px; align-items: center; justify-content: center; border-radius: 6px; color: var(--sw-blue); }
+.sw .sw-stage a:hover { background: #dce9fb; }
+.sw .sw-stage a[aria-current="step"] { background: #e5edff; box-shadow: inset 0 -3px var(--sw-blue); font-weight: 700; }
+.sw :is(#enquiry-next, #enquiry-response, #enquiry-details, #enquiry-quotations) { scroll-margin-top: 24px; }
 </style>

@@ -89,6 +89,8 @@ class ProspectQuotationFlowTest extends TestCase
         $this->post($quoteUrl, ['decision' => 'accepted', 'contact_name' => 'Synthetic signer', 'acknowledge' => 1])->assertRedirect($quoteUrl);
         $this->assertSame('accepted', $quote->fresh()->status);
         $this->get(route('quotations.show', $quote))->assertOk()->assertSee('Awaiting rental agreement')->assertDontSee('Create rental order');
+        $this->get(route('enquiries.show', $quote->enquiry))->assertOk()->assertDontSee('Create Rental')
+            ->assertSee('collect the signature before creating the order');
         $this->get(route('rentals.create', ['quotation_id' => $quote->id]))->assertSessionHasErrors('quotation_id');
         $agreements = app(RentalAgreements::class);
         $agreement = RentalAgreement::sole();
@@ -145,6 +147,8 @@ class ProspectQuotationFlowTest extends TestCase
         $this->get(route('rentals.show', $rental))->assertOk()->assertSee('View signed agreement')->assertSee('Download signed PDF')
             ->assertSee('Send signed copy on WhatsApp')->assertSee('Synthetic signer');
         $this->assertTrue(app(RentalAgreements::class)->signedFor($rental, $agreement->fresh()));
+        $this->get(route('enquiries.show', $quote->enquiry))->assertOk()->assertSee('View Rental')
+            ->assertSee(route('rentals.show', $rental))->assertDontSee('Create Rental');
     }
 
     public function test_direct_rental_blocks_dispatch_and_invalidates_a_link_after_a_material_edit(): void
@@ -203,6 +207,18 @@ class ProspectQuotationFlowTest extends TestCase
         $this->post($url, $this->agreementPayload())->assertRedirect($url);
         $this->assertSame('sent', $quote->fresh()->status);
         $this->assertNotNull($agreement->fresh()->signed_at);
+        $enquiryUrl = route('enquiries.show', $quote->enquiry);
+        $createUrl = route('rentals.create', ['quotation_id' => $quote->id]);
+        $this->fixture('enquiry-awaiting-acceptance', $this->get($enquiryUrl)->assertOk()
+            ->assertSee('Awaiting quotation acceptance')->assertSee('Record quotation response')->assertDontSee($createUrl));
+        $this->post(route('quotations.action', $quote), [
+            'action' => 'accepted', 'lock_version' => $quote->fresh()->lock_version, 'contact_name' => 'Synthetic prospect',
+            'note' => 'Confirmed by phone', 'return_to_enquiry' => 1,
+        ])->assertSessionHasNoErrors()->assertRedirect($enquiryUrl);
+        $this->assertNotNull($quote->fresh()->accepted_at);
+        $this->fixture('enquiry-order-ready', $this->get($enquiryUrl)->assertOk()
+            ->assertSee('Create Rental')->assertSee($createUrl)->assertDontSee('Open latest quotation'));
+        $this->get($createUrl)->assertOk()->assertSee('quotation_recipient_confirmed')->assertSee('value="Synthetic prospect"', false);
         $this->action($quote, 'revise');
         $second = $this->action(Quotation::where('revision', 2)->sole(), 'send');
         $secondAgreement = $agreements->quotation($second);

@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\{Customer, Enquiry, EnquiryFollowUp, Product, Quotation};
-use App\Services\Sales\SalesWorkspace;
+use App\Models\{Customer, Enquiry, EnquiryFollowUp, Product, Quotation, Rental, Sale};
+use App\Services\Sales\{RentalAgreements, SalesWorkspace};
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\{Rule, ValidationException};
@@ -95,10 +95,36 @@ class SalesWorkspaceController extends Controller
     {
         $enquiry = $this->workspace->enquiry($enquiry)->load('owner', 'customer');
         $followUps = $enquiry->followUps()->whereNull('completed_at')->orderBy('due_at')->get();
-        $quotes = auth()->user()->canAccessModule('quotations', 'read') && (auth()->user()->scopeType('quotations') === 'all' || (int) $enquiry->owner_id === (int) auth()->id()) ? $enquiry->quotations()->latest('revision')->get() : collect();
+        $user = auth()->user();
+        $inQuoteScope = $user->scopeType('quotations') === 'all' || (int) $enquiry->owner_id === (int) $user->id;
+        $quotes = $inQuoteScope && $user->canAccessModule('quotations', 'read')
+            ? $enquiry->quotations()->latest('revision')->get() : collect();
+        $latestQuote = $quotes->first();
+        $canEdit = $user->canAccessModule('enquiries', 'update');
+        $canUpdateQuote = $canEdit && $user->canAccessModule('quotations', 'update');
+        $canCreateQuote = !$enquiry->closed() && $inQuoteScope && $canEdit && $user->canAccessModule('quotations', 'create');
+        $agreements = app(RentalAgreements::class);
+        $agreement = $latestQuote ? $agreements->quotation($latestQuote) : null;
+        $requiresSignature = RentalAgreements::enabled() && $latestQuote?->kind === 'rental';
+        $quoteStatus = $latestQuote?->displayStatus();
+        $orderAction = null;
+        if ($quoteStatus === 'accepted' && !$enquiry->closed() && $canUpdateQuote && (!$requiresSignature || $agreement?->signed_at)) {
+            $module = $latestQuote->kind.'s';
+            if ($user->canAccessModule($module, 'read') && $user->canAccessModule($module, 'create')) {
+                $orderAction = ['label' => 'Create '.ucfirst($latestQuote->kind), 'url' => route($module.'.create', ['quotation_id' => $latestQuote->id])];
+            }
+        } elseif ($quoteStatus === 'converted' && in_array($latestQuote->order_type, ['rental', 'sale'], true)) {
+            $class = $latestQuote->order_type === 'rental' ? Rental::class : Sale::class;
+            $order = $class::where('organization_id', $enquiry->organization_id)->find($latestQuote->order_id);
+            if ($order && $user->can('view', $order)) {
+                $orderAction = ['label' => 'View '.ucfirst($latestQuote->order_type), 'url' => route($latestQuote->order_type.'s.show', $order)];
+            }
+        }
         $activities = $enquiry->activities()->with('user')->latest('id')->paginate(30);
         $tz = $this->workspace->timezone();
-        return view('sales-workspace.show', compact('enquiry', 'followUps', 'quotes', 'activities', 'tz'));
+
+        return view('sales-workspace.show', compact('enquiry', 'followUps', 'quotes', 'activities', 'tz', 'latestQuote',
+            'canEdit', 'canUpdateQuote', 'canCreateQuote', 'agreements', 'agreement', 'requiresSignature', 'quoteStatus', 'orderAction'));
     }
 
     public function stage(Request $request, int $enquiry)
