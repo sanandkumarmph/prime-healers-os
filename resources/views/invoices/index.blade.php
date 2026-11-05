@@ -51,7 +51,7 @@
     };
     $hasActiveFilters = request()->integer('salesperson_id') !== 0 || filled($search) || filled($status) || filled($customerId) || filled($city) || filled($fromDate) || filled($toDate);
     $activeFilterChips = collect([
-        $salespersonOptions->get(request()->integer('salesperson_id')) ? (request()->query('salesperson_match') === 'booked' ? 'Booked by ' : 'Salesperson ').$salespersonOptions->get(request()->integer('salesperson_id')) : null,
+        $salespersonOptions->get(request()->integer('salesperson_id')) ? 'Staff member '.$salespersonOptions->get(request()->integer('salesperson_id')) : null,
         filled($search) ? 'Search: ' . $search : null,
         filled($status) ? 'Status: ' . ucfirst(str_replace('_', ' ', $status)) : null,
         filled($customerId) ? 'Customer selected' : null,

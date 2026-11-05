@@ -101,7 +101,7 @@
     $currentMobileSortLabel = collect($mobileSortOptions)->firstWhere('value', $sortBy)['label'] ?? 'Newest First';
     $hasActiveFilters = request()->integer('salesperson_id') !== 0 || filled($search) || filled($customerId) || filled($paymentStatus) || filled($fulfilmentSource) || filled($fromDate) || filled($toDate) || $sortBy !== 'priority';
     $activeFilterChips = collect([
-        $salespersonOptions->get(request()->integer('salesperson_id')) ? (request()->query('salesperson_match') === 'booked' ? 'Booked by ' : 'Salesperson ').$salespersonOptions->get(request()->integer('salesperson_id')) : null,
+        $salespersonOptions->get(request()->integer('salesperson_id')) ? (request()->query('salesperson_match') === 'booked' ? 'Booked by ' : 'Staff member ').$salespersonOptions->get(request()->integer('salesperson_id')) : null,
         filled($search) ? 'Search: ' . $search : null,
         filled($customerId) ? 'Customer selected' : null,
         filled($paymentStatus) ? 'Payment: ' . ucfirst($paymentStatus) : null,

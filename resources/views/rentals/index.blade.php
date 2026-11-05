@@ -120,7 +120,7 @@
     $referredBy = $referredBy ?? '';
     $hasActiveFilters = request()->integer('salesperson_id') !== 0 || filled($search) || filled($status) || filled($deliveryStatus) || filled($pickupStatus) || filled($warehouseId) || filled($city) || filled($vendorId) || filled($referredBy) || filled($fromDate) || filled($toDate) || $sortBy !== 'priority';
     $activeFilterChips = collect([
-        $salespersonOptions->get(request()->integer('salesperson_id')) ? (request()->query('salesperson_match') === 'booked' ? 'Booked by ' : 'Salesperson ').$salespersonOptions->get(request()->integer('salesperson_id')) : null,
+        $salespersonOptions->get(request()->integer('salesperson_id')) ? (request()->query('salesperson_match') === 'booked' ? 'Booked by ' : 'Staff member ').$salespersonOptions->get(request()->integer('salesperson_id')) : null,
         filled($search) ? 'Search: ' . $search : null,
         filled($status) ? 'Rental: ' . ucfirst(str_replace('_', ' ', $status)) : null,
         filled($deliveryStatus) ? 'Delivery: ' . ucfirst(str_replace('_', ' ', $deliveryStatus)) : null,

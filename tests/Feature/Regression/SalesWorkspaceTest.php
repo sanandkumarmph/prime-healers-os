@@ -399,7 +399,9 @@ class SalesWorkspaceTest extends TestCase
     {
         $org = $this->owner->organization;
         $salesperson = TestData::user($org, ['name' => 'Rental owner', 'role' => User::ROLE_SALES]);
-        $admin = TestData::user($org, ['role' => User::ROLE_ADMIN_OPERATIONS]);
+        $admin = TestData::user($org, ['name' => 'Operations admin', 'role' => User::ROLE_ADMIN_OPERATIONS]);
+        $finance = TestData::user($org, ['role' => User::ROLE_FINANCE]);
+        $vendor = TestData::user($org, ['role' => User::ROLE_VENDOR]);
         $quote = $this->accepted();
         $quote->enquiry->update(['source' => 'incoming_phone', 'owner_id' => $salesperson->id]);
         $rental = app(QuotationConversion::class)->prefill($quote) + ['delivery_assignment_type' => 'customer_pickup'];
@@ -408,6 +410,7 @@ class SalesWorkspaceTest extends TestCase
             $this->get(route('sales.create'))->assertOk()->assertSee('Myself');
         }
         $this->post(route('rentals.store'), $rental + ['incentive_owner_id' => $admin->id])->assertSessionHasNoErrors();
+        $adminRental = Rental::sole();
         $this->assertDatabaseHas('order_incentive_attributions', [
             'order_type' => 'rental', 'sales_user_id' => $admin->id, 'excluded_from_incentives' => true,
         ]);
@@ -425,6 +428,18 @@ class SalesWorkspaceTest extends TestCase
             ->assertViewHas('rentals', fn ($rows) => $rows->total() === 1 && $rows->first()->id === $creditedRental->id);
         $this->get(route('invoices.index', ['salesperson_id' => $salesperson->id]))->assertOk()
             ->assertViewHas('invoices', fn ($rows) => $rows->total() === 1 && $rows->first()->rental_id === $creditedRental->id);
+        foreach (['rentals.index', 'sales.index', 'invoices.index'] as $list) {
+            $this->get(route($list))->assertOk()->assertViewHas('salespersonOptions', fn ($options) => $options->has($admin->id)
+                && $options->has($this->owner->id) && $options->has($finance->id) && !$options->has($vendor->id))
+                ->assertSee('Staff member')->assertSee('All staff');
+        }
+        $this->get(route('rentals.index', ['salesperson_id' => $admin->id]))->assertOk()
+            ->assertViewHas('rentals', fn ($rows) => $rows->total() === 1 && $rows->first()->id === $adminRental->id);
+        $this->get(route('invoices.index', ['salesperson_id' => $admin->id]))->assertOk()
+            ->assertViewHas('invoices', fn ($rows) => $rows->total() === 1 && $rows->first()->rental_id === $adminRental->id);
+        $this->get(route('rentals.index', ['salesperson_id' => $admin->id, 'salesperson_match' => 'booked']))
+            ->assertOk()->assertViewHas('rentals', fn ($rows) => $rows->total() === 2);
+        $this->actingAs($salesperson)->get(route('rentals.index', ['salesperson_id' => $admin->id]))->assertNotFound();
     }
 
     public static function negotiatedRentalPrices(): array

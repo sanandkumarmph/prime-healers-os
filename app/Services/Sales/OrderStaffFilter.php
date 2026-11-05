@@ -14,7 +14,8 @@ class OrderStaffFilter
     {
         return User::where('organization_id', $actor->organization_id)->with('assignedRole')
             ->when($actor->scopeType($module) !== 'all', fn ($users) => $users->whereKey($actor->id))
-            ->orderBy('name')->get()->filter(fn (User $user) => $user->effective_role === User::ROLE_SALES)
+            ->orderBy('name')->get()
+            ->reject(fn (User $user) => in_array($user->effective_role, [User::ROLE_VENDOR, User::ROLE_THIRD_PARTY], true))
             ->pluck('name', 'id');
     }
 
@@ -86,12 +87,15 @@ class OrderStaffFilter
         $orders->leftJoin('order_incentive_attributions as attribution', function ($join) use ($kind) {
             $join->on('attribution.organization_id', '=', 'order_record.organization_id')
                 ->on('attribution.order_id', '=', 'order_record.id')->where('attribution.order_type', $kind);
-        })->where(fn ($query) => $query->whereNull('attribution.id')->orWhere('attribution.excluded_from_incentives', false))
-            ->where(function ($query) use ($creator, $staff) {
-                $query->where('attribution.sales_user_id', $staff)->orWhere('attribution.closer_user_id', $staff)
-                    ->orWhere(fn ($fallback) => $fallback->whereNull('attribution.sales_user_id')
-                        ->whereRaw($creator.' = ?', [$staff]));
-            });
+        })->where(function ($query) use ($creator, $staff) {
+            $query->where('attribution.sales_user_id', $staff)
+                ->orWhere(fn ($closer) => $closer->where('attribution.excluded_from_incentives', false)
+                    ->where('attribution.closer_user_id', $staff))
+                ->orWhere(fn ($fallback) => $fallback->whereNull('attribution.sales_user_id')
+                    ->where(fn ($attribution) => $attribution->whereNull('attribution.id')
+                        ->orWhere('attribution.excluded_from_incentives', false))
+                    ->whereRaw($creator.' = ?', [$staff]));
+        });
 
         return $orders->select('order_record.id');
     }
