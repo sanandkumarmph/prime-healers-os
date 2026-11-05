@@ -3,6 +3,7 @@
 @section('content')
 @php
     $currentUser = auth()->user();
+    $isSalesLogin = $currentUser?->isSales() || $currentUser?->isSalesRenewals();
     $canCreateInvoices = $currentUser?->canAccessModule('invoices', 'create') ?? false;
     $canUpdateInvoices = $currentUser?->canAccessModule('invoices', 'update') ?? false;
     $canDeleteInvoices = $currentUser?->canAccessModule('invoices', 'delete') ?? false;
@@ -874,7 +875,8 @@
         /* Compact invoice command center overrides */
         .invoice-breadcrumb{display:flex;gap:7px;align-items:center;color:#64748b;font-size:12px;font-weight:800;margin-bottom:6px}
         .invoice-icon-btn{gap:7px}.invoice-icon-btn svg,.invoice-tile-icon svg,.invoice-row-actions svg,.invoice-side-action svg,.invoice-action-icon svg{width:16px;height:16px;display:block}
-        .invoice-summary-strip{grid-template-columns:repeat(6,minmax(126px,1fr));gap:10px}
+        .invoice-summary-strip{grid-template-columns:repeat(var(--invoice-summary-columns,6),minmax(126px,1fr));gap:10px}
+        .invoice-summary-strip.is-sales{--invoice-summary-columns:4}
         .invoice-summary-tile{display:grid;grid-template-columns:36px minmax(0,1fr);grid-template-rows:auto auto auto;justify-content:flex-start;align-items:center;padding:10px 12px;min-height:76px;box-shadow:var(--ph-shadow-soft)}
         .invoice-summary-tile .invoice-tile-icon{grid-row:1/4;width:34px;height:34px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;background:#eef2ff;color:#4f46e5}
         .invoice-summary-tile strong{font-size:18px}.invoice-summary-tile small{font-size:11px;color:#64748b;font-weight:700}.invoice-summary-tile>span:not(.invoice-tile-icon){font-size:10px}
@@ -1016,7 +1018,7 @@
         </div>
     </div>
 
-    <div class="invoice-summary-strip">
+    <div class="invoice-summary-strip {{ $isSalesLogin ? 'is-sales' : '' }}">
         <a href="{{ $invoiceUrl(['status' => null]) }}" class="invoice-summary-tile tone-purple">
             <span class="invoice-tile-icon">{!! $invoiceIcon('file') !!}</span><span>Total Invoices</span>
             <strong>{{ $totalInvoices }}</strong><small>{{ $comparisonLabel('totalInvoicesChangePercent') }}</small>
@@ -1033,14 +1035,16 @@
             <span class="invoice-tile-icon">{!! $invoiceIcon('alert') !!}</span><span>Overdue</span>
             <strong>{{ $overdueInvoices }}</strong><small>{{ $comparisonLabel('overdueInvoicesChangePercent') }}</small>
         </a>
-        <a href="{{ $invoiceUrl(['status' => 'open']) }}" class="invoice-summary-tile tone-amber">
-            <span class="invoice-tile-icon">{!! $invoiceIcon('rupee') !!}</span><span>Outstanding</span>
-            <strong>@if($canViewDues){!! $currency($outstandingAmount) !!}@else Restricted @endif</strong><small>{{ $comparisonLabel('outstandingAmountChangePercent') }}</small>
-        </a>
-        <div class="invoice-summary-tile tone-green">
-            <span class="invoice-tile-icon">{!! $invoiceIcon('card') !!}</span><span>Collected Month</span>
-            <strong>@if($canViewFinance){!! $currency($collectedThisMonth) !!}@else Restricted @endif</strong><small>{{ $comparisonLabel('collectedThisMonthChangePercent') }}</small>
-        </div>
+        @unless($isSalesLogin)
+            <a href="{{ $invoiceUrl(['status' => 'open']) }}" class="invoice-summary-tile tone-amber">
+                <span class="invoice-tile-icon">{!! $invoiceIcon('rupee') !!}</span><span>Outstanding</span>
+                <strong>@if($canViewDues){!! $currency($outstandingAmount) !!}@else Restricted @endif</strong><small>{{ $comparisonLabel('outstandingAmountChangePercent') }}</small>
+            </a>
+            <div class="invoice-summary-tile tone-green">
+                <span class="invoice-tile-icon">{!! $invoiceIcon('card') !!}</span><span>Collected Month</span>
+                <strong>@if($canViewFinance){!! $currency($collectedThisMonth) !!}@else Restricted @endif</strong><small>{{ $comparisonLabel('collectedThisMonthChangePercent') }}</small>
+            </div>
+        @endunless
     </div>
 
     <div class="invoice-search-shell">
@@ -1374,10 +1378,14 @@
         <div class="invoice-side-card">
             <div class="invoice-side-head"><strong>Finance Summary</strong><span>Live</span></div>
             <div class="invoice-side-list">
-                <div><span>Outstanding</span><strong>@if($canViewDues){!! $currency($outstandingAmount) !!}@else Restricted @endif</strong></div>
+                @unless($isSalesLogin)
+                    <div><span>Outstanding</span><strong>@if($canViewDues){!! $currency($outstandingAmount) !!}@else Restricted @endif</strong></div>
+                @endunless
                 <div><span>Overdue</span><strong class="danger">@if($canViewDues){!! $currency($overdueAmount) !!}@else Restricted @endif</strong></div>
                 <div><span>Collected Today</span><strong class="success">@if($canViewFinance){!! $currency($collectedToday) !!}@else Restricted @endif</strong></div>
-                <div><span>Collected Month</span><strong class="success">@if($canViewFinance){!! $currency($collectedThisMonth) !!}@else Restricted @endif</strong></div>
+                @unless($isSalesLogin)
+                    <div><span>Collected Month</span><strong class="success">@if($canViewFinance){!! $currency($collectedThisMonth) !!}@else Restricted @endif</strong></div>
+                @endunless
                 <div><span>Largest Invoice</span><strong>@if($canViewFinance){!! $currency($largestInvoice) !!}@else Restricted @endif</strong></div>
                 <div><span>Average Invoice</span><strong>@if($canViewFinance){!! $currency($averageInvoiceValue) !!}@else Restricted @endif</strong></div>
             </div>

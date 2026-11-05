@@ -394,7 +394,12 @@ class AccessAuthorityRegressionTest extends TestCase
         $this->assertFalse(str_contains($response->getContent(), 'Foreign dashboard sentinel'), 'Foreign tenant data must not appear.');
         $this->assertFalse(str_contains($response->getContent(), 'data-dashboard-tab="team"'), 'Sales profile must not receive the Team tab.');
         $this->assertFalse($response->viewData('dashboardVisibility')['finance_widgets']);
-        $ownerResponse = $this->actingAs($owner)->get(route('dashboard'))->assertOk();
+        $managementCards = ['Business overview figures', 'Sales vs Rentals Last 6 Months', 'Business Direction',
+            'Operations Command Panel', 'Orders Trend', 'Rental Utilization'];
+        $response->assertSee('Operations Center')->assertSee('Communication Pulse')->assertDontSeeText($managementCards);
+        $this->get(route('dashboard', ['dashboard_tab' => 'operations']))->assertOk()
+            ->assertSee('Operations Center')->assertDontSeeText($managementCards);
+        $ownerResponse = $this->actingAs($owner)->get(route('dashboard'))->assertOk()->assertSeeText($managementCards);
         $this->assertSame(2, $ownerResponse->viewData('totalRentals'));
         $this->assertFalse(str_contains($ownerResponse->getContent(), 'Foreign dashboard sentinel'));
         $this->assertSame($before, Rental::count());

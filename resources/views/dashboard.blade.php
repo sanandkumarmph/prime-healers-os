@@ -5,6 +5,7 @@
 @php
     $currentUser = auth()->user();
     $dashboardVisibility = $dashboardVisibility ?? [];
+    $isSalesDashboard = (bool) ($dashboardVisibility['sales_focused'] ?? false);
     $safeRoute = function (string $routeName, array $parameters = []) {
         return \Illuminate\Support\Facades\Route::has($routeName) ? route($routeName, $parameters) : null;
     };
@@ -1733,16 +1734,16 @@
         : $activePercent;
     $executiveBusinessHealthRows = collect([
         $canViewFinance ? $buildExecutiveTrendMetric('Revenue Trend', $executiveRevenueTrendCurrent, $executiveRevenueTrendPrevious, fn ($value) => $currency($value), !empty($previousTrendRow)) : null,
-        $buildExecutiveTrendMetric('Orders Trend', $executiveOrdersTrendCurrent, $executiveOrdersTrendPrevious, fn ($value) => number_format((int) $value) . ' order(s)', !empty($previousTrendRow)),
+        !$isSalesDashboard ? $buildExecutiveTrendMetric('Orders Trend', $executiveOrdersTrendCurrent, $executiveOrdersTrendPrevious, fn ($value) => number_format((int) $value) . ' order(s)', !empty($previousTrendRow)) : null,
         $canViewFinance ? $buildExecutiveTrendMetric('Collection Trend', $executiveCollectionTrendCurrent, $executiveCollectionTrendPrevious, fn ($value) => $currency($value), !empty($previousRevenueTrendRow)) : null,
-        [
+        !$isSalesDashboard ? [
             'label' => 'Rental Utilization',
             'value' => number_format($executiveRentalUtilizationPercent, 1) . '%',
             'tone' => $executiveRentalUtilizationPercent >= 65 ? 'green' : ($executiveRentalUtilizationPercent >= 35 ? 'amber' : 'blue'),
             'direction' => 'none',
             'comparison_label' => 'Current stock position',
             'tooltip' => 'Current Period: ' . number_format($onRentInventoryCount) . ' on-rent rental asset(s) / ' . number_format($inventoryAvailabilityTotal) . ' total rental asset(s)' . "\n" . 'Previous Period: Not period-based',
-        ],
+        ] : null,
     ])->filter()->values();
     $executiveCommunicationPulseRows = collect([
         ['label' => 'Follow-ups Pending', 'value' => (int) (($pendingRenewalFollowUpsCount ?? 0) + ($pendingPaymentFollowUpsCount ?? 0) + ($pendingPickupFollowUpsCount ?? 0)), 'tone' => ((int) ($overdueFollowUpsCount ?? 0)) > 0 ? 'red' : 'blue'],
@@ -7924,10 +7925,11 @@
             <div class="control-room-card-header">
                 <div>
                     <h2 class="control-room-card-title">Executive Command Center</h2>
-                    <p class="control-room-card-copy">Top KPIs plus compact business health, communication pressure, forecast, and performance signals.</p>
+                    <p class="control-room-card-copy">{{ $isSalesDashboard ? 'Track sales activity, follow-ups, and upcoming work.' : 'Top KPIs plus compact business health, communication pressure, forecast, and performance signals.' }}</p>
                 </div>
             </div>
 
+            @if($executiveBusinessHealthRows->isNotEmpty())
             <div class="executive-health-strip">
                 @foreach($executiveBusinessHealthRows as $row)
                     <div class="executive-health-chip {{ $toneCardClass($row['tone'] ?? null) }}" title="{{ $row['tooltip'] ?? '' }}">
@@ -7951,6 +7953,7 @@
                     </div>
                 @endforeach
             </div>
+            @endif
 
             <div class="control-room-priority-grid">
                 @foreach($executiveCommandCards as $card)
@@ -8715,8 +8718,10 @@
     </section>
 
     @endif
-    @include('dashboard.overview-summary')
-    @unless($dashboardTabs->has('revenue'))
+    @unless($isSalesDashboard)
+        @include('dashboard.overview-summary')
+    @endunless
+    @if(!$isSalesDashboard && !$dashboardTabs->has('revenue'))
     <section class="dashboard-trend-layout">
         <div class="rx-card dashboard-trend-card">
             <div class="rx-card-header">
@@ -8834,7 +8839,7 @@
             </div>
         </div>
     </section>
-    @endunless
+    @endif
     </section>
     @endif
     @if($dashboardTabs->has('team'))
@@ -9308,6 +9313,7 @@
                     </section>
                 </div>
 
+                @unless($isSalesDashboard)
                 <div class="operations-layout-grid">
                     <section class="control-room-card operations-command-panel">
                         <div class="control-room-card-header">
@@ -9373,6 +9379,7 @@
                         </div>
                     </section>
                 </div>
+                @endunless
 
                 <details class="operations-detail-group">
                     <summary class="operations-detail-summary">
@@ -10563,6 +10570,7 @@
         </section>
     @endif
 
+    @unless($isSalesDashboard)
     <section class="dashboard-trend-layout">
         <div class="rx-card dashboard-trend-card">
             <div class="rx-card-header">
@@ -10680,6 +10688,7 @@
             </div>
         </div>
     </section>
+    @endunless
     </section>
     @endif
     @if($dashboardTabs->has('inventory'))

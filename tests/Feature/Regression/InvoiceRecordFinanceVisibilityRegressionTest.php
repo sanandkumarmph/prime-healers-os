@@ -33,12 +33,12 @@ class InvoiceRecordFinanceVisibilityRegressionTest extends TestCase
         $this->assertStringContainsString($invoice->invoice_number, $html);
         $this->assertStringContainsString('&#8377;9,876.54', $html);
         $this->assertStringContainsString('&#8377;8,765.43', $html);
-        $this->assertStringContainsString('Outstanding', $html);
+        $this->assertStringNotContainsString('<span>Outstanding</span>', $html);
         $this->assertStringContainsString('Overdue', $html);
         $this->assertStringContainsString('Largest Invoice', $html);
         $this->assertStringContainsString('Average Invoice', $html);
         $this->assertMatchesRegularExpression('/Collected Today<\/span><strong class="success">\s*Restricted\s*<\/strong>/s', $html);
-        $this->assertMatchesRegularExpression('/Collected Month<\/span><strong class="success">\s*Restricted\s*<\/strong>/s', $html);
+        $this->assertStringNotContainsString('Collected Month', $html);
         $this->assertStringNotContainsString('markPaidInvoice'.$invoice->id, $html);
     }
 
@@ -60,6 +60,8 @@ class InvoiceRecordFinanceVisibilityRegressionTest extends TestCase
         $this->assertStringContainsString($invoice->invoice_number, $html);
         $this->assertStringContainsString('&#8377;9,876.54', $html);
         $this->assertStringContainsString('&#8377;8,765.43', $html);
+        $this->assertStringContainsString('<span>Outstanding</span>', $html);
+        $this->assertStringContainsString('Collected Month', $html);
     }
 
     public function test_vendor_invoice_reader_cannot_see_invoice_financial_values(): void
