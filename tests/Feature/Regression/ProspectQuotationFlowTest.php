@@ -52,13 +52,14 @@ class ProspectQuotationFlowTest extends TestCase
 
     private function signature(): string
     {
-        $image = imagecreatetruecolor(180, 70);
-        imagefill($image, 0, 0, imagecolorallocate($image, 255, 255, 255));
-        $ink = imagecolorallocate($image, 18, 29, 44);
-        imagesetthickness($image, 3);
-        imageline($image, 20, 55, 50, 19, $ink);
-        imageline($image, 50, 19, 110, 49, $ink);
-        imageline($image, 110, 49, 145, 31, $ink);
+        $image = imagecreatetruecolor(760, 280);
+        imagealphablending($image, false);
+        imagesavealpha($image, true);
+        imagefill($image, 0, 0, imagecolorallocatealpha($image, 0, 0, 0, 127));
+        imagesetthickness($image, 4);
+        imageline($image, 80, 220, 200, 76, 0x172b4d);
+        imageline($image, 200, 76, 440, 196, 0x172b4d);
+        imageline($image, 440, 196, 580, 124, 0x172b4d);
         ob_start();
         imagepng($image);
         return 'data:image/png;base64,'.base64_encode(ob_get_clean());
@@ -80,6 +81,10 @@ class ProspectQuotationFlowTest extends TestCase
         $quote = $this->action($this->draft(), 'send');
         $quoteUrl = app(SalesWorkspace::class)->shareUrl($quote);
         $this->get($quoteUrl)->assertOk()->assertSee('Respond to this quotation')->assertDontSee('sign-rental-terms');
+        $sharing = $this->get(route('quotations.show', $quote))->assertOk()
+            ->assertSeeInOrder(['Ready to share', 'Copy link', 'Share Rental Terms'])->assertDontSee('Private customer link')
+            ->assertDontSee('Open the separate agreement on the enquiry');
+        $this->fixture('rental-quote-sharing', $sharing);
         $this->get(route('enquiries.show', $quote->enquiry))->assertOk()->assertSee('Send rental terms on WhatsApp');
         $this->post($quoteUrl, ['decision' => 'accepted', 'contact_name' => 'Synthetic signer', 'acknowledge' => 1])->assertRedirect($quoteUrl);
         $this->assertSame('accepted', $quote->fresh()->status);
@@ -105,6 +110,16 @@ class ProspectQuotationFlowTest extends TestCase
         $this->assertNull($agreement->proof['id_reference']);
         $this->assertSame($quote->snapshot, $agreement->proof['quotation']);
         $this->assertStringNotContainsString('Synthetic signer', $agreement->getRawOriginal('proof'));
+        $savedSignature = $agreement->proof['signature'];
+        $stored = imagecreatefromstring(base64_decode($savedSignature));
+        $this->assertSame(0x000000, imagecolorat($stored, 0, 0));
+        $white = imagecreatefromstring(base64_decode($agreements->signatureOnWhite($savedSignature)));
+        $this->assertSame(0xffffff, imagecolorat($white, 0, 0));
+        $this->assertSame(0x172b4d, imagecolorat($white, 200, 76));
+        $transparent = explode(',', $this->signature(), 2)[1];
+        $white = imagecreatefromstring(base64_decode($agreements->signatureOnWhite($transparent)));
+        $this->assertSame(0xffffff, imagecolorat($white, 0, 0));
+        $this->assertSame(0x172b4d, imagecolorat($white, 200, 76));
         $this->get($url)->assertOk()->assertSee('Rental terms signed')->assertSee('Download signed agreement (PDF)')->assertDontSee('Synthetic signer');
         $this->get(route('rental-agreement.pdf', $agreement))->assertForbidden();
         $pdf = $this->get($agreements->pdfLink($agreement))->assertOk()->assertHeader('Content-Type', 'application/pdf')
@@ -117,7 +132,8 @@ class ProspectQuotationFlowTest extends TestCase
             ->assertSee('View signed agreement')->assertSee('Download signed PDF')->assertSee('Synthetic signer');
         $this->post($url, array_replace($this->agreementPayload(), ['contact_name' => 'Different name']))->assertRedirect($url);
         $this->assertSame('Synthetic signer', $agreement->fresh()->proof['name']);
-        $this->get(route('quotations.show', $quote))->assertSee('Create rental order');
+        $this->get(route('quotations.show', $quote))->assertSee('Create rental order')->assertSee('Send signed copy on WhatsApp');
+        $this->assertSame($savedSignature, $agreement->fresh()->proof['signature']);
 
         $customer = Customer::create(['organization_id' => $this->owner->organization_id, 'name' => 'Synthetic signer',
             'phone' => '+919876543210', 'address' => 'Synthetic address', 'state' => 'Karnataka']);
@@ -196,6 +212,23 @@ class ProspectQuotationFlowTest extends TestCase
         $this->post($secondUrl, $this->agreementPayload())->assertGone();
         $this->assertNull($secondAgreement->fresh()->signed_at);
         $this->get($agreements->pdfLink($agreement->fresh()))->assertOk();
+    }
+
+    public function test_share_rental_terms_can_prepare_a_preexisting_quote_from_the_same_workspace(): void
+    {
+        $quote = $this->action($this->draft(), 'send');
+        $this->assertDatabaseCount('rental_agreements', 0);
+        config(['app.rental_agreements' => true]);
+        $this->get(route('quotations.show', $quote))->assertOk()->assertSee('Share Rental Terms')
+            ->assertSee(route('quotations.rental-agreement.issue', $quote));
+        $response = $this->post(route('quotations.rental-agreement.issue', $quote), ['destination' => 'whatsapp'])->assertRedirect();
+        $url = $response->headers->get('Location');
+        $this->assertStringStartsWith('https://wa.me/919876543210?', $url);
+        parse_str(parse_url($url, PHP_URL_QUERY), $message);
+        $this->assertStringContainsString(RentalAgreementTerms::TEXT, $message['text']);
+        $this->assertStringContainsString('/rental-agreement/', $message['text']);
+        $this->assertNull($quote->fresh()->shared_at);
+        $this->assertDatabaseCount('rental_agreements', 1);
     }
 
     private function fixture(string $name,$response): void

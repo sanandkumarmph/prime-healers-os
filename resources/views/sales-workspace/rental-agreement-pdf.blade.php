@@ -13,7 +13,7 @@
         .receipt { border: 1pt solid #cedee4; background: #f4f8fa; padding: 10pt 13pt; margin: 14pt 0 16pt; page-break-inside: avoid; }
         .receipt h2 { margin: 0 0 6pt; }
         .receipt p { margin: 3pt 0; word-wrap: break-word; }
-        .receipt img { display: block; width: 168pt; max-height: 82pt; margin: 6pt 0; }
+        .receipt img { display: block; width: 168pt; max-height: 82pt; margin: 6pt 0; background: #fff; }
         .agreement-clause { margin-bottom: 9pt; page-break-inside: avoid; }
         .agreement-clause h3 { margin: 0 0 3pt; font-size: 11pt; color: #145466; }
         .agreement-clause p { margin: 0 0 2pt; }

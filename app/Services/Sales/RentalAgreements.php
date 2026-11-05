@@ -151,6 +151,38 @@ class RentalAgreements
         return 'https://wa.me/' . $recipient . '?text=' . rawurlencode($message);
     }
 
+    public function signatureOnWhite(string $signature): string
+    {
+        $bytes = base64_decode($signature, true);
+        $ink = $bytes !== false ? @imagecreatefromstring($bytes) : false;
+        if (!$ink) {
+            return $signature;
+        }
+
+        $width = imagesx($ink);
+        $height = imagesy($ink);
+        // Older signature pads could save their transparent background as opaque black.
+        // Identify the pad by its dimensions and corners. Its strokes are dark blue.
+        if ($width === 760 && $height === 280 && imageistruecolor($ink)
+            && imagecolorat($ink, 0, 0) === 0 && imagecolorat($ink, $width - 1, 0) === 0
+            && imagecolorat($ink, 0, $height - 1) === 0 && imagecolorat($ink, $width - 1, $height - 1) === 0) {
+            imagecolortransparent($ink, 0);
+        }
+
+        $white = imagecreatetruecolor($width, $height);
+        imagefill($white, 0, 0, 0xffffff);
+        imagecopy($white, $ink, 0, 0, 0, 0, $width, $height);
+        ob_start();
+        try {
+            imagepng($white);
+            return base64_encode(ob_get_contents());
+        } finally {
+            ob_end_clean();
+            imagedestroy($white);
+            imagedestroy($ink);
+        }
+    }
+
     private function fingerprint(Rental $rental): string
     {
         $fields = [

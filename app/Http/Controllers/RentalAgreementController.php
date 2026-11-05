@@ -95,6 +95,7 @@ class RentalAgreementController extends Controller
         abort_unless($agreement->signed_at, 404);
 
         $proof = $agreement->proof;
+        $proof['signature'] = $this->agreements->signatureOnWhite($proof['signature']);
         $reference = isset($proof['quotation_number']) ? 'Quotation '.$proof['quotation_number'] : 'Rental #'.$agreement->rental_id;
         $rentalTerms = preg_replace('/[\p{Extended_Pictographic}\x{FE0F}\x{200D}]+/u', '', $agreement->terms);
         $pdf = Pdf::loadView('sales-workspace.rental-agreement-pdf', compact('agreement', 'reference', 'rentalTerms', 'proof'))
@@ -113,17 +114,20 @@ class RentalAgreementController extends Controller
         ]);
     }
 
-    public function issueForQuotation(int $quotation)
+    public function issueForQuotation(Request $request, int $quotation)
     {
         abort_unless(RentalAgreements::enabled(), 404);
         $quote = $this->workspace->quote($quotation, 'update');
-        $this->workspace->atomic($quote->organization_id, function () use ($quote) {
+        $agreement = $this->workspace->atomic($quote->organization_id, function () use ($quote) {
             $this->workspace->locked($quote->enquiry);
             $quote = $quote->fresh() ?? abort(404);
             $this->workspace->current($quote);
             abort_unless($this->agreements->canIssueForQuote($quote), 409);
-            $this->agreements->issueForQuote($quote);
+            return $this->agreements->issueForQuote($quote);
         });
+        if ($request->input('destination') === 'whatsapp') {
+            return redirect()->away($this->agreements->whatsapp($agreement, $quote->snapshot['recipient']['phone'] ?? null, 'Quotation '.$quote->number()));
+        }
 
         return redirect()->to(route('enquiries.show', $quote->enquiry_id).'#rental-agreement')
             ->with('success', 'The rental agreement is ready to share on WhatsApp.');

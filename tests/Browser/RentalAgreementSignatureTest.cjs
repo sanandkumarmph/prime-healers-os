@@ -9,14 +9,16 @@ const folder = process.env.PHOS_PROSPECT_RENDER_DIR;
 
 test('a customer can sign the rental quotation with touch or a mouse', { skip: !folder, timeout: 60000 }, async () => {
     const html = fs.readFileSync(path.join(folder, 'rental-signing.html'), 'utf8');
+    const quote = fs.readFileSync(path.join(folder, 'rental-quote-sharing.html'), 'utf8');
     const script = fs.readFileSync(path.resolve(__dirname, '../../public/js/phos-rental-agreement.js'));
     let origin;
     const server = http.createServer((request, response) => {
         if (request.url === '/js/phos-rental-agreement.js') {
             response.writeHead(200, { 'Content-Type': 'text/javascript' }).end(script);
         } else {
+            const page = request.url === '/quote-sharing' ? quote : html;
             response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-                .end(html.replace(/http:\/\/127\.0\.0\.1:\d+|http:\/\/localhost(?::\d+)?/g, origin));
+                .end(page.replace(/http:\/\/127\.0\.0\.1:\d+|http:\/\/localhost(?::\d+)?/g, origin));
         }
     });
 
@@ -28,6 +30,19 @@ test('a customer can sign the rental quotation with touch or a mouse', { skip: !
         const page = await browser.newPage();
         await page.setRequestInterception(true);
         page.on('request', request => request.url().startsWith(origin) ? request.continue() : request.abort());
+        await page.setViewport({ width: 390, height: 850, hasTouch: true, isMobile: true });
+        await page.goto(origin + '/quote-sharing', { waitUntil: 'domcontentloaded' });
+        const target = await page.$$eval('.sw-panel a', links => links.find(link => link.textContent.trim() === 'Share Rental Terms')?.href);
+        assert.ok(target);
+        assert.equal(new URL(target).hostname, 'wa.me');
+        assert.match(new URL(target).searchParams.get('text'), /\/rental-agreement\//);
+        assert.equal(await page.$eval('#customer-link-field', element => element.hidden), true);
+        await page.evaluate(() => {
+            Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('Unavailable')) } });
+            document.getElementById('copy-customer-link').click();
+        });
+        await page.waitForFunction(() => !document.getElementById('customer-link-field').hidden);
+
         for (const width of [320, 390, 1200]) {
             await page.setViewport({ width, height: 850, hasTouch: width < 500, isMobile: width < 500 });
             await page.goto(origin, { waitUntil: 'networkidle0' });

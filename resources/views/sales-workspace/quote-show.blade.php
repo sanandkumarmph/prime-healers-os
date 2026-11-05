@@ -17,7 +17,7 @@
         @if($rentalAgreement?->signed_at)
             <strong>Rental terms signed</strong> · {{ $rentalAgreement->signed_at->timezone('Asia/Kolkata')->format('d M Y, h:i A') }} IST
         @else
-            <strong>Awaiting rental agreement.</strong> <a href="{{ route('enquiries.show', $enquiry).'#rental-agreement' }}">Open the separate agreement on the enquiry</a>.
+            <strong>Awaiting rental agreement.</strong>
         @endif
     </div>
 @endif
@@ -32,7 +32,20 @@
         <a class="sw-btn" href="mailto:{{ $email }}?subject={{ rawurlencode('Quotation '.$quote->number()) }}&amp;body={{ rawurlencode($shareText) }}" data-share-channel="email">Email</a>
         <button class="sw-btn" type="button" id="copy-customer-link">Copy link</button>
     </div>
-    <div class="sw-field" style="margin-top:12px"><label for="customer-link">Private customer link</label><input id="customer-link" value="{{ $shareUrl }}" readonly></div>
+    @if($requiresRentalSignature)
+        <div class="sw-actions" style="margin-top:12px">
+            @if($rentalAgreement)
+                <a class="sw-btn sw-primary" href="{{ app(\App\Services\Sales\RentalAgreements::class)->whatsapp($rentalAgreement, $quote->snapshot['recipient']['phone'] ?? null, 'Quotation '.$quote->number()) }}" target="_blank" rel="noopener noreferrer">{{ $rentalAgreement->signed_at ? 'Send signed copy on WhatsApp' : 'Share Rental Terms' }}</a>
+            @else
+                <form method="post" action="{{ route('quotations.rental-agreement.issue', $quote) }}" target="_blank" rel="noopener noreferrer">
+                    @csrf
+                    <input type="hidden" name="destination" value="whatsapp">
+                    <button class="sw-btn sw-primary" type="submit">Share Rental Terms</button>
+                </form>
+            @endif
+        </div>
+    @endif
+    <div class="sw-field" id="customer-link-field" style="margin-top:12px" @if($requiresRentalSignature) hidden @endif><label for="customer-link">{{ $requiresRentalSignature ? 'Quotation link' : 'Private customer link' }}</label><input id="customer-link" value="{{ $shareUrl }}" readonly></div>
     <details><summary>Preview message and sender sign-off</summary><div class="sw-field"><label for="quote-message">Message to customer</label><textarea id="quote-message" rows="12" readonly>{{ $shareText }}</textarea></div><button type="button" class="sw-btn" id="copy-quote-message">Copy message</button><p class="sw-meta" id="message-copy-status" role="status"></p></details>
     <p id="copy-status" class="sw-meta" role="status"></p>
     @if(!$quote->shared_at && $quote->status==='sent')
@@ -58,4 +71,25 @@
 
 @include('partials.record-timestamps', ['timestampRecord' => $quote, 'timestampFields' => ['created_at' => 'Created', 'updated_at' => 'Last updated', 'sent_at' => 'Finalised', 'shared_at' => 'Shared', 'viewed_at' => 'Viewed', 'accepted_at' => 'Accepted']])
 @endsection
-@push('scripts')@include('sales-workspace.share-message-script')<script>document.getElementById('copy-customer-link')?.addEventListener('click',async()=>{const input=document.getElementById('customer-link');try{await navigator.clipboard.writeText(input.value);document.getElementById('copy-status').textContent='Link copied. Send it to the customer, then confirm below.';}catch(error){input.focus();input.select();document.getElementById('copy-status').textContent='Select and copy the link above.';}});document.querySelectorAll('[data-share-channel]').forEach(link=>link.addEventListener('click',()=>{const select=document.getElementById('shared-channel');if(select)select.value=link.dataset.shareChannel;}));</script>@endpush
+@push('scripts')
+@include('sales-workspace.share-message-script')
+<script>
+    document.getElementById('copy-customer-link')?.addEventListener('click', async () => {
+        const input = document.getElementById('customer-link');
+        const status = document.getElementById('copy-status');
+        try {
+            await navigator.clipboard.writeText(input.value);
+            status.textContent = 'Link copied. Send it to the customer, then confirm below.';
+        } catch (error) {
+            document.getElementById('customer-link-field').hidden = false;
+            input.focus();
+            input.select();
+            status.textContent = 'Select and copy the link above.';
+        }
+    });
+    document.querySelectorAll('[data-share-channel]').forEach(link => link.addEventListener('click', () => {
+        const select = document.getElementById('shared-channel');
+        if (select) select.value = link.dataset.shareChannel;
+    }));
+</script>
+@endpush
