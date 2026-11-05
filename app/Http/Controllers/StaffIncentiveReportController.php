@@ -2,19 +2,54 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\{Enquiry, Invoice, User};
+use App\Models\{Enquiry, Invoice, OrderIncentiveAttribution, User};
+use App\Support\ActivityLogger;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\{DB, Schema};
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 
 class StaffIncentiveReportController extends Controller
 {
+    private function authorizeReport(User $user): void
+    {
+        abort_unless($user->canAccessGeneralReports() && $user->canViewFinance('finance.view_revenue'), 403);
+    }
+
+    private function canAssign(User $user): bool
+    {
+        return $user->isSuperAdmin() || $user->isAdminOperations() || $user->effective_role === 'admin';
+    }
+
+    private function users(int $organization): Collection
+    {
+        return User::where('organization_id', $organization)->with('assignedRole')->orderBy('name')->get()->keyBy('id');
+    }
+
+    private function classify($row, Collection $users): void
+    {
+        $row->eligible_source = Enquiry::incentiveSource($row->source);
+        $row->known_source = $row->eligible_source ?? (isset(Enquiry::SOURCES[$row->source]) ? $row->source : null);
+        $row->staff_id = $row->attribution_id && $users->has($row->recorded_staff_id) ? (int) $row->recorded_staff_id : null;
+
+        $row->suggested_staff_id = collect([$row->enquiry_owner_id, $row->converted_by_user_id, $row->creator_id])
+            ->first(fn ($id) => $users->get($id)?->effective_role === User::ROLE_SALES);
+        if (!$row->attribution_id && $row->quotation_id) {
+            $row->staff_id = $row->suggested_staff_id;
+        }
+    }
+
+    private function needsReview($row): bool
+    {
+        return !$row->known_source || ($row->eligible_source && !$row->staff_id);
+    }
+
     public function index(Request $request)
     {
         $user = $request->user();
-        abort_unless($user->canAccessGeneralReports() && $user->canViewFinance('finance.view_revenue'), 403);
+        $this->authorizeReport($user);
         $organization = (int) $user->organization_id;
         $filters = $request->validate([
             'from' => ['nullable', 'date_format:Y-m-d'],
@@ -28,14 +63,21 @@ class StaffIncentiveReportController extends Controller
         $staff = (int) ($filters['staff'] ?? 0);
         $source = $filters['source'] ?? '';
 
-        $eligible = $this->invoicedOrders($organization, 'rental', $from, $to)
+        $users = $this->users($organization);
+        $salesStaff = $users->filter(fn (User $member) => $member->isSales())->pluck('name', 'id');
+        $canAssign = $this->canAssign($user);
+        $candidates = $this->invoicedOrders($organization, 'rental', $from, $to)
             ->merge($this->invoicedOrders($organization, 'sale', $from, $to))
-            ->unique(fn ($row) => $row->kind.':'.$row->order_id)
-            ->each(fn ($row) => $row->eligible_source = Enquiry::incentiveSource($row->source))
-            ->filter(fn ($row) => $row->eligible_source && $row->eligible_amount > 0);
-        $staffNames = User::where('organization_id', $organization)
-            ->whereIn('id', $eligible->pluck('staff_id')->filter()->unique())
-            ->orderBy('name')->pluck('name', 'id');
+            ->filter(fn ($row) => $row->eligible_amount > 0)
+            ->each(fn ($row) => $this->classify($row, $users))
+            ->sortByDesc('invoice_date')->values();
+        $review = $candidates->filter(fn ($row) => $this->needsReview($row))->values();
+        $reviewPage = LengthAwarePaginator::resolveCurrentPage('review_page');
+        $reviewOrders = new LengthAwarePaginator($review->forPage($reviewPage, 15), $review->count(), 15, $reviewPage, [
+            'path' => $request->url(), 'query' => $request->query(), 'pageName' => 'review_page', 'fragment' => 'attribution',
+        ]);
+        $eligible = $candidates->filter(fn ($row) => $row->eligible_source && $row->staff_id);
+        $staffNames = $salesStaff->union($users->only($eligible->pluck('staff_id')->all())->pluck('name', 'id'))->sort();
         $eligible = $eligible->filter(fn ($row) => (!$staff || (int) $row->staff_id === $staff)
             && (!$source || $row->eligible_source === $source))
             ->sortByDesc('invoice_date')->values();
@@ -47,6 +89,13 @@ class StaffIncentiveReportController extends Controller
                 'rental_revenue' => $rows->where('kind', 'rental')->sum('eligible_amount'),
                 'revenue' => $rows->sum('eligible_amount'),
             ])->sortByDesc('revenue');
+        if (!$source) {
+            foreach ($staffNames as $id => $name) {
+                if ((!$staff || $id === $staff) && !$staffTotals->has($id)) {
+                    $staffTotals->put($id, ['sales' => 0, 'sale_revenue' => 0, 'rentals' => 0, 'rental_revenue' => 0, 'revenue' => 0]);
+                }
+            }
+        }
         $sourceTotals = $eligible->groupBy('eligible_source')->map(fn ($rows) => [
             'orders' => $rows->count(), 'revenue' => $rows->sum('eligible_amount'),
         ]);
@@ -57,43 +106,97 @@ class StaffIncentiveReportController extends Controller
         $total = $eligible->sum('eligible_amount');
 
         return response()->view('reports.staff-incentives', compact(
-            'from', 'to', 'staff', 'source', 'staffNames', 'staffTotals', 'sourceTotals', 'orders', 'total'
+            'from', 'to', 'staff', 'source', 'staffNames', 'staffTotals', 'sourceTotals', 'orders', 'total',
+            'reviewOrders', 'salesStaff', 'canAssign'
         ))->header('Cache-Control', 'private, no-store');
     }
 
-    private function invoicedOrders(int $organization, string $kind, string $from, string $to)
+    public function assign(Request $request)
+    {
+        $user = $request->user();
+        $this->authorizeReport($user);
+        abort_unless($this->canAssign($user), 403);
+        $organization = (int) $user->organization_id;
+        $users = $this->users($organization);
+        $source = $request->input('source');
+        $data = $request->validate([
+            'kind' => ['required', Rule::in(['rental', 'sale'])],
+            'order' => ['required', 'integer', 'min:1'],
+            'from' => ['required', 'date_format:Y-m-d'],
+            'to' => ['required', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'source' => ['required', Rule::in(array_keys(Enquiry::SOURCES))],
+            'staff' => ['nullable', 'integer', Rule::requiredIf(is_string($source) && isset(Enquiry::INCENTIVE_SOURCES[$source])),
+                Rule::in($users->filter(fn (User $member) => $member->isSales())->keys()->all())],
+        ]);
+        $salesUser = isset(Enquiry::INCENTIVE_SOURCES[$data['source']]) ? (int) $data['staff'] : null;
+        DB::transaction(function () use ($organization, $data, $users, $salesUser, $user) {
+            $table = $data['kind'] === 'rental' ? 'rentals' : 'sales';
+            abort_unless(DB::table($table)->where('organization_id', $organization)->where('id', $data['order'])
+                ->lockForUpdate()->first(['id']), 404);
+            $candidate = $this->invoicedOrders($organization, $data['kind'], $data['from'], $data['to'], (int) $data['order'])->first();
+            abort_unless($candidate && $candidate->eligible_amount > 0, 404);
+            $this->classify($candidate, $users);
+            abort_unless($this->needsReview($candidate), 409, 'This order already has a source or an incentive assignment. Reload the report.');
+            abort_if($candidate->known_source && $candidate->known_source !== $data['source'], 422, 'Use the source already recorded for this order.');
+
+            OrderIncentiveAttribution::record($organization, $data['kind'], (int) $data['order'], $data['source'], $salesUser, $user->id);
+            ActivityLogger::log('incentives.attribution_recorded', null, [
+                'order_type' => $data['kind'], 'order_id' => (int) $data['order'],
+                'source' => $data['source'], 'sales_user_id' => $salesUser,
+            ], 'Sales incentive attribution recorded.');
+        });
+
+        return redirect()->route('reports.staff-incentives', ['from' => $data['from'], 'to' => $data['to']])
+            ->with('success', $salesUser ? 'Incentive attribution saved.' : 'Source recorded. This order is outside the incentive rules.');
+    }
+
+    private function invoicedOrders(int $organization, string $kind, string $from, string $to, ?int $orderId = null)
     {
         $orderTable = $kind === 'rental' ? 'rentals' : 'sales';
         $orderKey = $kind.'_id';
         $types = $kind === 'rental' ? ['rental', 'rental_sale'] : ['sale'];
         $excluded = ['draft', 'cancelled', 'void'];
-        $staffColumns = ['quote.converted_by_user_id'];
+        $staffColumns = [];
         foreach (['created_by_user_id', 'created_by'] as $column) {
             if (Schema::hasColumn($orderTable, $column)) {
-                $staffColumns[] = 'order_record.'.$column;
+                $staffColumns[] = 'NULLIF(order_record.'.$column.', 0)';
             }
         }
         $staffColumns[] = 'NULL';
-        $staffExpression = 'COALESCE('.implode(', ', $staffColumns).') as staff_id';
+        $staffExpression = $staffColumns === ['NULL'] ? 'NULL as creator_id' : 'COALESCE('.implode(', ', $staffColumns).') as creator_id';
 
         // Select the original qualifying invoice before applying the reporting window.
-        $firstInvoice = Invoice::where('organization_id', $organization)->whereNotNull($orderKey)
+        $invoices = Invoice::where('invoices.organization_id', $organization)
             ->whereNotIn('status', $excluded)->whereNotIn('payment_status', ['cancelled', 'void'])
-            ->whereHas('items', fn ($query) => $query->whereIn('source_type', $types))
-            ->selectRaw("MIN(id) as invoice_id, $orderKey as order_id")->groupBy($orderKey);
+            ->whereHas('items', fn ($query) => $query->whereIn('source_type', $types));
         if ($kind === 'rental') {
-            $firstInvoice->whereNull('sale_id')->whereDoesntHave('rentalRenewal');
+            $invoices->whereNull('sale_id')->whereDoesntHave('rentalRenewal');
         }
+        $linked = (clone $invoices)->whereNotNull($orderKey)->selectRaw("invoices.id as invoice_id, $orderKey as order_id")->toBase();
+        if ($kind === 'sale') {
+            $legacySales = DB::table('invoice_items')->where('source_type', 'sale')->whereNotNull('source_id')
+                ->selectRaw('invoice_id, MIN(source_id) as order_id')->groupBy('invoice_id')->havingRaw('COUNT(DISTINCT source_id) = 1');
+            $linked->unionAll((clone $invoices)->whereNull('sale_id')->whereNull('rental_id')
+                ->joinSub($legacySales, 'legacy_sale', 'legacy_sale.invoice_id', '=', 'invoices.id')
+                ->selectRaw('invoices.id as invoice_id, legacy_sale.order_id')->toBase());
+        }
+        $firstInvoice = DB::query()->fromSub($linked, 'linked')->selectRaw('MIN(invoice_id) as invoice_id, order_id')->groupBy('order_id');
         $lineTotals = DB::table('invoice_items')->whereIn('source_type', $types)
             ->selectRaw('invoice_id, SUM(taxable_amount) as eligible_amount')->groupBy('invoice_id');
+        $convertedQuotes = DB::table('quotations')->where('organization_id', $organization)
+            ->where('status', 'converted')->where('order_type', $kind)
+            ->selectRaw('MIN(id) as quote_id, order_id')->groupBy('order_id');
 
-        return DB::table('quotations as quote')->where('quote.organization_id', $organization)
-            ->where('quote.status', 'converted')->where('quote.order_type', $kind)
-            ->join('enquiries as enquiry', function ($join) {
+        return DB::table($orderTable.' as order_record')->where('order_record.organization_id', $organization)
+            ->when($orderId, fn ($query) => $query->where('order_record.id', $orderId))
+            ->leftJoinSub($convertedQuotes, 'conversion', 'conversion.order_id', '=', 'order_record.id')
+            ->leftJoin('quotations as quote', 'quote.id', '=', 'conversion.quote_id')
+            ->leftJoin('enquiries as enquiry', function ($join) {
                 $join->on('enquiry.id', '=', 'quote.enquiry_id')->on('enquiry.organization_id', '=', 'quote.organization_id');
-            })->join($orderTable.' as order_record', function ($join) {
-                $join->on('order_record.id', '=', 'quote.order_id')->on('order_record.organization_id', '=', 'quote.organization_id');
-            })->joinSub($firstInvoice, 'first_invoice', 'first_invoice.order_id', '=', 'quote.order_id')
+            })->leftJoin('order_incentive_attributions as attribution', function ($join) use ($kind) {
+                $join->on('attribution.order_id', '=', 'order_record.id')
+                    ->on('attribution.organization_id', '=', 'order_record.organization_id')->where('attribution.order_type', $kind);
+            })->joinSub($firstInvoice, 'first_invoice', 'first_invoice.order_id', '=', 'order_record.id')
             ->join('invoices as invoice', 'invoice.id', '=', 'first_invoice.invoice_id')
             ->joinSub($lineTotals, 'line_totals', 'line_totals.invoice_id', '=', 'invoice.id')
             ->where('invoice.invoice_date', '>=', $from)
@@ -109,13 +212,14 @@ class StaffIncentiveReportController extends Controller
                     ->where('referral.source_type', 'business_partner');
             })
             ->when($kind === 'rental', fn ($query) => $query->whereNotIn('order_record.status', $excluded))
-            ->when($kind === 'sale', fn ($query) => $query->whereNotIn('order_record.payment_status', $excluded))
-            ->orderBy('quote.id')
+            ->when($kind === 'sale', fn ($query) => $query->whereNull('order_record.rental_id')->whereNotIn('order_record.payment_status', $excluded))
+            ->orderBy('order_record.id')
             ->get([
-                'quote.order_type as kind', 'quote.order_id', 'quote.id as quotation_id',
+                'order_record.id as order_id', 'quote.id as quotation_id', 'enquiry.owner_id as enquiry_owner_id',
+                'quote.converted_by_user_id', 'attribution.id as attribution_id', 'attribution.sales_user_id as recorded_staff_id',
                 'invoice.id as invoice_id', 'invoice.invoice_number', 'invoice.invoice_date', 'line_totals.eligible_amount',
-                DB::raw('COALESCE(quote.conversion_source, enquiry.source) as source'),
+                DB::raw('COALESCE(attribution.source, quote.conversion_source, enquiry.source) as source'),
                 DB::raw($staffExpression),
-            ]);
+            ])->each(fn ($row) => $row->kind = $kind);
     }
 }

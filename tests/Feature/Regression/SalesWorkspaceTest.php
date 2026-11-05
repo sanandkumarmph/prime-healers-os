@@ -286,16 +286,18 @@ class SalesWorkspaceTest extends TestCase
         $this->post(route('enquiries.store'), $capture)->assertSessionHasErrors('source');
         $this->post(route('enquiries.store'), $capture + ['source' => 'unspecified marketing'])->assertSessionHasErrors('source');
 
+        $salesperson = TestData::user($this->owner->organization, ['name' => 'Assigned sales representative', 'role' => User::ROLE_SALES]);
         $saleQuote = $this->accepted('sale');
-        $saleQuote->enquiry->update(['source' => 'indiamart']);
+        $saleQuote->enquiry->update(['source' => 'indiamart', 'owner_id' => $salesperson->id]);
         $this->post(route('sales.store'), app(QuotationConversion::class)->prefill($saleQuote))
             ->assertSessionHasNoErrors();
         $this->assertSame('indiamart', $saleQuote->fresh()->conversion_source);
         $this->assertEquals($this->owner->id, $saleQuote->fresh()->converted_by_user_id);
-        $saleQuote->enquiry->update(['source' => 'website']);
+        $this->assertDatabaseHas('order_incentive_attributions', ['order_type' => 'sale', 'sales_user_id' => $salesperson->id, 'source' => 'indiamart']);
+        $saleQuote->enquiry->update(['source' => 'website', 'owner_id' => $this->owner->id]);
 
         $rentalQuote = $this->accepted();
-        $rentalQuote->enquiry->update(['source' => 'incoming_phone']);
+        $rentalQuote->enquiry->update(['source' => 'incoming_phone', 'owner_id' => $salesperson->id]);
         $this->post(route('rentals.store'), app(QuotationConversion::class)->prefill($rentalQuote) + ['delivery_assignment_type' => 'customer_pickup'])
             ->assertSessionHasNoErrors();
         $rentalInvoice = \App\Models\Invoice::where('rental_id', $rentalQuote->fresh()->order_id)->firstOrFail();
@@ -307,13 +309,38 @@ class SalesWorkspaceTest extends TestCase
 
         $route = route('reports.staff-incentives');
         $this->get($route)->assertOk()->assertViewHas('total', 400)
-            ->assertSee('IndiaMART')->assertSee('Incoming phone call')->assertDontSee('INELIGIBLE-DUPLICATE');
+            ->assertSee($salesperson->name)->assertSee('IndiaMART')->assertSee('Incoming phone call')->assertDontSee('INELIGIBLE-DUPLICATE');
         $this->get(route('reports.staff-incentives', ['source' => 'indiamart']))->assertOk()->assertViewHas('total', 200);
         $this->get(route('reports.staff-incentives', ['from' => '2026-10-25', 'to' => '2026-10-31']))
             ->assertOk()->assertViewHas('total', fn ($total) => (float) $total === 0.0);
         Sale::sole()->update(['referral_source_type' => 'business_partner']);
         $this->get($route)->assertOk()->assertViewHas('total', 200);
         $this->actingAs(TestData::user($this->owner->organization, ['role' => User::ROLE_SALES]))->get($route)->assertForbidden();
+    }
+
+    public function test_invoiced_order_without_quotation_requires_confirmed_source_and_salesperson(): void
+    {
+        $salesperson = TestData::user($this->owner->organization, ['name' => 'Direct booking salesperson', 'role' => User::ROLE_SALES]);
+        $quote = $this->accepted('sale');
+        $payload = app(QuotationConversion::class)->prefill($quote);
+        unset($payload['quotation_id'], $payload['quotation_version']);
+        $this->post(route('sales.store'), $payload)->assertSessionHasNoErrors();
+        $sale = Sale::sole();
+        $invoice = \App\Models\Invoice::sole();
+        $invoice->update(['sale_id' => null]);
+
+        $report = route('reports.staff-incentives');
+        $this->get($report)->assertOk()->assertViewHas('total', 0)
+            ->assertSee($salesperson->name)->assertSee('Confirm source and salesperson')->assertSee($invoice->invoice_number);
+        $assign = route('reports.staff-incentives.assign');
+        $review = ['kind' => 'sale', 'order' => $sale->id, 'from' => '2026-10-01', 'to' => '2026-10-24', 'source' => 'justdial'];
+        $this->post($assign, $review)->assertSessionHasErrors('staff');
+        $this->post($assign, $review + ['staff' => $this->owner->id])->assertSessionHasErrors('staff');
+        $this->post($assign, $review + ['staff' => $salesperson->id])->assertSessionHasNoErrors()->assertRedirect();
+        $this->get(route('reports.staff-incentives', ['staff' => $salesperson->id]))->assertOk()->assertViewHas('total', 200)
+            ->assertDontSee('Confirm source and salesperson');
+        $this->post($assign, $review + ['staff' => $salesperson->id])->assertConflict();
+        $this->actingAs($salesperson)->post($assign, $review + ['staff' => $salesperson->id])->assertForbidden();
     }
 
     public static function negotiatedRentalPrices(): array

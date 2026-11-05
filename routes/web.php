@@ -302,6 +302,8 @@ Route::middleware('auth')->group(function () {
         ->name('reports.vendor-collections');
     Route::get('/reports/staff-incentives', [\App\Http\Controllers\StaffIncentiveReportController::class, 'index'])
         ->name('reports.staff-incentives');
+    Route::post('/reports/staff-incentives/attribution', [\App\Http\Controllers\StaffIncentiveReportController::class, 'assign'])
+        ->name('reports.staff-incentives.assign');
     Route::get('/reports/vendor-orders/export/csv', [VendorOrderReportController::class, 'exportCsv'])
         ->middleware('permission:vendor_reports.export')
         ->name('vendor-orders.export.csv');
