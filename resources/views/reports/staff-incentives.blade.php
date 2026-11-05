@@ -14,6 +14,7 @@
             <div class="sw-field"><label for="source">Enquiry source</label><select id="source" name="source"><option value="">All eligible sources</option>@foreach(\App\Models\Enquiry::INCENTIVE_SOURCES as $key => $label)<option value="{{ $key }}" @selected($source === $key)>{{ $label }}</option>@endforeach</select></div>
         </div>
         <button class="sw-btn sw-primary">Apply filters</button>
+        <a class="sw-btn" href="{{ route('reports.staff-incentives', array_filter(['from' => $from, 'to' => $to, 'staff' => $staff, 'source' => $source, 'credit_kind' => $creditKind, 'download' => 'xlsx'])) }}">Download Excel</a>
     </form>
     @if($reviewOrders->total())
         <p><a class="sw-btn" href="#attribution">{{ $reviewOrders->total() }} invoiced {{ Str::plural('order', $reviewOrders->total()) }} awaiting source or salesperson</a></p>

@@ -285,10 +285,13 @@ class SalesWorkspaceTest extends TestCase
         $org = $this->owner->organization;
         $report = route('reports.staff-incentives');
         $assign = route('reports.staff-incentives.assign');
+        $download = route('reports.staff-incentives', ['download' => 'xlsx']);
         $opsAdmin = TestData::user($org, ['role_id' => $this->systemRole(User::ROLE_ADMIN_OPERATIONS)->id]);
         $legacyAdmin = TestData::user($org, ['role' => 'admin']);
         foreach ([$this->owner, $opsAdmin, $legacyAdmin] as $admin) {
             $this->actingAs($admin)->get($report)->assertOk()->assertSee('Staff incentive revenue');
+            $this->get($download)->assertOk()
+                ->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             $this->get(route('reports.index', ['tab' => 'staff']))->assertOk()->assertSee('View incentive revenue');
         }
         $this->actingAs($opsAdmin)->postJson($assign)->assertForbidden();
@@ -301,6 +304,7 @@ class SalesWorkspaceTest extends TestCase
         $custom = TestData::user($org, ['role_id' => $customRole->id]);
         foreach ([$sales, $finance, $custom] as $staff) {
             $this->actingAs($staff)->get($report)->assertForbidden();
+            $this->get($download)->assertForbidden();
             $this->postJson($assign)->assertForbidden();
         }
         foreach (['rentals.create', 'sales.create'] as $form) {
@@ -487,6 +491,24 @@ class SalesWorkspaceTest extends TestCase
             ->assertViewHas('staffTotals', fn ($totals) => $totals[$salesperson->id]['rentals_credited'] === 1)
             ->assertViewHas('reviewOrders', fn ($rows) => $rows->total() === 0)
             ->assertSee(route('rentals.show', $creditedRental), false);
+        $download = $this->get($report.'&download=xlsx')->assertOk()
+            ->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $path = tempnam(sys_get_temp_dir(), 'phos-incentives-test-');
+        try {
+            file_put_contents($path, $download->getContent());
+            $workbook = new \ZipArchive();
+            $this->assertTrue($workbook->open($path));
+            try {
+                $detail = $workbook->getFromName('xl/worksheets/sheet2.xml');
+                $this->assertStringContainsString('Rental #'.$creditedRental->id, $detail);
+                $this->assertStringNotContainsString('Rental #'.$adminRental->id.'</t>', $detail);
+                $this->assertStringContainsString('<c r="G2" t="n"><v>200</v></c>', $detail);
+            } finally {
+                $workbook->close();
+            }
+        } finally {
+            unlink($path);
+        }
         $this->get(route('rentals.index', ['salesperson_id' => $salesperson->id]))->assertOk()
             ->assertViewHas('rentals', fn ($rows) => $rows->total() === 1 && $rows->first()->id === $creditedRental->id);
         $this->get(route('invoices.index', ['salesperson_id' => $salesperson->id]))->assertOk()

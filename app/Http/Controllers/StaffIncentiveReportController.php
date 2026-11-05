@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\{Enquiry, Invoice, OrderIncentiveAttribution, User};
 use App\Services\Sales\{OrderIncentiveCredit, OrderStaffFilter};
 use App\Support\ActivityLogger;
+use App\Support\XlsxWorkbook;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -59,6 +60,7 @@ class StaffIncentiveReportController extends Controller
             'staff' => ['nullable', 'integer', Rule::exists('users', 'id')->where('organization_id', $organization)],
             'source' => ['nullable', Rule::in(array_keys(Enquiry::INCENTIVE_SOURCES))],
             'credit_kind' => ['nullable', Rule::in(['sale', 'rental'])],
+            'download' => ['nullable', Rule::in(['xlsx'])],
         ]);
         $from = $filters['from'] ?? today()->subYearNoOverflow()->addDay()->toDateString();
         $to = $filters['to'] ?? today()->toDateString();
@@ -111,6 +113,52 @@ class StaffIncentiveReportController extends Controller
         ]);
         $page = LengthAwarePaginator::resolveCurrentPage();
         $orderDetails = $creditKind ? $eligible->where('kind', $creditKind)->values() : $eligible;
+        if (($filters['download'] ?? null) === 'xlsx') {
+            $summary = $staffTotals->map(fn ($row, $id) => [
+                $staffNames[$id],
+                (int) $bookedSales->get($id, 0),
+                (int) $bookedRentals->get($id, 0),
+                (int) $pendingByStaff->get($id, 0),
+                $row['sales_credited'],
+                $row['rentals_credited'],
+                $row['sale_revenue'],
+                $row['rental_revenue'],
+                $row['revenue'],
+            ])->values();
+            $summary->push(['Total eligible credit', '', '', '', '', '', '', '', $eligible->sum('credit_paise') / 100]);
+            $detail = $orderDetails->map(fn ($row) => [
+                $row->invoice_date,
+                $staffNames[$row->staff_id],
+                Enquiry::INCENTIVE_SOURCES[$row->eligible_source],
+                ucfirst($row->kind).' #'.$row->order_id,
+                $row->invoice_number,
+                $row->credit_label,
+                $row->credit_paise / 100,
+            ]);
+            $content = app(XlsxWorkbook::class)->build([
+                'Staff summary' => $summary->prepend([
+                    'Staff', 'Sales booked', 'Rentals booked', 'Orders in review', 'Sales credited',
+                    'Rentals credited', 'Sale credit (INR)', 'Rental credit (INR)', 'Eligible total (INR)',
+                ])->all(),
+                'Order credits' => $detail->prepend([
+                    'Invoice date', 'Staff', 'Source', 'Order', 'Invoice', 'Share', 'Revenue credit (INR)',
+                ])->all(),
+                'Report filters' => [
+                    ['Filter', 'Value'],
+                    ['From', $from],
+                    ['Through', $to],
+                    ['Staff', $staff ? $users->get($staff)->name : 'All staff'],
+                    ['Credit source', Enquiry::INCENTIVE_SOURCES[$source] ?? 'All eligible sources'],
+                    ['Order credit details', $creditKind ? ucfirst($creditKind) : 'Sales and rentals'],
+                ],
+            ], 'PHOS Staff Incentives', numericCells: true);
+
+            return response($content, 200, [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Content-Disposition' => 'attachment; filename="staff-incentives-'.$from.'-to-'.$to.'.xlsx"',
+                'Cache-Control' => 'private, no-store',
+            ]);
+        }
         $orders = new LengthAwarePaginator($orderDetails->forPage($page, 25), $orderDetails->count(), 25, $page, [
             'path' => $request->url(), 'query' => $request->query(), 'fragment' => 'order-credits',
         ]);
