@@ -38,7 +38,7 @@ class QuotationSharingEnhancementTest extends TestCase
         $this->accessory = Product::create($base + ['name' => 'Nasal cannula', 'product_type' => 'sellable',
             'is_sellable' => true, 'is_rentable' => false, 'sale_price' => 100, 'price_per_day' => 0]);
         $this->post(route('enquiries.store'), ['name' => $this->customer->name, 'customer_id' => $this->customer->id,
-            'phone' => $this->customer->phone, 'subject' => 'Concentrator rental and accessories', 'owner_id' => $this->owner->id, 'intent' => 'rental'])->assertSessionHasNoErrors();
+            'phone' => $this->customer->phone, 'subject' => 'Concentrator rental and accessories', 'owner_id' => $this->owner->id, 'intent' => 'rental', 'source' => 'indiamart'])->assertSessionHasNoErrors();
         $this->enquiry = Enquiry::latest('id')->firstOrFail();
     }
 

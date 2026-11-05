@@ -1062,6 +1062,13 @@ class InvoiceController extends Controller
             return redirect()->route('invoices.show', $invoice->id)->with('success', 'Invoice is already settled.');
         }
 
+        $collector = app(\App\Services\Deliveries\VendorCollectionAttribution::class);
+        $order = $collector->invoiceOrder($invoice);
+        if ($order && $collector->forOrder($order)) {
+            $route = $invoice->sale_id ? 'sales.show' : 'rentals.show';
+            return redirect()->route($route, $order)->with('error', 'Use Record Payment to choose who collected the payment for this vendor delivery.');
+        }
+
         if (!$invoice->linkedRentalId() && !$this->paymentsRentalIdIsNullable()) {
             return redirect()
                 ->route('invoices.show', $invoice->id)

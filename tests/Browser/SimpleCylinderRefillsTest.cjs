@@ -6,7 +6,15 @@ test('refill popup stays on rental, needs no serial, and delivery tasks show no 
  const server=http.createServer((req,res)=>{
   const url=new URL(req.url,origin);
   if(req.method==='POST'){
-   let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{posts.push({path:url.pathname,body});res.writeHead(200,{'Content-Type':'application/json'}).end(JSON.stringify({html:text('booked-fragment.html')}));});return;
+   let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
+    posts.push({path:url.pathname,body});
+    const action=body.match(/name="action"\r\n\r\n([^\r]+)/)?.[1];
+    const fragment=url.pathname.endsWith('/progress')?({'deliver':'delivered','collect_empty':'picked-up'}[action]):'booked';
+    if(!fragment || !(/^\/cylinder-refills\/\d+\/progress$|^\/rentals\/\d+\/cylinder-refills$/).test(url.pathname)){
+     res.writeHead(404,{'Content-Type':'application/json'}).end(JSON.stringify({message:'Unexpected form address'}));return;
+    }
+    res.writeHead(200,{'Content-Type':'application/json'}).end(JSON.stringify({html:text(fragment+'-fragment.html')}));
+   });return;
   }
   if(/^\/rentals\/\d+\/cylinder-refills$/.test(url.pathname)){res.writeHead(200,{'Content-Type':'application/json'}).end(JSON.stringify({html:text('popup-fragment.html')}));return;}
   if(/^\/rentals\/\d+$/.test(url.pathname)){res.writeHead(200,{'Content-Type':'text/html'}).end(text('rental.html'));return;}
@@ -50,7 +58,16 @@ test('refill popup stays on rental, needs no serial, and delivery tasks show no 
    await page.$eval('.cr-book .cr-primary',el=>el.click());await page.waitForSelector('[data-cylinder-refill-dialog] .cr-card');
    assert.equal(new URL(page.url()).pathname,'/rentals/1');
    assert.match(await page.$eval('[data-cylinder-refill-body]',el=>el.textContent),/1 empty cylinder\(s\) still need to be received back/);
-   assert.equal(posts.length,[320,390,768,1440].indexOf(width)+1);
+   assert.equal(posts.filter(post=>post.path.endsWith('/cylinder-refills')).length,[320,390,768,1440].indexOf(width)+1);
+   if(width===390){
+    for(const action of ['deliver','collect_empty']){
+     const selector=`[data-cylinder-refill-body] form:has(input[name="action"][value="${action}"])`;
+     const saved=page.waitForResponse(response=>response.url().endsWith('/progress')&&response.request().method()==='POST'&&response.ok(),{timeout:5000});
+     await page.$eval(selector+' button[type=submit]',button=>button.click());await saved;
+     await page.waitForFunction(selector=>!document.querySelector(selector),{},selector);
+    }
+    assert.match(await page.$eval('[data-cylinder-refill-body] .cr-progress',element=>element.textContent),/Refill delivered\s*1\/1.*Empty picked up\s*1\/1/s);
+   }
    await page.click('[data-close-cylinder-refill]');assert.equal(await page.$eval('[data-cylinder-refill-dialog]',el=>el.open),false);
    await page.goto(origin+'/test-tasks',{waitUntil:'networkidle0'});
    assert.equal(await page.$('[name=refill_charge]'),null);assert.equal(await page.$('[name=warehouse_id]'),null);
@@ -58,6 +75,7 @@ test('refill popup stays on rental, needs no serial, and delivery tasks show no 
    assert.match(await page.$eval('[data-cylinder-task-content]',el=>el.textContent),/Empty cylinder picked up/);
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`task overflow at ${width}`);
   }
-  assert.deepEqual(errors,[]);for(const [index,post] of posts.entries()){assert.ok(post.path.endsWith('/cylinder-refills'));assert.match(post.body,/name="refill_charge"\r\n\r\n600/);assert.match(post.body,new RegExp('name="assignment_type"\\r\\n\\r\\n'+['delivery_team','third_party','vendor','delivery_team'][index]));if(index===1)assert.match(post.body,/Phone test transporter/);else assert.doesNotMatch(post.body,/name="third_party_name"/);}
+  assert.deepEqual(errors,[]);for(const [index,post] of posts.filter(post=>post.path.endsWith('/cylinder-refills')).entries()){assert.match(post.body,/name="refill_charge"\r\n\r\n600/);assert.match(post.body,new RegExp('name="assignment_type"\\r\\n\\r\\n'+['delivery_team','third_party','vendor','delivery_team'][index]));if(index===1)assert.match(post.body,/Phone test transporter/);else assert.doesNotMatch(post.body,/name="third_party_name"/);}
+  assert.equal(posts.filter(post=>post.path.endsWith('/progress')).length,2);
  }finally{if(browser)await browser.close();await new Promise(r=>server.close(r));}
 });

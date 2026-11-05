@@ -7,6 +7,7 @@
     $canDeleteSales = $currentUser?->canAccessModule('sales', 'delete') ?? false;
     $canDeletePayments = $currentUser?->canAccessModule('payments', 'delete') ?? false;
     $canCreatePayments = $currentUser?->canAccessModule('payments', 'create') ?? false;
+    $paymentVendor = $canCreatePayments ? app(\App\Services\Deliveries\VendorCollectionAttribution::class)->forOrder($sale) : null;
     $canCreateDeliveries = $currentUser?->canAccessModule('deliveries', 'create') ?? false;
     $canUpdateDeliveries = $currentUser?->canAccessModule('deliveries', 'update') ?? false;
     $hasSaleDeliverySupport = \Illuminate\Support\Facades\Schema::hasColumn('deliveries', 'sale_id');
@@ -279,7 +280,11 @@
 
 
     if ($canCreatePayments && !in_array($saleInvoiceStatus, ['paid', 'cancelled'], true)) {
-        $mobilePrimaryActions->push([
+        $mobilePrimaryActions->push($paymentVendor ? [
+            'type' => 'link',
+            'label' => 'Payment',
+            'href' => '#sale-mobile-payment',
+        ] : [
             'type' => 'form',
             'label' => 'Paid',
             'action' => route('sales.markPaid', $sale),
@@ -1568,13 +1573,16 @@
                     <form action="{{ route('sales.invoice', $sale) }}" method="POST">@csrf<button type="submit" class="sale-mobile-primary-btn" style="width:100%;">Generate Invoice</button></form>
                 @endif
                 @if($canCreatePayments && !in_array($saleInvoiceStatus, ['paid', 'cancelled'], true))
-                    <form action="{{ route('sales.recordPayment', $sale) }}" method="POST" class="sale-mobile-payment-form">
+                    <form action="{{ route('sales.recordPayment', $sale) }}" method="POST" class="sale-mobile-payment-form" id="sale-mobile-payment">
                         @csrf
                     <x-payment-submission-token />
                         <input type="date" name="payment_date" value="{{ old('payment_date', now()->toDateString()) }}">
                         <input type="number" step="0.01" min="0.01" name="amount" value="{{ old('amount', $saleInvoiceDue > 0 ? number_format($saleInvoiceDue, 2, '.', '') : '') }}" placeholder="Amount">
                         <input type="text" name="payment_method" value="{{ old('payment_method', 'other') }}" placeholder="cash / upi / bank">
                         <input type="text" name="notes" value="{{ old('notes') }}" placeholder="Payment note">
+                        @if($paymentVendor)
+                            @include('deliveries.collection-recipient', ['collectionVendor' => $paymentVendor, 'required' => true])
+                        @endif
                         <button type="submit" class="sale-mobile-primary-btn">Record Payment</button>
                     </form>
                 @endif
@@ -1926,11 +1934,13 @@
                     </form>
                 @endif
                 @if($canCreatePayments && !in_array($saleInvoiceStatus, ['paid', 'cancelled'], true))
+                    @unless($paymentVendor)
                     <form action="{{ route('sales.markPaid', $sale) }}" method="POST" style="margin:0;">
                         @csrf
                     <x-payment-submission-token />
                         <button type="submit" class="ops-btn">Mark as Paid</button>
                     </form>
+                    @endunless
                 @endif
             </div>
             @if($canCreatePayments && !in_array($saleInvoiceStatus, ['paid', 'cancelled'], true))
@@ -1954,7 +1964,10 @@
                         <input type="text" name="notes" value="{{ old('notes') }}" placeholder="Partial payment note" style="width:100%; min-height:38px; border:1px solid #cbd5e1; border-radius:10px; padding:8px 10px; font-size:13px;">
                     </div>
                     <div style="grid-column:1 / -1; display:flex; justify-content:flex-end;">
-                        <button type="submit" class="ops-btn-light">Record Partial Payment</button>
+                        @if($paymentVendor)
+                            @include('deliveries.collection-recipient', ['collectionVendor' => $paymentVendor, 'required' => true])
+                        @endif
+                        <button type="submit" class="ops-btn-light">{{ $paymentVendor ? 'Record Payment' : 'Record Partial Payment' }}</button>
                     </div>
                 </form>
             @endif

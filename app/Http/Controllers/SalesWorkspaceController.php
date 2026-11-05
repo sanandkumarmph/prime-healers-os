@@ -57,7 +57,8 @@ class SalesWorkspaceController extends Controller
         $data = $request->validate(['name' => 'required|string|max:255', 'subject' => 'required|string|max:255',
             'phone' => 'nullable|string|max:40', 'email' => 'nullable|email|max:255', 'requirements' => 'nullable|string|max:5000',
             'intent' => 'nullable|in:rental,sale',
-            'source' => 'nullable|string|max:80', 'owner_id' => ['required', 'integer', Rule::in($this->workspace->owners()->pluck('id')->all())],
+            'source' => ['required', 'string', Rule::in(array_keys(Enquiry::SOURCES))],
+            'owner_id' => ['required', 'integer', Rule::in($this->workspace->owners()->pluck('id')->all())],
             'customer_id' => ['nullable', 'integer', Rule::exists('customers', 'id')->where('organization_id', $org)]]);
         if ($request->user()->scopeType('enquiries') !== 'all' && (int) $data['owner_id'] !== $request->user()->id) abort(403);
         return $data;

@@ -298,6 +298,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/reports/vendor-orders', [VendorOrderReportController::class, 'index'])
         ->middleware('permission:vendor_reports.view')
         ->name('vendor-orders.index');
+    Route::get('/reports/vendor-collections', [\App\Http\Controllers\VendorCollectionReportController::class, 'index'])
+        ->name('reports.vendor-collections');
+    Route::get('/reports/staff-incentives', [\App\Http\Controllers\StaffIncentiveReportController::class, 'index'])
+        ->name('reports.staff-incentives');
     Route::get('/reports/vendor-orders/export/csv', [VendorOrderReportController::class, 'exportCsv'])
         ->middleware('permission:vendor_reports.export')
         ->name('vendor-orders.export.csv');

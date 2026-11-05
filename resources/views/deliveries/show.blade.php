@@ -151,6 +151,7 @@
         'location_latitude',
         'location_longitude',
         'collection_amount_collected',
+        'collection_recipient',
         'collection_payment_mode',
         'collection_payment_proof',
         'collection_transaction_reference',
@@ -163,6 +164,7 @@
     $selectedCancellationReason = old('cancellation_reason', $delivery->cancellation_reason);
     $selectedCancellationNotes = old('cancellation_notes', $delivery->cancellation_notes);
     $supportsCollectionStep = (bool) ($delivery->collection_required ?? false);
+    $collectionVendor = $supportsCollectionStep ? app(\App\Services\Deliveries\VendorCollectionAttribution::class)->vendor($delivery) : null;
     $collectionAmountToCollect = (float) ($delivery->collection_amount_to_collect ?? 0);
     $collectionModes = [
         'cash' => 'Cash',
@@ -227,7 +229,7 @@
             break;
         }
     }
-    if ($supportsCollectionStep && collect(['collection_amount_collected', 'collection_payment_mode', 'collection_payment_proof', 'collection_transaction_reference', 'collection_note', 'collection_not_collected_reason'])->contains(fn ($field) => $errors->has($field))) {
+    if ($supportsCollectionStep && collect(['collection_amount_collected', 'collection_recipient', 'collection_payment_mode', 'collection_payment_proof', 'collection_transaction_reference', 'collection_note', 'collection_not_collected_reason'])->contains(fn ($field) => $errors->has($field))) {
         $initialCompletionStep = $delivery->type === 'pickup' ? 6 : 5;
     }
     if ($errors->has('completion_confirmed')) {
@@ -2712,7 +2714,9 @@
 
 <div class="delivery-detail">
     @if($delivery->collection_required && ((int)$delivery->assigned_user_id === (int)auth()->id() || app(\App\Services\Deliveries\DeliveryCollectionService::class)->canReceive(auth()->user())))
-    <div class="detail-card"><strong>Collections & cash accountability</strong><p>Use the collection ledger to record a customer receipt and submit cash handovers. Existing completion reports remain in task history.</p><a class="detail-btn" href="{{ route('delivery-collections.show',$delivery) }}">Open collection ledger</a></div>
+    <div class="detail-card"><strong>Collections & cash accountability</strong><p>Use the collection ledger to record a customer receipt and submit cash handovers. Existing completion reports remain in task history.</p>
+        @if($delivery->collection_vendor_name)<p>Vendor reported as collector · {{ $delivery->collection_vendor_name }}</p>@endif
+        <a class="detail-btn" href="{{ route('delivery-collections.show',$delivery) }}">Open collection ledger</a></div>
     @endif
     <div class="delivery-mobile-titlebar is-{{ $mobileTaskTone }}" aria-label="{{ ucfirst($delivery->type) }} task header">
         <a href="{{ route('deliveries.index') }}" aria-label="Back to deliveries">
@@ -3595,6 +3599,9 @@
                                     <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
                                 @enderror
                             </div>
+                            @if($collectionVendor)
+                                <div class="workflow-proof-field">@include('deliveries.collection-recipient')</div>
+                            @endif
                             <div class="workflow-proof-field">
                                 <label for="collection_payment_mode">Payment mode</label>
                                 <select id="collection_payment_mode" name="collection_payment_mode" style="width:100%; border:1px solid #cbd5e1; border-radius:12px; padding:10px 12px; font-size:13px; color:#0f172a; background:#fff;">
@@ -4670,7 +4677,9 @@ document.addEventListener('DOMContentLoaded', () => {
         })();
         const collectionReason = form.querySelector('select[name="collection_not_collected_reason"]')?.value || '';
         const collectionMode = form.querySelector('select[name="collection_payment_mode"]')?.value || '';
-        const collectionReady = !collectionRequired || ((hasCollectedAmount && collectionMode !== '') || (!hasCollectedAmount && collectionReason !== ''));
+        const collectionRecipient = form.querySelector('select[name="collection_recipient"]');
+        const recipientReady = !collectionRecipient || collectionRecipient.value !== '';
+        const collectionReady = !collectionRequired || ((hasCollectedAmount && collectionMode !== '' && recipientReady) || (!hasCollectedAmount && collectionReason !== ''));
         const consentReady = Boolean(form.querySelector('input[name="completion_confirmed"]')?.checked);
 
         return {
@@ -4786,7 +4795,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (state.collectionRequired && ((workflowType === 'pickup' && currentStep === 6) || (workflowType === 'delivery' && currentStep === 5)) && !state.collectionReady) {
-            form.querySelector('input[name="collection_amount_collected"]')?.focus();
+            const recipient = form.querySelector('select[name="collection_recipient"]');
+            const amount = form.querySelector('input[name="collection_amount_collected"]');
+            (recipient && !recipient.value && Number(amount?.value) > 0 ? recipient : amount)?.focus();
             return false;
         }
 

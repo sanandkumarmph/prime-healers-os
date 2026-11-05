@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\Rental;
 use App\Models\Sale;
+use App\Services\Deliveries\VendorCollectionAttribution;
 use App\Services\Finance\InvoiceLinkResolver;
 use App\Services\Finance\PaymentSyncService;
 use App\Services\NotificationCenterService;
@@ -123,6 +124,7 @@ class PaymentController extends Controller
             'amount' => 'required|numeric|min:0.01',
             'payment_method' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
+            'collection_recipient' => 'nullable|in:company,vendor',
         ]);
     }
 
@@ -163,6 +165,8 @@ class PaymentController extends Controller
         $this->authorize('createForRental', [Payment::class, $rental]);
 
         $validated = $this->validatePayment($request);
+        $attribution = app(VendorCollectionAttribution::class)->forOrderPayment($rental, $validated['collection_recipient'] ?? null);
+        $validated = array_replace($validated, $attribution);
         $invoice = $this->rentalInvoice($rental);
         $amount = (float) $validated['amount'];
 
@@ -188,7 +192,7 @@ class PaymentController extends Controller
                 'amount' => $amount,
                 'payment_method' => Payment::normalizeMethod($validated['payment_method'] ?? null),
                 'notes' => $validated['notes'] ?? null,
-            ]);
+            ] + $attribution);
 
         if ($invoice) {
             $invoice->refresh();
@@ -217,6 +221,9 @@ class PaymentController extends Controller
         $this->authorize('createForInvoice', [Payment::class, $invoice]);
 
         $validated = $this->validatePayment($request);
+        $collector = app(VendorCollectionAttribution::class);
+        $validated = array_replace($validated, $collector
+            ->forOrderPayment($collector->invoiceOrder($invoice), $validated['collection_recipient'] ?? null));
         $payment = app(PaymentSyncService::class)->createInvoicePayment(
             $this->orgId(),
             $invoice,

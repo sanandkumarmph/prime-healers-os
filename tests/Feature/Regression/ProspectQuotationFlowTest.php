@@ -28,7 +28,7 @@ class ProspectQuotationFlowTest extends TestCase
     private function enquiry(): Enquiry
     {
         $this->post(route('enquiries.store'),['name'=>'Synthetic prospect','phone'=>'+919876543210','email'=>'prospect@example.test',
-            'subject'=>'Oxygen concentrator for a week','requirements'=>'Call before preparing quotation','source'=>'Phone','owner_id'=>$this->owner->id,'next'=>'quotation'])
+            'subject'=>'Oxygen concentrator for a week','requirements'=>'Call before preparing quotation','source'=>'incoming_phone','owner_id'=>$this->owner->id,'next'=>'quotation'])
             ->assertSessionHasNoErrors()->assertRedirect(route('enquiries.show',1));
         return Enquiry::sole();
     }

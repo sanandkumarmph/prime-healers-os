@@ -145,8 +145,10 @@ class QuotationConversion
         $quote = $request->attributes->get('conversion_quote');
         if (!$quote) return;
         if (!$request->attributes->get('conversion_lines_checked')) throw new \LogicException('Quotation lines were not checked.');
-        $quote->update(['status' => 'converted', 'order_type' => $quote->kind, 'order_id' => $order->id, 'lock_version' => $quote->lock_version + 1]);
         $e = $quote->enquiry;
+        $quote->update(['status' => 'converted', 'order_type' => $quote->kind, 'order_id' => $order->id,
+            'conversion_source' => $e->source ?: '', 'converted_by_user_id' => $request->user()->id,
+            'lock_version' => $quote->lock_version + 1]);
         $e->update(['stage' => 'won', 'customer_id' => $order->customer_id, 'lock_version' => $e->lock_version + 1]);
         $e->followUps()->whereNull('completed_at')->update(['completed_at' => now(), 'outcome' => 'cancelled', 'completion_note' => 'Order created from accepted quotation.']);
         $this->workspace->event($e, 'quotation.converted', $quote->number().' converted to '.$quote->kind.' #'.$order->id.'.');

@@ -37,7 +37,8 @@ class DeliveryCollectionController extends Controller
         $canRecord = $request->user()->can('update', $task) && $task->collection_required && in_array($task->status, ['in_progress','completed'], true);
         $reported = $entries->whereNotIn('status',['rejected','reversed'])->sum('amount');
         $available = max(0, min((float) $task->collection_amount_to_collect - $reported, (float) $invoice->balance_amount));
-        return response()->view('deliveries.collections', compact('task','version','entries','proofs','canReceive','canRecord','available'))
+        $collectionVendor = app(\App\Services\Deliveries\VendorCollectionAttribution::class)->vendor($task);
+        return response()->view('deliveries.collections', compact('task','version','entries','proofs','canReceive','canRecord','available','collectionVendor'))
             ->header('Cache-Control', 'private, no-store');
     }
 
@@ -64,6 +65,7 @@ class DeliveryCollectionController extends Controller
         abort_unless($service->canViewCash($request->user()), 403);
         $canReceive = $service->canReceive($request->user());
         $entries = DeliveryCollection::where('organization_id', $request->user()->organization_id)->where('method','cash')
+            ->where(fn ($query) => $query->whereNull('collection_recipient')->orWhere('collection_recipient', 'company'))
             ->when(!$canReceive, fn ($q) => $q->where('collector_user_id', $request->user()->id))
             ->with(['collector','handovers.receiver'])->latest('id')->paginate(25);
         return response()->view('deliveries.cash', compact('entries','canReceive'))->header('Cache-Control','private, no-store');

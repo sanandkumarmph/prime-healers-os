@@ -72,6 +72,38 @@ class PhosCashWorkflowTest extends TestCase
         $this->assertDatabaseCount('payments',1);
     }
 
+    public function test_vendor_receipts_are_attributed_once_and_excluded_from_employee_cash_handover(): void
+    {
+        $vendor = \App\Models\Vendor::create(['organization_id' => $this->task->organization_id, 'name' => 'Synthetic Collection Vendor', 'is_active' => true]);
+        \App\Models\VendorOrderDetail::create([
+            'organization_id' => $this->task->organization_id, 'vendor_id' => $vendor->id, 'rental_id' => $this->task->rental_id,
+            'order_type' => 'rental', 'fulfilment_source' => 'vendor_supplied', 'delivery_responsibility' => 'vendor_delivery',
+        ]);
+        $this->task->update(['assignment_type' => 'vendor', 'assigned_user_id' => null, 'status' => 'completed', 'completed_at' => now()]);
+        $this->actingAs($this->admin);
+        $this->get(route('delivery-collections.show', $this->task))->assertOk()->assertSee('Synthetic Collection Vendor');
+        $this->post(route('delivery-collections.store', $this->task), $this->payload())->assertSessionHasErrors('collection_recipient');
+        $payload = $this->payload(['collection_recipient' => 'vendor']);
+        $this->post(route('delivery-collections.store', $this->task), $payload)->assertSessionHasNoErrors();
+        $this->post(route('delivery-collections.store', $this->task), $payload)->assertSessionHasNoErrors();
+        $entry = DeliveryCollection::sole();
+        $this->assertSame('vendor:'.$vendor->id, $entry->collection_vendor_key);
+        $this->assertEquals(150, $this->invoice->fresh()->paid_amount);
+        $this->assertDatabaseCount('payments', 1);
+        $this->assertSame(0, $entry->cashAmounts()['available']);
+        $this->get(route('cash-handovers.index'))->assertOk()->assertDontSee('Collection #'.$entry->id);
+
+        $this->task->forceFill(['collection_amount_collected' => 150, 'collection_recipient' => 'vendor',
+            'collection_vendor_key' => $entry->collection_vendor_key, 'collection_vendor_name' => $entry->collection_vendor_name])->save();
+        $report = route('reports.vendor-collections');
+        $this->get($report)->assertOk()->assertSee('Synthetic Collection Vendor')
+            ->assertViewHas('postedTotals', fn ($rows) => (float) $rows->sum('amount') === 150.0)
+            ->assertViewHas('reportedTotals', fn ($rows) => (float) $rows->sum('amount') === 150.0);
+        $this->post(route('delivery-collections.reverse', $entry), ['reason' => 'Synthetic correction', 'confirmed' => 1])->assertSessionHasNoErrors();
+        $this->get($report)->assertOk()->assertViewHas('postedTotals', fn ($rows) => $rows->isEmpty());
+        $this->actingAs($this->collector)->get($report)->assertForbidden();
+    }
+
     public function test_authorisation_invoice_balance_and_stale_state_block_excess_or_uncertain_receipts(): void
     {
         $this->post(route('delivery-collections.store',$this->task),$this->payload(['amount'=>251]))->assertSessionHasErrors('collection');

@@ -29,7 +29,7 @@ class GuidedSalesWorkspaceTest extends TestCase
 
     private function enquiry(array $extra=[]): Enquiry
     {
-        $this->post(route('enquiries.store'), $extra + ['name'=>'Asha Rao', 'phone'=>'9876543210', 'email'=>'asha@example.test', 'subject'=>'Bed for recovery', 'owner_id'=>$this->owner->id, 'intent'=>'rental'])->assertSessionHasNoErrors();
+        $this->post(route('enquiries.store'), $extra + ['name'=>'Asha Rao', 'phone'=>'9876543210', 'email'=>'asha@example.test', 'subject'=>'Bed for recovery', 'owner_id'=>$this->owner->id, 'intent'=>'rental', 'source'=>'incoming_phone'])->assertSessionHasNoErrors();
         return Enquiry::latest('id')->firstOrFail();
     }
 
@@ -67,7 +67,7 @@ class GuidedSalesWorkspaceTest extends TestCase
     {
         $role=Role::create(['organization_id'=>$this->owner->organization_id,'name'=>'Capture only','slug'=>'capture_only','scope_type'=>'all','is_active'=>true,'permissions'=>['enquiries'=>['read','create','update']]]);
         $user=TestData::user($this->owner->organization,['role_id'=>$role->id]);
-        $this->actingAs($user)->post(route('enquiries.store'),['name'=>'Test','subject'=>'Test','owner_id'=>$user->id,'next'=>'quotation'])->assertRedirect(route('enquiries.show',1));
+        $this->actingAs($user)->post(route('enquiries.store'),['name'=>'Test','subject'=>'Test','owner_id'=>$user->id,'source'=>'justdial','next'=>'quotation'])->assertRedirect(route('enquiries.show',1));
         $this->get(route('quotations.create',1))->assertForbidden();
         $this->assertDatabaseCount('enquiries',1); $this->assertDatabaseCount('quotations',0);
     }

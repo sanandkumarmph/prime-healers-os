@@ -13,6 +13,7 @@
     $canUpdateDeliveries = auth()->user()?->canAccessModule('deliveries', 'update') ?? false;
     $canDeleteDeliveries = auth()->user()?->canAccessModule('deliveries', 'delete') ?? false;
     $canCreatePayments = auth()->user()?->canAccessModule('payments', 'create') ?? false;
+    $paymentVendor = $canCreatePayments ? app(\App\Services\Deliveries\VendorCollectionAttribution::class)->forOrder($rental) : null;
     $renewalValidationFailed = $errors->any() && old('_rental_form') === 'renewal';
     $operationalStatus = $rental->operationalStatus();
     $isHotlisted = $rental->shouldHotlist();
@@ -446,16 +447,18 @@
 
 
     if ($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true)) {
-        $pushMoreAction([
-            'type' => 'form',
-            'label' => 'Mark as Paid',
-            'action' => route('rentals.markPaid', $rental),
-            'payment_submission' => true,
-            'method' => 'POST',
-        ]);
+        if (!$paymentVendor) {
+            $pushMoreAction([
+                'type' => 'form',
+                'label' => 'Mark as Paid',
+                'action' => route('rentals.markPaid', $rental),
+                'payment_submission' => true,
+                'method' => 'POST',
+            ]);
+        }
         $pushMoreAction([
             'type' => 'link',
-            'label' => 'Partial Payment',
+            'label' => $paymentVendor ? 'Record Payment' : 'Partial Payment',
             'href' => '#rental-billing-actions',
         ]);
     }
@@ -4027,6 +4030,9 @@
                                 <label>Amount<input type="number" step="0.01" min="0.01" name="amount" value="{{ old('amount', $rentalInvoiceDue > 0 ? number_format($rentalInvoiceDue, 2, '.', '') : '') }}"></label>
                                 <label>Method<input type="text" name="payment_method" value="{{ old('payment_method', 'other') }}" placeholder="cash / upi / bank"></label>
                                 <label>Note<input type="text" name="notes" value="{{ old('notes') }}" placeholder="Payment note"></label>
+                                @if($paymentVendor)
+                                    @include('deliveries.collection-recipient', ['collectionVendor' => $paymentVendor, 'required' => true])
+                                @endif
                                 <button type="submit" class="detail-btn">Record Payment</button>
                             </form>
                         @endif
@@ -4481,6 +4487,9 @@
                                     <label>Amount<input type="number" step="0.01" min="0.01" name="amount" value="{{ old('amount', $rentalInvoiceDue > 0 ? number_format($rentalInvoiceDue, 2, '.', '') : '') }}"></label>
                                     <label>Method<input type="text" name="payment_method" value="{{ old('payment_method', 'other') }}" placeholder="cash / upi / bank"></label>
                                     <label>Note<input type="text" name="notes" value="{{ old('notes') }}" placeholder="Payment note"></label>
+                                    @if($paymentVendor)
+                                        @include('deliveries.collection-recipient', ['collectionVendor' => $paymentVendor, 'required' => true])
+                                    @endif
                                     <button type="submit" class="detail-btn">Record</button>
                                 </form>
                             </div>
@@ -4902,12 +4911,14 @@
                         <a href="tel:{{ preg_replace('/\D+/', '', $rental->reminderContactPhone()) }}">Call Customer</a>
                     @endif
                     @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
+                        @unless($paymentVendor)
                         <form action="{{ route('rentals.markPaid', $rental) }}" method="POST" style="margin:0;">
                             @csrf
                     <x-payment-submission-token />
                             <button type="submit">Mark as Paid</button>
                         </form>
-                        <a href="#rental-billing-actions">Partial Payment</a>
+                        @endunless
+                        <a href="#rental-billing-actions">{{ $paymentVendor ? 'Record Payment' : 'Partial Payment' }}</a>
                     @endif
                     @if($deliveryRecord && $hasOpenDeliveryTask && auth()->user()?->canAccessModule('deliveries', 'update'))
                         <a href="{{ route('deliveries.edit', $deliveryRecord) }}">Edit Delivery Assignment</a>

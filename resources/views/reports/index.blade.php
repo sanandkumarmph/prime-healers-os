@@ -397,6 +397,9 @@
         </section>
 
         <section class="reports-tab-content staff-tab">
+            @if(auth()->user()->canViewFinance('finance.view_revenue'))
+                <div class="mini-card"><div class="mini-head"><div><h2>Staff incentive revenue</h2><p>See eligible invoiced sales and rentals by staff member and enquiry source.</p></div><a class="reports-btn" href="{{ route('reports.staff-incentives') }}">View incentive revenue</a></div></div>
+            @endif
             <div class="reports-grid-2">
                 <div class="mini-card"><div class="mini-head"><div><h2>Sales Staff</h2><p>Orders created, revenue generated, collections supported, and follow-ups completed.</p></div></div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Staff</th><th>Orders</th><th>Revenue</th><th>Collections</th><th>Follow-ups</th></tr></thead><tbody>@forelse(collect($staff['sales_staff'] ?? []) as $row)<tr><td>{{ $row->label }}</td><td>{{ $number($row->orders_created) }}</td><td>{{ $currency($row->revenue_generated) }}</td><td>{{ $number($row->collections_supported) }}</td><td>{{ $number($row->followups_completed) }}</td></tr>@empty<tr><td colspan="5"><div class="empty">No sales staff activity under current filters.</div></td></tr>@endforelse</tbody></table></div></div>
                 <div class="mini-card"><div class="mini-head"><div><h2>Delivery Staff</h2><p>Assigned deliveries, completions, delays, and pickups completed.</p></div></div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Staff</th><th>Assigned</th><th>Completed</th><th>Delayed</th><th>Pickups</th></tr></thead><tbody>@forelse(collect($staff['delivery_staff'] ?? []) as $row)<tr><td>{{ $row->label }}</td><td>{{ $number($row->assigned_deliveries) }}</td><td>{{ $number($row->completed_deliveries) }}</td><td>{{ $number($row->delayed_deliveries) }}</td><td>{{ $number($row->pickups_completed) }}</td></tr>@empty<tr><td colspan="5"><div class="empty">No delivery staff activity under current filters.</div></td></tr>@endforelse</tbody></table></div></div>
@@ -404,6 +407,9 @@
         </section>
 
         <section class="reports-tab-content vendors-tab">
+            @if(auth()->user()->hasPermission('vendor_reports.view'))
+                <div class="mini-card"><div class="mini-head"><div><h2>Vendor-collected payments</h2><p>Review receipts and delivery collection reports by vendor.</p></div><a class="reports-btn" href="{{ route('reports.vendor-collections') }}">View collections</a></div></div>
+            @endif
             <div class="mini-card">
                 <div class="mini-head"><div><h2>Vendor Performance Summary</h2><p>Financial view of vendor-supplied rental and sales business.</p></div><a class="reports-btn" href="{{ route('vendor-orders.index') }}">View Details</a></div>
             </div>

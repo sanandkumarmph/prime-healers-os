@@ -39,7 +39,7 @@ class SalesWorkspaceTest extends TestCase
     private function enquiry(array $extra = []): Enquiry
     {
         $this->post(route('enquiries.store'), array_replace(['name' => 'Asha Rao', 'subject' => 'Bed rental for recovery', 'owner_id' => $this->owner->id,
-            'phone' => '9876543210', 'customer_id' => $this->customer->id, 'source' => 'Referral', 'requirements' => 'Internal: ask about access to the building.'], $extra))->assertSessionHasNoErrors()->assertRedirect();
+            'phone' => '9876543210', 'customer_id' => $this->customer->id, 'source' => 'referral', 'requirements' => 'Internal: ask about access to the building.'], $extra))->assertSessionHasNoErrors()->assertRedirect();
         return Enquiry::latest('id')->firstOrFail();
     }
 
@@ -278,6 +278,42 @@ class SalesWorkspaceTest extends TestCase
         $this->delete(route('rentals.destroy', $rental))->assertSessionHas('error');
         $this->assertDatabaseHas('rentals', ['id'=>$rental->id]);
         $this->post(route('rentals.store'), $payload)->assertRedirect(route('rentals.show', $rental)); $this->assertDatabaseCount('rentals', 1);
+    }
+
+    public function test_incentive_report_requires_known_sources_and_counts_only_eligible_invoiced_lines(): void
+    {
+        $capture = ['name' => 'Test lead', 'subject' => 'Test', 'owner_id' => $this->owner->id];
+        $this->post(route('enquiries.store'), $capture)->assertSessionHasErrors('source');
+        $this->post(route('enquiries.store'), $capture + ['source' => 'unspecified marketing'])->assertSessionHasErrors('source');
+
+        $saleQuote = $this->accepted('sale');
+        $saleQuote->enquiry->update(['source' => 'indiamart']);
+        $this->post(route('sales.store'), app(QuotationConversion::class)->prefill($saleQuote))
+            ->assertSessionHasNoErrors();
+        $this->assertSame('indiamart', $saleQuote->fresh()->conversion_source);
+        $this->assertEquals($this->owner->id, $saleQuote->fresh()->converted_by_user_id);
+        $saleQuote->enquiry->update(['source' => 'website']);
+
+        $rentalQuote = $this->accepted();
+        $rentalQuote->enquiry->update(['source' => 'incoming_phone']);
+        $this->post(route('rentals.store'), app(QuotationConversion::class)->prefill($rentalQuote) + ['delivery_assignment_type' => 'customer_pickup'])
+            ->assertSessionHasNoErrors();
+        $rentalInvoice = \App\Models\Invoice::where('rental_id', $rentalQuote->fresh()->order_id)->firstOrFail();
+        $rentalInvoice->items()->create(['source_type' => 'manual', 'description' => 'Transport adjustment', 'quantity' => 1, 'rate' => 2000, 'taxable_amount' => 2000, 'line_total' => 2000]);
+        $duplicateInvoice = $rentalInvoice->replicate();
+        $duplicateInvoice->invoice_number = 'INELIGIBLE-DUPLICATE';
+        $duplicateInvoice->save();
+        $duplicateInvoice->items()->save($rentalInvoice->items()->where('source_type','rental')->firstOrFail()->replicate());
+
+        $route = route('reports.staff-incentives');
+        $this->get($route)->assertOk()->assertViewHas('total', 400)
+            ->assertSee('IndiaMART')->assertSee('Incoming phone call')->assertDontSee('INELIGIBLE-DUPLICATE');
+        $this->get(route('reports.staff-incentives', ['source' => 'indiamart']))->assertOk()->assertViewHas('total', 200);
+        $this->get(route('reports.staff-incentives', ['from' => '2026-10-25', 'to' => '2026-10-31']))
+            ->assertOk()->assertViewHas('total', fn ($total) => (float) $total === 0.0);
+        Sale::sole()->update(['referral_source_type' => 'business_partner']);
+        $this->get($route)->assertOk()->assertViewHas('total', 200);
+        $this->actingAs(TestData::user($this->owner->organization, ['role' => User::ROLE_SALES]))->get($route)->assertForbidden();
     }
 
     public static function negotiatedRentalPrices(): array

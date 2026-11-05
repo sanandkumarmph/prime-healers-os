@@ -2228,6 +2228,7 @@ class RentalController extends Controller
             'amount' => 'required|numeric|min:0.01',
             'payment_method' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
+            'collection_recipient' => 'nullable|in:company,vendor',
         ]);
     }
 
@@ -7507,6 +7508,10 @@ class RentalController extends Controller
             return redirect()->route('rentals.show', $rental)->with('success', 'Rental invoice is already settled.');
         }
 
+        if (app(\App\Services\Deliveries\VendorCollectionAttribution::class)->forOrder($rental)) {
+            return redirect()->route('rentals.show', $rental)->with('error', 'Use Record Payment to choose who collected the payment for this vendor delivery.');
+        }
+
         DB::transaction(function () use ($rental, $invoice) {
             $payment = $this->createInvoicePaymentForRental($invoice, [
                 'payment_date' => now()->toDateString(),
@@ -7532,6 +7537,8 @@ class RentalController extends Controller
         $this->ensureRentalAccess();
         $rental = $this->scopedRental($rental);
         $validated = $this->validateQuickPayment($request);
+        $validated = array_replace($validated, app(\App\Services\Deliveries\VendorCollectionAttribution::class)
+            ->forOrderPayment($rental, $validated['collection_recipient'] ?? null));
         $invoice = $this->rentalInvoice($rental) ?? $this->createRentalInvoice($rental);
 
         DB::transaction(function () use ($rental, $invoice, $validated) {

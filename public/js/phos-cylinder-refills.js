@@ -22,9 +22,19 @@
  dialog?.addEventListener('close',()=>opener?.focus());
  document.addEventListener('change',event=>{if(event.target.matches('[data-refill-assignment-type],[data-refill-assignment-target]'))assignment(event.target.form);if(event.target.matches('.cr-book [name=product_id]')){const qty=event.target.form.querySelector('[name=quantity]'),issued=Number(event.target.selectedOptions[0]?.dataset.issued)||0;qty.max=Math.max(1,issued);qty.value=Math.min(Number(qty.value)||1,Number(qty.max));event.target.form.querySelector('[data-refill-issued]').textContent=`Previously issued: ${issued} cylinder(s)`;}});
  document.addEventListener('submit',async event=>{
-  const form=event.target.closest('[data-cylinder-refill-form]');if(!form)return;event.preventDefault();if(form.dataset.saving==='true')return;
-  const root=form.closest('[data-cylinder-refill-body]')||form.closest('[data-cylinder-task-content]')||form.closest('.cr-standalone');if(!root)return;
+  const form=event.target.closest('[data-cylinder-refill-form]');if(!form)return;
+  const root=form.closest('[data-cylinder-refill-body]')||form.closest('[data-cylinder-task-content]');if(!root)return;
+  event.preventDefault();if(form.dataset.saving==='true')return;
   form.dataset.saving='true';const buttons=[...form.querySelectorAll('button[type=submit]')],data=new FormData(form);buttons.forEach(b=>b.disabled=true);
-  try{const url=new URL(form.action,location.href);if(url.origin!==location.origin)throw new Error('Invalid refill address.');const result=await json(await fetch(url,{method:'POST',body:data,headers:{Accept:'application/json'},credentials:'same-origin'}));root.innerHTML=result.html;assignment(root);updatePending(result);root.querySelector('[role=status],.cr-success')?.scrollIntoView({block:'nearest'});}catch(e){error(root,e.message);form.dataset.saving='false';buttons.forEach(b=>b.disabled=false);}
+  try{
+   // Progress forms have an input named "action", which shadows form.action.
+   const url=new URL(form.getAttribute('action'),location.href);
+   if(url.origin!==location.origin)throw new Error('Invalid refill address.');
+   const result=await json(await fetch(url,{method:'POST',body:data,headers:{Accept:'application/json'},credentials:'same-origin'}));
+   const fragment=document.createElement('template');fragment.innerHTML=result.html;
+   const taskContent=root.matches('[data-cylinder-task-content]')&&fragment.content.querySelector('[data-cylinder-task-content]');
+   root.replaceChildren(...(taskContent||fragment.content).childNodes);
+   assignment(root);updatePending(result);root.querySelector('[role=status],.cr-success')?.scrollIntoView({block:'nearest'});
+  }catch(e){error(root,e.message);form.dataset.saving='false';buttons.forEach(b=>b.disabled=false);}
  });
 })();

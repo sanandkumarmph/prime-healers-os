@@ -352,6 +352,21 @@ class VendorFulfilmentRegressionTest extends TestCase
             'type' => 'delivery',
         ]);
 
+        $admin = TestData::user($organization, ['role' => User::ROLE_SUPER_ADMIN]);
+        $this->actingAs($admin)->get(route('rentals.show', $vendorRental))
+            ->assertOk()->assertSee('Who received the customer')->assertSee($vendor->name);
+        $this->post(route('rentals.recordPayment', $vendorRental), [
+            'payment_date' => today()->toDateString(), 'amount' => 100, 'payment_method' => 'cash',
+            'collection_recipient' => 'vendor',
+            'payment_submission_token' => (string) \Illuminate\Support\Str::uuid(),
+        ])->assertSessionHasNoErrors()->assertRedirect(route('rentals.show', $vendorRental));
+        $this->assertDatabaseHas('payments', [
+            'rental_id' => $vendorRental->id, 'amount' => 100,
+            'collection_recipient' => 'vendor', 'collection_vendor_key' => 'vendor:'.$vendor->id,
+        ]);
+        $this->get(route('reports.vendor-collections'))->assertOk()
+            ->assertSee($vendor->name)->assertSee('₹100.00');
+
         $internalProduct = $this->makeRentalProduct($organization->id, [
             'name' => 'PH Queue Product',
             'available_quantity' => 2,

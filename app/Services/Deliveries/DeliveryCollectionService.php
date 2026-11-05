@@ -63,6 +63,7 @@ class DeliveryCollectionService
     {
         return hash('sha256', json_encode([$task->id, $task->rental_id, $task->sale_id,
             $task->assigned_user_id, $task->status, $task->collection_required, $task->collection_amount_to_collect,
+            app(VendorCollectionAttribution::class)->vendor($task)['key'] ?? null,
             $invoice->id, $invoice->status, $invoice->payment_status, $invoice->paid_amount, $invoice->balance_amount,
             DeliveryCollection::where('organization_id', $task->organization_id)->where('invoice_id', $invoice->id)->orderBy('id')->get(['id','status','amount'])->toArray()], JSON_THROW_ON_ERROR));
     }
@@ -83,7 +84,9 @@ class DeliveryCollectionService
     {
         $payment = app(PaymentSyncService::class)->createInvoicePayment((int) $actor->organization_id, $invoice,
             ['amount' => $entry->amount, 'payment_date' => today()->toDateString(),
-                'payment_method' => $entry->method, 'notes' => 'Delivery collection #'.$entry->id.'. '.$entry->reference],
+                'payment_method' => $entry->method, 'notes' => 'Delivery collection #'.$entry->id.'. '.$entry->reference,
+                'collection_recipient' => $entry->collection_recipient, 'collection_vendor_key' => $entry->collection_vendor_key,
+                'collection_vendor_name' => $entry->collection_vendor_name],
             $invoice->rental_id ? (int) $invoice->rental_id : null, true);
         $entry->update(['payment_id' => $payment->id]);
         $this->sync($invoice);
@@ -94,20 +97,24 @@ class DeliveryCollectionService
         $data = Validator::make($input, ['submission_token' => 'required|uuid', 'version' => 'required|string|size:64',
             'amount' => 'required|numeric|decimal:0,2|min:0.01|max:99999999.99',
             'method' => 'required|in:cash,upi,bank_transfer,card', 'reference' => 'nullable|string|max:255',
+            'collection_recipient' => 'nullable|in:company,vendor',
             'proof_id' => 'nullable|integer', 'note' => 'nullable|string|max:1000', 'confirmed' => 'accepted'])->validate();
 
         return app(OrganizationFinancialTransaction::class)->run((int) $snapshot->organization_id, function () use ($snapshot, $taskId, $data) {
             $actor = $snapshot->fresh();
             $task = $this->task($actor, $taskId, true);
             $token = strtolower($data['submission_token']);
-            $hash = hash('sha256', json_encode([$taskId, $actor->id, self::cents($data['amount']), $data['method'],
-                trim($data['reference'] ?? ''), (int) ($data['proof_id'] ?? 0), trim($data['note'] ?? '')], JSON_THROW_ON_ERROR));
+            $requestValues = [$taskId, $actor->id, self::cents($data['amount']), $data['method'],
+                trim($data['reference'] ?? ''), (int) ($data['proof_id'] ?? 0), trim($data['note'] ?? '')];
+            if (!empty($data['collection_recipient'])) $requestValues[] = $data['collection_recipient'];
+            $hash = hash('sha256', json_encode($requestValues, JSON_THROW_ON_ERROR));
             $prior = DeliveryCollection::where('organization_id', $actor->organization_id)->where('submission_token', $token)->first();
             if ($prior) {
                 if (!hash_equals($prior->request_hash, $hash)) $this->fail('That submission token already belongs to a different report. Check saved history.');
                 return $prior;
             }
             if (!$task->collection_required || !in_array($task->status, ['in_progress', 'completed'], true)) $this->fail('Start an authorised collection task before recording a receipt.');
+            $attribution = app(VendorCollectionAttribution::class)->attributes($task, $data['collection_recipient'] ?? null, true);
             $invoice = $this->invoice($task);
             $invoice->syncFinancialStatus();
             if (!hash_equals($this->version($task, $invoice), $data['version'])) $this->fail('The task or invoice changed. Refresh and review its saved history before collecting.');
@@ -126,9 +133,9 @@ class DeliveryCollectionService
             $entry = DeliveryCollection::create(['organization_id' => $actor->organization_id, 'delivery_id' => $taskId,
                 'invoice_id' => $invoice->id, 'collector_user_id' => $actor->id, 'submission_token' => $token, 'request_hash' => $hash,
                 'amount' => $data['amount'], 'method' => $data['method'], 'status' => $data['method'] === 'cash' ? 'cash_received' : 'pending_review',
-                'reference' => trim($data['reference'] ?? ''), 'proof_id' => $proof?->id, 'note' => trim($data['note'] ?? ''), 'received_at' => now()]);
+                'reference' => trim($data['reference'] ?? ''), 'proof_id' => $proof?->id, 'note' => trim($data['note'] ?? ''), 'received_at' => now()] + $attribution);
             if ($entry->method === 'cash') $this->post($actor, $entry, $invoice);
-            $this->audit($actor, 'delivery.collection_recorded', $entry, ['amount' => $entry->amount, 'method' => $entry->method, 'payment_id' => $entry->payment_id]);
+            $this->audit($actor, 'delivery.collection_recorded', $entry, ['amount' => $entry->amount, 'method' => $entry->method, 'payment_id' => $entry->payment_id] + $attribution);
             return $entry;
         });
     }

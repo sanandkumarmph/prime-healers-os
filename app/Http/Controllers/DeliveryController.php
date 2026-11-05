@@ -441,6 +441,7 @@ class DeliveryController extends Controller
 
         if ((bool) ($delivery->collection_required ?? false)) {
             $rules['collection_amount_collected'] = ['nullable', 'numeric', 'min:0'];
+            $rules['collection_recipient'] = ['nullable', 'in:company,vendor'];
             $rules['collection_payment_mode'] = ['nullable', Rule::in(Delivery::COLLECTION_PAYMENT_MODES)];
             $rules['collection_payment_proof'] = array_merge(['nullable'], $commonImageRule);
             $rules['collection_transaction_reference'] = ['nullable', 'string', 'max:255'];
@@ -448,6 +449,7 @@ class DeliveryController extends Controller
             $rules['collection_not_collected_reason'] = ['nullable', Rule::in(Delivery::COLLECTION_NOT_COLLECTED_REASONS)];
         } else {
             $rules['collection_amount_collected'] = ['prohibited'];
+            $rules['collection_recipient'] = ['prohibited'];
             $rules['collection_payment_mode'] = ['prohibited'];
             $rules['collection_payment_proof'] = ['prohibited'];
             $rules['collection_transaction_reference'] = ['prohibited'];
@@ -797,7 +799,9 @@ class DeliveryController extends Controller
                 'collection_not_collected_reason' => trim((string) ($validated['collection_not_collected_reason'] ?? '')) ?: null,
             ];
 
-            $delivery->forceFill($collectionData)->saveQuietly();
+            $delivery->forceFill($collectionData + array_intersect_key($validated, array_flip([
+                'collection_recipient', 'collection_vendor_key', 'collection_vendor_name',
+            ])))->saveQuietly();
 
             if (!empty($validated['collection_payment_proof'])) {
                 $this->deliveryProofService()->storeUploadedFiles(
@@ -2645,6 +2649,11 @@ class DeliveryController extends Controller
         }
 
         $validated = $this->validateCompletionWorkflowRequest($request, $delivery);
+        if ($delivery->collection_required) {
+            $validated = array_replace($validated, app(\App\Services\Deliveries\VendorCollectionAttribution::class)->attributes(
+                $delivery, $validated['collection_recipient'] ?? null, (float) ($validated['collection_amount_collected'] ?? 0) > 0
+            ));
+        }
 
         $workflowRental = null;
         if ($delivery->rental_id) {

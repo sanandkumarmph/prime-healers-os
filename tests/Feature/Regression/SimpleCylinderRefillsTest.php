@@ -125,6 +125,16 @@ class SimpleCylinderRefillsTest extends TestCase
         $this->render('booked',$this->get(route('cylinder-refills.popup',$this->rental))->assertOk());
         if($folder)file_put_contents($folder.'/booked-fragment.html',$this->getJson(route('cylinder-refills.popup',$this->rental))->json('html'));
         $this->actingAs($this->driver);$this->render('tasks',$this->get(route('cylinder-refills.tasks'))->assertOk());
+        $this->actingAs($this->owner);
+        foreach (['deliver' => 'delivered', 'collect_empty' => 'picked-up'] as $action => $name) {
+            $response = $this->postJson(route('cylinder-refills.change', $refill), [
+                'request_id' => (string) Str::uuid(), 'lock_version' => $refill->fresh()->lock_version,
+                'action' => $action, 'quantity' => 1,
+            ])->assertOk();
+            if ($folder) file_put_contents($folder.'/'.$name.'-fragment.html', $response->json('html'));
+        }
+        $this->assertEquals(1, $refill->fresh()->delivered_quantity);
+        $this->assertEquals(1, $refill->fresh()->collected_quantity);
     }
     public function test_partial_delivery_and_returns_cannot_exceed_the_requested_cylinder_count(): void
     {

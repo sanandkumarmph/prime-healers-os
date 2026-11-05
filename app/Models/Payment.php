@@ -27,6 +27,9 @@ class Payment extends Model
         'amount',
         'payment_method',
         'notes',
+        'collection_recipient',
+        'collection_vendor_key',
+        'collection_vendor_name',
     ];
 
     protected $casts = [

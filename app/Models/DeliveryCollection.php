@@ -21,7 +21,7 @@ class DeliveryCollection extends Model
     public function cashAmounts(): array
     {
         $cents = fn ($value) => \App\Services\Deliveries\DeliveryCollectionService::cents($value);
-        $collected = $this->status === 'cash_received' ? $cents($this->amount) : 0;
+        $collected = $this->status === 'cash_received' && $this->collection_recipient !== 'vendor' ? $cents($this->amount) : 0;
         $confirmed = $this->handovers->where('status', 'confirmed')->sum(fn ($row) => $cents($row->received_amount));
         $pending = $this->handovers->where('status', 'pending')->sum(fn ($row) => $cents($row->submitted_amount));
 

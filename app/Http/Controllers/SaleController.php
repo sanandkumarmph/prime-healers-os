@@ -1145,6 +1145,7 @@ class SaleController extends Controller
             'amount' => 'required|numeric|min:0.01',
             'payment_method' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
+            'collection_recipient' => 'nullable|in:company,vendor',
         ]);
     }
 
@@ -2753,6 +2754,10 @@ class SaleController extends Controller
             return redirect()->route('sales.show', $sale)->with('success', 'Sale invoice is already settled.');
         }
 
+        if (app(\App\Services\Deliveries\VendorCollectionAttribution::class)->forOrder($sale)) {
+            return redirect()->route('sales.show', $sale)->with('error', 'Use Record Payment to choose who collected the payment for this vendor delivery.');
+        }
+
         DB::transaction(function () use ($sale, $invoice) {
             $payment = $this->createInvoicePaymentForSale($sale, $invoice, [
                 'payment_date' => now()->toDateString(),
@@ -2777,6 +2782,8 @@ class SaleController extends Controller
     {
         $sale = $this->scopedSale($sale);
         $validated = $this->validateQuickPayment($request);
+        $validated = array_replace($validated, app(\App\Services\Deliveries\VendorCollectionAttribution::class)
+            ->forOrderPayment($sale, $validated['collection_recipient'] ?? null));
         $invoice = $this->createSaleInvoice($sale);
 
         DB::transaction(function () use ($sale, $invoice, $validated) {
