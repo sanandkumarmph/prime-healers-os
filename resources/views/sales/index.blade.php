@@ -19,6 +19,8 @@
     $currency = fn ($value) => "\u{20B9}" . number_format((float) $value, 2);
     $salesUrl = function (array $overrides = []) use ($search, $customerId, $paymentStatus, $fulfilmentSource, $fromDate, $toDate, $sortBy) {
         return route('sales.index', array_filter(array_merge([
+            'salesperson_id' => request()->integer('salesperson_id') ?: null,
+            'salesperson_match' => request()->query('salesperson_match'),
             'search' => $search ?: null,
             'customer_id' => $customerId ?: null,
             'payment_status' => $paymentStatus ?: null,
@@ -97,8 +99,9 @@
         ['value' => 'priority', 'label' => 'Priority'],
     ];
     $currentMobileSortLabel = collect($mobileSortOptions)->firstWhere('value', $sortBy)['label'] ?? 'Newest First';
-    $hasActiveFilters = filled($search) || filled($customerId) || filled($paymentStatus) || filled($fulfilmentSource) || filled($fromDate) || filled($toDate) || $sortBy !== 'priority';
+    $hasActiveFilters = request()->integer('salesperson_id') !== 0 || filled($search) || filled($customerId) || filled($paymentStatus) || filled($fulfilmentSource) || filled($fromDate) || filled($toDate) || $sortBy !== 'priority';
     $activeFilterChips = collect([
+        $salespersonOptions->get(request()->integer('salesperson_id')) ? (request()->query('salesperson_match') === 'booked' ? 'Booked by ' : 'Salesperson ').$salespersonOptions->get(request()->integer('salesperson_id')) : null,
         filled($search) ? 'Search: ' . $search : null,
         filled($customerId) ? 'Customer selected' : null,
         filled($paymentStatus) ? 'Payment: ' . ucfirst($paymentStatus) : null,
@@ -720,6 +723,7 @@
                                     </select>
                                 </div>
 
+                                @include('sales-workspace.salesperson-filter', ['filterId' => 'sale_desktop_salesperson', 'fieldClass' => 'filter-field', 'selectClass' => 'ops-select', 'showBookingMode' => true])
                                 <div class="filter-field">
                                     <label for="from_date">From Date</label>
                                     <input id="from_date" class="ops-input" type="date" name="from_date" value="{{ $fromDate }}">
@@ -811,6 +815,7 @@
                                 <option value="{{ \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED }}" @selected($fulfilmentSource === \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED)>Vendor Supplied</option>
                             </select>
                         </div>
+                        @include('sales-workspace.salesperson-filter', ['filterId' => 'sale_mobile_salesperson', 'fieldClass' => 'mobile-sheet-field', 'selectClass' => 'ops-select', 'showBookingMode' => true])
                         <div class="mobile-sheet-field">
                             <label for="mobile_from_date">From</label>
                             <input id="mobile_from_date" class="ops-input" type="date" name="from_date" value="{{ $fromDate }}">

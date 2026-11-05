@@ -30,9 +30,14 @@ class OrderIncentiveCredit
         $actor = $request->user();
         $quote = $request->attributes->get('conversion_quote');
         $salesStaff = $this->salesStaff($actor);
+        $adminSelf = $actor->canViewConsolidatedFinance() && $request->integer('incentive_owner_id') === (int) $actor->id;
+        $owners = $salesStaff->keys()->all();
+        if ($actor->canViewConsolidatedFinance()) {
+            $owners[] = $actor->id;
+        }
         $data = $request->validate([
-            'incentive_owner_id' => ['nullable', 'integer', Rule::in($salesStaff->keys()->all())],
-            'incentive_source' => ['nullable', Rule::requiredIf(!$quote && $request->filled('incentive_owner_id')
+            'incentive_owner_id' => ['nullable', 'integer', Rule::in($owners)],
+            'incentive_source' => ['nullable', Rule::requiredIf(!$adminSelf && !$quote && $request->filled('incentive_owner_id')
                 && $request->input('customer_type') !== 'business_partner'), Rule::in(array_keys(Enquiry::SOURCES))],
         ]);
 
@@ -45,6 +50,7 @@ class OrderIncentiveCredit
             'closer' => $actor->isSales() ? (int) $actor->id : null,
             'source' => $source,
             'actor' => (int) $actor->id,
+            'excluded' => $adminSelf,
         ];
     }
 
@@ -55,6 +61,6 @@ class OrderIncentiveCredit
         }
 
         OrderIncentiveAttribution::record((int) $order->organization_id, $order instanceof Sale ? 'sale' : 'rental',
-            (int) $order->id, $credit['source'], $credit['owner'], $credit['actor'], $credit['closer']);
+            (int) $order->id, $credit['source'], $credit['owner'], $credit['actor'], $credit['closer'], $credit['excluded']);
     }
 }

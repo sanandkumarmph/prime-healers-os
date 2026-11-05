@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\{Enquiry, Invoice, OrderIncentiveAttribution, Rental, Sale, User};
-use App\Services\Sales\OrderIncentiveCredit;
+use App\Models\{Enquiry, Invoice, OrderIncentiveAttribution, User};
+use App\Services\Sales\{OrderIncentiveCredit, OrderStaffFilter};
 use App\Support\ActivityLogger;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Support\Facades\{DB, Schema};
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
@@ -45,7 +45,7 @@ class StaffIncentiveReportController extends Controller
 
     private function needsReview($row): bool
     {
-        return !$row->known_source || ($row->eligible_source && !$row->staff_id);
+        return !$row->excluded_from_incentives && (!$row->known_source || ($row->eligible_source && !$row->staff_id));
     }
 
     public function index(Request $request)
@@ -58,12 +58,14 @@ class StaffIncentiveReportController extends Controller
             'to' => ['nullable', 'date_format:Y-m-d'],
             'staff' => ['nullable', 'integer', Rule::exists('users', 'id')->where('organization_id', $organization)],
             'source' => ['nullable', Rule::in(array_keys(Enquiry::INCENTIVE_SOURCES))],
+            'credit_kind' => ['nullable', Rule::in(['sale', 'rental'])],
         ]);
         $from = $filters['from'] ?? today()->subYearNoOverflow()->addDay()->toDateString();
         $to = $filters['to'] ?? today()->toDateString();
         abort_if($from > $to, 422, 'The start date must be on or before the end date.');
         $staff = (int) ($filters['staff'] ?? 0);
         $source = $filters['source'] ?? '';
+        $creditKind = $filters['credit_kind'] ?? '';
 
         $users = $this->users($organization);
         $salesStaff = $users->filter(fn (User $member) => $member->isSales())->pluck('name', 'id');
@@ -79,7 +81,7 @@ class StaffIncentiveReportController extends Controller
         $reviewOrders = new LengthAwarePaginator($filteredReview->forPage($reviewPage, 15), $filteredReview->count(), 15, $reviewPage, [
             'path' => $request->url(), 'query' => $request->query(), 'pageName' => 'review_page', 'fragment' => 'attribution',
         ]);
-        $eligible = $candidates->filter(fn ($row) => $row->eligible_source && $row->staff_id)
+        $eligible = $candidates->filter(fn ($row) => !$row->excluded_from_incentives && $row->eligible_source && $row->staff_id)
             ->flatMap(fn ($row) => $this->credits($row, $users));
         $staffNames = $salesStaff->union($users->only($eligible->pluck('staff_id')->all())->pluck('name', 'id'))->sort();
         $eligible = $eligible->filter(fn ($row) => (!$staff || (int) $row->staff_id === $staff)
@@ -92,13 +94,15 @@ class StaffIncentiveReportController extends Controller
         $staffNames = $staffNames->union($users->only($bookedSales->keys()->merge($bookedRentals->keys())->all())->pluck('name', 'id'))->sort();
         $staffTotals = $eligible->groupBy(fn ($row) => (int) $row->staff_id)
             ->map(fn ($rows) => [
+                'sales_credited' => $rows->where('kind', 'sale')->count(),
+                'rentals_credited' => $rows->where('kind', 'rental')->count(),
                 'sale_revenue' => $rows->where('kind', 'sale')->sum('credit_paise') / 100,
                 'rental_revenue' => $rows->where('kind', 'rental')->sum('credit_paise') / 100,
                 'revenue' => $rows->sum('credit_paise') / 100,
             ])->sortByDesc('revenue');
         foreach ($staffNames as $id => $name) {
             if ((!$staff || (int) $id === $staff) && !$staffTotals->has($id)) {
-                $staffTotals->put($id, ['sale_revenue' => 0, 'rental_revenue' => 0, 'revenue' => 0]);
+                $staffTotals->put($id, ['sales_credited' => 0, 'rentals_credited' => 0, 'sale_revenue' => 0, 'rental_revenue' => 0, 'revenue' => 0]);
             }
         }
         $sourceTotals = $eligible->groupBy('eligible_source')->map(fn ($rows) => [
@@ -106,14 +110,15 @@ class StaffIncentiveReportController extends Controller
             'revenue' => $rows->sum('credit_paise') / 100,
         ]);
         $page = LengthAwarePaginator::resolveCurrentPage();
-        $orders = new LengthAwarePaginator($eligible->forPage($page, 25), $eligible->count(), 25, $page, [
-            'path' => $request->url(), 'query' => $request->query(),
+        $orderDetails = $creditKind ? $eligible->where('kind', $creditKind)->values() : $eligible;
+        $orders = new LengthAwarePaginator($orderDetails->forPage($page, 25), $orderDetails->count(), 25, $page, [
+            'path' => $request->url(), 'query' => $request->query(), 'fragment' => 'order-credits',
         ]);
         $total = $eligible->sum('credit_paise') / 100;
 
         return response()->view('reports.staff-incentives', compact(
             'from', 'to', 'staff', 'source', 'staffNames', 'staffTotals', 'sourceTotals', 'orders', 'total',
-            'reviewOrders', 'salesStaff', 'canAssign', 'bookedSales', 'bookedRentals', 'pendingByStaff'
+            'reviewOrders', 'salesStaff', 'canAssign', 'bookedSales', 'bookedRentals', 'pendingByStaff', 'creditKind'
         ))->header('Cache-Control', 'private, no-store');
     }
 
@@ -178,35 +183,10 @@ class StaffIncentiveReportController extends Controller
         return [$owner, $handoff];
     }
 
-    private function ordersWithCreator(int $organization, string $kind): array
-    {
-        $table = $kind === 'rental' ? 'rentals' : 'sales';
-        $model = $kind === 'rental' ? Rental::class : Sale::class;
-        $creation = DB::table('activity_logs')->where('organization_id', $organization)
-            ->where('subject_type', $model)->where('action', $kind.'.created')->whereNotNull('user_id')
-            ->selectRaw('subject_id, MIN(user_id) as user_id')->groupBy('subject_id')->havingRaw('COUNT(DISTINCT user_id) = 1');
-        $staffColumns = [];
-        foreach (['created_by_user_id', 'created_by'] as $column) {
-            if (Schema::hasColumn($table, $column)) {
-                $staffColumns[] = 'NULLIF(order_record.'.$column.', 0)';
-            }
-        }
-        $staffColumns[] = 'creation.user_id';
-        $creator = count($staffColumns) > 1 ? 'COALESCE('.implode(', ', $staffColumns).')' : 'creation.user_id';
-        $orders = DB::table($table.' as order_record')->where('order_record.organization_id', $organization)
-            ->leftJoinSub($creation, 'creation', 'creation.subject_id', '=', 'order_record.id')
-            ->whereNotIn('order_record.'.($kind === 'rental' ? 'status' : 'payment_status'), ['draft', 'cancelled', 'void'])
-            ->when($kind === 'sale', fn ($query) => $query->whereNull('order_record.rental_id'));
-
-        return [$orders, $creator];
-    }
-
     private function bookingCounts(int $organization, string $kind, string $from, string $to, array $staff): Collection
     {
-        [$orders, $creator] = $this->ordersWithCreator($organization, $kind);
-        $orders->where('order_record.created_at', '>=', $from)
-            ->where('order_record.created_at', '<', Carbon::parse($to)->addDay()->toDateString())
-            ->selectRaw($creator.' as creator_id');
+        [$orders, $creator] = app(OrderStaffFilter::class)->bookedOrders($organization, $kind, $from, $to);
+        $orders->selectRaw($creator.' as creator_id');
 
         return DB::query()->fromSub($orders, 'bookings')->whereIn('creator_id', $staff)
             ->selectRaw('creator_id, COUNT(*) as booked')->groupBy('creator_id')->pluck('booked', 'creator_id');
@@ -214,7 +194,7 @@ class StaffIncentiveReportController extends Controller
 
     private function invoicedOrders(int $organization, string $kind, string $from, string $to, ?int $orderId = null)
     {
-        [$orders, $creator] = $this->ordersWithCreator($organization, $kind);
+        [$orders, $creator] = app(OrderStaffFilter::class)->bookedOrders($organization, $kind, '', '');
         $orderKey = $kind.'_id';
         $types = $kind === 'rental' ? ['rental', 'rental_sale'] : ['sale'];
         $excluded = ['draft', 'cancelled', 'void'];
@@ -270,6 +250,7 @@ class StaffIncentiveReportController extends Controller
                 'order_record.id as order_id', 'quote.id as quotation_id', 'enquiry.owner_id as enquiry_owner_id',
                 'quote.converted_by_user_id', 'attribution.id as attribution_id', 'attribution.sales_user_id as recorded_staff_id',
                 'attribution.closer_user_id',
+                'attribution.excluded_from_incentives',
                 'invoice.id as invoice_id', 'invoice.invoice_number', 'invoice.invoice_date', 'line_totals.eligible_amount',
                 DB::raw('COALESCE(attribution.source, quote.conversion_source, enquiry.source) as source'),
                 DB::raw($creator.' as creator_id'),

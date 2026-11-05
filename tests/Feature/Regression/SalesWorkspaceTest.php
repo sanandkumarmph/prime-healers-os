@@ -380,6 +380,51 @@ class SalesWorkspaceTest extends TestCase
         $this->get(route('reports.staff-incentives', ['staff' => $first->id]))->assertOk()->assertViewHas('total', 160);
         $this->get(route('reports.staff-incentives', ['staff' => $closer->id]))->assertOk()->assertViewHas('total', 240);
         $this->get(route('reports.staff-incentives', ['from' => '2026-10-01']))->assertOk()->assertViewHas('total', 200);
+
+        $saleInvoice = \App\Models\Invoice::where('sale_id', $saleRecord->id)->firstOrFail();
+        $saleInvoice->update(['sale_id' => null]);
+        $booked = ['salesperson_id' => $closer->id, 'salesperson_match' => 'booked', 'from_date' => '2026-07-01', 'to_date' => '2026-07-31'];
+        $this->get(route('sales.index', $booked))->assertOk()->assertViewHas('sales', fn ($rows) => $rows->total() === 1)
+            ->assertSee('Booked by Later shift');
+        $this->get(route('sales.index', ['salesperson_id' => $first->id]))->assertOk()
+            ->assertViewHas('sales', fn ($rows) => $rows->total() === 1);
+        $this->get(route('invoices.index', ['salesperson_id' => $first->id]))->assertOk()
+            ->assertViewHas('invoices', fn ($rows) => $rows->total() === 1 && $rows->first()->id === $saleInvoice->id);
+        $this->get(route('rentals.index', ['salesperson_id' => $closer->id, 'salesperson_match' => 'booked']))
+            ->assertOk()->assertViewHas('rentals', fn ($rows) => $rows->total() === 1);
+        $this->get(route('rentals.index', ['salesperson_id' => $outsider->id]))->assertNotFound();
+    }
+
+    public function test_admin_myself_excludes_sales_credit_and_credited_rentals_link_to_the_order(): void
+    {
+        $org = $this->owner->organization;
+        $salesperson = TestData::user($org, ['name' => 'Rental owner', 'role' => User::ROLE_SALES]);
+        $admin = TestData::user($org, ['role' => User::ROLE_ADMIN_OPERATIONS]);
+        $quote = $this->accepted();
+        $quote->enquiry->update(['source' => 'incoming_phone', 'owner_id' => $salesperson->id]);
+        $rental = app(QuotationConversion::class)->prefill($quote) + ['delivery_assignment_type' => 'customer_pickup'];
+        foreach ([$this->owner, $admin] as $actor) {
+            $this->actingAs($actor)->get(route('rentals.create'))->assertOk()->assertSee('Myself');
+            $this->get(route('sales.create'))->assertOk()->assertSee('Myself');
+        }
+        $this->post(route('rentals.store'), $rental + ['incentive_owner_id' => $admin->id])->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('order_incentive_attributions', [
+            'order_type' => 'rental', 'sales_user_id' => $admin->id, 'excluded_from_incentives' => true,
+        ]);
+        unset($rental['quotation_id'], $rental['quotation_version']);
+        $this->post(route('rentals.store'), $rental + ['incentive_owner_id' => $salesperson->id, 'incentive_source' => 'incoming_phone'])
+            ->assertSessionHasNoErrors();
+        $creditedRental = Rental::latest('id')->firstOrFail();
+        $report = route('reports.staff-incentives', ['staff' => $salesperson->id, 'credit_kind' => 'rental']);
+        $this->actingAs($this->owner)->get($report)->assertOk()->assertViewHas('total', 200)
+            ->assertViewHas('bookedRentals', fn ($counts) => !$counts->has($salesperson->id))
+            ->assertViewHas('staffTotals', fn ($totals) => $totals[$salesperson->id]['rentals_credited'] === 1)
+            ->assertViewHas('reviewOrders', fn ($rows) => $rows->total() === 0)
+            ->assertSee(route('rentals.show', $creditedRental), false);
+        $this->get(route('rentals.index', ['salesperson_id' => $salesperson->id]))->assertOk()
+            ->assertViewHas('rentals', fn ($rows) => $rows->total() === 1 && $rows->first()->id === $creditedRental->id);
+        $this->get(route('invoices.index', ['salesperson_id' => $salesperson->id]))->assertOk()
+            ->assertViewHas('invoices', fn ($rows) => $rows->total() === 1 && $rows->first()->rental_id === $creditedRental->id);
     }
 
     public static function negotiatedRentalPrices(): array

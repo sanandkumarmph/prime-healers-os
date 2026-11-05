@@ -39,6 +39,7 @@
     };
     $invoiceUrl = function (array $overrides = []) use ($search, $status, $customerId, $city, $fromDate, $toDate, $perPage) {
         return route('invoices.index', array_filter(array_merge([
+            'salesperson_id' => request()->integer('salesperson_id') ?: null,
             'search' => $search ?: null,
             'status' => $status ?: null,
             'customer_id' => $customerId ?: null,
@@ -48,8 +49,9 @@
             'per_page' => $perPage ?: null,
         ], $overrides), fn ($value) => $value !== null && $value !== ''));
     };
-    $hasActiveFilters = filled($search) || filled($status) || filled($customerId) || filled($city) || filled($fromDate) || filled($toDate);
+    $hasActiveFilters = request()->integer('salesperson_id') !== 0 || filled($search) || filled($status) || filled($customerId) || filled($city) || filled($fromDate) || filled($toDate);
     $activeFilterChips = collect([
+        $salespersonOptions->get(request()->integer('salesperson_id')) ? (request()->query('salesperson_match') === 'booked' ? 'Booked by ' : 'Salesperson ').$salespersonOptions->get(request()->integer('salesperson_id')) : null,
         filled($search) ? 'Search: ' . $search : null,
         filled($status) ? 'Status: ' . ucfirst(str_replace('_', ' ', $status)) : null,
         filled($customerId) ? 'Customer selected' : null,
@@ -957,6 +959,7 @@
                                 @endforeach
                             </select>
                         </div>
+                        @include('sales-workspace.salesperson-filter', ['filterId' => 'invoice_mobile_salesperson', 'fieldClass' => 'mobile-sheet-field', 'selectClass' => 'invoice-select', 'showBookingMode' => false])
                         <div class="mobile-sheet-field">
                             <label for="mobile_invoice_from">From</label>
                             <input id="mobile_invoice_from" class="invoice-input" type="date" name="from_date" value="{{ $fromDate ?? '' }}">
@@ -1045,6 +1048,7 @@
             <input type="hidden" name="status" value="{{ $status ?? '' }}">
             <input type="hidden" name="customer_id" value="{{ $customerId ?? '' }}">
             <input type="hidden" name="city" value="{{ $city ?? '' }}">
+            <input type="hidden" name="salesperson_id" value="{{ request()->integer('salesperson_id') ?: '' }}">
             <input type="hidden" name="from_date" value="{{ $fromDate ?? '' }}">
             <input type="hidden" name="to_date" value="{{ $toDate ?? '' }}">
             <input type="hidden" name="per_page" value="{{ $perPage ?? 20 }}">
@@ -1113,6 +1117,7 @@
                         @endforeach
                     </select>
                 </div>
+                @include('sales-workspace.salesperson-filter', ['filterId' => 'invoice_desktop_salesperson', 'fieldClass' => 'invoice-field', 'selectClass' => 'invoice-select', 'showBookingMode' => false])
                 <div class="invoice-field">
                     <label for="from_date">From</label>
                     <input id="from_date" class="invoice-input" type="date" name="from_date" value="{{ $fromDate ?? '' }}">

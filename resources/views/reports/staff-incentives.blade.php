@@ -21,13 +21,28 @@
     <section class="sw-panel">
         <h2>Eligible revenue by staff member</h2>
         <p class="sw-muted">Booking counts show who entered the orders. The source filter applies to credit. Orders in review need their source or owner confirmed before credit is calculated.</p>
-        <div style="overflow:auto"><table class="sw-table"><thead><tr><th>Staff</th><th>Sales booked</th><th>Rentals booked</th><th>Orders in review</th><th>Sale credit</th><th>Rental credit</th><th>Eligible total</th></tr></thead>
+        <div style="overflow:auto"><table class="sw-table"><thead><tr><th>Staff</th><th>Sales booked</th><th>Rentals booked</th><th>Orders in review</th><th>Sales credited</th><th>Rentals credited</th><th>Sale credit</th><th>Rental credit</th><th>Eligible total</th></tr></thead>
             <tbody>@forelse($staffTotals as $id => $row)<tr>
-                <td>{{ $staffNames[$id] }}</td><td>{{ $bookedSales->get($id, 0) }}</td><td>{{ $bookedRentals->get($id, 0) }}</td>
-                <td>{{ $pendingByStaff->get($id, 0) }}</td><td>₹{{ number_format($row['sale_revenue'],2) }}</td>
+                @php
+                    $bookingFilters = ['salesperson_id' => $id, 'salesperson_match' => 'booked', 'from_date' => $from, 'to_date' => $to];
+                    $creditFilters = array_filter(['staff' => $id, 'from' => $from, 'to' => $to, 'source' => $source]);
+                @endphp
+                <td>{{ $staffNames[$id] }}</td>
+                @foreach(['sales' => $bookedSales, 'rentals' => $bookedRentals] as $module => $counts)
+                    <td>@if($counts->get($id) && auth()->user()->canAccessModule($module, 'read'))
+                        <a href="{{ route($module.'.index', $bookingFilters) }}" aria-label="{{ ucfirst($module) }} booked by {{ $staffNames[$id] }}">{{ $counts->get($id) }}</a>
+                    @else{{ $counts->get($id, 0) }}@endif</td>
+                @endforeach
+                <td>{{ $pendingByStaff->get($id, 0) }}</td>
+                @foreach(['sale' => $row['sales_credited'], 'rental' => $row['rentals_credited']] as $kind => $count)
+                    <td>@if($count)
+                        <a href="{{ route('reports.staff-incentives', $creditFilters + ['credit_kind' => $kind]) }}#order-credits" aria-label="{{ ucfirst($kind) }} orders credited to {{ $staffNames[$id] }}">{{ $count }}</a>
+                    @else 0 @endif</td>
+                @endforeach
+                <td>₹{{ number_format($row['sale_revenue'],2) }}</td>
                 <td>₹{{ number_format($row['rental_revenue'],2) }}</td><td>₹{{ number_format($row['revenue'],2) }}</td>
-            </tr>@empty<tr><td colspan="7">No sales staff in this report.</td></tr>@endforelse</tbody>
-            <tfoot><tr><th colspan="6">Total eligible credit</th><td>₹{{ number_format($total,2) }}</td></tr></tfoot>
+            </tr>@empty<tr><td colspan="9">No sales staff in this report.</td></tr>@endforelse</tbody>
+            <tfoot><tr><th colspan="8">Total eligible credit</th><td>₹{{ number_format($total,2) }}</td></tr></tfoot>
         </table></div>
     </section>
     <section class="sw-panel" id="attribution">
@@ -90,12 +105,13 @@
             @if(!$source || $source === $key)<p>{{ $label }} · {{ $sourceTotals[$key]['orders'] ?? 0 }} order(s) · ₹{{ number_format($sourceTotals[$key]['revenue'] ?? 0,2) }}</p>@endif
         @endforeach
     </section>
-    <section class="sw-panel"><h2>Order credit details</h2>
+    <section class="sw-panel" id="order-credits"><h2>{{ $creditKind ? ucfirst($creditKind).' credit details' : 'Order credit details' }}</h2>
+        @if($creditKind)<p><a href="{{ route('reports.staff-incentives', request()->except(['credit_kind', 'page'])) }}#order-credits">Show all credited orders</a></p>@endif
         <div style="overflow:auto"><table class="sw-table"><thead><tr><th>Invoice date</th><th>Staff</th><th>Source</th><th>Order</th><th>Invoice</th><th>Share</th><th>Revenue credit</th></tr></thead>
             <tbody>@forelse($orders as $row)<tr>
                 <td>{{ $row->invoice_date }}</td><td>{{ $staffNames[$row->staff_id] ?? ($row->staff_id ? 'User #'.$row->staff_id : 'Unattributed') }}</td>
                 <td>{{ \App\Models\Enquiry::INCENTIVE_SOURCES[$row->eligible_source] }}</td>
-                <td>{{ ucfirst($row->kind) }} #{{ $row->order_id }}</td>
+                <td>@if(auth()->user()->canAccessModule($row->kind.'s', 'read'))<a href="{{ route($row->kind.'s.show', $row->order_id) }}">{{ ucfirst($row->kind) }} #{{ $row->order_id }}</a>@else{{ ucfirst($row->kind) }} #{{ $row->order_id }}@endif</td>
                 <td>@if(auth()->user()->canAccessModule('invoices','read'))<a href="{{ route('invoices.show',$row->invoice_id) }}">{{ $row->invoice_number }}</a>@else{{ $row->invoice_number }}@endif</td>
                 <td>{{ $row->credit_label }}</td>
                 <td>₹{{ number_format($row->credit_paise / 100,2) }}</td>

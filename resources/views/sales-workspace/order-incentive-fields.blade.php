@@ -9,7 +9,10 @@
     <div class="{{ $fieldClass }}">
         <label for="incentive_owner_id">Order owner</label>
         <select name="incentive_owner_id" id="incentive_owner_id">
-            <option value="">Choose salesperson</option>
+            <option value="">Choose order owner</option>
+            @if(auth()->user()->canViewConsolidatedFinance())
+                <option value="{{ auth()->id() }}" @selected($selectedOwner === (int) auth()->id())>Myself</option>
+            @endif
             @foreach($salesOwners as $id => $owner)
                 <option value="{{ $id }}" @selected($selectedOwner === (int) $id)>{{ (int) auth()->id() === (int) $id ? 'Myself' : $owner->name }}</option>
             @endforeach
@@ -17,6 +20,9 @@
         @error('incentive_owner_id')<span role="alert">{{ $message }}</span>@enderror
     </div>
     <p>Choose the salesperson who first worked with the customer. For a shift handoff, the owner gets 80% of eligible revenue and the salesperson creating the order gets 20%. One salesperson gets 100% when they handle both.</p>
+    @if(auth()->user()->canViewConsolidatedFinance())
+        <p>Choose Myself for an admin-owned order. It earns no sales incentive credit.</p>
+    @endif
     @if($orderQuote)
         <p>Enquiry source · {{ $orderQuote->enquiry->source_label }}</p>
     @else
@@ -28,7 +34,7 @@
                     <option value="{{ $key }}" @selected(old('incentive_source') === $key)>{{ $label }}</option>
                 @endforeach
             </select>
-            <small>Required for a direct booking with a selected order owner.</small>
+            <small>Required when assigning a direct booking to a salesperson.</small>
             @error('incentive_source')<span role="alert">{{ $message }}</span>@enderror
         </div>
     @endif

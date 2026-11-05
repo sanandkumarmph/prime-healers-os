@@ -1959,7 +1959,8 @@ class SaleController extends Controller
         $legacyCreatedBy = (int) $request->get('created_by', 0);
         $sortBy = (string) $request->get('sort_by', 'latest');
 
-        $applyIndexFilters = function ($query) use ($customerId, $paymentStatus, $fulfilmentSource, $search, $fromDate, $toDate, $createdByUserId, $legacyCreatedBy) {
+        $staffFilter = app(\App\Services\Sales\OrderStaffFilter::class);
+        $applyIndexFilters = function ($query) use ($customerId, $paymentStatus, $fulfilmentSource, $search, $fromDate, $toDate, $createdByUserId, $legacyCreatedBy, $request, $staffFilter) {
             $query
                 ->when($customerId !== '', fn ($innerQuery) => $innerQuery->where('customer_id', $customerId))
                 ->when($paymentStatus !== '', fn ($innerQuery) => $innerQuery->where('payment_status', $paymentStatus))
@@ -1989,13 +1990,15 @@ class SaleController extends Controller
                     });
                 });
 
-            $this->applyDateRangeFilter($query, $fromDate, $toDate);
+            if (!$staffFilter->applyToOrders($query, $request, $request->user(), 'sale', $fromDate, $toDate)) {
+                $this->applyDateRangeFilter($query, $fromDate, $toDate);
+            }
 
             return $query;
         };
 
         $salesQuery = $applyIndexFilters($this->baseSalesQuery(true));
-        $summaryQuery = $applyIndexFilters($this->baseSalesQuery(false, false));
+        $summaryQuery = $applyIndexFilters($this->baseSalesQuery(false, $request->integer('salesperson_id') !== 0));
 
         $sales = $this->applySorting(clone $salesQuery, $sortBy)
             ->paginate(20)
@@ -2027,10 +2030,12 @@ class SaleController extends Controller
         $customers = Customer::where('organization_id', $this->orgId())
             ->orderBy('name')
             ->get(['id', 'name']);
+        $salespersonOptions = $staffFilter->options($request->user(), 'sales');
 
         return view('sales.index', compact(
             'sales',
             'customers',
+            'salespersonOptions',
             'search',
             'customerId',
             'paymentStatus',

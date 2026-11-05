@@ -282,6 +282,10 @@ class InvoiceController extends Controller
         $toDate = trim((string) $request->get('to_date', ''));
         $createdByUserId = (int) $request->get('created_by_user_id', 0);
         $legacyCreatedBy = (int) $request->get('created_by', 0);
+        $staffFilter = app(\App\Services\Sales\OrderStaffFilter::class);
+        if ($staff = $staffFilter->selected($request, $request->user(), 'invoices')) {
+            $staffFilter->applyToInvoices($query, $this->orgId(), $staff);
+        }
 
         if ($search !== '') {
             $query->where(function ($invoiceQuery) use ($search) {
@@ -523,7 +527,7 @@ class InvoiceController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
-        $summaryQuery = $this->applyInvoiceFilters($this->invoiceBaseQuery(false, false), $request);
+        $summaryQuery = $this->applyInvoiceFilters($this->invoiceBaseQuery(false, $request->integer('salesperson_id') !== 0), $request);
         $invoiceSummary = $this->invoiceMetrics()->summary($summaryQuery, null,
             $request->user()->canViewFinance(), $request->user()->canViewDues());
         $invoiceStats = [
@@ -542,9 +546,11 @@ class InvoiceController extends Controller
         ];
 
         $this->syncInvoiceCollectionStatuses($invoices->getCollection());
+        $salespersonOptions = app(\App\Services\Sales\OrderStaffFilter::class)->options($request->user(), 'invoices');
 
         return view('invoices.index', compact(
             'invoices',
+            'salespersonOptions',
             'invoiceStats',
             'customers',
             'cities',

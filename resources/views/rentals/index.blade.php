@@ -118,8 +118,9 @@
     ];
     $currentMobileSortLabel = collect($mobileSortOptions)->firstWhere('value', $sortBy)['label'] ?? 'Newest First';
     $referredBy = $referredBy ?? '';
-    $hasActiveFilters = filled($search) || filled($status) || filled($deliveryStatus) || filled($pickupStatus) || filled($warehouseId) || filled($city) || filled($vendorId) || filled($referredBy) || filled($fromDate) || filled($toDate) || $sortBy !== 'priority';
+    $hasActiveFilters = request()->integer('salesperson_id') !== 0 || filled($search) || filled($status) || filled($deliveryStatus) || filled($pickupStatus) || filled($warehouseId) || filled($city) || filled($vendorId) || filled($referredBy) || filled($fromDate) || filled($toDate) || $sortBy !== 'priority';
     $activeFilterChips = collect([
+        $salespersonOptions->get(request()->integer('salesperson_id')) ? (request()->query('salesperson_match') === 'booked' ? 'Booked by ' : 'Salesperson ').$salespersonOptions->get(request()->integer('salesperson_id')) : null,
         filled($search) ? 'Search: ' . $search : null,
         filled($status) ? 'Rental: ' . ucfirst(str_replace('_', ' ', $status)) : null,
         filled($deliveryStatus) ? 'Delivery: ' . ucfirst(str_replace('_', ' ', $deliveryStatus)) : null,
@@ -690,6 +691,7 @@
                                 @endforeach
                             </select>
                         </div>
+                        @include('sales-workspace.salesperson-filter', ['filterId' => 'rental_desktop_salesperson', 'fieldClass' => 'filter-field', 'selectClass' => 'ops-select', 'showBookingMode' => true])
                         <div class="filter-field">
                             <label for="smart_from_date">From</label>
                             <input id="smart_from_date" class="ops-input" type="date" name="from_date" value="{{ $fromDate }}">
@@ -775,6 +777,15 @@
                     @endif
                     <input type="hidden" name="search" value="{{ $search }}">
                     <div class="mobile-sheet-grid">
+                        @include('sales-workspace.salesperson-filter', ['filterId' => 'rental_mobile_salesperson', 'fieldClass' => 'mobile-sheet-field', 'selectClass' => 'ops-select', 'showBookingMode' => true])
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_rental_from">From</label>
+                            <input id="mobile_rental_from" class="ops-input" type="date" name="from_date" value="{{ $fromDate }}">
+                        </div>
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_rental_to">To</label>
+                            <input id="mobile_rental_to" class="ops-input" type="date" name="to_date" value="{{ $toDate }}">
+                        </div>
                         <div class="mobile-sheet-field">
                             <label for="mobile_rental_status">Rental</label>
                             <select id="mobile_rental_status" class="ops-select" name="status">

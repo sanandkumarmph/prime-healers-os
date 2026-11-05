@@ -3239,6 +3239,8 @@ class RentalController extends Controller
         $referredBy = trim((string) $request->get('referred_by', ''));
         $createdByUserId = (int) $request->get('created_by_user_id', 0);
         [$fromDate, $toDate] = $this->normalizedDateFilters($request);
+        $staffBooked = app(\App\Services\Sales\OrderStaffFilter::class)
+            ->applyToOrders($query, $request, auth()->user(), 'rental', $fromDate, $toDate);
 
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
@@ -3276,7 +3278,7 @@ class RentalController extends Controller
             if ($toDate !== '') {
                 $query->whereDate('created_at', '<=', $toDate);
             }
-        } else {
+        } elseif (!$staffBooked) {
             $this->applyDateRangeFilter($query, $fromDate, $toDate);
         }
 
@@ -6498,6 +6500,8 @@ class RentalController extends Controller
         $referredBy = trim((string) $request->get('referred_by', ''));
         $sortBy = (string) $request->get('sort_by', 'latest');
         [$fromDate, $toDate] = $this->normalizedDateFilters($request);
+        $salespersonOptions = app(\App\Services\Sales\OrderStaffFilter::class)->options($request->user(), 'rentals');
+        $staffScoped = $request->integer('salesperson_id') !== 0;
 
         $rentals = $this->applyRentalSorting(
             $this->filteredRentalQuery($request, true),
@@ -6530,17 +6534,17 @@ class RentalController extends Controller
             'status' => null,
         ]));
 
-        $endingSoon = $this->filteredRentalQuery($endingSoonRequest, true, false)
+        $endingSoon = $this->filteredRentalQuery($endingSoonRequest, true, $staffScoped)
             ->latest()
             ->limit(5)
             ->get();
 
-        $overdue = $this->filteredRentalQuery($overdueRequest, true, false)
+        $overdue = $this->filteredRentalQuery($overdueRequest, true, $staffScoped)
             ->latest()
             ->limit(5)
             ->get();
 
-        $summaryQuery = $this->filteredRentalQuery($summaryScopeRequest, false, false);
+        $summaryQuery = $this->filteredRentalQuery($summaryScopeRequest, false, $staffScoped);
         $rentalSummary = $this->rentalMetrics()->headlineSnapshot(clone $summaryQuery, Carbon::today());
         $totalRentals = (int) ($rentalSummary['totalRentals'] ?? 0);
         $activeRentals = (int) ($rentalSummary['activeRentals'] ?? 0);
@@ -6593,6 +6597,7 @@ class RentalController extends Controller
 
         return view('rentals.index', array_merge($this->filterOptionData(), compact(
             'rentals',
+            'salespersonOptions',
             'endingSoon',
             'overdue',
             'totalRentals',
