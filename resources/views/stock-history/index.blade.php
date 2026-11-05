@@ -80,7 +80,7 @@
             <p class="stock-subtitle">Complete audit trail of stock movements across warehouses, assets, rentals, and sales.</p>
         </div>
         <div class="stock-actions">
-            @if($canExportStockHistory)
+            @if($canExportStockHistory && auth()->user()->can('manage-bulk-records'))
                 <a href="{{ route('stock-history.export.csv', request()->query()) }}" class="stock-action-btn stock-header-btn" title="Export CSV" aria-label="Export stock history CSV">{!! $iconSvg('download') !!}<span class="stock-action-label">Export CSV</span><span class="stock-action-short">CSV</span></a>
             @endif
             <a href="#stock-history-filters" class="stock-action-btn stock-header-btn" title="Filters" aria-label="Open stock history filters">{!! $iconSvg('filter') !!}<span class="stock-action-label">Filters</span>@if($activeFilterCount > 0)<span class="stock-filter-count">{{ $activeFilterCount }}</span>@endif</a>

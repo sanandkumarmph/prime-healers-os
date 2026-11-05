@@ -11,6 +11,7 @@
     $canCreateDeliveries = $currentUser?->canAccessModule('deliveries', 'create') ?? false;
     $canUpdateDeliveries = $currentUser?->canAccessModule('deliveries', 'update') ?? false;
     $canReadInvoices = $currentUser?->canAccessModule('invoices', 'read') ?? false;
+    $canManageBulkRecords = $currentUser?->can('manage-bulk-records') ?? false;
     $canSeeRentalFinance = $currentUser?->canSeeRentalFinance() ?? false;
     $canViewFinanceSummary = $currentUser?->canViewFinance() ?? false;
     $currency = fn ($value) => "\u{20B9}" . number_format((float) $value, 2);
@@ -631,7 +632,9 @@
         </div>
 
         <div class="rentals-actions">
-            <a href="{{ route('rentals.export.csv', $queryWithoutPage) }}" class="ops-btn-light" data-ph-action="download" aria-label="Export rentals" title="Export rentals"><x-phos-action-icon name="download" label="Export rentals" /></a>
+            @can('manage-bulk-records')
+                <a href="{{ route('rentals.export.csv', $queryWithoutPage) }}" class="ops-btn-light" data-ph-action="download" aria-label="Export rentals" title="Export rentals"><x-phos-action-icon name="download" label="Export rentals" /></a>
+            @endcan
             <x-phos-list-filter id="rentals-list-filters" label="Filter rentals" :active="$hasActiveFilters">
                 <form method="GET" action="{{ route('rentals.index') }}" class="rental-smart-filter" aria-label="Rental filters">
                     @if($filter)
@@ -950,7 +953,7 @@
                 <div class="empty-state">No rentals match this view right now. Adjust filters or create a new rental to keep operations moving.</div>
             @else
                 @if($canReadInvoices)
-                    <form id="rentalInvoiceBulkForm" method="GET" action="{{ route('invoices.bulk.print') }}" target="_blank" class="bulk-toolbar is-hidden">
+                    <form id="rentalInvoiceBulkForm" method="{{ $canManageBulkRecords ? 'GET' : 'POST' }}" action="{{ route($canManageBulkRecords ? 'invoices.bulk.print' : 'invoices.bulk.action') }}" target="{{ $canManageBulkRecords ? '_blank' : '_self' }}" class="bulk-toolbar is-hidden">
                         @csrf
                     <x-payment-submission-token />
                         <div>
@@ -959,8 +962,10 @@
                         </div>
                         <div class="bulk-actions">
                             <button type="button" class="ops-btn-light" data-rental-clear-selection>Clear</button>
-                            <button type="submit" class="ops-btn-light" data-rental-bulk-action="{{ route('invoices.bulk.print') }}" data-rental-bulk-method="GET" data-rental-bulk-target="_blank">Bulk PDF</button>
-                            <button type="submit" class="ops-btn-light" data-rental-bulk-action="{{ route('invoices.export.csv') }}" data-rental-bulk-method="GET" data-rental-bulk-target="_self">Export</button>
+                            @if($canManageBulkRecords)
+                                <button type="submit" class="ops-btn-light" data-rental-bulk-action="{{ route('invoices.bulk.print') }}" data-rental-bulk-method="GET" data-rental-bulk-target="_blank">Bulk PDF</button>
+                                <button type="submit" class="ops-btn-light" data-rental-bulk-action="{{ route('invoices.export.csv') }}" data-rental-bulk-method="GET" data-rental-bulk-target="_self">Export</button>
+                            @endif
                             <button type="submit" class="ops-btn-light" data-rental-bulk-action="{{ route('invoices.bulk.action') }}" data-rental-bulk-method="POST" data-rental-bulk-task="mark_paid" data-rental-bulk-target="_self">Mark Paid</button>
                             <button type="button" class="ops-btn-light" disabled title="Open individual rental rows to assign delivery">Assign Delivery</button>
                             <details class="ops-action-menu">

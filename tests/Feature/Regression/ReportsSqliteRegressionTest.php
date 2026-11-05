@@ -131,7 +131,7 @@ class ReportsSqliteRegressionTest extends TestCase
                     && (float) ($reportGroups['revenue_analytics']['rental_revenue'] ?? 0) === 1200.0;
             });
 
-        $exportResponse = $this->actingAs($reportUser)->get(route('reports.export.csv', [
+        $exportResponse = $this->actingAs(TestData::user($organization))->get(route('reports.export.csv', [
             'city' => 'Bengaluru',
             'fulfilment_source' => 'in_house',
             'product_category' => 'Respiratory',
@@ -302,7 +302,7 @@ class ReportsSqliteRegressionTest extends TestCase
                     && ! $leaderboard->contains('name', 'Unspecified');
             });
 
-        $exportResponse = $this->actingAs($reportUser)->get(route('reports.export.csv', [
+        $exportResponse = $this->actingAs(TestData::user($organization))->get(route('reports.export.csv', [
             'tab' => 'referrals',
             'report' => 'referral_order_details',
         ]));

@@ -448,9 +448,7 @@ class AccessAuthorityRegressionTest extends TestCase
             $this->assertEquals(0, $response->viewData('recentRentals')->first()->rental_amount);
             $this->assertEquals(0, $response->viewData('recentSales')->first()->sale_amount);
         }
-        $csv = $this->get(route('rentals.export.csv'))->assertOk()->streamedContent();
-        $this->assertFalse(str_contains($csv, 'Total Amount'));
-        $this->assertFalse(str_contains($csv, '6843.29'));
+        $this->getJson(route('rentals.export.csv'))->assertForbidden();
         $this->getJson(route('invoices.export.csv'))->assertForbidden();
         $this->getJson(route('dashboard.export.csv'))->assertForbidden();
         $this->assertSame($rentalBefore, $rental->fresh()->getRawOriginal());

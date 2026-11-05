@@ -266,9 +266,9 @@ class VendorFulfilmentRegressionTest extends TestCase
         $financeResponse->assertSee('Gross Margin');
         $financeResponse->assertSee($vendor->name);
 
-        $exportResponse = $this->actingAs($finance)->get(route('vendor-orders.export.csv', [
-            'vendor_id' => $vendor->id,
-        ]));
+        $exportUrl = route('vendor-orders.export.csv', ['vendor_id' => $vendor->id]);
+        $this->actingAs($finance)->getJson($exportUrl)->assertForbidden();
+        $exportResponse = $this->actingAs(TestData::user($organization))->get($exportUrl);
         $exportResponse->assertOk();
         $this->assertStringContainsString($vendor->name, $exportResponse->streamedContent());
         $this->assertSame($beforeCount, VendorOrderDetail::count());

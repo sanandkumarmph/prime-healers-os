@@ -9,6 +9,7 @@ use App\Support\XlsxWorkbook;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
@@ -62,6 +63,9 @@ class StaffIncentiveReportController extends Controller
             'credit_kind' => ['nullable', Rule::in(['sale', 'rental'])],
             'download' => ['nullable', Rule::in(['xlsx'])],
         ]);
+        if (($filters['download'] ?? null) === 'xlsx') {
+            Gate::authorize('manage-bulk-records');
+        }
         $from = $filters['from'] ?? today()->subYearNoOverflow()->addDay()->toDateString();
         $to = $filters['to'] ?? today()->toDateString();
         abort_if($from > $to, 422, 'The start date must be on or before the end date.');

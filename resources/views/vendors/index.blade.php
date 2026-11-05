@@ -6,7 +6,7 @@
     $canCreateVendors = $currentUser?->canAccessModule('vendors', 'create') ?? false;
     $canUpdateVendors = $currentUser?->canAccessModule('vendors', 'update') ?? false;
     $canDeleteVendors = $currentUser?->canAccessModule('vendors', 'delete') ?? false;
-    $canExportVendors = $currentUser?->hasPermission('vendors.export') ?? false;
+    $canExportVendors = $currentUser?->can('manage-bulk-records') && $currentUser->hasPermission('vendors.export');
     $hasActiveFilters = filled($search) || filled($status);
     $vendorInitials = function (?string $name): string {
         $parts = preg_split('/\s+/', trim((string) $name)) ?: [];

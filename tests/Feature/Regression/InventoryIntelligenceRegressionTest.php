@@ -54,6 +54,10 @@ class InventoryIntelligenceRegressionTest extends TestCase
 
         $this->actingAs($exporter)
             ->get(route('inventory-intelligence.export-matrix'))
+            ->assertForbidden();
+
+        $this->actingAs(TestData::user($organization))
+            ->get(route('inventory-intelligence.export-matrix'))
             ->assertOk()
             ->assertHeader('content-type', 'text/csv; charset=UTF-8');
 
@@ -191,11 +195,7 @@ class InventoryIntelligenceRegressionTest extends TestCase
     public function test_inventory_intelligence_exports_respect_time_scope_filters(): void
     {
         $organization = TestData::organization();
-        $exporter = $this->userWithRole($organization, 'Inventory Intelligence Exporter', [
-            'products' => ['read'],
-            'assets' => ['read'],
-            '__special' => ['stock_history.view', 'stock_history.export'],
-        ]);
+        $exporter = TestData::user($organization);
         $product = $this->makeProduct($organization->id, [
             'name' => 'Export Product',
         ]);

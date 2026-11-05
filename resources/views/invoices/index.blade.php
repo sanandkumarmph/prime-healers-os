@@ -3,6 +3,7 @@
 @section('content')
 @php
     $currentUser = auth()->user();
+    $canManageBulkRecords = $currentUser?->can('manage-bulk-records') ?? false;
     $isSalesLogin = $currentUser?->isSales() || $currentUser?->isSalesRenewals();
     $canCreateInvoices = $currentUser?->canAccessModule('invoices', 'create') ?? false;
     $canUpdateInvoices = $currentUser?->canAccessModule('invoices', 'update') ?? false;
@@ -905,7 +906,9 @@
         </div>
         <div class="invoice-toolbar-actions">
             <button type="button" class="invoice-btn invoice-icon-btn" data-invoice-filter-trigger title="Filters" aria-label="Open invoice filters">{!! $invoiceIcon('filter') !!}<span>Filters</span></button>
-            <a href="{{ route('invoices.export.csv', request()->query()) }}" class="invoice-btn soft invoice-icon-btn">{!! $invoiceIcon('download') !!}<span>Export CSV</span></a>
+            @if($canManageBulkRecords)
+                <a href="{{ route('invoices.export.csv', request()->query()) }}" class="invoice-btn soft invoice-icon-btn">{!! $invoiceIcon('download') !!}<span>Export CSV</span></a>
+            @endif
             @if($canCreateInvoices)
                 <a href="{{ route('invoices.create') }}" class="invoice-btn primary invoice-icon-btn">{!! $invoiceIcon('plus') !!}<span>Create Invoice</span></a>
             @endif
@@ -1161,20 +1164,26 @@
 
     <div class="invoice-workspace-grid">
     <div class="invoice-list-shell rn-table-shell">
-        <form id="invoiceBulkForm" method="POST" action="{{ route('invoices.bulk.print') }}" target="_blank">
-            @csrf
+        @if($canManageBulkRecords)
+            <form id="invoiceBulkForm" method="POST" action="{{ route('invoices.bulk.print') }}" target="_blank">
+                @csrf
+        @endif
             <div class="invoice-list-top">
                 <div>
                     <strong>{{ $totalInvoices }} invoice{{ $totalInvoices === 1 ? '' : 's' }}</strong>
-                    <span class="invoice-selected-count" id="invoiceSelectedCount">0 selected</span>
-                </div>
-                <div class="invoice-bulk-actions" id="invoiceBulkActions" hidden>
-                    <button type="submit" class="invoice-btn" data-bulk-action="{{ route('invoices.bulk.print') }}">Bulk PDF / Print</button>
-                    <button type="submit" class="invoice-btn soft" data-bulk-action="{{ route('invoices.bulk.export.csv') }}">Export Selected CSV</button>
-                    @if($canDeleteInvoices)
-                        <button type="button" class="invoice-btn danger" id="bulkDeleteInvoices">Bulk Delete</button>
+                    @if($canManageBulkRecords)
+                        <span class="invoice-selected-count" id="invoiceSelectedCount">0 selected</span>
                     @endif
                 </div>
+                @if($canManageBulkRecords)
+                    <div class="invoice-bulk-actions" id="invoiceBulkActions" hidden>
+                        <button type="submit" class="invoice-btn" data-bulk-action="{{ route('invoices.bulk.print') }}">Bulk PDF / Print</button>
+                        <button type="submit" class="invoice-btn soft" data-bulk-action="{{ route('invoices.bulk.export.csv') }}">Export Selected CSV</button>
+                        @if($canDeleteInvoices)
+                            <button type="button" class="invoice-btn danger" id="bulkDeleteInvoices">Bulk Delete</button>
+                        @endif
+                    </div>
+                @endif
             </div>
 
             @if($invoices->isEmpty())
@@ -1197,7 +1206,9 @@
                         @endphp
                         <article class="invoice-mobile-card">
                             <div class="invoice-mobile-top">
-                                <input type="checkbox" class="invoice-mobile-check invoice-row-check" name="invoice_ids[]" value="{{ $invoice->id }}" aria-label="Select invoice {{ $invoice->invoice_number }}">
+                                @if($canManageBulkRecords)
+                                    <input type="checkbox" class="invoice-mobile-check invoice-row-check" name="invoice_ids[]" value="{{ $invoice->id }}" aria-label="Select invoice {{ $invoice->invoice_number }}">
+                                @endif
                                 <div class="invoice-mobile-main">
                                     <div class="invoice-mobile-heading">
                                         <div>
@@ -1270,7 +1281,9 @@
                     <table class="invoice-table">
                         <thead>
                             <tr>
-                                <th style="width:42px;"><input type="checkbox" class="invoice-check" id="selectAllInvoices" aria-label="Select all invoices"></th>
+                                @if($canManageBulkRecords)
+                                    <th style="width:42px;"><input type="checkbox" class="invoice-check" id="selectAllInvoices" aria-label="Select all invoices"></th>
+                                @endif
                                 <th>Invoice</th>
                                 <th>Customer</th>
                                 <th>Status</th>
@@ -1297,9 +1310,11 @@
                                     $gstTotal = (float) $invoice->cgst_amount + (float) $invoice->sgst_amount + (float) $invoice->igst_amount;
                                 @endphp
                                 <tr>
-                                    <td>
-                                        <input type="checkbox" class="invoice-check invoice-row-check" name="invoice_ids[]" value="{{ $invoice->id }}" aria-label="Select invoice {{ $invoice->invoice_number }}">
-                                    </td>
+                                    @if($canManageBulkRecords)
+                                        <td>
+                                            <input type="checkbox" class="invoice-check invoice-row-check" name="invoice_ids[]" value="{{ $invoice->id }}" aria-label="Select invoice {{ $invoice->invoice_number }}">
+                                        </td>
+                                    @endif
                                     <td>
                                         <a href="{{ route('invoices.show', $invoice->id) }}" class="invoice-number-link">{{ $invoice->invoice_number }}</a>
                                         <div class="invoice-muted">{{ optional($invoice->invoice_date)->format('d/m/Y') ?: 'No date' }}</div>
@@ -1366,7 +1381,9 @@
                     </table>
                 </div>
             @endif
+        @if($canManageBulkRecords)
         </form>
+        @endif
     </div>
 
     <aside class="invoice-finance-panel {{ $isSalesLogin && $canViewAging ? 'has-sales-aging' : '' }}" aria-label="Invoice tools and balances">
@@ -1387,7 +1404,9 @@
             <div class="invoice-side-head"><strong>Quick Actions</strong></div>
             <div class="invoice-side-actions">
                 @if($canCreatePayments)<button type="button" class="invoice-side-action" data-invoice-filter-trigger>{!! $invoiceIcon('card') !!}<span>Find Invoice to Pay</span></button>@endif
-                <a href="{{ route('invoices.export.csv', request()->query()) }}" class="invoice-side-action">{!! $invoiceIcon('download') !!}<span>Export All</span></a>
+                @if($canManageBulkRecords)
+                    <a href="{{ route('invoices.export.csv', request()->query()) }}" class="invoice-side-action">{!! $invoiceIcon('download') !!}<span>Export All</span></a>
+                @endif
                 @if($canCreateInvoices)<a href="{{ route('invoices.create') }}" class="invoice-side-action">{!! $invoiceIcon('plus') !!}<span>Create Invoice</span></a>@endif
                 <button type="button" class="invoice-side-action" data-invoice-filter-trigger>{!! $invoiceIcon('filter') !!}<span>Filter Invoices</span></button>
             </div>
@@ -1444,7 +1463,7 @@
         @endif
     @endforeach
 
-    @if($canDeleteInvoices)
+    @if($canManageBulkRecords && $canDeleteInvoices)
         <form id="invoiceBulkDeleteForm" method="POST" action="{{ route('invoices.bulk.delete') }}" style="display:none;">
             @csrf
         </form>

@@ -159,7 +159,7 @@
                 <p class="ii-subtitle">Daily closing stock matrix and movement drill-down from the immutable ledger.</p>
             </div>
             <div class="ii-actions">
-                @if($canExport)
+                @if($canExport && auth()->user()->can('manage-bulk-records'))
                     <a href="{{ route('inventory-intelligence.export-matrix', request()->query()) }}" class="ii-button"><span aria-hidden="true">CSV</span> Matrix</a>
                     <a href="{{ route('inventory-intelligence.export-movements', request()->query()) }}" class="ii-button"><span aria-hidden="true">CSV</span> Movement</a>
                 @endif
@@ -307,7 +307,7 @@
                 <span class="ii-button" style="pointer-events:none;">{{ $focusedBucketLabel }}</span>
                 <input type="date" class="ii-matrix-date" value="{{ $focusedBucket ? $focusedBucket['start']->toDateString() : now()->toDateString() }}" data-matrix-date aria-label="Select matrix date">
                 <button type="button" class="ii-button" data-matrix-next>Next date</button>
-                @if($canExport)
+                @if($canExport && auth()->user()->can('manage-bulk-records'))
                     <a href="{{ route('inventory-intelligence.export-matrix', request()->query()) }}" class="ii-button">Export Matrix CSV</a>
                 @endif
             </div>
@@ -478,7 +478,7 @@
                     <strong style="font-size:15px;">Needs Reconciliation Asset List</strong>
                     <span class="ii-help">Assets that need operational review before the stock position can be trusted.</span>
                 </div>
-                @if($canExport ?? false)
+                @if(($canExport ?? false) && auth()->user()->can('manage-bulk-records'))
                     <a href="{{ route('inventory-intelligence.export-reconciliation', request()->query()) }}" class="ii-button">Export CSV</a>
                 @endif
             </div>

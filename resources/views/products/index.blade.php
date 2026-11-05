@@ -1108,7 +1108,9 @@
             </div>
 
             <div class="product-header-actions">
-                <a href="{{ route('products.export.csv', $queryFor()) }}" class="ph-btn-secondary">Export CSV</a>
+                @can('manage-bulk-records')
+                    <a href="{{ route('products.export.csv', $queryFor()) }}" class="ph-btn-secondary">Export CSV</a>
+                @endcan
                 <span class="product-pill">Product Master = catalog</span>
                 <button type="button" class="product-icon-filter" data-product-filter-toggle aria-label="Open product filters">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18"/><path d="M7 12h10"/><path d="M10 19h4"/></svg>
@@ -1504,7 +1506,9 @@
                     <div class="product-filter-actions">
                         <div class="product-selected-count"><span id="productSelectedCount">0</span> selected</div>
                         <div class="product-actions">
-                            <a href="{{ route('products.export.csv', $queryFor()) }}" class="ph-btn-secondary">Export CSV</a>
+                            @can('manage-bulk-records')
+                                <a href="{{ route('products.export.csv', $queryFor()) }}" class="ph-btn-secondary">Export CSV</a>
+                            @endcan
                             <button type="submit" class="ph-btn">Apply Filters</button>
                             <a href="{{ route('products.index') }}" class="ph-btn-soft" data-filter-clear="products-index">Clear Filters</a>
                         </div>

@@ -102,6 +102,7 @@ class AppServiceProvider extends ServiceProvider
             }
         });
 
+        Gate::define('manage-bulk-records', fn (User $user): bool => $user->isSuperAdmin());
         Gate::policy(Customer::class, CustomerPolicy::class);
         Gate::policy(BusinessPartner::class, BusinessPartnerPolicy::class);
         Gate::policy(PartnerClient::class, PartnerClientPolicy::class);

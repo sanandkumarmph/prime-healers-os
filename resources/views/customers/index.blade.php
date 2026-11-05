@@ -3,6 +3,7 @@
 @section('content')
 @php
     $currentUser = auth()->user();
+    $canManageBulkRecords = $currentUser?->can('manage-bulk-records') ?? false;
     $canCreateCustomers = $currentUser?->canAccessModule('customers', 'create') ?? false;
     $canUpdateCustomers = $currentUser?->canAccessModule('customers', 'update') ?? false;
     $canDeleteCustomers = $currentUser?->canAccessModule('customers', 'delete') ?? false;
@@ -671,6 +672,7 @@
             box-shadow: 0 8px 18px rgba(15,23,42,.035);
             cursor: pointer;
         }
+        .customer-mobile-card.without-selection { grid-template-columns: 42px minmax(0, 1fr); }
         .customer-mobile-card:focus-visible {
             outline: 2px solid rgba(29, 78, 216, .26);
             outline-offset: 2px;
@@ -772,6 +774,7 @@
     }
     @media (max-width: 360px) {
         .customer-mobile-card { grid-template-columns: 20px 30px minmax(0, 1fr); gap: 6px; }
+        .customer-mobile-card.without-selection { grid-template-columns: 30px minmax(0, 1fr); }
         .customer-mobile-avatar { width: 30px; height: 30px; border-radius: 10px; font-size: 11px; }
         .customer-mobile-phone { font-size: 10.5px; }
     }
@@ -789,7 +792,9 @@
                 <p>Search and manage customer records.</p>
             </div>
             <div class="customers-actions">
-                <a href="{{ route('customers.export.csv', $queryFor()) }}" class="ops-btn-light customer-export-action" data-ph-action="download" title="Export CSV" aria-label="Export customers as CSV"><x-phos-action-icon name="download" label="Export CSV" /></a>
+                @can('manage-bulk-records')
+                    <a href="{{ route('customers.export.csv', $queryFor()) }}" class="ops-btn-light customer-export-action" data-ph-action="download" title="Export CSV" aria-label="Export customers as CSV"><x-phos-action-icon name="download" label="Export CSV" /></a>
+                @endcan
                 <x-phos-list-filter id="customers-list-filters" label="Filter customers" :active="$hasActiveFilters">
                     <div class="customers-filter-search">
                         <form method="GET" action="{{ route('customers.index') }}" class="desktop-search-form" data-phos-legacy-filter>
@@ -1090,14 +1095,16 @@
 
         <div class="ops-card rn-table-shell">
             <div class="ops-card-body">
-                <form id="customerBulkExportForm" method="POST" action="{{ route('customers.bulk.export.csv') }}" style="display:none;">
-                    @csrf
-                </form>
-                @if($canDeleteCustomers)
-                    <form id="customerBulkDeleteForm" method="POST" action="{{ route('customers.bulk.delete') }}" style="display:none;">
+                @if($canManageBulkRecords)
+                    <form id="customerBulkExportForm" method="POST" action="{{ route('customers.bulk.export.csv') }}" style="display:none;">
                         @csrf
-                        @method('DELETE')
                     </form>
+                    @if($canDeleteCustomers)
+                        <form id="customerBulkDeleteForm" method="POST" action="{{ route('customers.bulk.delete') }}" style="display:none;">
+                            @csrf
+                            @method('DELETE')
+                        </form>
+                    @endif
                 @endif
 
                 <div class="section-title">
@@ -1105,13 +1112,15 @@
                         <h2>Customer List</h2>
                         <p>Manage customers, rentals, sales and invoices.</p>
                     </div>
-                    <div class="bulk-actions">
-                        <strong><span id="customerSelectedCount">0</span> selected</strong>
-                        <button type="button" class="ops-btn-light" id="bulkCustomerExport" disabled>Export Selected CSV</button>
-                        @if($canDeleteCustomers)
-                            <button type="button" class="ops-btn-danger" id="bulkCustomerDelete" disabled>Delete Selected</button>
-                        @endif
-                    </div>
+                    @if($canManageBulkRecords)
+                        <div class="bulk-actions">
+                            <strong><span id="customerSelectedCount">0</span> selected</strong>
+                            <button type="button" class="ops-btn-light" id="bulkCustomerExport" disabled>Export Selected CSV</button>
+                            @if($canDeleteCustomers)
+                                <button type="button" class="ops-btn-danger" id="bulkCustomerDelete" disabled>Delete Selected</button>
+                            @endif
+                        </div>
+                    @endif
                 </div>
 
                 <div class="customer-mobile-list" aria-label="Mobile customer list">
@@ -1130,10 +1139,12 @@
                                 ? route('communication-center.index', ['search' => $customer->phone ?: $customer->name])
                                 : null;
                         @endphp
-                        <article class="customer-mobile-card" data-href="{{ route('customers.show', $customer) }}" tabindex="0" role="link" aria-label="Open {{ $customer->name }}">
-                            <label class="customer-mobile-select" aria-label="Select {{ $customer->name }}">
-                                <input type="checkbox" class="customer-bulk-check" value="{{ $customer->id }}">
-                            </label>
+                        <article class="customer-mobile-card {{ $canManageBulkRecords ? '' : 'without-selection' }}" data-href="{{ route('customers.show', $customer) }}" tabindex="0" role="link" aria-label="Open {{ $customer->name }}">
+                            @if($canManageBulkRecords)
+                                <label class="customer-mobile-select" aria-label="Select {{ $customer->name }}">
+                                    <input type="checkbox" class="customer-bulk-check" value="{{ $customer->id }}">
+                                </label>
+                            @endif
                             <div class="customer-mobile-avatar" aria-hidden="true">{{ $customerInitials($customer->name) }}</div>
                             <div class="customer-mobile-main">
                                 <div class="customer-mobile-line">
@@ -1195,9 +1206,11 @@
                     <table class="customers-table">
                         <thead>
                             <tr>
-                                <th class="bulk-col">
-                                    <input type="checkbox" id="customerSelectAll" aria-label="Select all customers on this page">
-                                </th>
+                                @if($canManageBulkRecords)
+                                    <th class="bulk-col">
+                                        <input type="checkbox" id="customerSelectAll" aria-label="Select all customers on this page">
+                                    </th>
+                                @endif
                                 <th class="serial-col">#</th>
                                 <th>Customer</th>
                                 <th>Phone</th>
@@ -1219,9 +1232,11 @@
                                         : $loop->iteration;
                                 @endphp
                                 <tr>
-                                    <td class="bulk-col" data-label="Select">
-                                        <input type="checkbox" class="customer-bulk-check" value="{{ $customer->id }}" aria-label="Select {{ $customer->name }}">
-                                    </td>
+                                    @if($canManageBulkRecords)
+                                        <td class="bulk-col" data-label="Select">
+                                            <input type="checkbox" class="customer-bulk-check" value="{{ $customer->id }}" aria-label="Select {{ $customer->name }}">
+                                        </td>
+                                    @endif
                                     <td class="serial-col" data-label="No.">{{ $rowNumber }}</td>
                                     <td data-label="Customer">
                                         <div class="rn-customer-block">
@@ -1334,7 +1349,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="{{ 7 + ($canReadRentals ? 1 : 0) + ($canReadSales ? 1 : 0) + ($canReadInvoices ? 1 : 0) }}" class="empty-state">
+                                    <td colspan="{{ 6 + ($canManageBulkRecords ? 1 : 0) + ($canReadRentals ? 1 : 0) + ($canReadSales ? 1 : 0) + ($canReadInvoices ? 1 : 0) }}" class="empty-state">
                                         No customers match this view yet. Try a broader filter or add a new customer to get started.
                                     </td>
                                 </tr>

@@ -299,8 +299,12 @@ class SalesWorkspaceTest extends TestCase
         $legacyAdmin = TestData::user($org, ['role' => 'admin']);
         foreach ([$this->owner, $opsAdmin, $legacyAdmin] as $admin) {
             $this->actingAs($admin)->get($report)->assertOk()->assertSee('Staff incentive revenue');
-            $this->get($download)->assertOk()
-                ->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            if ($admin->isSuperAdmin()) {
+                $this->get($download)->assertOk()
+                    ->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            } else {
+                $this->get($download)->assertForbidden();
+            }
             $this->get(route('reports.index', ['tab' => 'staff']))->assertOk()->assertSee('View incentive revenue');
         }
         $this->actingAs($opsAdmin)->postJson($assign)->assertUnprocessable();

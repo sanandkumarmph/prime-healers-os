@@ -11,6 +11,7 @@
     $canReadRentals = $currentUser?->canAccessModule('rentals', 'read') ?? false;
     $canCreateDeliveries = $currentUser?->canAccessModule('deliveries', 'create') ?? false;
     $canReadInvoices = $currentUser?->canAccessModule('invoices', 'read') ?? false;
+    $canManageBulkRecords = $currentUser?->can('manage-bulk-records') ?? false;
     $canCreatePayments = $currentUser?->canAccessModule('payments', 'create') ?? false;
     $hasSaleDeliverySupport = \Illuminate\Support\Facades\Schema::hasColumn('deliveries', 'sale_id');
     $canViewDues = $currentUser?->canViewDues() ?? false;
@@ -1010,7 +1011,7 @@
                         </label>
                         <span>Bulk actions appear after selection</span>
                     </div>
-                    <form id="saleInvoiceBulkForm" method="GET" action="{{ route('invoices.bulk.print') }}" target="_blank" class="bulk-toolbar" hidden>
+                    <form id="saleInvoiceBulkForm" method="{{ $canManageBulkRecords ? 'GET' : 'POST' }}" action="{{ route($canManageBulkRecords ? 'invoices.bulk.print' : 'invoices.bulk.action') }}" target="{{ $canManageBulkRecords ? '_blank' : '_self' }}" class="bulk-toolbar" hidden>
                         @csrf
                     <x-payment-submission-token />
                         <div>
@@ -1018,8 +1019,10 @@
                             <span id="saleInvoiceSelectedCount">0 selected</span>
                         </div>
                         <div class="bulk-actions">
-                            <button type="submit" class="ops-btn-light" data-sale-bulk-action="{{ route('invoices.bulk.print') }}" data-sale-bulk-method="GET" data-sale-bulk-target="_blank">Bulk PDF / Print</button>
-                            <button type="submit" class="ops-btn-light" data-sale-bulk-action="{{ route('invoices.export.csv') }}" data-sale-bulk-method="GET" data-sale-bulk-target="_self">Export Selected CSV</button>
+                            @if($canManageBulkRecords)
+                                <button type="submit" class="ops-btn-light" data-sale-bulk-action="{{ route('invoices.bulk.print') }}" data-sale-bulk-method="GET" data-sale-bulk-target="_blank">Bulk PDF / Print</button>
+                                <button type="submit" class="ops-btn-light" data-sale-bulk-action="{{ route('invoices.export.csv') }}" data-sale-bulk-method="GET" data-sale-bulk-target="_self">Export Selected CSV</button>
+                            @endif
                             <button type="submit" class="ops-btn-light" data-sale-bulk-action="{{ route('invoices.bulk.action') }}" data-sale-bulk-method="POST" data-sale-bulk-task="mark_paid" data-sale-bulk-target="_self">Mark Paid</button>
                             <button type="submit" class="ops-btn-light" data-sale-bulk-action="{{ route('invoices.bulk.action') }}" data-sale-bulk-method="POST" data-sale-bulk-task="void" data-sale-bulk-target="_self" data-sale-confirm="Void selected invoices?">Void</button>
                         </div>
