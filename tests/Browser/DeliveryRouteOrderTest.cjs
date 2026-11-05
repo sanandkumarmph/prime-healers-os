@@ -44,6 +44,7 @@ test('route rows can be dragged or placed using a mouse, touchscreen or keyboard
         await page.goto(route);
         await page.waitForSelector(handle, { visible: true });
         assert.equal(await page.$eval('[data-route-reorder-fallback]', element => getComputedStyle(element).display), 'none');
+        assert.equal(await page.$eval('[data-route-drag-help]', element => getComputedStyle(element).clipPath), 'inset(50%)');
         await page.$eval(handle, element => element.scrollIntoView({ block: 'center', inline: 'nearest' }));
         return sequence();
     }

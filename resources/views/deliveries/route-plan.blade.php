@@ -5,7 +5,7 @@
     .route-drag-handle { min-width:44px; min-height:44px; padding:6px; cursor:grab; touch-action:none; user-select:none; }
     [data-route-reorder-fallback] { display:flex; gap:4px; margin-top:4px; }
     .route-drag-handle[hidden], [data-route-drag-help][hidden], [data-route-reorder-fallback][hidden] { display:none; }
-    [data-route-drag-status] { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+    [data-route-drag-help], [data-route-drag-status] { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
     [data-route-picked-up] > td { background:#eff6ff; }
     [data-route-picked-up] .route-drag-handle { cursor:grabbing; }
 </style>
@@ -44,24 +44,21 @@
     @if($truncated)<p class="sw-muted" role="status">Showing the first 200 stops for this team member and date.</p>@endif
     <section class="sw-panel">
         <h2>Scheduled stops</h2>
-        @if($warehousePoint)
-            <p class="sw-muted">From <strong>{{ $warehouse->name }}</strong> directly to each stop. The distance is measured in a straight line. Estimated drive time assumes {{ \App\Services\DeliveryRoutePlanner::ESTIMATED_SPEED_KMH }} km/h and a road path 30% longer than the straight line. Traffic and earlier stops can change arrival times.</p>
-        @elseif($warehouse)
+        @if(!$warehousePoint && $warehouse)
             <p class="sw-muted">Add a map pin for {{ $warehouse->name }} to show distance and drive-time estimates.
                 @if(auth()->user()->canAccessModule('warehouses', 'update'))
                     <a href="{{ route('warehouses.edit', $warehouse) }}">Set warehouse pin</a>
                 @endif
             </p>
-        @else
+        @elseif(!$warehousePoint)
             <p class="sw-muted">Choose a starting warehouse to see distance and drive-time estimates.</p>
         @endif
         @if($manualOrder)
             <p role="status">Using your manual stop order. <a href="{{ route('deliveries.route-plan', $routeFilters) }}#route-stops">Reset to suggested order</a></p>
         @endif
         @if(count($stops) > 1)
-            <p id="route-drag-help" class="sw-muted" data-route-drag-help hidden>
-                Drag a stop by its handle. You can also tap one handle, then tap another to move it there.
-                With a keyboard, press Space to pick up, use the arrow keys to move, and press Space again to place. Escape cancels.
+            <p id="route-drag-help" data-route-drag-help hidden>
+                Press Space to pick up, use the arrow keys to move, then press Space to place. Escape cancels.
             </p>
             <p role="status" data-route-drag-status></p>
             <form id="route-order" method="get" action="{{ route('deliveries.route-plan') }}">
@@ -72,7 +69,6 @@
             </form>
         @endif
         @if(array_filter($maps))
-            <p class="sw-muted">Open the route in sections of up to four destinations. Stops without a usable destination stay in the list for follow-up.</p>
             <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
                 @foreach($maps as $index => $url)
                     @if($url)<a class="sw-btn" href="{{ $url }}" target="_blank" rel="noopener noreferrer">Open map section {{ $index + 1 }}</a>@endif
@@ -80,7 +76,7 @@
             </div>
         @endif
         <div id="route-stops" style="overflow:auto"><table class="sw-table">
-            <thead><tr><th scope="col">Stop order</th><th scope="col">Time (IST)</th><th scope="col">Task</th><th scope="col">Destination</th><th scope="col">Distance</th><th scope="col">Est. drive</th><th scope="col">Directions</th></tr></thead>
+            <thead><tr><th scope="col">Stop order</th><th scope="col">Time (IST)</th><th scope="col">Task</th><th scope="col">Destination</th><th scope="col" title="Straight-line distance from the starting warehouse">Distance</th><th scope="col" title="Estimated drive time from the starting warehouse">Est. drive</th><th scope="col">Directions</th></tr></thead>
             <tbody data-route-stop-list>
                 @forelse($stops as $stop)
                     <tr id="route-stop-{{ $stop['task']->id }}" data-route-stop="{{ $stop['task']->id }}" style="scroll-margin-top:84px">

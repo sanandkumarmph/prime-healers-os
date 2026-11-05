@@ -67,6 +67,8 @@ class DeliveryRoutePlannerTest extends TestCase
         $filters = ['date' => $date, 'warehouse' => $warehouse->id];
         $response = $this->get(route('deliveries.route-plan', $filters))->assertOk()
             ->assertSee('data-route-drag-handle', false)->assertSee('phos-route-order.js')
+            ->assertDontSee('The distance is measured in a straight line')
+            ->assertDontSee('Open the route in sections of up to four destinations')
             ->assertSee('1.6 km')->assertSee('≈ 5 min')
             ->assertViewHas('stops', fn ($stops) => $stops[2]['distance_km'] === null
                 && str_contains($stops[2]['navigation'], 'origin=12.9%2C77.5'));
