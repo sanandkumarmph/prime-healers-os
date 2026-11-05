@@ -2768,7 +2768,13 @@ class DeliveryController extends Controller
         $this->authorize('viewAny', Delivery::class);
         $user = $request->user();
         abort_unless($user->canViewConsolidatedFinance() || $user->isDelivery(), 403);
-        $input = $request->validate(['date' => ['nullable', 'date_format:Y-m-d'], 'driver' => ['nullable', 'integer', 'min:1']]);
+        $input = $request->validate([
+            'date' => ['nullable', 'date_format:Y-m-d'],
+            'driver' => ['nullable', 'integer', 'min:1'],
+            'warehouse' => ['nullable', 'integer', 'min:1'],
+            'order' => ['nullable', 'string', 'regex:/\A[1-9]\d{0,19}(?:,[1-9]\d{0,19}){0,199}\z/'],
+            'move' => ['nullable', 'string', 'regex:/\A(?:up|down):[1-9]\d{0,19}\z/'],
+        ]);
         $date = $input['date'] ?? today()->toDateString();
         $base = Delivery::query()->where('organization_id', $this->orgId())->openOperational()
             ->whereDate('scheduled_at', $date)->whereNotNull('assigned_user_id');
@@ -2782,14 +2788,46 @@ class DeliveryController extends Controller
             abort_if($driver && !$drivers->has($driver), 404);
         }
         $tasks = $base->where('assigned_user_id', $driver)->with([
-            'rental.customer', 'rental.partnerClient', 'sale.customer', 'sale.partnerClient',
+            'rental.customer', 'rental.partnerClient', 'sale.customer', 'sale.partnerClient', 'sale.asset',
         ])->orderBy('scheduled_at')->orderBy('id')->limit(201)->get();
-        $stops = $planner->plan($tasks->take(200));
-        $maps = $planner->mapLegs($stops);
+        $warehouses = \App\Models\Warehouse::query()->where('organization_id', $this->orgId())
+            ->where('is_active', true)->orderBy('name')->get()->keyBy('id');
+        $taskWarehouses = $tasks->map(fn (Delivery $task) => $task->sale?->warehouse_id
+            ?? $task->sale?->asset?->warehouse_id ?? $task->rental?->dispatch_warehouse_id)->filter()->unique();
+        $defaultWarehouse = $taskWarehouses->count() === 1 ? $warehouses->get($taskWarehouses->first()) : null;
+        $warehouse = isset($input['warehouse']) ? $warehouses->get($input['warehouse'])
+            : ($defaultWarehouse ?? ($warehouses->count() === 1 ? $warehouses->first() : null));
+        abort_if(isset($input['warehouse']) && !$warehouse, 404);
+        $warehousePoint = $warehouse?->latitude !== null && $warehouse->longitude !== null
+            ? [$warehouse->latitude, $warehouse->longitude] : null;
+        $origin = $warehousePoint ? implode(',', $warehousePoint) : null;
+        if (!$origin && $warehouse?->address) {
+            $origin = implode(', ', array_filter([$warehouse->address, $warehouse->city, $warehouse->state, $warehouse->pincode]));
+        }
+
+        $stops = $planner->plan($tasks->take(200), $warehousePoint, $origin);
+        $stops = $planner->applyManualOrder($stops, explode(',', $input['order'] ?? ''));
+        $routeFilters = array_filter(['date' => $date, 'driver' => $user->isDelivery() ? null : $driver, 'warehouse' => $warehouse?->id]);
+        if (isset($input['move'])) {
+            [$direction, $id] = explode(':', $input['move']);
+            $order = array_map(fn ($stop) => (string) $stop['task']->id, $stops);
+            $index = array_search($id, $order, true);
+            abort_if($index === false, 404);
+            $next = $index + ($direction === 'up' ? -1 : 1);
+            if (isset($order[$next])) {
+                [$order[$index], $order[$next]] = [$order[$next], $order[$index]];
+            }
+
+            $url = route('deliveries.route-plan', $routeFilters + ['order' => implode(',', $order)]);
+
+            return redirect()->to($url.'#route-stop-'.$id)->header('Cache-Control', 'private, no-store');
+        }
+        $maps = $planner->mapLegs($stops, $origin);
 
         return response()->view('deliveries.route-plan', [
             'date' => $date, 'drivers' => $drivers, 'driver' => $driver, 'stops' => $stops, 'maps' => $maps,
-            'truncated' => $tasks->count() > 200,
+            'warehouses' => $warehouses, 'warehouse' => $warehouse, 'warehousePoint' => $warehousePoint, 'origin' => $origin,
+            'routeFilters' => $routeFilters, 'manualOrder' => isset($input['order']), 'truncated' => $tasks->count() > 200,
         ])->header('Cache-Control', 'private, no-store');
     }
 

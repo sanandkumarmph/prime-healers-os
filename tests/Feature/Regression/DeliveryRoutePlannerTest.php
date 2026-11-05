@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Regression;
 
-use App\Models\{Customer, Delivery, Product, Rental, User};
+use App\Models\{Customer, Delivery, Product, Rental, User, Warehouse};
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\TestData;
 use Tests\TestCase;
@@ -56,8 +56,49 @@ class DeliveryRoutePlannerTest extends TestCase
             ->assertViewHas('maps', fn ($maps) => count($maps) === 2 && str_contains($maps[0], 'waypoints='))
             ->assertSee('Address only. Save a map pin')
             ->assertDontSee('Completed fixture')->assertDontSee('Different driver fixture');
+
+        $warehouse = Warehouse::create([
+            'organization_id' => $organization->id, 'name' => 'Route warehouse', 'is_active' => true,
+            'latitude' => 12.9, 'longitude' => 77.5,
+        ]);
+        $foreignWarehouse = Warehouse::create([
+            'organization_id' => TestData::organization()->id, 'name' => 'Other warehouse', 'is_active' => true,
+        ]);
+        $filters = ['date' => $date, 'warehouse' => $warehouse->id];
+        $this->get(route('deliveries.route-plan', $filters))->assertOk()
+            ->assertSee('1.6 km')->assertSee('≈ 5 min')
+            ->assertViewHas('stops', fn ($stops) => $stops[2]['distance_km'] === null
+                && str_contains($stops[2]['navigation'], 'origin=12.9%2C77.5'));
+
+        $move = $this->get(route('deliveries.route-plan', $filters + ['move' => 'up:'.$far->id]))->assertRedirect();
+        $this->assertStringEndsWith('#route-stop-'.$far->id, $move->headers->get('Location'));
+        $this->get($move->headers->get('Location'))->assertOk()
+            ->assertSee('Reset to suggested order')
+            ->assertViewHas('stops', fn ($stops) => array_map(fn ($stop) => $stop['task']->id, $stops)
+                === [$start->id, $near->id, $far->id, $unpinned->id, $later->id])
+            ->assertViewHas('maps', fn ($maps) => str_contains($maps[0], 'origin=12.9%2C77.5')
+                && str_contains($maps[0], 'destination=Example%20Street'));
+        $this->get(route('deliveries.route-plan', $filters + ['move' => 'up:'.$otherTask->id]))->assertNotFound();
+        $this->get(route('deliveries.route-plan', ['date' => $date, 'warehouse' => $foreignWarehouse->id]))->assertNotFound();
+        $this->get(route('deliveries.route-plan', $filters + ['order' => $otherTask->id.','.$far->id.','.$far->id]))->assertOk()
+            ->assertViewHas('stops', fn ($stops) => count($stops) === 5 && $stops[0]['task']->id === $far->id)
+            ->assertDontSee('Different driver fixture');
+
         $this->actingAs($admin)->get(route('deliveries.route-plan', ['date' => $date, 'driver' => $other->id]))
             ->assertOk()->assertViewHas('stops', fn ($stops) => count($stops) === 1 && $stops[0]['task']->id === $otherTask->id);
         $this->actingAs($sales)->get(route('deliveries.route-plan', ['date' => $date]))->assertForbidden();
+    }
+
+    public function test_warehouse_pin_can_be_saved_and_requires_both_coordinates(): void
+    {
+        $owner = TestData::user();
+        $data = ['name' => 'Route warehouse', 'is_active' => true];
+        $this->actingAs($owner)->postJson(route('warehouses.store'), $data + ['latitude' => 12.9])
+            ->assertUnprocessable()->assertJsonValidationErrors('longitude');
+        $this->post(route('warehouses.store'), $data + ['latitude' => 12.9, 'longitude' => 77.5])
+            ->assertSessionHasNoErrors();
+        $warehouse = Warehouse::sole();
+        $this->assertSame(12.9, $warehouse->latitude);
+        $this->assertSame(77.5, $warehouse->longitude);
     }
 }

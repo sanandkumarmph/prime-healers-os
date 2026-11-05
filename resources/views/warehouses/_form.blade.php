@@ -91,6 +91,18 @@
                         @endif
                     </div>
                 </div>
+                <fieldset style="border:0; margin:20px 0 0; padding:0;">
+                    <legend style="font-weight:700;">Route planner map pin</legend>
+                    <p style="margin:6px 0 12px; color:#64748b;">Copy the two coordinates from the warehouse pin in Google Maps to enable distance and travel-time estimates.</p>
+                    <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px;">
+                        @foreach(['latitude' => 90, 'longitude' => 180] as $coordinate => $limit)
+                            <div>
+                                <label for="warehouse-{{ $coordinate }}" style="display:block; margin-bottom:8px; font-weight:700;">{{ ucfirst($coordinate) }}</label>
+                                <input id="warehouse-{{ $coordinate }}" name="{{ $coordinate }}" type="number" min="{{ -$limit }}" max="{{ $limit }}" step="any" value="{{ old($coordinate, $warehouse->{$coordinate}) }}" style="{{ $fieldStyle($coordinate, 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px;') }}">
+                            </div>
+                        @endforeach
+                    </div>
+                </fieldset>
             </div>
 
             <div style="display:flex; justify-content:flex-end; gap:12px;">

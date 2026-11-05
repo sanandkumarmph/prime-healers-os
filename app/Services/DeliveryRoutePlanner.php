@@ -7,9 +7,13 @@ use Illuminate\Support\Collection;
 
 class DeliveryRoutePlanner
 {
-    public function plan(Collection $deliveries): array
+    public const ESTIMATED_SPEED_KMH = 25;
+
+    public const ROAD_DISTANCE_FACTOR = 1.3;
+
+    public function plan(Collection $deliveries, ?array $warehousePoint = null, ?string $origin = null): array
     {
-        $stops = $deliveries->map(function (Delivery $task) {
+        $stops = $deliveries->map(function (Delivery $task) use ($warehousePoint, $origin) {
             $map = $task->linkedCustomerMapUrl();
             $point = $this->mapPoint($map);
             $order = $task->sale ?? $task->rental;
@@ -20,18 +24,20 @@ class DeliveryRoutePlanner
                     $address, $task->linkedCustomerCity(), $order?->deliveryContactState(), $order?->deliveryContactPincode(),
                 ])) : null);
 
+            $distance = $point !== null && $warehousePoint !== null ? $this->distance($warehousePoint, $point) : null;
+
             return [
                 'task' => $task,
                 'point' => $point,
                 'address' => $address,
                 'destination' => $destination,
-                'navigation' => $destination ? 'https://www.google.com/maps/dir/?'.http_build_query([
-                    'api' => 1, 'destination' => $destination, 'travelmode' => 'driving',
-                ], '', '&', PHP_QUERY_RFC3986) : null,
+                'navigation' => $destination ? $this->directions($origin, $destination) : null,
+                'distance_km' => $distance,
+                'travel_minutes' => $distance === null ? null : (int) ceil($distance * self::ROAD_DISTANCE_FACTOR / self::ESTIMATED_SPEED_KMH * 60),
             ];
         });
         $route = [];
-        $previous = null;
+        $previous = $warehousePoint;
         foreach ($stops->groupBy(fn ($stop) => $stop['task']->scheduled_at->format('H:i')) as $block) {
             // Stops with the same appointment time can be reordered. Unknown locations keep their original positions.
             $known = $block->filter(fn ($stop) => $stop['point'] !== null)->values()->all();
@@ -61,25 +67,44 @@ class DeliveryRoutePlanner
         return $route;
     }
 
-    public function mapLegs(array $stops): array
+    public function mapLegs(array $stops, ?string $origin = null): array
     {
         $destinations = array_values(array_filter(array_column($stops, 'destination')));
         $legs = [];
-        $origin = null;
         foreach (array_chunk($destinations, 4) as $chunk) {
             $last = array_pop($chunk);
-            $url = 'https://www.google.com/maps/dir/?'.http_build_query(array_filter([
-                'api' => 1,
-                'origin' => $origin,
-                'destination' => $last,
-                'waypoints' => implode('|', $chunk),
-                'travelmode' => 'driving',
-            ]), '', '&', PHP_QUERY_RFC3986);
-            $legs[] = strlen($url) <= 2048 ? $url : null;
+            $legs[] = $this->directions($origin, $last, $chunk);
             $origin = $last;
         }
 
         return $legs;
+    }
+
+    public function applyManualOrder(array $stops, array $ids): array
+    {
+        $remaining = collect($stops)->keyBy(fn ($stop) => $stop['task']->id)->all();
+        $ordered = [];
+        foreach ($ids as $id) {
+            if (isset($remaining[$id])) {
+                $ordered[] = $remaining[$id];
+                unset($remaining[$id]);
+            }
+        }
+
+        return array_merge($ordered, array_values($remaining));
+    }
+
+    private function directions(?string $origin, string $destination, array $waypoints = []): ?string
+    {
+        $url = 'https://www.google.com/maps/dir/?'.http_build_query(array_filter([
+            'api' => 1,
+            'origin' => $origin,
+            'destination' => $destination,
+            'waypoints' => implode('|', $waypoints),
+            'travelmode' => 'driving',
+        ]), '', '&', PHP_QUERY_RFC3986);
+
+        return strlen($url) <= 2048 ? $url : null;
     }
 
     private function mapPoint(?string $map): ?array
@@ -112,7 +137,9 @@ class DeliveryRoutePlanner
         [$fromLat, $fromLng] = array_map(deg2rad(...), $from);
         [$toLat, $toLng] = array_map(deg2rad(...), $to);
 
-        return sin(($toLat - $fromLat) / 2) ** 2
+        $haversine = sin(($toLat - $fromLat) / 2) ** 2
             + cos($fromLat) * cos($toLat) * sin(($toLng - $fromLng) / 2) ** 2;
+
+        return 2 * 6371 * asin(min(1, sqrt($haversine)));
     }
 }
