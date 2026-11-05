@@ -20,23 +20,22 @@ class SaleShowProfitabilityVisibilityRegressionTest extends TestCase
     public function test_finance_user_cannot_see_sale_profitability_card(): void
     {
         [$sale, $organization] = $this->saleFixture();
-        $admin = TestData::user($organization, [
+        $finance = TestData::user($organization, [
             'role' => User::ROLE_FINANCE,
         ]);
 
-        $this->actingAs($admin)
-            ->get(route('sales.show', $sale))
-            ->assertOk()
-            ->assertDontSee('Profitability')
-            ->assertDontSee('Vendor Cost')
-            ->assertDontSee('Gross Margin')
-            ->assertDontSee('Margin %');
+        $this->actingAs($finance)->getJson(route('sales.show', $sale))->assertForbidden();
     }
 
     public function test_operations_user_without_profit_permission_cannot_see_margin(): void
     {
         [$sale, $organization] = $this->saleFixture();
-        $operations = TestData::user($organization, ['role' => User::ROLE_ADMIN_OPERATIONS]);
+        $restricted = Role::create([
+            'organization_id' => $organization->id, 'name' => 'Operations sales reader',
+            'slug' => User::ROLE_ADMIN_OPERATIONS, 'is_active' => true,
+            'permissions' => ['sales' => ['read'], '__special' => []],
+        ]);
+        $operations = TestData::user($organization, ['role_id' => $restricted->id]);
         $this->assertFalse($operations->canViewProfitability());
 
         $this->actingAs($operations)->get(route('sales.show', $sale))->assertOk()

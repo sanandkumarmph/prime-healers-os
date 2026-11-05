@@ -238,10 +238,14 @@ class DeliverySignerNameRegressionTest extends TestCase
         $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
         $this->assertStringContainsString('private', $response->headers->get('Cache-Control'));
 
-        foreach ([User::ROLE_DELIVERY, User::ROLE_THIRD_PARTY] as $role) {
+        foreach ([User::ROLE_DELIVERY, User::ROLE_THIRD_PARTY, User::ROLE_SALES] as $role) {
             $colleague = TestData::user($this->operator->organization, ['role' => $role]);
-            $this->actingAs($colleague)->get(route('deliveries.show', $task))
-                ->assertOk()->assertDontSeeText('Asha Devi')->assertDontSee($proofUrl, false);
+            $response = $this->actingAs($colleague)->get(route('deliveries.show', $task));
+            if ($role === User::ROLE_DELIVERY) {
+                $response->assertForbidden();
+            } else {
+                $response->assertOk()->assertDontSeeText('Asha Devi')->assertDontSee($proofUrl, false);
+            }
             $this->get($proofUrl)->assertForbidden();
         }
 

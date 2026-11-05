@@ -277,7 +277,7 @@ class CylinderWorkflowTest extends TestCase
         $this->assertSame(1,$c->events()->where('action','inspection_recorded')->count());$this->assertDatabaseCount('assets',3);
     }
 
-    public function test_accounts_role_can_invoice_completed_job_without_operational_or_consolidated_finance_access(): void
+    public function test_accounts_role_cannot_open_or_invoice_a_cylinder_service_job(): void
     {
         $job=$this->service->create($this->owner,$this->rental,$this->payload());
         foreach(['empty_collected','warehouse_received','full_delivered'] as $action)$job=$this->act($job,$action);
@@ -285,10 +285,10 @@ class CylinderWorkflowTest extends TestCase
         $role=\App\Models\Role::create(['organization_id'=>$this->owner->organization_id,'name'=>'Accounts / Finance','slug'=>'finance','is_active'=>true,
             'permissions'=>$preset['modules']+['__special'=>$preset['special'],'__special_explicit'=>true]]);
         $staff=TestData::user($this->owner->organization,['role_id'=>$role->id,'role'=>'finance']);
-        $this->assertFalse($staff->canViewFinance());$this->assertTrue($staff->canViewDues());
-        $this->actingAs($staff)->get(route('cylinder-services.show',$job))->assertOk();
-        $this->post(route('cylinder-services.invoice',$job))->assertSessionHasNoErrors()->assertRedirect();
-        $this->assertEquals(350,$job->fresh()->invoice->total_amount);$this->assertNull($job->fresh()->invoice->rental_id);
+        $this->assertTrue($staff->canViewFinance());$this->assertTrue($staff->canViewDues());
+        $this->actingAs($staff)->get(route('cylinder-services.show',$job))->assertForbidden();
+        $this->post(route('cylinder-services.invoice',$job))->assertForbidden();
+        $this->assertNull($job->fresh()->invoice_id);
         $this->get(route('cylinder-services.stock'))->assertForbidden();
         $this->post(route('cylinder-services.action',$job),['request_id'=>(string)Str::uuid(),'lock_version'=>$job->fresh()->lock_version,
             'action'=>'refill_sent','scanned_code'=>$this->a->asset->serial_number])->assertForbidden();

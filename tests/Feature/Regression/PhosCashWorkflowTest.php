@@ -114,7 +114,7 @@ class PhosCashWorkflowTest extends TestCase
         $this->post(route('delivery-collections.store',$this->task),$this->payload(['amount'=>301]))->assertSessionHasErrors('collection');
     }
 
-    public function test_online_report_requires_evidence_and_finance_verification_before_credit(): void
+    public function test_online_report_requires_evidence_and_admin_verification_before_credit(): void
     {
         $this->post(route('delivery-collections.store',$this->task),$this->payload(['method'=>'upi']))->assertSessionHasErrors('collection');
         $entry=$this->collect(['method'=>'upi','reference'=>'SYNTHETIC-TRANSFER-1']);
@@ -122,6 +122,8 @@ class PhosCashWorkflowTest extends TestCase
         $decision=['action'=>'verify','reason'=>'Checked synthetic bank receipt','confirmed'=>1];
         $this->post(route('delivery-collections.review',$entry),$decision)->assertForbidden();
         $this->actingAs($this->finance);
+        $this->post(route('delivery-collections.review',$entry),$decision)->assertForbidden();
+        $this->actingAs($this->admin);
         $this->get(route('delivery-collections.index'))->assertOk()->assertSee('SYNTHETIC-TRANSFER-1');
         $this->post(route('delivery-collections.review',$entry),$decision)->assertSessionHasNoErrors();
         $this->post(route('delivery-collections.review',$entry),$decision)->assertSessionHasNoErrors();
@@ -151,7 +153,7 @@ class PhosCashWorkflowTest extends TestCase
         $entry=$this->collect(); $handover=$this->handover($entry);
         $this->assertEquals(50,$entry->fresh()->cashAmounts()['available']/100);
         $decision=['confirmation_token'=>(string)Str::uuid(),'received_amount'=>60,'confirmed'=>1];
-        $this->actingAs($this->finance);
+        $this->actingAs($this->admin);
         if ($directory=getenv('GETTING_STARTED_PREVIEW_DIR')) file_put_contents($directory.'/phos-cash-handovers.html',$this->get(route('cash-handovers.index'))->assertOk()->getContent());
         $this->post(route('cash-handovers.confirm',$handover),$decision)->assertSessionHasErrors('handover');
         $decision['reason']='Received only part of the submitted cash';
@@ -179,9 +181,8 @@ class PhosCashWorkflowTest extends TestCase
     public function test_receipt_and_collection_corrections_keep_all_original_history(): void
     {
         $entry=$this->collect(); $handover=$this->handover($entry);
-        $this->actingAs($this->finance);
-        $this->post(route('cash-handovers.confirm',$handover),['confirmation_token'=>(string)Str::uuid(),'received_amount'=>100,'confirmed'=>1])->assertSessionHasNoErrors();
         $this->actingAs($this->admin);
+        $this->post(route('cash-handovers.confirm',$handover),['confirmation_token'=>(string)Str::uuid(),'received_amount'=>100,'confirmed'=>1])->assertSessionHasNoErrors();
         $correction=['reason'=>'Synthetic wrong collection entry','confirmed'=>1];
         $this->post(route('delivery-collections.reverse',$entry),$correction)->assertSessionHasErrors('collection');
         $this->post(route('cash-handovers.correct',$handover),['action'=>'reverse','reason'=>'Synthetic cash receipt mistake','confirmed'=>1])->assertSessionHasNoErrors();

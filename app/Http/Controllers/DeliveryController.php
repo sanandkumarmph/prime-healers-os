@@ -843,6 +843,11 @@ class DeliveryController extends Controller
 
     private function canViewDeliveryProofs(Delivery $delivery): bool
     {
+        $user = auth()->user();
+        if ($user->isSales() || $user->isSalesRenewals()) {
+            return false;
+        }
+
         return $this->applyDeliveryScope(Delivery::query()->where('organization_id', $this->orgId()))
             ->whereKey($delivery->id)
             ->exists();

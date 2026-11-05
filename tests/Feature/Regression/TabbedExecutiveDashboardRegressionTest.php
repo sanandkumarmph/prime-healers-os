@@ -174,15 +174,9 @@ class TabbedExecutiveDashboardRegressionTest extends TestCase
             'invoices' => ['read', 'update'],
             'payments' => ['read', 'create', 'update'],
         ]);
-        $response = $this->actingAs($finance)->get(route('dashboard', ['dashboard_tab' => 'team']))->assertOk();
-        $xpath = $this->xpath($response);
-
-        $this->assertNotContains('revenue', $this->tabNames($xpath));
-        $this->assertNotContains('team', $this->tabNames($xpath));
-        $this->assertSame(0, $xpath->query('//*[@data-dashboard-panel="team"]')->length);
-        $response->assertDontSee('id="team-performance"', false);
-        $this->assertActivePanel($xpath, 'overview');
-        $this->exportFixture('dashboard-finance', $response, ['role' => 'finance', 'active_tab' => 'overview', 'unavailable_tabs' => ['team']]);
+        $this->actingAs($finance)->getJson(route('dashboard', ['dashboard_tab' => 'team']))->assertForbidden();
+        $this->get(route('reports.index', ['tab' => 'staff']))->assertOk()->assertSee('Finance reports')
+            ->assertDontSee('id="team-performance"', false)->assertDontSee('Staff Performance');
     }
 
     public function test_warehouse_user_has_inventory_but_no_finance_or_team_tab_data(): void
@@ -358,7 +352,7 @@ class TabbedExecutiveDashboardRegressionTest extends TestCase
         $response = $this->actingAs($delivery)->get(route('profile.edit'))->assertOk();
         $xpath = $this->xpath($response);
         $this->assertSame(['Dashboard', 'Collections & cash'], $this->sidebarLabels($xpath, 'main'));
-        $this->assertSame(['Pickup Center', 'Tasks Board'], $this->sidebarLabels($xpath, 'operations'));
+        $this->assertSame(['Pickup Center', 'Communication Center', 'Add an asset', 'Tasks Board', 'Route planner'], $this->sidebarLabels($xpath, 'operations'));
         $this->assertSame(['Knowledge Hub'], $this->sidebarLabels($xpath, 'help'));
     }
 
