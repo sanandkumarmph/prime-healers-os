@@ -6872,7 +6872,9 @@ class RentalController extends Controller
             throw ValidationException::withMessages($exception->errors());
         }
 
-        [$rental, $invoice] = DB::transaction(function () use ($request, $product, $customerContext, $selectedAssets, $saleItems, $rentalItems, $deliveryAssignment, $fulfilment, $vendorSupplied) {
+        $incentive = app(\App\Services\Sales\OrderIncentiveCredit::class);
+        $credit = $incentive->prepare($request);
+        [$rental, $invoice] = DB::transaction(function () use ($request, $product, $customerContext, $selectedAssets, $saleItems, $rentalItems, $deliveryAssignment, $fulfilment, $vendorSupplied, $incentive, $credit) {
             $rental = Rental::create([
                 'organization_id' => $this->orgId(),
                 'customer_id' => $customerContext['customer_id'],
@@ -6976,6 +6978,7 @@ class RentalController extends Controller
             $this->vendorFulfilmentService()->syncRental($rental, $fulfilment + [
                 'notes' => $request->input('notes'),
             ]);
+            $incentive->save($rental, $credit);
 
             return [$rental, $invoice];
         });

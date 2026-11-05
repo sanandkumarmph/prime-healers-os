@@ -1508,6 +1508,9 @@
 
     <div class="sales-card sale-step-card section-nav-target" id="sale-save-section" data-sale-step="review">
         <h2>Review & Create</h2>
+        @unless($isEdit)
+            @include('sales-workspace.order-incentive-fields', ['fieldClass' => 'sales-field'])
+        @endunless
         <p>Confirm customer, referral, products, pricing, delivery, and fulfilment before saving.</p>
         <div class="sales-summary">
             <div class="sales-metric"><span>Customer</span><strong id="saleReviewCustomer">Select customer</strong></div>

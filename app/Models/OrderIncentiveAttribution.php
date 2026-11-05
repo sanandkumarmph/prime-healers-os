@@ -8,7 +8,7 @@ class OrderIncentiveAttribution extends Model
 {
     protected $guarded = ['id'];
 
-    public static function record(int $organization, string $kind, int $order, string $source, ?int $staff, int $actor): void
+    public static function record(int $organization, string $kind, int $order, string $source, ?int $staff, int $actor, ?int $closer = null): void
     {
         static::upsert([[
             'organization_id' => $organization,
@@ -17,6 +17,7 @@ class OrderIncentiveAttribution extends Model
             'source' => $source,
             'sales_user_id' => $staff,
             'recorded_by_user_id' => $actor,
-        ]], ['organization_id', 'order_type', 'order_id'], ['source', 'sales_user_id', 'recorded_by_user_id']);
+            'closer_user_id' => $closer,
+        ]], ['organization_id', 'order_type', 'order_id'], ['source', 'sales_user_id', 'recorded_by_user_id', 'closer_user_id']);
     }
 }

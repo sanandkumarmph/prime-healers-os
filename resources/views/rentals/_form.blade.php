@@ -3375,6 +3375,9 @@
 
     <section class="rental-card rental-wizard-step" data-rental-wizard-step="review" id="rental-review-section">
         <h2>Review & Create</h2>
+        @unless($isEdit)
+            @include('sales-workspace.order-incentive-fields', ['fieldClass' => 'rental-field'])
+        @endunless
 
         <div class="rental-review-grid is-compact-review">
             <div class="rental-review-box"><span>Customer</span><strong data-summary-value="customer">Not selected</strong></div>

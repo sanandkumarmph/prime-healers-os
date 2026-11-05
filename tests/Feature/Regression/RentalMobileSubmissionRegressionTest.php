@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Regression;
 
-use App\Models\{City, Customer, Product, Rental, Warehouse};
+use App\Models\{City, Customer, Product, Rental, User, Warehouse};
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\TestData;
 use Tests\TestCase;
@@ -15,6 +15,7 @@ class RentalMobileSubmissionRegressionTest extends TestCase
     {
         $org = TestData::organization(['state' => 'Karnataka']);
         $this->actingAs(TestData::user($org));
+        TestData::user($org, ['name' => 'Earlier shift salesperson', 'role' => User::ROLE_SALES]);
         $city = City::create(['organization_id' => $org->id, 'name' => 'Bengaluru', 'is_active' => true]);
         Warehouse::create(['organization_id' => $org->id, 'city_id' => $city->id, 'name' => 'Main', 'is_active' => true]);
         $customer = Customer::create(['organization_id' => $org->id, 'name' => 'Synthetic rental customer',

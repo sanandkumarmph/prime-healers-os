@@ -2,7 +2,7 @@
 
 namespace App\Services\Sales;
 
-use App\Models\{Enquiry, OrderIncentiveAttribution, Quotation, Rental, Sale};
+use App\Models\{Quotation, Rental, Sale};
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
@@ -149,15 +149,6 @@ class QuotationConversion
         $quote->update(['status' => 'converted', 'order_type' => $quote->kind, 'order_id' => $order->id,
             'conversion_source' => $e->source ?: '', 'converted_by_user_id' => $request->user()->id,
             'lock_version' => $quote->lock_version + 1]);
-        $source = Enquiry::incentiveSource($e->source) ?? $e->source;
-        if (isset(Enquiry::SOURCES[$source])) {
-            $owner = $e->owner;
-            $actor = $request->user();
-            $salesUser = $owner?->isSales() && (int) $owner->organization_id === (int) $quote->organization_id
-                ? $owner : ($actor->isSales() ? $actor : null);
-            OrderIncentiveAttribution::record((int) $quote->organization_id, $quote->kind, $order->id, $source,
-                isset(Enquiry::INCENTIVE_SOURCES[$source]) ? $salesUser?->id : null, $actor->id);
-        }
         $e->update(['stage' => 'won', 'customer_id' => $order->customer_id, 'lock_version' => $e->lock_version + 1]);
         $e->followUps()->whereNull('completed_at')->update(['completed_at' => now(), 'outcome' => 'cancelled', 'completion_note' => 'Order created from accepted quotation.']);
         $this->workspace->event($e, 'quotation.converted', $quote->number().' converted to '.$quote->kind.' #'.$order->id.'.');

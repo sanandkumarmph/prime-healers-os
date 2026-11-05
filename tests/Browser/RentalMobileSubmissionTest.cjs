@@ -57,6 +57,12 @@ test('mobile rental create and edit submit the owning form and follow availabili
                     choose('city_id');choose('customer_id');choose('product_id');choose('dispatch_warehouse_id');set('quantity','1');set('start_date','2026-11-05');set('end_date','2026-11-10');set('rental_amount','600');set('delivery_assignment_type','customer_pickup');window.updateSummary?.();
                     document.querySelector('[data-rental-wizard-tab="review"]').click();
                 });
+                if(mode==='create'){
+                    await page.waitForSelector('#incentive_owner_id',{visible:true});
+                    const owner=await page.$eval('#incentive_owner_id',el=>[...el.options].find(option=>option.textContent==='Earlier shift salesperson').value);
+                    await page.select('#incentive_owner_id',owner);
+                    await page.select('#incentive_source','incoming_phone');
+                }
                 const mobile=width<=640, selector=mobile?'#rentalMobileSaveButton':'#rentalSubmitButton';
                 assert.equal(await page.$eval(selector,button=>button.form?.id),'rentalCreateForm');
                 if(mobile){
@@ -83,6 +89,12 @@ test('mobile rental create and edit submit the owning form and follow availabili
                 assert.equal(submissions[0].data.product_id,'1');
                 assert.equal(submissions[0].data.quantity,'1');
                 assert.equal(submissions[0].data._method,mode==='edit'?'PUT':undefined);
+                if(mode==='create'){
+                    assert.ok(submissions[0].data.incentive_owner_id);
+                    assert.equal(submissions[0].data.incentive_source,'incoming_phone');
+                }else{
+                    assert.equal(submissions[0].data.incentive_owner_id,undefined);
+                }
                 assert.ok(new URL(submissions[0].action).pathname=== (mode==='edit'?'/rentals/1':'/rentals'));
                 // Native required validation must continue preventing invalid saves.
                 await page.$eval('#end_date',field=>{field.value='';});

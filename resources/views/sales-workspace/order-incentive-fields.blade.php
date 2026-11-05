@@ -1,0 +1,35 @@
+@php
+    $credit = app(\App\Services\Sales\OrderIncentiveCredit::class);
+    $salesOwners = $credit->salesStaff(auth()->user());
+    $selectedOwner = (int) old('incentive_owner_id', $credit->defaultOwner(request(), $salesOwners));
+    $orderQuote = request()->attributes->get('conversion_quote');
+@endphp
+<fieldset style="border:1px solid #dbe4ee;border-radius:10px;padding:12px;margin:12px 0;min-width:0">
+    <legend style="font-weight:700">Sales incentive credit</legend>
+    <div class="{{ $fieldClass }}">
+        <label for="incentive_owner_id">Order owner</label>
+        <select name="incentive_owner_id" id="incentive_owner_id">
+            <option value="">Choose salesperson</option>
+            @foreach($salesOwners as $id => $owner)
+                <option value="{{ $id }}" @selected($selectedOwner === (int) $id)>{{ (int) auth()->id() === (int) $id ? 'Myself' : $owner->name }}</option>
+            @endforeach
+        </select>
+        @error('incentive_owner_id')<span role="alert">{{ $message }}</span>@enderror
+    </div>
+    <p>Choose the salesperson who first worked with the customer. For a shift handoff, the owner gets 80% of eligible revenue and the salesperson creating the order gets 20%. One salesperson gets 100% when they handle both.</p>
+    @if($orderQuote)
+        <p>Enquiry source · {{ $orderQuote->enquiry->source_label }}</p>
+    @else
+        <div class="{{ $fieldClass }}">
+            <label for="incentive_source">Enquiry source</label>
+            <select name="incentive_source" id="incentive_source">
+                <option value="">Choose the original source</option>
+                @foreach(\App\Models\Enquiry::SOURCES as $key => $label)
+                    <option value="{{ $key }}" @selected(old('incentive_source') === $key)>{{ $label }}</option>
+                @endforeach
+            </select>
+            <small>Required for a direct booking with a selected order owner.</small>
+            @error('incentive_source')<span role="alert">{{ $message }}</span>@enderror
+        </div>
+    @endif
+</fieldset>

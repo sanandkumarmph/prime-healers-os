@@ -2207,6 +2207,8 @@ class SaleController extends Controller
         $this->synchronizeLinkedRentalContext($request);
         $this->hydrateSaleBusinessPartnerInputs($request);
         $request->validate($this->saleValidationRules());
+        $incentive = app(\App\Services\Sales\OrderIncentiveCredit::class);
+        $credit = $incentive->prepare($request);
         $fulfilment = $this->normalizedSaleFulfilmentInput($request);
         $vendorSupplied = $fulfilment['fulfilment_source'] === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED;
         $partyContext = $this->validatedSalePartyContext($request);
@@ -2231,7 +2233,7 @@ class SaleController extends Controller
             $salePayload['stock_applied'] = !$vendorSupplied;
         }
 
-        [$sale, $invoice] = DB::transaction(function () use ($salePayload, $saleItems, $vendorSupplied, $fulfilment, $request) {
+        [$sale, $invoice] = DB::transaction(function () use ($salePayload, $saleItems, $vendorSupplied, $fulfilment, $request, $incentive, $credit) {
             $sale = Sale::create($salePayload);
             $this->syncSaleItems($sale, $saleItems);
             if (!$vendorSupplied) {
@@ -2241,6 +2243,7 @@ class SaleController extends Controller
             $this->vendorFulfilmentService()->syncSale($sale, $fulfilment + [
                 'notes' => $request->input('notes'),
             ]);
+            $incentive->save($sale, $credit);
 
             return [$sale, $invoice];
         });

@@ -343,6 +343,45 @@ class SalesWorkspaceTest extends TestCase
         $this->actingAs($salesperson)->post($assign, $review + ['staff' => $salesperson->id])->assertForbidden();
     }
 
+    public function test_sales_handoff_splits_incentive_and_keeps_bookings_with_the_creator(): void
+    {
+        $org = $this->owner->organization;
+        $first = TestData::user($org, ['name' => 'Earlier shift', 'role' => User::ROLE_SALES]);
+        $closer = TestData::user($org, ['name' => 'Later shift', 'role' => User::ROLE_SALES]);
+        $outsider = TestData::user(TestData::organization(), ['role' => User::ROLE_SALES]);
+        $sale = app(QuotationConversion::class)->prefill($this->accepted('sale'));
+        $rental = app(QuotationConversion::class)->prefill($this->accepted()) + ['delivery_assignment_type' => 'customer_pickup'];
+        unset($sale['quotation_id'], $sale['quotation_version'], $rental['quotation_id'], $rental['quotation_version']);
+        $this->actingAs($closer);
+        foreach (['sales.create', 'rentals.create'] as $form) {
+            $this->get(route($form))->assertOk()->assertSee('Order owner')->assertSee('Myself')->assertSee($first->name);
+        }
+        $this->post(route('sales.store'), $sale + ['incentive_owner_id' => $first->id])->assertSessionHasErrors('incentive_source');
+        $this->post(route('sales.store'), $sale + ['incentive_owner_id' => $outsider->id, 'incentive_source' => 'justdial'])
+            ->assertSessionHasErrors('incentive_owner_id');
+        $this->assertDatabaseCount('sales', 0);
+        $this->post(route('sales.store'), $sale + ['incentive_owner_id' => $first->id, 'incentive_source' => 'justdial'])
+            ->assertSessionHasNoErrors();
+        $this->post(route('rentals.store'), $rental + ['incentive_owner_id' => $closer->id, 'incentive_source' => 'incoming_phone'])
+            ->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('order_incentive_attributions', [
+            'order_type' => 'sale', 'sales_user_id' => $first->id, 'closer_user_id' => $closer->id,
+        ]);
+        $saleRecord = Sale::sole();
+        $saleRecord->forceFill(['created_at' => '2026-07-25 10:00:00'])->save();
+        \App\Models\Invoice::where('sale_id', $saleRecord->id)->update(['invoice_date' => '2026-07-25']);
+
+        $this->actingAs($this->owner);
+        $this->get(route('reports.staff-incentives'))->assertOk()->assertViewHas('total', 400)
+            ->assertViewHas('bookedSales', fn ($counts) => $counts->get($closer->id) == 1 && !$counts->has($first->id))
+            ->assertViewHas('bookedRentals', fn ($counts) => $counts->get($closer->id) == 1)
+            ->assertViewHas('sourceTotals', fn ($totals) => $totals['justdial']['orders'] === 1)
+            ->assertSee('Owner · 80%')->assertSee('Closer · 20%')->assertSee('Owner · 100%');
+        $this->get(route('reports.staff-incentives', ['staff' => $first->id]))->assertOk()->assertViewHas('total', 160);
+        $this->get(route('reports.staff-incentives', ['staff' => $closer->id]))->assertOk()->assertViewHas('total', 240);
+        $this->get(route('reports.staff-incentives', ['from' => '2026-10-01']))->assertOk()->assertViewHas('total', 200);
+    }
+
     public static function negotiatedRentalPrices(): array
     {
         return [
