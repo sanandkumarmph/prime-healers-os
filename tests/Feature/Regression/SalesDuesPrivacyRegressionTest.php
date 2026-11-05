@@ -24,7 +24,7 @@ class SalesDuesPrivacyRegressionTest extends TestCase
         $this->withoutVite();
     }
 
-    private function fixture(string $profile = 'finance', bool $dues = true): array
+    private function fixture(string $profile = 'custom', bool $dues = true): array
     {
         $org = TestData::organization();
         $preset = Role::accessPresets()[$profile];
@@ -62,7 +62,7 @@ class SalesDuesPrivacyRegressionTest extends TestCase
 
     public static function duesProfiles(): array
     {
-        return [['sales'], ['finance'], ['custom']];
+        return [['sales'], ['custom']];
     }
 
     #[DataProvider('duesProfiles')]
@@ -82,9 +82,21 @@ class SalesDuesPrivacyRegressionTest extends TestCase
         $this->assertFalse($user->canViewFinanceDashboard());
     }
 
+    public function test_finance_can_read_sales_dues_in_invoices_without_access_to_the_sales_workspace(): void
+    {
+        [$user] = $this->fixture('finance');
+        $this->actingAs($user)->getJson(route('sales.index'))->assertForbidden();
+        $this->get(route('sales.index'))->assertRedirect(route('reports.index'));
+        $stats = $this->get(route('invoices.index', ['status' => 'open']))->assertOk()->viewData('invoiceStats');
+        $this->assertEquals(73.15, $stats['salesOutstandingAmount']);
+        $this->assertSame(1, $stats['salesOutstandingCount']);
+        $this->getJson(route('sales.create'))->assertForbidden();
+        $this->assertFalse($user->canViewFinanceDashboard());
+    }
+
     public function test_denied_dues_are_restricted_instead_of_a_financial_zero(): void
     {
-        [$user] = $this->fixture('finance', false);
+        [$user] = $this->fixture('custom', false);
         $response = $this->actingAs($user)->get(route('sales.index'))->assertOk();
         $this->assertEquals(0, $response->viewData('outstandingInvoiceAmount'));
         $node = $this->dueNode($response->getContent());
