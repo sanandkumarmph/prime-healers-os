@@ -8,9 +8,11 @@ Route::get('/q/{quotation}', [QuotationController::class, 'share'])->middleware(
 Route::post('/q/{quotation}', [QuotationController::class, 'respond'])->middleware([\App\Http\Middleware\VerifyQuotationLink::class, 'throttle:12,1'])->name('quotation-share.respond');
 Route::get('/rental-agreement/{agreement}', [RentalAgreementController::class, 'show'])->middleware([\App\Http\Middleware\VerifyQuotationLink::class, 'throttle:60,1'])->name('rental-agreement.show');
 Route::post('/rental-agreement/{agreement}', [RentalAgreementController::class, 'sign'])->middleware([\App\Http\Middleware\VerifyQuotationLink::class, 'throttle:12,1'])->name('rental-agreement.sign');
+Route::get('/rental-agreement/{agreement}/signed-copy', [RentalAgreementController::class, 'pdf'])->middleware([\App\Http\Middleware\VerifyQuotationLink::class, 'throttle:20,1'])->name('rental-agreement.pdf');
 
 Route::middleware(['auth'])->group(function () {
     Route::post('/rentals/{rental}/agreement', [RentalAgreementController::class, 'reissue'])->middleware(['verified', 'module:rentals,update'])->name('rentals.agreement.reissue');
+    Route::post('/quotations/{quotation}/rental-agreement', [RentalAgreementController::class, 'issueForQuotation'])->name('quotations.rental-agreement.issue');
     Route::get('/enquiries', [SalesWorkspaceController::class, 'index'])->name('enquiries.index');
     Route::get('/enquiries/create', [SalesWorkspaceController::class, 'create'])->name('enquiries.create');
     Route::post('/enquiries', [SalesWorkspaceController::class, 'store'])->name('enquiries.store');

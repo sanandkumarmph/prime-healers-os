@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\{Enquiry, Organization, Product, Quotation};
-use App\Services\Sales\{RentalAgreements, RentalAgreementTerms, SalesWorkspace};
+use App\Services\Sales\{RentalAgreements, SalesWorkspace};
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -116,6 +116,9 @@ class QuotationController extends Controller
                 $snapshot = $quote->snapshot;
                 $snapshot['sender'] = app(\App\Services\Sales\QuotationSharing::class)->sender($request->user(), $e->organization);
                 $quote->update(['snapshot' => $snapshot, 'status' => 'sent', 'sent_at' => now(), 'lock_version' => $quote->lock_version + 1]);
+                if (RentalAgreements::enabled() && $quote->kind === 'rental') {
+                    app(RentalAgreements::class)->issueForQuote($quote);
+                }
                 $e->update(['stage' => 'quoted', 'lock_version' => $e->lock_version + 1]);
                 $this->workspace->event($e, 'quotation.finalised', $quote->number().' ready to share. Customer link enabled; no message sent automatically.');
             } elseif ($data['action'] === 'mark_shared') {
@@ -167,11 +170,7 @@ class QuotationController extends Controller
     {
         $quote = $this->publicQuote($quotation);
         if (!$quote->viewed_at) Quotation::whereKey($quote->id)->whereNull('viewed_at')->update(['viewed_at' => now()]);
-        $agreement = app(RentalAgreements::class)->quotation($quote);
-        $rentalTerms = RentalAgreements::enabled() && $quote->kind === 'rental'
-            && !$agreement?->signed_at && in_array($quote->status, ['sent', 'accepted'], true)
-            && !$quote->enquiry->closed() ? RentalAgreementTerms::TEXT : null;
-        return response()->view('sales-workspace.quote-public', compact('quote', 'rentalTerms', 'agreement'))
+        return response()->view('sales-workspace.quote-public', compact('quote'))
             ->withHeaders(['Cache-Control' => 'private, no-store', 'Referrer-Policy' => 'no-referrer', 'X-Robots-Tag' => 'noindex, nofollow']);
     }
 
@@ -185,28 +184,10 @@ class QuotationController extends Controller
         $quote = $this->publicQuote($quotation);
         $data = $request->validate(['decision' => 'required|in:accepted,declined', 'contact_name' => 'required|string|max:150',
             'note' => 'nullable|string|max:3000', 'acknowledge' => 'accepted']);
-        $signing = RentalAgreements::enabled() && $quote->kind === 'rental' && $data['decision'] === 'accepted';
-        $agreements = app(RentalAgreements::class);
-        $proof = $signing ? $agreements->validate($request) : null;
-        $this->workspace->atomic($quote->organization_id, function () use ($quote, $data, $request, $agreements, $proof) {
-            $enquiry = $this->workspace->locked($quote->enquiry, false);
-            $quote = $quote->fresh();
-            if ($proof !== null) {
-                $this->workspace->current($quote);
-                if ($agreements->quotation($quote)?->signed_at && in_array($quote->status, ['accepted', 'converted'], true)) {
-                    return;
-                }
-                abort_if($enquiry->closed() || $quote->expired() || !in_array($quote->status, ['sent', 'accepted'], true), 409);
-                $agreements->verifyTerms($request, RentalAgreementTerms::TEXT);
-                $agreements->acceptQuote($quote, $proof);
-                if ($quote->status === 'accepted') {
-                    $this->workspace->event($enquiry, 'quotation.rental_agreement_signed', $quote->number().' rental terms signed through the customer link.', true);
-                    return;
-                }
-            }
-            $this->workspace->decide($quote, $data['decision'], $data['contact_name'], $data['note'] ?? '', true);
+        $this->workspace->atomic($quote->organization_id, function () use ($quote, $data) {
+            $this->workspace->locked($quote->enquiry, false);
+            $this->workspace->decide($quote->fresh(), $data['decision'], $data['contact_name'], $data['note'] ?? '', true);
         });
-        $message = $signing ? 'Your rental terms are signed. Thank you.' : 'Your response has been recorded. Thank you.';
-        return redirect()->to($request->fullUrl())->with('success', $message);
+        return redirect()->to($request->fullUrl())->with('success', 'Your response has been recorded. Thank you.');
     }
 }

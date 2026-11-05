@@ -67,7 +67,7 @@ class ProspectQuotationFlowTest extends TestCase
     private function agreementPayload(): array
     {
         return [
-            'decision' => 'accepted', 'contact_name' => 'Synthetic signer', 'acknowledge' => 1,
+            'contact_name' => 'Synthetic signer',
             'rental_agreement_acknowledged' => 1,
             'rental_agreement_version' => hash('sha256', RentalAgreementTerms::TEXT),
             'signature_data' => $this->signature(),
@@ -78,29 +78,43 @@ class ProspectQuotationFlowTest extends TestCase
     {
         config(['app.rental_agreements' => true]);
         $quote = $this->action($this->draft(), 'send');
-        $url = app(SalesWorkspace::class)->shareUrl($quote);
-        $this->from($url)->post($url, ['decision' => 'accepted', 'contact_name' => 'Synthetic signer', 'acknowledge' => 1])
-            ->assertSessionHasErrors('signature_data');
-        $this->assertSame('sent', $quote->fresh()->status);
-        $quote = $this->action($quote, 'accepted');
-        $this->get(route('quotations.show', $quote))->assertOk()->assertSee('Awaiting customer signature')->assertDontSee('Create rental order');
+        $quoteUrl = app(SalesWorkspace::class)->shareUrl($quote);
+        $this->get($quoteUrl)->assertOk()->assertSee('Respond to this quotation')->assertDontSee('sign-rental-terms');
+        $this->get(route('enquiries.show', $quote->enquiry))->assertOk()->assertSee('Send rental terms on WhatsApp');
+        $this->post($quoteUrl, ['decision' => 'accepted', 'contact_name' => 'Synthetic signer', 'acknowledge' => 1])->assertRedirect($quoteUrl);
+        $this->assertSame('accepted', $quote->fresh()->status);
+        $this->get(route('quotations.show', $quote))->assertOk()->assertSee('Awaiting rental agreement')->assertDontSee('Create rental order');
         $this->get(route('rentals.create', ['quotation_id' => $quote->id]))->assertSessionHasErrors('quotation_id');
-        $this->fixture('rental-signing', $this->get($url)->assertOk()->assertSee('Prime Healers – Rental T&C')->assertSee('₹100/day')->assertSee('Agree &amp; sign', false));
+        $agreements = app(RentalAgreements::class);
+        $agreement = RentalAgreement::sole();
+        $url = $agreements->link($agreement);
+        $this->get($agreements->pdfLink($agreement))->assertNotFound();
+        $this->fixture('rental-signing', $this->get($url)->assertOk()->assertSee('Prime Healers rental agreement')
+            ->assertSee('Rental period and payment')->assertSee('₹100 per day')->assertSee('Agree &amp; sign', false)->assertDontSee('Accept quotation'));
         $this->from($url)->post($url, array_replace($this->agreementPayload(), ['rental_agreement_version' => str_repeat('0', 64)]))
             ->assertSessionHasErrors('rental_agreement_version');
         $this->from($url)->post($url, array_replace($this->agreementPayload(), ['signature_data' => 'invalid', 'rental_agreement_id_reference' => '0123']))
             ->assertSessionHasErrors('signature_data');
         $this->assertNull(session()->getOldInput('signature_data'));
         $this->assertNull(session()->getOldInput('rental_agreement_id_reference'));
-        $this->assertDatabaseCount('rental_agreements', 0);
+        $this->assertNull($agreement->fresh()->signed_at);
         $this->post($url, $this->agreementPayload())->assertRedirect($url);
-        $agreement = RentalAgreement::sole();
+        $agreement->refresh();
         $this->assertSame(RentalAgreementTerms::TEXT, $agreement->terms);
         $this->assertSame('Synthetic signer', $agreement->proof['name']);
         $this->assertNull($agreement->proof['id_reference']);
         $this->assertSame($quote->snapshot, $agreement->proof['quotation']);
         $this->assertStringNotContainsString('Synthetic signer', $agreement->getRawOriginal('proof'));
-        $this->get($url)->assertOk()->assertSee('Rental terms signed')->assertDontSee('Synthetic signer');
+        $this->get($url)->assertOk()->assertSee('Rental terms signed')->assertSee('Download signed agreement (PDF)')->assertDontSee('Synthetic signer');
+        $this->get(route('rental-agreement.pdf', $agreement))->assertForbidden();
+        $pdf = $this->get($agreements->pdfLink($agreement))->assertOk()->assertHeader('Content-Type', 'application/pdf')
+            ->assertHeader('Referrer-Policy', 'no-referrer');
+        $this->assertStringStartsWith('%PDF', $pdf->getContent());
+        if ($folder = getenv('PHOS_PROSPECT_RENDER_DIR')) {
+            file_put_contents($folder.'/signed-agreement.pdf', $pdf->getContent());
+        }
+        $this->get(route('enquiries.show', $quote->enquiry))->assertOk()->assertSee('Send signed copy on WhatsApp')
+            ->assertSee('View signed agreement')->assertSee('Download signed PDF')->assertSee('Synthetic signer');
         $this->post($url, array_replace($this->agreementPayload(), ['contact_name' => 'Different name']))->assertRedirect($url);
         $this->assertSame('Synthetic signer', $agreement->fresh()->proof['name']);
         $this->get(route('quotations.show', $quote))->assertSee('Create rental order');
@@ -112,7 +126,8 @@ class ProspectQuotationFlowTest extends TestCase
         $this->post(route('rentals.store'), $data)->assertSessionHasNoErrors();
         $rental = Rental::sole();
         $this->assertEquals($rental->id, $agreement->fresh()->rental_id);
-        $this->get(route('rentals.show', $rental))->assertOk()->assertSee('View signed terms and signature');
+        $this->get(route('rentals.show', $rental))->assertOk()->assertSee('View signed agreement')->assertSee('Download signed PDF')
+            ->assertSee('Send signed copy on WhatsApp')->assertSee('Synthetic signer');
         $this->assertTrue(app(RentalAgreements::class)->signedFor($rental, $agreement->fresh()));
     }
 
@@ -131,7 +146,10 @@ class ProspectQuotationFlowTest extends TestCase
         $agreements = app(RentalAgreements::class);
         $url = $agreements->link($agreement);
         $this->get(route('rental-agreement.show', $agreement))->assertForbidden();
-        $this->get(route('rentals.show', $rental))->assertOk()->assertSee('Share on WhatsApp');
+        $this->get(route('rentals.show', $rental))->assertOk()->assertSee('Share on WhatsApp')->assertDontSee('rental-agreement-link');
+        parse_str(parse_url($agreements->whatsapp($agreement, $customer->phone, 'Rental #'.$rental->id), PHP_URL_QUERY), $message);
+        $this->assertStringContainsString($url, $message['text']);
+        $this->assertStringContainsString(RentalAgreementTerms::TEXT, $message['text']);
         $delivery = Delivery::where('rental_id', $rental->id)->firstOrFail();
         try {
             $delivery->update(['status' => 'in_progress']);
@@ -146,12 +164,38 @@ class ProspectQuotationFlowTest extends TestCase
         $replacement = $agreements->current($rental->fresh());
         $this->assertNotSame($agreement->id, $replacement->id);
         $newUrl = $agreements->link($replacement);
-        $this->get($newUrl)->assertOk()->assertSee('Prime Healers – Rental T&C');
+        $replacement->update(['terms' => 'Previous pending terms']);
+        $this->get($newUrl)->assertOk()->assertSee('Prime Healers rental agreement')->assertDontSee('Previous pending terms');
         $this->post($newUrl, $this->agreementPayload() + ['rental_agreement_id_reference' => '0123'])->assertRedirect($newUrl);
         $this->assertSame('0123', $replacement->fresh()->proof['id_reference']);
+        parse_str(parse_url($agreements->whatsapp($replacement->fresh(), $customer->phone, 'Rental #'.$rental->id), PHP_URL_QUERY), $message);
+        $this->assertStringContainsString('/signed-copy?', $message['text']);
+        $this->assertStringNotContainsString('0123', preg_replace('/https?:\/\/\S+/', '', $message['text']));
+        $this->assertStringNotContainsString('Synthetic signer', $message['text']);
         $this->get($newUrl)->assertOk()->assertSee('Rental terms signed')->assertDontSee('Synthetic signer');
         $delivery->fresh()->update(['status' => 'in_progress']);
         $this->assertSame('in_progress', $delivery->fresh()->status);
+    }
+
+    public function test_separate_signature_does_not_accept_a_quotation_and_old_revisions_cannot_be_signed(): void
+    {
+        config(['app.rental_agreements' => true]);
+        $quote = $this->action($this->draft(), 'send');
+        $agreements = app(RentalAgreements::class);
+        $agreement = $agreements->quotation($quote);
+        $url = $agreements->link($agreement);
+        $this->post($url, $this->agreementPayload())->assertRedirect($url);
+        $this->assertSame('sent', $quote->fresh()->status);
+        $this->assertNotNull($agreement->fresh()->signed_at);
+        $this->action($quote, 'revise');
+        $second = $this->action(Quotation::where('revision', 2)->sole(), 'send');
+        $secondAgreement = $agreements->quotation($second);
+        $this->assertNull($secondAgreement->signed_at);
+        $secondUrl = $agreements->link($secondAgreement);
+        $this->action($second, 'revise');
+        $this->post($secondUrl, $this->agreementPayload())->assertGone();
+        $this->assertNull($secondAgreement->fresh()->signed_at);
+        $this->get($agreements->pdfLink($agreement->fresh()))->assertOk();
     }
 
     private function fixture(string $name,$response): void

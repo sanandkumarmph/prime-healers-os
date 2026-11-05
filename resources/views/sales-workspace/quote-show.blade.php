@@ -17,7 +17,7 @@
         @if($rentalAgreement?->signed_at)
             <strong>Rental terms signed</strong> · {{ $rentalAgreement->signed_at->timezone('Asia/Kolkata')->format('d M Y, h:i A') }} IST
         @else
-            <strong>Awaiting customer signature.</strong> Share the quotation link so the customer can sign before the rental order is created.
+            <strong>Awaiting rental agreement.</strong> <a href="{{ route('enquiries.show', $enquiry).'#rental-agreement' }}">Open the separate agreement on the enquiry</a>.
         @endif
     </div>
 @endif

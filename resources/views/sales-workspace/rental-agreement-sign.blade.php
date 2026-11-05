@@ -1,18 +1,12 @@
 <section class="sw-panel" id="sign-rental-terms">
     <h2>Review &amp; sign rental terms</h2>
-    @php
-        $policyUrl = 'https://www.primehealers.com/rental-terms-and-conditions';
-        $termsParts = explode($policyUrl, $rentalTerms, 2);
-    @endphp
-    <p class="sw-note">{{ $termsParts[0] }}@if(count($termsParts) === 2)<a href="{{ $policyUrl }}" target="_blank" rel="noopener noreferrer">Full rental policy</a>{{ $termsParts[1] }}@endif</p>
+    <p class="sw-muted">Read the rental terms below, then sign to confirm your agreement.</p>
+    @include('sales-workspace.rental-agreement-terms')
 
     <form method="post" action="{{ request()->fullUrl() }}" data-rental-signature>
         @csrf
         <input type="hidden" name="rental_agreement_version" value="{{ hash('sha256', $rentalTerms) }}">
-        @if(isset($quote))
-            <input type="hidden" name="decision" value="accepted">
-            <input type="hidden" name="acknowledge" value="1">
-        @endif
+
         <div class="sw-fields">
             <div class="sw-field">
                 <label for="rental-signer-name">Your full name *</label>
@@ -34,7 +28,7 @@
         </div>
         <p style="margin-top:18px">
             <label><input type="checkbox" name="rental_agreement_acknowledged" value="1" required>
-                I have read and agree to the rental terms{{ isset($quote) ? ' and accept this quotation' : '' }}.
+                I have read and agree to the rental terms above.
             </label>
         </p>
         <button class="sw-btn sw-primary" type="submit">Agree &amp; sign</button>

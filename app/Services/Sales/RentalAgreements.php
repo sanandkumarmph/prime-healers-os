@@ -4,6 +4,7 @@ namespace App\Services\Sales;
 
 use App\Models\{Quotation, Rental, RentalAgreement};
 use App\Services\Deliveries\SignatureCapture;
+use App\Support\PhoneNumber;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
@@ -63,16 +64,23 @@ class RentalAgreements
         }
     }
 
-    public function acceptQuote(Quotation $quote, array $proof): void
+    public function canIssueForQuote(Quotation $quote): bool
     {
-        $agreement = RentalAgreement::firstOrNew([
+        return self::enabled() && $quote->kind === 'rental' && in_array($quote->status, ['sent', 'accepted'], true)
+            && !$quote->expired() && !$quote->enquiry->closed();
+    }
+
+    public function issueForQuote(Quotation $quote): RentalAgreement
+    {
+        return RentalAgreement::firstOrCreate([
             'organization_id' => $quote->organization_id,
             'quotation_id' => $quote->id,
-        ]);
-        if (!$agreement->signed_at) {
-            $agreement->terms = RentalAgreementTerms::TEXT;
-            $this->sign($agreement, $proof + ['quotation' => $quote->snapshot, 'quotation_number' => $quote->number()]);
-        }
+        ], ['terms' => RentalAgreementTerms::TEXT]);
+    }
+
+    public function terms(RentalAgreement $agreement): string
+    {
+        return $agreement->signed_at ? $agreement->terms : RentalAgreementTerms::TEXT;
     }
 
     public function attach(Quotation $quote, Rental $rental): void
@@ -83,9 +91,15 @@ class RentalAgreements
         ]);
     }
 
-    public function sign(RentalAgreement $agreement, array $proof): void
+    public function sign(RentalAgreement $agreement, array $proof, ?Quotation $quote = null): void
     {
-        $agreement->fill(['signed_at' => now(), 'proof' => $proof])->save();
+        if ($agreement->signed_at) {
+            return;
+        }
+        if ($quote) {
+            $proof += ['quotation' => $quote->snapshot, 'quotation_number' => $quote->number()];
+        }
+        $agreement->fill(['terms' => $this->terms($agreement), 'signed_at' => now(), 'proof' => $proof])->save();
     }
 
     public function validate(Request $request): array
@@ -118,6 +132,23 @@ class RentalAgreements
     public function link(RentalAgreement $agreement): string
     {
         return URL::temporarySignedRoute('rental-agreement.show', now()->addDays(7), ['agreement' => $agreement->id]);
+    }
+
+    public function pdfLink(RentalAgreement $agreement): string
+    {
+        return URL::temporarySignedRoute('rental-agreement.pdf', now()->addDays(7), ['agreement' => $agreement->id]);
+    }
+
+    public function whatsapp(RentalAgreement $agreement, ?string $phone, string $reference): string
+    {
+        $recipient = preg_replace('/\D/', '', PhoneNumber::normalize($phone) ?? '');
+        $message = '*Prime Healers | Rental agreement*' . "\n" . $reference . "\n\n";
+        $message .= $agreement->signed_at
+            ? 'Thank you for signing. Download your signed copy: ' . $this->pdfLink($agreement)
+            : 'Please review and sign before dispatch: ' . $this->link($agreement);
+        $message .= "\n\n*Rental terms*\n" . $this->terms($agreement);
+
+        return 'https://wa.me/' . $recipient . '?text=' . rawurlencode($message);
     }
 
     private function fingerprint(Rental $rental): string

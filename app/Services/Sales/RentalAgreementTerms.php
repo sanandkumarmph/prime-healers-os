@@ -4,65 +4,52 @@ namespace App\Services\Sales;
 
 final class RentalAgreementTerms
 {
+    public const POLICY_URL = 'https://www.primehealers.com/rental-terms-and-conditions';
+
     public const TEXT = <<<'TERMS'
-Prime Healers – Rental T&C
+Rental period and payment
+The standard minimum rental period is 30 days. Hospital beds always require at least 30 days.
+Pay in advance online to an official Prime Healers account.
+There is no rental refund for a voluntary early return.
 
-Please read carefully. By signing, you agree to the following:
+Renewals
+In Bangalore, a 15-day renewal costs 60% of the monthly rent. A 7-day renewal costs 40%.
+In other cities, the minimum renewal period is 30 days.
+Tell us at least one day before the rental ends if you want to return the equipment. If we do not receive notice, the rental renews automatically.
+Late payments incur a fee of ₹100 per day.
 
-⏳ Rental & Payment
-• Minimum rental: 30 days (mandatory for hospital beds)
-• 💳 Prepaid | online only to official Prime Healers accounts
-• ❌ Early return = No refund applicable
-• 🔁 Renewal (Bangalore only):
-  ▸ 15 days: 60% of the monthly rent
-  ▸ 7 days: 40% of the monthly rent
-  (Other cities: minimum 30 days)
+Delivery and pickup
+Delivery takes 7 to 8 working hours after order confirmation.
+We collect the equipment within 72 hours of your pickup request.
+Our working hours are 9 AM to 9 PM IST.
 
-🚚 Delivery, Pickup & Timings
-• Delivery: 7–8 working hours after confirmation
-• Pickup: Within 72 hours after intimation
-• 🕘 Working hours: 9 AM – 9 PM
+Equipment and damage
+Please return the rented equipment at the end of your rental. You are responsible for damage to the equipment.
 
-🛠️ Equipment Use & Damage
-• Equipment is returnable, not for sale
-• ⚠️ Any damage to be borne by the client
+Security deposit
+We refund the security deposit within 48 hours of pickup. Refunds are made by UPI, QR payment or bank transfer. Cash refunds are unavailable at pickup.
 
-🔄 Return & Auto-Renewal
-• Inform 1 day in advance for return
-• ❗ No intimation = auto-renewal
+Documents and contact details
+Provide your full delivery address, proof of address, identity proof for KYC, and a primary and alternate phone number. Accepted ID includes Aadhaar, a driving licence or voter ID. A prescription is recommended where applicable.
 
-💰 Late Payment
-• ⏰ ₹100/day late fee for delayed payments
+Technical and oxygen support
+We offer phone and video support, with on-site assistance on request.
+For oxygen equipment, follow your clinician’s instructions and the manufacturer’s operating guidance. Ask your care team about backup oxygen and how to monitor oxygen saturation with a pulse oximeter.
 
-🧾 Security Deposit
-• 💸 Refund within 48 hours after pickup
-• Refund via UPI / QR / Bank transfer only
-• 🚫 No cash refund at pickup
+Contact Prime Healers
+Call 7975708181 or 8700125059, or email info@primehealers.com. For delivery or pickup queries, contact Prime Healers support directly.
 
-📄 Documents Required
-• 📍 Complete address & address proof
-• 🪪 KYC (Aadhaar / Driving licence / Voter’s ID)
-• 📞 Phone & alternate number
-• 🩺 Prescription recommended
-
-🔧 Technical & Oxygen Support
-• 📲 Support via call/video call
-• 🧑‍🔧 Physical assistance on request
-
-🫁 For oxygen machines support
-• Use up to 4 hours, followed by 20 minutes rest. In case of O2 need, take 2 machines.
-• 🧯 Standby oxygen cylinders are strongly recommended.
-• Keep a pulse oximeter to monitor SpO2.
-
-📞 Support & Contact
-• 📱 7975708181 / 8700125059
-• 📧 info@primehealers.com
-• 🚫 Please don’t contact delivery drivers directly.
-
-⚖️ Legal
-• 📍 All disputes subject to Bangalore jurisdiction.
-• 🔗 Full Policy: https://www.primehealers.com/rental-terms-and-conditions
-
-I confirm that I have read, understood and agreed to the rental terms and conditions.
+Jurisdiction and full policy
+Disputes are subject to Bangalore jurisdiction.
+https://www.primehealers.com/rental-terms-and-conditions
 TERMS;
+
+    public static function sections(string $terms): array
+    {
+        $terms = str_replace(["\r\n", "\r"], "\n", trim($terms));
+        return array_map(static function (string $section): array {
+            $lines = explode("\n", $section);
+            return ['heading' => array_shift($lines), 'lines' => $lines];
+        }, preg_split('/\n{2,}/', $terms, -1, PREG_SPLIT_NO_EMPTY));
+    }
 }
