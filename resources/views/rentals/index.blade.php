@@ -204,6 +204,7 @@
     .bulk-actions { display:flex; gap:8px; flex-wrap:wrap; }
     .bulk-col { width:38px; text-align:center; }
     .bulk-check { width:16px; height:16px; accent-color:#2563eb; }
+    .mobile-selection-toggle { display:none; }
     .rental-smart-filter { display:grid; gap:8px; padding:9px 10px; border:1px solid #dbe3ef; border-radius:14px; background:#fff; box-shadow:var(--ph-shadow-soft); min-width:0; overflow:hidden; }
     .rental-smart-filter-main { display:grid; grid-template-columns:minmax(220px, 1.4fr) repeat(auto-fit, minmax(118px, 1fr)); gap:8px; align-items:end; min-width:0; }
     .rental-smart-filter-more summary { list-style:none; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; min-height:36px; padding:7px 11px; border:1px solid var(--ph-color-border-strong); border-radius:10px; background:#fff; color:var(--ph-color-text); font-size:12px; font-weight:800; }
@@ -559,7 +560,6 @@
             margin-top:0;
         }
         .mobile-selection-toggle {
-            display:none;
             position:absolute;
             left:10px;
             top:12px;

@@ -13,9 +13,16 @@ test('rendered rental overview keeps activity readable and uses its available wi
     const server = http.createServer((req, res) => {
         if (!['GET', 'HEAD'].includes(req.method)) {report.writes.push(req.method); res.writeHead(405).end(); return;}
         const url = new URL(req.url, origin);
+        let fixtureFile;
         if (url.pathname === new URL(fixture.url).pathname) {
-            const file = url.searchParams.has('empty') ? 'rental-empty.html' : 'rental.html';
-            const html = fs.readFileSync(path.join(rendered, file), 'utf8').replaceAll(new URL(fixture.url).origin, origin);
+            fixtureFile = url.searchParams.has('empty') ? 'rental-empty.html' : url.searchParams.has('sales') ? 'rental-sales.html' : 'rental.html';
+        } else if (url.pathname === new URL(fixture.listUrl).pathname) {
+            fixtureFile = 'rental-sales-list.html';
+        } else if (url.pathname === new URL(fixture.invoiceUrl).pathname) {
+            fixtureFile = 'invoice-sales-list.html';
+        }
+        if (fixtureFile) {
+            const html = fs.readFileSync(path.join(rendered, fixtureFile), 'utf8').replaceAll(new URL(fixture.url).origin, origin);
             res.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'}).end(html); return;
         }
         const file = path.resolve(publicRoot, '.' + decodeURIComponent(url.pathname));
@@ -81,6 +88,49 @@ test('rendered rental overview keeps activity readable and uses its available wi
                 }
             }
         }
+        await page.setViewport({width:1024, height:550});
+        await page.goto(origin + new URL(fixture.url).pathname + '?sales=1');
+        const more = '.rcc-action-more';
+        for (const [triggerY, placement] of [[125, 'down'], [450, 'up']]) {
+            await page.$eval(more + ' > summary', (summary, y) => {
+                const {top} = summary.getBoundingClientRect();
+                const shell = summary.closest('.app-shell-main');
+                const scroller = shell.scrollHeight > shell.clientHeight ? shell : window;
+                scroller.scrollBy({top:top - y, behavior:'instant'});
+            }, triggerY);
+            await page.click(more + ' > summary');
+            await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+            const bounds = await page.$eval(more, menu => {
+                const trigger = menu.firstElementChild.getBoundingClientRect();
+                const panel = menu.lastElementChild.getBoundingClientRect();
+                const hit = document.elementFromPoint(trigger.left + trigger.width / 2, trigger.top + trigger.height / 2);
+                return {placement:menu.dataset.rentalMenuPlacement, open:menu.open, hit:hit?.className,
+                    top:panel.top, bottom:panel.bottom, triggerTop:trigger.top, triggerBottom:trigger.bottom, height:window.innerHeight};
+            });
+            assert.equal(bounds.placement, placement, JSON.stringify(bounds));
+            assert.ok(bounds.top >= 0 && bounds.bottom <= bounds.height, JSON.stringify(bounds));
+            assert.ok(placement === 'up' ? bounds.bottom < bounds.triggerTop : bounds.top > bounds.triggerBottom);
+            await page.keyboard.press('Escape');
+            await page.waitForFunction(menu => !document.querySelector(menu).open, {}, more);
+        }
+        report.checks.push({salesMoreActions:['down', 'up']});
+
+        await page.goto(origin + new URL(fixture.listUrl).pathname);
+        const visibleChecks = () => page.$$eval('.rental-row input[type=checkbox]', inputs =>
+            inputs.filter(input => input.getBoundingClientRect().width > 0).map(input => input.className));
+        assert.deepEqual(await visibleChecks(), ['bulk-check rental-row-check rental-invoice-check']);
+        await page.click('.rental-row-check');
+        await page.setViewport({width:390, height:840});
+        assert.deepEqual(await visibleChecks(), ['bulk-check mobile-rental-select-proxy']);
+        assert.equal(await page.$eval('.mobile-rental-select-proxy', input => input.checked), true);
+        report.checks.push({salesRentalChecks:'one visible on desktop and mobile'});
+
+        await page.goto(origin + new URL(fixture.invoiceUrl).pathname);
+        assert.equal(await page.$eval('.invoice-aging-card', card => card.getBoundingClientRect().height > 0), true);
+        assert.match(await page.$eval('.invoice-aging-donut strong', total => total.textContent), /8,765\.43/);
+        assert.doesNotMatch(await page.$eval('aside.invoice-finance-panel', panel => panel.textContent), /Finance Summary|Restricted/);
+        report.checks.push({salesInvoiceAging:'visible on mobile'});
+
         assert.deepEqual(report.errors, []);
         assert.deepEqual(report.writes, []);
     } finally {

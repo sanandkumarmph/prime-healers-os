@@ -3723,6 +3723,16 @@
     .rcc-shell .rcc-cylinder-action:hover {box-shadow:0 3px 10px #075c9120;}
     .rcc-shell .rcc-cylinder-action:focus-visible {outline:3px solid #41b6d9;outline-offset:3px;}
     @media(max-width:640px) {.rcc-shell .rcc-cylinder-panel {padding:14px;gap:12px;}.rcc-shell .rcc-cylinder-copy {flex-basis:100%;}.rcc-shell .rcc-cylinder-actions {display:grid;grid-template-columns:minmax(0,1fr);width:100%;}}
+    [data-rental-menu-placement][open] > :last-child {
+        position:absolute;
+        margin-top:0;
+        box-sizing:border-box;
+        max-height:var(--rental-menu-height);
+        overflow-y:auto;
+        overscroll-behavior:contain;
+    }
+    [data-rental-menu-placement="down"][open] > :last-child { top:calc(100% + 8px); bottom:auto; }
+    [data-rental-menu-placement="up"][open] > :last-child { top:auto; bottom:calc(100% + 8px); }
 </style>
 
 @include('cylinder-refills.modal')
@@ -4183,7 +4193,7 @@
                 @if($rental->canRenew() && $canUpdateRentals)
                     <button type="button" class="detail-btn rental-renew-primary" data-open-renewal-modal>Renew Rental</button>
                 @endif
-                <details class="rcc-action-more">
+                <details class="rcc-action-more" data-rental-mobile-menu>
                     <summary class="detail-btn-secondary">More Actions</summary>
                     <div class="rcc-more-menu">
                         @if($deliveryUrl)
@@ -4976,19 +4986,64 @@
 @push('scripts')
 <script>
     (() => {
-        const rentalMobileMenus = document.querySelectorAll('[data-rental-mobile-menu]');
+        const rentalMenus = document.querySelectorAll('[data-rental-mobile-menu], .ph-mobile-action-bar[aria-label="Rental mobile actions"] .ph-mobile-action-menu');
+        const topbars = document.querySelectorAll('.app-shell-topbar, .mobile-topbar');
+        const bottomNav = document.querySelector('.mobile-bottom-nav');
 
-        if (!rentalMobileMenus.length) {
+        if (!rentalMenus.length) {
             return;
         }
 
-        rentalMobileMenus.forEach((menu) => {
+        const placeMenu = (menu) => {
+            const trigger = menu.firstElementChild.getBoundingClientRect();
+            const panel = menu.lastElementChild;
+            if (!trigger.width || !trigger.height) return;
+
+            const viewport = window.visualViewport;
+            const top = Math.max(viewport?.offsetTop ?? 0, ...Array.from(topbars, (bar) => bar.getBoundingClientRect().bottom));
+            const viewportBottom = (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight);
+            const navTop = bottomNav?.getBoundingClientRect();
+            const bottom = navTop?.height ? Math.min(viewportBottom, navTop.top) : viewportBottom;
+            if (trigger.bottom <= top || trigger.top >= bottom) {
+                menu.open = false;
+                return;
+            }
+
+            // Allow for the 8px anchor gap and an 8px margin at the viewport edge.
+            const above = Math.max(0, trigger.top - top - 16);
+            const below = Math.max(0, bottom - trigger.bottom - 16);
+            const contentHeight = panel.scrollHeight + panel.offsetHeight - panel.clientHeight;
+            const preferUp = menu.matches('.ph-rental-footer-more, .ph-mobile-action-menu');
+            const openUp = preferUp
+                ? above >= contentHeight || above >= below
+                : below < contentHeight && above > below;
+            menu.dataset.rentalMenuPlacement = openUp ? 'up' : 'down';
+            panel.style.setProperty('--rental-menu-height', `${openUp ? above : below}px`);
+        };
+
+        let placementFrame;
+        const updatePlacement = () => {
+            if (placementFrame) return;
+            placementFrame = window.requestAnimationFrame(() => {
+                placementFrame = null;
+                rentalMenus.forEach((menu) => { if (menu.open) placeMenu(menu); });
+            });
+        };
+        window.addEventListener('scroll', updatePlacement, { capture: true, passive: true });
+        window.addEventListener('resize', updatePlacement);
+        window.visualViewport?.addEventListener('resize', updatePlacement);
+        window.visualViewport?.addEventListener('scroll', updatePlacement);
+
+        rentalMenus.forEach((menu) => {
             menu.addEventListener('toggle', () => {
                 if (!menu.open) {
+                    delete menu.dataset.rentalMenuPlacement;
+                    menu.lastElementChild.style.removeProperty('--rental-menu-height');
                     return;
                 }
 
-                rentalMobileMenus.forEach((otherMenu) => {
+                placeMenu(menu);
+                rentalMenus.forEach((otherMenu) => {
                     if (otherMenu !== menu) {
                         otherMenu.open = false;
                     }
@@ -4997,7 +5052,7 @@
         });
 
         document.addEventListener('click', (event) => {
-            rentalMobileMenus.forEach((menu) => {
+            rentalMenus.forEach((menu) => {
                 if (menu.open && !menu.contains(event.target)) {
                     menu.open = false;
                 }
@@ -5009,8 +5064,11 @@
                 return;
             }
 
-            rentalMobileMenus.forEach((menu) => {
-                menu.open = false;
+            rentalMenus.forEach((menu) => {
+                if (menu.open) {
+                    menu.open = false;
+                    menu.firstElementChild.focus();
+                }
             });
         });
     })();

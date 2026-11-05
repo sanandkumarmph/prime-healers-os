@@ -69,27 +69,18 @@
 
         return 'No prior comparison';
     };
-    $agingBuckets = collect([
-        '0-30 Days' => ['amount' => 0.0, 'tone' => 'green'],
-        '31-60 Days' => ['amount' => 0.0, 'tone' => 'amber'],
-        '61-90 Days' => ['amount' => 0.0, 'tone' => 'orange'],
-        '90+ Days' => ['amount' => 0.0, 'tone' => 'red'],
-    ]);
-    foreach ($invoices->getCollection() as $agingInvoice) {
-        $balance = (float) ($agingInvoice->balance_amount ?? 0);
-        if ($balance <= 0) {
-            continue;
-        }
-
-        $days = optional($agingInvoice->due_date)->isPast()
-            ? max(0, optional($agingInvoice->due_date)->diffInDays(now()))
-            : 0;
-        $bucket = $days <= 30 ? '0-30 Days' : ($days <= 60 ? '31-60 Days' : ($days <= 90 ? '61-90 Days' : '90+ Days'));
-        $currentBucket = $agingBuckets->get($bucket);
-        $currentBucket['amount'] += $balance;
-        $agingBuckets->put($bucket, $currentBucket);
-    }
-    $agingTotal = max(1, (float) $agingBuckets->sum('amount'));
+    $canViewAging = isset($invoiceAging);
+    $agingBuckets = [
+        ['0-30 Days', 'green', $invoiceAging['current'] ?? 0],
+        ['31-60 Days', 'amber', $invoiceAging['days_31_60'] ?? 0],
+        ['61-90 Days', 'orange', $invoiceAging['days_61_90'] ?? 0],
+        ['91+ Days', 'red', $invoiceAging['days_91_plus'] ?? 0],
+    ];
+    $agingTotal = array_sum(array_column($agingBuckets, 2));
+    $agingPercent = fn ($amount) => $agingTotal > 0 ? round($amount / $agingTotal * 100, 1) : 0;
+    $agingFirst = $agingBuckets[0][2];
+    $agingSecond = $agingFirst + $agingBuckets[1][2];
+    $agingThird = $agingSecond + $agingBuckets[2][2];
 @endphp
 
 <div class="invoice-ledger rn-list-page">
@@ -900,7 +891,11 @@
         .invoice-finance-panel{gap:10px;top:74px}.invoice-side-card{padding:10px;border-radius:14px}.invoice-side-list div{padding:6px 0;font-size:12px}.invoice-side-head{margin-bottom:6px}.invoice-side-actions{gap:7px}.invoice-side-action{min-height:36px;padding:8px 10px;font-size:12px;border-radius:10px}
         .invoice-aging-body{display:grid;grid-template-columns:92px minmax(0,1fr);gap:10px;align-items:center}.invoice-aging-donut{width:86px;height:86px;border-radius:999px;background:conic-gradient(#16a34a 0 var(--p1),#f59e0b var(--p1) var(--p2),#fb7185 var(--p2) var(--p3),#ef4444 var(--p3) 100%);display:grid;place-items:center;position:relative;text-align:center}.invoice-aging-donut:before{content:'';position:absolute;inset:11px;border-radius:999px;background:#fff}.invoice-aging-donut strong,.invoice-aging-donut span{position:relative;z-index:1}.invoice-aging-donut strong{font-size:13px;line-height:1.05}.invoice-aging-donut span{font-size:10px;color:#64748b;font-weight:800}.invoice-aging-list{display:grid;gap:6px}.invoice-aging-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px}.invoice-aging-row span{display:inline-flex;align-items:center;gap:6px;color:#475569}.invoice-aging-row i{width:8px;height:8px;border-radius:999px;background:#16a34a}.invoice-aging-row.tone-amber i{background:#f59e0b}.invoice-aging-row.tone-orange i{background:#fb7185}.invoice-aging-row.tone-red i{background:#ef4444}.invoice-aging-row strong{font-size:11px;color:#0f172a;text-align:right}.invoice-aging-row em{font-style:normal;color:#64748b;font-weight:700}
         @media(max-width:1180px){.invoice-aging-body{grid-template-columns:80px minmax(0,1fr)}.invoice-aging-donut{width:76px;height:76px}.invoice-finance-panel{grid-template-columns:repeat(3,minmax(0,1fr))}}
-        @media(max-width:820px){.invoice-finance-panel{grid-template-columns:1fr 1fr}.invoice-aging-card{grid-column:1/-1}}</style>
+        .invoice-aging-donut.is-empty{background:#e2e8f0}
+        .invoice-aging-note{margin:8px 0 0;color:#475569;font-size:11px}
+        @media(max-width:820px){.invoice-finance-panel{grid-template-columns:1fr 1fr}.invoice-aging-card{grid-column:1/-1}}
+        @media(max-width:640px){.invoice-finance-panel.has-sales-aging{display:grid;grid-template-columns:minmax(0,1fr)}.has-sales-aging .invoice-side-card:not(.invoice-aging-card){display:none}}
+    </style>
 
     <div class="invoice-toolbar">
         <div>
@@ -1374,22 +1369,20 @@
         </form>
     </div>
 
-    <aside class="invoice-finance-panel" aria-label="Invoice finance summary">
+    <aside class="invoice-finance-panel {{ $isSalesLogin && $canViewAging ? 'has-sales-aging' : '' }}" aria-label="Invoice tools and balances">
+        @unless($isSalesLogin)
         <div class="invoice-side-card">
             <div class="invoice-side-head"><strong>Finance Summary</strong><span>Live</span></div>
             <div class="invoice-side-list">
-                @unless($isSalesLogin)
-                    <div><span>Outstanding</span><strong>@if($canViewDues){!! $currency($outstandingAmount) !!}@else Restricted @endif</strong></div>
-                @endunless
+                <div><span>Outstanding</span><strong>@if($canViewDues){!! $currency($outstandingAmount) !!}@else Restricted @endif</strong></div>
                 <div><span>Overdue</span><strong class="danger">@if($canViewDues){!! $currency($overdueAmount) !!}@else Restricted @endif</strong></div>
                 <div><span>Collected Today</span><strong class="success">@if($canViewFinance){!! $currency($collectedToday) !!}@else Restricted @endif</strong></div>
-                @unless($isSalesLogin)
-                    <div><span>Collected Month</span><strong class="success">@if($canViewFinance){!! $currency($collectedThisMonth) !!}@else Restricted @endif</strong></div>
-                @endunless
+                <div><span>Collected Month</span><strong class="success">@if($canViewFinance){!! $currency($collectedThisMonth) !!}@else Restricted @endif</strong></div>
                 <div><span>Largest Invoice</span><strong>@if($canViewFinance){!! $currency($largestInvoice) !!}@else Restricted @endif</strong></div>
                 <div><span>Average Invoice</span><strong>@if($canViewFinance){!! $currency($averageInvoiceValue) !!}@else Restricted @endif</strong></div>
             </div>
         </div>
+        @endunless
         <div class="invoice-side-card">
             <div class="invoice-side-head"><strong>Quick Actions</strong></div>
             <div class="invoice-side-actions">
@@ -1402,20 +1395,22 @@
         <div class="invoice-side-card invoice-aging-card">
             <div class="invoice-side-head"><strong>Outstanding by Aging</strong><span>Balance</span></div>
             <div class="invoice-aging-body">
-                <div class="invoice-aging-donut" style="--p1: {{ round(($agingBuckets->get('0-30 Days')['amount'] / $agingTotal) * 100, 1) }}%; --p2: {{ round((($agingBuckets->get('0-30 Days')['amount'] + $agingBuckets->get('31-60 Days')['amount']) / $agingTotal) * 100, 1) }}%; --p3: {{ round((($agingBuckets->get('0-30 Days')['amount'] + $agingBuckets->get('31-60 Days')['amount'] + $agingBuckets->get('61-90 Days')['amount']) / $agingTotal) * 100, 1) }}%;">
-                    <strong>@if($canViewDues){!! $currency($agingBuckets->sum('amount')) !!}@else -- @endif</strong>
+                <div class="invoice-aging-donut {{ $agingTotal > 0 ? '' : 'is-empty' }}" style="--p1: {{ $agingPercent($agingFirst) }}%; --p2: {{ $agingPercent($agingSecond) }}%; --p3: {{ $agingPercent($agingThird) }}%;">
+                    <strong>@if($canViewAging){!! $currency($agingTotal, 2) !!}@else -- @endif</strong>
                     <span>Total</span>
                 </div>
                 <div class="invoice-aging-list">
-                    @foreach($agingBuckets as $label => $bucket)
-                        @php $agingPercent = $agingBuckets->sum('amount') > 0 ? round(($bucket['amount'] / max(1, $agingBuckets->sum('amount'))) * 100) : 0; @endphp
-                        <div class="invoice-aging-row tone-{{ $bucket['tone'] }}">
+                    @foreach($agingBuckets as [$label, $tone, $amount])
+                        <div class="invoice-aging-row tone-{{ $tone }}">
                             <span><i></i>{{ $label }}</span>
-                            <strong>@if($canViewDues){!! $currency($bucket['amount']) !!} <em>{{ $agingPercent }}%</em>@else Restricted @endif</strong>
+                            <strong>@if($canViewAging){!! $currency($amount, 2) !!} <em>{{ round($agingPercent($amount)) }}%</em>@else Restricted @endif</strong>
                         </div>
                     @endforeach
                 </div>
             </div>
+            @if($canViewAging)
+                <p class="invoice-aging-note">Balances across matching invoices. The first group includes invoices that aren’t overdue.</p>
+            @endif
         </div>
     </aside>
     </div>

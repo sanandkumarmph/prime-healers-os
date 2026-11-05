@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Regression;
 
-use App\Models\{ActivityLog, Customer, Product, Rental};
+use App\Models\{ActivityLog, Customer, Product, Rental, User};
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\TestData;
 use Tests\TestCase;
@@ -16,6 +16,7 @@ class RentalDetailLayoutRegressionTest extends TestCase
         $this->travelTo(now()->setDate(2026, 11, 1)->setTime(17, 18, 19));
         $organization = TestData::organization();
         $owner = TestData::user($organization);
+        $sales = TestData::user($organization, ['role' => User::ROLE_SALES]);
         $this->actingAs($owner);
         $customer = Customer::create(['organization_id' => $organization->id,
             'name' => 'Synthetic customer with a long household contact name',
@@ -26,7 +27,7 @@ class RentalDetailLayoutRegressionTest extends TestCase
         $rental = Rental::create(['organization_id' => $organization->id, 'customer_id' => $customer->id,
             'product_id' => $product->id, 'quantity' => 1, 'customer_name' => $customer->name,
             'phone' => $customer->phone, 'start_date' => '2026-10-01', 'end_date' => '2026-11-04',
-            'rental_amount' => 2000, 'status' => 'active']);
+            'rental_amount' => 2000, 'status' => 'active', 'created_by_user_id' => $sales->id]);
         foreach (['Partial delivery recorded.', 'Rental renewal and accessories confirmed.',
             'EquipmentCheckedAndAcceptedByCustomerWithCaregiver', 'Customer note saved.'] as $description) {
             $log = ActivityLog::create(['organization_id' => $organization->id, 'user_id' => $owner->id,
@@ -50,7 +51,14 @@ class RentalDetailLayoutRegressionTest extends TestCase
         if ($folder) {
             if (!is_dir($folder)) mkdir($folder, 0777, true);
             file_put_contents($folder . '/rental.html', $response->getContent());
-            file_put_contents($folder . '/fixture.json', json_encode(['url' => route('rentals.show', $rental)], JSON_THROW_ON_ERROR));
+            file_put_contents($folder . '/fixture.json', json_encode([
+                'url' => route('rentals.show', $rental), 'listUrl' => route('rentals.index'), 'invoiceUrl' => route('invoices.index'),
+            ], JSON_THROW_ON_ERROR));
+            $salesShow = $this->actingAs($sales)->get(route('rentals.show', $rental))->assertOk();
+            file_put_contents($folder . '/rental-sales.html', $salesShow->getContent());
+            $salesList = $this->get(route('rentals.index'))->assertOk()->assertSeeText('Rental #'.$rental->id);
+            file_put_contents($folder . '/rental-sales-list.html', $salesList->getContent());
+            $this->actingAs($owner);
         }
         ActivityLog::query()->delete();
         $empty = $this->get(route('rentals.show', $rental))->assertOk()->assertSeeText('No recent activity');

@@ -528,8 +528,12 @@ class InvoiceController extends Controller
             ->withQueryString();
 
         $summaryQuery = $this->applyInvoiceFilters($this->invoiceBaseQuery(false, $request->integer('salesperson_id') !== 0), $request);
+        $viewer = $request->user();
         $invoiceSummary = $this->invoiceMetrics()->summary($summaryQuery, null,
-            $request->user()->canViewFinance(), $request->user()->canViewDues());
+            $viewer->canViewFinance(), $viewer->canViewDues());
+        $canViewAging = $viewer->canViewDues()
+            || (($viewer->isSales() || $viewer->isSalesRenewals()) && $viewer->canViewRecordFinance());
+        $invoiceAging = $canViewAging ? $this->invoiceMetrics()->aging($summaryQuery, now()) : null;
         $invoiceStats = [
             'totalInvoices' => (int) ($invoiceSummary['totalInvoices'] ?? 0),
             'paidInvoices' => (int) ($invoiceSummary['paidInvoices'] ?? 0),
@@ -552,6 +556,7 @@ class InvoiceController extends Controller
             'invoices',
             'salespersonOptions',
             'invoiceStats',
+            'invoiceAging',
             'customers',
             'cities',
             'search',
