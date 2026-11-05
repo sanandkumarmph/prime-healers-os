@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\{Customer, Enquiry, EnquiryFollowUp, Product, Quotation, Rental, Sale};
+use App\Models\{Customer, Enquiry, EnquiryFollowUp, Product, Quotation};
 use App\Services\Sales\{RentalAgreements, SalesWorkspace};
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -107,19 +107,7 @@ class SalesWorkspaceController extends Controller
         $agreement = $latestQuote ? $agreements->quotation($latestQuote) : null;
         $requiresSignature = RentalAgreements::enabled() && $latestQuote?->kind === 'rental';
         $quoteStatus = $latestQuote?->displayStatus();
-        $orderAction = null;
-        if ($quoteStatus === 'accepted' && !$enquiry->closed() && $canUpdateQuote && (!$requiresSignature || $agreement?->signed_at)) {
-            $module = $latestQuote->kind.'s';
-            if ($user->canAccessModule($module, 'read') && $user->canAccessModule($module, 'create')) {
-                $orderAction = ['label' => 'Create '.ucfirst($latestQuote->kind), 'url' => route($module.'.create', ['quotation_id' => $latestQuote->id])];
-            }
-        } elseif ($quoteStatus === 'converted' && in_array($latestQuote->order_type, ['rental', 'sale'], true)) {
-            $class = $latestQuote->order_type === 'rental' ? Rental::class : Sale::class;
-            $order = $class::where('organization_id', $enquiry->organization_id)->find($latestQuote->order_id);
-            if ($order && $user->can('view', $order)) {
-                $orderAction = ['label' => 'View '.ucfirst($latestQuote->order_type), 'url' => route($latestQuote->order_type.'s.show', $order)];
-            }
-        }
+        $orderAction = $this->workspace->orderAction($user, $enquiry, $latestQuote, $agreement);
         $activities = $enquiry->activities()->with('user')->latest('id')->paginate(30);
         $tz = $this->workspace->timezone();
 

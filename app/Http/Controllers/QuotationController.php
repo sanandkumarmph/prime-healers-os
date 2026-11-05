@@ -78,8 +78,12 @@ class QuotationController extends Controller
             return $this->form($enquiry, $quote);
         }
         $shareUrl = in_array($quote->status, ['sent', 'accepted'], true) && !$quote->expired() ? $this->workspace->shareUrl($quote) : null;
-        $rentalAgreement = app(RentalAgreements::class)->quotation($quote);
-        return view('sales-workspace.quote-show', compact('quote', 'enquiry', 'shareUrl', 'rentalAgreement'));
+        $agreements = app(RentalAgreements::class);
+        $rentalAgreement = $agreements->quotation($quote);
+        $latestQuote = $enquiry->quotations()->latest('revision')->firstOrFail();
+        $latestAgreement = $latestQuote->is($quote) ? $rentalAgreement : $agreements->quotation($latestQuote);
+        $orderAction = $this->workspace->orderAction(auth()->user(), $enquiry, $latestQuote, $latestAgreement);
+        return view('sales-workspace.quote-show', compact('quote', 'enquiry', 'shareUrl', 'rentalAgreement', 'latestQuote', 'orderAction'));
     }
 
     public function action(Request $request, int $quotation)

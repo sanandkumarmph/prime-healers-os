@@ -80,7 +80,8 @@ class ProspectQuotationFlowTest extends TestCase
         config(['app.rental_agreements' => true]);
         $quote = $this->action($this->draft(), 'send');
         $quoteUrl = app(SalesWorkspace::class)->shareUrl($quote);
-        $this->get($quoteUrl)->assertOk()->assertSee('Respond to this quotation')->assertDontSee('sign-rental-terms');
+        $this->get($quoteUrl)->assertOk()->assertSee('Respond to this quotation')
+            ->assertDontSee('sign-rental-terms')->assertDontSee('Sales progress');
         $sharing = $this->get(route('quotations.show', $quote))->assertOk()
             ->assertSeeInOrder(['Ready to share', 'Copy link', 'Share Rental Terms'])->assertDontSee('Private customer link')
             ->assertDontSee('Open the separate agreement on the enquiry');
@@ -218,7 +219,10 @@ class ProspectQuotationFlowTest extends TestCase
         $this->assertNotNull($quote->fresh()->accepted_at);
         $this->fixture('enquiry-order-ready', $this->get($enquiryUrl)->assertOk()
             ->assertSee('Create Rental')->assertSee($createUrl)->assertDontSee('Open latest quotation'));
-        $this->get($createUrl)->assertOk()->assertSee('quotation_recipient_confirmed')->assertSee('value="Synthetic prospect"', false);
+        $this->fixture('quote-order-ready', $this->get(route('quotations.show', $quote))->assertOk()
+            ->assertSee('Sales progress')->assertSee($enquiryUrl.'#enquiry-response')->assertSee($createUrl));
+        $this->fixture('order', $this->get($createUrl)->assertOk()->assertSee('Sales progress')
+            ->assertSee(route('quotations.show', $quote))->assertSee('quotation_recipient_confirmed')->assertSee('value="Synthetic prospect"', false));
         $this->action($quote, 'revise');
         $second = $this->action(Quotation::where('revision', 2)->sole(), 'send');
         $secondAgreement = $agreements->quotation($second);
@@ -260,6 +264,8 @@ class ProspectQuotationFlowTest extends TestCase
         $this->fixture('capture',$this->get(route('enquiries.create'))->assertOk()->assertSee('Save enquiry')->assertDontSee('Save &amp; create quotation',false)->assertDontSee('salesQuickCustomerForm'));
         $e=$this->enquiry();
         $this->fixture('enquiry',$this->get(route('enquiries.show',$e))->assertOk()->assertSee('Create quotation')->assertSee('Follow-ups')->assertSee('Call before preparing quotation')->assertSee('Synthetic prospect'));
+        $this->fixture('new-quotation', $this->get(route('quotations.create', $e))->assertOk()
+            ->assertSee('Sales progress')->assertSee(route('enquiries.show', $e).'#enquiry-details'));
         $this->post(route('enquiries.follow-up',$e),['channel'=>'call','subject'=>'Discuss requirements','due_at'=>'2026-11-03T17:00'])->assertSessionHasNoErrors();
         $this->assertSame(1,$e->followUps()->count());$this->assertDatabaseCount('quotations',0);$this->assertDatabaseCount('customers',0);
     }

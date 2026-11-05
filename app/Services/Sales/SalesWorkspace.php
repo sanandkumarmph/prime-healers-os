@@ -2,7 +2,7 @@
 
 namespace App\Services\Sales;
 
-use App\Models\{Customer, Enquiry, EnquiryActivity, Organization, Product, Quotation, User};
+use App\Models\{Customer, Enquiry, EnquiryActivity, Organization, Product, Quotation, Rental, RentalAgreement, Sale, User};
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -32,6 +32,31 @@ class SalesWorkspace
         $enquiry = $this->enquiry($quote->enquiry_id, $action === 'read' ? 'read' : 'update');
         abort_if(auth()->user()->scopeType('quotations') !== 'all' && (int) $enquiry->owner_id !== (int) auth()->id(), 404);
         return $quote;
+    }
+
+    public function orderAction(User $user, Enquiry $enquiry, ?Quotation $quote, ?RentalAgreement $agreement): ?array
+    {
+        if (!$quote) {
+            return null;
+        }
+
+        $module = $quote->kind.'s';
+        $canCreate = $user->canAccessModule('enquiries', 'update') && $user->canAccessModule('quotations', 'update')
+            && $user->canAccessModule($module, 'read') && $user->canAccessModule($module, 'create');
+        $requiresSignature = $quote->kind === 'rental' && RentalAgreements::enabled();
+        if ($quote->displayStatus() === 'accepted' && !$enquiry->closed() && $canCreate && (!$requiresSignature || $agreement?->signed_at)) {
+            return ['label' => 'Create '.ucfirst($quote->kind), 'url' => route($module.'.create', ['quotation_id' => $quote->id])];
+        }
+
+        if ($quote->status === 'converted' && in_array($quote->order_type, ['rental', 'sale'], true)) {
+            $class = $quote->order_type === 'rental' ? Rental::class : Sale::class;
+            $order = $class::where('organization_id', $enquiry->organization_id)->find($quote->order_id);
+            if ($order && $user->can('view', $order)) {
+                return ['label' => 'View '.ucfirst($quote->order_type), 'url' => route($quote->order_type.'s.show', $order)];
+            }
+        }
+
+        return null;
     }
 
     public function owners(): \Illuminate\Support\Collection

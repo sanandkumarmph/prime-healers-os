@@ -145,8 +145,14 @@ class SalesWorkspaceTest extends TestCase
         $q = $this->quote();
         $role = Role::create(['organization_id' => $this->owner->organization_id, 'name' => 'Read only sales', 'slug' => 'read_only_sales', 'scope_type' => 'all', 'is_active' => true,
             'permissions' => ['enquiries' => ['read'], 'quotations' => ['read']]]);
-        $this->actingAs(TestData::user($this->owner->organization, ['role_id' => $role->id]))->get(route('quotations.show', $q))->assertOk()->assertDontSee('id="quotation-form"', false)->assertDontSee('Create sharing link');
+        $reader = TestData::user($this->owner->organization, ['role_id' => $role->id]);
+        $this->actingAs($reader)->get(route('quotations.show', $q))->assertOk()->assertSee('Sales progress')
+            ->assertDontSee('id="quotation-form"', false)->assertDontSee('Create sharing link');
         $this->post(route('quotations.action', $q), ['action' => 'send', 'lock_version' => 1])->assertForbidden();
+        $this->actingAs($this->owner);
+        $q = $this->transition($this->transition($q, 'send'), 'accepted');
+        $this->actingAs($reader)->get(route('quotations.show', $q))->assertOk()->assertSee('Sales progress')
+            ->assertDontSee(route('rentals.create', ['quotation_id' => $q->id]));
     }
 
     public function test_stale_edits_are_rejected_and_sent_snapshots_are_immutable(): void
@@ -165,6 +171,8 @@ class SalesWorkspaceTest extends TestCase
         $this->transition($q, 'revise');
         $next = $q->enquiry->quotations()->latest('revision')->first();
         $this->assertEquals(2, $next->revision); $this->assertSame('draft', $next->status); $this->assertSame('superseded', $q->fresh()->status); $this->assertSame($original, $q->fresh()->snapshot);
+        $this->get(route('quotations.show', $q))->assertOk()->assertSee('Sales progress')->assertSee(route('quotations.show', $next))
+            ->assertDontSee(route('rentals.create', ['quotation_id' => $q->id]));
         auth()->logout(); $this->get($url)->assertStatus(410); $this->post($url, ['decision' => 'accepted', 'contact_name' => 'Asha', 'acknowledge' => 1])->assertStatus(410);
         $this->actingAs($this->owner)->get(route('rentals.create', ['quotation_id' => $q->id]))->assertStatus(409);
     }
@@ -258,7 +266,8 @@ class SalesWorkspaceTest extends TestCase
     public function test_accepted_sale_converts_once_through_existing_stock_and_invoice_flow(): void
     {
         $q = $this->accepted('sale'); $payload = app(QuotationConversion::class)->prefill($q);
-        $this->get(route('sales.create', ['quotation_id' => $q->id]))->assertOk()->assertSee('Creating an order from');
+        $this->get(route('sales.create', ['quotation_id' => $q->id]))->assertOk()->assertSee('Creating an order from')
+            ->assertSee('Sales progress')->assertSee(route('quotations.show', $q));
         $this->post(route('sales.store'), $payload)->assertSessionHasNoErrors()->assertRedirect(route('sales.index', ['sort_by' => 'latest']));
         $sale = Sale::sole(); $this->assertSame($q->snapshot['terms'], $sale->invoice()->firstOrFail()->terms_conditions); $this->assertEquals($q->snapshot['total'], $sale->sale_amount); $this->assertEquals(236, $sale->saleItems()->sole()->line_total);
         $this->assertSame('converted', $q->fresh()->status); $this->assertEquals($sale->id, $q->fresh()->order_id); $this->assertSame('won', $q->enquiry->fresh()->stage);

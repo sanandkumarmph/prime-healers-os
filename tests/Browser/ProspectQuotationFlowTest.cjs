@@ -5,8 +5,10 @@ test('enquiry-first capture and customer-free quotation review work on phones',{
  const root=path.resolve(__dirname,'../../public');let origin,browser;const errors=[],writes=[];
  const server=http.createServer((req,res)=>{
   if(req.method!=='GET'){writes.push(req.method);res.writeHead(405).end();return;}
-  const url=new URL(req.url,origin),name=url.pathname==='/rentals/create'?'order':url.pathname.slice(1);
-  if(['capture','enquiry','review','shared','order','enquiry-awaiting-acceptance','enquiry-order-ready'].includes(name)){
+  const url=new URL(req.url,origin);
+  const destinations=[[/^\/rentals\/create$/,'order'],[/^\/quotations\/\d+$/,'shared'],[/^\/enquiries\/\d+\/quotations\/create$/,'new-quotation'],[/^\/enquiries\/\d+$/,'enquiry-awaiting-acceptance']];
+  const name=destinations.find(([pattern])=>pattern.test(url.pathname))?.[1]??url.pathname.slice(1);
+  if(['capture','enquiry','new-quotation','review','shared','quote-order-ready','order','enquiry-awaiting-acceptance','enquiry-order-ready'].includes(name)){
    const html=fs.readFileSync(path.join(folder,name+'.html'),'utf8').replaceAll('http://127.0.0.1:8000',origin).replaceAll('http://localhost',origin);
    res.writeHead(200,{'Content-Type':'text/html; charset=utf-8'}).end(html);return;
   }
@@ -31,6 +33,7 @@ test('enquiry-first capture and customer-free quotation review work on phones',{
    await page.goto(origin+'/review',{waitUntil:'networkidle0'});
    assert.equal(await page.$eval('#customer_id',e=>e.value),'');
    assert.equal(await page.$eval('#quotation-review',e=>e.open),true);
+   assert.equal(await page.$eval('nav[aria-label="Sales progress"] a[aria-current="step"]', link=>link.textContent.trim()),'2. Quotation');
    assert.ok(await page.$eval('#quotation-review',e=>e.textContent.includes('Synthetic prospect')));
    await page.$eval('[data-close-review]',b=>b.click());
    await page.evaluate(()=>{
@@ -49,6 +52,12 @@ test('enquiry-first capture and customer-free quotation review work on phones',{
    assert.equal(await page.$eval('[name=quotation_recipient_confirmed]',e=>({required:e.required,form:e.form.id})).then(x=>x.form),'rentalCreateForm');
    assert.equal(await page.$eval('[name=quotation_recipient_confirmed]',e=>e.required),true);
    if(width===390 || width===1440){
+    const workflow = 'nav[aria-label="Sales progress"] a';
+    const clickStep = step => page.click(workflow+step);
+    await page.goto(origin+'/enquiry',{waitUntil:'domcontentloaded'});
+    await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),clickStep('[href*="quotations/create"]')]);
+    assert.equal(await page.$$eval(workflow,links=>links.length),4);
+    assert.equal(await page.$eval(workflow+'[aria-current="step"]',link=>link.textContent.trim()),'2. Quotation');
     await page.goto(origin+'/enquiry-awaiting-acceptance',{waitUntil:'domcontentloaded'});
     assert.equal(await page.$$eval('nav[aria-label="Sales progress"] a', links=>links.length),4);
     await page.click('nav[aria-label="Sales progress"] a[href="#enquiry-details"]');
@@ -56,6 +65,12 @@ test('enquiry-first capture and customer-free quotation review work on phones',{
     await page.click('nav[aria-label="Sales progress"] a[href="#enquiry-response"]');
     assert.equal(new URL(page.url()).hash,'#enquiry-response');
     assert.equal(await page.$eval('#enquiry-response details',details=>details.open),true);
+    await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),clickStep('[href*="/quotations/"]')]);
+    assert.match(new URL(page.url()).pathname,/^\/quotations\/\d+$/);
+    assert.equal(await page.$$eval(workflow,links=>links.length),4);
+    assert.equal(await page.$eval(workflow+'[aria-current="step"]',link=>link.textContent.trim()),'2. Quotation');
+    await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),clickStep('[href$="#enquiry-response"]')]);
+    assert.equal(new URL(page.url()).hash,'#enquiry-response');
     await page.goto(origin+'/enquiry-order-ready',{waitUntil:'domcontentloaded'});
     const primary=await page.$eval('.sw-head .sw-primary',link=>({text:link.textContent.trim(),href:link.href}));
     assert.equal(primary.text,'Create Rental');
@@ -63,6 +78,10 @@ test('enquiry-first capture and customer-free quotation review work on phones',{
     await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.click('nav[aria-label="Sales progress"] a[aria-current="step"]')]);
     assert.equal(new URL(page.url()).pathname,'/rentals/create');
     assert.ok(new URL(page.url()).searchParams.get('quotation_id'));
+    assert.equal(await page.$$eval(workflow,links=>links.length),4);
+    assert.equal(await page.$eval(workflow+'[aria-current="step"]',link=>link.textContent.trim()),'4. Order');
+    await page.goto(origin+'/quote-order-ready',{waitUntil:'domcontentloaded'});
+    assert.equal(await page.$eval(workflow+'[href*="rentals/create"]',link=>link.href),primary.href);
    }
   }
   assert.deepEqual(errors,[]);assert.deepEqual(writes,[]);

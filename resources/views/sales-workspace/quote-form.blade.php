@@ -13,6 +13,10 @@
 <div class="sw">
     <a href="{{ route('enquiries.show',$enquiry) }}">← Back to enquiry</a>
     <header class="sw-head"><div><div class="sw-eyebrow">{{ $quote?->number() ?? 'New quotation' }}</div><h1>Prepare quotation</h1><p class="sw-muted">{{ $enquiry->subject }} · Contact: {{ $enquiry->name }}</p></div>@if($quote)<a class="sw-btn" id="saved-draft-pdf" href="{{ route('quotations.pdf',$quote) }}">Saved draft PDF</a>@endif</header>
+    @include('sales-workspace.workflow-navigation', [
+        'workflowEnquiry' => $enquiry, 'workflowStep' => 'quotation',
+        'workflowQuotationUrl' => $quote ? route('quotations.show', $quote) : route('quotations.create', $enquiry),
+    ])
     @include('sales-workspace.alerts')
     <p class="sw-guide"><strong>Next:</strong> Confirm the recipient and prices, then review before sharing.</p>
     <p class="sw-meta">A full address and customer registration are not required for a quotation. Complete customer and delivery details after order confirmation.</p>

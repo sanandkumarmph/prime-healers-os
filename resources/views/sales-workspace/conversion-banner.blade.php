@@ -1,4 +1,12 @@
 @if($conversionQuote = request()->attributes->get('conversion_quote'))
+    @include('sales-workspace.style')
+    <div class="sw" style="max-width:none;padding:0">
+        @include('sales-workspace.workflow-navigation', [
+            'workflowEnquiry' => $conversionQuote->enquiry, 'workflowStep' => 'order',
+            'workflowQuotationUrl' => route('quotations.show', $conversionQuote),
+            'workflowOrderUrl' => route($conversionQuote->kind.'s.create', ['quotation_id' => $conversionQuote->id]),
+        ])
+    </div>
 <div class="alert alert-info" role="status" style="margin:16px 0;padding:16px;border:1px solid #b9d1ed;border-radius:10px;background:#eff6ff">
     <strong>Creating an order from {{ $conversionQuote->number() }}</strong>
     <p>Prices, products and rental dates must match the accepted quotation. Complete the stock and delivery details below. Stock is checked when you save.</p>

@@ -10,12 +10,7 @@
         $latestQuote !== null => 'quotation',
         default => 'enquiry',
     };
-    $steps = [
-        'enquiry' => ['1. Enquiry', '#enquiry-details'],
-        'quotation' => ['2. Quotation', $quotationUrl],
-        'response' => ['3. Response', '#enquiry-response'],
-        'order' => ['4. Order', $orderAction['url'] ?? '#enquiry-next'],
-    ];
+
 @endphp
 <div class="sw">
     <a href="{{ route('enquiries.index') }}">← Sales workspace</a>
@@ -44,13 +39,10 @@
     @if($enquiry->stage === 'lost')
         <div class="sw-alert"><strong>Closed as lost</strong><p>{{ $enquiry->lost_reason }}</p></div>
     @endif
-    <nav aria-label="Sales progress">
-        <ol class="sw-stage">
-            @foreach($steps as $step => [$label, $url])
-                <li><a href="{{ $url }}" @if($progress === $step) aria-current="step" @endif>{{ $label }}</a></li>
-            @endforeach
-        </ol>
-    </nav>
+    @include('sales-workspace.workflow-navigation', [
+        'workflowEnquiry' => $enquiry, 'workflowQuotationUrl' => $quotationUrl, 'workflowOrderUrl' => $orderAction['url'] ?? null,
+        'workflowOnEnquiry' => true, 'workflowStep' => $progress,
+    ])
     <p class="sw-guide" id="enquiry-next" tabindex="-1">
         <strong>Next:</strong>
         @if($enquiry->closed())
