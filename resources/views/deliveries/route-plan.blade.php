@@ -1,12 +1,20 @@
 @extends('layouts.app')
 @section('content')
 @include('sales-workspace.style')
+<style>
+    .route-drag-handle { min-width:44px; min-height:44px; padding:6px; cursor:grab; touch-action:none; user-select:none; }
+    [data-route-reorder-fallback] { display:flex; gap:4px; margin-top:4px; }
+    .route-drag-handle[hidden], [data-route-drag-help][hidden], [data-route-reorder-fallback][hidden] { display:none; }
+    [data-route-drag-status] { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+    [data-route-picked-up] > td { background:#eff6ff; }
+    [data-route-picked-up] .route-drag-handle { cursor:grabbing; }
+</style>
 <main class="sw">
     <header class="sw-head">
         <div><div class="sw-eyebrow">Delivery Operations</div><h1>Suggested delivery route</h1></div>
         <a class="sw-btn" href="{{ route('deliveries.index') }}">Task Board</a>
     </header>
-    <p class="sw-muted">PHOS suggests nearby stops within each scheduled time slot. Use the arrows to change the stop order while keeping the booked times visible.</p>
+    <p class="sw-muted">PHOS suggests nearby stops within each scheduled time slot.</p>
     <form class="sw-panel" method="get" action="{{ route('deliveries.route-plan') }}">
         <div class="sw-fields">
             <div class="sw-field"><label for="route-date">Scheduled date (IST)</label><input type="date" id="route-date" name="date" value="{{ $date }}" required></div>
@@ -51,6 +59,11 @@
             <p role="status">Using your manual stop order. <a href="{{ route('deliveries.route-plan', $routeFilters) }}#route-stops">Reset to suggested order</a></p>
         @endif
         @if(count($stops) > 1)
+            <p id="route-drag-help" class="sw-muted" data-route-drag-help hidden>
+                Drag a stop by its handle. You can also tap one handle, then tap another to move it there.
+                With a keyboard, press Space to pick up, use the arrow keys to move, and press Space again to place. Escape cancels.
+            </p>
+            <p role="status" data-route-drag-status></p>
             <form id="route-order" method="get" action="{{ route('deliveries.route-plan') }}">
                 @foreach($routeFilters as $name => $value)
                     <input type="hidden" name="{{ $name }}" value="{{ $value }}">
@@ -68,13 +81,19 @@
         @endif
         <div id="route-stops" style="overflow:auto"><table class="sw-table">
             <thead><tr><th scope="col">Stop order</th><th scope="col">Time (IST)</th><th scope="col">Task</th><th scope="col">Destination</th><th scope="col">Distance</th><th scope="col">Est. drive</th><th scope="col">Directions</th></tr></thead>
-            <tbody>
+            <tbody data-route-stop-list>
                 @forelse($stops as $stop)
-                    <tr id="route-stop-{{ $stop['task']->id }}" tabindex="-1" style="scroll-margin-top:84px">
+                    <tr id="route-stop-{{ $stop['task']->id }}" data-route-stop="{{ $stop['task']->id }}" style="scroll-margin-top:84px">
                         <td>
-                            <strong>{{ $loop->iteration }}</strong>
+                            <strong data-route-position>{{ $loop->iteration }}</strong>
                             @if(count($stops) > 1)
-                                <div style="display:flex;gap:4px;margin-top:4px;">
+                                <button type="button" class="sw-btn route-drag-handle" data-route-drag-handle hidden
+                                    aria-label="Reorder {{ $stop['task']->type }} {{ $stop['task']->id }}" aria-describedby="route-drag-help">
+                                    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                        <path d="M7 3a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm6 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3ZM7 8.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm6 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3ZM7 14a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm6 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"/>
+                                    </svg>
+                                </button>
+                                <div data-route-reorder-fallback>
                                     <button class="sw-btn" style="min-width:44px;min-height:44px;padding:4px" type="submit" form="route-order" name="move" value="up:{{ $stop['task']->id }}" aria-label="Move {{ $stop['task']->type }} {{ $stop['task']->id }} up" @disabled($loop->first)>↑</button>
                                     <button class="sw-btn" style="min-width:44px;min-height:44px;padding:4px" type="submit" form="route-order" name="move" value="down:{{ $stop['task']->id }}" aria-label="Move {{ $stop['task']->type }} {{ $stop['task']->id }} down" @disabled($loop->last)>↓</button>
                                 </div>
@@ -101,4 +120,7 @@
         </table></div>
     </section>
 </main>
+@if(count($stops) > 1)
+    <script src="{{ asset('js/phos-route-order.js') }}?v={{ hash_file('sha256', public_path('js/phos-route-order.js')) }}" defer></script>
+@endif
 @endsection

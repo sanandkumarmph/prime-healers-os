@@ -65,10 +65,14 @@ class DeliveryRoutePlannerTest extends TestCase
             'organization_id' => TestData::organization()->id, 'name' => 'Other warehouse', 'is_active' => true,
         ]);
         $filters = ['date' => $date, 'warehouse' => $warehouse->id];
-        $this->get(route('deliveries.route-plan', $filters))->assertOk()
+        $response = $this->get(route('deliveries.route-plan', $filters))->assertOk()
+            ->assertSee('data-route-drag-handle', false)->assertSee('phos-route-order.js')
             ->assertSee('1.6 km')->assertSee('≈ 5 min')
             ->assertViewHas('stops', fn ($stops) => $stops[2]['distance_km'] === null
                 && str_contains($stops[2]['navigation'], 'origin=12.9%2C77.5'));
+        if ($fixture = getenv('PHOS_ROUTE_PLANNER_BROWSER_FIXTURE')) {
+            file_put_contents($fixture, $response->getContent());
+        }
 
         $move = $this->get(route('deliveries.route-plan', $filters + ['move' => 'up:'.$far->id]))->assertRedirect();
         $this->assertStringEndsWith('#route-stop-'.$far->id, $move->headers->get('Location'));
