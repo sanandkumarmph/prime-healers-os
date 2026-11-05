@@ -18,7 +18,8 @@ class DeliveryPolicy
     public function view(User $user, Delivery $delivery): bool
     {
         return $this->sameOrganization($user, $delivery)
-            && $this->allowsModule($user, 'deliveries', 'read');
+            && $this->allowsModule($user, 'deliveries', 'read')
+            && (!$user->isDelivery() || (int) $delivery->assigned_user_id === (int) $user->id);
     }
 
     public function create(User $user): bool
@@ -57,6 +58,10 @@ class DeliveryPolicy
         $assignedUserId = array_key_exists('assigned_user_id', $attributes)
             ? (int) ($delivery->assigned_user_id ?? 0)
             : 0;
+
+        if ($user->isDelivery()) {
+            return $assignedUserId === (int) $user->id;
+        }
 
         if ($assignedUserId > 0) {
             return $assignedUserId === (int) $user->id;

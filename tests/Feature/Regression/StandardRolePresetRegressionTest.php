@@ -2,10 +2,13 @@
 
 namespace Tests\Feature\Regression;
 
+use App\Models\Asset;
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Models\Product;
 use App\Models\Role;
 use App\Models\User;
+use App\Models\Warehouse;
 use App\Services\DashboardWidgetRegistryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\TestData;
@@ -56,7 +59,7 @@ class StandardRolePresetRegressionTest extends TestCase
 
     public function test_every_non_admin_profile_rejects_income_profit_and_consolidated_reports_even_if_explicitly_granted(): void
     {
-        foreach (['sales', 'service', 'delivery', 'finance', 'custom'] as $preset) {
+        foreach (['sales', 'service', 'delivery', 'custom'] as $preset) {
             $user = $this->worker($preset, array_keys(Role::SPECIAL_PERMISSIONS));
             $role = $user->assignedRole;
             $role->update(['permissions' => array_merge($role->permissions, ['reports' => ['read']])]);
@@ -72,22 +75,34 @@ class StandardRolePresetRegressionTest extends TestCase
         }
     }
 
-    public function test_accounts_can_work_on_individual_records_and_dues_without_finance_widgets(): void
+    public function test_finance_can_read_payments_invoices_and_reports_without_writing_or_exporting(): void
     {
         $user = $this->worker('finance');
         $this->assertTrue($user->canViewRecordFinance());
-        $this->assertTrue($user->canAccessModule('payments', 'create'));
+        $this->assertTrue($user->canViewFinance('finance.view_revenue'));
+        $this->assertTrue($user->canAccessModule('payments', 'read'));
+        $this->assertFalse($user->canAccessModule('payments', 'create'));
+        $this->assertFalse($user->hasPermission('payments.create'));
+        $this->assertFalse($user->canAccessModule('invoices', 'update'));
+        $this->assertFalse($user->canViewProfitability());
         $this->assertTrue($user->canViewDues());
         $this->assertFalse($user->canSeeFinanceSummary());
         $keys = app(DashboardWidgetRegistryService::class)->widgetKeysForUser($user);
         foreach (['kpi_collections_this_month', 'snapshot_collections_today', 'section_finance_summary', 'section_sales_overview'] as $key) {
             $this->assertNotContains($key, $keys);
         }
+        $this->actingAs($user)->get(route('reports.index', ['tab' => 'trends']))->assertOk()
+            ->assertSee('Finance reports')->assertDontSee('Product Trend')->assertDontSee('Staff incentives');
+        $this->get(route('reports.export.csv'))->assertForbidden();
+        $this->get(route('reports.staff-incentives', ['download' => 'xlsx']))->assertForbidden();
+        $this->get(route('communication-center.index'))->assertForbidden();
+        $this->postJson(route('invoices.store'))->assertForbidden();
+        $this->get(route('ledger.export.csv'))->assertForbidden();
     }
 
     public static function duesProfiles(): array
     {
-        return [['finance'], ['service']];
+        return [['service']];
     }
 
     #[DataProvider('duesProfiles')]
@@ -145,9 +160,38 @@ class StandardRolePresetRegressionTest extends TestCase
         $this->assertTrue($admin->canViewFinanceDashboard());
         $this->assertTrue($admin->hasPermission('finance.view_profit'));
         $this->assertTrue($admin->canAccessGeneralReports());
+        $this->actingAs($admin)->get(route('reports.index', ['tab' => 'trends']))->assertOk()
+            ->assertDontSee('Product Trend')->assertDontSee('EBITDA')
+            ->assertViewHas('reportGroups', fn ($groups) => !isset($groups['product_trends']) && !isset($groups['profitability_reports']['estimated_ebitda']));
+        $owner = $this->worker('super_admin');
+        $this->actingAs($owner)->get(route('reports.index', ['tab' => 'trends']))->assertOk()
+            ->assertSee('Product Trends')->assertSee('Estimated EBITDA');
         $delivery = $this->worker('delivery');
         $this->assertSame('assigned', $delivery->scopeType('deliveries'));
         $this->assertFalse($delivery->canAccessModule('users', 'update'));
         $this->assertFalse($delivery->canViewDues());
+        $this->actingAs($delivery)->get(route('deliveries.assets.create'))->assertOk()->assertSee('Add an asset');
+    }
+
+    public function test_delivery_asset_entry_reuses_stock_creation_and_restricts_sensitive_fields(): void
+    {
+        $delivery = $this->worker('delivery');
+        $product = Product::create([
+            'organization_id' => $delivery->organization_id, 'name' => 'Delivery stock',
+            'product_type' => Product::TYPE_RENTABLE, 'stock_mode' => Product::STOCK_MODE_TRACKED_RENTAL,
+            'total_quantity' => 0, 'available_quantity' => 0, 'price_per_day' => 0, 'rental_price' => 0, 'sale_price' => 0,
+        ]);
+        $warehouse = Warehouse::create([
+            'organization_id' => $delivery->organization_id, 'name' => 'Delivery warehouse', 'code' => 'DLV', 'is_active' => true,
+        ]);
+        $this->actingAs($delivery)->post(route('deliveries.assets.store'), [
+            'warehouse_id' => $warehouse->id, 'product_id' => $product->id, 'asset_stage' => Asset::STAGE_RENTAL_STOCK,
+            'serial_number' => 'DLV-123', 'purchase_cost' => 200, 'asset_status' => 'rented',
+        ])->assertSessionHasNoErrors()->assertRedirect(route('deliveries.assets.create'));
+        $this->assertDatabaseHas('assets', [
+            'product_id' => $product->id, 'warehouse_id' => $warehouse->id, 'serial_number' => 'DLV-123',
+            'asset_status' => Asset::STATUS_AVAILABLE, 'purchase_cost' => null,
+        ]);
+        $this->getJson(route('assets.edit', Asset::sole()))->assertForbidden();
     }
 }

@@ -294,7 +294,7 @@ class SalesWorkspaceTest extends TestCase
                 ->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             $this->get(route('reports.index', ['tab' => 'staff']))->assertOk()->assertSee('View incentive revenue');
         }
-        $this->actingAs($opsAdmin)->postJson($assign)->assertForbidden();
+        $this->actingAs($opsAdmin)->postJson($assign)->assertUnprocessable();
         $this->actingAs($this->owner)->postJson($assign)->assertUnprocessable();
 
         $sales = TestData::user($org, ['role' => User::ROLE_SALES]);

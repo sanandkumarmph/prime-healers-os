@@ -227,7 +227,7 @@ class CommunicationCenterController extends Controller
             || $user->isAdminOperations()
             || $user->canAccessAnyModule(['rentals', 'sales', 'customers', 'deliveries', 'invoices'], 'read');
 
-        abort_unless($allowed, 403);
+        abort_unless($allowed && !$user->isFinance(), 403);
     }
 
     private function orgId(): int
@@ -460,6 +460,7 @@ class CommunicationCenterController extends Controller
 
     private function scopedFollowUp(FollowUp $followUp): FollowUp
     {
+        $this->ensureCommunicationAccess();
         abort_if((int) $followUp->organization_id !== $this->orgId(), 404);
 
         $query = $this->applyScopedVisibility(FollowUp::query()->whereKey($followUp->id));

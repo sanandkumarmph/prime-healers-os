@@ -17,7 +17,7 @@ class StaffIncentiveReportController extends Controller
 {
     private function authorizeReport(User $user): void
     {
-        abort_unless($user->canAccessGeneralReports(), 403);
+        abort_unless($user->canViewStaffIncentives(), 403);
     }
 
     private function canAssign(User $user): bool

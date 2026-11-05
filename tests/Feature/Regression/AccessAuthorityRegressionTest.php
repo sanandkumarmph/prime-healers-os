@@ -76,13 +76,13 @@ class AccessAuthorityRegressionTest extends TestCase
         $this->get(route('users.index'))->assertOk();
     }
 
-    public function test_explicit_empty_sensitive_permissions_are_authoritative_without_rewriting_legacy_defaults(): void
+    public function test_finance_role_is_read_only_with_legacy_or_explicit_permissions(): void
     {
         $organization = TestData::organization();
         $legacyRole = $this->role($organization->id, User::ROLE_FINANCE, ['invoices' => ['read'], 'payments' => ['read']]);
         $legacy = TestData::user($organization, ['role' => User::ROLE_FINANCE, 'role_id' => $legacyRole->id]);
         $this->assertFalse($legacy->canViewFinanceDashboard());
-        $this->assertTrue($legacy->hasPermission('invoices.export'));
+        $this->assertFalse($legacy->hasPermission('invoices.export'));
         $this->assertArrayNotHasKey('__special', $legacyRole->fresh()->permissions);
 
         $permissions = Role::normalizePermissions(['invoices' => ['read'], 'payments' => ['read'], '__special' => []]);
@@ -97,14 +97,12 @@ class AccessAuthorityRegressionTest extends TestCase
         $this->assertFalse($legacy->canViewFinanceDashboard());
         $keys = app(DashboardWidgetRegistryService::class)->widgetKeysForUser($legacy);
         $this->assertNotContains('section_finance_summary', $keys);
-        $this->assertNotContains('primary_outstanding_dues', $keys);
-        $response = $this->actingAs($legacy)->get(route('dashboard'))->assertOk();
-        $this->assertFalse(str_contains($response->getContent(), 'data-dashboard-tab="revenue"'), 'Finance-denied profile must not receive the finance tab.');
-        $this->assertFalse(str_contains($response->getContent(), 'data-dashboard-tab="team"'));
+        $this->actingAs($legacy)->getJson(route('dashboard'))->assertForbidden();
+        $this->get(route('reports.index'))->assertOk()->assertSee('Finance reports');
         $legacyRole->permissions = Role::normalizeExplicitPermissions(['invoices' => ['read'], '__special' => ['invoices.export']]);
         $legacyRole->save();
         $legacy->unsetRelation('assignedRole');
-        $this->assertTrue($legacy->hasPermission('invoices.export'));
+        $this->assertFalse($legacy->hasPermission('invoices.export'));
         $this->assertFalse($legacy->hasPermission('payments.export'));
         $this->assertFalse($legacy->canViewFinanceDashboard());
     }
@@ -474,7 +472,7 @@ class AccessAuthorityRegressionTest extends TestCase
         }
         $this->assertTrue($matrix['legacy_profiles'][User::ROLE_SUPER_ADMIN]['team_performance']);
         $this->assertFalse($matrix['legacy_profiles'][User::ROLE_FINANCE]['finance_dashboard']);
-        $this->assertFalse($matrix['legacy_profiles'][User::ROLE_ADMIN_OPERATIONS]['finance_dashboard']);
+        $this->assertTrue($matrix['legacy_profiles'][User::ROLE_ADMIN_OPERATIONS]['finance_dashboard']);
         $this->assertTrue($matrix['legacy_profiles'][User::ROLE_ADMIN_OPERATIONS]['management_analytics']);
         $this->assertTrue($matrix['legacy_profiles'][User::ROLE_SALES]['record_finance']);
         $this->assertFalse($matrix['legacy_profiles'][User::ROLE_SALES]['finance_dashboard']);

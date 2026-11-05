@@ -131,8 +131,10 @@
             </div>
         </div>
         <div class="ledger-actions">
-            <a class="ledger-btn" href="{{ route('ledger.export.csv', $query) }}">Export CSV</a>
-            <button class="ledger-btn primary" type="button" data-ledger-preview-open>Preview PDF</button>
+            @unless(auth()->user()->isFinance())
+                <a class="ledger-btn" href="{{ route('ledger.export.csv', $query) }}">Export CSV</a>
+                <button class="ledger-btn primary" type="button" data-ledger-preview-open>Preview PDF</button>
+            @endunless
             <details class="ledger-menu">
                 <summary>More</summary>
                 <div class="ledger-menu-list">

@@ -31,7 +31,7 @@ class SalesVisibilityBoundariesRegressionTest extends TestCase
 
         $this->assertTrue($adminOperations->canViewRecordFinance());
         $this->assertTrue($adminOperations->canViewManagementAnalytics());
-        $this->assertFalse($adminOperations->canViewProfitability());
+        $this->assertTrue($adminOperations->canViewProfitability());
 
         $this->assertTrue($finance->canViewRecordFinance());
         $this->assertFalse($finance->canViewFinanceDashboard());

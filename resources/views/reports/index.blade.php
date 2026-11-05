@@ -172,7 +172,7 @@
         <div class="reports-title">
             <div class="rx-eyebrow">Analytics</div>
             <h1>Reports & Insights</h1>
-            <p>Structured analytics center for revenue, rentals, inventory, customers, staff, vendors, profitability, and product trends.</p>
+            <p>Analytics for revenue, rentals, inventory, customers, staff, vendors and profitability.</p>
         </div>
         <div class="reports-actions">
             <a href="{{ route('dashboard') }}" class="reports-btn">Dashboard</a>
@@ -241,7 +241,9 @@
     <input class="reports-radio" type="radio" id="tab-vendors" name="reports-tab" value="vendors" @checked($activeTab === 'vendors')>
     <input class="reports-radio" type="radio" id="tab-referrals" name="reports-tab" value="referrals" @checked($activeTab === 'referrals')>
     <input class="reports-radio" type="radio" id="tab-profit" name="reports-tab" value="profit" @checked($activeTab === 'profit')>
-    <input class="reports-radio" type="radio" id="tab-trends" name="reports-tab" value="trends" @checked($activeTab === 'trends')>
+    @if(auth()->user()->isSuperAdmin())
+        <input class="reports-radio" type="radio" id="tab-trends" name="reports-tab" value="trends" @checked($activeTab === 'trends')>
+    @endif
 
     <div class="reports-panel">
         <div class="reports-tabs">
@@ -252,8 +254,10 @@
             <label class="reports-tab" for="tab-staff">Staff Performance</label>
             <label class="reports-tab" for="tab-vendors">Vendor Analytics</label>
             <label class="reports-tab" for="tab-referrals">Referral Analytics</label>
-            <label class="reports-tab" for="tab-profit">Profitability / EBITDA</label>
-            <label class="reports-tab" for="tab-trends">Product Trends</label>
+            <label class="reports-tab" for="tab-profit">Profitability</label>
+            @if(auth()->user()->isSuperAdmin())
+                <label class="reports-tab" for="tab-trends">Product Trends</label>
+            @endif
         </div>
 
         <section class="reports-tab-content revenue-tab">
@@ -397,7 +401,7 @@
         </section>
 
         <section class="reports-tab-content staff-tab">
-            @if(auth()->user()->canAccessGeneralReports())
+            @if(auth()->user()->canViewStaffIncentives())
                 <div class="mini-card"><div class="mini-head"><div><h2>Staff incentive revenue</h2><p>See eligible invoiced sales and rentals by staff member and enquiry source.</p></div><a class="reports-btn" href="{{ route('reports.staff-incentives') }}">View incentive revenue</a></div></div>
             @endif
             <div class="reports-grid-2">
@@ -600,11 +604,14 @@
                 <div class="metric"><span>Logistics Cost</span><strong>{{ $currency($profitability['delivery_logistics_cost'] ?? 0) }}</strong><small>Delivery/pickup cost</small></div>
                 <div class="metric"><span>Repair Cost</span><strong>{{ $currency($profitability['repair_maintenance_cost'] ?? 0) }}</strong><small>Available maintenance cost</small></div>
                 <div class="metric"><span>Gross Margin</span><strong>{{ $currency($profitability['gross_margin'] ?? 0) }}</strong><small>Revenue less vendor cost</small></div>
-                <div class="metric"><span>Estimated EBITDA</span><strong>{{ $currency($profitability['estimated_ebitda'] ?? 0) }}</strong><small>Estimated based on available cost data.</small></div>
+                @if(auth()->user()->isSuperAdmin())
+                    <div class="metric"><span>Estimated EBITDA</span><strong>{{ $currency($profitability['estimated_ebitda']) }}</strong><small>Estimated based on available cost data.</small></div>
+                @endif
             </div>
             <div class="mini-card"><div class="mini-head"><div><h2>Profitability Notes</h2><p>Estimated based on available cost data.</p></div></div><div class="mini-body"><div class="empty">Delivery/logistics and repair/maintenance costs are included only when captured in vendor order cost fields. Missing cost categories are intentionally labelled as estimates rather than inferred.</div></div></div>
         </section>
 
+        @if(auth()->user()->isSuperAdmin())
         <section class="reports-tab-content trends-tab">
             <div class="metric-strip">
                 <div class="metric"><span>Fast-moving Products</span><strong>{{ collect($productTrends['fast_moving_products'] ?? [])->count() }}</strong><small>Ranked by rental frequency</small></div>
@@ -617,6 +624,7 @@
                 <div class="mini-card"><div class="mini-head"><div><h2>High Demand Products</h2><p>Fast-moving products by rental frequency.</p></div></div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Product</th><th>Rentals</th><th>Quantity</th></tr></thead><tbody>@forelse(collect($productTrends['fast_moving_products'] ?? []) as $row)<tr><td>{{ $row->label }}</td><td>{{ $number($row->total) }}</td><td>{{ $number($row->quantity_total) }}</td></tr>@empty<tr><td colspan="3"><div class="empty">No fast-moving product data.</div></td></tr>@endforelse</tbody></table></div></div>
             </div>
         </section>
+        @endif
     </div>
 </div>
 <script>

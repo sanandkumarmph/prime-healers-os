@@ -171,7 +171,8 @@
             'items' => [
                 ['key' => 'renewal_center', 'label' => 'Renewal Center', 'icon' => 'rentals', 'href' => $safeRoute('renewal-center.index'), 'active' => request()->routeIs('renewal-center.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('rentals', 'read') ?? false)],
                 ['key' => 'pickup_center', 'label' => 'Pickup Center', 'icon' => 'pickup', 'href' => $safeRoute('pickup-center.index'), 'active' => request()->routeIs('pickup-center.*'), 'visible' => $currentUser?->canAccessModule('deliveries', 'read') ?? false],
-                ['key' => 'communication_center', 'label' => 'Communication Center', 'icon' => 'customers', 'href' => $safeRoute('communication-center.index'), 'active' => request()->routeIs('communication-center.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessAnyModule(['rentals', 'sales', 'customers', 'deliveries', 'invoices'], 'read') ?? false)],
+                ['key' => 'communication_center', 'label' => 'Communication Center', 'icon' => 'customers', 'href' => $safeRoute('communication-center.index'), 'active' => request()->routeIs('communication-center.*'), 'visible' => (!$isDeliveryFacingMenuRole || $currentUser?->isDelivery()) && !$currentUser?->isFinance() && ($currentUser?->canAccessAnyModule(['rentals', 'sales', 'customers', 'deliveries', 'invoices'], 'read') ?? false)],
+                ['key' => 'delivery_asset_entry', 'label' => 'Add an asset', 'icon' => 'assets', 'href' => $safeRoute('deliveries.assets.create'), 'active' => request()->routeIs('deliveries.assets.*'), 'visible' => ($currentUser?->isDelivery() ?? false) && $currentUser->canAccessModule('deliveries', 'update')],
                 ['key' => 'tasks_board', 'label' => 'Tasks Board', 'icon' => 'deliveries', 'href' => $safeRoute('deliveries.index'), 'active' => request()->routeIs('deliveries.*') || request()->routeIs('pickups.*'), 'visible' => $currentUser?->canAccessModule('deliveries', 'read') ?? false],
             ],
         ],
@@ -210,7 +211,7 @@
             'label' => 'Analytics',
             'items' => [
                 ['label' => 'Reports', 'icon' => 'invoices', 'href' => $reportsIndexHref, 'active' => request()->routeIs('reports.*'), 'visible' => !empty($reportsIndexHref)],
-                ['label' => 'Staff incentives', 'icon' => 'users', 'href' => $safeRoute('reports.staff-incentives'), 'active' => request()->routeIs('reports.staff-incentives'), 'visible' => $currentUser?->canAccessGeneralReports() ?? false],
+                ['label' => 'Staff incentives', 'icon' => 'users', 'href' => $safeRoute('reports.staff-incentives'), 'active' => request()->routeIs('reports.staff-incentives'), 'visible' => $currentUser?->canViewStaffIncentives() ?? false],
                 ['label' => 'Vendor Orders', 'icon' => 'vendors', 'href' => $safeRoute('vendor-orders.index'), 'active' => request()->routeIs('vendor-orders.*'), 'visible' => $currentUser?->hasPermission('vendor_reports.view') ?? false],
             ],
         ],

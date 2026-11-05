@@ -30,6 +30,7 @@ class LedgerController extends Controller
 
     public function exportCsv(Request $request): StreamedResponse
     {
+        abort_if($request->user()->isFinance(), 403);
         $filters = $this->ledgerService->filtersFromRequest($request);
         $this->authorizeLedgerAccess($filters);
 
@@ -60,6 +61,7 @@ class LedgerController extends Controller
 
     public function previewPdf(Request $request)
     {
+        abort_if($request->user()->isFinance(), 403);
         $filters = $this->ledgerService->filtersFromRequest($request);
         $this->authorizeLedgerAccess($filters);
 
@@ -68,6 +70,7 @@ class LedgerController extends Controller
 
     public function exportPdf(Request $request)
     {
+        abort_if($request->user()->isFinance(), 403);
         $filters = $this->ledgerService->filtersFromRequest($request);
         $this->authorizeLedgerAccess($filters);
 

@@ -7439,6 +7439,38 @@
 
 <link rel="stylesheet" href="{{ asset('css/phos-executive-dashboard.css') }}?v={{ hash_file('sha256', public_path('css/phos-executive-dashboard.css')) }}">
 <div class="dashboard-shell rx-page {{ $isDeliveryFacingMenuRole ? 'is-delivery-focused' : '' }}" @if(!$isDeliveryFacingMenuRole) data-executive-dashboard data-active-dashboard-tab="{{ $activeDashboardTab }}" @endif>
+    @if($currentUser?->isSales() || $currentUser?->isDelivery())
+        @php
+            $shortcuts = $currentUser->isSales() ? [
+                ['enquiries', 'enquiries.index', 'Enquiries & quotations', []],
+                ['sales', 'sales.index', 'Sales orders', []],
+                ['rentals', 'rentals.index', 'Rental orders', []],
+                ['invoices', 'invoices.index', 'Invoices & individual payments', []],
+                ['deliveries', 'deliveries.index', 'Delivery & pickup tasks', []],
+                ['customers', 'communication-center.index', 'Customer follow-ups', []],
+            ] : [
+                ['deliveries', 'deliveries.index', 'Assigned deliveries', ['board' => 'delivery_workload']],
+                ['deliveries', 'deliveries.index', 'Assigned pickups', ['board' => 'pickup_workload']],
+                ['deliveries', 'deliveries.index', 'Completed deliveries', ['board' => 'completed_delivery']],
+                ['deliveries', 'deliveries.index', 'Completed pickups', ['board' => 'completed_pickup']],
+                ['deliveries', 'communication-center.index', 'Communication Center', []],
+            ];
+        @endphp
+        <section class="rx-card" aria-labelledby="role-workspace-heading" style="padding:16px;margin-bottom:16px">
+            <h2 id="role-workspace-heading" class="rx-card-title">{{ $currentUser->isSales() ? 'Sales workspace' : 'Delivery workspace' }}</h2>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
+                @foreach($shortcuts as [$module, $name, $label, $params])
+                    @if($currentUser->canAccessModule($module, 'read'))
+                        <a class="rx-btn-secondary" href="{{ route($name, $params) }}">{{ $label }}</a>
+                    @endif
+                @endforeach
+                @if($currentUser->isDelivery() && $currentUser->canAccessModule('deliveries', 'update'))
+                    <a class="rx-btn-secondary" href="{{ route('cash-handovers.index') }}">Cash collected & handovers</a>
+                    <a class="rx-btn-secondary" href="{{ route('deliveries.assets.create') }}">Add an asset</a>
+                @endif
+            </div>
+        </section>
+    @endif
     @if($isDeliveryFacingMenuRole)
         @php
             $fieldOpsTiles = collect($deliveryMiniTiles)->take(5)->values();

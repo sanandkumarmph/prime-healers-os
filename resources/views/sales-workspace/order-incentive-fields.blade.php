@@ -20,7 +20,7 @@
         @error('incentive_owner_id')<span role="alert">{{ $message }}</span>@enderror
     </div>
     <p>Choose the salesperson who first worked with the customer.</p>
-    @if(auth()->user()->canAccessGeneralReports())
+    @if(auth()->user()->canViewStaffIncentives())
         <p>For a shift handoff, the owner gets 80% of eligible revenue and the salesperson creating the order gets 20%. One salesperson gets 100% when they handle both.</p>
     @endif
     @if(auth()->user()->canViewConsolidatedFinance())

@@ -920,7 +920,7 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
         $this->assertSame('sold', $asset->fresh()->asset_status);
     }
 
-    public function test_delivery_user_can_view_same_org_task_but_only_update_assigned_task(): void
+    public function test_delivery_user_can_only_view_and_update_assigned_tasks(): void
     {
         $organization = TestData::organization();
         $assignedUser = TestData::user($organization, [
@@ -956,7 +956,7 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
 
         $this->actingAs($assignedUser)
             ->get(route('deliveries.show', $otherDelivery))
-            ->assertOk();
+            ->assertForbidden();
 
         $this->actingAs($assignedUser)
             ->from(route('deliveries.show', $ownDelivery))
@@ -991,7 +991,7 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_taskboard_shows_view_but_hides_update_actions_for_unassigned_delivery_user(): void
+    public function test_taskboard_and_direct_detail_hide_other_drivers_tasks(): void
     {
         $organization = TestData::organization();
         $assignedUser = TestData::user($organization, [
@@ -1020,10 +1020,7 @@ class DeliveryBillingPermissionsRegressionTest extends TestCase
 
         $this->actingAs($assignedUser)
             ->get(route('deliveries.show', $delivery))
-            ->assertOk()
-            ->assertDontSee(route('deliveries.edit', $delivery, false), false)
-            ->assertDontSee(route('deliveries.in_progress', $delivery, false), false)
-            ->assertDontSee(route('deliveries.complete', $delivery, false), false);
+            ->assertForbidden();
     }
 
     public function test_delivery_team_can_cancel_allowed_pending_delivery_with_reason(): void

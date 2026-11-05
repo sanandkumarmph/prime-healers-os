@@ -117,11 +117,7 @@ class Role extends Model
             'admin_operations' => [
                 'name' => 'Operations Admin',
                 'description' => 'Operations Admin role',
-                'permissions' => array_merge($modulePermissions, [
-                    'roles' => ['read'],
-                    'users' => ['read', 'update'],
-                    'settings' => ['read'],
-                ]),
+                'permissions' => $modulePermissions,
             ],
             'sales' => [
                 'name' => 'Sales',
@@ -187,7 +183,7 @@ class Role extends Model
 
         return [
             'super_admin' => $preset('Super Admin', 'super_admin', $defaults['super_admin']['permissions'], array_keys(self::SPECIAL_PERMISSIONS)),
-            'admin' => $preset('Admin', 'admin_operations', array_merge($defaults['admin_operations']['permissions'], ['users' => self::ACTIONS, 'roles' => self::ACTIONS]), array_keys(self::SPECIAL_PERMISSIONS)),
+            'admin' => $preset('Admin', 'admin_operations', $defaults['admin_operations']['permissions'], array_keys(self::SPECIAL_PERMISSIONS)),
             'sales' => $preset('Sales', 'sales', $defaults['sales']['permissions'], ['finance.view_dues', 'invoices.print']),
             'service' => $preset('Service', 'service', [
                 'customers' => ['read', 'update'], 'products' => ['read'], 'assets' => ['read'],
@@ -196,9 +192,9 @@ class Role extends Model
             ], ['finance.view_dues']),
             'delivery' => $preset('Delivery', 'delivery', $defaults['delivery']['permissions']),
             'finance' => $preset('Accounts / Finance', 'finance', [
-                'customers' => ['read'], 'rentals' => ['read'], 'sales' => ['read'],
-                'invoices' => ['read', 'create', 'update'], 'payments' => ['read', 'create', 'update'],
-            ], ['finance.view_dues', 'invoices.print', 'cash.receive']),
+                'invoices' => ['read'], 'payments' => ['read'], 'reports' => ['read'],
+            ], ['finance.view_revenue', 'finance.view_dues', 'finance.view_payments', 'finance.view_deposits',
+                'finance.view_transport', 'finance.view_other_charges', 'finance.view_reports']),
             'custom' => $preset('Custom', 'custom', []),
         ];
     }
