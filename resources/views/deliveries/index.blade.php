@@ -29,6 +29,7 @@
         \App\Models\User::ROLE_THIRD_PARTY,
     ], true);
 
+    $fieldTeamBoard = in_array($currentUser?->effective_role, [\App\Models\User::ROLE_DELIVERY, \App\Models\User::ROLE_DELIVERY_EXECUTIVE], true);
     $tab = $tab ?? 'all';
     $search = $search ?? '';
     $selectedDate = $selectedDate ?? '';
@@ -215,6 +216,18 @@
         ['label' => 'Completed', 'href' => $boardHref(['tab' => 'completed', 'status' => 'completed', 'workflow' => null], ['board']), 'active' => $tab === 'completed' || $statusFilter === 'completed'],
     ];
 
+    $fieldTaskTypes = collect(['' => 'All types', 'delivery' => 'Deliveries', 'pickup' => 'Pickups'])->map(fn ($label, $type) => [
+        'label' => $label,
+        'href' => $boardHref(['task_type' => $type, 'tab' => in_array($tab, ['today', 'overdue', 'completed'], true) ? $tab : 'all'], ['board', 'page', 'workflow']),
+        'active' => $taskType === $type,
+    ]);
+    $fieldTaskViews = [
+        ['label' => 'All dates', 'href' => $boardHref(['tab' => 'all', 'status' => null, 'workflow' => null], ['board', 'page', 'date', 'from_date', 'to_date']),
+            'active' => !in_array($tab, ['today', 'overdue', 'completed'], true) && $statusFilter !== 'completed'],
+        ['label' => 'Today', 'href' => $boardHref(['tab' => 'today', 'status' => null, 'workflow' => null], ['board', 'page', 'date', 'from_date', 'to_date']), 'active' => $tab === 'today'],
+        ['label' => 'Overdue', 'href' => $boardHref(['tab' => 'overdue', 'status' => null, 'workflow' => null], ['board', 'page', 'date', 'from_date', 'to_date']), 'active' => $tab === 'overdue'],
+        ['label' => 'Completed', 'href' => $boardHref(['tab' => 'completed', 'status' => 'completed', 'workflow' => null], ['board', 'page', 'date', 'from_date', 'to_date']), 'active' => $tab === 'completed' || $statusFilter === 'completed'],
+    ];
     $scopeTabs = $currentUser?->hasScope('assigned', 'deliveries') && !$assignedScopedDeliveryUser
         ? [
             ['label' => 'My Tasks', 'href' => $boardHref(['ownership' => 'my'], ['board']), 'active' => $ownershipFilter === 'my'],
@@ -1293,6 +1306,51 @@
         .ops-mobile-list { padding-top:6px; }
         .ops-empty { margin:7px; padding:14px; font-size:12px; }
     }
+    .field-team-board { --field-primary:#12546b; --field-border:#cddde4; --field-muted:#425d6e; gap:12px; }
+    .field-team-board :is(.ops-board-grid,.ops-task-shell) { display:block; min-width:0; background:transparent; border:0; box-shadow:none; }
+    .field-team-board :is(.ops-stats,.ops-control-strip,.ops-filters-shell,.ops-table-wrap,.ops-widget-stack,.ops-task-meta) { display:none; }
+    .field-team-board .ops-mobile-command { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start; gap:10px; padding:12px; background:#fff; border:1px solid var(--field-border); border-radius:12px; }
+    .field-team-board .ops-mobile-search-row { margin:0; min-width:0; }
+    .field-team-board .ops-mobile-search-row input { min-height:44px; font-size:14px; }
+    .field-team-board .ops-mobile-chip-groups { display:grid; grid-column:1/-1; grid-row:2; gap:8px; overflow:visible; }
+    .field-team-board .ops-mobile-chip-group { display:grid; gap:4px; }
+    .field-team-board .ops-mobile-chip-group label { display:block; font-size:12px; color:var(--field-muted); font-weight:700; }
+    .field-team-board .ops-mobile-chip-group .ops-mobile-chip-row { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; margin:0; padding:3px; background:#f1f6f8; border:0; border-radius:9px; }
+    .field-team-board .ops-mobile-chip-group:nth-child(2) .ops-mobile-chip-row { grid-template-columns:repeat(4,minmax(0,1fr)); }
+    .field-team-board .ops-mobile-chip-group .ops-mobile-chip { min-height:42px; padding:4px; margin:0; border:0; border-radius:7px; font-size:12px; text-align:center; color:var(--field-muted); background:transparent; }
+    body.phos-list-page .field-team-board .ops-mobile-chip.is-active,
+    .field-team-board .ops-mobile-chip-group .ops-mobile-chip.is-active { color:white !important; background:var(--field-primary) !important; box-shadow:none; }
+    .field-team-board .ops-mobile-toolbar { display:flex; grid-column:2; grid-row:1; justify-content:flex-end; overflow:visible; padding:0; }
+    .field-team-board .mobile-sort-trigger { min-height:40px; }
+    .field-team-board .ops-mobile-sort-menu { left:auto; right:0; }
+    .field-team-board .ops-task-head { display:flex; padding:4px 0 8px; border:0; background:transparent; }
+    .field-team-board .ops-task-head h2 { font-size:17px; }
+    .field-team-board .ops-mobile-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr)); gap:12px; padding:0; background:transparent; }
+    .field-team-board .ops-mobile-card { display:grid; gap:10px; min-width:0; padding:14px; border:1px solid var(--field-border); border-left:4px solid #328399; border-radius:12px; background:white; box-shadow:none; }
+    .field-team-board .ops-mobile-card:last-child { border-bottom:1px solid var(--field-border); }
+    .field-team-board .ops-mobile-card.is-overdue { border-left-color:#ad3337; background:white; }
+    .field-team-board .ops-mobile-topline { gap:6px; }
+    .field-team-board :is(.ops-mobile-order,.ops-mobile-time,.ops-mobile-address-more,.ops-mobile-compact-row,.ops-mobile-main,.ops-mobile-phone) { display:none; }
+    .field-team-board .ops-mobile-customer { font-size:16px; line-height:1.3; overflow-wrap:anywhere; }
+    .field-team-board :is(.ops-mobile-product,.ops-mobile-address,.field-task-schedule) { font-size:13px; line-height:1.4; overflow-wrap:anywhere; }
+    .field-team-board .field-task-schedule { color:var(--field-muted); font-weight:650; }
+    .field-team-board .ops-mobile-actions { display:grid; gap:7px; align-content:end; }
+    .field-team-board .ops-mobile-icon-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(58px,1fr)); gap:6px; order:2; }
+    .field-team-board .ops-mobile-icon-row .mobile-utility-btn { min-height:44px; width:100%; padding:5px 2px; flex-direction:column; gap:2px; color:var(--field-primary); background:#f1f6f8; border-color:var(--field-border); }
+    .field-team-board .ops-mobile-icon-row .mobile-utility-btn span { display:inline; font-size:11px; }
+    .field-team-board .ops-mobile-actions .ops-action-btn-primary { order:1; min-height:44px; width:100%; color:white; background:var(--field-primary); border-color:var(--field-primary); box-shadow:none; }
+    .field-team-board .ops-mobile-more summary { width:40px; height:40px; }
+    .field-team-board .ops-mobile-more .ops-action-panel { top:44px; max-height:min(45vh,260px); overflow:auto; }
+    .field-team-board .field-refills { min-width:0; margin:0; }
+    @media (min-width:768px) {
+        .field-team-board .ops-mobile-chip-groups { grid-template-columns:1fr 1.3fr; }
+    }
+    @media (max-width:767px) {
+        .field-team-board .ops-board-header { order:0; }
+        .field-team-board .ops-mobile-command { order:1; }
+        .field-team-board .field-refills { order:2; }
+        .field-team-board .ops-board-grid { order:3; }
+    }
     /* Table-local scrolling keeps schedule/assignee words out of tall narrow stacks. */
     @media (max-width:767px) {
         [data-phos-compact-page="deliveries"] .ops-control-strip { min-width:0; }
@@ -1316,11 +1374,11 @@
     }
 </style>
 
-<div class="ops-board rn-list-page" data-phos-compact-page="deliveries">
+<div class="ops-board rn-list-page {{ $fieldTeamBoard ? 'field-team-board' : '' }}" data-phos-compact-page="deliveries">
     <div class="ops-board-header phos-page-header">
         <div class="ops-board-title">
-            <div class="rx-eyebrow">Operations</div>
-            <h1>Tasks Board</h1>
+            @unless($fieldTeamBoard)<div class="rx-eyebrow">Operations</div>@endunless
+            <h1>{{ $fieldTeamBoard ? 'My Tasks' : 'Tasks Board' }}</h1>
             <p>Deliveries, pickups and proof of completion.</p>
         </div>
         <div class="ops-board-actions phos-list-header-actions">
@@ -1431,7 +1489,7 @@
     @if(\App\Models\CylinderRefill::available())
     <link rel="stylesheet" href="{{ asset('css/phos-cylinder-refills.css') }}?v={{ hash_file('sha256',public_path('css/phos-cylinder-refills.css')) }}">
     <script src="{{ asset('js/phos-cylinder-refills.js') }}?v={{ hash_file('sha256',public_path('js/phos-cylinder-refills.js')) }}" defer></script>
-    <section aria-label="Cylinder refill and empty pickup tasks" style="min-width:0;margin:12px 0"><a href="{{ route('cylinder-refills.tasks') }}" class="rn-btn">Cylinder refills &amp; empty pickup →</a>
+    <section class="{{ $fieldTeamBoard ? 'field-refills' : '' }}" aria-label="Cylinder refill and empty pickup tasks"><a href="{{ route('cylinder-refills.tasks') }}" class="rn-btn">Cylinder refills &amp; empty pickup →</a>
     @if(isset($refillTasks) && $refillTasks->isNotEmpty())@include('cylinder-refills.tasks-content')@endif</section>
     @endif
     @if(session('success'))
@@ -1483,25 +1541,24 @@
                     <input type="hidden" name="{{ $queryKey }}" value="{{ $queryValue }}">
                 @endif
             @endforeach
-            <input type="search" name="search" value="{{ $search }}" placeholder="Search task, customer or product" data-taskboard-auto-search>
+            <input type="search" name="search" value="{{ $search }}" aria-label="Search tasks" placeholder="Search task, customer or product" data-taskboard-auto-search>
             <button type="submit" class="sr-only">Search</button>
         </form>
 
         <div class="ops-mobile-chip-groups">
             <div class="ops-mobile-chip-group">
-                <label>Task Type</label>
+                <label>{{ $fieldTeamBoard ? 'Task type' : 'Task Type' }}</label>
                 <div class="ops-mobile-chip-row">
-                    @foreach($taskTypeTabs as $typeTab)
-                        @continue(data_get($typeTab, 'key') === 'all')
-                        <a href="{{ $typeTab['href'] }}" class="ops-mobile-chip {{ $typeTab['active'] ? 'is-active' : '' }}">{{ $typeTab['label'] }}</a>
+                    @foreach($fieldTeamBoard ? $fieldTaskTypes : $taskTypeTabs as $typeTab)
+                        <a href="{{ $typeTab['href'] }}" class="ops-mobile-chip {{ $typeTab['active'] ? 'is-active' : '' }}" @if($typeTab['active']) aria-current="true" @endif>{{ $typeTab['label'] }}</a>
                     @endforeach
                 </div>
             </div>
             <div class="ops-mobile-chip-group">
-                <label>Status</label>
+                <label>{{ $fieldTeamBoard ? 'Show tasks' : 'Status' }}</label>
                 <div class="ops-mobile-chip-row">
-                    @foreach($statusTabs as $statusTab)
-                        <a href="{{ $statusTab['href'] }}" class="ops-mobile-chip {{ $statusTab['active'] ? 'is-active' : '' }}">{{ $statusTab['label'] }}</a>
+                    @foreach($fieldTeamBoard ? $fieldTaskViews : $statusTabs as $statusTab)
+                        <a href="{{ $statusTab['href'] }}" class="ops-mobile-chip {{ $statusTab['active'] ? 'is-active' : '' }}" @if($statusTab['active']) aria-current="true" @endif>{{ $statusTab['label'] }}</a>
                     @endforeach
                 </div>
             </div>
@@ -1703,8 +1760,12 @@
         <div class="ops-task-shell">
             <div class="ops-task-head">
                 <div>
-                    <h2>{{ collect($tabs)->firstWhere('key', $tab)['label'] ?? 'All Tasks' }}</h2>
-                    <p>Direct actions stay visible here, so staff can call, map, start, complete, and open tasks without hopping through separate modules.</p>
+                    @if($fieldTeamBoard)
+                        <h2>{{ $taskResultsCount ?? $tasks->count() }} {{ \Illuminate\Support\Str::plural('task', $taskResultsCount ?? $tasks->count()) }}</h2>
+                    @else
+                        <h2>{{ collect($tabs)->firstWhere('key', $tab)['label'] ?? 'All Tasks' }}</h2>
+                        <p>Direct actions stay visible here, so staff can call, map, start, complete, and open tasks without hopping through separate modules.</p>
+                    @endif
                 </div>
                 <div class="ops-task-meta">
                     <form method="GET" action="{{ route('deliveries.index') }}" class="ops-sort-form">
@@ -2100,7 +2161,7 @@
                             $mobileDateLabel = $delivery->scheduled_at ? $delivery->scheduled_at->format('d M') : 'No date';
                         @endphp
                         <article
-                            class="ops-mobile-card {{ $isOverdue ? 'is-overdue' : '' }}"
+                            class="ops-mobile-card {{ $isOverdue && (!$fieldTeamBoard || !$taskEffectivelyCompleted) ? 'is-overdue' : '' }}"
                             data-task-card
                             data-task-href="{{ $taskDetailHref }}"
                             tabindex="0"
@@ -2111,11 +2172,13 @@
                                 <div class="ops-mobile-card-head">
                                     <div class="ops-mobile-topline">
                                         <span class="ops-mobile-serial">{{ ucfirst($delivery->type) }} #{{ $delivery->id }}</span>
-                                        <span class="ops-type-badge {{ $delivery->type === 'pickup' ? 'ops-type-pickup' : 'ops-type-delivery' }}">
-                                            {!! $navIcon($delivery->type === 'pickup' ? 'pickup' : 'delivery') !!}
-                                            {{ ucfirst($delivery->type) }}
-                                        </span>
-                                        <span class="rn-badge {{ $taskStatusBadgeClass($displayStatus, $isOverdue) }}">{{ $taskStatusLabel($displayStatus) }}</span>
+                                        @unless($fieldTeamBoard)
+                                            <span class="ops-type-badge {{ $delivery->type === 'pickup' ? 'ops-type-pickup' : 'ops-type-delivery' }}">
+                                                {!! $navIcon($delivery->type === 'pickup' ? 'pickup' : 'delivery') !!}
+                                                {{ ucfirst($delivery->type) }}
+                                            </span>
+                                        @endunless
+                                        <span class="rn-badge {{ $taskStatusBadgeClass($displayStatus, $isOverdue && (!$fieldTeamBoard || !$taskEffectivelyCompleted)) }}">{{ $fieldTeamBoard && $isOverdue && !$taskEffectivelyCompleted ? 'Overdue' : ($fieldTeamBoard && $displayStatus === 'pending' ? 'To do' : $taskStatusLabel($displayStatus)) }}</span>
                                         <span class="ops-mobile-time">{{ $scheduleLabel }}</span>
                                     </div>
                                     <div class="ops-mobile-order">
@@ -2129,12 +2192,15 @@
                                     </div>
                                     <div class="ops-mobile-contact">
                                         <span class="ops-mobile-customer">{{ $customerName }}</span>
+                                        @if($fieldTeamBoard)
+                                            <span class="field-task-schedule">{{ $delivery->scheduled_at ? $delivery->scheduled_at->format('d M, g:i A') : 'Not scheduled' }}</span>
+                                        @endif
                                         @if($customerPhone)
                                             <span class="ops-mobile-phone">{{ $customerPhone }}</span>
                                         @endif
                                         <span class="ops-mobile-product">{{ $items->take(1)->implode(', ') ?: 'No linked items yet' }}</span>
                                         @if($mobileLocationLabel !== '')
-                                            <span class="ops-mobile-address">{{ $mobileLocationLabel }}</span>
+                                            <span class="ops-mobile-address">{{ $fieldTeamBoard ? $locationLabel : $mobileLocationLabel }}</span>
                                             @if(\Illuminate\Support\Str::length($locationLabel) > 58 && $taskDetailHref)
                                                 <a href="{{ $taskDetailHref }}" class="ops-mobile-address-more">View more</a>
                                             @endif

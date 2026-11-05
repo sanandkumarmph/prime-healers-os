@@ -72,6 +72,27 @@ class InAppNotificationCenterRegressionTest extends TestCase
         $this->assertSame(0, $deliveryUser->fresh()->unreadNotifications()->count());
     }
 
+    public function test_bell_prioritizes_older_unread_notifications_and_open_reduces_count(): void
+    {
+        $deliveryUser = $this->makeDeliveryUser();
+        $pickup = $this->makePickupTask();
+        $notifications = app(\App\Services\NotificationCenterService::class);
+        $notifications->notifyDeliveryAssignment($pickup, $deliveryUser);
+        $unread = $deliveryUser->notifications()->firstOrFail();
+        $unread->forceFill(['created_at' => now()->subDays(5)])->save();
+        for ($index = 0; $index < 9; $index++) {
+            $notifications->notifyUser($deliveryUser, ['title' => 'Already opened '.$index]);
+        }
+        $deliveryUser->unreadNotifications()->whereKeyNot($unread->id)->update(['read_at' => now()]);
+
+        $this->actingAs($deliveryUser)->getJson(route('notifications.latest'))
+            ->assertOk()->assertJsonPath('unread_count', 1)->assertJsonPath('notifications.0.id', $unread->id)
+            ->assertJsonPath('notifications.0.is_unread', true);
+        $this->post(route('notifications.read', $unread->id), ['redirect_to' => route('deliveries.show', $pickup)])
+            ->assertRedirect(route('deliveries.show', $pickup));
+        $this->getJson(route('notifications.unread-count'))->assertOk()->assertJsonPath('unread_count', 0);
+    }
+
     public function test_follow_up_assignment_and_mark_all_as_read_work(): void
     {
         $deliveryUser = $this->makeDeliveryUser();

@@ -43,6 +43,8 @@ class NotificationCenterService
         }
 
         return $user->notifications()
+            ->reorder()
+            ->orderByRaw('CASE WHEN read_at IS NULL THEN 0 ELSE 1 END')
             ->latest()
             ->limit($limit)
             ->get()

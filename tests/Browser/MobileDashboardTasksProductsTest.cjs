@@ -115,6 +115,21 @@ try {
     const reachable=await page.$eval('.ops-attention-list',list=>{list.scrollTop=list.scrollHeight;const last=list.lastElementChild.getBoundingClientRect(),bounds=list.getBoundingClientRect();const reachable=last.bottom<=bounds.bottom+2&&last.top>=bounds.top-1;list.scrollTop=0;return reachable;});
     check(`Last attention task remains reachable ${width}`,reachable);
    }
+   if(fixture.page==='tasks-field'){
+    const board=await page.$eval('.field-team-board',el=>{
+     const box=selector=>el.querySelector(selector).getBoundingClientRect();
+     const typeTabs=[...el.querySelectorAll('.ops-mobile-chip-group:first-child a')].map(link=>link.getBoundingClientRect().top);
+     return {controlsAboveCards:box('.ops-mobile-command').bottom<=box('.ops-mobile-card').top,
+      oneTypeRow:typeTabs.length===3&&typeTabs.every(top=>Math.abs(top-typeTabs[0])<2),
+      buttonHeight:box('.ops-mobile-card .ops-action-btn-primary').height, tableHidden:box('.ops-table-wrap').height===0,
+      callLabel:box('.ops-mobile-card .mobile-utility-btn span').height>0};
+    });
+    check(`Field task controls and primary action ${width}`,board.controlsAboveCards&&board.oneTypeRow&&board.buttonHeight>=44&&board.tableHidden&&board.callLabel,board);
+   }
+   if(fixture.page==='delivery-field'&&width<=767){
+    const colors=await page.$eval('.delivery-mobile-sticky-cta a',button=>({color:getComputedStyle(button).backgroundColor,height:button.getBoundingClientRect().height}));
+    check(`Mobile delivery uses teal action ${width}`,colors.color==='rgb(18, 84, 107)'&&colors.height>=44,colors);
+   }
    if(width===1440||width===320||width===390){const filename=path.join(folder,'screenshots',fixture.page+'-'+width+'.png');await page.screenshot({path:filename});report.screenshots.push(filename);}
    if(width===320&&(fixture.page.startsWith('dashboard-')||fixture.page==='tasks-attention'||fixture.module==='products')){
     const focused=await page.evaluate(({page,module,screen})=>{

@@ -7,6 +7,7 @@ use App\Models\Delivery;
 use App\Models\Product;
 use App\Models\Rental;
 use App\Models\Sale;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\TestData;
 use Tests\TestCase;
@@ -87,7 +88,22 @@ class MobileDashboardTasksProductsRegressionTest extends TestCase
             Sale::orderBy('id')->get()->map->getRawOriginal()->all(),
             Delivery::orderBy('id')->get()->map->getRawOriginal()->all(),
             $product->fresh()->only(['name', 'product_type', 'stock_mode', 'price_per_day', 'sale_price'])]);
-        if ($folder) file_put_contents($folder . '/mobile-fixtures.json', json_encode($manifest, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+        if ($folder) {
+            $driver = TestData::user($rental->organization, ['role' => User::ROLE_DELIVERY]);
+            $customer->update(['map_location_url' => 'https://maps.google.com/?q=12.9,77.5']);
+            $delivery = Delivery::create(['organization_id' => $rental->organization_id, 'rental_id' => $rental->id,
+                'type' => 'delivery', 'status' => 'pending', 'assignment_type' => 'delivery_team',
+                'assigned_user_id' => $driver->id, 'scheduled_at' => now()->setTime(14, 0)]);
+            $this->actingAs($driver);
+            foreach ([['tasks-field', route('deliveries.index', ['tab' => 'today']), 'index'],
+                ['delivery-field', route('deliveries.show', $delivery), 'show']] as [$page, $url, $screen]) {
+                $html = $this->get($url)->assertOk()->assertSeeText('Start Delivery')->getContent();
+                $file = $page . '.html';
+                $manifest[] = compact('page', 'url', 'screen', 'file') + ['module' => 'deliveries'];
+                file_put_contents($folder . '/' . $file, $html);
+            }
+            file_put_contents($folder . '/mobile-fixtures.json', json_encode($manifest, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR));
+        }
     }
 
     public function test_product_pages_render_readable_mobile_labels_instead_of_corrupted_text(): void

@@ -386,6 +386,7 @@
 @endphp
 
 <style>
+    :is(.delivery-detail,.delivery-mobile-sticky-cta) { --field-primary:#12546b; }
     .delivery-detail { display:grid; gap:10px; padding:8px 0 16px; max-width:1120px; margin:0 auto; }
     .delivery-detail-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
     .delivery-detail-header h1 { margin:0; font-size:23px; color:#0f172a; line-height:1.04; letter-spacing:-0.03em; }
@@ -871,7 +872,7 @@
         border-radius:10px; padding:8px 12px; font-size:12px; font-weight:700; text-decoration:none;
         border:1px solid transparent; cursor:pointer; white-space:nowrap; min-width:0; text-align:center; line-height:1.2;
     }
-    .detail-btn { background:#2563eb; color:#fff; }
+    .detail-btn { background:var(--field-primary); color:#fff; }
     .detail-btn-secondary { background:#fff; border-color:#cbd5e1; color:#334155; }
     .detail-card { background:#fff; border:1px solid #dbe3ef; border-radius:16px; padding:13px; box-shadow:0 8px 24px rgba(15, 23, 42, 0.04); }
     .detail-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:14px; }
@@ -1833,12 +1834,12 @@
             font-size:9.5px;
         }
         .delivery-mobile-titlebar.is-pending .status-badge {
-            background:#fee2e2 !important;
-            color:#b91c1c !important;
+            background:#e4f0f4 !important;
+            color:#154b5e !important;
         }
         .delivery-mobile-titlebar.is-progress .status-badge {
-            background:#ffedd5 !important;
-            color:#c2410c !important;
+            background:#e8eefb !important;
+            color:#294784 !important;
         }
         .delivery-mobile-titlebar.is-completed .status-badge {
             background:#dcfce7 !important;
@@ -1858,13 +1859,10 @@
             border-radius:16px;
             box-shadow:0 12px 28px rgba(15,23,42,.08);
         }
-        .fieldops-task-shell--pending {
-            border-color:#fecaca;
-            background:linear-gradient(135deg, #fff1f2 0%, #fff7ed 46%, #ffffff 100%);
-        }
+        .fieldops-task-shell--pending,
         .fieldops-task-shell--progress {
-            border-color:#fed7aa;
-            background:linear-gradient(135deg, #fff7ed 0%, #ffffff 100%);
+            border-color:#cddde4;
+            background:#f1f6f8;
         }
         .fieldops-task-shell--completed {
             border-color:#bbf7d0;
@@ -1874,25 +1872,22 @@
             border-color:#cbd5e1;
             background:linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
         }
-        .fieldops-task-shell--pending .fieldops-task-shell-ill {
-            background:#fee2e2;
-            border-color:#fecaca;
-        }
+        .fieldops-task-shell--pending .fieldops-task-shell-ill,
         .fieldops-task-shell--progress .fieldops-task-shell-ill {
-            background:#ffedd5;
-            border-color:#fed7aa;
+            background:#e4f0f4;
+            border-color:#cddde4;
         }
         .fieldops-task-shell--completed .fieldops-task-shell-ill {
             background:#dcfce7;
             border-color:#bbf7d0;
         }
         .fieldops-task-shell--pending .fieldops-task-shell-chips .status-badge:first-child {
-            background:#fee2e2 !important;
-            color:#b91c1c !important;
+            background:#e4f0f4 !important;
+            color:#154b5e !important;
         }
         .fieldops-task-shell--progress .fieldops-task-shell-chips .status-badge:first-child {
-            background:#ffedd5 !important;
-            color:#c2410c !important;
+            background:#e8eefb !important;
+            color:#294784 !important;
         }
         .fieldops-task-shell--completed .fieldops-task-shell-chips .status-badge:first-child {
             background:#dcfce7 !important;
@@ -1941,7 +1936,8 @@
             box-shadow:inset 0 1px 0 rgba(255,255,255,.75);
         }
         .fieldops-task-meta strong {
-            font-size:12px;
+            font-size:13px;
+            overflow-wrap:anywhere;
         }
         .mobile-inline-actions { display:none; }
         .item-progress-form { display:none; }
@@ -2419,13 +2415,10 @@
             z-index:34;
             display:block;
         }
-        .delivery-mobile-sticky-cta.is-pending a {
-            background:#dc2626;
-            box-shadow:0 18px 36px rgba(220,38,38,.28);
-        }
+        .delivery-mobile-sticky-cta.is-pending a,
         .delivery-mobile-sticky-cta.is-progress a {
-            background:#f97316;
-            box-shadow:0 18px 36px rgba(249,115,22,.26);
+            background:var(--field-primary);
+            box-shadow:0 12px 28px rgba(18,84,107,.23);
         }
         .delivery-mobile-sticky-cta.is-completed a {
             background:#16a34a;

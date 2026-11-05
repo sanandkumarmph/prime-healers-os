@@ -34,7 +34,7 @@ class NotificationController extends Controller
 
         return response()->json([
             'unread_count' => $user ? $this->notifications->unreadCountFor($user) : 0,
-        ]);
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     public function latest(Request $request): JsonResponse
@@ -44,7 +44,7 @@ class NotificationController extends Controller
         return response()->json([
             'unread_count' => $user ? $this->notifications->unreadCountFor($user) : 0,
             'notifications' => $user ? $this->notifications->latestFor($user, 8)->all() : [],
-        ]);
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     public function markRead(Request $request, string $notification): JsonResponse|RedirectResponse
