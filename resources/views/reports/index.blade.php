@@ -397,7 +397,7 @@
         </section>
 
         <section class="reports-tab-content staff-tab">
-            @if(auth()->user()->canViewFinance('finance.view_revenue'))
+            @if(auth()->user()->canAccessGeneralReports())
                 <div class="mini-card"><div class="mini-head"><div><h2>Staff incentive revenue</h2><p>See eligible invoiced sales and rentals by staff member and enquiry source.</p></div><a class="reports-btn" href="{{ route('reports.staff-incentives') }}">View incentive revenue</a></div></div>
             @endif
             <div class="reports-grid-2">

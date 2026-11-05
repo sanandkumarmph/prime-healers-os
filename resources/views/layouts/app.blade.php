@@ -210,7 +210,7 @@
             'label' => 'Analytics',
             'items' => [
                 ['label' => 'Reports', 'icon' => 'invoices', 'href' => $reportsIndexHref, 'active' => request()->routeIs('reports.*'), 'visible' => !empty($reportsIndexHref)],
-                ['label' => 'Staff incentives', 'icon' => 'users', 'href' => $safeRoute('reports.staff-incentives'), 'active' => request()->routeIs('reports.staff-incentives'), 'visible' => $currentUser?->canAccessGeneralReports() && $currentUser?->canViewFinance('finance.view_revenue')],
+                ['label' => 'Staff incentives', 'icon' => 'users', 'href' => $safeRoute('reports.staff-incentives'), 'active' => request()->routeIs('reports.staff-incentives'), 'visible' => $currentUser?->canAccessGeneralReports() ?? false],
                 ['label' => 'Vendor Orders', 'icon' => 'vendors', 'href' => $safeRoute('vendor-orders.index'), 'active' => request()->routeIs('vendor-orders.*'), 'visible' => $currentUser?->hasPermission('vendor_reports.view') ?? false],
             ],
         ],

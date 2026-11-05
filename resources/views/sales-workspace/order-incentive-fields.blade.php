@@ -5,7 +5,7 @@
     $orderQuote = request()->attributes->get('conversion_quote');
 @endphp
 <fieldset style="border:1px solid #dbe4ee;border-radius:10px;padding:12px;margin:12px 0;min-width:0">
-    <legend style="font-weight:700">Sales incentive credit</legend>
+    <legend style="font-weight:700">Order ownership</legend>
     <div class="{{ $fieldClass }}">
         <label for="incentive_owner_id">Order owner</label>
         <select name="incentive_owner_id" id="incentive_owner_id">
@@ -19,9 +19,12 @@
         </select>
         @error('incentive_owner_id')<span role="alert">{{ $message }}</span>@enderror
     </div>
-    <p>Choose the salesperson who first worked with the customer. For a shift handoff, the owner gets 80% of eligible revenue and the salesperson creating the order gets 20%. One salesperson gets 100% when they handle both.</p>
+    <p>Choose the salesperson who first worked with the customer.</p>
+    @if(auth()->user()->canAccessGeneralReports())
+        <p>For a shift handoff, the owner gets 80% of eligible revenue and the salesperson creating the order gets 20%. One salesperson gets 100% when they handle both.</p>
+    @endif
     @if(auth()->user()->canViewConsolidatedFinance())
-        <p>Choose Myself for an admin-owned order. It earns no sales incentive credit.</p>
+        <p>Choose Myself for an admin-owned order.</p>
     @endif
     @if($orderQuote)
         <p>Enquiry source · {{ $orderQuote->enquiry->source_label }}</p>

@@ -16,12 +16,12 @@ class StaffIncentiveReportController extends Controller
 {
     private function authorizeReport(User $user): void
     {
-        abort_unless($user->canAccessGeneralReports() && $user->canViewFinance('finance.view_revenue'), 403);
+        abort_unless($user->canAccessGeneralReports(), 403);
     }
 
     private function canAssign(User $user): bool
     {
-        return $user->isSuperAdmin() || $user->isAdminOperations() || $user->effective_role === 'admin';
+        return $user->canViewFinance('finance.view_revenue');
     }
 
     private function users(int $organization): Collection

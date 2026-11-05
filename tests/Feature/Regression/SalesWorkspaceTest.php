@@ -280,6 +280,35 @@ class SalesWorkspaceTest extends TestCase
         $this->post(route('rentals.store'), $payload)->assertRedirect(route('rentals.show', $rental)); $this->assertDatabaseCount('rentals', 1);
     }
 
+    public function test_staff_incentive_visibility_is_limited_to_administrator_roles(): void
+    {
+        $org = $this->owner->organization;
+        $report = route('reports.staff-incentives');
+        $assign = route('reports.staff-incentives.assign');
+        $opsAdmin = TestData::user($org, ['role_id' => $this->systemRole(User::ROLE_ADMIN_OPERATIONS)->id]);
+        $legacyAdmin = TestData::user($org, ['role' => 'admin']);
+        foreach ([$this->owner, $opsAdmin, $legacyAdmin] as $admin) {
+            $this->actingAs($admin)->get($report)->assertOk()->assertSee('Staff incentive revenue');
+            $this->get(route('reports.index', ['tab' => 'staff']))->assertOk()->assertSee('View incentive revenue');
+        }
+        $this->actingAs($opsAdmin)->postJson($assign)->assertForbidden();
+        $this->actingAs($this->owner)->postJson($assign)->assertUnprocessable();
+
+        $sales = TestData::user($org, ['role' => User::ROLE_SALES]);
+        $finance = TestData::user($org, ['role' => User::ROLE_FINANCE]);
+        $customRole = Role::create(['organization_id' => $org->id, 'name' => 'Custom reports', 'slug' => 'custom_reports',
+            'is_active' => true, 'permissions' => ['reports' => ['read'], '__special' => ['finance.view_revenue']]]);
+        $custom = TestData::user($org, ['role_id' => $customRole->id]);
+        foreach ([$sales, $finance, $custom] as $staff) {
+            $this->actingAs($staff)->get($report)->assertForbidden();
+            $this->postJson($assign)->assertForbidden();
+        }
+        foreach (['rentals.create', 'sales.create'] as $form) {
+            $this->actingAs($sales)->get(route($form))->assertOk()->assertSee('Order owner')
+                ->assertDontSee($report, false)->assertDontSee('eligible revenue');
+        }
+    }
+
     public function test_incentive_report_requires_known_sources_and_counts_only_eligible_invoiced_lines(): void
     {
         $capture = ['name' => 'Test lead', 'subject' => 'Test', 'owner_id' => $this->owner->id];
