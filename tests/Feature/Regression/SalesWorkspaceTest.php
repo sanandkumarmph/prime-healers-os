@@ -395,6 +395,40 @@ class SalesWorkspaceTest extends TestCase
         $this->get(route('rentals.index', ['salesperson_id' => $outsider->id]))->assertNotFound();
     }
 
+    public function test_historical_attribution_uses_the_recorded_salesperson_who_booked_the_rental(): void
+    {
+        $org = $this->owner->organization;
+        $salesOwner = TestData::user($org, ['name' => 'Original salesperson', 'role' => User::ROLE_SALES]);
+        $bookedBy = TestData::user($org, ['name' => 'Shift closer', 'role_id' => $this->systemRole(User::ROLE_SALES)->id]);
+        $payload = app(QuotationConversion::class)->prefill($this->accepted()) + ['delivery_assignment_type' => 'customer_pickup'];
+        unset($payload['quotation_id'], $payload['quotation_version']);
+        $this->actingAs($bookedBy)->post(route('rentals.store'), $payload)->assertSessionHasNoErrors();
+        $rental = Rental::sole();
+        DB::table('order_incentive_attributions')->where('order_type', 'rental')->where('order_id', $rental->id)->delete();
+
+        $this->actingAs($this->owner);
+        $this->post(route('reports.staff-incentives.assign'), [
+            'kind' => 'rental', 'order' => $rental->id, 'from' => '2026-10-01', 'to' => '2026-10-24',
+            'source' => 'incoming_phone', 'staff' => $salesOwner->id,
+        ])->assertSessionHasNoErrors()->assertRedirect();
+        $this->assertDatabaseHas('order_incentive_attributions', [
+            'order_type' => 'rental', 'order_id' => $rental->id, 'sales_user_id' => $salesOwner->id, 'closer_user_id' => $bookedBy->id,
+        ]);
+
+        // Older manually attributed orders have an owner but no saved closer.
+        DB::table('order_incentive_attributions')->where('order_type', 'rental')->where('order_id', $rental->id)
+            ->update(['closer_user_id' => null]);
+        $this->get(route('reports.staff-incentives', ['staff' => $salesOwner->id]))->assertOk()
+            ->assertViewHas('total', 160)->assertSee('Owner · 80%');
+        $this->get(route('reports.staff-incentives', ['staff' => $bookedBy->id]))->assertOk()
+            ->assertViewHas('total', 40)->assertSee('Closer · 20%');
+        $this->get(route('reports.staff-incentives'))->assertOk()->assertViewHas('total', 200);
+        $this->get(route('rentals.index', ['salesperson_id' => $bookedBy->id]))->assertOk()
+            ->assertViewHas('rentals', fn ($rows) => $rows->total() === 1 && $rows->first()->id === $rental->id);
+        $this->get(route('invoices.index', ['salesperson_id' => $bookedBy->id]))->assertOk()
+            ->assertViewHas('invoices', fn ($rows) => $rows->total() === 1 && $rows->first()->rental_id === $rental->id);
+    }
+
     public function test_admin_myself_excludes_sales_credit_and_credited_rentals_link_to_the_order(): void
     {
         $org = $this->owner->organization;

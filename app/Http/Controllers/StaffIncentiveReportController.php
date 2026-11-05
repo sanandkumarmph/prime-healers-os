@@ -151,7 +151,7 @@ class StaffIncentiveReportController extends Controller
             abort_if($candidate->known_source && $candidate->known_source !== $data['source'], 422, 'Use the source already recorded for this order.');
 
             OrderIncentiveAttribution::record($organization, $data['kind'], (int) $data['order'], $data['source'],
-                $salesUser, $user->id, $candidate->closer_user_id ? (int) $candidate->closer_user_id : null);
+                $salesUser, $user->id, $candidate->closer_id === null ? null : (int) $candidate->closer_id);
             ActivityLogger::log('incentives.attribution_recorded', null, [
                 'order_type' => $data['kind'], 'order_id' => (int) $data['order'],
                 'source' => $data['source'], 'sales_user_id' => $salesUser,
@@ -168,7 +168,7 @@ class StaffIncentiveReportController extends Controller
         $owner = clone $row;
         $owner->credit_paise = $paise;
         $owner->credit_label = 'Owner · 100%';
-        $closer = (int) $row->closer_user_id;
+        $closer = (int) $row->closer_id;
         if ($closer === (int) $row->staff_id || !$users->has($closer)) {
             return [$owner];
         }
@@ -194,7 +194,8 @@ class StaffIncentiveReportController extends Controller
 
     private function invoicedOrders(int $organization, string $kind, string $from, string $to, ?int $orderId = null)
     {
-        [$orders, $creator] = app(OrderStaffFilter::class)->bookedOrders($organization, $kind, '', '');
+        $staffFilter = app(OrderStaffFilter::class);
+        [$orders, $creator] = $staffFilter->bookedOrders($organization, $kind, '', '');
         $orderKey = $kind.'_id';
         $types = $kind === 'rental' ? ['rental', 'rental_sale'] : ['sale'];
         $excluded = ['draft', 'cancelled', 'void'];
@@ -246,7 +247,7 @@ class StaffIncentiveReportController extends Controller
                     ->where('referral.source_type', 'business_partner');
             })
             ->orderBy('order_record.id')
-            ->get([
+            ->select([
                 'order_record.id as order_id', 'quote.id as quotation_id', 'enquiry.owner_id as enquiry_owner_id',
                 'quote.converted_by_user_id', 'attribution.id as attribution_id', 'attribution.sales_user_id as recorded_staff_id',
                 'attribution.closer_user_id',
@@ -254,6 +255,10 @@ class StaffIncentiveReportController extends Controller
                 'invoice.id as invoice_id', 'invoice.invoice_number', 'invoice.invoice_date', 'line_totals.eligible_amount',
                 DB::raw('COALESCE(attribution.source, quote.conversion_source, enquiry.source) as source'),
                 DB::raw($creator.' as creator_id'),
-            ])->each(fn ($row) => $row->kind = $kind);
+            ])->selectSub($staffFilter->bookingSalesperson($organization, $creator), 'booking_salesperson_id')
+            ->get()->each(function ($row) use ($kind) {
+                $row->kind = $kind;
+                $row->closer_id = $row->closer_user_id ?? $row->booking_salesperson_id;
+            });
     }
 }

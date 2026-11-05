@@ -61,6 +61,17 @@ class OrderStaffFilter
         return [$orders, $creator];
     }
 
+    public function bookingSalesperson(int $organization, string $creator): Builder
+    {
+        return User::where('users.organization_id', $organization)
+            ->whereRaw('users.id = '.$creator)
+            ->where(function ($users) use ($organization) {
+                $users->where(fn ($legacy) => $legacy->whereNull('role_id')->where('role', User::ROLE_SALES))
+                    ->orWhereHas('assignedRole', fn ($role) => $role->where('organization_id', $organization)
+                        ->where('slug', User::ROLE_SALES));
+            })->select('users.id')->toBase();
+    }
+
     public function applyToOrders($query, Request $request, User $actor, string $kind, string $from, string $to): bool
     {
         $module = $kind.'s';
@@ -84,13 +95,16 @@ class OrderStaffFilter
         }
 
         [$orders, $creator] = $this->ordersWithCreator($organization, $kind);
+        $bookingSalesperson = $this->bookingSalesperson($organization, $creator);
         $orders->leftJoin('order_incentive_attributions as attribution', function ($join) use ($kind) {
             $join->on('attribution.organization_id', '=', 'order_record.organization_id')
                 ->on('attribution.order_id', '=', 'order_record.id')->where('attribution.order_type', $kind);
-        })->where(function ($query) use ($creator, $staff) {
+        })->where(function ($query) use ($creator, $staff, $bookingSalesperson) {
             $query->where('attribution.sales_user_id', $staff)
                 ->orWhere(fn ($closer) => $closer->where('attribution.excluded_from_incentives', false)
-                    ->where('attribution.closer_user_id', $staff))
+                    ->where(fn ($record) => $record->where('attribution.closer_user_id', $staff)
+                        ->orWhere(fn ($historical) => $historical->whereNull('attribution.closer_user_id')
+                            ->whereRaw($creator.' = ?', [$staff])->whereExists($bookingSalesperson))))
                 ->orWhere(fn ($fallback) => $fallback->whereNull('attribution.sales_user_id')
                     ->where(fn ($attribution) => $attribution->whereNull('attribution.id')
                         ->orWhere('attribution.excluded_from_incentives', false))
