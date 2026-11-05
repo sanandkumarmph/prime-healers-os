@@ -16,8 +16,8 @@ test('profile page is displayed', function () {
     $response->assertOk();
 });
 
-test('profile information can be updated', function () {
-    $user = User::factory()->create();
+test('a super admin can update their name and email', function () {
+    $user = \Tests\Support\TestData::user();
 
     $response = $this
         ->actingAs($user)
@@ -36,6 +36,19 @@ test('profile information can be updated', function () {
     $this->assertSame('Test User', $user->name);
     $this->assertSame('test@example.com', $user->email);
     $this->assertNull($user->email_verified_at);
+});
+
+test('delivery can update their name but cannot change their login email', function () {
+    $user = \Tests\Support\TestData::user(null, ['role' => User::ROLE_DELIVERY]);
+    $email = $user->email;
+    $this->actingAs($user)->get('/profile')->assertOk()->assertSee('readonly')
+        ->assertDontSee('id="profile_current_password"', false);
+    $this->patchJson('/profile', ['name' => 'Attempted edit', 'email' => 'other@example.test', 'current_password' => 'password'])
+        ->assertForbidden();
+    $this->patch('/profile', ['name' => 'Updated delivery name'])->assertRedirect('/profile');
+    $this->assertSame('Updated delivery name', $user->fresh()->name);
+    $this->assertSame($email, $user->fresh()->email);
+    $this->assertNotNull($user->fresh()->email_verified_at);
 });
 
 test('email verification status is unchanged when the email address is unchanged', function () {

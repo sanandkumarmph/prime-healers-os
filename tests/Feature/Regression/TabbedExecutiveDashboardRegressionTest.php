@@ -209,6 +209,7 @@ class TabbedExecutiveDashboardRegressionTest extends TestCase
         $this->assertSame([], $this->tabNames($xpath));
         $this->assertSame(0, $xpath->query('//*[@data-dashboard-panel]')->length);
         $response->assertSeeText('My Assigned Tasks')->assertSeeText('My Deliveries Today')
+            ->assertSeeTextInOrder(["Today's Task Flow", 'Delivery workspace', 'Assigned deliveries', 'Add an asset'])
             ->assertDontSeeText('Team Performance')->assertDontSeeText('Revenue Center');
         $this->exportFixture('dashboard-delivery', $response, ['role' => 'delivery', 'active_tab' => null, 'unavailable_tabs' => self::EXECUTIVE_TABS]);
     }
@@ -347,9 +348,12 @@ class TabbedExecutiveDashboardRegressionTest extends TestCase
         }
 
         $delivery = $this->roleUser($organization, User::ROLE_DELIVERY, [
-            'deliveries' => ['read', 'update'], 'rentals' => ['read'],
+            'deliveries' => ['read', 'update'], 'rentals' => ['read'], 'products' => ['read'], 'assets' => ['read'],
         ]);
         $response = $this->actingAs($delivery)->get(route('profile.edit'))->assertOk();
+        foreach (['products.index', 'product-categories.index', 'product-brands.index', 'assets.index'] as $route) {
+            $response->assertDontSee('href="'.route($route).'"', false);
+        }
         $xpath = $this->xpath($response);
         $this->assertSame(['Dashboard', 'Collections & cash'], $this->sidebarLabels($xpath, 'main'));
         $this->assertSame(['Pickup Center', 'Communication Center', 'Add an asset', 'Tasks Board', 'Route planner'], $this->sidebarLabels($xpath, 'operations'));

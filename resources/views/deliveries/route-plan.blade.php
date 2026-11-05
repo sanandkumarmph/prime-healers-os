@@ -8,6 +8,28 @@
     [data-route-drag-help], [data-route-drag-status] { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
     [data-route-picked-up] > td { background:#eff6ff; }
     [data-route-picked-up] .route-drag-handle { cursor:grabbing; }
+    .route-stops { overflow:auto; }
+    .route-stop-label { display:none; }
+    @media (max-width: 767px) {
+        .route-stops { overflow:visible; }
+        .route-stops .sw-table, .route-stops tbody { display:block; width:100%; }
+        .route-stops thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+        .route-stops tbody tr { display:grid; grid-template-columns:auto minmax(0, 1fr) auto; gap:8px 12px; align-items:center; padding:12px; border:1px solid var(--sw-line); border-radius:10px; }
+        .route-stops tbody tr + tr { margin-top:10px; }
+        .route-stops .sw-table td { min-width:0; padding:0; border:0; overflow-wrap:anywhere; }
+        .route-stop-position { grid-area:1 / 1; display:flex; align-items:center; gap:6px; }
+        .route-stop-task { grid-area:1 / 2; font-weight:700; }
+        .route-stop-time { grid-area:1 / 3; }
+        .route-stop-destination, .route-stop-directions, .route-stop-empty { grid-column:1 / -1; }
+        .route-stop-distance { grid-column:1 / 3; }
+        .route-stop-label { display:block; font-size:12px; color:var(--sw-muted); }
+        .route-stop-directions a { display:inline-flex; align-items:center; min-height:44px; font-weight:600; }
+        .route-stops [data-route-picked-up] { background:#eff6ff; border-color:#93c5fd; }
+        .route-stops [data-route-reorder-fallback] { margin:0; }
+        .route-stop-position:has([data-route-reorder-fallback]:not([hidden])) { grid-column:1 / -1; }
+        .route-stops tr:has([data-route-reorder-fallback]:not([hidden])) .route-stop-task { grid-area:2 / 1 / 2 / 3; }
+        .route-stops tr:has([data-route-reorder-fallback]:not([hidden])) .route-stop-time { grid-row:2; }
+    }
 </style>
 <main class="sw">
     <header class="sw-head">
@@ -75,12 +97,12 @@
                 @endforeach
             </div>
         @endif
-        <div id="route-stops" style="overflow:auto"><table class="sw-table">
-            <thead><tr><th scope="col">Stop order</th><th scope="col">Time (IST)</th><th scope="col">Task</th><th scope="col">Destination</th><th scope="col" title="Straight-line distance from the starting warehouse">Distance</th><th scope="col" title="Estimated drive time from the starting warehouse">Est. drive</th><th scope="col">Directions</th></tr></thead>
-            <tbody data-route-stop-list>
+        <div id="route-stops" class="route-stops"><table class="sw-table" role="table" aria-label="Scheduled stops">
+            <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Stop order</th><th role="columnheader" scope="col">Time (IST)</th><th role="columnheader" scope="col">Task</th><th role="columnheader" scope="col">Destination</th><th role="columnheader" scope="col" title="Straight-line distance from the starting warehouse">Distance</th><th role="columnheader" scope="col" title="Estimated drive time from the starting warehouse">Est. drive</th><th role="columnheader" scope="col">Directions</th></tr></thead>
+            <tbody role="rowgroup" data-route-stop-list>
                 @forelse($stops as $stop)
-                    <tr id="route-stop-{{ $stop['task']->id }}" data-route-stop="{{ $stop['task']->id }}" style="scroll-margin-top:84px">
-                        <td>
+                    <tr role="row" id="route-stop-{{ $stop['task']->id }}" data-route-stop="{{ $stop['task']->id }}" style="scroll-margin-top:84px">
+                        <td role="cell" class="route-stop-position">
                             <strong data-route-position>{{ $loop->iteration }}</strong>
                             @if(count($stops) > 1)
                                 <button type="button" class="sw-btn route-drag-handle" data-route-drag-handle hidden
@@ -95,12 +117,12 @@
                                 </div>
                             @endif
                         </td>
-                        <td style="white-space:nowrap">{{ $stop['task']->scheduled_at->format('g:i A') }}</td>
-                        <td><a href="{{ route('deliveries.show', $stop['task']) }}">{{ ucfirst($stop['task']->type) }} #{{ $stop['task']->id }}</a></td>
-                        <td>{{ $stop['task']->linkedCustomerName() }}<br>{{ $stop['address'] }}</td>
-                        <td style="white-space:nowrap">{{ $stop['distance_km'] === null ? '—' : number_format($stop['distance_km'], 1).' km' }}</td>
-                        <td style="white-space:nowrap">{{ $stop['travel_minutes'] === null ? '—' : '≈ '.$stop['travel_minutes'].' min' }}</td>
-                        <td>
+                        <td role="cell" class="route-stop-time" style="white-space:nowrap"><span class="route-stop-label" aria-hidden="true">Time (IST)</span>{{ $stop['task']->scheduled_at->format('g:i A') }}</td>
+                        <td role="cell" class="route-stop-task"><a href="{{ route('deliveries.show', $stop['task']) }}">{{ ucfirst($stop['task']->type) }} #{{ $stop['task']->id }}</a></td>
+                        <td role="cell" class="route-stop-destination"><strong>{{ $stop['task']->linkedCustomerName() }}</strong><br>{{ $stop['address'] }}</td>
+                        <td role="cell" class="route-stop-distance" style="white-space:nowrap"><span class="route-stop-label" aria-hidden="true">Distance</span>{{ $stop['distance_km'] === null ? '—' : number_format($stop['distance_km'], 1).' km' }}</td>
+                        <td role="cell" class="route-stop-drive" style="white-space:nowrap"><span class="route-stop-label" aria-hidden="true">Est. drive</span>{{ $stop['travel_minutes'] === null ? '—' : '≈ '.$stop['travel_minutes'].' min' }}</td>
+                        <td role="cell" class="route-stop-directions">
                             @if($stop['navigation'])
                                 <a href="{{ $stop['navigation'] }}" target="_blank" rel="noopener noreferrer">{{ $origin ? 'Directions from warehouse' : 'Open directions' }}</a>
                             @endif
@@ -110,7 +132,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="7">No open assigned deliveries or pickups on this date.</td></tr>
+                    <tr role="row"><td role="cell" class="route-stop-empty" colspan="7">No open assigned deliveries or pickups on this date.</td></tr>
                 @endforelse
             </tbody>
         </table></div>

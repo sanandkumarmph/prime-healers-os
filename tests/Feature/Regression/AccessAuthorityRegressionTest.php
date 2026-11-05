@@ -129,6 +129,10 @@ class AccessAuthorityRegressionTest extends TestCase
         $this->assertSame($managerRole->slug, $manager->fresh()->role);
         $this->assertSame($managerRole->id, $manager->fresh()->role_id);
         $this->assertFalse($manager->fresh()->isSuperAdmin());
+        $this->putJson(route('users.update', $manager), array_merge($payload, [
+            'role_id' => $managerRole->id, 'email' => 'changed-self@example.test',
+        ]))->assertForbidden();
+        $this->assertSame($payload['email'], $manager->fresh()->email);
     }
 
     public function test_delegated_role_manager_cannot_add_module_special_or_owner_profile_privileges_to_own_role(): void

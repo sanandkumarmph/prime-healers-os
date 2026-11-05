@@ -167,6 +167,8 @@ class UserController extends Controller
             $guard = app(RoleGrantGuard::class);
             $guard->authorizeUserMutation($request->user(), $user);
             $guard->authorizeUserRole($request->user(), $role);
+            abort_if($user->is($request->user()) && $user->email !== $validated['email'] && ! $request->user()->isSuperAdmin(),
+                403, 'Only a Super Admin can change their login email.');
             $attributes = [
                 'name' => $validated['name'],
                 'email' => $validated['email'],

@@ -36,10 +36,15 @@ class ProfileController extends Controller
     public function update(ProfileUpdateRequest $request): RedirectResponse
     {
         $emailChanged = DB::transaction(function () use ($request) {
+            $organizationId = $request->user()->organization_id;
+            if ($organizationId !== null) {
+                Organization::query()->whereKey($organizationId)->lockForUpdate()->firstOrFail();
+            }
             $user = User::query()->whereKey($request->user()->id)->lockForUpdate()->firstOrFail();
-            abort_unless($user->hasActiveAccess(), 403);
-            $emailChanged = $user->email !== $request->validated('email');
+            abort_unless($user->organization_id === $organizationId && $user->hasActiveAccess(), 403);
+            $emailChanged = $user->email !== $request->validated('email', $user->email);
             if ($emailChanged) {
+                abort_unless($user->isSuperAdmin(), 403, 'Only a Super Admin can change their login email.');
                 if (!Hash::check((string) $request->input('current_password'), $user->password)) {
                     throw ValidationException::withMessages(['current_password' => __('auth.password')]);
                 }

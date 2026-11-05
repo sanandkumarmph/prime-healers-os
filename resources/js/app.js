@@ -1323,6 +1323,7 @@ const initializeUnifiedInAppNotifications = () => {
             const action = document.createElement('a');
             action.href = notification.action_url;
             action.textContent = 'View task';
+            action.addEventListener('click', (event) => openNotification(event, notification.id, action.href));
             toast.appendChild(action);
         }
 
@@ -1372,10 +1373,42 @@ const initializeUnifiedInAppNotifications = () => {
         }
 
         try {
-            const response = await window.axios.post(readUrlTemplate.replace('__NOTIFICATION__', notificationId));
+            const response = await window.axios.post(
+                readUrlTemplate.replace('__NOTIFICATION__', encodeURIComponent(notificationId)),
+                null,
+                { timeout: 5000 },
+            );
             return response.data || null;
         } catch (error) {
             return null;
+        }
+    };
+
+    let openingNotification = false;
+    const openNotification = async (event, notificationId, href, state = null) => {
+        if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+            return;
+        }
+        event.preventDefault();
+        if (openingNotification) {
+            return;
+        }
+
+        openingNotification = true;
+        const response = await markRead(notificationId);
+        openingNotification = false;
+        if (response?.success) {
+            seenIds.add(notificationId);
+            persistSeenIds(seenIds);
+            markItemReadInDom(notificationId);
+            syncCountUi(Number(response.unread_count));
+        }
+
+        if (href !== '#') {
+            if (state) {
+                closeNotificationRoot(state);
+            }
+            window.location.assign(href);
         }
     };
 
@@ -1452,29 +1485,7 @@ const initializeUnifiedInAppNotifications = () => {
                 return;
             }
 
-            const href = item.getAttribute('href') || '#';
-            const notificationId = item.getAttribute('data-notification-id') || '';
-
-            if (href === '#') {
-                event.preventDefault();
-            }
-
-            const response = await markRead(notificationId);
-
-            if (notificationId) {
-                seenIds.add(notificationId);
-                persistSeenIds(seenIds);
-                markItemReadInDom(notificationId);
-            }
-
-            if (response && typeof response.unread_count !== 'undefined') {
-                syncCountUi(Number(response.unread_count || 0));
-            }
-
-            if (href !== '#') {
-                closeNotificationRoot(state);
-                window.location.assign(href);
-            }
+            openNotification(event, item.dataset.notificationId, item.getAttribute('href') || '#', state);
         });
 
         state.markAllButtons.forEach((button) => {

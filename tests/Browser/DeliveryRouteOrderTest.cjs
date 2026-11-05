@@ -89,6 +89,23 @@ test('route rows can be dragged or placed using a mouse, touchscreen or keyboard
     await place(() => page.keyboard.press('Space'), keyboardIds);
 
     const mobile = { width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 1 };
+    for (const width of [320, 390]) {
+        await load({ ...mobile, width });
+        const layout = await page.$eval(stop, row => {
+            const destination = row.querySelector('.route-stop-destination');
+            const directions = row.querySelector('.route-stop-directions a');
+            return {
+                display: getComputedStyle(row).display,
+                destinationWidth: destination.getBoundingClientRect().width,
+                directionsHeight: directions.getBoundingClientRect().height,
+                overflow: document.documentElement.scrollWidth > window.innerWidth,
+            };
+        });
+        assert.equal(layout.display, 'grid');
+        assert.ok(layout.destinationWidth > width * 0.62, 'Destination should use the width of the stop card');
+        assert.ok(layout.directionsHeight >= 44, 'Directions should be easy to tap');
+        assert.equal(layout.overflow, false);
+    }
     const touchIds = await load(mobile);
     const finger = await point(handle, 0);
     const drop = await point(stop, 1, 10);

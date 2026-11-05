@@ -1,5 +1,6 @@
 @php
     $isEdit = $user->exists;
+    $emailLocked = $isEdit && $user->is(auth()->user()) && ! auth()->user()->isSuperAdmin();
     $fieldStyle = fn (string $field, string $base) => $base . ($errors->has($field)
         ? ' border-color:#dc2626; box-shadow:0 0 0 3px rgba(220, 38, 38, 0.12); background:#fff7f7;'
         : '');
@@ -98,7 +99,7 @@
                 </div>
                 <div>
                     <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Email</label>
-                    <input type="email" name="email" value="{{ old('email', $user->email) }}" required style="{{ $fieldStyle('email', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px;') }}">
+                    <input type="email" name="email" value="{{ $emailLocked ? $user->email : old('email', $user->email) }}" required @readonly($emailLocked) style="{{ $fieldStyle('email', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px;') }}">
                     @if($fieldError('email'))
                         <div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('email') }}</div>
                     @endif

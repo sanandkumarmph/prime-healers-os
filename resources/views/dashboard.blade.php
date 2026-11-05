@@ -6501,6 +6501,13 @@
         display:grid;
         gap:10px;
     }
+    .fieldops-workspace-links {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 172px), 1fr));
+        gap: 8px;
+        margin-top: 10px;
+    }
+    .fieldops-workspace-links a { min-height: 44px; text-align: center; }
     .fieldops-home-hero {
         display:grid;
         gap:10px;
@@ -7440,35 +7447,26 @@
 
 <link rel="stylesheet" href="{{ asset('css/phos-executive-dashboard.css') }}?v={{ hash_file('sha256', public_path('css/phos-executive-dashboard.css')) }}">
 <div class="dashboard-shell rx-page {{ $isDeliveryFacingMenuRole ? 'is-delivery-focused' : '' }}" @if(!$isDeliveryFacingMenuRole) data-executive-dashboard data-active-dashboard-tab="{{ $activeDashboardTab }}" @endif>
-    @if($currentUser?->isSales() || $currentUser?->isDelivery())
+    @if($currentUser?->isSales())
         @php
-            $shortcuts = $currentUser->isSales() ? [
+            $shortcuts = [
                 ['enquiries', 'enquiries.index', 'Enquiries & quotations', []],
                 ['sales', 'sales.index', 'Sales orders', []],
                 ['rentals', 'rentals.index', 'Rental orders', []],
                 ['invoices', 'invoices.index', 'Invoices & individual payments', []],
                 ['deliveries', 'deliveries.index', 'Delivery & pickup tasks', []],
                 ['customers', 'communication-center.index', 'Customer follow-ups', []],
-            ] : [
-                ['deliveries', 'deliveries.index', 'Assigned deliveries', ['board' => 'delivery_workload']],
-                ['deliveries', 'deliveries.index', 'Assigned pickups', ['board' => 'pickup_workload']],
-                ['deliveries', 'deliveries.index', 'Completed deliveries', ['board' => 'completed_delivery']],
-                ['deliveries', 'deliveries.index', 'Completed pickups', ['board' => 'completed_pickup']],
-                ['deliveries', 'communication-center.index', 'Communication Center', []],
             ];
         @endphp
         <section class="rx-card" aria-labelledby="role-workspace-heading" style="padding:16px;margin-bottom:16px">
-            <h2 id="role-workspace-heading" class="rx-card-title">{{ $currentUser->isSales() ? 'Sales workspace' : 'Delivery workspace' }}</h2>
+            <h2 id="role-workspace-heading" class="rx-card-title">Sales workspace</h2>
             <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
                 @foreach($shortcuts as [$module, $name, $label, $params])
                     @if($currentUser->canAccessModule($module, 'read'))
                         <a class="rx-btn-secondary" href="{{ route($name, $params) }}">{{ $label }}</a>
                     @endif
                 @endforeach
-                @if($currentUser->isDelivery() && $currentUser->canAccessModule('deliveries', 'update'))
-                    <a class="rx-btn-secondary" href="{{ route('cash-handovers.index') }}">Cash collected & handovers</a>
-                    <a class="rx-btn-secondary" href="{{ route('deliveries.assets.create') }}">Add an asset</a>
-                @endif
+
             </div>
         </section>
     @endif
@@ -7498,7 +7496,7 @@
                     <div class="fieldops-home-hero-ill">{!! $fieldOpsIll !!}</div>
                     <div class="fieldops-home-hero-copy">
                         <strong>Hi, Delivery Team</strong>
-                        <p>Here / s your field work today.</p>
+                        <p>Here’s your field work today.</p>
                     </div>
                 </div>
                 <div class="fieldops-home-kpis">
@@ -7563,6 +7561,28 @@
                     </div>
                 @endif
             </div>
+            @if($currentUser->isDelivery() && $canReadDeliveries)
+                <section class="fieldops-home-section" aria-labelledby="role-workspace-heading">
+                    <div class="fieldops-home-section-head">
+                        <h2 id="role-workspace-heading">Delivery workspace</h2>
+                    </div>
+                    <div class="fieldops-workspace-links">
+                        @foreach([
+                            'delivery_workload' => 'Assigned deliveries',
+                            'pickup_workload' => 'Assigned pickups',
+                            'completed_delivery' => 'Completed deliveries',
+                            'completed_pickup' => 'Completed pickups',
+                        ] as $board => $label)
+                            <a class="rx-btn-secondary" href="{{ route('deliveries.index', ['board' => $board]) }}">{{ $label }}</a>
+                        @endforeach
+                        <a class="rx-btn-secondary" href="{{ route('communication-center.index') }}">Communication Center</a>
+                        @if($currentUser->canAccessModule('deliveries', 'update'))
+                            <a class="rx-btn-secondary" href="{{ route('cash-handovers.index') }}">Cash collected &amp; handovers</a>
+                            <a class="rx-btn-secondary" href="{{ route('deliveries.assets.create') }}">Add an asset</a>
+                        @endif
+                    </div>
+                </section>
+            @endif
         </section>
     @else
     @include('dashboard.executive-navigation')
