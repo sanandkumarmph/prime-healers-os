@@ -2081,7 +2081,12 @@ class DeliveryController extends Controller
                 ->where('delivery_id', $delivery->id)->whereNotNull('outcome')->latest('id')->value('outcome')
             : null;
 
-        return view('deliveries.show', compact('delivery', 'activityLogs', 'deliveryProofs', 'proofConfig', 'cancellationReasonOptions', 'canViewProofs', 'collectionOutcome'));
+        $order = $delivery->sale ?? $delivery->rental;
+        $orderOwnership = $order && (int) $order->organization_id === (int) $delivery->organization_id
+            ? app(\App\Support\ActivityTimelineService::class)->orderOwnership($order)
+            : null;
+
+        return view('deliveries.show', compact('delivery', 'activityLogs', 'deliveryProofs', 'proofConfig', 'cancellationReasonOptions', 'canViewProofs', 'collectionOutcome', 'orderOwnership'));
     }
 
     public function viewProof(Delivery $delivery, DeliveryProof $proof)

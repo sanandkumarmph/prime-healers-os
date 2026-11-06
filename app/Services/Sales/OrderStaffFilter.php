@@ -29,12 +29,13 @@ class OrderStaffFilter
         return $staff;
     }
 
-    public function ordersWithCreator(int $organization, string $kind): array
+    public function ordersWithCreator(int $organization, string $kind, ?int $orderId = null): array
     {
         $table = $kind === 'rental' ? 'rentals' : 'sales';
         $model = $kind === 'rental' ? Rental::class : Sale::class;
         $creation = DB::table('activity_logs')->where('organization_id', $organization)
             ->where('subject_type', $model)->where('action', $kind.'.created')->whereNotNull('user_id')
+            ->when($orderId !== null, fn ($query) => $query->where('subject_id', $orderId))
             ->selectRaw('subject_id, MIN(user_id) as user_id')->groupBy('subject_id')->havingRaw('COUNT(DISTINCT user_id) = 1');
         $staffColumns = [];
         foreach (['created_by_user_id', 'created_by'] as $column) {
@@ -45,6 +46,7 @@ class OrderStaffFilter
         $staffColumns[] = 'creation.user_id';
         $creator = count($staffColumns) > 1 ? 'COALESCE('.implode(', ', $staffColumns).')' : 'creation.user_id';
         $orders = DB::table($table.' as order_record')->where('order_record.organization_id', $organization)
+            ->when($orderId !== null, fn ($query) => $query->where('order_record.id', $orderId))
             ->leftJoinSub($creation, 'creation', 'creation.subject_id', '=', 'order_record.id');
 
         return [$orders, $creator];

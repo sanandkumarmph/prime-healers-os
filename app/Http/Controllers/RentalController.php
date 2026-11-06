@@ -7378,7 +7378,9 @@ class RentalController extends Controller
         $pickupAssignableStaff = $this->assignableStaffMembers();
         $pickupVendors = $this->vendorMasterOptions();
 
-        return view('rentals.show', compact('rental', 'rentalInvoice', 'activityLogs', 'needsAssetAssignment', 'timelineFilter', 'pickupAssignableUsers', 'pickupAssignableStaff', 'pickupVendors'));
+        $orderOwnership = app(ActivityTimelineService::class)->orderOwnership($rental);
+
+        return view('rentals.show', compact('rental', 'rentalInvoice', 'activityLogs', 'needsAssetAssignment', 'timelineFilter', 'pickupAssignableUsers', 'pickupAssignableStaff', 'pickupVendors', 'orderOwnership'));
     }
 
     public function addNote(Request $request, Rental $rental)

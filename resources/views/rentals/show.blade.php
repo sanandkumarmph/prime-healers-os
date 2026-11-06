@@ -634,7 +634,9 @@
         [
             'label' => 'Rental',
             'status' => ucfirst(str_replace('_', ' ', $operationalStatus)),
-            'person' => $rental->createdBy->name ?? 'System',
+            'person' => $orderOwnership['owner'] ?? ($rental->createdBy->name ?? 'System'),
+            'personLabel' => isset($orderOwnership['owner']) ? 'Owner' : 'Created by',
+            'creator' => isset($orderOwnership['owner']) ? ($orderOwnership['creator'] ?? 'Unavailable') : null,
             'scheduled' => optional($rental->start_date)->format('d M Y') ?: 'Not set',
             'completed' => \App\Support\ActionTimestamp::label($rental->created_at) ?: null,
             'tone' => $isHotlisted ? 'problem' : 'done',
@@ -3988,7 +3990,10 @@
                         @include('cylinder-services.rental-actions')
                         @foreach($workflowSteps as $step)
                             <div class="ph-rental-mobile-line">
-                                <span>{{ $step['label'] }} - {{ $step['person'] }}</span>
+                                <span>
+                                    {{ $step['label'] }} · @if(isset($step['personLabel'])){{ $step['personLabel'] }} – @endif{{ $step['person'] }}
+                                    @if(isset($step['creator']))<br>Created by – {{ $step['creator'] }}@endif
+                                </span>
                                 <strong>{{ $step['status'] }}</strong>
                             </div>
                         @endforeach
@@ -4083,6 +4088,7 @@
                         <span class="ph-rental-chevron">v</span>
                     </summary>
                     <div class="ph-rental-accordion-body">
+                        @include('partials.order-ownership', ['orderOwnership' => $orderOwnership ?? null])
                         @forelse($timelinePreview->take(5) as $log)
                             <div class="rental-activity-mini-row">
                                 <span class="rental-activity-dot" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg></span>
@@ -4353,7 +4359,8 @@
                     <div class="rcc-workflow-item">
                         <span class="rcc-chip {{ $step['tone'] }}">{{ $step['status'] }}</span>
                         <strong>{{ $step['label'] }}</strong>
-                        <small>Owner: {{ $step['person'] }}</small>
+                        <small>{{ $step['personLabel'] ?? 'Owner' }} – {{ $step['person'] }}</small>
+                        @if(isset($step['creator']))<small>Created by – {{ $step['creator'] }}</small>@endif
                         <small>Scheduled: {{ $step['scheduled'] }}</small>
                         @if($step['completed'])
                             <small>Completed: {{ $step['completed'] }}</small>
@@ -4570,6 +4577,7 @@
                 <div>
                     <h2>Timeline & Communication</h2>
                     <p>Latest rental activity, reminders, invoice events, delivery updates, and notes.</p>
+                    @include('partials.order-ownership', ['orderOwnership' => $orderOwnership ?? null])
                 </div>
                 <a href="#rental-full-timeline" class="detail-btn-secondary">View full timeline</a>
             </div>

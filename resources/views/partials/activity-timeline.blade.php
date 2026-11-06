@@ -341,6 +341,7 @@
             <div class="timeline-summary-copy">
                 <h2>{{ $title }}</h2>
                 <p>{{ $subtitle }}</p>
+                @include('partials.order-ownership', ['orderOwnership' => $orderOwnership ?? null])
                 <p>
                     <strong>Latest:</strong> {{ $latestTimelineLabel }}
                     @if($latestTimelineAgo)

@@ -2086,7 +2086,9 @@ class SaleController extends Controller
         $timelineFilter = ActivityTimelineService::normalizeFilter((string) $request->query('timeline_filter', 'all'));
         $activityLogs = app(ActivityTimelineService::class)->forSubject($sale, $timelineFilter, 25, 'timeline_page');
 
-        return view('sales.show', compact('sale', 'saleInvoice', 'activityLogs', 'timelineFilter'));
+        $orderOwnership = app(ActivityTimelineService::class)->orderOwnership($sale);
+
+        return view('sales.show', compact('sale', 'saleInvoice', 'activityLogs', 'timelineFilter', 'orderOwnership'));
     }
 
     public function addNote(Request $request, Sale $sale)
