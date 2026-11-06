@@ -141,7 +141,7 @@ class AppServiceProvider extends ServiceProvider
                 return Route::has($name) ? route($name, $parameters) : null;
             };
 
-            $counts = Cache::remember(
+            $sidebarPendingCounts = Cache::remember(
                 $this->sidebarNotificationCacheKey($user->id, (int) $organizationId, (string) $user->effective_role, (int) ($user->role_id ?? 0)),
                 now()->addSeconds(self::SIDEBAR_NOTIFICATION_CACHE_TTL_SECONDS),
                 function () use ($organizationId, $user) {
@@ -149,25 +149,6 @@ class AppServiceProvider extends ServiceProvider
                 }
             );
 
-            $sidebarPendingCounts = $counts['sidebarPendingCounts'] ?? [];
-            $overdueRentalsCount = (int) ($counts['overdueRentalsCount'] ?? 0);
-            $pendingInvoiceCount = (int) ($counts['pendingInvoiceCount'] ?? 0);
-
-            $deliveriesToday = (int) ($counts['deliveriesToday'] ?? 0);
-
-            $pickupsToday = (int) ($counts['pickupsToday'] ?? 0);
-
-            $maintenanceAssets = (int) ($counts['maintenanceAssets'] ?? 0);
-
-            $followUpsDueToday = (int) ($counts['followUpsDueToday'] ?? 0);
-
-            $overdueFollowUps = (int) ($counts['overdueFollowUps'] ?? 0);
-
-            $failedPickupCount = (int) ($counts['failedPickupCount'] ?? 0);
-
-            $failedDeliveryCount = (int) ($counts['failedDeliveryCount'] ?? 0);
-
-            $assignedFollowUps = (int) ($counts['assignedFollowUps'] ?? 0);
             $notificationService = app(NotificationCenterService::class);
             $notifications = $notificationService->latestFor($user, 8);
             $unreadCount = $notificationService->unreadCountFor($user);
@@ -188,7 +169,7 @@ class AppServiceProvider extends ServiceProvider
     {
         return implode(':', [
             'layout_notifications',
-            'v1',
+            'v2',
             'org', $organizationId,
             'user', $userId,
             'role', $effectiveRole !== '' ? $effectiveRole : 'none',
@@ -200,16 +181,6 @@ class AppServiceProvider extends ServiceProvider
     {
         $today = now()->toDateString();
         $sidebarPendingCounts = [];
-        $overdueRentalsCount = 0;
-        $pendingInvoiceCount = 0;
-        $deliveriesToday = 0;
-        $pickupsToday = 0;
-        $maintenanceAssets = 0;
-        $followUpsDueToday = 0;
-        $overdueFollowUps = 0;
-        $failedPickupCount = 0;
-        $failedDeliveryCount = 0;
-        $assignedFollowUps = 0;
 
         if ($user?->canAccessModule('rentals', 'read') ?? false) {
             $overdueRentalsCount = Rental::query()
@@ -227,47 +198,11 @@ class AppServiceProvider extends ServiceProvider
         }
 
         if ($user?->canAccessModule('deliveries', 'read') ?? false) {
-            $openDeliveryTasks = Delivery::query()
+            $sidebarPendingCounts['tasks_board'] = Delivery::query()
                 ->where('organization_id', $organizationId)
-                ->where('type', 'delivery')
+                ->whereIn('type', ['delivery', 'pickup'])
                 ->whereIn('status', ['pending', 'in_progress'])
                 ->count();
-
-            $openPickupTasks = Delivery::query()
-                ->where('organization_id', $organizationId)
-                ->where('type', 'pickup')
-                ->whereIn('status', ['pending', 'in_progress'])
-                ->count();
-
-            $deliveriesToday = Delivery::query()
-                ->where('organization_id', $organizationId)
-                ->where('type', 'delivery')
-                ->whereIn('status', ['pending', 'in_progress'])
-                ->whereDate('scheduled_at', $today)
-                ->count();
-
-            $pickupsToday = Delivery::query()
-                ->where('organization_id', $organizationId)
-                ->where('type', 'pickup')
-                ->whereIn('status', ['pending', 'in_progress'])
-                ->whereDate('scheduled_at', $today)
-                ->count();
-
-            $failedPickupCount = Schema::hasColumn('deliveries', 'pickup_status')
-                ? Delivery::query()
-                    ->where('organization_id', $organizationId)
-                    ->where('type', 'pickup')
-                    ->where('pickup_status', 'failed_attempt')
-                    ->count()
-                : 0;
-
-            $failedDeliveryCount = Delivery::query()
-                ->where('organization_id', $organizationId)
-                ->where('type', 'delivery')
-                ->where('status', 'cancelled')
-                ->count();
-
-            $sidebarPendingCounts['tasks_board'] = $openDeliveryTasks + $openPickupTasks;
         }
 
         if ($user?->canAccessModule('invoices', 'read') ?? false) {
@@ -287,11 +222,6 @@ class AppServiceProvider extends ServiceProvider
                 ->where('asset_status', Asset::STATUS_AWAITING_VERIFICATION)
                 ->count();
 
-            $maintenanceAssets = Asset::query()
-                ->where('organization_id', $organizationId)
-                ->where('asset_status', 'maintenance')
-                ->count();
-
             $sidebarPendingCounts['return_verification'] = $awaitingVerificationAssets;
         }
 
@@ -308,28 +238,12 @@ class AppServiceProvider extends ServiceProvider
                 ->where('due_at', '<', now())
                 ->count();
 
-            $assignedFollowUps = (clone $followUpBaseQuery)
-                ->where('assigned_user_id', $user->id)
-                ->count();
-
             if ($followUpsDueToday > 0 || $overdueFollowUps > 0) {
                 $sidebarPendingCounts['communication_center'] = $followUpsDueToday + $overdueFollowUps;
             }
         }
 
-        return [
-            'sidebarPendingCounts' => $sidebarPendingCounts,
-            'overdueRentalsCount' => $overdueRentalsCount,
-            'pendingInvoiceCount' => $pendingInvoiceCount,
-            'deliveriesToday' => $deliveriesToday,
-            'pickupsToday' => $pickupsToday,
-            'maintenanceAssets' => $maintenanceAssets,
-            'followUpsDueToday' => $followUpsDueToday,
-            'overdueFollowUps' => $overdueFollowUps,
-            'failedPickupCount' => $failedPickupCount,
-            'failedDeliveryCount' => $failedDeliveryCount,
-            'assignedFollowUps' => $assignedFollowUps,
-        ];
+        return $sidebarPendingCounts;
     }
 
     private function shouldApplyDefaultOrganization(\Illuminate\Database\Eloquent\Model $model): bool

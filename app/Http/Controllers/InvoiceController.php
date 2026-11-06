@@ -436,11 +436,10 @@ class InvoiceController extends Controller
         $invoices->each(function (Invoice $invoice) {
             $this->syncPaidSaleInvoice($invoice);
             $this->syncOpeningPaymentEntry($invoice);
-            $invoice->refresh();
-            $invoice->syncFinancialStatus();
+            $invoice->unsetRelations()->refresh()->syncFinancialStatus();
         });
 
-        return $invoices;
+        return $invoices->load(['customer', 'items', 'payments']);
     }
 
     private function syncPaidSaleInvoice(Invoice $invoice): void

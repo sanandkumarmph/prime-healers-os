@@ -1997,7 +1997,10 @@ class SaleController extends Controller
             return $query;
         };
 
-        $salesQuery = $applyIndexFilters($this->baseSalesQuery(true));
+        $salesQuery = $applyIndexFilters($this->baseSalesQuery(true))->with('warehouse');
+        if ($this->hasSaleItemsTable()) {
+            $salesQuery->with(['saleItems.product', 'saleItems.asset', 'saleItems.warehouse']);
+        }
         $summaryQuery = $applyIndexFilters($this->baseSalesQuery(false, $request->integer('salesperson_id') !== 0));
 
         $sales = $this->applySorting(clone $salesQuery, $sortBy)

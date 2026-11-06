@@ -1365,6 +1365,8 @@ class DeliveryController extends Controller
             'rental.businessPartner',
             'rental.partnerClient',
             'rental.dispatchWarehouse',
+            'rental.deliveryRecord',
+            'rental.pickupRecord',
             'sale.product',
             'sale.customer',
             'sale.businessPartner',
@@ -1388,10 +1390,8 @@ class DeliveryController extends Controller
         }
 
         $summaryBaseQuery = Delivery::query()->where('organization_id', $this->orgId());
-        $baseQuery = clone $summaryBaseQuery;
 
         if ($ownershipFilter === 'my') {
-            $baseQuery = $this->applyDeliveryScope($baseQuery);
             $summaryBaseQuery = $this->applyDeliveryScope($summaryBaseQuery);
         }
 
@@ -1494,12 +1494,10 @@ class DeliveryController extends Controller
         };
 
         if ($search !== '') {
-            $applySearchFilter($baseQuery);
             $applySearchFilter($summaryBaseQuery);
         }
 
         if ($selectedDate !== '') {
-            $baseQuery->whereDate('scheduled_at', $selectedDate);
             $summaryBaseQuery->whereDate('scheduled_at', $selectedDate);
         }
 
@@ -1507,28 +1505,22 @@ class DeliveryController extends Controller
             $dateColumn = $statusFilter === 'completed' || $tab === 'completed' ? 'completed_at' : 'created_at';
 
             if ($fromDate !== '') {
-                $baseQuery->whereDate($dateColumn, '>=', $fromDate);
                 $summaryBaseQuery->whereDate($dateColumn, '>=', $fromDate);
             }
 
             if ($toDate !== '') {
-                $baseQuery->whereDate($dateColumn, '<=', $toDate);
                 $summaryBaseQuery->whereDate($dateColumn, '<=', $toDate);
             }
         }
 
         if ($staffFilter !== '') {
             if (str_starts_with($staffFilter, 'user:') && $this->hasAssignedUserColumn()) {
-                $baseQuery->where('assigned_user_id', (int) substr($staffFilter, 5));
                 $summaryBaseQuery->where('assigned_user_id', (int) substr($staffFilter, 5));
             } elseif (str_starts_with($staffFilter, 'staff:') && $this->hasAssignedStaffColumn()) {
-                $baseQuery->where('assigned_staff_id', (int) substr($staffFilter, 6));
                 $summaryBaseQuery->where('assigned_staff_id', (int) substr($staffFilter, 6));
             } elseif ($staffFilter === 'third_party' && $this->hasAssignmentTypeColumn()) {
-                $baseQuery->where('assignment_type', 'third_party');
                 $summaryBaseQuery->where('assignment_type', 'third_party');
             } elseif ($staffFilter === 'unassigned') {
-                $applyUnassignedFilter($baseQuery);
                 $applyUnassignedFilter($summaryBaseQuery);
             }
         }
@@ -1536,68 +1528,23 @@ class DeliveryController extends Controller
         if ($areaFilter !== '') {
             if (str_starts_with($areaFilter, 'warehouse:')) {
                 $warehouseId = (int) substr($areaFilter, 10);
-                $applyWarehouseAreaFilter($baseQuery, $warehouseId);
                 $applyWarehouseAreaFilter($summaryBaseQuery, $warehouseId);
             } elseif (str_starts_with($areaFilter, 'city:')) {
                 $city = substr($areaFilter, 5);
-                $applyCityAreaFilter($baseQuery, $city);
                 $applyCityAreaFilter($summaryBaseQuery, $city);
             }
         }
 
-        $orderedMinimalDeliveryQuery = function ($query) {
-            return $query
-                ->select([
-                    'id',
-                    'rental_id',
-                    'sale_id',
-                    'type',
-                    'status',
-                    'scheduled_at',
-                    'completed_at',
-                    'updated_at',
-                    'assigned_user_id',
-                    'assigned_staff_id',
-                    'third_party_name',
-                    'assignment_type',
-                    'created_at',
-                ])
-                ->orderByRaw("CASE WHEN status = 'pending' THEN 0 WHEN status = 'in_progress' THEN 1 ELSE 2 END")
-                ->orderByRaw("CASE WHEN scheduled_at IS NULL THEN 1 ELSE 0 END")
-                ->orderBy('scheduled_at')
-                ->orderByDesc('created_at');
-        };
-
-        $hydrateDeliveries = function (Collection $deliveryIds) use ($baseLoad): Collection {
-            if ($deliveryIds->isEmpty()) {
-                return collect();
-            }
-
-            $deliveriesQuery = Delivery::with($baseLoad)
-                ->where('organization_id', $this->orgId())
-                ->whereIn('id', $deliveryIds->all());
-
-            if ($this->hasDeliveryProofsTable()) {
-                $deliveriesQuery->withCount('proofs');
-            }
-
-            $deliveries = $deliveriesQuery
-                ->get()
-                ->keyBy('id');
-
-            return $deliveryIds
-                ->map(fn ($deliveryId) => $deliveries->get((int) $deliveryId))
-                ->filter()
-                ->values();
-        };
-
         $today = now()->toDateString();
         $todayStart = now()->startOfDay();
-        $boardBaseTaskIds = $orderedMinimalDeliveryQuery(clone $summaryBaseQuery)
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->values();
-        $boardBaseDeliveries = $hydrateDeliveries($boardBaseTaskIds);
+        $boardBaseDeliveries = $summaryBaseQuery
+            ->with($baseLoad)
+            ->when($this->hasDeliveryProofsTable(), fn ($query) => $query->withCount('proofs'))
+            ->orderByRaw("CASE WHEN status = 'pending' THEN 0 WHEN status = 'in_progress' THEN 1 ELSE 2 END")
+            ->orderByRaw("CASE WHEN scheduled_at IS NULL THEN 1 ELSE 0 END")
+            ->orderBy('scheduled_at')
+            ->orderByDesc('created_at')
+            ->get();
 
         $applyTaskboardCollectionFilters = function (Collection $deliveries) use ($taskType, $statusFilter, $workflowFilter, $tab, $today, $todayStart) {
             $filtered = $deliveries->values();
@@ -1653,16 +1600,12 @@ class DeliveryController extends Controller
 
         $visibleTasks = $applyTaskboardCollectionFilters($boardBaseDeliveries);
 
-        $dedupedTaskIds = $this->sortDeliveryBoardCollection($visibleTasks, $sortBy, $sortDirection, $todayStart)
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->values();
+        $sortedTasks = $this->sortDeliveryBoardCollection($visibleTasks, $sortBy, $sortDirection, $todayStart);
 
         $perPage = 20;
         $currentPage = Paginator::resolveCurrentPage('page');
-        $pageDeliveryIds = $dedupedTaskIds->forPage($currentPage, $perPage)->values();
-        $taskCollection = $hydrateDeliveries($pageDeliveryIds);
-        $taskResultsCount = $dedupedTaskIds->count();
+        $taskCollection = $sortedTasks->forPage($currentPage, $perPage)->values();
+        $taskResultsCount = $sortedTasks->count();
 
         $tasks = new LengthAwarePaginator(
             $taskCollection,
@@ -1736,29 +1679,20 @@ class DeliveryController extends Controller
             $failedTasksCount = (int) $this->logisticsMetrics()->applyWorkflowFilter($focusedBaseDeliveries, 'failed', $todayStart)->count();
         }
 
-        $todayOverviewTaskIds = collect($visibleLogisticsSummary['todayTasks'] ?? collect())
+        $todayOverviewTasks = collect($visibleLogisticsSummary['todayTasks'] ?? collect())
             ->sortBy(fn (Delivery $delivery) => $delivery->scheduled_at?->timestamp ?? PHP_INT_MAX)
             ->take(5)
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
             ->values();
-        $todayOverviewTasks = $hydrateDeliveries($todayOverviewTaskIds);
 
-        $overdueTaskIds = collect($visibleLogisticsSummary['overdueTasks'] ?? collect())
+        $overdueTasks = collect($visibleLogisticsSummary['overdueTasks'] ?? collect())
             ->sortBy(fn (Delivery $delivery) => $delivery->scheduled_at?->timestamp ?? PHP_INT_MAX)
             ->take(5)
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
             ->values();
-        $overdueTasks = $hydrateDeliveries($overdueTaskIds);
 
-        $pendingCollectionIds = collect($visibleLogisticsSummary['pendingPickupTasks'] ?? collect())
+        $pendingCollections = collect($visibleLogisticsSummary['pendingPickupTasks'] ?? collect())
             ->sortBy(fn (Delivery $delivery) => $delivery->scheduled_at?->timestamp ?? PHP_INT_MAX)
             ->take(5)
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
             ->values();
-        $pendingCollections = $hydrateDeliveries($pendingCollectionIds);
 
         $assignableUsers = $this->assignableUsers();
         $assignableStaffMembers = $this->assignableStaffMembers();

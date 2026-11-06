@@ -107,7 +107,7 @@ class FollowUpManager
             return;
         }
 
-        Rental::query()
+        $this->withoutRecordedSourceFollowUp(Rental::query(), 'auto:renewal_overdue', 'rental_id')
             ->where('organization_id', $organizationId)
             ->whereNotIn('status', ['returned', 'cancelled'])
             ->whereDate('end_date', '<', Carbon::today())
@@ -153,7 +153,7 @@ class FollowUpManager
             return;
         }
 
-        Invoice::query()
+        $this->withoutRecordedSourceFollowUp(Invoice::query(), 'auto:payment_overdue', 'invoice_id')
             ->where('organization_id', $organizationId)
             ->whereNotIn('status', ['cancelled', 'void'])
             ->whereNotIn('payment_status', ['paid', 'cancelled'])
@@ -230,7 +230,7 @@ class FollowUpManager
             return;
         }
 
-        Delivery::query()
+        $this->withoutRecordedSourceFollowUp(Delivery::query(), 'auto:pickup_failed', 'delivery_id')
             ->where('organization_id', $organizationId)
             ->where('type', 'pickup')
             ->where('pickup_status', 'failed_attempt')
@@ -252,7 +252,7 @@ class FollowUpManager
             return;
         }
 
-        Delivery::query()
+        $this->withoutRecordedSourceFollowUp(Delivery::query(), 'auto:delivery_failed', 'delivery_id')
             ->where('organization_id', $organizationId)
             ->where('type', 'delivery')
             ->where('status', 'cancelled')
@@ -309,6 +309,19 @@ class FollowUpManager
             'is_system_generated' => true,
             'source' => $source,
         ]);
+    }
+
+    private function withoutRecordedSourceFollowUp(Builder $records, string $source, string $foreignKey): Builder
+    {
+        $record = $records->getModel();
+
+        return $records->whereNotExists(
+            FollowUp::query()->selectRaw('1')
+                ->whereColumn('follow_ups.organization_id', $record->qualifyColumn('organization_id'))
+                ->whereColumn('follow_ups.'.$foreignKey, $record->getQualifiedKeyName())
+                ->where('source', $source)
+                ->whereIn('status', [FollowUp::STATUS_PENDING, FollowUp::STATUS_COMPLETED, FollowUp::STATUS_CANCELLED])
+        );
     }
 
     private function hasOpenSourceFollowUp(string $source, array $match): bool
