@@ -54,6 +54,8 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    'rental_agreements' => (bool) env('RENTAL_AGREEMENTS', false),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone
