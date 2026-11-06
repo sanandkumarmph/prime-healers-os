@@ -266,7 +266,9 @@ class User extends Authenticatable
             return $action === 'read' && in_array($module, ['invoices', 'payments', 'reports'], true);
         }
 
-        if ($this->isSales() && in_array($module, ['enquiries', 'quotations'], true)) {
+        if (in_array($module, ['enquiries', 'quotations'], true)
+            && $this->isSales() && $this->assignedRole?->allows('sales', 'read')
+            && !array_key_exists($module, $this->assignedRole->permissions ?? [])) {
             return in_array($action, ['read', 'create', 'update'], true);
         }
 
