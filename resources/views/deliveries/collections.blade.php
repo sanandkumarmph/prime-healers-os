@@ -3,12 +3,24 @@
 @include('sales-workspace.style')
 <main class="sw" data-collection-ledger>
     <header class="sw-head"><div><div class="sw-eyebrow">Task #{{ $task->id }}</div><h1>Collections & receipts</h1><p class="sw-muted">Cash posts one customer receipt. Online reports wait for Accounts verification.</p></div><div class="sw-actions">@can('view',$task)<a class="sw-btn" href="{{ route('deliveries.show',$task) }}">Back to task</a>@endcan<a class="sw-btn" href="{{ route('cash-handovers.index') }}">Cash handovers</a></div></header>
-    @include('sales-workspace.alerts')
+    @include('sales-workspace.alerts', ['showSuccess' => true])
+    @if(session('error'))<div class="sw-alert sw-error" role="alert">{{ session('error') }}</div>@endif
     @if((float)$task->collection_amount_collected > 0)
         <p class="sw-guide">The completion report shows ₹{{ number_format($task->collection_amount_collected,2) }}. Reports are preserved separately; check Payments and the saved entries below before recording a new receipt. Existing reports are not automatically posted here.</p>
         @if($task->collection_vendor_name)<p class="sw-muted">Vendor reported as collector · {{ $task->collection_vendor_name }}</p>@endif
     @endif
-    @if($canRecord && $available > 0)
+    @if($task->hasOrderCollection())
+        <section class="sw-panel">
+            <h2>Payment to collect · ₹{{ number_format($task->collection_amount_to_collect, 2) }}</h2>
+            <p>{{ \App\Services\Deliveries\OrderCollectionSetup::METHODS[$task->collection_allowed_methods] }}</p>
+            @if($task->collection_instructions)<p>{{ $task->collection_instructions }}</p>@endif
+            @if($canRecord && ($available > 0 || $entries->whereNotNull('outcome')->isEmpty()))
+                @include('deliveries.order-collection-outcome')
+            @elseif($task->status === 'pending' && (int)$task->assigned_user_id === (int)auth()->id())
+                <p class="sw-muted">Start the delivery task to record the collection outcome.</p>
+            @endif
+        </section>
+    @elseif($canRecord && $available > 0)
     <section class="sw-panel"><h2>Record a collection</h2><p class="sw-muted">Up to ₹{{ number_format($available,2) }} remains within this task's authorisation and invoice balance. Other pending reports can reduce the amount accepted at save.</p>
         <form method="post" action="{{ route('delivery-collections.store',$task) }}">@csrf
             <input type="hidden" name="submission_token" value="{{ old('submission_token',(string)\Illuminate\Support\Str::uuid()) }}"><input type="hidden" name="version" value="{{ $version }}">

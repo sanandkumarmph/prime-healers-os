@@ -162,6 +162,9 @@ class NotificationCenterService
         $city = $delivery->linkedCustomerCity();
         $typeLabel = $delivery->isPickup() ? 'pickup task' : 'delivery task';
         $message = trim($contactName . ($city ? ', ' . $city : ''));
+        if ($delivery->hasOrderCollection()) {
+            $message = ($message !== '' ? $message . ' · ' : '') . 'Collect ₹' . number_format($delivery->collection_amount_to_collect, 2);
+        }
 
         $this->notifyUser($recipient, [
             'type' => $delivery->isPickup() ? 'pickup_assigned' : 'delivery_assigned',

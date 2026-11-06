@@ -49,7 +49,8 @@ test('mobile rental create and edit submit the owning form and follow availabili
                 page.on('request',req=>req.url().startsWith(origin+'/')||req.url().startsWith('data:')?req.continue():req.respond({status:200,contentType:'text/css',body:''}));
                 await page.goto(origin+'/fixture/'+mode,{waitUntil:'networkidle0'});
                 await page.addStyleTag({content:'*{scroll-behavior:auto!important}'});
-                await page.evaluate((mode)=>{
+                const collectOnDelivery = mode === 'create' && [390, 1440].includes(width);
+                await page.evaluate((mode, collectOnDelivery)=>{
                     window.rentalSubmits=[];
                     document.addEventListener('submit',event=>{event.preventDefault();window.rentalSubmits.push({action:event.target.getAttribute('action'),data:Object.fromEntries(new FormData(event.target,event.submitter)),submitter:event.submitter?.id});},true);
                     const set=(id,value)=>{const e=document.getElementById(id);if(e){e.value=value;e.dispatchEvent(new Event('change',{bubbles:true}));e.dispatchEvent(new Event('input',{bubbles:true}));}};
@@ -65,9 +66,22 @@ test('mobile rental create and edit submit the owning form and follow availabili
                         choose('delivery_vendor_id');
                         set('collection_mode', 'pay_on_delivery');
                         choose('collection_assignee_id');
+                        if (collectOnDelivery) {
+                            set('collection_mode', '');
+                            set('collection_assignee_id', '');
+                            set('delivery_assignment_type', 'ph_internal');
+                            const staff = document.getElementById('delivery_staff_id');
+                            const driver = [...staff.options].find(option => option.dataset.collectionEligible === '1');
+                            if (!driver) throw new Error('Delivery collection operator is missing');
+                            set('delivery_staff_id', driver.value);
+                            document.getElementById('collection_enabled').click();
+                            set('collection_amount', '125.00');
+                            set('collection_methods', 'both');
+                            set('collection_instructions', 'UAT browser instructions');
+                        }
                     }
                     document.querySelector('[data-rental-wizard-tab="review"]').click();
-                }, mode);
+                }, mode, collectOnDelivery);
                 if(mode==='create'){
                     await page.waitForSelector('#incentive_owner_id',{visible:true});
                     const owner=await page.$eval('#incentive_owner_id',el=>[...el.options].find(option=>option.textContent==='Earlier shift salesperson').value);
@@ -104,10 +118,19 @@ test('mobile rental create and edit submit the owning form and follow availabili
                     assert.ok(submissions[0].data.incentive_owner_id);
                     assert.equal(submissions[0].data.incentive_source,'incoming_phone');
                     assert.equal(submissions[0].data.fulfilment_source, 'in_house');
-                    assert.equal(submissions[0].data.delivery_assignment_type, 'vendor');
-                    assert.equal(submissions[0].data.delivery_vendor_id, '1');
-                    assert.equal(submissions[0].data.collection_mode, 'pay_on_delivery');
-                    assert.ok(submissions[0].data.collection_assignee_id);
+                    if (collectOnDelivery) {
+                        assert.equal(submissions[0].data.delivery_assignment_type, 'ph_internal');
+                        assert.match(submissions[0].data.delivery_staff_id, /^user:\d+$/);
+                        assert.equal(submissions[0].data.collection_enabled, '1');
+                        assert.equal(submissions[0].data.collection_amount, '125.00');
+                        assert.equal(submissions[0].data.collection_methods, 'both');
+                        assert.equal(submissions[0].data.collection_instructions, 'UAT browser instructions');
+                    } else {
+                        assert.equal(submissions[0].data.delivery_assignment_type, 'vendor');
+                        assert.equal(submissions[0].data.delivery_vendor_id, '1');
+                        assert.equal(submissions[0].data.collection_mode, 'pay_on_delivery');
+                        assert.ok(submissions[0].data.collection_assignee_id);
+                    }
                 }else{
                     assert.equal(submissions[0].data.incentive_owner_id,undefined);
                 }

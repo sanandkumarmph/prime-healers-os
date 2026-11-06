@@ -1171,6 +1171,7 @@
                 </select>
                 @error('payment_status')<div class="sales-field-error">{{ $message }}</div>@enderror
             </div>
+            @include('deliveries.order-collection-setup', ['orderKind' => 'sale'])
             @include('components.order-collection-assignment', ['fieldClass' => 'sales-field sales-col-4', 'errorClass' => 'sales-field-error'])
             <div class="sales-field sales-col-4 {{ $errors->has('rental_id') ? 'is-error' : '' }}">
                 <label for="rental_id">Linked Rental</label>

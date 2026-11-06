@@ -439,7 +439,7 @@ class DeliveryController extends Controller
             'completion_confirmed' => ['required', 'accepted'],
         ];
 
-        if ((bool) ($delivery->collection_required ?? false)) {
+        if ($delivery->collection_required && !$delivery->hasOrderCollection()) {
             $rules['collection_amount_collected'] = ['nullable', 'numeric', 'min:0'];
             $rules['collection_recipient'] = ['nullable', 'in:company,vendor'];
             $rules['collection_payment_mode'] = ['nullable', Rule::in(Delivery::COLLECTION_PAYMENT_MODES)];
@@ -551,7 +551,7 @@ class DeliveryController extends Controller
                 $this->appendPickupDamageProofErrors($validator, $data);
             }
 
-            if ((bool) ($delivery->collection_required ?? false)) {
+            if ($delivery->collection_required && !$delivery->hasOrderCollection()) {
                 $this->appendCollectionErrors($validator, $data);
             }
         });
@@ -788,7 +788,7 @@ class DeliveryController extends Controller
             );
         }
 
-        if ((bool) ($delivery->collection_required ?? false)) {
+        if ($delivery->collection_required && !$delivery->hasOrderCollection()) {
             $collectionData = [
                 'collection_amount_collected' => ($validated['collection_amount_collected'] ?? null) !== null && $validated['collection_amount_collected'] !== ''
                     ? (float) $validated['collection_amount_collected']
@@ -2076,7 +2076,12 @@ class DeliveryController extends Controller
         $proofConfig = $this->deliveryProofConfig();
         $cancellationReasonOptions = $this->cancellationReasonOptions();
 
-        return view('deliveries.show', compact('delivery', 'activityLogs', 'deliveryProofs', 'proofConfig', 'cancellationReasonOptions', 'canViewProofs'));
+        $collectionOutcome = $delivery->hasOrderCollection() && (int) $delivery->assigned_user_id === (int) auth()->id()
+            ? \App\Models\DeliveryCollection::where('organization_id', $delivery->organization_id)
+                ->where('delivery_id', $delivery->id)->whereNotNull('outcome')->latest('id')->value('outcome')
+            : null;
+
+        return view('deliveries.show', compact('delivery', 'activityLogs', 'deliveryProofs', 'proofConfig', 'cancellationReasonOptions', 'canViewProofs', 'collectionOutcome'));
     }
 
     public function viewProof(Delivery $delivery, DeliveryProof $proof)
@@ -2207,8 +2212,15 @@ class DeliveryController extends Controller
         });
         $validated = $validator->validate();
 
-        // A posted collection must retain the task/order identity it was recorded against.
-        if (\App\Models\DeliveryCollection::where('organization_id', $delivery->organization_id)->where('delivery_id', $delivery->id)->exists()
+        if ($delivery->hasOrderCollection()
+            && ($request->input('assignment_type', 'delivery_team') !== 'delivery_team'
+                || (int) $request->input('assigned_user_id') !== (int) $delivery->assigned_user_id
+                || ($request->input('status') === 'completed' && $delivery->status !== 'completed'))) {
+            return back()->withErrors(['assigned_user_id' => 'Keep the assigned operator and complete delivery through the task workflow when collection is assigned.'])->withInput();
+        }
+
+        // A collection must retain the task and order identity it was assigned to.
+        if (($delivery->hasOrderCollection() || \App\Models\DeliveryCollection::where('organization_id', $delivery->organization_id)->where('delivery_id', $delivery->id)->exists())
             && ((int) $request->input('rental_id') !== (int) $delivery->rental_id
                 || (int) $request->input('sale_id') !== (int) $delivery->sale_id
                 || $request->input('type') !== $delivery->type)) {
@@ -2587,8 +2599,13 @@ class DeliveryController extends Controller
             }
         }
 
+        if ($delivery->hasOrderCollection() && !$delivery->hasRecordedCollectionOutcome()) {
+            return redirect()->route('delivery-collections.show', $delivery)
+                ->with('error', 'Record the payment collection outcome before completing delivery.');
+        }
+
         $validated = $this->validateCompletionWorkflowRequest($request, $delivery);
-        if ($delivery->collection_required) {
+        if ($delivery->collection_required && !$delivery->hasOrderCollection()) {
             $validated = array_replace($validated, app(\App\Services\Deliveries\VendorCollectionAttribution::class)->attributes(
                 $delivery, $validated['collection_recipient'] ?? null, (float) ($validated['collection_amount_collected'] ?? 0) > 0
             ));

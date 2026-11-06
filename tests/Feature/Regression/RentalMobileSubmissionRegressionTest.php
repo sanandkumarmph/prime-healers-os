@@ -17,6 +17,7 @@ class RentalMobileSubmissionRegressionTest extends TestCase
         $this->actingAs(TestData::user($org));
         TestData::user($org, ['name' => 'Earlier shift salesperson', 'role' => User::ROLE_SALES]);
         $city = City::create(['organization_id' => $org->id, 'name' => 'Bengaluru', 'is_active' => true]);
+        TestData::user($org, ['name' => 'Synthetic Delivery operator', 'role' => User::ROLE_DELIVERY, 'city_id' => $city->id]);
         Warehouse::create(['organization_id' => $org->id, 'city_id' => $city->id, 'name' => 'Main', 'is_active' => true]);
         Vendor::create(['organization_id' => $org->id, 'city_id' => $city->id, 'name' => 'Synthetic delivery vendor', 'is_active' => true]);
         $customer = Customer::create(['organization_id' => $org->id, 'name' => 'Synthetic rental customer',

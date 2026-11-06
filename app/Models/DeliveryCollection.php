@@ -6,6 +6,12 @@ use Illuminate\Database\Eloquent\Model;
 
 class DeliveryCollection extends Model
 {
+    public const OUTCOMES = [
+        'collected' => 'Collected in full',
+        'partial' => 'Partially collected',
+        'none' => 'Nothing collected',
+    ];
+
     protected $guarded = ['id'];
     protected $casts = ['amount' => 'decimal:2', 'received_at' => 'datetime', 'reviewed_at' => 'datetime', 'reversed_at' => 'datetime'];
 

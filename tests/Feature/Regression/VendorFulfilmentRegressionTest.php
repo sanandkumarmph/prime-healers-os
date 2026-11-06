@@ -119,6 +119,55 @@ class VendorFulfilmentRegressionTest extends TestCase
             ->assertOk()->assertSee('Payment on delivery for')->assertSee('Cash collection for');
     }
 
+    public function test_order_collection_creates_only_one_assigned_task_and_no_receipt(): void
+    {
+        $organization = TestData::organization();
+        $admin = TestData::user($organization, ['role' => User::ROLE_SUPER_ADMIN]);
+        $driver = TestData::user($organization, ['role' => User::ROLE_DELIVERY]);
+        $customer = $this->makeCustomer($organization->id);
+        $product = $this->makeRentalProduct($organization->id);
+        $this->actingAs($admin);
+
+        $assignment = [
+            'collection_enabled' => 1, 'collection_amount' => '100.00', 'collection_methods' => 'cash',
+            'collection_instructions' => 'Ask for exact change.',
+            'collection_submission_token' => (string) \Illuminate\Support\Str::uuid(),
+        ];
+        $rental = $this->rentalPayload($customer->id, $product->id, $assignment + [
+            'delivery_assignment_type' => 'ph_internal', 'delivery_staff_id' => 'user:'.$driver->id,
+        ]);
+        $this->get(route('rentals.create'))->assertOk()->assertSee('Collect payment on delivery');
+        $this->post(route('rentals.store'), array_replace($rental, ['collection_amount' => '99999.00']))
+            ->assertSessionHasErrors('collection_amount');
+        $this->assertDatabaseCount('rentals', 0);
+        $this->assertDatabaseCount('order_collection_submissions', 0);
+        $this->post(route('rentals.store'), $rental)->assertSessionHasNoErrors();
+        $this->postJson(route('rentals.store'), $rental)->assertConflict()->assertJsonValidationErrors('collection_enabled');
+        $this->assertDatabaseCount('rentals', 1);
+        $this->assertDatabaseHas('deliveries', [
+            'rental_id' => \App\Models\Rental::sole()->id, 'assigned_user_id' => $driver->id,
+            'collection_required' => true, 'collection_allowed_methods' => 'cash',
+            'collection_instructions' => 'Ask for exact change.', 'collection_amount_to_collect' => 100,
+        ]);
+
+        $productForSale = $this->makeSaleProduct($organization->id);
+        $sale = $this->salePayload($customer->id, $productForSale->id, array_replace($assignment, [
+            'delivery_operator_id' => $driver->id, 'collection_methods' => 'both',
+            'collection_submission_token' => (string) \Illuminate\Support\Str::uuid(),
+        ]));
+        $this->get(route('sales.create'))->assertOk()->assertSee('Collect payment on delivery')->assertSee($driver->name);
+        $this->post(route('sales.store'), array_replace($sale, ['delivery_operator_id' => $admin->id]))
+            ->assertSessionHasErrors('collection_enabled');
+        $this->assertDatabaseCount('sales', 0);
+        $this->post(route('sales.store'), $sale)->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('deliveries', [
+            'sale_id' => Sale::sole()->id, 'type' => 'delivery', 'assigned_user_id' => $driver->id,
+            'assignment_type' => 'delivery_team', 'collection_required' => true, 'collection_allowed_methods' => 'both',
+        ]);
+        $this->assertDatabaseCount('deliveries', 2);
+        $this->assertDatabaseCount('payments', 0);
+    }
+
     public function test_vendor_supplied_rental_accepts_dual_purpose_product_without_ph_asset_requirement(): void
     {
         $organization = TestData::organization();

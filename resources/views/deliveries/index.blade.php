@@ -1942,6 +1942,9 @@
                                                 <strong>Task #{{ $delivery->id }}</strong>
                                             @endif
 
+                                            @if($delivery->hasOrderCollection() && (int)$delivery->assigned_user_id === (int)auth()->id())
+                                                <span class="ops-type-badge ops-type-delivery">Payment collection</span>
+                                            @endif
                                             <div class="ops-items-list">
                                                 @foreach($items->take(3) as $itemLabel)
                                                     <span class="ops-item-pill">{{ $itemLabel }}</span>
@@ -2180,6 +2183,9 @@
                                         @endunless
                                         <span class="rn-badge {{ $taskStatusBadgeClass($displayStatus, $isOverdue && (!$fieldTeamBoard || !$taskEffectivelyCompleted)) }}">{{ $fieldTeamBoard && $isOverdue && !$taskEffectivelyCompleted ? 'Overdue' : ($fieldTeamBoard && $displayStatus === 'pending' ? 'To do' : $taskStatusLabel($displayStatus)) }}</span>
                                         <span class="ops-mobile-time">{{ $scheduleLabel }}</span>
+                                        @if($delivery->hasOrderCollection() && (int)$delivery->assigned_user_id === (int)auth()->id())
+                                            <span class="ops-type-badge ops-type-delivery">Payment collection</span>
+                                        @endif
                                     </div>
                                     <div class="ops-mobile-order">
                                         @if($isSaleTask && $delivery->sale)

@@ -736,6 +736,7 @@ class DeliveryWorkflowService
             ->where('organization_id', $organizationId)
             ->where('type', $delivery->type)
             ->where('id', '!=', $delivery->id)
+            ->whereNull('collection_allowed_methods')
             ->whereIn('status', ['pending', 'in_progress']);
 
         if ($delivery->sale_id) {

@@ -34,9 +34,8 @@ class DeliveryCollectionController extends Controller
         $proofs = DeliveryProof::where('organization_id', $request->user()->organization_id)->where('delivery_id', $task->id)
             ->where('proof_type', DeliveryProof::TYPE_COLLECTION)->latest('id')->get();
         $canReceive = $service->canReceive($request->user());
-        $canRecord = $request->user()->can('update', $task) && $task->collection_required && in_array($task->status, ['in_progress','completed'], true);
-        $reported = $entries->whereNotIn('status',['rejected','reversed'])->sum('amount');
-        $available = max(0, min((float) $task->collection_amount_to_collect - $reported, (float) $invoice->balance_amount));
+        $canRecord = $service->canRecord($request->user(), $task);
+        $available = $service->availableCents($task, $invoice) / 100;
         $collectionVendor = app(\App\Services\Deliveries\VendorCollectionAttribution::class)->vendor($task);
         return response()->view('deliveries.collections', compact('task','version','entries','proofs','canReceive','canRecord','available','collectionVendor'))
             ->header('Cache-Control', 'private, no-store');
@@ -44,8 +43,13 @@ class DeliveryCollectionController extends Controller
 
     public function store(Request $request, int $delivery, DeliveryCollectionService $service)
     {
-        $entry = $service->record($request->user(), $delivery, $request->all());
-        return redirect()->route('delivery-collections.show', $delivery)->with('success', 'Saved collection #'.$entry->id.': '.str_replace('_',' ',$entry->status).'. Check its receipt and review history.');
+        try {
+            $service->record($request->user(), $delivery, $request->all());
+        } catch (\Throwable $error) {
+            app(\App\Services\Deliveries\DeliveryProofService::class)->cleanupFailedRequestFiles($request);
+            throw $error;
+        }
+        return redirect()->route('delivery-collections.show', $delivery)->with('success', 'Collection outcome saved.');
     }
 
     public function review(Request $request, int $collection, DeliveryCollectionService $service)

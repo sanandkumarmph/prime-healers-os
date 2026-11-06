@@ -60,6 +60,55 @@ class PhosCashWorkflowTest extends TestCase
         return DeliveryCashHandover::latest('id')->firstOrFail();
     }
 
+    public function test_assigned_driver_records_split_collection_once_and_accounts_verify_the_online_portion(): void
+    {
+        $this->task->forceFill(['collection_allowed_methods' => 'both', 'collection_instructions' => 'Synthetic instructions'])->save();
+        $this->get(route('deliveries.show', $this->task))->assertOk()->assertSee('Record collection outcome');
+        $this->get(route('delivery-collections.show', $this->task))->assertOk()
+            ->assertSee('Synthetic instructions')->assertSee('Save collection outcome');
+        $data = $this->payload([
+            'outcome' => 'partial', 'amount' => 180, 'method' => 'split', 'cash_amount' => 100,
+            'online_method' => 'upi', 'reference' => 'UAT-SPLIT-REFERENCE', 'note' => 'Customer will pay the rest later.',
+        ]);
+        $this->post(route('delivery-collections.store', $this->task), $data)->assertSessionHasNoErrors();
+        $this->post(route('delivery-collections.store', $this->task), $data)->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('delivery_collections', 2);
+        $this->assertDatabaseCount('payments', 1);
+        $this->assertEquals(200, $this->invoice->fresh()->balance_amount);
+        $cash = DeliveryCollection::where('method', 'cash')->sole();
+        $online = DeliveryCollection::where('method', 'upi')->sole();
+        $this->assertEquals(100, $cash->cashAmounts()['available'] / 100);
+        $this->assertSame('pending_review', $online->status);
+
+        $decision = ['action' => 'verify', 'reason' => 'Checked the synthetic UPI transaction.', 'confirmed' => 1];
+        $this->actingAs($this->finance)->post(route('delivery-collections.review', $online), $decision)->assertForbidden();
+        $this->actingAs($this->admin)->post(route('delivery-collections.review', $online), $decision)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('payments', 2);
+        $this->assertEquals(120, $this->invoice->fresh()->balance_amount);
+    }
+
+    public function test_managed_collection_requires_its_operator_and_can_record_a_missed_payment(): void
+    {
+        $this->task->forceFill(['collection_allowed_methods' => 'cash'])->save();
+        $this->actingAs($this->admin)
+            ->post(route('delivery-collections.store', $this->task), $this->payload(['outcome' => 'collected', 'amount' => 250]))
+            ->assertForbidden();
+        $this->actingAs($this->collector)
+            ->put(route('deliveries.complete', $this->task), ['workflow_capture_form' => 1, 'confirm_partial' => 1])
+            ->assertRedirect(route('delivery-collections.show', $this->task));
+        $this->post(route('delivery-collections.store', $this->task), $this->payload([
+            'outcome' => 'collected', 'amount' => 250, 'method' => 'upi', 'reference' => 'TEST',
+        ]))->assertSessionHasErrors('collection');
+
+        $data = $this->payload(['outcome' => 'none', 'note' => 'Customer was unable to pay.']);
+        unset($data['amount'], $data['method']);
+        $this->post(route('delivery-collections.store', $this->task), $data)->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('payments', 0);
+        $this->assertDatabaseHas('delivery_collections', ['outcome' => 'none', 'status' => 'not_collected', 'amount' => 0]);
+        $this->assertTrue($this->task->hasRecordedCollectionOutcome());
+        $this->get(route('deliveries.show', $this->task))->assertOk()->assertSee('Collection outcome saved.');
+    }
+
     public function test_cash_posts_once_and_changed_token_replay_cannot_credit_twice(): void
     {
         $data=$this->payload();

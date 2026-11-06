@@ -163,7 +163,7 @@
     $hasCancellationErrors = $errors->has('cancellation_reason') || $errors->has('cancellation_notes');
     $selectedCancellationReason = old('cancellation_reason', $delivery->cancellation_reason);
     $selectedCancellationNotes = old('cancellation_notes', $delivery->cancellation_notes);
-    $supportsCollectionStep = (bool) ($delivery->collection_required ?? false);
+    $supportsCollectionStep = $delivery->collection_required && !$delivery->hasOrderCollection();
     $collectionVendor = $supportsCollectionStep ? app(\App\Services\Deliveries\VendorCollectionAttribution::class)->vendor($delivery) : null;
     $collectionAmountToCollect = (float) ($delivery->collection_amount_to_collect ?? 0);
     $collectionModes = [
@@ -2707,9 +2707,19 @@
 
 <div class="delivery-detail">
     @if($delivery->collection_required && ((int)$delivery->assigned_user_id === (int)auth()->id() || app(\App\Services\Deliveries\DeliveryCollectionService::class)->canReceive(auth()->user())))
-    <div class="detail-card"><strong>Collections & cash accountability</strong><p>Use the collection ledger to record a customer receipt and submit cash handovers. Existing completion reports remain in task history.</p>
-        @if($delivery->collection_vendor_name)<p>Vendor reported as collector · {{ $delivery->collection_vendor_name }}</p>@endif
-        <a class="detail-btn" href="{{ route('delivery-collections.show',$delivery) }}">Open collection ledger</a></div>
+    <div class="detail-card">
+        @if($delivery->hasOrderCollection())
+            <strong>Payment to collect · ₹{{ number_format($delivery->collection_amount_to_collect, 2) }}</strong>
+            <p>{{ \App\Services\Deliveries\OrderCollectionSetup::METHODS[$delivery->collection_allowed_methods] }}</p>
+            @if($delivery->collection_instructions)<p>{{ $delivery->collection_instructions }}</p>@endif
+            @if($collectionOutcome)<p role="status">Collection outcome saved. {{ \App\Models\DeliveryCollection::OUTCOMES[$collectionOutcome] }}</p>@endif
+            <a class="detail-btn" href="{{ route('delivery-collections.show', $delivery) }}">{{ $collectionOutcome || $delivery->status !== 'in_progress' || (int)$delivery->assigned_user_id !== (int)auth()->id() ? 'View collection' : 'Record collection outcome' }}</a>
+        @else
+            <strong>Collections & cash accountability</strong><p>Use the collection ledger to record a customer receipt and submit cash handovers. Existing completion reports remain in task history.</p>
+            @if($delivery->collection_vendor_name)<p>Vendor reported as collector · {{ $delivery->collection_vendor_name }}</p>@endif
+            <a class="detail-btn" href="{{ route('delivery-collections.show', $delivery) }}">Open collection ledger</a>
+        @endif
+    </div>
     @endif
     <div class="delivery-mobile-titlebar is-{{ $mobileTaskTone }}" aria-label="{{ ucfirst($delivery->type) }} task header">
         <a href="{{ route('deliveries.index') }}" aria-label="Back to deliveries">

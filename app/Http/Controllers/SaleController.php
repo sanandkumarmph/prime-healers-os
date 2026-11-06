@@ -2161,8 +2161,9 @@ class SaleController extends Controller
         $referralSourceOptions = $this->referralSourceOptions();
 
         $collectionAssignees = app(\App\Support\FollowUpManager::class)->collectionAssignees($this->orgId());
+        $collectionOperators = app(\App\Services\Deliveries\OrderCollectionSetup::class)->operators($this->orgId());
 
-        return view('sales.create', compact('customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'saleStockAssets', 'saleInventorySummaries', 'warehouses', 'rentals', 'fulfilmentVendors', 'referralSourceOptions', 'collectionAssignees'));
+        return view('sales.create', compact('customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'saleStockAssets', 'saleInventorySummaries', 'warehouses', 'rentals', 'fulfilmentVendors', 'referralSourceOptions', 'collectionAssignees', 'collectionOperators'));
     }
 
     public function businessPartnerActualClients(BusinessPartner $businessPartner)
@@ -2245,13 +2246,38 @@ class SaleController extends Controller
 
         $followUps = app(\App\Support\FollowUpManager::class);
         $collector = $followUps->collectionAssignment($request);
-        [$sale, $invoice] = DB::transaction(function () use ($salePayload, $saleItems, $vendorSupplied, $fulfilment, $request, $incentive, $credit, $followUps, $collector) {
+        $collectionSetup = app(\App\Services\Deliveries\OrderCollectionSetup::class);
+        $collection = $collectionSetup->validate($request, 'sales');
+        if ($collection) {
+            $request->validate([
+                'delivery_operator_id' => ['required', 'integer', Rule::exists('users', 'id')->where('organization_id', $this->orgId())],
+            ]);
+            if (in_array($request->input('payment_status'), ['paid', 'void'], true)) {
+                throw ValidationException::withMessages(['collection_amount' => 'Only an unpaid invoice balance can be assigned for delivery collection.']);
+            }
+            if ($fulfilment['delivery_responsibility'] !== 'ph_internal_delivery') {
+                throw ValidationException::withMessages(['collection_enabled' => 'Choose PH internal delivery for this collection.']);
+            }
+        }
+        [$sale, $invoice] = DB::transaction(function () use ($salePayload, $saleItems, $vendorSupplied, $fulfilment, $request, $incentive, $credit, $followUps, $collector, $collectionSetup, $collection) {
+            if ($collection) {
+                $collectionSetup->claim($collection, $this->orgId());
+            }
             $sale = Sale::create($salePayload);
             $this->syncSaleItems($sale, $saleItems);
             if (!$vendorSupplied) {
                 $this->applySaleStock($sale);
             }
             $invoice = $this->createSaleInvoice($sale);
+            if ($collection) {
+                $delivery = Delivery::create([
+                    'organization_id' => $this->orgId(), 'sale_id' => $sale->id, 'type' => 'delivery',
+                    'assignment_type' => 'delivery_team', 'assigned_user_id' => $request->integer('delivery_operator_id'),
+                    'scheduled_at' => $sale->sale_date->copy()->setTime(10, 0), 'status' => 'pending',
+                    'notes' => 'Created with the sale payment collection assignment.',
+                ]);
+                $collectionSetup->attach($collection, $delivery, $invoice);
+            }
             if ($collector) {
                 $followUps->assignOrderCollection($sale, $invoice, $collector, $request->input('collection_mode'), $request->user());
             }

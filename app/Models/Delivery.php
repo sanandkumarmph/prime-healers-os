@@ -137,6 +137,26 @@ class Delivery extends Model
         return $this->belongsTo(Organization::class);
     }
 
+    public function hasOrderCollection(): bool
+    {
+        return $this->collection_required && filled($this->collection_allowed_methods);
+    }
+
+    public function hasRecordedCollectionOutcome(): bool
+    {
+        return DeliveryCollection::where('organization_id', $this->organization_id)
+            ->where('delivery_id', $this->id)->whereNotNull('outcome')->exists();
+    }
+
+    public function allowedCollectionMethods(): array
+    {
+        return match ($this->collection_allowed_methods) {
+            'cash' => ['cash'],
+            'online' => ['upi', 'bank_transfer', 'card'],
+            default => self::COLLECTION_PAYMENT_MODES,
+        };
+    }
+
     public function assignedUser()
     {
         return $this->belongsTo(User::class, 'assigned_user_id');
@@ -368,7 +388,7 @@ class Delivery extends Model
 
     public function hasProtectedWorkflowHistory(): bool
     {
-        return $this->status === 'completed' || $this->completed_at || $this->proofs()->exists()
+        return $this->hasOrderCollection() || $this->status === 'completed' || $this->completed_at || $this->proofs()->exists()
             || DeliveryCollection::where('organization_id', $this->organization_id)->where('delivery_id', $this->id)->exists()
             || DB::table('delivery_workflow_submissions')->where('organization_id', $this->organization_id)->where('delivery_id', $this->id)->exists();
     }

@@ -3250,6 +3250,7 @@
                                 <option
                                     value="user:{{ $user->id }}"
                                     data-assignment-kind="ph_internal"
+                                    data-collection-eligible="{{ app(\App\Services\Deliveries\OrderCollectionSetup::class)->eligibleOperator($user) ? '1' : '0' }}"
                                     data-city-id="{{ (int) ($user->city_id ?? 0) }}"
                                     {{ $selectedDeliveryAssignment === 'user:' . $user->id ? 'selected' : '' }}>
                                     {{ $user->name }} - {{ ucwords(str_replace('_', ' ', $user->effective_role ?? $user->role ?? 'delivery')) }}
@@ -3354,6 +3355,7 @@
                 </div>
             </div>
 
+            @include('deliveries.order-collection-setup', ['orderKind' => 'rental'])
             @include('components.order-collection-assignment', ['fieldClass' => 'rental-field rental-col-4', 'errorClass' => 'field-error'])
 
             @if($isEdit)
