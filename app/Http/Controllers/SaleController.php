@@ -2157,7 +2157,9 @@ class SaleController extends Controller
         $fulfilmentVendors = $this->vendorMasterOptions();
         $referralSourceOptions = $this->referralSourceOptions();
 
-        return view('sales.create', compact('customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'saleStockAssets', 'saleInventorySummaries', 'warehouses', 'rentals', 'fulfilmentVendors', 'referralSourceOptions'));
+        $collectionAssignees = app(\App\Support\FollowUpManager::class)->collectionAssignees($this->orgId());
+
+        return view('sales.create', compact('customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'saleStockAssets', 'saleInventorySummaries', 'warehouses', 'rentals', 'fulfilmentVendors', 'referralSourceOptions', 'collectionAssignees'));
     }
 
     public function businessPartnerActualClients(BusinessPartner $businessPartner)
@@ -2238,13 +2240,18 @@ class SaleController extends Controller
             $salePayload['stock_applied'] = !$vendorSupplied;
         }
 
-        [$sale, $invoice] = DB::transaction(function () use ($salePayload, $saleItems, $vendorSupplied, $fulfilment, $request, $incentive, $credit) {
+        $followUps = app(\App\Support\FollowUpManager::class);
+        $collector = $followUps->collectionAssignment($request);
+        [$sale, $invoice] = DB::transaction(function () use ($salePayload, $saleItems, $vendorSupplied, $fulfilment, $request, $incentive, $credit, $followUps, $collector) {
             $sale = Sale::create($salePayload);
             $this->syncSaleItems($sale, $saleItems);
             if (!$vendorSupplied) {
                 $this->applySaleStock($sale);
             }
             $invoice = $this->createSaleInvoice($sale);
+            if ($collector) {
+                $followUps->assignOrderCollection($sale, $invoice, $collector, $request->input('collection_mode'), $request->user());
+            }
             $this->vendorFulfilmentService()->syncSale($sale, $fulfilment + [
                 'notes' => $request->input('notes'),
             ]);

@@ -58,6 +58,67 @@ class VendorFulfilmentRegressionTest extends TestCase
         $this->assertSame($vendor->id, $rental->vendorOrderDetail?->vendor_id);
     }
 
+    public function test_sales_can_assign_order_collections_and_book_vendor_or_third_party_delivery(): void
+    {
+        $organization = TestData::organization();
+        $actor = TestData::user($organization);
+        $salesRole = Role::create([
+            'organization_id' => $organization->id, 'name' => 'Sales', 'slug' => 'sales', 'is_active' => true,
+            'permissions' => ['sales' => ['read', 'create'], 'deliveries' => ['read'], 'invoices' => ['read'], 'payments' => ['read']],
+        ]);
+        $collector = TestData::user($organization, ['role_id' => $salesRole->id]);
+        $driver = TestData::user($organization, ['role' => User::ROLE_DELIVERY]);
+        $customer = $this->makeCustomer($organization->id);
+        $product = $this->makeRentalProduct($organization->id);
+        $vendor = $this->makeVendor($organization->id);
+
+        $this->actingAs($collector)->get(route('enquiries.index'))->assertOk()
+            ->assertSee('Sales workspace')->assertSee('Route planner');
+        $this->get(route('enquiries.index', ['view' => 'quotations']))->assertOk();
+        $this->get(route('enquiries.create'))->assertOk();
+        $this->assertFalse($collector->canAccessModule('quotations', 'delete'));
+
+        $this->actingAs($actor)->get(route('rentals.create'))->assertOk()
+            ->assertSee('Vendor Delivery')->assertSee('Third Party Logistics')->assertSee('Assign collection to Sales');
+        $rentalData = $this->rentalPayload($customer->id, $product->id, [
+            'delivery_assignment_type' => 'vendor',
+            'delivery_vendor_id' => $vendor->id,
+            'collection_mode' => 'pay_on_delivery',
+        ]);
+        $this->post(route('rentals.store'), $rentalData + ['collection_assignee_id' => $driver->id])
+            ->assertSessionHasErrors('collection_assignee_id');
+        $this->post(route('rentals.store'), $rentalData + ['collection_assignee_id' => $collector->id])
+            ->assertSessionHasNoErrors();
+        $rental = \App\Models\Rental::sole();
+        $this->assertFalse($rental->isVendorSupplied());
+        $this->assertSame(3, (int) $product->fresh()->available_quantity);
+        $this->assertSame($vendor->id, $rental->vendorOrderDetail->vendor_id);
+        $this->assertSame('vendor_delivery', $rental->vendorOrderDetail->delivery_responsibility);
+        $this->assertDatabaseHas('deliveries', ['rental_id' => $rental->id, 'assignment_type' => 'vendor']);
+        $this->assertDatabaseHas('follow_ups', [
+            'assigned_user_id' => $collector->id, 'rental_id' => $rental->id,
+            'invoice_id' => \App\Models\Invoice::where('rental_id', $rental->id)->sole()->id,
+            'source' => 'order_collection:pay_on_delivery',
+        ]);
+
+        $this->post(route('rentals.store'), $this->rentalPayload($customer->id, $product->id, [
+            'delivery_assignment_type' => 'third_party', 'third_party_name' => 'One-time courier',
+        ]))->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('deliveries', ['assignment_type' => 'third_party', 'third_party_name' => 'One-time courier']);
+
+        $sellable = $this->makeSaleProduct($organization->id);
+        $this->get(route('sales.create'))->assertOk()->assertSee('Assign collection to Sales');
+        $this->post(route('sales.store'), $this->salePayload($customer->id, $sellable->id, [
+            'collection_mode' => 'cash', 'collection_assignee_id' => $collector->id,
+        ]))->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('follow_ups', [
+            'assigned_user_id' => $collector->id, 'sale_id' => Sale::sole()->id, 'source' => 'order_collection:cash',
+        ]);
+        $this->assertDatabaseCount('payments', 0);
+        $this->actingAs($collector)->get(route('communication-center.index'))
+            ->assertOk()->assertSee('Payment on delivery for')->assertSee('Cash collection for');
+    }
+
     public function test_vendor_supplied_rental_accepts_dual_purpose_product_without_ph_asset_requirement(): void
     {
         $organization = TestData::organization();

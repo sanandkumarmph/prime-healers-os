@@ -586,17 +586,13 @@ class RentalController extends Controller
     {
         $requested = (string) $request->input('delivery_assignment_type', '');
         if (in_array($requested, ['ph_internal', 'vendor', 'customer_pickup', 'third_party'], true)) {
-            if (!$isVendorSupplied && $requested === 'vendor') {
-                return 'ph_internal';
-            }
-
             return $requested;
         }
 
         $legacyResponsibility = (string) $request->input('delivery_responsibility', '');
 
         return match ($legacyResponsibility) {
-            'vendor_delivery' => 'vendor',
+            'vendor_delivery' => $isVendorSupplied ? 'vendor' : 'ph_internal',
             'customer_pickup' => 'customer_pickup',
             default => $isVendorSupplied ? 'vendor' : 'ph_internal',
         };
@@ -629,7 +625,9 @@ class RentalController extends Controller
         if ($isVendorSupplied) {
             $merge['dispatch_warehouse_id'] = null;
         } else {
-            $merge['vendor_id'] = null;
+            $merge['vendor_id'] = $assignmentType === 'vendor'
+                ? $request->input('delivery_vendor_id', $request->input('vendor_id'))
+                : null;
         }
 
         if (in_array($assignmentType, ['vendor', 'customer_pickup'], true)) {
@@ -747,16 +745,14 @@ class RentalController extends Controller
             'fulfilment_source' => $isVendorSupplied
                 ? VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED
                 : VendorOrderDetail::FULFILMENT_SOURCE_IN_HOUSE,
-            'vendor_id' => $isVendorSupplied && $request->filled('vendor_id')
-                ? (int) $request->input('vendor_id')
-                : null,
-            'delivery_responsibility' => $isVendorSupplied
+            'vendor_id' => $request->filled('vendor_id') ? (int) $request->input('vendor_id') : null,
+            'delivery_responsibility' => $isVendorSupplied || $request->input('delivery_assignment_type') === 'vendor'
                 ? ($request->input('delivery_responsibility') ?: 'vendor_delivery')
                 : 'ph_internal_delivery',
             'pickup_responsibility' => $isVendorSupplied
                 ? ($request->input('pickup_responsibility') ?: 'vendor_pickup')
                 : 'ph_internal_pickup',
-            'vendor_order_status' => $isVendorSupplied ? 'requested' : 'draft',
+            'vendor_order_status' => $isVendorSupplied || $request->input('delivery_assignment_type') === 'vendor' ? 'requested' : 'draft',
         ];
     }
 
@@ -6695,7 +6691,9 @@ class RentalController extends Controller
         $primaryRentalAssetIndex = $this->primaryRentalAssetIndex($rentalProducts);
         $referralSourceOptions = $this->referralSourceOptions();
 
-        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'vendors', 'fulfilmentVendors', 'warehouses', 'organization', 'selectedCustomer', 'cities', 'primaryRentalAssetIndex', 'referralSourceOptions'));
+        $collectionAssignees = app(FollowUpManager::class)->collectionAssignees($this->orgId());
+
+        return view('rentals.create', compact('products', 'rentalProducts', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'saleAssets', 'staffMembers', 'assignableUsers', 'vendors', 'fulfilmentVendors', 'warehouses', 'organization', 'selectedCustomer', 'cities', 'primaryRentalAssetIndex', 'referralSourceOptions', 'collectionAssignees'));
     }
 
     public function businessPartnerActualClients(BusinessPartner $businessPartner)
@@ -6788,8 +6786,9 @@ class RentalController extends Controller
             'fulfilment_source' => ['nullable', Rule::in(VendorOrderDetail::FULFILMENT_SOURCES)],
             'vendor_id' => [
                 'required_if:fulfilment_source,vendor_supplied',
+                'required_if:delivery_assignment_type,vendor',
                 'nullable',
-                Rule::exists('vendors', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+                Rule::exists('vendors', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())->where('is_active', true)),
             ],
             'delivery_assignment_type' => ['nullable', Rule::in(['ph_internal', 'vendor', 'customer_pickup', 'third_party'])],
             'delivery_responsibility' => ['nullable', Rule::in(VendorOrderDetail::DELIVERY_RESPONSIBILITIES)],
@@ -6879,7 +6878,9 @@ class RentalController extends Controller
 
         $incentive = app(\App\Services\Sales\OrderIncentiveCredit::class);
         $credit = $incentive->prepare($request);
-        [$rental, $invoice] = DB::transaction(function () use ($request, $product, $customerContext, $selectedAssets, $saleItems, $rentalItems, $deliveryAssignment, $fulfilment, $vendorSupplied, $incentive, $credit) {
+        $followUps = app(FollowUpManager::class);
+        $collector = $followUps->collectionAssignment($request);
+        [$rental, $invoice] = DB::transaction(function () use ($request, $product, $customerContext, $selectedAssets, $saleItems, $rentalItems, $deliveryAssignment, $fulfilment, $vendorSupplied, $incentive, $credit, $followUps, $collector) {
             $rental = Rental::create([
                 'organization_id' => $this->orgId(),
                 'customer_id' => $customerContext['customer_id'],
@@ -6936,11 +6937,11 @@ class RentalController extends Controller
             ];
 
             if ($this->hasDeliveryAssignmentTypeColumn()) {
-                $deliveryData['assignment_type'] = $deliveryAssignment['user_id']
+                $deliveryData['assignment_type'] = $fulfilment['delivery_responsibility'] === 'vendor_delivery' ? 'vendor' : ($deliveryAssignment['user_id']
                     ? (($deliveryAssignment['user_role'] ?? null) === User::ROLE_VENDOR ? 'vendor' : 'delivery_team')
                     : (($deliveryAssignment['type'] ?? null) === 'third_party'
                         ? 'third_party'
-                        : (($deliveryAssignment['staff_role'] ?? null) === 'third_party' ? 'third_party' : ($deliveryAssignment['staff_id'] ? 'vendor' : 'delivery_team')));
+                        : (($deliveryAssignment['staff_role'] ?? null) === 'third_party' ? 'third_party' : ($deliveryAssignment['staff_id'] ? 'vendor' : 'delivery_team'))));
             }
 
             if ($this->hasDeliveryAssignedUserColumn()) {
@@ -6969,7 +6970,7 @@ class RentalController extends Controller
                     : null;
             }
 
-            if (($fulfilment['delivery_responsibility'] ?? 'ph_internal_delivery') === 'ph_internal_delivery') {
+            if ($fulfilment['delivery_responsibility'] === 'ph_internal_delivery' || (!$vendorSupplied && $fulfilment['delivery_responsibility'] === 'vendor_delivery')) {
                 Delivery::create($deliveryData);
             }
 
@@ -6980,6 +6981,9 @@ class RentalController extends Controller
             $this->syncRentalSaleItems($rental, $saleItems);
             $this->syncAutoGeneratedRentalSales($rental);
             $invoice = $this->createRentalInvoice($rental);
+            if ($collector) {
+                $followUps->assignOrderCollection($rental, $invoice, $collector, $request->input('collection_mode'), $request->user());
+            }
             $this->vendorFulfilmentService()->syncRental($rental, $fulfilment + [
                 'notes' => $request->input('notes'),
             ]);
@@ -7678,8 +7682,9 @@ class RentalController extends Controller
             'fulfilment_source' => ['nullable', Rule::in(VendorOrderDetail::FULFILMENT_SOURCES)],
             'vendor_id' => [
                 'required_if:fulfilment_source,vendor_supplied',
+                'required_if:delivery_assignment_type,vendor',
                 'nullable',
-                Rule::exists('vendors', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())),
+                Rule::exists('vendors', 'id')->where(fn ($query) => $query->where('organization_id', $this->orgId())->where('is_active', true)),
             ],
             'delivery_assignment_type' => ['nullable', Rule::in(['ph_internal', 'vendor', 'customer_pickup', 'third_party'])],
             'delivery_responsibility' => ['nullable', Rule::in(VendorOrderDetail::DELIVERY_RESPONSIBILITIES)],
@@ -7749,6 +7754,18 @@ class RentalController extends Controller
 
         if ($rental->status === 'returned') {
             return redirect('/rentals')->with('success', 'Returned rental cannot be edited.');
+        }
+
+        $currentVendorDelivery = !$rental->isVendorSupplied() && $rental->delivery_responsibility === 'vendor_delivery';
+        $newVendorDelivery = !$vendorSupplied && $fulfilment['delivery_responsibility'] === 'vendor_delivery';
+        if ($currentVendorDelivery || $newVendorDelivery) {
+            $sameVendor = $currentVendorDelivery && $newVendorDelivery && (int) $rental->vendor_id === $fulfilment['vendor_id'];
+            if (!$sameVendor && $rental->deliveryRecord?->hasProtectedWorkflowHistory()) {
+                throw ValidationException::withMessages(['delivery_assignment_type' => 'This delivery has saved history. Reconcile it before changing the delivery vendor.']);
+            }
+            if ($sameVendor && $rental->vendorOrderDetail?->vendor_order_status) {
+                $fulfilment['vendor_order_status'] = $rental->vendorOrderDetail->vendor_order_status;
+            }
         }
 
         $oldProduct = Product::where('organization_id', $this->orgId())->findOrFail($rental->product_id);
@@ -7839,11 +7856,11 @@ class RentalController extends Controller
             $deliveryAssignmentUpdates = [];
 
             if ($this->hasDeliveryAssignmentTypeColumn()) {
-                $deliveryAssignmentUpdates['assignment_type'] = $deliveryAssignment['user_id']
+                $deliveryAssignmentUpdates['assignment_type'] = $fulfilment['delivery_responsibility'] === 'vendor_delivery' ? 'vendor' : ($deliveryAssignment['user_id']
                     ? (($deliveryAssignment['user_role'] ?? null) === User::ROLE_VENDOR ? 'vendor' : 'delivery_team')
                     : (($deliveryAssignment['type'] ?? null) === 'third_party'
                         ? 'third_party'
-                        : (($deliveryAssignment['staff_role'] ?? null) === 'third_party' ? 'third_party' : ($deliveryAssignment['staff_id'] ? 'vendor' : 'delivery_team')));
+                        : (($deliveryAssignment['staff_role'] ?? null) === 'third_party' ? 'third_party' : ($deliveryAssignment['staff_id'] ? 'vendor' : 'delivery_team'))));
             }
 
             if ($this->hasDeliveryAssignedUserColumn()) {
@@ -7880,7 +7897,7 @@ class RentalController extends Controller
                 ->where('type', 'delivery')
                 ->where('status', '!=', 'completed');
 
-            if (($fulfilment['delivery_responsibility'] ?? 'ph_internal_delivery') === 'ph_internal_delivery') {
+            if ($fulfilment['delivery_responsibility'] === 'ph_internal_delivery' || (!$vendorSupplied && $fulfilment['delivery_responsibility'] === 'vendor_delivery')) {
                 if (!empty($deliveryAssignmentUpdates)) {
                     $openDeliveryTasks->update($deliveryAssignmentUpdates);
                 }
@@ -7894,7 +7911,7 @@ class RentalController extends Controller
                         'status' => 'pending',
                         'notes' => filled($request->input('delivery_notes'))
                             ? trim((string) $request->input('delivery_notes'))
-                            : 'Auto-created after rental fulfilment changed to PH internal delivery.',
+                            : 'Auto-created after rental delivery assignment changed.',
                     ];
 
                     if ($this->hasDeliveryAssignmentTypeColumn()) {

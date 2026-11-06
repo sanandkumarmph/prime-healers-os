@@ -139,6 +139,12 @@ class User extends Authenticatable
             ]);
     }
 
+    public function canPlanDeliveryRoutes(): bool
+    {
+        return $this->canAccessModule('deliveries', 'read')
+            && ($this->isSales() || $this->isSalesRenewals() || $this->isDelivery() || $this->canViewConsolidatedFinance());
+    }
+
     public function canAccessAssignedWork(): bool
     {
         return $this->canAccessModule('deliveries', 'read');
@@ -258,6 +264,10 @@ class User extends Authenticatable
 
         if ($this->isFinance()) {
             return $action === 'read' && in_array($module, ['invoices', 'payments', 'reports'], true);
+        }
+
+        if ($this->isSales() && in_array($module, ['enquiries', 'quotations'], true)) {
+            return in_array($action, ['read', 'create', 'update'], true);
         }
 
         if ($this->hasStandardAdminAccess() && isset(Role::MODULES[$module])) {

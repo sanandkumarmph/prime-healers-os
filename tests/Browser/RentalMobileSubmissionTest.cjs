@@ -49,14 +49,25 @@ test('mobile rental create and edit submit the owning form and follow availabili
                 page.on('request',req=>req.url().startsWith(origin+'/')||req.url().startsWith('data:')?req.continue():req.respond({status:200,contentType:'text/css',body:''}));
                 await page.goto(origin+'/fixture/'+mode,{waitUntil:'networkidle0'});
                 await page.addStyleTag({content:'*{scroll-behavior:auto!important}'});
-                await page.evaluate(()=>{
+                await page.evaluate((mode)=>{
                     window.rentalSubmits=[];
                     document.addEventListener('submit',event=>{event.preventDefault();window.rentalSubmits.push({action:event.target.getAttribute('action'),data:Object.fromEntries(new FormData(event.target,event.submitter)),submitter:event.submitter?.id});},true);
                     const set=(id,value)=>{const e=document.getElementById(id);if(e){e.value=value;e.dispatchEvent(new Event('change',{bubbles:true}));e.dispatchEvent(new Event('input',{bubbles:true}));}};
                     const choose=id=>{const e=document.getElementById(id);if(e)set(id,Array.from(e.options).find(o=>o.value)?.value||'');};
                     choose('city_id');choose('customer_id');choose('product_id');choose('dispatch_warehouse_id');set('quantity','1');set('start_date','2026-11-05');set('end_date','2026-11-10');set('rental_amount','600');set('delivery_assignment_type','customer_pickup');window.updateSummary?.();
+                    if (mode === 'create') {
+                        const delivery = document.getElementById('delivery_assignment_type');
+                        if (![...delivery.options].some(option => option.value === 'vendor')) throw new Error('Vendor delivery is missing');
+                        set('delivery_assignment_type', 'third_party');
+                        if (document.getElementById('delivery_staff_id').value !== 'third_party') throw new Error('One-time logistics option is unavailable');
+                        set('delivery_assignment_type', 'vendor');
+                        if (document.getElementById('delivery_vendor_id').disabled) throw new Error('Delivery vendor is disabled for PH stock');
+                        choose('delivery_vendor_id');
+                        set('collection_mode', 'pay_on_delivery');
+                        choose('collection_assignee_id');
+                    }
                     document.querySelector('[data-rental-wizard-tab="review"]').click();
-                });
+                }, mode);
                 if(mode==='create'){
                     await page.waitForSelector('#incentive_owner_id',{visible:true});
                     const owner=await page.$eval('#incentive_owner_id',el=>[...el.options].find(option=>option.textContent==='Earlier shift salesperson').value);
@@ -92,6 +103,11 @@ test('mobile rental create and edit submit the owning form and follow availabili
                 if(mode==='create'){
                     assert.ok(submissions[0].data.incentive_owner_id);
                     assert.equal(submissions[0].data.incentive_source,'incoming_phone');
+                    assert.equal(submissions[0].data.fulfilment_source, 'in_house');
+                    assert.equal(submissions[0].data.delivery_assignment_type, 'vendor');
+                    assert.equal(submissions[0].data.delivery_vendor_id, '1');
+                    assert.equal(submissions[0].data.collection_mode, 'pay_on_delivery');
+                    assert.ok(submissions[0].data.collection_assignee_id);
                 }else{
                     assert.equal(submissions[0].data.incentive_owner_id,undefined);
                 }

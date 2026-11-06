@@ -92,7 +92,11 @@ class DeliveryRoutePlannerTest extends TestCase
 
         $this->actingAs($admin)->get(route('deliveries.route-plan', ['date' => $date, 'driver' => $other->id]))
             ->assertOk()->assertViewHas('stops', fn ($stops) => count($stops) === 1 && $stops[0]['task']->id === $otherTask->id);
-        $this->actingAs($sales)->get(route('deliveries.route-plan', ['date' => $date]))->assertForbidden();
+        $this->actingAs($sales)->get(route('deliveries.route-plan', ['date' => $date, 'driver' => $other->id]))
+            ->assertOk()->assertSee('Different driver fixture')->assertDontSee('First appointment');
+        $this->get(route('deliveries.index'))->assertOk()->assertSee('Plan route');
+        $this->actingAs(TestData::user($organization, ['role' => User::ROLE_FINANCE]))
+            ->getJson(route('deliveries.route-plan', ['date' => $date]))->assertForbidden();
     }
 
     public function test_warehouse_pin_can_be_saved_and_requires_both_coordinates(): void

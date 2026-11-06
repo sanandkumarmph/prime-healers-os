@@ -2808,7 +2808,7 @@
                 @endif
             </div>
 
-            <div class="rental-field rental-col-4{{ $hasFieldError('vendor_id') ? ' is-error' : '' }}" id="vendorField">
+            <div class="rental-field rental-col-4{{ $selectedFulfilmentSource === 'vendor_supplied' && $hasFieldError('vendor_id') ? ' is-error' : '' }}" id="vendorField">
                 <label for="vendor_id">Vendor</label>
                 <select name="vendor_id" id="vendor_id">
                     <option value="">Select vendor when vendor supplied</option>
@@ -2823,7 +2823,7 @@
                     @endforeach
                 </select>
                 <span class="hint" id="vendorCityHint">No active vendors available for this city.</span>
-                @if($hasFieldError('vendor_id'))
+                @if($selectedFulfilmentSource === 'vendor_supplied' && $hasFieldError('vendor_id'))
                     <span class="field-error">{{ $fieldError('vendor_id') }}</span>
                 @endif
             </div>
@@ -3227,6 +3227,19 @@
                 @endif
             </div>
 
+            <div class="rental-field rental-col-6" id="rentalDeliveryVendorField" style="{{ $selectedDeliveryAssignmentType === 'vendor' && $selectedFulfilmentSource !== 'vendor_supplied' ? '' : 'display:none;' }}">
+                <label for="delivery_vendor_id">Delivery vendor</label>
+                <select name="delivery_vendor_id" id="delivery_vendor_id">
+                    <option value="">Select delivery vendor</option>
+                    @foreach($fulfilmentVendors as $vendor)
+                        <option value="{{ $vendor->id }}" @selected((int) old('delivery_vendor_id', $selectedFulfilmentVendorId) === (int) $vendor->id)>{{ $vendor->name }}</option>
+                    @endforeach
+                </select>
+                @if($selectedFulfilmentSource !== 'vendor_supplied')
+                    @error('vendor_id')<span class="field-error">{{ $message }}</span>@enderror
+                @endif
+            </div>
+
             <div class="rental-field {{ $isEdit ? 'rental-col-3' : 'rental-col-6' }}{{ $hasFieldError('delivery_staff_id') ? ' is-error' : '' }}" id="deliveryPartnerField">
                 <label for="delivery_staff_id" id="deliveryPartnerLabel">Delivery Partner</label>
                 <select name="delivery_staff_id" id="delivery_staff_id">
@@ -3340,6 +3353,8 @@
                     </div>
                 </div>
             </div>
+
+            @include('components.order-collection-assignment', ['fieldClass' => 'rental-field rental-col-4', 'errorClass' => 'field-error'])
 
             @if($isEdit)
             <div class="rental-field rental-col-3{{ $hasFieldError('pickup_staff_id') ? ' is-error' : '' }}">
@@ -3754,11 +3769,7 @@
                 return false;
             }
 
-            if (isVisibleAndEnabled('delivery_staff_id') && !hasValue('delivery_staff_id')) {
-                return false;
-            }
-
-            return true;
+            return !missingFieldsForStep('delivery').length;
         };
         const areRequiredFieldsComplete = (stepName) => {
             if (stepName === 'fulfilment') {
@@ -3832,6 +3843,10 @@
             if (stepName === 'delivery') {
                 if (!hasValue('delivery_assignment_type')) missing.push('delivery assignment');
                 if (isVisibleAndEnabled('delivery_staff_id') && !hasValue('delivery_staff_id')) missing.push('delivery staff');
+                if (isVisibleAndEnabled('delivery_vendor_id') && !hasValue('delivery_vendor_id')) missing.push('delivery vendor');
+                if (valueOf('delivery_assignment_type') === 'third_party' && valueOf('delivery_staff_id') === 'third_party' && !hasValue('third_party_name')) missing.push('logistics partner name');
+                if (hasValue('collection_mode') && !hasValue('collection_assignee_id')) missing.push('Sales collection assignee');
+                if (hasValue('collection_assignee_id') && !hasValue('collection_mode')) missing.push('payment collection type');
             }
 
             return missing;
@@ -8527,7 +8542,8 @@
 
         const originalWarehouseNodes = warehouseSelect ? Array.from(warehouseSelect.children).map((node) => node.cloneNode(true)) : [];
         const originalVendorNodes = vendorSelect ? Array.from(vendorSelect.children).map((node) => node.cloneNode(true)) : [];
-        const originalAssignmentTypeNodes = Array.from(deliveryAssignmentTypeSelect.children).map((node) => node.cloneNode(true));
+        const deliveryVendorField = document.getElementById('rentalDeliveryVendorField');
+        const deliveryVendorSelect = document.getElementById('delivery_vendor_id');
         const originalDeliveryPartnerNodes = deliveryAssignmentSelect ? Array.from(deliveryAssignmentSelect.children).map((node) => node.cloneNode(true)) : [];
 
         function syncProductOptionLabels() {
@@ -8638,33 +8654,6 @@
             return visibleCount;
         }
 
-        function updateAssignmentTypeOptions() {
-            const isVendorSupplied = fulfilmentSourceSelect.value === 'vendor_supplied';
-            const previousValue = deliveryAssignmentTypeSelect.value;
-            deliveryAssignmentTypeSelect.innerHTML = '';
-
-            originalAssignmentTypeNodes.forEach((node) => {
-                const clone = node.cloneNode(true);
-                if (clone.tagName !== 'OPTION') {
-                    return;
-                }
-
-                if (!isVendorSupplied && clone.value === 'vendor') {
-                    return;
-                }
-
-                deliveryAssignmentTypeSelect.appendChild(clone);
-            });
-
-            if (deliveryAssignmentTypeSelect.querySelector(`option[value="${previousValue}"]`)) {
-                deliveryAssignmentTypeSelect.value = previousValue;
-            } else if (!isVendorSupplied && previousValue === 'vendor') {
-                deliveryAssignmentTypeSelect.value = 'ph_internal';
-            } else if (isVendorSupplied && !deliveryAssignmentTypeSelect.value) {
-                deliveryAssignmentTypeSelect.value = 'vendor';
-            }
-        }
-
         function updatePartnerField() {
             const isVendorSupplied = fulfilmentSourceSelect.value === 'vendor_supplied';
             const assignmentType = deliveryAssignmentTypeSelect.value;
@@ -8679,6 +8668,10 @@
             if (pickupResponsibilityInput) {
                 pickupResponsibilityInput.value = isVendorSupplied ? 'vendor_pickup' : 'ph_internal_pickup';
             }
+
+            const chooseDeliveryVendor = assignmentType === 'vendor' && !isVendorSupplied;
+            deliveryVendorField.style.display = chooseDeliveryVendor ? '' : 'none';
+            deliveryVendorSelect.disabled = !chooseDeliveryVendor;
 
             const showPartnerField = assignmentType === 'ph_internal' || assignmentType === 'third_party';
             if (deliveryPartnerField) {
@@ -8698,7 +8691,7 @@
                 return;
             }
 
-            deliveryAssignmentSelect.disabled = !cityChosen;
+            deliveryAssignmentSelect.disabled = !cityChosen && assignmentType !== 'third_party';
 
             const visiblePartners = rebuildSelect(
                 deliveryAssignmentSelect,
@@ -8709,7 +8702,7 @@
                     const optionCityName = (option.getAttribute('data-city-name') || '').trim();
                     const hasCityMeta = optionCityId > 0 || optionCityName !== '';
                     if (assignmentType === 'third_party') {
-                        return option.getAttribute('data-always-visible') === '1' || (kind === 'third_party' && matchesCity(option));
+                        return option.getAttribute('data-always-visible') === '1' || (cityChosen && kind === 'third_party' && matchesCity(option));
                     }
 
                     if (kind === 'third_party' || option.value === 'third_party') {
@@ -8734,7 +8727,7 @@
 
             if (deliveryPartnerHint) {
                 deliveryPartnerHint.textContent = !cityChosen
-                    ? 'Select city first to load matching delivery partners.'
+                    ? (assignmentType === 'third_party' ? 'Enter a one-time partner or select a city to see saved partners.' : 'Select city first to load matching delivery partners.')
                     : (visiblePartners > 0
                         ? (assignmentType === 'third_party'
                             ? 'Choose a saved logistics partner for this city or use the one-time partner option.'
@@ -8809,7 +8802,6 @@
 
             syncProductOptionLabels();
 
-            updateAssignmentTypeOptions();
             updatePartnerField();
 
             if (!isVendorSupplied && productSelect?.value) {

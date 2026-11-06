@@ -2767,7 +2767,7 @@ class DeliveryController extends Controller
     {
         $this->authorize('viewAny', Delivery::class);
         $user = $request->user();
-        abort_unless($user->canViewConsolidatedFinance() || $user->isDelivery(), 403);
+        abort_unless($user->canPlanDeliveryRoutes(), 403);
         $input = $request->validate([
             'date' => ['nullable', 'date_format:Y-m-d'],
             'driver' => ['nullable', 'integer', 'min:1'],
