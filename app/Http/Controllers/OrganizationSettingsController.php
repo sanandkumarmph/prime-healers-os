@@ -16,7 +16,14 @@ class OrganizationSettingsController extends Controller
         $organization = $this->organization();
         $this->authorize('view', $organization);
 
-        return view('organization.settings', compact('organization'));
+        $user = auth()->user();
+        $canManagePaymentSettings = ($user->isSuperAdmin() || $user->isAdminOperations())
+            && $user->can('update', $organization);
+        $paymentAccount = $canManagePaymentSettings
+            ? \App\Models\CustomerPaymentAccount::where('organization_id', $organization->id)->where('is_active', true)->first()
+            : null;
+
+        return view('organization.settings', compact('organization', 'canManagePaymentSettings', 'paymentAccount'));
     }
 
     public function update(Request $request)

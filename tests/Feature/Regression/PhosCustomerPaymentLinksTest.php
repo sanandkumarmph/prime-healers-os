@@ -210,7 +210,8 @@ class PhosCustomerPaymentLinksTest extends TestCase
     {
         $this->assertNotSame('fixture_key_secret', $this->account->getRawOriginal('key_secret'));
         $this->assertArrayNotHasKey('key_secret', $this->account->toArray());
-        $this->get(route('customer-payments.settings'))->assertOk()->assertDontSee('fixture_key_secret');
+        $this->get(route('customer-payments.settings'))->assertRedirect(route('organization.settings.edit').'#payments');
+        $this->get(route('organization.settings.edit'))->assertOk()->assertDontSee('fixture_key_secret');
         $this->post(route('customer-payments.settings.save'), ['mode'=>'test', 'key_id'=>'rzp_test_new',
             'key_secret'=>'secret-should-never-be-flashed', 'current_password'=>'incorrect'])->assertSessionHasErrors('current_password');
         $this->assertNull(session()->getOldInput('key_secret'));
@@ -275,11 +276,36 @@ class PhosCustomerPaymentLinksTest extends TestCase
         $this->assertSame(200, $response->getStatusCode());
         $this->assertTrue(str_contains($response->getContent(), 'Share on WhatsApp'), 'Missing WhatsApp action.');
         $this->assertTrue(str_contains($response->getContent(), 'No real money is collected'), 'Missing test payment notice.');
-        $settings = $this->get(route('customer-payments.settings'))->assertOk();
+        $settings = $this->get(route('organization.settings.edit'))->assertOk();
         if ($dir = getenv('PHOS_PAYMENT_PREVIEW_DIR')) {
             if (!is_dir($dir)) mkdir($dir,0777,true);
             file_put_contents($dir.'/payment-link.html',$response->getContent());
             file_put_contents($dir.'/payment-settings.html',$settings->getContent());
         }
+    }
+
+    public function test_company_settings_shows_webhook_and_separate_payment_form_without_a_sidebar_entry(): void
+    {
+        $response = $this->get(route('organization.settings.edit'))->assertOk();
+        $html = $response->getContent();
+        $document = new \DOMDocument();
+        $document->loadHTML($html, LIBXML_NOERROR | LIBXML_NOWARNING);
+        $xpath = new \DOMXPath($document);
+        $this->assertSame(1, $xpath->query('//section[@data-org-section="payments"]')->length);
+        $this->assertSame(1, $xpath->query('//*[@id="webhook-url"]')->length);
+        $this->assertSame(1, $xpath->query('//*[@data-toggle-secret="webhook-secret"]')->length);
+        $this->assertSame($this->account->webhook_secret, $xpath->evaluate('string(//*[@id="webhook-secret"]/@value)'));
+        $this->assertSame(0, $xpath->query('//form//form')->length);
+        $this->assertSame('customerPaymentAccountForm', $xpath->evaluate('string(//*[@name="key_secret"]/@form)'));
+        $this->assertSame(0, $xpath->query('//*[@data-sidebar-group="organization-settings"]//a[@href="'.route('customer-payments.settings').'"]')->length);
+        $this->assertSame(1, $xpath->query('//*[@id="gateway-mode"]/option[@value="live" and @disabled]')->length);
+    }
+
+    public function test_company_settings_explains_webhook_availability_before_api_keys_are_saved(): void
+    {
+        $this->account->delete();
+        $html = $this->get(route('organization.settings.edit'))->assertOk()->getContent();
+        $this->assertStringContainsString('Save your test API keys below to generate your webhook URL and secret.', $html);
+        $this->assertStringNotContainsString('id="webhook-secret"', $html);
     }
 }

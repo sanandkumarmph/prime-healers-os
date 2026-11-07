@@ -29,10 +29,7 @@ class CustomerPaymentController extends Controller
         $organization = $request->user()->organization;
         $this->authorizeSettings($request);
 
-        return response()->view('customer-payments.settings', [
-            'organization' => $organization,
-            'account' => CustomerPaymentAccount::where('organization_id', $organization->id)->where('is_active', true)->first(),
-        ])->header('Cache-Control', 'private, no-store');
+        return redirect()->to(route('organization.settings.edit').'#payments');
     }
 
     public function saveSettings(Request $request)
@@ -62,7 +59,8 @@ class CustomerPaymentController extends Controller
             ActivityLogger::log('payment_account.configured', $organization, ['mode' => $data['mode']], 'Customer payment account configured.');
         });
 
-        return redirect()->route('customer-payments.settings')->with('success', 'Account saved. Add the webhook below in Razorpay before creating a payment link.');
+        return redirect()->to(route('organization.settings.edit').'#payments')
+            ->with('success', 'Razorpay settings saved. Copy the webhook URL and secret below into your Razorpay Test Mode dashboard.');
     }
 
     private function invoice(Request $request, int $id, bool $write = false): Invoice

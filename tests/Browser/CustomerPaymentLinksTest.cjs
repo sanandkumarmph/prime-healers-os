@@ -27,11 +27,11 @@ test('payment settings and WhatsApp sharing remain readable on phones and deskto
         await page.setRequestInterception(true);page.on('pageerror',e=>report.errors.push(e.message));
         page.on('request',r=>r.url().startsWith(origin+'/')||r.url().startsWith('data:')?r.continue():r.respond({status:200,body:''}));
         for(const screen of ['link','settings']){
-            await page.goto(origin+'/'+screen,{waitUntil:'networkidle0'});
+            await page.goto(origin+'/'+screen+(screen==='settings'?'#payments':''),{waitUntil:'networkidle0'});
             for(const width of [1440,1280,1024,768,480,390,360,320]){
                 await page.setViewport({width,height:900});await page.evaluate(()=>new Promise(r=>requestAnimationFrame(r)));
                 const layout=await page.evaluate(()=>({width:document.documentElement.scrollWidth,
-                    controls:[...document.querySelectorAll('.sw input,.sw select,.sw button,.sw a.sw-btn')].filter(el=>el.getClientRects().length).map(el=>({right:el.getBoundingClientRect().right,left:el.getBoundingClientRect().left}))}));
+                    controls:[...document.querySelectorAll('.sw input,.sw select,.sw button,.sw a.sw-btn,.company-settings-page input,.company-settings-page select,.company-settings-page .settings-btn')].filter(el=>el.getClientRects().length).map(el=>({right:el.getBoundingClientRect().right,left:el.getBoundingClientRect().left}))}));
                 assert.ok(layout.width<=width+1,JSON.stringify({screen,width,...layout}));
                 assert.ok(layout.controls.every(c=>c.left>=0&&c.right<=width+1),JSON.stringify({screen,width,...layout}));
                 report.checks.push({screen,width});
@@ -46,8 +46,21 @@ test('payment settings and WhatsApp sharing remain readable on phones and deskto
                 report.checks.push({whatsappMessageVerified:true});
             }else{
                 assert.equal(await page.$eval('#gateway-secret',el=>el.type),'password');
-                assert.equal(await page.$eval('#gateway-mode',el=>el.options.length),1);
-                report.checks.push({testOnlyAndSecretsMasked:true});
+                assert.equal(await page.$eval('#gateway-mode',el=>el.querySelector('[value="live"]').disabled),true);
+                assert.equal(await page.$eval('[data-org-section="payments"]',el=>getComputedStyle(el).display),'grid');
+                await page.$eval('[data-toggle-secret="webhook-secret"]',el=>el.scrollIntoView({block:'center'}));
+                await page.evaluate(()=>new Promise(r=>requestAnimationFrame(r)));
+                await page.click('[data-toggle-secret="webhook-secret"]');
+                assert.equal(await page.$eval('#webhook-secret',el=>el.type),'text');
+                await page.click('[data-toggle-secret="webhook-secret"]');
+                assert.equal(await page.$eval('#webhook-secret',el=>el.type),'password');
+                const forms=await page.evaluate(()=>{
+                    document.getElementById('gateway-secret').value='synthetic-secret';
+                    const company=document.getElementById('companySettingsForm'),payment=document.getElementById('customerPaymentAccountForm');
+                    return {nested:company.querySelectorAll('form').length,leaks:new FormData(company).has('key_secret'),payment:new FormData(payment).get('key_secret')};
+                });
+                assert.deepEqual(forms,{nested:0,leaks:false,payment:'synthetic-secret'});
+                report.checks.push({testOnlyAndSecretsMasked:true,companySettingsOwnsPaymentSection:true,credentialFormsIsolated:true});
             }
         }
         assert.deepEqual(report.errors,[]);assert.deepEqual(report.writes,[]);

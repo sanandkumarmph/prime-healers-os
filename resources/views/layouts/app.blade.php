@@ -239,7 +239,6 @@
     $dashboardSettingsHref = ($currentUser?->canAccessModule('settings', 'read') ?? false) ? $safeRoute('organization.dashboard-settings.edit') : null;
 
     $organizationItems = [
-        ['label' => 'Online Payments', 'icon' => 'settings', 'href' => $safeRoute('customer-payments.settings'), 'active' => request()->routeIs('customer-payments.settings*'), 'visible' => $currentUser && ($currentUser->isSuperAdmin() || $currentUser->isAdminOperations()) && $currentUser->canAccessModule('settings', 'update')],
         ['label' => 'Company Profile', 'icon' => 'settings', 'href' => $companyHref, 'active' => request()->routeIs('organization.settings.*'), 'visible' => !empty($companyHref)],
         ['label' => 'Dashboard Settings', 'icon' => 'dashboard', 'href' => $dashboardSettingsHref, 'active' => request()->routeIs('organization.dashboard-settings.*'), 'visible' => !empty($dashboardSettingsHref)],
         ['label' => 'Preferences', 'icon' => 'settings', 'href' => $preferencesHref, 'active' => request()->routeIs('organization.settings.*'), 'visible' => false],

@@ -13,6 +13,17 @@ document.querySelectorAll('[data-copy-field]').forEach(button => {
     });
 });
 
+document.querySelectorAll('[data-toggle-secret]').forEach(button => {
+    button.addEventListener('click', () => {
+        const input = document.getElementById(button.dataset.toggleSecret);
+        if (!input) return;
+        const visible = input.type === 'password';
+        input.type = visible ? 'text' : 'password';
+        button.textContent = visible ? 'Hide secret' : 'Show secret';
+        button.setAttribute('aria-pressed', String(visible));
+    });
+});
+
 const watch = document.querySelector('[data-payment-watch]');
 if (watch) {
     const message = watch.querySelector('[data-payment-watch-message]');
