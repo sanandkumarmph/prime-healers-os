@@ -125,6 +125,9 @@ class RentalAgreementController extends Controller
             abort_unless($this->agreements->canIssueForQuote($quote), 409);
             return $this->agreements->issueForQuote($quote);
         });
+        if ($request->expectsJson()) {
+            return response()->json(['whatsapp_url' => $this->agreements->whatsapp($agreement, $quote->snapshot['recipient']['phone'] ?? null, 'Quotation '.$quote->number())], 200, self::PRIVATE_HEADERS);
+        }
         if ($request->input('destination') === 'whatsapp') {
             return redirect()->away($this->agreements->whatsapp($agreement, $quote->snapshot['recipient']['phone'] ?? null, 'Quotation '.$quote->number()));
         }

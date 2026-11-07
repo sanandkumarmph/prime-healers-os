@@ -142,13 +142,18 @@ class RentalAgreements
     public function whatsapp(RentalAgreement $agreement, ?string $phone, string $reference): string
     {
         $recipient = preg_replace('/\D/', '', PhoneNumber::normalize($phone) ?? '');
+        return 'https://wa.me/' . $recipient . '?text=' . rawurlencode($this->message($agreement, $reference));
+    }
+
+    public function message(RentalAgreement $agreement, string $reference): string
+    {
         $message = '*Prime Healers | Rental agreement*' . "\n" . $reference . "\n\n";
         $message .= $agreement->signed_at
             ? 'Thank you for signing. Download your signed copy: ' . $this->pdfLink($agreement)
             : 'Please review and sign before dispatch: ' . $this->link($agreement);
         $message .= "\n\n*Rental terms*\n" . $this->terms($agreement);
 
-        return 'https://wa.me/' . $recipient . '?text=' . rawurlencode($message);
+        return $message;
     }
 
     public function signatureOnWhite(string $signature): string

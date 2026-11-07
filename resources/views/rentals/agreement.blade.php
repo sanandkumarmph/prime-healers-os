@@ -17,7 +17,8 @@
                 · {{ $agreement->signed_at->timezone('Asia/Kolkata')->format('d M Y, h:i A') }} IST</p>
             @can('update', $rental)
                 @if($currentAgreement)
-                    <a class="rcc-agreement-button" href="{{ $agreements->whatsapp($agreement, $rental->billingContactPhone(), 'Rental #'.$rental->id) }}" target="_blank" rel="noopener noreferrer">Send signed copy on WhatsApp</a>
+                    <a class="rcc-agreement-button" href="{{ $agreements->whatsapp($agreement, $rental->billingContactPhone(), 'Rental #'.$rental->id) }}" target="_blank" rel="noopener noreferrer" data-phos-whatsapp>Send signed copy on WhatsApp</a>
+                    <button type="button" class="rcc-agreement-button" data-copy-whatsapp>Copy WhatsApp message</button>
                 @endif
                 <a class="rcc-agreement-button" href="{{ $agreements->pdfLink($agreement) }}">Download signed PDF</a>
                 @include('sales-workspace.rental-agreement-record')
@@ -27,7 +28,8 @@
             <p><strong>Awaiting signature.</strong> The customer must sign before dispatch.</p>
             @can('update', $rental)
                 @if($currentAgreement && !$agreement->quotation_id)
-                    <a class="rcc-agreement-button" href="{{ $agreements->whatsapp($agreement, $rental->billingContactPhone(), 'Rental #'.$rental->id) }}" target="_blank" rel="noopener noreferrer">Share on WhatsApp</a>
+                    <a class="rcc-agreement-button" href="{{ $agreements->whatsapp($agreement, $rental->billingContactPhone(), 'Rental #'.$rental->id) }}" target="_blank" rel="noopener noreferrer" data-phos-whatsapp>Share on WhatsApp</a>
+                    <button type="button" class="rcc-agreement-button" data-copy-whatsapp>Copy WhatsApp message</button>
                 @elseif(!$currentAgreement)
                     <form action="{{ route('rentals.agreement.reissue', $rental) }}" method="post">
                         @csrf
@@ -37,5 +39,8 @@
                 @endif
             @endcan
         @endif
+        @can('update', $rental)
+            @include('sales-workspace.terms-preview', ['previewReference' => 'Rental #'.$rental->id, 'allowTermsMessage' => $currentAgreement && ($agreement->signed_at || ($rental->status === 'active' && !$agreement->quotation_id))])
+        @endcan
     </section>
 @endif

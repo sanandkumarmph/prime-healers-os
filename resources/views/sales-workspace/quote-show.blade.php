@@ -6,6 +6,7 @@
     $shareText = $shareUrl ? app(\App\Services\Sales\QuotationSharing::class)->message($quote, $shareUrl) : '';
     $whatsappPhone = preg_replace('/\D/', '', \App\Support\PhoneNumber::normalize($quote->snapshot['recipient']['phone'] ?? null) ?? '');
     $email = filter_var($quote->snapshot['recipient']['email'] ?? '', FILTER_VALIDATE_EMAIL) ?: '';
+    $agreements = app(\App\Services\Sales\RentalAgreements::class);
     $requiresRentalSignature = $quote->kind === 'rental' && \App\Services\Sales\RentalAgreements::enabled();
 @endphp
 <div class="sw"><a href="{{ route('enquiries.show',$enquiry) }}">← Back to enquiry</a><header class="sw-head" style="margin-top:20px"><div><div class="sw-eyebrow">Quotation workspace</div><h1>{{ $quote->number() }}</h1><p class="sw-muted">{{ $enquiry->subject }}</p></div><div class="sw-actions"><a class="sw-btn" href="{{ route('quotations.pdf',$quote) }}">Download PDF</a>
@@ -32,22 +33,25 @@
 <section class="sw-panel"><h2>{{ $quote->shared_at ? 'Shared with customer' : ($quote->status==='sent' ? 'Ready to share' : 'Share quotation') }}</h2>
     <p class="sw-muted">Open a message, check the recipient, then send it from your app.</p>
     <div class="sw-actions">
-        <a class="sw-btn sw-primary" href="https://wa.me/{{ $whatsappPhone }}?text={{ rawurlencode($shareText) }}" target="_blank" rel="noopener noreferrer" data-share-channel="whatsapp">WhatsApp</a>
+        <a class="sw-btn sw-primary" href="https://wa.me/{{ $whatsappPhone }}?text={{ rawurlencode($shareText) }}" target="_blank" rel="noopener noreferrer" data-share-channel="whatsapp" data-phos-whatsapp>WhatsApp</a>
+        <button class="sw-btn" type="button" data-copy-whatsapp>Copy WhatsApp message</button>
         <a class="sw-btn" href="mailto:{{ $email }}?subject={{ rawurlencode('Quotation '.$quote->number()) }}&amp;body={{ rawurlencode($shareText) }}" data-share-channel="email">Email</a>
         <button class="sw-btn" type="button" id="copy-customer-link">Copy link</button>
     </div>
     @if($requiresRentalSignature)
         <div class="sw-actions" style="margin-top:12px">
             @if($rentalAgreement)
-                <a class="sw-btn sw-primary" href="{{ app(\App\Services\Sales\RentalAgreements::class)->whatsapp($rentalAgreement, $quote->snapshot['recipient']['phone'] ?? null, 'Quotation '.$quote->number()) }}" target="_blank" rel="noopener noreferrer">{{ $rentalAgreement->signed_at ? 'Send signed copy on WhatsApp' : 'Share Rental Terms' }}</a>
+                <a class="sw-btn sw-primary" href="{{ app(\App\Services\Sales\RentalAgreements::class)->whatsapp($rentalAgreement, $quote->snapshot['recipient']['phone'] ?? null, 'Quotation '.$quote->number()) }}" target="_blank" rel="noopener noreferrer" data-phos-whatsapp>{{ $rentalAgreement->signed_at ? 'Send signed copy on WhatsApp' : 'Share Rental Terms' }}</a>
+                <button class="sw-btn" type="button" data-copy-whatsapp>Copy WhatsApp message</button>
             @else
-                <form method="post" action="{{ route('quotations.rental-agreement.issue', $quote) }}" target="_blank" rel="noopener noreferrer">
+                <form method="post" action="{{ route('quotations.rental-agreement.issue', $quote) }}" target="_blank" rel="noopener noreferrer" data-phos-whatsapp-prepare>
                     @csrf
                     <input type="hidden" name="destination" value="whatsapp">
                     <button class="sw-btn sw-primary" type="submit">Share Rental Terms</button>
                 </form>
             @endif
         </div>
+        @include('sales-workspace.terms-preview', ['agreement' => $rentalAgreement, 'previewReference' => 'Quotation '.$quote->number(), 'allowTermsMessage' => $canEdit && $rentalAgreement && ($rentalAgreement->signed_at || $agreements->canIssueForQuote($quote))])
     @endif
     <div class="sw-field" id="customer-link-field" style="margin-top:12px" @if($requiresRentalSignature) hidden @endif><label for="customer-link">{{ $requiresRentalSignature ? 'Quotation link' : 'Private customer link' }}</label><input id="customer-link" value="{{ $shareUrl }}" readonly></div>
     <details><summary>Preview message and sender sign-off</summary><div class="sw-field"><label for="quote-message">Message to customer</label><textarea id="quote-message" rows="12" readonly>{{ $shareText }}</textarea></div><button type="button" class="sw-btn" id="copy-quote-message">Copy message</button><p class="sw-meta" id="message-copy-status" role="status"></p></details>
