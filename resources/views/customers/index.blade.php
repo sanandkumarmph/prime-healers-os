@@ -317,6 +317,8 @@
     .customer-icon-action.is-primary { background:var(--ph-color-primary); border-color:var(--ph-color-primary); color:#fff; }
     .customer-icon-action.is-whatsapp { background:var(--ph-color-success-soft); border-color:rgba(14,159,75,.18); color:var(--ph-color-success); }
     .customer-action-menu { position:relative; display:inline-block; }
+    .customers-table tbody tr:has(.customer-action-menu[open]),
+    .customer-mobile-card:has(.customer-action-menu[open]) { position:relative; z-index:60; }
     .customer-action-menu summary {
         list-style:none; width:30px; height:30px; border-radius:10px; border:1px solid var(--ph-color-border);
         background:#fff; color:var(--ph-color-text); display:grid; place-items:center; cursor:pointer; font-weight:900;
