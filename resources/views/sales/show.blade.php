@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
+@include('customer-payments.entry', ['paymentInvoice' => $saleInvoice ?? null])
 @php
     $currentUser = auth()->user();
     $canUpdateSales = $currentUser?->canAccessModule('sales', 'update') ?? false;

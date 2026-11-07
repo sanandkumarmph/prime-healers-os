@@ -10,6 +10,9 @@ use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Schedule;
+
+Schedule::command('customer-payments:reconcile')->everyMinute()->withoutOverlapping(15);
 
 ArtisanApplication::starting(function ($artisan) {
     $artisan->resolveCommands([ResetAppData::class, RepairUatData::class, RepairCompletedDeliveryProgress::class, ResetUatData::class, MigrateProofFiles::class]);

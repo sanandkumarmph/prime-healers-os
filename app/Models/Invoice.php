@@ -12,6 +12,21 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Invoice extends Model
 {
+    protected static function booted(): void
+    {
+        static::updating(function (self $invoice) {
+            if ($invoice->isDirty(['total_amount', 'rental_id', 'sale_id', 'customer_id', 'organization_id', 'bill_to_name', 'bill_to_phone', 'bill_to_email'])
+                || ($invoice->isDirty(['status', 'payment_status']) && in_array($invoice->status, ['cancelled', 'void'], true))) {
+                app(\App\Services\CustomerPayments\PaymentLinkGuard::class)->assertEditable((int) $invoice->organization_id, $invoice->id, $invoice->rental_id);
+                if ($invoice->isDirty(['organization_id', 'rental_id'])) {
+                    app(\App\Services\CustomerPayments\PaymentLinkGuard::class)->assertEditable((int) $invoice->getOriginal('organization_id'), $invoice->id, $invoice->getOriginal('rental_id'));
+                }
+            }
+        });
+        static::deleting(fn (self $invoice) => app(\App\Services\CustomerPayments\PaymentLinkGuard::class)
+            ->assertEditable((int) $invoice->organization_id, $invoice->id, $invoice->rental_id));
+    }
+
     private function coerceDateValue(mixed $value): ?Carbon
     {
         if ($value instanceof Carbon) {

@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
+@include('customer-payments.entry', ['paymentInvoice' => $invoice])
 @php
     $statusClass = match ($invoice->payment_status) {
         'paid' => 'status-paid',

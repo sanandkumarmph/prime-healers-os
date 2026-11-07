@@ -54,6 +54,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->singleton(\App\Services\CustomerPayments\PaymentLinkGuard::class);
         View::share('internalSingleOrgMode', InternalOrganization::enabled());
         View::share('internalCompanyName', InternalOrganization::companyName());
     }

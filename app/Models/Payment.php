@@ -8,6 +8,23 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Payment extends Model
 {
+    protected static function booted(): void
+    {
+        $guard = function (self $payment) {
+            app(\App\Services\CustomerPayments\PaymentLinkGuard::class)->assertEditable((int) $payment->organization_id, $payment->invoice_id, $payment->rental_id);
+            if ($payment->exists && $payment->isDirty(['organization_id', 'invoice_id', 'rental_id'])) {
+                app(\App\Services\CustomerPayments\PaymentLinkGuard::class)->assertEditable((int) $payment->getOriginal('organization_id'), $payment->getOriginal('invoice_id'), $payment->getOriginal('rental_id'));
+            }
+            if (\Illuminate\Support\Facades\Schema::hasTable('customer_payment_receipts')
+                && CustomerPaymentReceipt::whereIn('payment_id', array_filter([$payment->id, $payment->reversal_of_payment_id]))->exists()) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['payment_link' => 'Gateway payments are retained for reconciliation. Review refunds in Razorpay with Accounts.']);
+            }
+        };
+        static::creating($guard);
+        static::updating($guard);
+        static::deleting($guard);
+    }
+
     public const METHODS = [
         'cash',
         'bank_transfer',

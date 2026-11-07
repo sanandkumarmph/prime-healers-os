@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
+@include('customer-payments.entry', ['paymentInvoice' => $rentalInvoice ?? null])
 @php
     $deliveryRecord = $rental->deliveryRecord;
     $pickupRecord = $rental->pickupRecord;
