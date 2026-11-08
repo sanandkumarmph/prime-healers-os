@@ -8,7 +8,7 @@ class RentalAgreement extends Model
 {
     protected $guarded = ['id'];
 
-    protected $hidden = ['proof'];
+    protected $hidden = ['proof', 'exception_approval'];
 
-    protected $casts = ['signed_at' => 'datetime', 'proof' => 'encrypted:array'];
+    protected $casts = ['signed_at' => 'datetime', 'proof' => 'encrypted:array', 'exception_approval' => 'encrypted:array'];
 }

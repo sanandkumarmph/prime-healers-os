@@ -91,8 +91,13 @@ class QuotationController extends Controller
         $quote = $this->workspace->quote($quotation, 'update');
         $data = $request->validate(['action' => 'required|in:send,mark_shared,revise,withdraw,accepted,declined',
             'shared_channel' => 'required_if:action,mark_shared|nullable|in:whatsapp,email,other',
-            'contact_name' => 'required_if:action,accepted,declined|nullable|string|max:150',
+            'contact_name' => 'nullable|string|max:150',
             'note' => 'required_if:action,accepted,declined,withdraw|nullable|string|max:3000']);
+        if (in_array($data['action'], ['accepted', 'declined'], true)) {
+            $data['contact_name'] = trim((string) ($data['contact_name'] ?? ''))
+                ?: (trim((string) ($quote->snapshot['recipient']['name'] ?? '')) ?: trim((string) $quote->enquiry->name));
+            if ($data['contact_name'] === '') throw ValidationException::withMessages(['contact_name'=>'Enter the customer contact name.']);
+        }
         $target = $this->workspace->atomic($quote->organization_id, function () use ($quote, $request, $data) {
             $e = $this->workspace->locked($quote->enquiry); $quote = $quote->fresh();
             $this->workspace->version($quote, $request); $this->workspace->current($quote);
@@ -154,6 +159,59 @@ class QuotationController extends Controller
     public function pdf(int $quotation)
     {
         return $this->download($this->workspace->quote($quotation));
+    }
+
+    /** Authorized status only: never publish customer identity, signature proof or bearer links. */
+    public function status(int $quotation)
+    {
+        $quote = $this->workspace->quote($quotation);
+        $enquiry = $quote->enquiry;
+        $latest = $enquiry->quotations()->latest('revision')->firstOrFail();
+        $current = $latest->is($quote);
+        $agreements = app(RentalAgreements::class);
+        $agreement = $agreements->quotation($quote);
+        $requiresSignature = $quote->kind === 'rental' && RentalAgreements::enabled();
+        $ready = !$requiresSignature || ($agreement && $agreements->readyForQuote($quote, $agreement));
+        $agreementState = !$requiresSignature ? 'not_required' : ($agreement?->signed_at ? 'signed' : ($ready ? 'exception' : 'pending'));
+        $status = $quote->displayStatus();
+        $canUpdate = auth()->user()->canAccessModule('enquiries', 'update') && auth()->user()->canAccessModule('quotations', 'update');
+        $orderAction = $current ? $this->workspace->orderAction(auth()->user(), $enquiry, $quote, $agreement) : null;
+        $canRespond = $current && $canUpdate && !$enquiry->closed() && $status === 'sent';
+        $next = match (true) {
+            !$current => 'A newer quotation revision is available. Open it before continuing.',
+            $status === 'converted' => 'The order has been created.',
+            $orderAction !== null => 'The quotation is ready. Continue to the order.',
+            $status === 'expired' => 'This quotation expired. Create a revision with a new validity date.',
+            in_array($status, ['withdrawn', 'declined', 'superseded'], true) => 'This quotation is no longer awaiting acceptance.',
+            $status === 'accepted' && !$ready => 'Quotation accepted. Share the rental terms or record an approved signature exception.',
+            $status === 'sent' && $ready && $requiresSignature => 'Rental terms completed. Record the customer’s quotation acceptance to continue.',
+            $status === 'sent' => 'Awaiting the customer’s quotation response.',
+            default => 'Review the quotation before continuing.',
+        };
+        $state = [
+            'schema' => 1, 'quotation_id' => $quote->id, 'quotation_version' => $quote->lock_version,
+            'current' => $current, 'quotation_status' => $status, 'quotation_status_label' => $quote->statusLabel(),
+            'enquiry_stage' => $enquiry->stage, 'enquiry_stage_label' => Enquiry::STAGES[$enquiry->stage] ?? $enquiry->stage,
+            'agreement_state' => $agreementState, 'agreement_ready' => (bool) $ready,
+            'agreement_signed_at' => $agreement?->signed_at ? $agreement->signed_at->timezone('Asia/Kolkata')->format('d M Y, h:i A').' IST' : null,
+            'can_record_response' => $canRespond, 'order_action' => $orderAction,
+            'latest_url' => route('quotations.show', $latest), 'next_text' => $next,
+            'signed_copy_url' => $canUpdate && $agreement?->signed_at ? route('quotations.signed-agreement', $quote) : null,
+            'prepare_signed_message_url' => $canUpdate && $agreement?->signed_at && $agreements->canIssueForQuote($quote)
+                ? route('quotations.rental-agreement.issue', $quote) : null,
+            'terminal' => !$current || in_array($status, ['converted', 'declined', 'withdrawn', 'superseded', 'expired'], true),
+        ];
+        $state['version'] = hash('sha256', json_encode($state));
+        return response()->json($state)->withHeaders(['Cache-Control'=>'private, no-store', 'Vary'=>'Cookie',
+            'Referrer-Policy'=>'no-referrer', 'X-Robots-Tag'=>'noindex, nofollow']);
+    }
+
+    public function signedAgreement(int $quotation)
+    {
+        $quote = $this->workspace->quote($quotation, 'update');
+        $agreement = app(RentalAgreements::class)->quotation($quote);
+        abort_unless($agreement?->signed_at, 404);
+        return app(RentalAgreementController::class)->pdf($agreement);
     }
 
     private function download(Quotation $quote)

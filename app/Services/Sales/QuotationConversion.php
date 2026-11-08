@@ -68,7 +68,7 @@ class QuotationConversion
         if ($quote->kind !== $kind || $quote->status !== 'accepted' || $quote->expired() || $quote->enquiry->closed()) {
             throw ValidationException::withMessages(['quotation_id' => 'Only the current, accepted and unexpired quotation can become an order.']);
         }
-        if ($kind === 'rental' && RentalAgreements::enabled() && !app(RentalAgreements::class)->quotation($quote)?->signed_at) {
+        if ($kind === 'rental' && RentalAgreements::enabled() && !app(RentalAgreements::class)->readyForQuote($quote)) {
             throw ValidationException::withMessages(['quotation_id' => 'The customer must sign the rental terms before you create this order.']);
         }
     }

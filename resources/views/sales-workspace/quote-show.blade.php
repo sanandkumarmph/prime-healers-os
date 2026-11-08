@@ -13,8 +13,8 @@
     $agreements = app(\App\Services\Sales\RentalAgreements::class);
     $requiresRentalSignature = $quote->kind === 'rental' && \App\Services\Sales\RentalAgreements::enabled();
 @endphp
-<div class="sw"><a href="{{ route('enquiries.show',$enquiry) }}">← Back to enquiry</a><header class="sw-head" style="margin-top:20px"><div><div class="sw-eyebrow">Quotation workspace</div><h1>{{ $quote->number() }}</h1><p class="sw-muted">{{ $enquiry->subject }}</p></div><div class="sw-actions"><a class="sw-btn" href="{{ route('quotations.pdf',$quote) }}">Download PDF</a>
-@if($canEdit && !$enquiry->closed())@if($quote->status==='draft')<a class="sw-btn" href="{{ route('quotations.edit',$quote) }}">Edit draft</a><form method="post" action="{{ route('quotations.action',$quote) }}">@csrf<input type="hidden" name="lock_version" value="{{ $quote->lock_version }}"><input type="hidden" name="action" value="send"><button class="sw-btn sw-primary">Finalise & share</button></form>@elseif($quote->status==='accepted' && !$quote->expired() && (!$requiresRentalSignature || $rentalAgreement?->signed_at) && auth()->user()->canAccessModule($quote->kind.'s','create'))<a class="sw-btn sw-primary" href="{{ route($quote->kind.'s.create',['quotation_id'=>$quote->id]) }}">Create {{ $quote->kind }} order</a>@endif @endif
+<div class="sw" data-quote-live="{{ $quote->id }}" data-live-page="quotation" data-live-status-url="{{ route('quotations.status',$quote) }}"><a href="{{ route('enquiries.show',$enquiry) }}">← Back to enquiry</a><header class="sw-head" style="margin-top:20px"><div><div class="sw-eyebrow">Quotation workspace</div><h1>{{ $quote->number() }}</h1><p class="sw-muted">{{ $enquiry->subject }}</p></div><div class="sw-actions"><a class="sw-btn" href="{{ route('quotations.pdf',$quote) }}">Download PDF</a>
+<span data-live-quote-header>@if($canEdit && !$enquiry->closed())@if($quote->status==='draft')<a class="sw-btn" href="{{ route('quotations.edit',$quote) }}">Edit draft</a><form method="post" action="{{ route('quotations.action',$quote) }}">@csrf<input type="hidden" name="lock_version" value="{{ $quote->lock_version }}"><input type="hidden" name="action" value="send"><button class="sw-btn sw-primary">Finalise & share</button></form>@elseif($quote->status==='accepted' && !$quote->expired() && (!$requiresRentalSignature || $agreements->readyForQuote($quote,$rentalAgreement)) && auth()->user()->canAccessModule($quote->kind.'s','create'))<a class="sw-btn sw-primary" href="{{ route($quote->kind.'s.create',['quotation_id'=>$quote->id]) }}">Create {{ $quote->kind }} order</a>@endif @endif</span>
 @if($canEdit && !$enquiry->closed() && auth()->user()->canAccessModule('quotations','create') && !in_array($quote->status,['draft','superseded','converted']))<form method="post" action="{{ route('quotations.action',$quote) }}" data-edit-quotation onsubmit="return confirm('Create an editable revision? The current acceptance and signing link will no longer apply. The customer must accept and sign the revised quotation again.')">@csrf<input type="hidden" name="lock_version" value="{{ $quote->lock_version }}"><input type="hidden" name="action" value="revise"><button class="sw-btn" type="submit">Edit quotation</button></form>@endif
 @if($quote->status==='converted')@php($orderClass=$quote->order_type==='rental' ? \App\Models\Rental::class : \App\Models\Sale::class)@php($linkedOrder=$orderClass::where('organization_id',$quote->organization_id)->find($quote->order_id))@if($linkedOrder && auth()->user()->can('view',$linkedOrder))<a class="sw-btn sw-primary" href="{{ route($quote->order_type.'s.show',$quote->order_id) }}">View {{ $quote->order_type }} #{{ $quote->order_id }}</a>@endif @endif</div></header>
 @include('sales-workspace.workflow-navigation', [
@@ -22,15 +22,7 @@
     'workflowOrderUrl' => $orderAction['url'] ?? null, 'workflowStep' => 'quotation',
 ])
 @include('sales-workspace.alerts')
-@if($requiresRentalSignature && ($rentalAgreement?->signed_at || $shareUrl))
-    <div class="sw-alert{{ $rentalAgreement?->signed_at ? ' sw-success' : '' }}">
-        @if($rentalAgreement?->signed_at)
-            <strong>Rental terms signed</strong> · {{ $rentalAgreement->signed_at->timezone('Asia/Kolkata')->format('d M Y, h:i A') }} IST
-        @else
-            <strong>Awaiting rental agreement.</strong>
-        @endif
-    </div>
-@endif
+@include('sales-workspace.live-status',['liveQuote'=>$quote,'liveAgreement'=>$rentalAgreement])
 @if($quote->status==='draft')<div class="sw-alert">Review the customer, prices and terms before finalising. Finalised quotations are protected; changes require a new revision.</div>@elseif($quote->status==='superseded')<div class="sw-alert">This is a previous revision. <a href="{{ route('quotations.show',$enquiry->quotations()->latest('revision')->first()) }}">Open the latest quotation</a>.</div>@elseif($quote->expired())<div class="sw-alert">This quotation has expired. Create a revision with a new validity date before continuing.</div>@endif
 <div class="{{ $canEdit && !$enquiry->closed() && $quote->status!=='superseded' ? 'sw-grid sw-share-workspace' : 'sw-document-only' }}"><div>@include('sales-workspace.quote-document')</div><aside>
 @if($shareUrl && $canEdit && !$enquiry->closed())
@@ -64,8 +56,8 @@
     @if($requiresRentalSignature)
     <section class="sw-share-step" data-share-step="terms">
         <h3><span>2</span> Rental terms & signature</h3>
-        <p class="sw-meta">{{ $rentalAgreement?->signed_at ? 'Signed. You can send the customer their signed copy.' : 'Send the terms separately. The customer signs on their phone.' }}</p>
-        <div class="sw-actions">
+        <p class="sw-meta" data-live-agreement-summary>{{ $rentalAgreement?->signed_at ? 'Signed. You can send the customer their signed copy.' : ($agreements->readyForQuote($quote,$rentalAgreement) ? 'Signature exception approved. Customer acceptance is still required.' : 'Send the terms separately. The customer signs on their phone.') }}</p>
+        <div class="sw-actions" data-live-agreement-actions data-live-signed="{{ $rentalAgreement?->signed_at ? '1' : '0' }}">
             @if($rentalAgreement)
                 <a class="sw-btn {{ $rentalAgreement->signed_at ? '' : 'sw-primary' }}" href="{{ $agreements->whatsapp($rentalAgreement, $quote->snapshot['recipient']['phone'] ?? null, 'Quotation '.$quote->number()) }}" target="_blank" rel="noopener noreferrer" data-phos-whatsapp>{{ $rentalAgreement->signed_at ? 'Send signed copy on WhatsApp' : 'Share Rental Terms' }}</a>
                 <button class="sw-btn" type="button" data-copy-whatsapp>{{ $rentalAgreement->signed_at ? 'Copy signed-copy message' : 'Copy rental terms message' }}</button>
@@ -73,18 +65,24 @@
                 <form method="post" action="{{ route('quotations.rental-agreement.issue', $quote) }}" target="_blank" rel="noopener noreferrer" data-phos-whatsapp-prepare>@csrf<input type="hidden" name="destination" value="whatsapp"><button class="sw-btn sw-primary" type="submit">Share Rental Terms</button></form>
             @endif
         </div>
+        @include('sales-workspace.signature-exception',['agreement'=>$rentalAgreement,'exceptionQuote'=>$quote,'exceptionRental'=>null,'agreements'=>$agreements])
         @include('sales-workspace.terms-preview', ['agreement'=>$rentalAgreement,'previewReference'=>'Quotation '.$quote->number(),'allowTermsMessage'=>$canEdit && $rentalAgreement && ($rentalAgreement->signed_at || $agreements->canIssueForQuote($quote))])
     </section>
     @endif
     <section class="sw-share-step" data-share-step="order">
         <h3><span>{{ $requiresRentalSignature ? '3' : '2' }}</span> Confirm & create order</h3>
+        <div data-live-order-actions>
         @if($orderAction)
-            <p class="sw-meta">The customer has accepted{{ $requiresRentalSignature ? ' and signed the terms' : '' }}. Continue with the order.</p><a class="sw-btn sw-primary" href="{{ $orderAction['url'] }}">{{ $orderAction['label'] }}</a>
-        @elseif($quote->status==='sent' && !$quote->expired())
-            <p class="sw-meta">Record the customer's acceptance after they agree to the quotation.</p>@include('sales-workspace.quotation-response')
-        @else
-            <p class="sw-meta">{{ $requiresRentalSignature && !$rentalAgreement?->signed_at ? 'Waiting for the customer to sign the rental terms.' : 'A staff member with order access can continue once acceptance is complete.' }}</p>
+            <p class="sw-meta">The customer has accepted{{ $requiresRentalSignature ? ($rentalAgreement?->signed_at ? ' and signed the terms' : ' with a recorded signature exception') : '' }}. Continue with the order.</p><a class="sw-btn sw-primary" href="{{ $orderAction['url'] }}">{{ $orderAction['label'] }}</a>
         @endif
+        </div>
+        <div data-live-response>
+        @if(!$orderAction && $quote->status==='sent' && !$quote->expired())
+            <p class="sw-meta">Record the customer's acceptance after they agree to the quotation.</p>@include('sales-workspace.quotation-response')
+        @elseif(!$orderAction)
+            <p class="sw-meta">{{ $requiresRentalSignature && !$agreements->readyForQuote($quote,$rentalAgreement) ? 'Waiting for the customer to sign the rental terms.' : 'A staff member with order access can continue once acceptance is complete.' }}</p>
+        @endif
+        </div>
     </section>
 </section>
 @if($quote->status==='sent')<section class="sw-panel"><h2>Follow-up <span class="sw-meta">Optional</span></h2>

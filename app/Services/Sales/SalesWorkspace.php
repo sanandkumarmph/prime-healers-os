@@ -44,7 +44,7 @@ class SalesWorkspace
         $canCreate = $user->canAccessModule('enquiries', 'update') && $user->canAccessModule('quotations', 'update')
             && $user->canAccessModule($module, 'read') && $user->canAccessModule($module, 'create');
         $requiresSignature = $quote->kind === 'rental' && RentalAgreements::enabled();
-        if ($quote->displayStatus() === 'accepted' && !$enquiry->closed() && $canCreate && (!$requiresSignature || $agreement?->signed_at)) {
+        if ($quote->displayStatus() === 'accepted' && !$enquiry->closed() && $canCreate && (!$requiresSignature || app(RentalAgreements::class)->readyForQuote($quote, $agreement))) {
             return ['label' => 'Create '.ucfirst($quote->kind), 'url' => route($module.'.create', ['quotation_id' => $quote->id])];
         }
 

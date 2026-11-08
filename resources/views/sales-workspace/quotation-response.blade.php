@@ -14,10 +14,10 @@
                 <option value="declined" @selected(old('action') === 'declined')>Declined</option>
             </select>
         </div>
-        <div class="sw-field" style="margin-top:12px">
-            <label for="contact-name">Customer contact name *</label>
-            <input name="contact_name" id="contact-name" required maxlength="150" value="{{ old('contact_name') }}">
-        </div>
+        <details class="sw-response-contact" @if($errors->has('contact_name') || old('contact_name')) open @endif>
+            <summary>Different customer contact? <span class="sw-meta">Optional</span></summary>
+            <div class="sw-field"><label for="contact-name">Contact name</label><input name="contact_name" id="contact-name" maxlength="150" value="{{ old('contact_name') }}" placeholder="Uses the quotation recipient when left blank"></div>
+        </details>
         <div class="sw-field" style="margin-top:12px">
             <label for="response-note">How was this confirmed? *</label>
             <textarea name="note" id="response-note" required rows="3" maxlength="3000" placeholder="e.g. Confirmed by email">{{ old('note') }}</textarea>

@@ -623,7 +623,7 @@ class SalesWorkspaceTest extends TestCase
     public function test_staff_response_requires_evidence_and_reassignment_removes_previous_owner_access(): void
     {
         $q = $this->transition($this->quote(), 'send');
-        $this->post(route('quotations.action', $q), ['action' => 'accepted', 'lock_version' => $q->lock_version])->assertSessionHasErrors(['contact_name', 'note']);
+        $this->post(route('quotations.action', $q), ['action' => 'accepted', 'lock_version' => $q->lock_version])->assertSessionHasErrors('note');
         $role = $this->systemRole('sales');
         $a = TestData::user($this->owner->organization, ['role_id' => $role->id, 'role' => 'sales']);
         $b = TestData::user($this->owner->organization, ['role_id' => $role->id, 'role' => 'sales']);

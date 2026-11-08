@@ -1,6 +1,12 @@
 @extends('layouts.app')
 @section('content')
 @include('sales-workspace.style')
+<style>
+.sw .sw-product-picker{position:relative}.sw .sw-product-native{position:absolute!important;width:1px!important;height:1px!important;min-height:0!important;padding:0!important;opacity:0;overflow:hidden;clip-path:inset(50%);pointer-events:none}
+.sw-product-results{position:absolute;top:100%;left:0;right:0;z-index:90;max-height:260px;overflow:auto;overscroll-behavior:contain;padding:5px;border:1px solid #cbd6e3;border-radius:8px;box-shadow:0 12px 28px #17335520;background:#fff}
+.sw-product-results button{display:block;width:100%;min-height:36px;text-align:left;padding:8px;border:0;border-radius:5px;background:#fff;color:#172b4d;font:inherit;font-size:12px;overflow-wrap:anywhere;cursor:pointer}.sw-product-results button:hover,.sw-product-results button[aria-selected=true]{background:#edf3ff}.sw-product-results p{font-size:12px;padding:8px;margin:0}.sw-product-match-count{font-size:10px;color:#63748b}.sw-product-match-count:empty{display:none}
+@media(max-width:600px){.sw-product-picker input[type=search]{font-size:16px}.sw-product-results button{min-height:42px}}
+</style>
 @php
     $s = $quote?->snapshot ?? [];
     $lines = array_values(array_filter((array) old('lines',$s['lines'] ?? []),'is_array'));
@@ -92,5 +98,6 @@
 @push('scripts')
 @include('sales-workspace.customer-script')
 @include('sales-workspace.quotation-script')
+<script src="{{ asset('js/phos-quote-product-search.js') }}?v={{ hash_file('sha256', public_path('js/phos-quote-product-search.js')) }}" defer></script>
 <script src="{{ asset('js/phos-quotation-availability.js') }}?v={{ hash_file('sha256', public_path('js/phos-quotation-availability.js')) }}" defer></script>
 @endpush

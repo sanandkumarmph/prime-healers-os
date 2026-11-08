@@ -132,7 +132,7 @@ class EnquiryDetailsLayoutTest extends TestCase
         $this->withSession(['success'=>'Follow-up completed successfully.'])->get(route('enquiries.show',$this->enquiry))
             ->assertOk()->assertSee('Follow-up completed successfully.');
         $this->from(route('enquiries.show',$this->enquiry))->post(route('quotations.action',$quote),[
-            'action'=>'accepted','lock_version'=>$quote->lock_version,'return_to_enquiry'=>1])->assertSessionHasErrors(['contact_name','note']);
+            'action'=>'accepted','lock_version'=>$quote->lock_version,'return_to_enquiry'=>1])->assertSessionHasErrors('note');
         $response=$this->get(route('enquiries.show',$this->enquiry))->assertOk();
         $dom=new \DOMDocument();@$dom->loadHTML($response->getContent());$xpath=new \DOMXPath($dom);
         $this->assertCount(1,$xpath->query('//*[@id="enquiry-response"]//details[@open]'));

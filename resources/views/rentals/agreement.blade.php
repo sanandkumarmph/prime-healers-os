@@ -24,7 +24,7 @@
                 @include('sales-workspace.rental-agreement-record')
             @endcan
         @endif
-        @if($rental->status === 'active' && !$agreements->signedFor($rental, $agreement))
+        @if($rental->status === 'active' && !$agreements->readyFor($rental, $agreement))
             <p><strong>Awaiting signature.</strong> The customer must sign before dispatch.</p>
             @can('update', $rental)
                 @if($currentAgreement && !$agreement->quotation_id)
@@ -39,6 +39,7 @@
                 @endif
             @endcan
         @endif
+        @include('sales-workspace.signature-exception', ['exceptionQuote'=>null,'exceptionRental'=>$rental])
         @can('update', $rental)
             @include('sales-workspace.terms-preview', ['previewReference' => 'Rental #'.$rental->id, 'allowTermsMessage' => $currentAgreement && ($agreement->signed_at || ($rental->status === 'active' && !$agreement->quotation_id))])
         @endcan

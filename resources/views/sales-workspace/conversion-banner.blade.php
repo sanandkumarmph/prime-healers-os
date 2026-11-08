@@ -20,3 +20,18 @@
 <input type="hidden" name="quotation_version" value="{{ old('quotation_version', $conversionQuote->lock_version) }}">
 @endif
 @error('quotation_id')<p role="alert" class="field-error">{{ $message }}</p>@enderror
+@if($conversionQuote && !$conversionQuote->snapshot['customer_id'])
+<script>
+(() => {
+    let approvedCustomerId = @json((string) old('customer_id', ''));
+    document.addEventListener('change', event => {
+        if (event.target.id !== 'customer_id') return;
+        const confirmation = document.querySelector('[name="quotation_recipient_confirmed"]');
+        if (!confirmation || event.target.form !== confirmation.form) return;
+        const customerId = String(event.target.value || '');
+        if (customerId !== approvedCustomerId) confirmation.checked = false;
+        approvedCustomerId = customerId;
+    });
+})();
+</script>
+@endif

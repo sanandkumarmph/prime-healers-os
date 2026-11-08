@@ -619,27 +619,48 @@ class CustomerController extends Controller
 
     public function quickStore(Request $request)
     {
-        if ($existingCustomer = $this->existingQuickCustomer($request)) {
-            return response()->json([
-                'message' => 'Customer already exists. Reusing existing customer.',
-                'customer' => $this->quickCustomerResponsePayload($existingCustomer->fresh()),
-            ]);
-        }
-
-        $validated = $this->validateCustomer($request, true);
-
-        $customer = Customer::create($this->customerPayload($validated));
-        $this->syncCustomerUploads($request, $customer);
-        $customer->refresh();
-        ActivityLogger::log('customer.created', $customer, [
-            'customer_type' => $customer->normalizedCustomerType(),
-            'source' => 'quick_create',
-        ], 'Customer created.');
-
-        return response()->json([
-            'message' => 'Customer created successfully.',
-            'customer' => $this->quickCustomerResponsePayload($customer),
+        $request->validate([
+            'quick_conflict_action' => 'nullable|in:existing,separate',
+            'quick_existing_customer_id' => 'nullable|integer|min:1',
+            'quick_conflict_customer_ids' => 'nullable|array|max:50',
+            'quick_conflict_customer_ids.*' => 'integer|min:1',
         ]);
+        // Validate the entered identity before considering reuse. A matching phone is not proof of the same person.
+        $identity = $this->validateCustomer($request, true, null, true, true);
+        return app(\App\Services\Finance\OrganizationFinancialTransaction::class)->run((int) $this->orgId(), function () use ($request, $identity) {
+            $matches = $this->matchingQuickCustomers($request);
+            $samePerson = $matches->first(fn (Customer $customer) => $this->quickIdentityKey($customer->only(['customer_type','company_name','first_name','last_name','name'])) === $this->quickIdentityKey($identity));
+            $action = $request->input('quick_conflict_action');
+            if ($action === 'existing') {
+                $customer = $matches->firstWhere('id', $request->integer('quick_existing_customer_id'));
+                if (!$customer) throw ValidationException::withMessages(['quick_existing_customer_id' => 'Select one of the matching customers shown for these contact details.']);
+                return response()->json(['message' => 'Existing customer selected.', 'reused' => true, 'customer' => $this->quickCustomerResponsePayload($customer)]);
+            }
+            if ($samePerson) {
+                return response()->json(['message' => 'This customer already exists and has been selected.', 'reused' => true, 'customer' => $this->quickCustomerResponsePayload($samePerson)]);
+            }
+            $expectedIds = $matches->pluck('id')->map(fn ($id) => (int) $id)->sort()->values()->all();
+            $confirmedIds = collect($request->input('quick_conflict_customer_ids', []))->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+            $separate = $action === 'separate' && $expectedIds && $expectedIds === $confirmedIds;
+            if ($matches->isNotEmpty() && !$separate) {
+                return response()->json([
+                    'code' => 'customer_identity_conflict',
+                    'message' => 'These contact details are already used by another customer. Choose the intended person; their existing profile will not be changed.',
+                    'entered_name' => $identity['name'],
+                    'matches' => $matches->map(fn (Customer $customer) => ['id' => $customer->id, 'name' => $customer->displayName(), 'phone' => $customer->phone, 'email' => $customer->email])->values(),
+                ], 409)->header('Cache-Control', 'private, no-store');
+            }
+            if ($action === 'separate' && !$separate) throw ValidationException::withMessages(['quick_conflict_action' => 'The matching contact information changed. Save again to review the current matches.']);
+            $validated = $this->validateCustomer($request, true, null, (bool) $separate);
+            $customer = Customer::create($this->customerPayload($validated));
+            $this->syncCustomerUploads($request, $customer);
+            $customer->refresh();
+            ActivityLogger::log('customer.created', $customer, [
+                'customer_type' => $customer->normalizedCustomerType(), 'source' => 'quick_create',
+                'shared_contact_confirmed' => (bool) $separate,
+            ], 'Customer created.');
+            return response()->json(['message' => 'Customer created successfully.', 'reused' => false, 'customer' => $this->quickCustomerResponsePayload($customer)]);
+        });
     }
 
     public function addNote(Request $request, $id)
@@ -663,29 +684,27 @@ class CustomerController extends Controller
         ]) . '#customer-timeline')->with('success', 'Customer note added.');
     }
 
-    private function existingQuickCustomer(Request $request): ?Customer
+    private function matchingQuickCustomers(Request $request): \Illuminate\Support\Collection
     {
-        $normalizedPhone = PhoneNumber::normalize(
-            (string) $request->input('phone', ''),
-            $request->input('phone_country_code')
-        );
+        $phone = PhoneNumber::normalize((string) $request->input('phone', ''), $request->input('phone_country_code'));
+        $whatsapp = PhoneNumber::normalize((string) $request->input('whatsapp_number', ''), $request->input('whatsapp_number_country_code'));
         $email = strtolower(trim((string) $request->input('email', '')));
+        if (!$phone && !$whatsapp && $email === '') return collect();
+        return Customer::query()->where('organization_id', $this->orgId())->where(function ($query) use ($phone, $whatsapp, $email) {
+            if ($phone) $query->orWhereIn('phone', array_unique(array_filter([$phone, PhoneNumber::countryCode($phone) === '+91' ? PhoneNumber::local($phone) : null])));
+            if ($whatsapp && Customer::hasWhatsappNumberColumn()) $query->orWhereIn('whatsapp_number', array_unique(array_filter([$whatsapp, PhoneNumber::countryCode($whatsapp) === '+91' ? PhoneNumber::local($whatsapp) : null])));
+            if ($email !== '') $query->orWhereRaw('LOWER(email) = ?', [$email]);
+        })->orderBy('id')->get();
+    }
 
-        if ($normalizedPhone) {
-            return Customer::query()
-                ->where('organization_id', $this->orgId())
-                ->where('phone', $normalizedPhone)
-                ->first();
-        }
-
-        if ($email !== '') {
-            return Customer::query()
-                ->where('organization_id', $this->orgId())
-                ->whereRaw('LOWER(email) = ?', [$email])
-                ->first();
-        }
-
-        return null;
+    private function quickIdentityKey(array $data): string
+    {
+        $type = CustomerProfileSupport::normalizeCustomerType($data['customer_type'] ?? null);
+        $name = $type === 'Business' ? ($data['company_name'] ?? $data['name'] ?? '')
+            : (trim(implode(' ', array_filter([$data['first_name'] ?? null, $data['last_name'] ?? null]))) ?: ($data['name'] ?? ''));
+        // Older customer names already contain the title; compare the person rather than title punctuation.
+        $name = preg_replace('/^(?:mr|mrs|ms|miss|dr|prof|mx)\.?\s+/iu', '', trim((string) $name));
+        return $type.'|'.mb_strtolower(preg_replace('/\s+/u', ' ', $name));
     }
 
     private function quickCustomerResponsePayload(Customer $customer): array
@@ -717,7 +736,7 @@ class CustomerController extends Controller
         ];
     }
 
-    private function validateCustomer(Request $request, bool $quickMode = false, ?Customer $existingCustomer = null): array
+    private function validateCustomer(Request $request, bool $quickMode = false, ?Customer $existingCustomer = null, bool $allowSharedContacts = false, bool $contactLookupOnly = false): array
     {
         $routeCustomer = $request->route('customer');
         $customerId = $existingCustomer?->id
@@ -729,7 +748,7 @@ class CustomerController extends Controller
             CustomerProfileSupport::validationRules(
                 Customer::hasWhatsappNumberColumn(),
                 true,
-                (int) $this->orgId(),
+                $allowSharedContacts ? null : (int) $this->orgId(),
                 $customerId
             )
         );
@@ -740,7 +759,7 @@ class CustomerController extends Controller
             ]);
         }
 
-        return CustomerProfileSupport::validateIdentity($validated, $quickMode);
+        return CustomerProfileSupport::validateIdentity($validated, $quickMode, !$contactLookupOnly);
     }
 
     private function customerPayload(array $validated, bool $includeOrganization = true): array

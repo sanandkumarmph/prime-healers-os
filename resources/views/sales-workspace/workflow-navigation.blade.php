@@ -10,7 +10,7 @@
 <nav aria-label="Sales progress">
     <ol class="sw-stage">
         @foreach($steps as $step => [$label, $url])
-            <li><a href="{{ $url }}" @if($workflowStep === $step) aria-current="step" @endif>{{ $label }}</a></li>
+            <li><a @if($step==='order') data-live-order-link @endif href="{{ $url }}" @if($workflowStep === $step) aria-current="step" @endif>{{ $label }}</a></li>
         @endforeach
     </ol>
 </nav>

@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\{Organization, Quotation, Rental, RentalAgreement};
+use App\Models\{ActivityLog, Organization, Quotation, Rental, RentalAgreement};
 use App\Services\Finance\OrganizationFinancialTransaction;
 use App\Services\Sales\{RentalAgreements, SalesWorkspace};
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -34,6 +34,12 @@ class RentalAgreementController extends Controller
 
     private function requireCurrent(RentalAgreement $agreement, ?Quotation $quote): void
     {
+        if ($agreement->rental_id) {
+            $rental = Rental::where('organization_id', $agreement->organization_id)->findOrFail($agreement->rental_id);
+            abort_unless($rental->status === 'active' && $this->agreements->current($rental)?->id === $agreement->id
+                && $this->agreements->matches($rental, $agreement), 410, 'This agreement has been replaced or the rental is closed.');
+            return;
+        }
         if ($quote) {
             abort_unless($this->agreements->canIssueForQuote($quote), 410, 'This quotation is no longer open.');
             $this->workspace->current($quote);
@@ -151,5 +157,58 @@ class RentalAgreementController extends Controller
         });
 
         return redirect()->to(route('rentals.show', $rental).'#rental-agreement')->with('success', 'The rental agreement is ready to share on WhatsApp.');
+    }
+
+    private function exceptionInput(Request $request): array
+    {
+        return $request->validate(['exception_reason' => 'required|string|min:10|max:1500',
+            'alternative_acceptance_confirmed' => 'accepted', 'exception_context' => 'required|string|size:64'],
+            ['alternative_acceptance_confirmed.accepted' => 'Confirm that the terms were explained and the customer agreed by an alternative method.']);
+    }
+
+    public function approveQuoteException(Request $request, int $quotation)
+    {
+        abort_unless(RentalAgreements::enabled() && $this->agreements->canApproveException($request->user()), 403);
+        $quote = $this->workspace->quote($quotation, 'update');
+        $data = $this->exceptionInput($request);
+        $this->workspace->atomic($quote->organization_id, function () use ($quote, $request, $data) {
+            $enquiry = $this->workspace->locked($quote->enquiry);
+            $quote = $quote->fresh() ?? abort(404);
+            $this->workspace->current($quote);
+            abort_unless($this->agreements->canIssueForQuote($quote), 409, 'Only the current open rental quotation can receive a signature exception.');
+            $agreement = $this->agreements->issueForQuote($quote);
+            if ($agreement->signed_at || $this->agreements->exceptionForQuote($quote, $agreement)) return;
+            $this->workspace->version($quote, $request);
+            if (!hash_equals($this->agreements->exceptionContext($agreement, $quote), $data['exception_context'])) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['exception_context' => 'The quotation or rental terms changed. Review them before approving an exception.']);
+            }
+            $this->agreements->approveException($agreement, $request->user(), $data['exception_reason'], $quote);
+            $quote->increment('lock_version');
+            $this->workspace->event($enquiry, 'quotation.signature_exception_approved', $quote->number().' digital signature exception approved by '.$request->user()->name.'. Reason saved in the rental agreement audit.');
+        });
+        return redirect()->to(route('enquiries.show', $quote->enquiry_id).'#rental-agreement')->with('success', 'Signature exception approved. Quotation acceptance is still required before creating the order.');
+    }
+
+    public function approveRentalException(Request $request, Rental $rental)
+    {
+        abort_unless(RentalAgreements::enabled() && $this->agreements->canApproveRentalException($request->user(), $rental), 403);
+        $data = $this->exceptionInput($request);
+        app(OrganizationFinancialTransaction::class)->run((int) $rental->organization_id, function () use ($rental, $request, $data) {
+            $rental = $rental->fresh() ?? abort(404);
+            abort_unless($this->agreements->canApproveRentalException($request->user(), $rental), 403);
+            $agreement = $this->agreements->current($rental);
+            abort_unless($rental->status === 'active' && $agreement && $this->agreements->matches($rental, $agreement), 409, 'Use the current rental agreement for this active order.');
+            if ($this->agreements->readyFor($rental, $agreement)) return;
+            if (!hash_equals($this->agreements->exceptionContext($agreement, null, $rental), $data['exception_context'])) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['exception_context' => 'The rental or its terms changed. Review them before approving an exception.']);
+            }
+            $this->agreements->approveException($agreement, $request->user(), $data['exception_reason'], null, $rental);
+            ActivityLog::create(['organization_id'=>$rental->organization_id,'user_id'=>$request->user()->id,
+                'action'=>'rental.signature_exception_approved','subject_type'=>Rental::class,'subject_id'=>$rental->id,
+                'rental_id'=>$rental->id,'customer_id'=>$rental->customer_id,
+                'description'=>'Digital signature exception approved by '.$request->user()->name.'. Reason saved in the rental agreement audit.',
+                'properties'=>['agreement_id'=>$agreement->id,'approval_type'=>'digital_signature_exception']]);
+        });
+        return redirect()->to(route('rentals.show', $rental).'#rental-agreement')->with('success', 'Signature exception approved. The approval reason is saved with this rental.');
     }
 }

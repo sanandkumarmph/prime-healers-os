@@ -180,7 +180,7 @@ class BatchTwoRegressionTest extends TestCase
         $this->assertReturnVerificationOutcome('scrap', 'inactive', Asset::STATUS_RETIRED);
     }
 
-    public function test_quick_customer_create_reuses_existing_customer_for_same_organization_and_phone(): void
+    public function test_quick_customer_create_requires_identity_choice_for_same_organization_and_phone(): void
     {
         $organization = TestData::organization();
         $this->actingAs(TestData::user($organization));
@@ -202,13 +202,14 @@ class BatchTwoRegressionTest extends TestCase
             'email' => 'new-email@example.com',
         ]);
 
-        $response->assertOk()
-            ->assertJsonPath('customer.id', $existing->id);
+        $response->assertConflict()
+            ->assertJsonPath('code', 'customer_identity_conflict')
+            ->assertJsonPath('matches.0.id', $existing->id);
 
         $this->assertSame(1, Customer::query()->where('organization_id', $organization->id)->count());
     }
 
-    public function test_quick_customer_create_reuses_existing_customer_for_same_organization_and_email_when_phone_missing(): void
+    public function test_quick_customer_create_requires_identity_choice_for_email_when_phone_missing(): void
     {
         $organization = TestData::organization();
         $this->actingAs(TestData::user($organization));
@@ -228,8 +229,9 @@ class BatchTwoRegressionTest extends TestCase
             'email' => 'existing-email@example.com',
         ]);
 
-        $response->assertOk()
-            ->assertJsonPath('customer.id', $existing->id);
+        $response->assertConflict()
+            ->assertJsonPath('code', 'customer_identity_conflict')
+            ->assertJsonPath('matches.0.id', $existing->id);
 
         $this->assertSame(1, Customer::query()->where('organization_id', $organization->id)->count());
     }

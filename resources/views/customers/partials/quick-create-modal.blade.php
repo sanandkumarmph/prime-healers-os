@@ -343,6 +343,7 @@
 
             <div class="quick-customer-body" data-role="quick-body">
                 <div class="quick-customer-alert" data-role="quick-alert" hidden></div>
+                <section data-customer-identity-conflict hidden aria-label="Choose the intended customer" style="padding:12px;border:1px solid #eccb83;border-radius:10px;background:#fffbeb;margin-bottom:12px"></section>
 
                 <div>
                     <div class="quick-segmented" data-role="customer-type-switch">
@@ -630,6 +631,11 @@
         const mapCurrentButton = form.querySelector('[data-quick-map-current]');
         const mapOpenButton = form.querySelector('[data-quick-map-open]');
         const alertBox = form.querySelector('[data-role="quick-alert"]');
+        const conflictPanel = form.querySelector('[data-customer-identity-conflict]');
+        let conflictChoice = null, savingCustomer = false;
+        const clearIdentityChoice = () => { conflictChoice = null; conflictPanel.hidden = true; conflictPanel.replaceChildren(); };
+        form.addEventListener('input', clearIdentityChoice);
+        form.addEventListener('change', clearIdentityChoice);
         const bodyScroll = form.querySelector('[data-role="quick-body"]');
         const openButtons = document.querySelectorAll('[data-open-modal="{{ $quickModalId }}"]');
         const closeButtons = modal.querySelectorAll('[data-close-modal]');
@@ -754,6 +760,7 @@
         }
 
         function resetCustomerModal() {
+            clearIdentityChoice();
             form.reset();
             customerTypeInput.value = 'Individual';
             gstRegisteredInput.value = '0';
@@ -950,13 +957,39 @@
             });
         });
 
+        function showIdentityConflict(payload) {
+            conflictPanel.replaceChildren(); conflictPanel.hidden = false;
+            const title = document.createElement('strong'); title.textContent = 'Choose the intended customer'; conflictPanel.append(title);
+            const explanation = document.createElement('p'); explanation.textContent = payload.message; explanation.style.cssText = 'font-size:13px;margin:7px 0'; conflictPanel.append(explanation);
+            const matches = Array.isArray(payload.matches) ? payload.matches : [];
+            const separate = document.createElement('button'); separate.type = 'button'; separate.className = 'quick-btn quick-btn-primary'; separate.dataset.customerConflictChoice = '';
+            separate.textContent = 'Create ' + (payload.entered_name || 'this person') + ' as a separate customer';
+            separate.addEventListener('click', () => { conflictChoice = {action:'separate',ids:matches.map(customer=>customer.id)}; form.requestSubmit(); }); conflictPanel.append(separate);
+            for (const customer of matches) {
+                const row = document.createElement('div'); row.style.cssText = 'margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap';
+                const description = document.createElement('span'); description.textContent = [customer.name,customer.phone,customer.email].filter(Boolean).join(' · '); description.style.cssText = 'font-size:12px;overflow-wrap:anywhere';
+                const use = document.createElement('button'); use.type='button';use.className='quick-btn quick-btn-light';use.dataset.customerConflictChoice='';use.textContent='Use '+customer.name+"'s profile";
+                use.addEventListener('click',()=>{conflictChoice={action:'existing',id:customer.id};form.requestSubmit();});row.append(description,use);conflictPanel.append(row);
+            }
+        }
+
         form.addEventListener('submit', function (event) {
             event.preventDefault();
+            if (savingCustomer) return;
+            savingCustomer = true;
+            const saveButton = form.querySelector('button[type=submit]');
+            if (saveButton) saveButton.disabled = true;
+            conflictPanel.querySelectorAll('button').forEach(button => button.disabled = true);
             setAlert('', false);
             clearFieldErrors();
             displayNameInput.value = buildDisplayName(customerTypeInput.value);
 
             const formData = new FormData(form);
+            if (conflictChoice) {
+                formData.set('quick_conflict_action', conflictChoice.action);
+                if (conflictChoice.id) formData.set('quick_existing_customer_id', String(conflictChoice.id));
+                for (const id of conflictChoice.ids || []) formData.append('quick_conflict_customer_ids[]', String(id));
+            }
 
             fetch(form.action, {
                 method: 'POST',
@@ -977,11 +1010,13 @@
                     });
                 })
                 .then(function (payload) {
-                    appendAndSelectCustomer(payload.customer || null);
+                    if (!payload?.customer?.id) throw {message:'The customer could not be selected. Please try again.'};
+                    appendAndSelectCustomer(payload.customer);
                     resetCustomerModal();
                     closeCustomerModal();
                 })
                 .catch(function (payload) {
+                    if (payload?.code === 'customer_identity_conflict') { showIdentityConflict(payload); return; }
                     const errors = payload && payload.errors ? payload.errors : {};
                     setFieldErrors(errors);
 
@@ -1000,6 +1035,10 @@
                     }
 
                     setAlert(message, true);
+                }).finally(function () {
+                    savingCustomer = false;
+                    if (saveButton) saveButton.disabled = false;
+                    conflictPanel.querySelectorAll('button').forEach(button => button.disabled = false);
                 });
         });
 

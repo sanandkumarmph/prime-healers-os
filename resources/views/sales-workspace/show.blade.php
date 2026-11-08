@@ -13,35 +13,38 @@
     };
 
 @endphp
-<div class="sw sw-detail" data-enquiry-detail>
+<div class="sw sw-detail" data-enquiry-detail @if($latestQuote) data-quote-live="{{ $latestQuote->id }}" data-live-page="enquiry" data-live-status-url="{{ route('quotations.status',$latestQuote) }}" @endif>
     <a class="swd-back" href="{{ route('enquiries.index') }}">← Sales workspace</a>
     <header class="sw-head swd-header">
         <div class="swd-heading">
-            <div class="swd-identity"><span class="sw-eyebrow">Enquiry #{{ $enquiry->id }}</span><span class="sw-badge" data-status="{{ $enquiry->stage }}">{{ \App\Models\Enquiry::STAGES[$enquiry->stage] }}</span></div>
+            <div class="swd-identity"><span class="sw-eyebrow">Enquiry #{{ $enquiry->id }}</span><span class="sw-badge" data-live-enquiry-stage data-status="{{ $enquiry->stage }}">{{ \App\Models\Enquiry::STAGES[$enquiry->stage] }}</span></div>
             <h1 class="sw-wrap">{{ $enquiry->subject }}</h1>
             <p class="sw-meta">{{ $enquiry->name }} <span aria-hidden="true">·</span> Owner: <strong>{{ $enquiry->owner?->name ?? 'Unassigned' }}</strong></p>
         </div>
         <div class="sw-actions">
             @if($canEdit && !$enquiry->closed())<a class="sw-btn" href="{{ route('enquiries.edit',$enquiry) }}">Edit details</a>@endif
+            <span data-live-quote-header>
             @if($orderAction)
                 <a class="sw-btn sw-primary" href="{{ $orderAction['url'] }}">{{ $orderAction['label'] }}</a>
-            @elseif($canUpdateQuote && $quoteStatus === 'sent' && $agreement?->signed_at && !$enquiry->closed())
+            @elseif($canUpdateQuote && $quoteStatus === 'sent' && app(\App\Services\Sales\RentalAgreements::class)->readyForQuote($latestQuote,$agreement) && !$enquiry->closed())
                 <a class="sw-btn sw-primary" href="#enquiry-response">Record quotation response</a>
             @elseif($canCreateQuote && !$latestQuote)
                 <a class="sw-btn sw-primary" href="{{ $quotationUrl }}">Create quotation</a>
             @elseif($latestQuote && !$enquiry->closed())
                 <a class="sw-btn sw-primary" href="{{ $quotationUrl }}">Open latest quotation</a>
             @endif
+            </span>
         </div>
     </header>
     @include('sales-workspace.alerts', ['showSuccess'=>true])
+    @if($latestQuote)@include('sales-workspace.live-status',['liveQuote'=>$latestQuote,'liveAgreement'=>$agreement])@endif
     @if($enquiry->stage==='lost')<div class="sw-alert sw-error"><strong>Closed as lost</strong><p>{{ $enquiry->lost_reason }}</p></div>@endif
     <div class="swd-progress">
     @include('sales-workspace.workflow-navigation', [
         'workflowEnquiry' => $enquiry, 'workflowQuotationUrl' => $quotationUrl, 'workflowOrderUrl' => $orderAction['url'] ?? null,
         'workflowOnEnquiry' => true, 'workflowStep' => $progress,
     ])
-    <p class="sw-guide" id="enquiry-next" tabindex="-1">
+    <p class="sw-guide" id="enquiry-next" data-live-quote-next tabindex="-1">
         <strong>Next:</strong>
         @if($enquiry->closed())
             {{ $orderAction ? 'Open the order from the Order step.' : 'Review the enquiry history below.' }}
@@ -53,12 +56,12 @@
             Complete the quotation and review it before sharing.
         @elseif($quoteStatus === 'expired')
             Create a quotation revision with a new validity date.
-        @elseif($quoteStatus === 'accepted' && $requiresSignature && !$agreement?->signed_at)
+        @elseif($quoteStatus === 'accepted' && $requiresSignature && !app(\App\Services\Sales\RentalAgreements::class)->readyForQuote($latestQuote,$agreement))
             Share the rental agreement and collect the signature before creating the order.
         @elseif($quoteStatus === 'accepted')
             A staff member with order creation access can create the order.
-        @elseif($quoteStatus === 'sent' && $agreement?->signed_at)
-            The rental terms are signed. Record the customer's quotation acceptance to continue.
+        @elseif($quoteStatus === 'sent' && app(\App\Services\Sales\RentalAgreements::class)->readyForQuote($latestQuote,$agreement))
+            {{ $agreement?->signed_at ? "The rental terms are signed. Record the customer's quotation acceptance to continue." : "A signature exception is approved. Record the customer's quotation acceptance to continue." }}
         @elseif($quoteStatus === 'sent')
             {{ $latestQuote->shared_at ? 'Follow up and record the customer response.' : 'Open the quotation and share it with the customer.' }}
         @else
@@ -111,11 +114,13 @@
                 @if($latestQuote)
                     <div class="swd-quote-summary">
                         <div><strong>{{ $latestQuote->number() }}</strong><span class="sw-meta">{{ ucfirst($latestQuote->kind) }} · {{ $latestQuote->snapshot['currency'] }} {{ number_format($latestQuote->snapshot['total'],2) }}</span></div>
-                        <div><span class="sw-badge" data-status="{{ $quoteStatus }}">{{ $quoteStatus==='sent' ? 'Awaiting quotation acceptance' : $latestQuote->statusLabel() }}</span><span class="sw-meta">Valid until {{ $latestQuote->valid_until->format('d M Y') }}</span></div>
+                        <div><span class="sw-badge" data-live-quote-label data-status="{{ $quoteStatus }}">{{ $quoteStatus==='sent' ? 'Awaiting quotation acceptance' : $latestQuote->statusLabel() }}</span><span class="sw-meta">Valid until {{ $latestQuote->valid_until->format('d M Y') }}</span></div>
                     </div>
+                    <div data-live-response>
                     @if($canUpdateQuote && $quoteStatus==='sent' && !$enquiry->closed())
-                        @include('sales-workspace.quotation-response',['quote'=>$latestQuote,'returnToEnquiry'=>true,'showResponseForm'=>(bool) $agreement?->signed_at])
+                        @include('sales-workspace.quotation-response',['quote'=>$latestQuote,'returnToEnquiry'=>true,'showResponseForm'=>app(\App\Services\Sales\RentalAgreements::class)->readyForQuote($latestQuote,$agreement)])
                     @endif
+                    </div>
                 @else
                     <p class="sw-muted">The quotation response will appear here.</p>
                 @endif

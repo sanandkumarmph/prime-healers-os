@@ -2,7 +2,7 @@
 
 namespace App\Services\Sales;
 
-use App\Models\{Quotation, Rental, RentalAgreement};
+use App\Models\{OrderIncentiveAttribution, Quotation, Rental, RentalAgreement, User};
 use App\Services\Deliveries\SignatureCapture;
 use App\Support\PhoneNumber;
 use Illuminate\Http\Request;
@@ -52,6 +52,93 @@ class RentalAgreements
         return $agreement->signed_at !== null && $this->matches($rental, $agreement);
     }
 
+    public function hasException(RentalAgreement $agreement): bool
+    {
+        $approval = $agreement->exception_approval;
+        return is_array($approval) && !empty($approval['approved_at']) && !empty($approval['approved_by_user_id'])
+            && !empty(trim($approval['reason'] ?? '')) && ($approval['alternative_acceptance_confirmed'] ?? false) === true
+            && hash_equals((string) ($approval['terms_sha256'] ?? ''), hash('sha256', (string) $agreement->terms));
+    }
+
+    public function exceptionForQuote(Quotation $quote, RentalAgreement $agreement): bool
+    {
+        if (!$this->hasException($agreement) || (int) $agreement->organization_id !== (int) $quote->organization_id
+            || (int) $agreement->quotation_id !== (int) $quote->id || !$this->canIssueForQuote($quote)
+            || $quote->enquiry->quotations()->where('revision', '>', $quote->revision)->exists()) return false;
+        $approval = $agreement->exception_approval;
+        return (int) ($approval['quotation_id'] ?? 0) === (int) $quote->id
+            && hash_equals((string) ($approval['quotation_snapshot_sha256'] ?? ''), $this->quoteFingerprint($quote));
+    }
+
+    public function readyForQuote(Quotation $quote, ?RentalAgreement $agreement = null): bool
+    {
+        $agreement ??= $this->quotation($quote);
+        return $agreement && (int) $agreement->organization_id === (int) $quote->organization_id
+            && (int) $agreement->quotation_id === (int) $quote->id
+            && ($agreement->signed_at !== null || $this->exceptionForQuote($quote, $agreement));
+    }
+
+    public function readyFor(Rental $rental, RentalAgreement $agreement): bool
+    {
+        return (int) $agreement->organization_id === (int) $rental->organization_id
+            && (int) $agreement->rental_id === (int) $rental->id && $this->matches($rental, $agreement)
+            && ($agreement->signed_at !== null || ($this->hasException($agreement)
+                && hash_equals((string) ($agreement->exception_approval['rental_fingerprint'] ?? ''), $this->fingerprint($rental))));
+    }
+
+    public function canApproveException(User $user): bool
+    {
+        return $user->isSuperAdmin() || $user->isAdminOperations() || $user->isSales()
+            || ($user->hasActiveAccess() && $user->effective_role === 'admin');
+    }
+
+    public function canApproveRentalException(User $user, Rental $rental): bool
+    {
+        if (!$this->canApproveException($user) || (int) $user->organization_id !== (int) $rental->organization_id || !$user->can('update', $rental)) return false;
+        if (!$user->isSales()) return true;
+        if ((int) $rental->created_by_user_id === (int) $user->id) return true;
+        return OrderIncentiveAttribution::where('organization_id', $rental->organization_id)->where('order_type', 'rental')->where('order_id', $rental->id)
+            ->where(fn ($q) => $q->where('sales_user_id', $user->id)->orWhere('closer_user_id', $user->id))->exists();
+    }
+
+    public function canApproveQuoteException(User $user, Quotation $quote): bool
+    {
+        return $this->canApproveException($user) && (int) $user->organization_id === (int) $quote->organization_id
+            && $user->canAccessModule('enquiries', 'update') && $user->canAccessModule('quotations', 'update')
+            && ($user->scopeType('enquiries') === 'all' || (int) $quote->enquiry->owner_id === (int) $user->id)
+            && ($user->scopeType('quotations') === 'all' || (int) $quote->enquiry->owner_id === (int) $user->id);
+    }
+
+    public function exceptionContext(RentalAgreement $agreement, ?Quotation $quote = null, ?Rental $rental = null): string
+    {
+        return hash('sha256', json_encode(['agreement' => $agreement->id, 'organization' => $agreement->organization_id,
+            'quote' => $quote?->id, 'snapshot' => $quote ? $this->quoteFingerprint($quote) : null,
+            'rental' => $rental?->id, 'fingerprint' => $rental ? $this->fingerprint($rental) : null,
+            'terms' => hash('sha256', $this->terms($agreement))], JSON_THROW_ON_ERROR));
+    }
+
+    public function approveException(RentalAgreement $agreement, User $actor, string $reason, ?Quotation $quote = null, ?Rental $rental = null): void
+    {
+        abort_unless(($quote && !$rental && $this->canApproveQuoteException($actor, $quote))
+            || ($rental && !$quote && $this->canApproveRentalException($actor, $rental)), 403);
+        if (mb_strlen(trim($reason)) < 10 || mb_strlen($reason) > 1500) throw ValidationException::withMessages(['exception_reason' => 'Explain why the customer cannot digitally sign (10–1500 characters).']);
+        $terms = $this->terms($agreement);
+        $previous = $agreement->exception_approval;
+        $history = $previous['previous_approvals'] ?? [];
+        if ($previous) { unset($previous['previous_approvals']); $history[] = $previous; }
+        $approval = ['approved_at' => now('UTC')->toIso8601String(), 'approved_by_user_id' => $actor->id,
+            'approved_by_name' => $actor->name, 'reason' => trim($reason), 'alternative_acceptance_confirmed' => true,
+            'terms_sha256' => hash('sha256', $terms), 'quotation_id' => $quote?->id,
+            'quotation_snapshot_sha256' => $quote ? $this->quoteFingerprint($quote) : null,
+            'rental_fingerprint' => $rental ? $this->fingerprint($rental) : null, 'previous_approvals' => $history];
+        $agreement->fill(['terms' => $terms, 'exception_approval' => $approval])->save();
+    }
+
+    private function quoteFingerprint(Quotation $quote): string
+    {
+        return hash('sha256', json_encode($quote->snapshot, JSON_THROW_ON_ERROR));
+    }
+
     public function matches(Rental $rental, RentalAgreement $agreement): bool
     {
         return $agreement->rental_fingerprint === $this->fingerprint($rental);
@@ -59,7 +146,7 @@ class RentalAgreements
 
     public function dispatch(?Rental $rental): void
     {
-        if ($rental && ($agreement = $this->current($rental)) && !$this->signedFor($rental, $agreement)) {
+        if ($rental && ($agreement = $this->current($rental)) && !$this->readyFor($rental, $agreement)) {
             throw ValidationException::withMessages(['rental_agreement' => 'The customer must sign the current rental terms before dispatch. Open the rental to share the signing link.']);
         }
     }
@@ -80,14 +167,19 @@ class RentalAgreements
 
     public function terms(RentalAgreement $agreement): string
     {
-        return $agreement->signed_at ? $agreement->terms : RentalAgreementTerms::TEXT;
+        return $agreement->signed_at || $this->hasException($agreement) ? $agreement->terms : RentalAgreementTerms::TEXT;
     }
 
     public function attach(Quotation $quote, Rental $rental): void
     {
-        $this->quotation($quote)?->update([
+        $agreement = $this->quotation($quote);
+        if (!$agreement) return;
+        $approval = $agreement->exception_approval;
+        if ($this->exceptionForQuote($quote, $agreement)) $approval['rental_fingerprint'] = $this->fingerprint($rental);
+        $agreement->update([
             'rental_id' => $rental->id,
             'rental_fingerprint' => $this->fingerprint($rental),
+            'exception_approval' => $approval,
         ]);
     }
 

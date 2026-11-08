@@ -66,9 +66,13 @@ class CustomerProfileSupport
         $emailRules = ['nullable', 'email', 'max:255'];
 
         if ($organizationId !== null) {
-            $emailRules[] = Rule::unique('customers', 'email')
-                ->where(fn ($query) => $query->where('organization_id', $organizationId))
-                ->ignore($ignoreCustomerId);
+            $existingContacts = $ignoreCustomerId ? DB::table('customers')->where('organization_id', $organizationId)->where('id', $ignoreCustomerId)->first(['email']) : null;
+            $emailUnchanged = $existingContacts && strtolower(trim((string) $existingContacts->email)) === strtolower(trim((string) request()->input('email', '')));
+            if (!$emailUnchanged) {
+                $emailRules[] = Rule::unique('customers', 'email')
+                    ->where(fn ($query) => $query->where('organization_id', $organizationId))
+                    ->ignore($ignoreCustomerId);
+            }
 
             $phoneRules[] = function (string $attribute, mixed $value, \Closure $fail) use ($organizationId, $ignoreCustomerId): void {
                 $normalized = PhoneNumber::normalize(
@@ -78,6 +82,11 @@ class CustomerProfileSupport
 
                 if ($normalized === null) {
                     return;
+                }
+                // An explicitly shared family contact may remain unchanged when editing this person.
+                if ($ignoreCustomerId) {
+                    $stored = DB::table('customers')->where('organization_id', $organizationId)->where('id', $ignoreCustomerId)->value($attribute);
+                    if (PhoneNumber::normalize($stored) === $normalized) return;
                 }
 
                 $exists = DB::table('customers')
@@ -99,6 +108,11 @@ class CustomerProfileSupport
 
                 if ($normalized === null) {
                     return;
+                }
+                // An explicitly shared family contact may remain unchanged when editing this person.
+                if ($ignoreCustomerId) {
+                    $stored = DB::table('customers')->where('organization_id', $organizationId)->where('id', $ignoreCustomerId)->value($attribute);
+                    if (PhoneNumber::normalize($stored) === $normalized) return;
                 }
 
                 $exists = DB::table('customers')
@@ -162,7 +176,7 @@ class CustomerProfileSupport
             : 'Individual';
     }
 
-    public static function validateIdentity(array $validated, bool $quickMode = false): array
+    public static function validateIdentity(array $validated, bool $quickMode = false, bool $requireQuickPhone = true): array
     {
         $customerType = static::normalizeCustomerType($validated['customer_type'] ?? null);
         $validated['customer_type'] = $customerType;
@@ -187,7 +201,7 @@ class CustomerProfileSupport
             ]);
         }
 
-        if ($quickMode && trim((string) ($validated['phone'] ?? '')) === '') {
+        if ($quickMode && $requireQuickPhone && trim((string) ($validated['phone'] ?? '')) === '') {
             throw ValidationException::withMessages([
                 'phone' => ['Phone is required for quick customer creation.'],
             ]);
