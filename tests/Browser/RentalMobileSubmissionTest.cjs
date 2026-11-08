@@ -74,7 +74,7 @@ test('mobile rental create and edit submit the owning form and follow availabili
                             const driver = [...staff.options].find(option => option.dataset.collectionEligible === '1');
                             if (!driver) throw new Error('Delivery collection operator is missing');
                             set('delivery_staff_id', driver.value);
-                            document.getElementById('collection_enabled').click();
+                            set('collection_owner', 'delivery');
                             set('collection_amount', '125.00');
                             set('collection_methods', 'both');
                             set('collection_instructions', 'UAT browser instructions');

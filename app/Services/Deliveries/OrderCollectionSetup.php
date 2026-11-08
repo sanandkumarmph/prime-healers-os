@@ -35,11 +35,27 @@ class OrderCollectionSetup
 
     public function validate(Request $request, string $module): ?array
     {
-        $request->validate(['collection_enabled' => 'nullable|boolean']);
+        $request->validate(['collection_enabled' => 'nullable|boolean', 'collection_owner' => 'nullable|in:none,delivery,sales']);
+        if ($request->filled('collection_owner')) {
+            $owner = $request->input('collection_owner');
+            if (($owner === 'delivery') !== $request->boolean('collection_enabled')
+                || ($owner !== 'sales' && ($request->filled('collection_mode') || $request->filled('collection_assignee_id')))) {
+                throw ValidationException::withMessages(['collection_owner' => 'Choose one person or team to collect payment.']);
+            }
+            if ($owner === 'sales' && (!$request->filled('collection_mode') || !$request->filled('collection_assignee_id'))) {
+                throw ValidationException::withMessages(['collection_assignee_id' => 'Select the Sales team member and collection type.']);
+            }
+        }
         if (!$request->boolean('collection_enabled')) {
             return null;
         }
         abort_unless($this->allowed($request->user(), $module), 403);
+        $internal = $module === 'rentals'
+            ? $request->input('delivery_assignment_type') === 'ph_internal'
+            : $request->input('delivery_responsibility') === 'ph_internal_delivery';
+        if (!$internal) {
+            throw ValidationException::withMessages(['collection_enabled' => 'Payment on delivery is available only for internal delivery.']);
+        }
         if ($request->filled('collection_assignee_id') || $request->filled('collection_mode')) {
             throw ValidationException::withMessages([
                 'collection_enabled' => 'Choose one collection owner: the delivery operator or the Sales team member.',

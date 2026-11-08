@@ -6,10 +6,12 @@
     $quickStates = \App\Models\Customer::indianStates();
     $quickCountryCodes = \App\Support\PhoneNumber::countryCodeOptions();
     $quickCustomerTypes = ['Individual' => 'Individual', 'Business' => 'Business'];
-    $quickSalutations = ['Mr.' => 'Mr.', 'Mrs.' => 'Mrs.', 'Ms.' => 'Ms.', 'Dr.' => 'Dr.'];
+    $quickSalutations = array_combine(\App\Models\Enquiry::SALUTATIONS, \App\Models\Enquiry::SALUTATIONS);
     $quickIdProofTypes = ['Aadhaar', 'PAN', 'Driving License', 'Passport', 'Other'];
     $quickPrefill = $quickPrefill ?? [];
     $quickPrefillPhone = \App\Support\PhoneNumber::split($quickPrefill['phone'] ?? null);
+    $quickPrefillWhatsapp = \App\Support\PhoneNumber::split($quickPrefill['whatsapp_number'] ?? null);
+    $quickAutoOpen = $quickAutoOpen ?? false;
 @endphp
 
 @once
@@ -361,19 +363,19 @@
                                     <select name="salutation" id="{{ $quickModalId }}Salutation">
                                         <option value="">Select</option>
                                         @foreach($quickSalutations as $value => $label)
-                                            <option value="{{ $value }}">{{ $label }}</option>
+                                            <option value="{{ $value }}" @selected(($quickPrefill['salutation'] ?? '') === $value)>{{ $label }}</option>
                                         @endforeach
                                     </select>
                                     <div class="quick-field-error" data-error-for="salutation" hidden></div>
                                 </div>
                                 <div class="quick-field" data-field="first_name">
                                     <label for="{{ $quickModalId }}FirstName">First Name</label>
-                                    <input type="text" name="first_name" id="{{ $quickModalId }}FirstName" placeholder="First name" value="{{ $quickPrefill['name'] ?? '' }}">
+                                    <input type="text" name="first_name" id="{{ $quickModalId }}FirstName" placeholder="First name" value="{{ $quickPrefill['first_name'] ?? $quickPrefill['name'] ?? '' }}">
                                     <div class="quick-field-error" data-error-for="first_name" hidden></div>
                                 </div>
                                 <div class="quick-field" data-field="last_name">
                                     <label for="{{ $quickModalId }}LastName">Last Name</label>
-                                    <input type="text" name="last_name" id="{{ $quickModalId }}LastName" placeholder="Last name">
+                                    <input type="text" name="last_name" id="{{ $quickModalId }}LastName" placeholder="Last name" value="{{ $quickPrefill['last_name'] ?? '' }}">
                                     <div class="quick-field-error" data-error-for="last_name" hidden></div>
                                 </div>
                             </div>
@@ -417,12 +419,12 @@
                             @include('partials.country-code-picker', [
                                 'name' => 'whatsapp_number_country_code',
                                 'pickerId' => $quickModalId . 'WhatsappCountryCode',
-                                'value' => \App\Support\PhoneNumber::DEFAULT_CODE,
+                                'value' => $quickPrefillWhatsapp['code'],
                                 'options' => $quickCountryCodes,
                                 'dividerColor' => '#cbd5e1',
                                 'width' => '92px',
                             ])
-                            <input type="text" name="whatsapp_number" id="{{ $quickModalId }}Whatsapp" placeholder="WhatsApp number" inputmode="numeric" maxlength="15" pattern="[0-9]{6,15}" data-phone-local>
+                            <input type="text" name="whatsapp_number" id="{{ $quickModalId }}Whatsapp" placeholder="WhatsApp number" inputmode="numeric" maxlength="15" pattern="[0-9]{6,15}" data-phone-local value="{{ $quickPrefillWhatsapp['local'] }}">
                         </div>
                         <div class="quick-field-error" data-error-for="whatsapp_number" hidden></div>
                     </div>
@@ -435,7 +437,7 @@
 
                     <div class="quick-field quick-col-6" data-field="address">
                         <label for="{{ $quickModalId }}Address">Address</label>
-                        <textarea name="address" id="{{ $quickModalId }}Address" rows="2" placeholder="Street, building, landmark"></textarea>
+                        <textarea name="address" id="{{ $quickModalId }}Address" rows="2" placeholder="Street, building, landmark">{{ $quickPrefill['address'] ?? '' }}</textarea>
                         <div class="quick-field-error" data-error-for="address" hidden></div>
                     </div>
 
@@ -447,7 +449,7 @@
 
                     <div class="quick-field quick-col-3" data-field="city">
                         <label for="{{ $quickModalId }}City">City</label>
-                        <input type="text" name="city" id="{{ $quickModalId }}City" placeholder="City">
+                        <input type="text" name="city" id="{{ $quickModalId }}City" placeholder="City" value="{{ $quickPrefill['city'] ?? '' }}">
                         <div class="quick-field-error" data-error-for="city" hidden></div>
                     </div>
 
@@ -456,7 +458,7 @@
                         <select name="state" id="{{ $quickModalId }}State">
                             <option value="">Select state</option>
                             @foreach($quickStates as $state)
-                                <option value="{{ $state }}">{{ $state }}</option>
+                                <option value="{{ $state }}" @selected(($quickPrefill['state'] ?? '') === $state)>{{ $state }}</option>
                             @endforeach
                         </select>
                         <div class="quick-field-error" data-error-for="state" hidden></div>
@@ -464,13 +466,13 @@
 
                     <div class="quick-field quick-col-3" data-field="pincode">
                         <label for="{{ $quickModalId }}Pincode">Pincode</label>
-                        <input type="text" name="pincode" id="{{ $quickModalId }}Pincode" placeholder="Pincode">
+                        <input type="text" name="pincode" id="{{ $quickModalId }}Pincode" placeholder="Pincode" value="{{ $quickPrefill['pincode'] ?? '' }}">
                         <div class="quick-field-error" data-error-for="pincode" hidden></div>
                     </div>
 
                     <div class="quick-field quick-col-3" data-field="place_of_supply">
                         <label for="{{ $quickModalId }}PlaceOfSupply">Place of Supply</label>
-                        <input type="text" name="place_of_supply" id="{{ $quickModalId }}PlaceOfSupply" placeholder="Defaults from state">
+                        <input type="text" name="place_of_supply" id="{{ $quickModalId }}PlaceOfSupply" placeholder="Defaults from state" value="{{ $quickPrefill['place_of_supply'] ?? $quickPrefill['state'] ?? '' }}">
                         <div class="quick-field-error" data-error-for="place_of_supply" hidden></div>
                     </div>
 
@@ -806,6 +808,9 @@
             option.setAttribute('data-name', customer.name || '');
             option.setAttribute('data-phone', localPhone || '');
             option.setAttribute('data-phone-country', countryCode);
+            ['address','city','state','email','salutation'].forEach(key => option.setAttribute('data-'+key, customer[key] || ''));
+            option.setAttribute('data-location', customer.map_location_url || '');
+            option.setAttribute('data-search', [customer.name,customer.phone,customer.email,customer.city].filter(Boolean).join(' - '));
 
             if (!existingOption) {
                 targetSelect.appendChild(option);
@@ -1001,5 +1006,10 @@
         syncTypePanels();
         syncGstFields();
         syncMapPreview();
+        if (@json((bool) $quickAutoOpen)) {
+            const openForConfirmedProspect = () => { if (!targetSelect?.value) openCustomerModal(); };
+            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', openForConfirmedProspect, {once:true});
+            else openForConfirmedProspect();
+        }
     })();
 </script>

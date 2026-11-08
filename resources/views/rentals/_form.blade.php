@@ -212,8 +212,8 @@
     $assetAssignmentDisplayError = $assetAssignmentError
         ? 'Rental could not be saved because: ' . $assetAssignmentError
         : null;
-    $additionalRentalExpanded = $hasRentalItemsError;
-    $newProductsExpanded = $hasSaleItemsError;
+    $additionalRentalExpanded = $hasRentalItemsError || (request()->attributes->get('conversion_quote') && count($additionalRentalRows) > 0);
+    $newProductsExpanded = $hasSaleItemsError || (request()->attributes->get('conversion_quote') && count($saleItemRows) > 0);
     $currentUser = auth()->user();
     $canCreateRentalStock = $currentUser?->canAccessModule('assets', 'create') ?? false;
 @endphp
@@ -3134,37 +3134,7 @@
                 </aside>
             </div>
             <div class="assignment-toast" id="rentalStockToast" hidden>Rental stock added and available for selection.</div>
-            <script>
-                document.addEventListener('DOMContentLoaded', function () {
-                    const openBtn = document.querySelector('[data-open-rental-stock-modal]');
-                    const modal = document.getElementById('rentalStockModal');
-                    const closeBtns = document.querySelectorAll('[data-close-rental-stock-modal]');
 
-                    if (!openBtn || !modal) {
-                        return;
-                    }
-
-                    openBtn.addEventListener('click', function (event) {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        modal.hidden = false;
-                        modal.classList.add('is-open');
-                        modal.setAttribute('aria-hidden', 'false');
-                        document.body.classList.add('modal-open');
-                        document.body.classList.add('assignment-drawer-open');
-                    });
-
-                    closeBtns.forEach(function (btn) {
-                        btn.addEventListener('click', function () {
-                            modal.hidden = true;
-                            modal.classList.remove('is-open');
-                            modal.setAttribute('aria-hidden', 'true');
-                            document.body.classList.remove('modal-open');
-                            document.body.classList.remove('assignment-drawer-open');
-                        });
-                    });
-                });
-            </script>
         @endif
         @if($assetAssignmentDisplayError)
             <div class="field-error" style="margin-top:10px;">{{ $assetAssignmentDisplayError }}</div>
@@ -3356,7 +3326,6 @@
             </div>
 
             @include('deliveries.order-collection-setup', ['orderKind' => 'rental'])
-            @include('components.order-collection-assignment', ['fieldClass' => 'rental-field rental-col-4', 'errorClass' => 'field-error'])
 
             @if($isEdit)
             <div class="rental-field rental-col-3{{ $hasFieldError('pickup_staff_id') ? ' is-error' : '' }}">
@@ -4385,7 +4354,7 @@
                     .map((button) => button.disabled),
             };
         };
-        const firstErrorStep = steps.find((step) => step.querySelector('.is-error, .field-error'))?.dataset.rentalWizardStep;
+        const firstErrorStep = @json($errors->any()) ? steps.find((step) => step.querySelector('.is-error, .field-error'))?.dataset.rentalWizardStep : null;
         if (window.matchMedia('(max-width: 980px)').matches) {
             document.querySelector('.rental-order-summary details')?.removeAttribute('open');
         }
@@ -4394,208 +4363,7 @@
     })();
 </script>
 
-<script>
-    (function () {
 
-        document.addEventListener('click', function (event) {
-            const trigger = event.target.closest('[data-open-rental-stock-modal], #openRentalStockModal');
-
-            if (!trigger) {
-                return;
-            }
-
-
-            event.preventDefault();
-            event.stopPropagation();
-
-            const modal = document.getElementById('rentalStockModal');
-
-            if (!modal) {
-                alert('Rental stock modal not found in DOM');
-                return;
-            }
-
-            if (modal.parentElement !== document.body) {
-                document.body.appendChild(modal);
-            }
-
-            modal.hidden = false;
-            modal.removeAttribute('hidden');
-            modal.classList.add('is-open');
-            modal.setAttribute('aria-hidden', 'false');
-            modal.style.display = 'flex';
-            modal.style.position = 'fixed';
-            modal.style.inset = '0';
-            modal.style.zIndex = '999999';
-            modal.style.background = 'rgba(15,23,42,.55)';
-
-            document.body.classList.add('modal-open');
-            document.body.classList.add('assignment-drawer-open');
-
-        }, true);
-
-        document.addEventListener('click', function (event) {
-            const close = event.target.closest('[data-close-rental-stock-modal]');
-
-            if (!close) {
-                return;
-            }
-
-            event.preventDefault();
-            event.stopPropagation();
-
-            const modal = document.getElementById('rentalStockModal');
-
-            if (modal) {
-                modal.hidden = true;
-                modal.setAttribute('hidden', 'hidden');
-                modal.classList.remove('is-open');
-                modal.setAttribute('aria-hidden', 'true');
-                modal.style.display = 'none';
-            }
-
-            document.body.classList.remove('modal-open');
-            document.body.classList.remove('assignment-drawer-open');
-        }, true);
-
-        document.addEventListener('click', function (event) {
-            const saveButton = event.target.closest('#saveRentalStockButton');
-
-            if (!saveButton) {
-                return;
-            }
-
-            event.preventDefault();
-            event.stopPropagation();
-            event.stopImmediatePropagation();
-
-            const form = document.getElementById('rentalStockForm');
-            const modal = document.getElementById('rentalStockModal');
-            const message = document.getElementById('rentalStockMessage');
-
-            if (!form) {
-                alert('Rental stock form not found in DOM');
-                return;
-            }
-
-            const setMessage = function (text, isError = true) {
-                if (!message) {
-                    if (isError && text) {
-                        alert(text);
-                    }
-                    return;
-                }
-
-                message.textContent = text || '';
-                message.classList.toggle('is-error', Boolean(isError));
-                message.hidden = !text;
-            };
-
-            const selectedProduct = document.getElementById('rental_stock_product_id')?.value || document.getElementById('product_id')?.value || '';
-            const selectedWarehouse = document.getElementById('rental_stock_warehouse_id')?.value || document.getElementById('warehouse_id')?.value || '';
-            const fulfilmentSource = document.getElementById('fulfilment_source')?.value || 'in_house';
-
-            if (document.getElementById('rental_stock_product_id') && selectedProduct) {
-                document.getElementById('rental_stock_product_id').value = selectedProduct;
-            }
-            if (document.getElementById('rental_stock_warehouse_id') && selectedWarehouse) {
-                document.getElementById('rental_stock_warehouse_id').value = selectedWarehouse;
-            }
-
-            if (!selectedProduct) {
-                setMessage('Select a rental product before saving stock.');
-                return;
-            }
-
-            if (fulfilmentSource === 'vendor_supplied') {
-                setMessage('Vendor-supplied rentals do not require PH rental stock.');
-                return;
-            }
-
-            if (!selectedWarehouse) {
-                setMessage('Select a warehouse before saving stock.');
-                return;
-            }
-
-            const serialNumber = (document.getElementById('rental_stock_serial_number')?.value || '').trim();
-
-            if (!serialNumber) {
-                setMessage('Enter Serial / Asset Number before saving stock.');
-                document.getElementById('rental_stock_serial_number')?.focus();
-                return;
-            }
-
-            const formData = new FormData();
-            formData.set('_token', form.dataset.token || '');
-            formData.set('product_id', selectedProduct);
-            formData.set('warehouse_id', selectedWarehouse);
-            formData.set('serial_number', serialNumber);
-            formData.set('barcode_value', document.getElementById('rental_stock_barcode_value')?.value || '');
-            formData.set('condition_status', document.getElementById('rental_stock_condition_status')?.value || 'good');
-            formData.set('notes', document.getElementById('rental_stock_notes')?.value || '');
-            formData.set('asset_status', document.getElementById('rentalStockAssetStatus')?.value || 'available');
-            formData.set('fulfilment_source', fulfilmentSource);
-            formData.set('city_id', document.getElementById('city_id')?.value || '');
-            formData.set('quantity', '1');
-
-            saveButton.disabled = true;
-            saveButton.textContent = 'Saving...';
-            setMessage('', false);
-
-            fetch(form.dataset.action, {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRF-TOKEN': form.dataset.token || ''
-                }
-            })
-                .then(function (response) {
-                    return response.json().catch(function () {
-                        return {};
-                    }).then(function (payload) {
-                        if (!response.ok) {
-                            throw payload;
-                        }
-
-                        return payload;
-                    });
-                })
-                .then(function (payload) {
-                    document.getElementById('rental_stock_serial_number').value = '';
-                    if (document.getElementById('rental_stock_barcode_value')) {
-                        document.getElementById('rental_stock_barcode_value').value = '';
-                    }
-                    if (document.getElementById('rental_stock_notes')) {
-                        document.getElementById('rental_stock_notes').value = '';
-                    }
-
-                    document.dispatchEvent(new CustomEvent('phos:rental-stock-created', { detail: payload }));
-
-                    if (modal) {
-                        modal.hidden = true;
-                        modal.setAttribute('hidden', 'hidden');
-                        modal.classList.remove('is-open');
-                        modal.setAttribute('aria-hidden', 'true');
-                        modal.style.display = 'none';
-                    }
-
-                    document.body.classList.remove('modal-open');
-                    document.body.classList.remove('assignment-drawer-open');
-                })
-                .catch(function (payload) {
-                    const errors = payload?.errors || {};
-                    const firstError = Object.values(errors).flat()[0] || payload?.message || 'Unable to add rental stock.';
-                    setMessage(firstError);
-                })
-                .finally(function () {
-                    saveButton.disabled = false;
-                    saveButton.textContent = 'Save Stock';
-                });
-        }, true);
-    })();
-</script>
 
 <script>
     (function () {
@@ -4679,6 +4447,7 @@
         const assetAssignmentToast = document.getElementById('assetAssignmentToast');
         const openRentalStockModalButton = document.querySelector('[data-add-rental-stock-trigger]');
         const rentalStockModal = document.getElementById('rentalStockModal');
+        let activeRentalStockItemIndex = null;
         const closeRentalStockModalButton = document.getElementById('closeRentalStockModal');
         const cancelRentalStockModalButton = document.getElementById('cancelRentalStockModal');
         const safeUpdateSummary = () => {
@@ -4736,7 +4505,7 @@
         const currentRentalId = @json($isEdit ? $rental->id : null);
         const organizationState = @json($organization?->state ?? null);
         const partnerClientEndpointTemplate = @json($businessPartnerFlowAvailable ? route('rentals.business-partners.actual-clients', ['business_partner' => '__PARTNER__']) : null);
-        const rentalProductOptionsHtml = `<option value="">Select rental product</option>@foreach($rentalProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->rental_price ?? $product->price_per_day ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-product-name="{{ e($product->name) }}" data-product-image-url="{{ e($product->product_image_url) }}" data-product-brand="{{ e($product->brand) }}" data-product-model="{{ e($product->model_name ?? $product->display_model) }}" data-product-sku="{{ e($product->sku) }}" data-product-code="{{ e($product->product_code) }}" data-in-house-option-label="{{ e($product->name . ' - ' . ($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity)))) }}" data-vendor-option-label="{{ e($product->name) }}" data-rental-available="{{ $product->rental_available_quantity ?? $product->display_available_quantity ?? $product->available_quantity }}" data-rental-status="{{ $product->rental_availability_status }}" data-rental-label="{{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}" data-tracks-rental="{{ $product->tracksRentalStock() ? 1 : 0 }}" data-search="{{ e(trim(implode(' - ', array_filter([$product->name, $product->category, $product->brand, $product->model_name, $product->display_model ?? null, $product->sku, $product->product_code, $product->stock_mode, $product->product_type, $product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))])))) }}">{{ e($product->name) }} - {{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}</option>@endforeach`;
+        let rentalProductOptionsHtml = `<option value="">Select rental product</option>@foreach($rentalProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->rental_price ?? $product->price_per_day ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-product-name="{{ e($product->name) }}" data-product-image-url="{{ e($product->product_image_url) }}" data-product-brand="{{ e($product->brand) }}" data-product-model="{{ e($product->model_name ?? $product->display_model) }}" data-product-sku="{{ e($product->sku) }}" data-product-code="{{ e($product->product_code) }}" data-in-house-option-label="{{ e($product->name . ' - ' . ($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity)))) }}" data-vendor-option-label="{{ e($product->name) }}" data-rental-available="{{ $product->rental_available_quantity ?? $product->display_available_quantity ?? $product->available_quantity }}" data-rental-status="{{ $product->rental_availability_status }}" data-rental-label="{{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}" data-tracks-rental="{{ $product->tracksRentalStock() ? 1 : 0 }}" data-search="{{ e(trim(implode(' - ', array_filter([$product->name, $product->category, $product->brand, $product->model_name, $product->display_model ?? null, $product->sku, $product->product_code, $product->stock_mode, $product->product_type, $product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))])))) }}">{{ e($product->name) }} - {{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}</option>@endforeach`;
         const saleProductOptionsHtml = `<option value="">Select new product</option>@foreach($sellableProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->sale_price ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-product-name="{{ e($product->name) }}" data-product-image-url="{{ e($product->product_image_url) }}" data-product-brand="{{ e($product->brand) }}" data-product-model="{{ e($product->model_name ?? $product->display_model) }}" data-product-sku="{{ e($product->sku) }}" data-product-code="{{ e($product->product_code) }}" data-product-meta="{{ e(trim(implode(' | ', array_filter([$product->brand, $product->model_name ?? $product->display_model, $product->sku, $product->product_code])))) }}" data-availability-label="Sale {{ number_format((float) ($product->sale_price ?? 0), 2) }}" data-search="{{ e(trim(implode(' - ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code, 'Sale ' . number_format((float) ($product->sale_price ?? 0), 2)])))) }}">{{ e($product->name) }} | Sale {{ number_format((float) ($product->sale_price ?? 0), 2) }}</option>@endforeach`;
         const saleAssetOptions = @json($saleAssetRows);
         const primaryRentalAssetIndex = @json($primaryRentalAssetIndex ?? []);
@@ -5915,6 +5684,7 @@
         }
 
         function recommendedTaxType() {
+            if (quotationConversionActive) return @json(data_get(request()->attributes->get('conversion_quote')?->snapshot, 'tax_type', 'cgst_sgst'));
             const customerState = customerSelect?.selectedOptions?.[0]?.getAttribute('data-state') || '';
             const effectiveCustomerState = customerMode() === 'business_partner'
                 ? (selectedBusinessPartnerData()?.billing_state || selectedPartnerClientData()?.state || selectedBusinessPartnerData()?.state || '')
@@ -6646,7 +6416,7 @@
             }
         }
 
-        function syncRentalStockModalState() {
+        function syncRentalStockModalState(preserveMessage = false) {
             if (!rentalStockModal) {
                 return true;
             }
@@ -6657,20 +6427,7 @@
             if (rentalStockCityInput) {
                 rentalStockCityInput.value = currentSelectedCityId() || '';
             }
-            if (rentalStockProductSelect && selectedPrimaryProductValue() && rentalStockProductSelect.value !== selectedPrimaryProductValue()) {
-                rentalStockProductSelect.value = selectedPrimaryProductValue();
-            }
-
             syncRentalStockWarehouseOptions();
-
-            if (rentalStockWarehouseSelect && warehouseSelect?.value) {
-                const matchingWarehouse = Array.from(rentalStockWarehouseSelect.options).find(function (option) {
-                    return option.value === warehouseSelect.value && !option.disabled;
-                });
-                if (matchingWarehouse) {
-                    rentalStockWarehouseSelect.value = warehouseSelect.value;
-                }
-            }
 
             const selectedProduct = rentalStockSelectedProductOption();
             let blockedMessage = '';
@@ -6681,7 +6438,7 @@
                 blockedMessage = 'Rental stock can be added only for reusable/rentable equipment.';
             }
 
-            showRentalStockMessage(blockedMessage, blockedMessage ? 'error' : 'warning');
+            if (blockedMessage || preserveMessage !== true) showRentalStockMessage(blockedMessage, blockedMessage ? 'error' : 'warning');
             if (saveRentalStockButton) {
                 saveRentalStockButton.disabled = Boolean(blockedMessage);
             }
@@ -6689,11 +6446,17 @@
             return !blockedMessage;
         }
 
-        function openRentalStockModal() {
+        function openRentalStockModal(itemIndex = null) {
             if (!rentalStockModal) {
                 return;
             }
 
+            activeRentalStockItemIndex = Number.isInteger(itemIndex) && rentalItems[itemIndex] ? itemIndex : null;
+            const targetProduct = activeRentalStockItemIndex === null ? selectedPrimaryProductValue() : String(rentalItems[activeRentalStockItemIndex].product_id || '');
+            if (rentalStockProductSelect) rentalStockProductSelect.value = targetProduct;
+            syncRentalStockWarehouseOptions();
+            if (rentalStockWarehouseSelect && warehouseSelect?.value) rentalStockWarehouseSelect.value = warehouseSelect.value;
+            if (rentalStockModal.parentElement !== document.body) document.body.appendChild(rentalStockModal);
             rentalStockModal.hidden = false;
             rentalStockModal.classList.add('is-open');
             rentalStockModal.setAttribute('aria-hidden', 'false');
@@ -6701,7 +6464,7 @@
             document.body.classList.add('modal-open');
             syncRentalStockModalState();
             window.setTimeout(function () {
-                const focusTarget = selectedPrimaryProductValue() ? rentalStockSerialInput : rentalStockProductSelect;
+                const focusTarget = targetProduct ? rentalStockSerialInput : rentalStockProductSelect;
                 focusTarget?.focus();
             }, 80);
         }
@@ -6829,6 +6592,16 @@
                 productOption.setAttribute('data-rental-warehouse-quantities', JSON.stringify(warehouseQuantities));
             }
 
+            const optionHolder = document.createElement('select');
+            optionHolder.innerHTML = rentalProductOptionsHtml;
+            const extraOption = Array.from(optionHolder.options).find(option => option.value === productOption.value);
+            if (extraOption) {
+                ['data-rental-available','data-available','data-rental-status','data-rental-label','data-in-house-option-label','data-display-label','data-rental-warehouse-quantities'].forEach(name => {
+                    if (productOption.hasAttribute(name)) extraOption.setAttribute(name, productOption.getAttribute(name));
+                });
+                extraOption.textContent = productOption.textContent;
+                rentalProductOptionsHtml = optionHolder.innerHTML;
+            }
             productSelect?._searchableSelect?.refresh?.();
         }
 
@@ -7473,7 +7246,9 @@
                 row.className = 'sale-item-row rental-line-row';
                 row.innerHTML = `
                     <div class="sale-item-field-block">
-                        <label>Product</label>
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><label>Product</label>
+                            @if($canCreateRentalStock)<button type="button" class="rental-stock-inline-button" data-add-rental-stock-trigger data-rental-stock-item="${index}" ${!item.product_id || currentFulfilmentSourceValue() === 'vendor_supplied' ? 'disabled' : ''}>+ Stock</button>@endif
+                        </div>
                         <select name="rental_items[${index}][product_id]" data-rental-product-index="${index}" data-searchable-select data-search-placeholder="Search rental product by name, brand, model, SKU, or code">
                             ${rentalProductOptionsHtml}
                         </select>
@@ -7485,7 +7260,7 @@
                     </div>
                     <div class="sale-item-field-block">
                         <label>Unit Rental</label>
-                        <input type="number" step="0.01" min="0" name="rental_items[${index}][unit_rental_amount]" value="${item.unit_rental_amount || ''}" data-rental-price-index="${index}">
+                        <input type="number" step="0.01" min="0" name="rental_items[${index}][unit_rental_amount]" value="${item.unit_rental_amount ?? ''}" data-rental-price-index="${index}">
                     </div>
                     <div class="sale-item-total" data-line-total="${lineTotal}"><span>Line Total</span><strong>${lineTotal}</strong></div>
                     <div class="sale-item-actions">
@@ -7832,7 +7607,7 @@
                         <input type="number" min="1" name="sale_items[${index}][quantity]" value="${item.quantity || 1}" data-sale-quantity-index="${index}" ${linkedAsset ? 'readonly' : ''}>
                     </div>
                     <div>
-                        <input type="number" step="0.01" min="0" name="sale_items[${index}][unit_price]" value="${item.unit_price || ''}" data-sale-price-index="${index}">
+                        <input type="number" step="0.01" min="0" name="sale_items[${index}][unit_price]" value="${item.unit_price ?? ''}" data-sale-price-index="${index}">
                         <div class="sale-item-total" data-line-total="${saleItemLineTotal(item)}">Total ${saleItemLineTotal(item)}</div>
                     </div>
                     <div class="sale-item-actions">
@@ -8295,7 +8070,8 @@
             }
 
             event.preventDefault();
-            openRentalStockModal();
+            const itemIndex = trigger.hasAttribute('data-rental-stock-item') ? Number(trigger.dataset.rentalStockItem) : null;
+            openRentalStockModal(itemIndex);
         });
         closeRentalStockModalButton?.addEventListener('click', function () {
             closeRentalStockModal();
@@ -8367,9 +8143,6 @@
                     if (document.getElementById('rental_stock_notes')) {
                         document.getElementById('rental_stock_notes').value = '';
                     }
-                    if (rentalStockProductSelect && selectedPrimaryProductValue()) {
-                        rentalStockProductSelect.value = selectedPrimaryProductValue();
-                    }
                     closeRentalStockModal(true);
                 })
                 .catch(function (payload) {
@@ -8381,7 +8154,7 @@
                     if (saveRentalStockButton) {
                         saveRentalStockButton.disabled = false;
                     }
-                    syncRentalStockModalState();
+                    syncRentalStockModalState(true);
                 });
         });
         document.addEventListener('keydown', function (event) {

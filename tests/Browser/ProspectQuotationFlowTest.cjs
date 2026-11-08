@@ -49,6 +49,10 @@ test('enquiry-first capture and customer-free quotation review work on phones',{
    const url=new URL(await page.$eval('[data-share-channel=whatsapp]',e=>e.href));
    assert.equal(url.hostname,'wa.me');assert.equal(url.pathname,'/919876543210');assert.ok(url.searchParams.get('text').includes('Synthetic prospect'));
    await page.goto(origin+'/order',{waitUntil:'networkidle0'});
+   if(await page.$('#rentalQuickCustomerModal:not([hidden])')){
+    assert.equal(await page.$eval('#rentalQuickCustomerModalFirstName',e=>e.value),'Synthetic prospect');
+    await page.$eval('#rentalQuickCustomerModal [data-close-modal]',button=>button.click());
+   }
    assert.equal(await page.$eval('[name=quotation_recipient_confirmed]',e=>({required:e.required,form:e.form.id})).then(x=>x.form),'rentalCreateForm');
    assert.equal(await page.$eval('[name=quotation_recipient_confirmed]',e=>e.required),true);
    if(width===390 || width===1440){
@@ -78,6 +82,8 @@ test('enquiry-first capture and customer-free quotation review work on phones',{
     await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.click('nav[aria-label="Sales progress"] a[aria-current="step"]')]);
     assert.equal(new URL(page.url()).pathname,'/rentals/create');
     assert.ok(new URL(page.url()).searchParams.get('quotation_id'));
+    assert.ok(await page.$('#rentalQuickCustomerModal:not([hidden])'),'Confirmed prospect opens the customer popup');
+    await page.$eval('#rentalQuickCustomerModal [data-close-modal]',button=>button.click());
     assert.equal(await page.$$eval(workflow,links=>links.length),4);
     assert.equal(await page.$eval(workflow+'[aria-current="step"]',link=>link.textContent.trim()),'4. Order');
     await page.goto(origin+'/quote-order-ready',{waitUntil:'domcontentloaded'});

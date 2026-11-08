@@ -1,8 +1,8 @@
 @if(!$isEdit && ($collectionAssignees ?? collect())->isNotEmpty())
     <div class="{{ $fieldClass }}">
-        <label for="collection_mode">Payment collection</label>
+        <label for="collection_mode">Collection type</label>
         <select id="collection_mode" name="collection_mode">
-            <option value="">No assignment</option>
+            <option value="">Select collection type</option>
             @foreach(\App\Support\FollowUpManager::COLLECTION_MODES as $mode => $label)
                 <option value="{{ $mode }}" @selected(old('collection_mode') === $mode)>{{ $label }}</option>
             @endforeach

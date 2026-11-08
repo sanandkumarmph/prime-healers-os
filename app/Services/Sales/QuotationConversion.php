@@ -14,7 +14,11 @@ class QuotationConversion
 
     public function prepare(Request $request, string $kind): void
     {
-        $id = $request->input('quotation_id', $request->old('quotation_id'));
+        $id = $request->input('quotation_id');
+        $retryingValidation = $request->session()->get('errors')?->any() ?? false;
+        if (!$id && $retryingValidation) $id = $request->old('quotation_id');
+        // A fresh New order must not inherit the previous quotation's flashed prefill.
+        if (!$id && !$retryingValidation && $request->old('quotation_id')) $request->session()->forget('_old_input');
         if (!$id) return;
         $quote = $this->workspace->quote((int) $id, 'update');
         $this->eligible($quote, $kind);

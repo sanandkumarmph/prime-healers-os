@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Enquiry extends Model
 {
     protected $guarded = ['id'];
+    public const SALUTATIONS = ['Mr.', 'Mrs.', 'Ms.', 'Miss', 'Dr.', 'Prof.', 'Mx.'];
     public const STAGES = ['new' => 'New', 'qualified' => 'Qualified', 'quoted' => 'Quotation ready', 'accepted' => 'Accepted', 'won' => 'Order created', 'lost' => 'Lost'];
     public const INCENTIVE_SOURCES = [
         'incoming_phone' => 'Incoming phone call',
@@ -42,6 +43,13 @@ class Enquiry extends Model
     {
         return self::SOURCES[$this->source] ?? ($this->source ?: 'Not specified');
     }
+    public static function contactName(?string $name, ?string $salutation): string
+    {
+        $name = trim((string) $name);
+        if (!in_array($salutation, self::SALUTATIONS, true) || preg_match('/^'.preg_quote($salutation, '/').'\s/iu', $name)) return $name;
+        return trim($salutation.' '.$name);
+    }
+    public function getDisplayNameAttribute(): string { return self::contactName($this->name, $this->salutation); }
     public function owner() { return $this->belongsTo(User::class, 'owner_id'); }
     public function customer() { return $this->belongsTo(Customer::class); }
     public function organization() { return $this->belongsTo(Organization::class); }

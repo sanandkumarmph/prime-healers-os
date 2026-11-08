@@ -9,7 +9,7 @@
         @csrf
         @if($enquiry)@method('PUT')<input type="hidden" name="lock_version" value="{{ old('lock_version',$enquiry->lock_version) }}">@endif
         <div class="sw-fields">
-            <div class="sw-field"><label for="name">Contact name *</label><input id="name" name="name" value="{{ old('name',$enquiry?->name) }}" required maxlength="255" autocomplete="name" autofocus></div>
+            <div class="sw-contact-name"><div class="sw-field"><label for="salutation">Salutation</label><select id="salutation" name="salutation"><option value="">None</option>@foreach(\App\Models\Enquiry::SALUTATIONS as $salutation)<option value="{{ $salutation }}" @selected(old('salutation',$enquiry?->salutation)===$salutation)>{{ $salutation }}</option>@endforeach</select></div><div class="sw-field"><label for="name">Contact name *</label><input id="name" name="name" value="{{ old('name',$enquiry?->name) }}" required maxlength="255" autocomplete="name" autofocus></div></div>
             <div class="sw-field"><label for="phone">Phone</label><input id="phone" type="tel" name="phone" value="{{ old('phone',$enquiry?->phone) }}" maxlength="40" autocomplete="tel"></div>
             <div class="sw-field"><label for="intent">Interested in</label><select id="intent" name="intent"><option value="">Not decided yet</option><option value="rental" @selected(old('intent',$enquiry?->intent)==='rental')>Rental</option><option value="sale" @selected(old('intent',$enquiry?->intent)==='sale')>Sale</option></select></div>
             <div class="sw-field">
@@ -41,5 +41,6 @@
         </div></footer>
     </form>
 </div>
+<style>.sw-contact-name{display:grid;grid-template-columns:100px minmax(0,1fr);gap:10px;min-width:0}@media(max-width:600px){.sw-contact-name{grid-template-columns:85px minmax(0,1fr);gap:8px}}</style>
 @endsection
 @push('scripts')@include('sales-workspace.customer-script')@endpush

@@ -82,7 +82,7 @@ class SalesWorkspaceController extends Controller
     private function input(Request $request): array
     {
         $org = $request->user()->organization_id;
-        $data = $request->validate(['name' => 'required|string|max:255', 'subject' => 'required|string|max:255',
+        $data = $request->validate(['name' => 'required|string|max:255', 'salutation' => ['nullable', Rule::in(Enquiry::SALUTATIONS)], 'subject' => 'required|string|max:255',
             'phone' => 'nullable|string|max:40', 'email' => 'nullable|email|max:255', 'requirements' => 'nullable|string|max:5000',
             'intent' => 'nullable|in:rental,sale',
             'source' => ['required', 'string', Rule::in(array_keys(Enquiry::SOURCES))],

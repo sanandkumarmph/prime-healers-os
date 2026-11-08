@@ -75,7 +75,7 @@ class SalesWorkspace
     public function customers(): \Illuminate\Support\Collection
     {
         return Customer::where('organization_id', auth()->user()->organization_id)
-            ->orderBy('name')->get(['id', 'name', 'phone', 'email']);
+            ->orderBy('name')->get(['id', 'name', 'phone', 'email', 'salutation']);
     }
 
     /** Called inside the organisation/enquiry transaction; draft validation rolls this back on failure. */
@@ -185,8 +185,12 @@ class SalesWorkspace
         $total = round(array_sum(array_column($lines, 'total')) + (float) $data['transport'], 2);
         if ($total > 99999999.99) throw ValidationException::withMessages(['lines' => 'The quotation total exceeds the supported order amount.']);
         return ['lines' => $lines, 'product_ids' => array_values(array_unique(array_column($lines, 'product_id'))), 'customer_id' => $customer?->id,
-            'contact' => ['name' => $enquiry->name, 'phone' => $enquiry->phone, 'email' => $enquiry->email],
+            'contact' => ['name' => $enquiry->name, 'phone' => $enquiry->phone, 'email' => $enquiry->email, 'salutation' => $enquiry->salutation],
             'recipient' => ['name' => $customer?->name ?? $enquiry->name, 'email' => $customer?->email ?? $enquiry->email,
+                'salutation' => $customer ? $customer->salutation : $enquiry->salutation,
+                'first_name' => $customer ? ($customer->first_name ?: $customer->name) : $enquiry->name, 'last_name' => $customer?->last_name ?? '',
+                'whatsapp_number' => $customer ? ($customer->whatsapp_number ?: $customer->phone) : $enquiry->phone,
+                'city' => $customer?->city, 'state' => $customer?->state, 'pincode' => $customer?->pincode,
                 'phone' => $customer?->phone ?? $enquiry->phone, 'address' => $customer?->billing_address ?: ($customer?->address ?? ''), 'tax_number' => $customer?->gst_number],
             'issuer' => ['name' => $org->name, 'address' => $org->address, 'email' => $org->email, 'phone' => $org->phone, 'tax_number' => $org->gst_number,
                 'logo' => app(\App\Support\InvoicePdfAssetResolver::class)->logoDataUri($org->logo)],

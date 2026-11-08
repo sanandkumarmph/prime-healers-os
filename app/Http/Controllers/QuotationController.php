@@ -110,9 +110,11 @@ class QuotationController extends Controller
             }
             if ($data['action'] === 'send') {
                 abort_unless($quote->status === 'draft', 409);
-                $contact = ['name' => $e->name, 'phone' => $e->phone, 'email' => $e->email];
+                $contact = ['name' => $e->name, 'phone' => $e->phone, 'email' => $e->email, 'salutation' => $e->salutation];
+                $savedContact = $quote->snapshot['contact'] ?? null;
+                if (is_array($savedContact)) $savedContact += ['salutation' => null];
                 if ((int) ($quote->snapshot['customer_id'] ?? 0) !== (int) $e->customer_id
-                    || (!$e->customer_id && ($quote->snapshot['contact'] ?? null) !== $contact)) {
+                    || (!$e->customer_id && $savedContact !== $contact)) {
                     throw ValidationException::withMessages(['workspace' => 'The recipient or enquiry contact changed. Review and save the draft again before sharing.']);
                 }
                 $this->workspace->assertRegion($quote);

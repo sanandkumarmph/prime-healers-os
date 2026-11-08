@@ -4,7 +4,7 @@
     @foreach(['recipient'=>'Prepared for','issuer'=>'From'] as $party=>$label)
     <div>
         <div class="sw-eyebrow">{{ $label }}</div>
-        <h3>{{ $s[$party]['name'] }}</h3>
+        <h3>{{ $party==='recipient' ? \App\Models\Enquiry::contactName($s[$party]['name'], $s[$party]['salutation'] ?? null) : $s[$party]['name'] }}</h3>
         @if($s[$party]['address'])
             <p class="sw-note">{{ $s[$party]['address'] }}</p>
         @endif

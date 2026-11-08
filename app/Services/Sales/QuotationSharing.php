@@ -21,7 +21,7 @@ class QuotationSharing
         $taxLabel = $clean($s['tax_label'] ?? 'Tax');
         $allInclusive = collect($s['lines'])->every(fn ($line) => $line['tax_mode'] === 'inclusive');
         $rows = ['*Prime Healers*', '*'.($quote->kind === 'rental' ? 'Rental' : 'Sales').' quotation · '.$quote->number().'*', '',
-            'Hi '.$clean($s['recipient']['name']).','];
+            'Hi '.$clean(\App\Models\Enquiry::contactName($s['recipient']['name'], $s['recipient']['salutation'] ?? null)).','];
         if ($quote->kind === 'rental') {
             $from = CarbonImmutable::parse($s['start_date']);
             $to = CarbonImmutable::parse($s['end_date']);
