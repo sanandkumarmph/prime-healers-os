@@ -22,6 +22,6 @@
             <label for="response-note">How was this confirmed? *</label>
             <textarea name="note" id="response-note" required rows="3" maxlength="3000" placeholder="e.g. Confirmed by email">{{ old('note') }}</textarea>
         </div>
-        <button class="sw-btn sw-primary" style="margin-top:14px">Save quotation response</button>
+        <button class="sw-btn" style="margin-top:14px">Save quotation response</button>
     </form>
 </details>

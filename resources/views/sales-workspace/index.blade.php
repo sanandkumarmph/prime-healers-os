@@ -9,8 +9,8 @@
     };
     $sharedFilters = request()->only(['q', 'mine', 'owner_id', 'source', 'from_date', 'to_date']);
     $advancedCount = collect(request()->only(['owner_id', 'source', 'from_date', 'to_date']))->filter(fn ($value) => $value !== '' && $value !== null)->count();
-    $hasFilters = collect(request()->only(['q', 'mine', 'owner_id', 'source', 'from_date', 'to_date', 'stage', 'queue']))->filter(fn ($value) => $value !== '' && $value !== null && $value !== 'all')->isNotEmpty();
-    $viewLabel = ['enquiries'=>'Enquiries', 'followups'=>'Follow-ups', 'quotations'=>'Quotations'][$mode];
+    $hasFilters = collect(request()->only(['q', 'mine', 'owner_id', 'source', 'from_date', 'to_date', 'stage', 'queue','attention']))->filter(fn ($value) => $value !== '' && $value !== null && $value !== 'all')->isNotEmpty();
+    $viewLabel = ['attention'=>'Needs attention','enquiries'=>'Enquiries', 'followups'=>'Follow-ups', 'quotations'=>'Quotations'][$mode];
     $listLabel = $mode === 'enquiries' ? ['open'=>'Open enquiries', 'all'=>'All enquiries', 'no_followup'=>'Needs a follow-up plan'][$focus] : $viewLabel;
 @endphp
 <div class="sw sw-index" data-sales-workspace-index>
@@ -20,13 +20,19 @@
     </header>
     @include('sales-workspace.alerts')
     <div class="swx-metrics" aria-label="Sales work queues">
+        @if($mode==='attention')
+        @foreach(['all'=>'Needs attention','ready'=>'Ready for order','followups'=>'Follow-ups due'] as $key=>$label)
+        <a class="swx-metric" href="{{ $filterUrl(['view'=>'attention','attention'=>$key]) }}"><span><span class="swx-metric-label">{{ $label }}</span><small>{{ $key==='all' ? 'Current next steps' : ($key==='ready' ? 'Accepted and ready to continue' : 'Today or overdue next steps') }}</small></span><strong>{{ $attentionCounts[$key] ?? 0 }}</strong></a>
+        @endforeach
+        @else
         <a class="swx-metric" href="{{ route('enquiries.index', ['focus'=>'open']) }}"><span><span class="swx-metric-label">Open enquiries</span><small>Active conversations</small></span><strong>{{ $counts['open'] }}</strong></a>
         <a class="swx-metric" href="{{ route('enquiries.index', ['view'=>'followups','queue'=>'today']) }}"><span><span class="swx-metric-label">Follow-ups today</span><small>Scheduled for today</small></span><strong>{{ $counts['today'] }}</strong></a>
         <a class="swx-metric swx-metric-urgent" href="{{ route('enquiries.index', ['view'=>'followups','queue'=>'overdue']) }}"><span><span class="swx-metric-label">Overdue follow-ups</span><small>Needs attention</small></span><strong>{{ $counts['overdue'] }}</strong></a>
+        @endif
     </div>
     <section class="swx-workspace">
         <nav class="swx-tabs" aria-label="Sales workspace views">
-            @foreach(['enquiries'=>'Enquiries','followups'=>'Follow-ups','quotations'=>'Quotations'] as $key=>$label)
+            @foreach(['attention'=>'Needs attention','enquiries'=>'Enquiries','followups'=>'Follow-ups','quotations'=>'Quotations'] as $key=>$label)
                 @if($key !== 'quotations' || auth()->user()->canAccessModule('quotations','read'))
                 <a href="{{ route('enquiries.index', $sharedFilters + ['view'=>$key]) }}" @if($mode===$key) aria-current="page" @endif>{{ $label }}</a>
                 @endif
@@ -36,12 +42,14 @@
             <input type="hidden" name="view" value="{{ $mode }}">
             @if($mode==='enquiries')<input type="hidden" name="focus" value="{{ $focus }}">@endif
             <div class="sw-field swx-search"><label for="sw-search">Search {{ strtolower($viewLabel) }}</label><input id="sw-search" name="q" value="{{ request('q') }}" placeholder="Contact, phone or requirement" maxlength="100" type="search"></div>
-            @if($mode==='followups')
+            @if($mode==='attention')
+            <div class="sw-field"><label for="attention-category">Action</label><select name="attention" id="attention-category">@foreach(\App\Services\Sales\SalesAttentionQueue::CATEGORIES as $key=>$label)<option value="{{ $key }}" @selected($attentionCategory===$key)>{{ $label }} ({{ $attentionCounts[$key] ?? 0 }})</option>@endforeach</select></div>
+            @elseif($mode==='followups')
             <div class="sw-field"><label for="queue">Due</label><select name="queue" id="queue">@foreach(['all'=>'All upcoming','today'=>'Today','overdue'=>'Overdue'] as $key=>$label)<option value="{{ $key }}" @selected(request('queue','all')===$key)>{{ $label }}</option>@endforeach</select></div>
             @else
             <div class="sw-field"><label for="stage">{{ $mode==='quotations' ? 'Enquiry stage' : 'Stage' }}</label><select name="stage" id="stage"><option value="">All stages</option>@foreach(\App\Models\Enquiry::STAGES as $key=>$label)<option value="{{ $key }}" @selected(request('stage')===$key)>{{ $label }}</option>@endforeach</select></div>
             @endif
-            <div class="sw-field"><label for="sw-sort">Sort</label><select name="sort" id="sw-sort">@foreach(($mode==='followups' ? ['due'=>'Due soonest'] : []) + ['newest'=>'Newest created','oldest'=>'Oldest created'] + ($mode!=='followups' ? ['updated'=>'Recently updated'] : []) as $key=>$label)<option value="{{ $key }}" @selected($sort===$key)>{{ $label }}</option>@endforeach</select></div>
+            @if($mode==='attention')<div class="swx-attention-order"><strong>Action priority</strong><span>Then earliest follow-up</span></div>@else<div class="sw-field"><label for="sw-sort">Sort</label><select name="sort" id="sw-sort">@foreach(($mode==='followups' ? ['due'=>'Due soonest'] : []) + ['newest'=>'Newest created','oldest'=>'Oldest created'] + ($mode!=='followups' ? ['updated'=>'Recently updated'] : []) as $key=>$label)<option value="{{ $key }}" @selected($sort===$key)>{{ $label }}</option>@endforeach</select></div>@endif
             <label class="swx-mine"><input type="checkbox" id="sw-mine" name="mine" value="1" @checked(request()->boolean('mine') && !request()->filled('owner_id'))> Assigned to me</label>
             <button class="sw-btn swx-apply" type="submit">Apply</button>
             <details class="swx-advanced" @if($advancedCount) open @endif>
@@ -56,9 +64,12 @@
             @if($hasFilters)<a class="swx-reset" href="{{ route('enquiries.index',['view'=>$mode]) }}">Clear filters</a>@endif
         </form>
         <div class="swx-list-head">
-            <div><h2>{{ $listLabel }}</h2><span class="swx-result-count">{{ $records->total() }} {{ $records->total()===1 ? 'record' : 'records' }}</span></div>
+            <div><h2>{{ $mode==='attention' ? \App\Services\Sales\SalesAttentionQueue::CATEGORIES[$attentionCategory] : $listLabel }}</h2><span class="swx-result-count">{{ $records->total() }} {{ $records->total()===1 ? 'record' : 'records' }}</span></div>
             @if($mode==='enquiries')<nav class="swx-focus" aria-label="Enquiry priorities">@foreach(['open'=>'Open','no_followup'=>'No follow-up','all'=>'All'] as $key=>$label)<a href="{{ $filterUrl(['focus'=>$key,'stage'=>null]) }}" @if($focus===$key) aria-current="page" @endif>{{ $label }}</a>@endforeach</nav>@endif
         </div>
+        @if($mode==='attention')
+            @include('sales-workspace.attention-list')
+        @else
         <div class="swx-list-shell">
             <table class="swx-table">
                 <thead><tr><th scope="col" class="swx-num">#</th><th scope="col" class="swx-contact">{{ $mode==='followups' ? 'Follow-up / contact' : ($mode==='quotations' ? 'Quotation / contact' : 'Enquiry / contact') }}</th><th scope="col" class="swx-owner">Salesperson / source</th><th scope="col" class="swx-created">Created (IST)</th><th scope="col" class="swx-stage">{{ $mode==='followups' ? 'Channel' : 'Stage' }}</th><th scope="col" class="swx-next">Next step</th></tr></thead>
@@ -90,6 +101,7 @@
                 </tbody>
             </table>
         </div>
+        @endif
         <footer class="swx-pagination"><span>{{ $records->firstItem() ?? 0 }}–{{ $records->lastItem() ?? 0 }} of {{ $records->total() }} records</span><div>{{ $records->links() }}</div></footer>
     </section>
 </div>

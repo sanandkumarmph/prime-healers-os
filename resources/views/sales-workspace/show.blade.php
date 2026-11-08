@@ -3,6 +3,7 @@
 @include('sales-workspace.style')
 @include('sales-workspace.details-style')
 @php
+    $salesNextAction = app(\App\Services\Sales\SalesNextAction::class)->for(auth()->user(),$enquiry,$latestQuote,$agreement,$followUps->first());
     $quotationUrl = $latestQuote ? route('quotations.show', $latestQuote)
         : ($canCreateQuote ? route('quotations.create', $enquiry) : '#enquiry-quotations');
     $progress = match (true) {
@@ -23,17 +24,7 @@
         </div>
         <div class="sw-actions">
             @if($canEdit && !$enquiry->closed())<a class="sw-btn" href="{{ route('enquiries.edit',$enquiry) }}">Edit details</a>@endif
-            <span data-live-quote-header>
-            @if($orderAction)
-                <a class="sw-btn sw-primary" href="{{ $orderAction['url'] }}">{{ $orderAction['label'] }}</a>
-            @elseif($canUpdateQuote && $quoteStatus === 'sent' && app(\App\Services\Sales\RentalAgreements::class)->readyForQuote($latestQuote,$agreement) && !$enquiry->closed())
-                <a class="sw-btn sw-primary" href="#enquiry-response">Record quotation response</a>
-            @elseif($canCreateQuote && !$latestQuote)
-                <a class="sw-btn sw-primary" href="{{ $quotationUrl }}">Create quotation</a>
-            @elseif($latestQuote && !$enquiry->closed())
-                <a class="sw-btn sw-primary" href="{{ $quotationUrl }}">Open latest quotation</a>
-            @endif
-            </span>
+
         </div>
     </header>
     @include('sales-workspace.alerts', ['showSuccess'=>true])
@@ -44,30 +35,7 @@
         'workflowEnquiry' => $enquiry, 'workflowQuotationUrl' => $quotationUrl, 'workflowOrderUrl' => $orderAction['url'] ?? null,
         'workflowOnEnquiry' => true, 'workflowStep' => $progress,
     ])
-    <p class="sw-guide" id="enquiry-next" data-live-quote-next tabindex="-1">
-        <strong>Next:</strong>
-        @if($enquiry->closed())
-            {{ $orderAction ? 'Open the order from the Order step.' : 'Review the enquiry history below.' }}
-        @elseif($orderAction)
-            The quotation is ready. Select {{ $orderAction['label'] }} to open the prefilled order.
-        @elseif(!$latestQuote)
-            Confirm the requirements and prepare a quotation.
-        @elseif($quoteStatus === 'draft')
-            Complete the quotation and review it before sharing.
-        @elseif($quoteStatus === 'expired')
-            Create a quotation revision with a new validity date.
-        @elseif($quoteStatus === 'accepted' && $requiresSignature && !app(\App\Services\Sales\RentalAgreements::class)->readyForQuote($latestQuote,$agreement))
-            Share the rental agreement and collect the signature before creating the order.
-        @elseif($quoteStatus === 'accepted')
-            A staff member with order creation access can create the order.
-        @elseif($quoteStatus === 'sent' && app(\App\Services\Sales\RentalAgreements::class)->readyForQuote($latestQuote,$agreement))
-            {{ $agreement?->signed_at ? "The rental terms are signed. Record the customer's quotation acceptance to continue." : "A signature exception is approved. Record the customer's quotation acceptance to continue." }}
-        @elseif($quoteStatus === 'sent')
-            {{ $latestQuote->shared_at ? 'Follow up and record the customer response.' : 'Open the quotation and share it with the customer.' }}
-        @else
-            Open the latest quotation to review the response or prepare a revision.
-        @endif
-    </p>
+    @include('sales-workspace.next-action')
     </div>
     <div class="swd-grid">
         <aside class="swd-contact-column">
@@ -109,8 +77,9 @@
             @endif
         </aside>
         <div class="swd-main-column" role="region" aria-label="Enquiry actions">
-            <section class="sw-panel" id="enquiry-response" tabindex="-1">
-                <div class="swd-section-heading"><h2>Quotation response</h2>@if($latestQuote)<a href="{{ $quotationUrl }}">Open quotation →</a>@endif</div>
+            <details class="sw-panel sw-guided-section" id="enquiry-response" data-sales-section="enquiry-response" tabindex="-1" @if($salesNextAction['section']==='enquiry-response' || $errors->has('note') || $errors->has('contact_name')) open @endif>
+                <summary>Quotation response <span class="sw-meta" data-live-quote-label>{{ $latestQuote?->statusLabel() ?? 'Not prepared' }}</span></summary>
+                <div class="swd-section-heading">@if($latestQuote)<a href="{{ $quotationUrl }}">Open quotation →</a>@endif</div>
                 @if($latestQuote)
                     <div class="swd-quote-summary">
                         <div><strong>{{ $latestQuote->number() }}</strong><span class="sw-meta">{{ ucfirst($latestQuote->kind) }} · {{ $latestQuote->snapshot['currency'] }} {{ number_format($latestQuote->snapshot['total'],2) }}</span></div>
@@ -124,10 +93,11 @@
                 @else
                     <p class="sw-muted">The quotation response will appear here.</p>
                 @endif
-            </section>
+            </details>
             @include('sales-workspace.enquiry-agreement',['quote'=>$latestQuote])
-            <section class="sw-panel" id="enquiry-followups" tabindex="-1">
-                <div class="swd-section-heading"><h2>Follow-ups <span class="swd-count">{{ $followUps->count() }}</span></h2><span class="sw-meta">Optional</span></div>
+            <details class="sw-panel sw-guided-section" id="enquiry-followups" data-sales-section="enquiry-followups" tabindex="-1" @if($salesNextAction['section']==='enquiry-followups' || $errors->has('due_at') || $errors->has('completion_note')) open @endif>
+                <summary>Follow-ups <span class="sw-meta">{{ $followUps->count() }} scheduled</span></summary>
+                <div class="swd-section-heading"><span class="sw-meta">Upcoming contacts</span><span class="sw-meta">Optional</span></div>
                 @if($enquiry->closed())<p class="sw-muted">This enquiry is closed. Its conversations and quotations remain available below.</p>
                 @elseif($followUps->isEmpty())<p class="sw-meta">No follow-up scheduled.</p>@endif
                 @foreach($followUps as $task)
@@ -143,7 +113,7 @@
                     </article>
                 @endforeach
                 @if($canEdit && !$enquiry->closed())@include('sales-workspace.follow-up-form')@endif
-            </section>
+            </details>
             <section class="sw-panel swd-history" id="enquiry-quotations" tabindex="-1"><details data-detail-history>
                 <summary>Quotations <span class="swd-count">{{ $quotes->count() }}</span></summary>
                 @forelse($quotes as $q)<div class="sw-row"><div><a href="{{ route('quotations.show',$q) }}"><strong>{{ $q->number() }}</strong></a><div class="sw-meta">{{ ucfirst($q->kind) }} · {{ $q->snapshot['currency'] }} {{ number_format($q->snapshot['total'],2) }} · Valid until {{ $q->valid_until->format('d M Y') }}</div></div><span class="sw-badge" data-status="{{ $q->displayStatus() }}">{{ $q->statusLabel() }}</span></div>
@@ -159,7 +129,7 @@
         let id; try { id = decodeURIComponent(location.hash.slice(1)); } catch { return; }
         const target = document.getElementById(id);
         if (!target || !target.closest('[data-enquiry-detail]')) return;
-        for (let el = target.parentElement; el; el = el.parentElement) if (el.tagName === 'DETAILS') el.open = true;
+        for (let el = target; el; el = el.parentElement) if (el.tagName === 'DETAILS') el.open = true;
         if (id === 'enquiry-response' || id === 'enquiry-quotations' || id === 'enquiry-activity') {
             const details = target.querySelector('details'); if (details) details.open = true;
         }

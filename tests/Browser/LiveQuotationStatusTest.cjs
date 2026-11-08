@@ -37,7 +37,7 @@ test('customer actions update Sales status and order links without reload or los
    await page.goto(origin+'/'+fixture,{waitUntil:'networkidle0'});await page.waitForFunction(()=>document.querySelector('.sw-live-waiting'));
    let reloads=0;page.on('framenavigated',frame=>{if(frame===page.mainFrame())reloads++;});
    const note=fixture==='enquiry'?'#note':'#response-note';
-   if(fixture==='quotation')await page.$eval('[data-live-response] details',element=>element.open=true);
+   await page.$eval(note,element=>{for(let parent=element.parentElement;parent;parent=parent.parentElement)if(parent.tagName==='DETAILS')parent.open=true;});
    await page.$eval(note,e=>e.scrollIntoView({block:'center'}));await page.type(note,'Keep my unsaved sales note');
    const customer=await browser.newPage();await customer.goto(origin+'/customer');
    await Promise.all([customer.waitForResponse(response=>response.url().endsWith('/customer/accepted')),customer.click('#accept')]);

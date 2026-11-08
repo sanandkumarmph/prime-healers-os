@@ -18,7 +18,7 @@
                 <div class="sw-field"><label for="follow-subject">Next action *</label><input id="follow-subject" name="subject" required maxlength="255" value="{{ old('subject',\Illuminate\Support\Str::limit($followSubject,255,'')) }}"></div>
                 <div class="sw-field"><label for="due_at">When ({{ $tz }}) *</label><input type="datetime-local" id="due_at" name="due_at" required value="{{ old('due_at',$tomorrow) }}"></div>
                 <div class="sw-field"><label for="channel">Channel</label><select id="channel" name="channel">@foreach(['call'=>'Phone call','whatsapp'=>'WhatsApp','email'=>'Email','meeting'=>'Meeting'] as $key=>$label)<option value="{{ $key }}" @selected(old('channel')===$key)>{{ $label }}</option>@endforeach</select></div>
-            </div><button class="sw-btn sw-primary" style="margin-top:12px">Schedule follow-up</button>
+            </div><button class="sw-btn" style="margin-top:12px">Schedule follow-up</button>
         </form>
     </details>
 </div>

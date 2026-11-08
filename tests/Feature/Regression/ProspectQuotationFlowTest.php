@@ -89,9 +89,10 @@ class ProspectQuotationFlowTest extends TestCase
         $this->get(route('enquiries.show', $quote->enquiry))->assertOk()->assertSee('Send rental terms on WhatsApp');
         $this->post($quoteUrl, ['decision' => 'accepted', 'contact_name' => 'Synthetic signer', 'acknowledge' => 1])->assertRedirect($quoteUrl);
         $this->assertSame('accepted', $quote->fresh()->status);
-        $this->get(route('quotations.show', $quote))->assertOk()->assertSee('Awaiting rental agreement')->assertDontSee('Create rental order');
+        $this->get(route('quotations.show', $quote))->assertOk()->assertSee('Awaiting rental agreement')
+            ->assertDontSee(route('rentals.create',['quotation_id'=>$quote->id]),false);
         $this->get(route('enquiries.show', $quote->enquiry))->assertOk()->assertDontSee('Create Rental')
-            ->assertSee('collect the signature before creating the order');
+            ->assertSee('data-action-key="terms_pending"',false);
         $this->get(route('rentals.create', ['quotation_id' => $quote->id]))->assertSessionHasErrors('quotation_id');
         $agreements = app(RentalAgreements::class);
         $agreement = RentalAgreement::sole();
@@ -135,7 +136,8 @@ class ProspectQuotationFlowTest extends TestCase
             ->assertSee('View signed agreement')->assertSee('Download signed PDF')->assertSee('Synthetic signer');
         $this->post($url, array_replace($this->agreementPayload(), ['contact_name' => 'Different name']))->assertRedirect($url);
         $this->assertSame('Synthetic signer', $agreement->fresh()->proof['name']);
-        $this->get(route('quotations.show', $quote))->assertSee('Create rental order')->assertSee('Send signed copy on WhatsApp');
+        $this->get(route('quotations.show', $quote))->assertSee('data-action-key="ready_order"',false)
+            ->assertSee('href="'.route('rentals.create',['quotation_id'=>$quote->id]).'"',false)->assertSee('Send signed copy on WhatsApp');
         $this->assertSame($savedSignature, $agreement->fresh()->proof['signature']);
 
         $customer = Customer::create(['organization_id' => $this->owner->organization_id, 'name' => 'Synthetic signer',

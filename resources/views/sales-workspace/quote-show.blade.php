@@ -11,29 +11,31 @@
     $whatsappPhone = preg_replace('/\D/', '', \App\Support\PhoneNumber::normalize($quote->snapshot['recipient']['phone'] ?? null) ?? '');
     $email = filter_var($quote->snapshot['recipient']['email'] ?? '', FILTER_VALIDATE_EMAIL) ?: '';
     $agreements = app(\App\Services\Sales\RentalAgreements::class);
+    $salesNextAction = app(\App\Services\Sales\SalesNextAction::class)->for(auth()->user(),$enquiry,$quote,$rentalAgreement);
     $requiresRentalSignature = $quote->kind === 'rental' && \App\Services\Sales\RentalAgreements::enabled();
 @endphp
 <div class="sw" data-quote-live="{{ $quote->id }}" data-live-page="quotation" data-live-status-url="{{ route('quotations.status',$quote) }}"><a href="{{ route('enquiries.show',$enquiry) }}">← Back to enquiry</a><header class="sw-head" style="margin-top:20px"><div><div class="sw-eyebrow">Quotation workspace</div><h1>{{ $quote->number() }}</h1><p class="sw-muted">{{ $enquiry->subject }}</p></div><div class="sw-actions"><a class="sw-btn" href="{{ route('quotations.pdf',$quote) }}">Download PDF</a>
-<span data-live-quote-header>@if($canEdit && !$enquiry->closed())@if($quote->status==='draft')<a class="sw-btn" href="{{ route('quotations.edit',$quote) }}">Edit draft</a><form method="post" action="{{ route('quotations.action',$quote) }}">@csrf<input type="hidden" name="lock_version" value="{{ $quote->lock_version }}"><input type="hidden" name="action" value="send"><button class="sw-btn sw-primary">Finalise & share</button></form>@elseif($quote->status==='accepted' && !$quote->expired() && (!$requiresRentalSignature || $agreements->readyForQuote($quote,$rentalAgreement)) && auth()->user()->canAccessModule($quote->kind.'s','create'))<a class="sw-btn sw-primary" href="{{ route($quote->kind.'s.create',['quotation_id'=>$quote->id]) }}">Create {{ $quote->kind }} order</a>@endif @endif</span>
-@if($canEdit && !$enquiry->closed() && auth()->user()->canAccessModule('quotations','create') && !in_array($quote->status,['draft','superseded','converted']))<form method="post" action="{{ route('quotations.action',$quote) }}" data-edit-quotation onsubmit="return confirm('Create an editable revision? The current acceptance and signing link will no longer apply. The customer must accept and sign the revised quotation again.')">@csrf<input type="hidden" name="lock_version" value="{{ $quote->lock_version }}"><input type="hidden" name="action" value="revise"><button class="sw-btn" type="submit">Edit quotation</button></form>@endif
-@if($quote->status==='converted')@php($orderClass=$quote->order_type==='rental' ? \App\Models\Rental::class : \App\Models\Sale::class)@php($linkedOrder=$orderClass::where('organization_id',$quote->organization_id)->find($quote->order_id))@if($linkedOrder && auth()->user()->can('view',$linkedOrder))<a class="sw-btn sw-primary" href="{{ route($quote->order_type.'s.show',$quote->order_id) }}">View {{ $quote->order_type }} #{{ $quote->order_id }}</a>@endif @endif</div></header>
+
+@if($canEdit && !$enquiry->closed() && auth()->user()->canAccessModule('quotations','create') && !in_array($quote->status,['draft','superseded','converted']))<form method="post" action="{{ route('quotations.action',$quote) }}" id="quotation-revision" data-edit-quotation onsubmit="return confirm('Create an editable revision? The current acceptance and signing link will no longer apply. The customer must accept and sign the revised quotation again.')">@csrf<input type="hidden" name="lock_version" value="{{ $quote->lock_version }}"><input type="hidden" name="action" value="revise"><button class="sw-btn" type="submit" data-guided-execute="draft_quote">Edit quotation</button></form>@endif
+</div></header>
 @include('sales-workspace.workflow-navigation', [
     'workflowEnquiry' => $enquiry, 'workflowQuotationUrl' => route('quotations.show', $latestQuote),
     'workflowOrderUrl' => $orderAction['url'] ?? null, 'workflowStep' => 'quotation',
 ])
 @include('sales-workspace.alerts')
 @include('sales-workspace.live-status',['liveQuote'=>$quote,'liveAgreement'=>$rentalAgreement])
+@include('sales-workspace.next-action')
 @if($quote->status==='draft')<div class="sw-alert">Review the customer, prices and terms before finalising. Finalised quotations are protected; changes require a new revision.</div>@elseif($quote->status==='superseded')<div class="sw-alert">This is a previous revision. <a href="{{ route('quotations.show',$enquiry->quotations()->latest('revision')->first()) }}">Open the latest quotation</a>.</div>@elseif($quote->expired())<div class="sw-alert">This quotation has expired. Create a revision with a new validity date before continuing.</div>@endif
 <div class="{{ $canEdit && !$enquiry->closed() && $quote->status!=='superseded' ? 'sw-grid sw-share-workspace' : 'sw-document-only' }}"><div>@include('sales-workspace.quote-document')</div><aside>
 @if($shareUrl && $canEdit && !$enquiry->closed())
 
 <section class="sw-panel sw-quote-share" data-quotation-sharing>
     <h2>{{ $quote->shared_at ? 'Shared with customer' : 'Ready to share' }}</h2>
-    <section class="sw-share-step" data-share-step="quotation">
-        <h3><span>1</span> Send quotation</h3>
+    <details class="sw-share-step sw-guided-section" id="quotation-share" data-sales-section="quotation-share" data-share-step="quotation" @if($salesNextAction['section']==='quotation-share') open @endif>
+        <summary>Send quotation <span class="sw-meta" data-live-share-label>{{ $quote->shared_at ? 'Shared' : 'Ready to share' }}</span></summary>
         <p class="sw-meta">Share the prices. Review the message, then send it to the customer.</p>
         <div class="sw-actions">
-            <a class="sw-btn sw-primary" href="https://wa.me/{{ $whatsappPhone }}?text={{ rawurlencode($shareText) }}" target="_blank" rel="noopener noreferrer" data-share-channel="whatsapp" data-phos-whatsapp>WhatsApp</a>
+            <a class="sw-btn" href="https://wa.me/{{ $whatsappPhone }}?text={{ rawurlencode($shareText) }}" target="_blank" rel="noopener noreferrer" data-share-channel="whatsapp" data-phos-whatsapp data-guided-execute="share_quote">WhatsApp</a>
             <button class="sw-btn" type="button" data-copy-whatsapp>Copy quotation message</button>
         </div>
         <details class="sw-share-options"><summary>Preview / other ways to share</summary>
@@ -52,28 +54,28 @@
                 </form>
             </details>
         @elseif($quote->shared_at)<p class="sw-meta">Sent via {{ $quote->shared_channel }} · {{ $quote->shared_at->timezone(config('app.timezone'))->format('d M, h:i A') }} IST</p>@endif
-    </section>
+    </details>
     @if($requiresRentalSignature)
-    <section class="sw-share-step" data-share-step="terms">
-        <h3><span>2</span> Rental terms & signature</h3>
+    <details class="sw-share-step sw-guided-section" id="rental-agreement" data-sales-section="rental-agreement" data-share-step="terms" @if($salesNextAction['section']==='rental-agreement' || $errors->has('exception_reason') || $errors->has('alternative_acceptance_confirmed') || $errors->has('exception_context')) open @endif>
+        <summary>Rental terms <span class="sw-meta" data-live-terms-label>{{ $rentalAgreement?->signed_at ? 'Signed' : ($agreements->readyForQuote($quote,$rentalAgreement) ? 'Exception approved' : 'Signature pending') }}</span></summary>
         <p class="sw-meta" data-live-agreement-summary>{{ $rentalAgreement?->signed_at ? 'Signed. You can send the customer their signed copy.' : ($agreements->readyForQuote($quote,$rentalAgreement) ? 'Signature exception approved. Customer acceptance is still required.' : 'Send the terms separately. The customer signs on their phone.') }}</p>
         <div class="sw-actions" data-live-agreement-actions data-live-signed="{{ $rentalAgreement?->signed_at ? '1' : '0' }}">
             @if($rentalAgreement)
-                <a class="sw-btn {{ $rentalAgreement->signed_at ? '' : 'sw-primary' }}" href="{{ $agreements->whatsapp($rentalAgreement, $quote->snapshot['recipient']['phone'] ?? null, 'Quotation '.$quote->number()) }}" target="_blank" rel="noopener noreferrer" data-phos-whatsapp>{{ $rentalAgreement->signed_at ? 'Send signed copy on WhatsApp' : 'Share Rental Terms' }}</a>
+                <a class="sw-btn" href="{{ $agreements->whatsapp($rentalAgreement, $quote->snapshot['recipient']['phone'] ?? null, 'Quotation '.$quote->number()) }}" target="_blank" rel="noopener noreferrer" data-phos-whatsapp data-guided-execute="terms_pending">{{ $rentalAgreement->signed_at ? 'Send signed copy on WhatsApp' : 'Share Rental Terms' }}</a>
                 <button class="sw-btn" type="button" data-copy-whatsapp>{{ $rentalAgreement->signed_at ? 'Copy signed-copy message' : 'Copy rental terms message' }}</button>
             @else
-                <form method="post" action="{{ route('quotations.rental-agreement.issue', $quote) }}" target="_blank" rel="noopener noreferrer" data-phos-whatsapp-prepare>@csrf<input type="hidden" name="destination" value="whatsapp"><button class="sw-btn sw-primary" type="submit">Share Rental Terms</button></form>
+                <form method="post" action="{{ route('quotations.rental-agreement.issue', $quote) }}" target="_blank" rel="noopener noreferrer" data-phos-whatsapp-prepare>@csrf<input type="hidden" name="destination" value="whatsapp"><button class="sw-btn" type="submit" data-guided-execute="terms_pending">Share Rental Terms</button></form>
             @endif
         </div>
         @include('sales-workspace.signature-exception',['agreement'=>$rentalAgreement,'exceptionQuote'=>$quote,'exceptionRental'=>null,'agreements'=>$agreements])
         @include('sales-workspace.terms-preview', ['agreement'=>$rentalAgreement,'previewReference'=>'Quotation '.$quote->number(),'allowTermsMessage'=>$canEdit && $rentalAgreement && ($rentalAgreement->signed_at || $agreements->canIssueForQuote($quote))])
-    </section>
+    </details>
     @endif
-    <section class="sw-share-step" data-share-step="order">
-        <h3><span>{{ $requiresRentalSignature ? '3' : '2' }}</span> Confirm & create order</h3>
+    <details class="sw-share-step sw-guided-section" id="enquiry-response" data-sales-section="enquiry-response" data-share-step="order" @if($salesNextAction['section']==='enquiry-response' || $errors->has('note') || $errors->has('contact_name')) open @endif>
+        <summary>Confirm &amp; create order <span class="sw-meta" data-live-quote-label>{{ $quote->statusLabel() }}</span></summary>
         <div data-live-order-actions>
         @if($orderAction)
-            <p class="sw-meta">The customer has accepted{{ $requiresRentalSignature ? ($rentalAgreement?->signed_at ? ' and signed the terms' : ' with a recorded signature exception') : '' }}. Continue with the order.</p><a class="sw-btn sw-primary" href="{{ $orderAction['url'] }}">{{ $orderAction['label'] }}</a>
+            <p class="sw-meta">The customer has accepted{{ $requiresRentalSignature ? ($rentalAgreement?->signed_at ? ' and signed the terms' : ' with a recorded signature exception') : '' }}. Continue with the order.</p><a class="sw-btn" href="{{ $orderAction['url'] }}">{{ $orderAction['label'] }}</a>
         @endif
         </div>
         <div data-live-response>
@@ -83,13 +85,13 @@
             <p class="sw-meta">{{ $requiresRentalSignature && !$agreements->readyForQuote($quote,$rentalAgreement) ? 'Waiting for the customer to sign the rental terms.' : 'A staff member with order access can continue once acceptance is complete.' }}</p>
         @endif
         </div>
-    </section>
+    </details>
 </section>
-@if($quote->status==='sent')<section class="sw-panel"><h2>Follow-up <span class="sw-meta">Optional</span></h2>
+@if($quote->status==='sent')<details class="sw-panel sw-guided-section" id="enquiry-followups" data-sales-section="enquiry-followups" @if($salesNextAction['section']==='enquiry-followups') open @endif><summary>Follow-up <span class="sw-meta">Optional</span></summary>
 @php($nextFollowUp=$enquiry->followUps()->whereNull('completed_at')->orderBy('due_at')->first())
 @if($nextFollowUp)<p class="sw-meta">Next: {{ $nextFollowUp->subject }} · {{ $nextFollowUp->due_at->timezone(config('app.timezone'))->format('d M, H:i') }} <a href="{{ route('enquiries.show',$enquiry) }}">Manage</a></p>
 @else @include('sales-workspace.follow-up-form') @endif
-</section>@endif
+</details>@endif
 @endif
 @if($canEdit && !$enquiry->closed() && in_array($quote->status,['sent','accepted']))<section class="sw-panel"><details><summary>Withdraw quotation</summary><p class="sw-meta">Disable the current customer link without creating a replacement.</p><form method="post" action="{{ route('quotations.action',$quote) }}">@csrf<input type="hidden" name="lock_version" value="{{ $quote->lock_version }}"><input type="hidden" name="action" value="withdraw"><div class="sw-field"><label for="withdraw-note">Reason *</label><textarea name="note" id="withdraw-note" required maxlength="3000" rows="2"></textarea></div><button class="sw-btn sw-danger" style="margin-top:10px">Withdraw & disable link</button></form></details></section>@endif
 </aside></div></div>

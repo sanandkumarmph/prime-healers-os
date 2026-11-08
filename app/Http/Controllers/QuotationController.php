@@ -189,12 +189,13 @@ class QuotationController extends Controller
             default => 'Review the quotation before continuing.',
         };
         $state = [
+            'next_action' => app(\App\Services\Sales\SalesNextAction::class)->for(auth()->user(),$enquiry,$quote,$agreement),
             'schema' => 1, 'quotation_id' => $quote->id, 'quotation_version' => $quote->lock_version,
             'current' => $current, 'quotation_status' => $status, 'quotation_status_label' => $quote->statusLabel(),
             'enquiry_stage' => $enquiry->stage, 'enquiry_stage_label' => Enquiry::STAGES[$enquiry->stage] ?? $enquiry->stage,
             'agreement_state' => $agreementState, 'agreement_ready' => (bool) $ready,
             'agreement_signed_at' => $agreement?->signed_at ? $agreement->signed_at->timezone('Asia/Kolkata')->format('d M Y, h:i A').' IST' : null,
-            'can_record_response' => $canRespond, 'order_action' => $orderAction,
+            'quotation_shared' => (bool)$quote->shared_at, 'can_record_response' => $canRespond, 'order_action' => $orderAction,
             'latest_url' => route('quotations.show', $latest), 'next_text' => $next,
             'signed_copy_url' => $canUpdate && $agreement?->signed_at ? route('quotations.signed-agreement', $quote) : null,
             'prepare_signed_message_url' => $canUpdate && $agreement?->signed_at && $agreements->canIssueForQuote($quote)

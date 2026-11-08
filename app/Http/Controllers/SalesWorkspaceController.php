@@ -14,13 +14,14 @@ class SalesWorkspaceController extends Controller
 
     public function index(Request $request)
     {
-        $data = $request->validate(['view' => 'nullable|in:enquiries,followups,quotations', 'queue' => 'nullable|in:all,today,overdue',
+        $data = $request->validate(['view' => 'nullable|in:attention,enquiries,followups,quotations', 'queue' => 'nullable|in:all,today,overdue',
+            'attention' => ['nullable', Rule::in(array_keys(\App\Services\Sales\SalesAttentionQueue::CATEGORIES))],
             'stage' => ['nullable', Rule::in(array_keys(Enquiry::STAGES))], 'q' => 'nullable|string|max:100', 'mine' => 'nullable|boolean',
             'source' => ['nullable', Rule::in(array_keys(Enquiry::SOURCES))],
             'owner_id' => ['nullable', 'integer', Rule::exists('users', 'id')->where('organization_id', $request->user()->organization_id)],
             'from_date' => 'nullable|date_format:Y-m-d', 'to_date' => ['nullable', 'date_format:Y-m-d', ...($request->filled('from_date') ? ['after_or_equal:from_date'] : [])],
             'focus' => 'nullable|in:open,all,no_followup', 'sort' => 'nullable|in:newest,oldest,updated,due']);
-        $mode = $data['view'] ?? 'enquiries';
+        $mode = $data['view'] ?? ($request->user()->isSales() ? 'attention' : 'enquiries');
         $base = $this->workspace->query($request->user());
         $tz = $this->workspace->timezone(); $today = now($tz)->startOfDay()->utc(); $tomorrow = $today->copy()->timezone($tz)->addDay()->utc();
         $openIds = (clone $base)->whereNotIn('stage', ['won', 'lost'])->select('id');
@@ -41,7 +42,11 @@ class SalesWorkspaceController extends Controller
             return $query->when($data['from_date'] ?? null, fn ($q, $day) => $q->where('created_at', '>=', Carbon::parse($day, $tz)->startOfDay()->format('Y-m-d H:i:s')))
                 ->when($data['to_date'] ?? null, fn ($q, $day) => $q->where('created_at', '<', Carbon::parse($day, $tz)->addDay()->startOfDay()->format('Y-m-d H:i:s')));
         };
-        if ($mode === 'followups') {
+        $attentionCounts=[];$attentionCategory=$data['attention'] ?? 'all';
+        if ($mode === 'attention') {
+            $createdRange($query);
+            ['records'=>$records,'attentionCounts'=>$attentionCounts,'attentionCategory'=>$attentionCategory]=app(\App\Services\Sales\SalesAttentionQueue::class)->page($query,$request->user(),$attentionCategory);
+        } elseif ($mode === 'followups') {
             $recordQuery = EnquiryFollowUp::whereIn('enquiry_id', (clone $query)->whereNotIn('stage', ['won', 'lost'])->select('id'))->whereNull('completed_at')
                 ->when(($data['queue'] ?? '') === 'today', fn ($q) => $q->where('due_at', '>=', $today)->where('due_at', '<', $tomorrow))
                 ->when(($data['queue'] ?? '') === 'overdue', fn ($q) => $q->where('due_at', '<', now('UTC')))
@@ -66,7 +71,7 @@ class SalesWorkspaceController extends Controller
                 ->orderBy('id', $sort === 'oldest' ? 'asc' : 'desc')->paginate(20)->withQueryString();
         }
         $owners = $request->user()->scopeType('enquiries') === 'all' ? $this->workspace->owners() : collect([$request->user()]);
-        return view('sales-workspace.index', compact('records', 'mode', 'counts', 'tz', 'focus', 'sort', 'owners'));
+        return view('sales-workspace.index', compact('records', 'mode', 'counts', 'tz', 'focus', 'sort', 'owners','attentionCounts','attentionCategory'));
     }
 
     private function form(?Enquiry $enquiry = null)

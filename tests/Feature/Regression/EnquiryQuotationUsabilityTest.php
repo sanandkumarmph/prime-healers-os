@@ -100,7 +100,9 @@ class EnquiryQuotationUsabilityTest extends TestCase
         $image=imagecreatetruecolor(100,50);imagefill($image,0,0,0xffffff);imageline($image,5,40,80,10,0x172b4d);ob_start();imagepng($image);$signature=base64_encode(ob_get_clean());imagedestroy($image);
         $agreement->update(['signed_at'=>now(),'terms'=>'Immutable accepted terms','proof'=>['name'=>'Synthetic signer','signature'=>$signature,'id_reference'=>null]]);
         $before=$quote->fresh()->snapshot;
-        $this->get(route('quotations.show',$quote))->assertOk()->assertSee('Edit quotation')->assertSee('Create rental order');
+        $this->get(route('quotations.show',$quote))->assertOk()->assertSee('Edit quotation')
+            ->assertSee('data-action-key="ready_order"',false)
+            ->assertSee('href="'.route('rentals.create',['quotation_id'=>$quote->id]).'"',false);
         $this->action($quote,'revise')->assertSessionHasNoErrors()->assertRedirect(route('quotations.edit',$quote->id+1));
         $revision=$enquiry->quotations()->latest('revision')->first();
         $this->assertSame('draft',$revision->status);$this->assertNull($revision->accepted_at);$this->assertSame($before,$revision->snapshot);

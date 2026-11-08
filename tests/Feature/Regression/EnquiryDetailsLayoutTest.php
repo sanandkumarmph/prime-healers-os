@@ -72,6 +72,12 @@ class EnquiryDetailsLayoutTest extends TestCase
             if (!is_dir($folder)) mkdir($folder,0700,true);
             file_put_contents($folder.'/'.$fixture.'.html',$response->getContent());
         }
+        if ($folder=getenv('PHOS_GUIDED_ACTION_RENDER_DIR')) {
+            if (!is_dir($folder)) mkdir($folder,0700,true);
+            file_put_contents($folder.'/'.$fixture.'.html',$response->getContent());
+            $current=$this->enquiry->quotations()->latest('revision')->first();
+            if($current && in_array($fixture,['unsigned','signed','ready'],true)) file_put_contents($folder.'/quote-'.$fixture.'.html',$this->get(route('quotations.show',$current))->assertOk()->getContent());
+        }
         return $response;
     }
 
@@ -88,7 +94,7 @@ class EnquiryDetailsLayoutTest extends TestCase
     public function test_draft_and_sent_unsigned_states_do_not_offer_order_creation(): void
     {
         $quote=$this->draft();
-        $this->page('draft')->assertSee('Complete the quotation')->assertDontSee(route('rentals.create',['quotation_id'=>$quote->id]));
+        $this->page('draft')->assertSee('Complete quotation')->assertDontSee(route('rentals.create',['quotation_id'=>$quote->id]));
         $quote=$this->transition($quote,'send');
         $this->page('unsigned')->assertSee('Awaiting signature')->assertSee('Send rental terms on WhatsApp')
             ->assertDontSee(route('rentals.create',['quotation_id'=>$quote->id]));

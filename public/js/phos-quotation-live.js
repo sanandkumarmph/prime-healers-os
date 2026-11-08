@@ -24,26 +24,37 @@
                 : state.agreement_state === 'exception' ? 'Signature exception approved' : pending ? 'Awaiting rental agreement.' : 'Quotation: ' + state.quotation_status_label;
             setText('[data-live-status-text]', message);setText('[data-live-status-time]', signed && state.agreement_signed_at ? ' · ' + state.agreement_signed_at : '');
             root.querySelectorAll('[data-live-status-banner]').forEach(banner => { banner.classList.toggle('sw-live-waiting', pending); banner.classList.toggle('sw-success', signed || state.agreement_state === 'exception'); });
-            setText('[data-live-quote-next]', state.next_text);
+            const recommendation = state.next_action && typeof state.next_action.key === 'string' ? state.next_action : null;
+            setText('[data-live-quote-next]', recommendation?.reason || state.next_text);
             root.querySelectorAll('[data-live-enquiry-stage]').forEach(badge => { badge.textContent = state.enquiry_stage_label; badge.dataset.status = state.enquiry_stage; });
             setText('[data-live-quote-label]', state.quotation_status_label);
             setText('[data-live-quotation-summary]', 'Quotation: ' + state.quotation_status_label);
+            setText('[data-live-terms-label]', signed ? 'Signed' : state.agreement_state==='exception' ? 'Exception approved' : 'Signature pending');
+            setText('[data-live-share-label]', state.quotation_shared ? 'Shared' : 'Ready to share');
             const action = state.order_action && safeUrl(state.order_action.url) ? state.order_action : null;
             const latest = safeUrl(state.latest_url);
             root.querySelectorAll('[data-live-order-link]').forEach(element => { if (action) element.href = action.url; else if (!state.current && latest) element.href = latest; });
             deferredState = modalOpen() ? state : null;
             if (!modalOpen()) {
                 root.querySelectorAll('[data-live-quote-header]').forEach(slot => {
-                    const enquiry = root.dataset.livePage === 'enquiry';
-                    if (!enquiry && state.current && state.quotation_status === 'draft') return;
-                    if (!enquiry && state.quotation_status === 'converted' && action && [...slot.parentElement.children].some(element=>element !== slot && element.matches('a') && element.href === action.url)) return;
-                    let next = action ? link(action.label, action.url, true) : !state.current && latest ? link('Open latest quotation', latest, true)
-                        : enquiry && state.can_record_response && ready ? link('Record quotation response', '#enquiry-response', true)
-                        : enquiry && latest ? link('Open latest quotation', latest, true) : null;
-                    const key = next ? next.textContent + '|' + next.href : '';
-                    if (slot.dataset.liveActionKey !== key) { slot.replaceChildren(...(next ? [next] : []));slot.dataset.liveActionKey = key; }
+                    if (state.current && state.quotation_status === 'draft') return;
+                    const next = !state.current && latest ? link('Open latest quotation',latest,true)
+                        : recommendation?.url && safeUrl(recommendation.url) && recommendation.label ? link(recommendation.label,recommendation.url,true)
+                        : !recommendation && action ? link(action.label,action.url,true) : null;
+                    if(next){next.dataset.salesCurrentAction='';next.dataset.nextSection=recommendation?.section || '';}
+                    const key=next ? next.textContent+'|'+next.href : '';
+                    if(slot.dataset.liveActionKey!==key){slot.replaceChildren(...(next?[next]:[]));slot.dataset.liveActionKey=key;}
                 });
-                root.querySelectorAll('[data-live-order-actions]').forEach(slot => { slot.replaceChildren(...(action ? [link(action.label, action.url, true)] : [])); });
+                const panel=root.querySelector('[data-sales-next-action]');
+                if(panel&&recommendation){panel.dataset.actionKey=recommendation.key;panel.querySelector('h2').textContent=recommendation.attention?'Next action':'Current status';}
+                root.querySelectorAll('[data-live-order-actions]').forEach(slot=>slot.replaceChildren(...(action?[link(action.label,action.url)]:[])));
+                root.querySelectorAll('[data-sales-section]').forEach(section=>{
+                    const busy=[...section.querySelectorAll('form')].some(form=>dirty.has(form)) || section.contains(document.activeElement);
+                    if(busy)return;
+                    const target=section.dataset.salesSection;
+                    if(recommendation?.section===target)section.open=true;
+                    else if((target==='rental-agreement'&&ready)||(target==='enquiry-response'&&['accepted','converted'].includes(state.quotation_status))||(target==='quotation-share'&&state.quotation_shared))section.open=false;
+                });
                 if (signed && safeUrl(state.signed_copy_url)) {
                     root.querySelectorAll('[data-live-agreement-actions]').forEach(slot => {
                         // Actual signature proof is never fetched into this status response.
