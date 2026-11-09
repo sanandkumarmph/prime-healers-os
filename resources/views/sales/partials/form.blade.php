@@ -29,11 +29,13 @@
 
     $initialSaleItems = old('sale_items');
     $initialShippingCharges = old('shipping_charges');
+    $salePricingFromQuote = (bool) request()->attributes->get('conversion_quote');
+    $saleTransportAutomatic = !$isEdit && !session()->hasOldInput() && !$salePricingFromQuote;
 
     if ($initialShippingCharges === null) {
         $initialShippingCharges = $isEdit
             ? number_format((float) $sale->resolvedShippingCharges(), 2, '.', '')
-            : number_format((float) old('shipping_charges', 0), 2, '.', '');
+            : number_format((float) ($saleTransportAutomatic ? \App\Support\CommercialDefaults::SMALL_TRANSPORT : 0), 2, '.', '');
     } else {
         $initialShippingCharges = number_format((float) $initialShippingCharges, 2, '.', '');
     }
@@ -73,7 +75,7 @@
                 'unit_price' => 0,
                 'discount_amount' => 0,
                 'tax_percentage' => 0,
-                'tax_calculation_mode' => 'exclusive',
+                'tax_calculation_mode' => 'inclusive',
                 'tax_type' => null,
                 'notes' => null,
             ]];
@@ -146,11 +148,10 @@
             'total' => (int) ($product->total_quantity ?? 0),
         ]),
         'sale_price' => (float) ($product->sale_price ?? 0),
+        'heavy' => \App\Support\CommercialDefaults::isHeavy($product),
         'image_url' => $product->product_image_url,
-        'tax_percentage' => $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_CGST_SGST
-            ? round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2)
-            : round((float) ($product->igst_rate ?? 0), 2),
-        'tax_mode' => $product->gst_calculation_mode ?? 'exclusive',
+        'tax_percentage' => \App\Support\CommercialDefaults::productData($product)['tax_rate'],
+        'tax_mode' => 'inclusive',
     ])->values();
 
     $assetData = ($assets ?? collect())->map(fn ($asset) => [
@@ -181,6 +182,7 @@
 @include('partials.business-partner-flow-styles')
 
 <style>
+    #saleUseSuggestedTransport[hidden] { display:none !important; }
     .sales-shell { display:grid; gap:12px; padding:12px 18px 24px; width:100%; max-width:1240px; min-width:0; overflow-x:clip; }
     .sales-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
     .sales-header h1 { margin:0; font-size:26px; color:#0f172a; line-height:1.05; }
@@ -1491,7 +1493,8 @@
             <div class="sales-field sales-pricing-full {{ $errors->has('shipping_charges') ? 'is-error' : '' }}" style="min-width:160px; margin:0;">
                 <label for="shipping_charges">Transport</label>
                 <input type="number" step="0.01" min="0" name="shipping_charges" id="shipping_charges" value="{{ $initialShippingCharges }}">
-                <small>Applied once to the sale.</small>
+                <small id="saleTransportDefaultStatus" data-sale-transport-default-status>{{ $salePricingFromQuote ? 'From accepted quotation.' : 'Editable transport amount, applied once.' }}</small>
+                <button type="button" class="sales-btn-light" id="saleUseSuggestedTransport" data-sale-use-suggested-transport @if($salePricingFromQuote || $saleTransportAutomatic) hidden @endif>Use suggested</button>
                 @error('shipping_charges')<div class="sales-field-error">{{ $message }}</div>@enderror
             </div>
             <div class="sales-field sales-pricing-full sales-calculated-total-field" style="min-width:160px; margin:0;">
@@ -1694,6 +1697,9 @@
     <script>
     (function () {
         const initialSaleItems = @json(array_values($initialSaleItems));
+        const salePricingFromQuote = @json($salePricingFromQuote);
+        let saleTransportAutomatic = @json($saleTransportAutomatic);
+        const saleTransportDefaults = @json(['small'=>\App\Support\CommercialDefaults::SMALL_TRANSPORT,'heavy'=>\App\Support\CommercialDefaults::HEAVY_TRANSPORT]);
         const products = @json($productData);
         const assets = @json($assetData);
         const organizationState = @json($organizationState);
@@ -1733,6 +1739,8 @@
         const saleMobileNextButton = document.getElementById('saleMobileNextButton');
         const saleMobileSaveButton = document.getElementById('saleMobileSaveButton');
         const saleShippingInput = document.getElementById('shipping_charges');
+        const saleTransportDefaultStatus = document.getElementById('saleTransportDefaultStatus');
+        const saleUseSuggestedTransport = document.getElementById('saleUseSuggestedTransport');
         const saleFulfilmentSource = document.getElementById('sale_fulfilment_source');
         const saleVendorField = document.getElementById('saleVendorField');
         const saleVendorSelect = document.getElementById('sale_vendor_id');
@@ -1883,7 +1891,7 @@
                 unit_price: '0.00',
                 discount_amount: '0.00',
                 tax_percentage: '0.00',
-                tax_calculation_mode: 'exclusive',
+                tax_calculation_mode: 'inclusive',
                 tax_type: recommendedTaxType(),
                 tax_type_auto: true,
                 notes: ''
@@ -2367,7 +2375,27 @@
             };
         }
 
+        function suggestedSaleTransport() {
+            let units=0, heavy=false;
+            for (const item of saleItems) {
+                const product=productMap.get(parseInt(item.product_id || 0,10));
+                if (!product) continue;
+                units+=Math.max(parseInt(item.quantity || 1,10),1);
+                heavy=heavy || product.heavy===true;
+            }
+            return heavy || units>3 ? saleTransportDefaults.heavy : saleTransportDefaults.small;
+        }
+
+        function syncSaleTransportDefault() {
+            const suggested=suggestedSaleTransport();
+            if(saleTransportAutomatic && saleShippingInput) saleShippingInput.value=Number(suggested).toFixed(2);
+            if(saleTransportDefaultStatus) saleTransportDefaultStatus.textContent=salePricingFromQuote ? 'From accepted quotation.'
+                : 'Suggested ₹'+Number(suggested).toLocaleString('en-IN')+(saleTransportAutomatic ? ' · Editable' : ' · Your amount kept');
+            if(saleUseSuggestedTransport) saleUseSuggestedTransport.hidden=salePricingFromQuote || saleTransportAutomatic;
+        }
+
         function updateSaleSummary() {
+            syncSaleTransportDefault();
             const totals = saleItems.reduce(function (carry, item) {
                 const breakdown = lineBreakdown(item);
                 carry.subtotal += breakdown.subtotal;
@@ -3130,6 +3158,7 @@
                             <div class="sales-field">
                                 <label for="sale_item_unit_price_${index}">Unit Price (Rs.) <span style="color:#dc2626;">*</span></label>
                                 <input type="number" min="0" step="0.01" name="sale_items[${index}][unit_price]" id="sale_item_unit_price_${index}" value="${escapeHtml(item.unit_price)}">
+                                <small id="sale_item_gst_hint_${index}" data-sale-price-tax-hint>GST ${formatGstLabel(item.tax_percentage)} ${item.tax_calculation_mode === 'inclusive' ? 'included' : 'additional'}</small>
                             </div>
                             <div class="sales-field">
                                 <label for="sale_item_discount_${index}">Discount</label>
@@ -3210,6 +3239,7 @@
 
                 function refreshLineTotal() {
                     totalLabel.textContent = formatCurrency(lineCommercials(saleItems[index]));
+                    row.querySelector('[data-sale-price-tax-hint]').textContent='GST '+formatGstLabel(saleItems[index].tax_percentage)+' '+(saleItems[index].tax_calculation_mode==='inclusive'?'included':'additional');
                     if (discountedUnitInput) {
                         const discounted = Math.max(parseFloat(saleItems[index].unit_price || 0) - parseFloat(saleItems[index].discount_amount || 0), 0);
                         discountedUnitInput.value = discounted.toFixed(2);
@@ -3857,8 +3887,9 @@
             updateSaleSummary();
         });
         if (saleShippingInput) {
-            saleShippingInput.addEventListener('input', updateSaleSummary);
+            ['input','change'].forEach(event=>saleShippingInput.addEventListener(event, function () { saleTransportAutomatic=false;updateSaleSummary(); }));
         }
+        saleUseSuggestedTransport?.addEventListener('click',function(){saleTransportAutomatic=true;updateSaleSummary();});
         window.addEventListener('business-partner:created', function (event) {
             const partner = event.detail;
 

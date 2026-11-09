@@ -22,7 +22,8 @@
     $rental3MonthValue = old('rental_price_3_months', $product->rental_price_3_months);
     $quantityValue = old('quantity', (int) ($product->total_quantity ?? 0));
     $gstTaxTypeValue = old('gst_tax_type', $product->gst_tax_type);
-    $gstCalculationModeValue = old('gst_calculation_mode', $product->gst_calculation_mode ?? 'exclusive');
+    $gstCalculationModeValue = old('gst_calculation_mode', $product->gst_calculation_mode ?? 'inclusive');
+    $transportClassValue = old('transport_class', $product->transport_class);
     $cgstRateValue = old('cgst_rate', $product->cgst_rate ?? 0);
     $sgstRateValue = old('sgst_rate', $product->sgst_rate ?? 0);
     $igstRateValue = old('igst_rate', $product->igst_rate ?? 0);
@@ -1171,6 +1172,16 @@
                     </div>
 
                     <div style="display:grid; gap:18px;">
+                        <div>
+                            <label for="transport_class" style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Transport default</label>
+                            <select name="transport_class" id="transport_class" style="{{ $fieldStyle('transport_class', 'width:100%; padding:12px 14px; border:1px solid #cbd5e1; border-radius:14px; background:#ffffff;') }}">
+                                <option value="" @selected(!$transportClassValue)>Automatic — hospital beds are heavy</option>
+                                <option value="small" @selected($transportClassValue==='small')>Small product — ₹800</option>
+                                <option value="heavy" @selected($transportClassValue==='heavy')>Heavy equipment — ₹2,500</option>
+                            </select>
+                            <p style="margin:6px 0 0; color:#64748b; font-size:12px;">More than 3 total units defaults to ₹2,500. Staff can edit the charge on the quotation or order.</p>
+                            @if($fieldError('transport_class'))<div style="margin-top:6px; color:#b91c1c; font-size:12px;">{{ $fieldError('transport_class') }}</div>@endif
+                        </div>
                         <div data-pricing-section="sale">
                             <label style="display:block; margin-bottom:8px; color:#475569; font-size:13px; font-weight:700;">Sale Price</label>
                             <input type="number" min="0" step="0.01" name="sale_price" value="{{ $salePriceValue }}"

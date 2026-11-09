@@ -166,7 +166,7 @@ class SalesWorkspace
             if (!$product || !($lineType === 'rental' ? $product->canRent() : $product->canSell())) {
                 throw ValidationException::withMessages(['lines.'.$i.'.product_id' => 'Choose a product available for this order type.']);
             }
-            $allowedRates = collect([0, 5, 12, 18, 28, $product->defaultGstRate()])
+            $allowedRates = collect([0, 5, 12, 18, 28, $product->defaultGstRate(), \App\Support\CommercialDefaults::productData($product)['tax_rate']])
                 ->map(fn ($rate) => number_format($rate, 2, '.', ''))->unique()->all();
             if (!in_array(number_format((float) $line['tax_rate'], 2, '.', ''), $allowedRates, true)) {
                 throw ValidationException::withMessages(['lines.'.$i.'.tax_rate' => 'Choose a standard GST slab or this product\'s saved tax rate.']);

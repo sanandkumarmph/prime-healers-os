@@ -5,6 +5,7 @@
 .sw .sw-product-picker{position:relative}.sw .sw-product-native{position:absolute!important;width:1px!important;height:1px!important;min-height:0!important;padding:0!important;opacity:0;overflow:hidden;clip-path:inset(50%);pointer-events:none}
 .sw-product-results{position:absolute;top:100%;left:0;right:0;z-index:90;max-height:260px;overflow:auto;overscroll-behavior:contain;padding:5px;border:1px solid #cbd6e3;border-radius:8px;box-shadow:0 12px 28px #17335520;background:#fff}
 .sw-product-results button{display:block;width:100%;min-height:36px;text-align:left;padding:8px;border:0;border-radius:5px;background:#fff;color:#172b4d;font:inherit;font-size:12px;overflow-wrap:anywhere;cursor:pointer}.sw-product-results button:hover,.sw-product-results button[aria-selected=true]{background:#edf3ff}.sw-product-results p{font-size:12px;padding:8px;margin:0}.sw-product-match-count{font-size:10px;color:#63748b}.sw-product-match-count:empty{display:none}
+#quote-use-suggested-transport[hidden]{display:none!important}
 @media(max-width:600px){.sw-product-picker input[type=search]{font-size:16px}.sw-product-results button{min-height:42px}}
 </style>
 @php
@@ -13,8 +14,9 @@
     if (!$lines) $lines = [['product_id'=>'','quantity'=>1,'rate'=>0,'tax_rate'=>0,'tax_mode'=>'inclusive']];
     $originalKind = $quote?->kind ?? $enquiry->intent;
     $kind = old('kind',$originalKind ?: 'rental');
-    $productData = $products->mapWithKeys(fn($p)=>[$p->id=>['name'=>$p->name,'rental'=>(float)($p->rental_price ?: $p->rental_price_30_days ?: 0),'daily'=>(float)$p->price_per_day,'days15'=>(float)$p->rental_price_15_days,'days30'=>(float)$p->rental_price_30_days,'months3'=>(float)$p->rental_price_3_months,'sale'=>(float)$p->sale_price,'tax_rate'=>$p->defaultGstRate(),'tax_mode'=>$p->defaultGstMode(),'can_rent'=>$p->canRent(),'can_sell'=>$p->canSell()]]);
+    $productData = $products->mapWithKeys(fn($p)=>[$p->id=>\App\Support\CommercialDefaults::productData($p)+['name'=>$p->name,'can_rent'=>$p->canRent(),'can_sell'=>$p->canSell()]]);
     $selectedRecipient = old('customer_id',$s['customer_id'] ?? $enquiry->customer_id);
+    $freshCommercialDefaults = !$quote && !session()->hasOldInput();
 @endphp
 <div class="sw">
     <a href="{{ route('enquiries.show',$enquiry) }}">← Back to enquiry</a>
@@ -75,8 +77,8 @@
             <aside><section class="sw-panel sw-sticky-summary">
                 <h2>Summary <span class="sw-meta">{{ $enquiry->organization->currency_code ?: 'INR' }}</span></h2>
                 <p id="quote-recipient" class="sw-muted">{{ $customers->firstWhere('id',(int)$selectedRecipient)?->name ?: $enquiry->name }}</p>
-                <div class="sw-field"><label for="transport">Delivery / transport</label><input id="transport" type="number" name="transport" value="{{ old('transport',$s['transport'] ?? 0) }}" min="0" max="99999999.99" step="0.01" required></div>
-                <div class="sw-field" data-rental-dates style="margin-top:10px"><label for="deposit">Refundable deposit</label><input id="deposit" type="number" name="deposit" value="{{ old('deposit',$s['deposit'] ?? 0) }}" min="0" max="99999999.99" step="0.01" required></div>
+                <div class="sw-field"><label for="transport">Delivery / transport</label><input id="transport" type="number" name="transport" value="{{ old('transport',$s['transport'] ?? \App\Support\CommercialDefaults::SMALL_TRANSPORT) }}" data-commercial-auto="{{ $freshCommercialDefaults ? '1' : '0' }}" min="0" max="99999999.99" step="0.01" required><div class="sw-meta"><span id="quote-transport-suggestion"></span> <button type="button" class="sw-btn sw-small" id="quote-use-suggested-transport" hidden>Use suggested</button></div></div>
+                <div class="sw-field" data-rental-dates style="margin-top:10px"><label for="deposit">Refundable deposit</label><input id="deposit" type="number" name="deposit" value="{{ old('deposit',$s['deposit'] ?? \App\Support\CommercialDefaults::depositFor($kind)) }}" data-commercial-auto="{{ $freshCommercialDefaults ? '1' : '0' }}" min="0" max="99999999.99" step="0.01" required><span class="sw-meta">Editable · standard rental deposit ₹2,000</span></div>
                 <details><summary>Tax settings</summary><div class="sw-field"><label for="tax_type">Tax split</label><select id="tax_type" name="tax_type"><option value="cgst_sgst" @selected(old('tax_type',$s['tax_type'] ?? 'cgst_sgst')==='cgst_sgst')>CGST + SGST</option><option value="igst" @selected(old('tax_type',$s['tax_type'] ?? '')==='igst')>IGST / single tax</option></select></div></details>
                 <div class="sw-totals"><div><span>Taxable amount</span><strong id="preview-subtotal">—</strong></div><div><span>Tax</span><strong id="preview-tax">—</strong></div><div class="sw-grand"><span>Total</span><span id="preview-total">—</span></div><div data-rental-dates><span>With deposit</span><strong id="preview-payable">—</strong></div></div>
                 <p class="sw-meta">Stock and delivery are confirmed when creating the order.</p>

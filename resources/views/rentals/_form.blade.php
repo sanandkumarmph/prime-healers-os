@@ -1,5 +1,8 @@
 @php
     $isEdit = isset($rental);
+    $rentalCommercialProtected = $isEdit || request()->attributes->has('conversion_quote') || session()->hasOldInput();
+    $rentalTransportAutomatic = !$rentalCommercialProtected;
+    $rentalCommercialProducts = $products->mapWithKeys(fn ($product) => [$product->id => \App\Support\CommercialDefaults::productData($product)]);
     $selectedCustomer = $selectedCustomer ?? null;
     $businessPartners = $businessPartners ?? collect();
     $initialPartnerClients = $initialPartnerClients ?? collect();
@@ -221,6 +224,7 @@
 @include('partials.business-partner-flow-styles')
 
 <style>
+    #rentalUseSuggestedTransport[hidden] { display:none !important; }
     .rental-focused-form-page {
         width:100%;
         max-width:100%;
@@ -2772,8 +2776,8 @@
                             data-rental-price-15="{{ (float) ($product->rental_price_15_days ?? 0) }}"
                             data-rental-price-30="{{ (float) ($product->rental_price_30_days ?? 0) }}"
                             data-rental-price-90="{{ (float) ($product->rental_price_3_months ?? 0) }}"
-                            data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}"
-                            data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}"
+                            data-gst-rate="{{ \App\Support\CommercialDefaults::productData($product)['tax_rate'] }}"
+                            data-gst-mode="inclusive"
                             data-search="{{ trim(implode(' - ', array_filter([$product->name, $product->category, $product->brand, $product->model_name, $product->display_model ?? null, $product->sku, $product->product_code, $product->rental_dropdown_label ?? null, $product->stock_mode, $product->product_type]))) }}"
                             {{ (int) old('product_id', $isEdit ? $rental->product_id : null) === $product->id ? 'selected' : '' }}>
                             {{ $selectedFulfilmentSource === 'vendor_supplied'
@@ -2897,8 +2901,8 @@
                         <div class="rental-field{{ $hasFieldError('gst_mode') ? ' is-error' : '' }}">
                             <label for="gst_mode">GST Mode</label>
                             <select name="gst_mode" id="gst_mode">
-                                <option value="exclusive" {{ old('gst_mode', $primaryRentalItem?->gst_mode ?? 'exclusive') === 'exclusive' ? 'selected' : '' }}>Exclusive</option>
-                                <option value="inclusive" {{ old('gst_mode', $primaryRentalItem?->gst_mode ?? 'exclusive') === 'inclusive' ? 'selected' : '' }}>Inclusive</option>
+                                <option value="exclusive" {{ old('gst_mode', $primaryRentalItem?->gst_mode ?? ($isEdit ? 'exclusive' : 'inclusive')) === 'exclusive' ? 'selected' : '' }}>Exclusive</option>
+                                <option value="inclusive" {{ old('gst_mode', $primaryRentalItem?->gst_mode ?? ($isEdit ? 'exclusive' : 'inclusive')) === 'inclusive' ? 'selected' : '' }}>Inclusive</option>
                             </select>
                             @if($hasFieldError('gst_mode'))
                                 <span class="field-error">{{ $fieldError('gst_mode') }}</span>
@@ -3146,7 +3150,7 @@
         <p class="section-copy">Order-level deposit, transport, and other charges.</p>
         <div class="rental-grid"><div class="rental-field rental-col-3{{ $hasFieldError('deposit_amount') ? ' is-error' : '' }}">
                 <label for="deposit_amount">Deposit</label>
-                <input type="number" step="0.01" min="0" name="deposit_amount" id="deposit_amount" value="{{ old('deposit_amount', $isEdit ? $rental->deposit_amount : 0) }}">
+                <input type="number" step="0.01" min="0" name="deposit_amount" id="deposit_amount" value="{{ old('deposit_amount', $isEdit ? $rental->deposit_amount : \App\Support\CommercialDefaults::DEPOSIT) }}">
                 @if($hasFieldError('deposit_amount'))
                     <span class="field-error">{{ $fieldError('deposit_amount') }}</span>
                 @endif
@@ -3154,7 +3158,8 @@
 
             <div class="rental-field rental-col-3{{ $hasFieldError('transport_amount') ? ' is-error' : '' }}">
                 <label for="transport_amount">Transport</label>
-                <input type="number" step="0.01" min="0" name="transport_amount" id="transport_amount" value="{{ old('transport_amount', $isEdit ? $rental->transport_amount : 0) }}">
+                <input type="number" step="0.01" min="0" name="transport_amount" id="transport_amount" data-rental-transport-default="{{ $rentalTransportAutomatic ? 'automatic' : 'preserved' }}" value="{{ old('transport_amount', $isEdit ? $rental->transport_amount : \App\Support\CommercialDefaults::SMALL_TRANSPORT) }}">
+                @if(!$isEdit && !request()->attributes->has('conversion_quote'))<small id="rentalTransportSuggestion" class="rental-helper" aria-live="polite"></small><button type="button" class="ops-button-secondary" id="rentalUseSuggestedTransport" style="padding:4px 8px;min-height:30px;font-size:11px;margin-top:4px" hidden>Use suggested</button>@endif
                 @if($hasFieldError('transport_amount'))
                     <span class="field-error">{{ $fieldError('transport_amount') }}</span>
                 @endif
@@ -4496,8 +4501,14 @@
         let currentAssets = [];
         let rentalItems = @json($additionalRentalRows);
         let saleItems = @json($saleItemRows);
+        const rentalCommercialProducts = @json($rentalCommercialProducts);
+        const preservedRentalCommercialValues = Boolean(@json($rentalCommercialProtected));
+        const transportInput = document.getElementById('transport_amount');
+        const transportSuggestion = document.getElementById('rentalTransportSuggestion');
+        const useSuggestedTransport = document.getElementById('rentalUseSuggestedTransport');
+        let transportAutomatic = Boolean(@json($rentalTransportAutomatic));
         const standardGstRates = ['0.00', '5.00', '12.00', '18.00', '28.00'];
-        let rentalAmountTouched = Boolean(@json($isEdit || (old('rental_amount') !== null && old('rental_amount') !== '')));
+        let rentalAmountTouched = preservedRentalCommercialValues;
         const quotationConversionActive = Boolean(@json(request()->attributes->get('conversion_quote')?->id));
         let syncingRentalAmount = false;
         const assetVisibleStep = 3;
@@ -4505,8 +4516,8 @@
         const currentRentalId = @json($isEdit ? $rental->id : null);
         const organizationState = @json($organization?->state ?? null);
         const partnerClientEndpointTemplate = @json($businessPartnerFlowAvailable ? route('rentals.business-partners.actual-clients', ['business_partner' => '__PARTNER__']) : null);
-        let rentalProductOptionsHtml = `<option value="">Select rental product</option>@foreach($rentalProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->rental_price ?? $product->price_per_day ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-product-name="{{ e($product->name) }}" data-product-image-url="{{ e($product->product_image_url) }}" data-product-brand="{{ e($product->brand) }}" data-product-model="{{ e($product->model_name ?? $product->display_model) }}" data-product-sku="{{ e($product->sku) }}" data-product-code="{{ e($product->product_code) }}" data-in-house-option-label="{{ e($product->name . ' - ' . ($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity)))) }}" data-vendor-option-label="{{ e($product->name) }}" data-rental-available="{{ $product->rental_available_quantity ?? $product->display_available_quantity ?? $product->available_quantity }}" data-rental-status="{{ $product->rental_availability_status }}" data-rental-label="{{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}" data-tracks-rental="{{ $product->tracksRentalStock() ? 1 : 0 }}" data-search="{{ e(trim(implode(' - ', array_filter([$product->name, $product->category, $product->brand, $product->model_name, $product->display_model ?? null, $product->sku, $product->product_code, $product->stock_mode, $product->product_type, $product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))])))) }}">{{ e($product->name) }} - {{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}</option>@endforeach`;
-        const saleProductOptionsHtml = `<option value="">Select new product</option>@foreach($sellableProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->sale_price ?? 0) }}" data-gst-rate="{{ $product->gst_tax_type === \App\Models\Product::GST_TAX_TYPE_IGST ? round((float) ($product->igst_rate ?? 0), 2) : round((float) ($product->cgst_rate ?? 0) + (float) ($product->sgst_rate ?? 0), 2) }}" data-gst-mode="{{ in_array($product->gst_calculation_mode, \App\Models\Product::GST_CALCULATION_MODES, true) ? $product->gst_calculation_mode : 'exclusive' }}" data-product-name="{{ e($product->name) }}" data-product-image-url="{{ e($product->product_image_url) }}" data-product-brand="{{ e($product->brand) }}" data-product-model="{{ e($product->model_name ?? $product->display_model) }}" data-product-sku="{{ e($product->sku) }}" data-product-code="{{ e($product->product_code) }}" data-product-meta="{{ e(trim(implode(' | ', array_filter([$product->brand, $product->model_name ?? $product->display_model, $product->sku, $product->product_code])))) }}" data-availability-label="Sale {{ number_format((float) ($product->sale_price ?? 0), 2) }}" data-search="{{ e(trim(implode(' - ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code, 'Sale ' . number_format((float) ($product->sale_price ?? 0), 2)])))) }}">{{ e($product->name) }} | Sale {{ number_format((float) ($product->sale_price ?? 0), 2) }}</option>@endforeach`;
+        let rentalProductOptionsHtml = `<option value="">Select rental product</option>@foreach($rentalProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->rental_price ?? $product->price_per_day ?? 0) }}" data-gst-rate="{{ \App\Support\CommercialDefaults::productData($product)['tax_rate'] }}" data-gst-mode="inclusive" data-product-name="{{ e($product->name) }}" data-product-image-url="{{ e($product->product_image_url) }}" data-product-brand="{{ e($product->brand) }}" data-product-model="{{ e($product->model_name ?? $product->display_model) }}" data-product-sku="{{ e($product->sku) }}" data-product-code="{{ e($product->product_code) }}" data-in-house-option-label="{{ e($product->name . ' - ' . ($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity)))) }}" data-vendor-option-label="{{ e($product->name) }}" data-rental-available="{{ $product->rental_available_quantity ?? $product->display_available_quantity ?? $product->available_quantity }}" data-rental-status="{{ $product->rental_availability_status }}" data-rental-label="{{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}" data-tracks-rental="{{ $product->tracksRentalStock() ? 1 : 0 }}" data-search="{{ e(trim(implode(' - ', array_filter([$product->name, $product->category, $product->brand, $product->model_name, $product->display_model ?? null, $product->sku, $product->product_code, $product->stock_mode, $product->product_type, $product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))])))) }}">{{ e($product->name) }} - {{ e($product->rental_dropdown_label ?? ('Rental Available ' . ($product->display_available_quantity ?? $product->available_quantity))) }}</option>@endforeach`;
+        const saleProductOptionsHtml = `<option value="">Select new product</option>@foreach($sellableProducts as $product)<option value="{{ $product->id }}" data-default-price="{{ (float) ($product->sale_price ?? 0) }}" data-gst-rate="{{ \App\Support\CommercialDefaults::productData($product)['tax_rate'] }}" data-gst-mode="inclusive" data-product-name="{{ e($product->name) }}" data-product-image-url="{{ e($product->product_image_url) }}" data-product-brand="{{ e($product->brand) }}" data-product-model="{{ e($product->model_name ?? $product->display_model) }}" data-product-sku="{{ e($product->sku) }}" data-product-code="{{ e($product->product_code) }}" data-product-meta="{{ e(trim(implode(' | ', array_filter([$product->brand, $product->model_name ?? $product->display_model, $product->sku, $product->product_code])))) }}" data-availability-label="Sale {{ number_format((float) ($product->sale_price ?? 0), 2) }}" data-search="{{ e(trim(implode(' - ', array_filter([$product->name, $product->brand, $product->model_name, $product->sku, $product->product_code, 'Sale ' . number_format((float) ($product->sale_price ?? 0), 2)])))) }}">{{ e($product->name) }} | Sale {{ number_format((float) ($product->sale_price ?? 0), 2) }}</option>@endforeach`;
         const saleAssetOptions = @json($saleAssetRows);
         const primaryRentalAssetIndex = @json($primaryRentalAssetIndex ?? []);
         const warehouseOptionsHtml = `<option value="">Auto / best stock</option>@foreach($warehouses as $warehouse)<option value="{{ $warehouse->id }}">{{ e($warehouse->name) }}</option>@endforeach`;
@@ -4541,6 +4552,39 @@
             return Number.isNaN(parsed) ? '0.00' : parsed.toFixed(2);
         }
 
+        function suggestedRentalTransport() {
+            const lines = [{product_id: productSelect?.value, quantity: quantityInput?.value}, ...rentalItems, ...saleItems];
+            let units = 0, heavy = false;
+            for (const line of lines) {
+                if (!line.product_id) continue;
+                units += Math.max(parseInt(line.quantity || '0', 10) || 0, 0);
+                if (rentalCommercialProducts[String(line.product_id)]?.heavy === true) heavy = true;
+            }
+            return heavy || units > 3 ? @json(\App\Support\CommercialDefaults::HEAVY_TRANSPORT) : @json(\App\Support\CommercialDefaults::SMALL_TRANSPORT);
+        }
+
+        function syncRentalTransportDefault() {
+            if (!transportInput) return;
+            const suggested = suggestedRentalTransport();
+            if (transportAutomatic) {
+                transportInput.value = suggested.toFixed(2);
+                transportInput.dataset.rentalTransportDefault = 'automatic';
+            }
+            if (transportSuggestion) transportSuggestion.textContent = 'Suggested ₹' + suggested.toLocaleString('en-IN') + ' · editable';
+            if (useSuggestedTransport) useSuggestedTransport.hidden = transportAutomatic;
+        }
+
+        transportInput?.addEventListener('input', () => {
+            transportAutomatic = false;
+            transportInput.dataset.rentalTransportDefault = 'manual';
+            syncRentalTransportDefault();
+        });
+        useSuggestedTransport?.addEventListener('click', () => {
+            transportAutomatic = true;
+            syncRentalTransportDefault();
+            safeUpdateSummary();
+        });
+
         function formatGstLabel(value) {
             const normalized = normalizeMoney(value);
             return `${normalized.replace(/\.00$/, '').replace(/(\.\d*[1-9])0+$/, '$1')}%`;
@@ -4568,7 +4612,7 @@
                 end_date: endDateInput?.value || '',
                 duration_days: activeRentalDays() || '',
                 gst_rate: '0.00',
-                gst_mode: 'exclusive',
+                gst_mode: 'inclusive',
                 tax_type: recommendedTaxType(),
             }, item || {});
         });
@@ -4576,7 +4620,7 @@
         saleItems = (Array.isArray(saleItems) ? saleItems : []).map(function (item) {
             return Object.assign({
                 gst_rate: '0.00',
-                gst_mode: 'exclusive',
+                gst_mode: 'inclusive',
                 tax_type: recommendedTaxType(),
             }, item || {});
         });
@@ -5738,6 +5782,10 @@
 
             const defaults = selectedProductTaxDefaults(productSelect);
 
+            if (!Array.from(primaryGstRateInput.options).some(option => option.value === defaults.gstRate)) {
+                primaryGstRateInput.add(new Option(formatGstLabel(defaults.gstRate), defaults.gstRate));
+            }
+
             if (forceOverride || !primaryGstRateInput.value) {
                 primaryGstRateInput.value = defaults.gstRate;
             }
@@ -5862,7 +5910,7 @@
                 return;
             }
 
-            if (rentalAmountTouched && (!forceUpdate || quotationConversionActive)) {
+            if (rentalAmountTouched) {
                 syncingRentalAmount = true;
                 rentalAmountInput.dispatchEvent(new Event('input', { bubbles: true }));
                 syncingRentalAmount = false;
@@ -5896,6 +5944,8 @@
 
             updateAvailabilityHint();
             updatePrimaryRentalFeedback();
+            syncRentalTransportDefault();
+            safeUpdateSummary();
 
             if (productChanged) {
                 fetchAssets();
@@ -7187,6 +7237,7 @@
             });
         }
         function renderRentalItems() {
+            syncRentalTransportDefault();
             if (!rentalItemsList) {
                 return;
             }
@@ -7391,7 +7442,7 @@
 
                     const selected = this.options[this.selectedIndex];
                     const defaultPrice = selected ? parseFloat(selected.getAttribute('data-default-price') || '0') : 0;
-                    rentalItems[index].unit_rental_amount = defaultPrice ? defaultPrice.toFixed(2) : '';
+                    rentalItems[index].unit_rental_amount = Number.isFinite(defaultPrice) ? defaultPrice.toFixed(2) : '0.00';
 
                     renderRentalItems();
                 };
@@ -7513,10 +7564,12 @@
             rentalItemsCountSummary.textContent = String(rentalItems.length);
             rentalItemsGrandTotal.textContent = total.toFixed(2);
             rentalItemsGrandTotalSummary.textContent = total.toFixed(2);
+            syncRentalTransportDefault();
             safeUpdateSummary();
         }
 
         function renderSaleItems() {
+            syncRentalTransportDefault();
             saleItemsList.innerHTML = '';
 
             if (!saleItems.length) {
@@ -7711,11 +7764,9 @@
                     saleItems[index].gst_mode = defaults.gstMode;
                     saleItems[index].tax_type = defaults.taxType;
 
-                    if (!priceInputEl.value) {
-                        const selected = this.options[this.selectedIndex];
-                        const defaultPrice = selected ? parseFloat(selected.getAttribute('data-default-price') || '0') : 0;
-                        saleItems[index].unit_price = defaultPrice ? defaultPrice.toFixed(2) : '';
-                    }
+                    const selected = this.options[this.selectedIndex];
+                    const defaultPrice = selected ? parseFloat(selected.getAttribute('data-default-price') || '0') : 0;
+                    saleItems[index].unit_price = Number.isFinite(defaultPrice) ? defaultPrice.toFixed(2) : '0.00';
 
                     renderSaleItems();
                 });
@@ -7830,6 +7881,7 @@
             saleItemsCountSummary.textContent = String(saleItems.length);
             saleItemsGrandTotal.textContent = total.toFixed(2);
             saleItemsGrandTotalSummary.textContent = total.toFixed(2);
+            syncRentalTransportDefault();
             safeUpdateSummary();
         }
 
@@ -7995,6 +8047,7 @@
         quantityInput.addEventListener('input', function () {
             updateSelectionMetrics();
             updatePrimaryRentalFeedback();
+            syncRentalTransportDefault();
             syncPrimaryRentalAmount(true);
         });
         startDateInput.addEventListener('change', function () {
@@ -8200,7 +8253,7 @@
                 duration_days: activeRentalDays() || '',
                 unit_rental_amount: '',
                 gst_rate: '0.00',
-                gst_mode: 'exclusive',
+                gst_mode: 'inclusive',
                 tax_type: recommendedTaxType(),
                 notes: '',
                 expanded: true
@@ -8217,7 +8270,7 @@
                 quantity: 1,
                 unit_price: '',
                 gst_rate: '0.00',
-                gst_mode: 'exclusive',
+                gst_mode: 'inclusive',
                 tax_type: recommendedTaxType(),
                 notes: '',
                 expanded: false

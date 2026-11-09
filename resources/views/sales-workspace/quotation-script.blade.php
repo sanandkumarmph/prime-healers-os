@@ -4,6 +4,8 @@
     const products = {{ Illuminate\Support\Js::from($productData) }};
     const list = document.getElementById('quotation-lines'), kind = document.getElementById('kind');
     const priceReview = document.getElementById('price-review'), review = document.getElementById('quotation-review');
+    const transportInput = form.elements.transport, depositInput = form.elements.deposit;
+    let automaticTransport = transportInput.dataset.commercialAuto === '1', automaticDeposit = depositInput.dataset.commercialAuto === '1';
     let nextIndex = {{ count($lines) }};
     const value = (row, name) => row.querySelector('[data-line-field="'+name+'"]');
     const number = n => Number.isFinite(Number(n)) ? Number(n) : 0;
@@ -21,13 +23,39 @@
         if (!days) return null;
         if (days === 15 && p.days15 > 0) return p.days15;
         if (days === 30 && p.days30 > 0) return p.days30;
+        if (days === 90 && p.months3 > 0) return p.months3;
         return p.daily > 0 ? round(p.daily * days) : null;
+    }
+    function selectionPrice(p,row) {
+        if (lineType(row) === 'sale') return p.sale;
+        const days = periodDays();
+        if (days === 15 && p.days15 > 0) return p.days15;
+        if (days === 30 && p.days30 > 0) return p.days30;
+        if (days === 90 && p.months3 > 0) return p.months3;
+        return p.rental;
     }
     function periodNote() {
         const days = periodDays();
         document.getElementById('quote-duration-note').textContent = days ? days+' days, including start and end dates. Entered prices cover this entire period; changing dates preserves negotiated prices.' : 'Choose rental start and end dates.';
     }
+    function suggestedTransport() {
+        let units = 0, heavy = false;
+        for (const row of list.querySelectorAll('[data-quote-line]')) {
+            const product = products[value(row,'product_id').value];
+            if (!eligible(product,row)) continue;
+            const quantity = Math.max(0,number(value(row,'quantity').value));
+            units += quantity; if (quantity > 0 && product.heavy) heavy = true;
+        }
+        return heavy || units > 3 ? {{ \App\Support\CommercialDefaults::HEAVY_TRANSPORT }} : {{ \App\Support\CommercialDefaults::SMALL_TRANSPORT }};
+    }
+    function updateSuggestedTransport() {
+        const suggested = suggestedTransport();
+        if (automaticTransport) transportInput.value = suggested.toFixed(2);
+        document.getElementById('quote-transport-suggestion').textContent = 'Suggested ₹'+money(suggested);
+        document.getElementById('quote-use-suggested-transport').hidden = automaticTransport;
+    }
     function recalc() {
+        updateSuggestedTransport();
         let subtotal = 0, tax = 0, total = 0;
         for (const row of list.querySelectorAll('[data-quote-line]')) {
             const base = round(number(value(row,'quantity').value) * number(value(row,'rate').value));
@@ -63,6 +91,7 @@
     }
     function unresolved() { return form.elements.pricing_kind.value !== kind.value || (!!form.dataset.originalKind && form.dataset.originalKind !== kind.value && form.elements.kind_confirmed.value !== '1'); }
     function syncType() {
+        if (automaticDeposit) depositInput.value = kind.value === 'rental' ? '{{ \App\Support\CommercialDefaults::DEPOSIT }}' : '0';
         document.querySelectorAll('[data-rental-dates]').forEach(el => el.hidden = kind.value !== 'rental');
         ['start_date','end_date'].forEach(name => {form.elements[name].required = kind.value === 'rental'; form.elements[name].disabled = kind.value !== 'rental';});
         document.getElementById('rental-rate-hint').hidden = kind.value !== 'rental';
@@ -82,7 +111,7 @@
     function confirmPrices(useDefaults) {
         if (useDefaults) for (const row of list.querySelectorAll('[data-quote-line]')) {
             const p = products[value(row,'product_id').value];
-            if (eligible(p,row)) value(row,'rate').value = p[lineType(row)];
+            if (eligible(p,row)) {value(row,'rate').value = selectionPrice(p,row);value(row,'tax_rate').value=p.tax_rate.toFixed(2);value(row,'tax_mode').value=p.tax_mode;}
         }
         form.elements.pricing_kind.value = kind.value; form.elements.kind_confirmed.value = '1'; dirty(); syncType();
     }
@@ -91,7 +120,7 @@
     list.addEventListener('change', event => {
         if (event.target.matches('[data-line-field=product_id],[data-line-field=line_type]')) {
             const row = event.target.closest('[data-quote-line]'), p = products[value(row,'product_id').value];
-            if (p && eligible(p,row)) { value(row,'rate').value = p[lineType(row)]; value(row,'tax_rate').value = p.tax_rate.toFixed(2); value(row,'tax_mode').value = p.tax_mode; }
+            if (p && eligible(p,row)) { value(row,'rate').value = selectionPrice(p,row); value(row,'tax_rate').value = p.tax_rate.toFixed(2); value(row,'tax_mode').value = p.tax_mode; }
         }
         filterProducts(); recalc();
     });
@@ -107,7 +136,11 @@
         value(list.lastElementChild,'line_type').value = kind.value;
         filterProducts(); dirty(); list.lastElementChild.querySelector('select').focus(); recalc();
     });
-    form.elements.transport.addEventListener('input',recalc); form.elements.deposit.addEventListener('input',recalc);
+    transportInput.addEventListener('input',()=>{automaticTransport=false;recalc();});
+    transportInput.addEventListener('change',()=>{automaticTransport=false;recalc();});
+    depositInput.addEventListener('input',()=>{automaticDeposit=false;recalc();});
+    depositInput.addEventListener('change',()=>{automaticDeposit=false;recalc();});
+    document.getElementById('quote-use-suggested-transport').addEventListener('click',()=>{automaticTransport=true;dirty();recalc();});
     document.querySelectorAll('[data-close-review]').forEach(button => button.addEventListener('click', () => review.close()));
     document.getElementById('quote-duration').addEventListener('change', event => {
         const from = date(form.elements.start_date.value), days = Number(event.target.value);

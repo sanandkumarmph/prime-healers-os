@@ -233,6 +233,7 @@ class ProductController extends Controller
             'rental_price_3_months' => 'nullable|numeric|min:0',
             'sale_price' => 'nullable|numeric|min:0',
             'rental_price' => 'nullable|numeric|min:0',
+            'transport_class' => ['nullable', 'string', Rule::in(['small', 'heavy'])],
             'quantity' => 'nullable|integer|min:0',
             'gst_tax_type' => ['nullable', Rule::in(Product::GST_TAX_TYPES)],
             'gst_calculation_mode' => ['nullable', Rule::in(Product::GST_CALCULATION_MODES)],

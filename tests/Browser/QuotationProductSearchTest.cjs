@@ -37,7 +37,8 @@ test('Sales and Admin search every quotation product line without changing price
    await page.click('#product-1-search');await page.type('#product-1-search','Mini');assert.equal(await page.$$eval('#product-1-results button',e=>e.length),0);
    await page.$eval('#product-1-search',e=>{e.value='cannula';e.dispatchEvent(new Event('input',{bubbles:true}));});
    await page.$eval('#product-1-results button',e=>e.click());
-   assert.equal(await page.$eval('#rate-1',e=>e.value),'150');assert.equal(await page.$eval('#preview-total',e=>e.textContent),'3,150.00');
+   assert.equal(await page.$eval('#rate-1',e=>e.value),'150');assert.equal(await page.$eval('#preview-total',e=>e.textContent),'3,950.00');
+   assert.equal(Number(await page.$eval('#transport',e=>e.value)),800);
    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'No horizontal overflow '+role+width);
    assert.equal(await page.$eval('#product-1-search',e=>e.getBoundingClientRect().width>=100),true);
    if(role==='sales'&&[1440,390].includes(width))await page.screenshot({path:path.join(folder,'product-search-'+width+'.png')});
