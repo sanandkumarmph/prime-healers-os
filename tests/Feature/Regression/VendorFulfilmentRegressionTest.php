@@ -626,9 +626,14 @@ class VendorFulfilmentRegressionTest extends TestCase
         $response = $this->actingAs($user)->get(route('rentals.create'));
 
         $response->assertOk();
-        $response->assertSee('Step 1 - Fulfilment Source', false);
-        $response->assertSee('Step 2 - City', false);
-        $response->assertSee('Step 6 - Delivery Assignment', false);
+        $response->assertSeeInOrder([
+            '<label for="city_id">Service city</label>',
+            '<select name="city_id" id="city_id">',
+            '<label for="fulfilment_source">Fulfilment source</label>',
+            '<select name="fulfilment_source" id="fulfilment_source">',
+            '<label for="delivery_assignment_type">Delivery method</label>',
+            '<select name="delivery_assignment_type" id="delivery_assignment_type">',
+        ], false);
         $response->assertDontSee('Pickup Responsibility', false);
     }
 

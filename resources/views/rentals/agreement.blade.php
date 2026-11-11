@@ -1,16 +1,12 @@
-@php
-    $agreements = app(\App\Services\Sales\RentalAgreements::class);
-    $agreement = $agreements->current($rental);
-@endphp
 @if($agreement)
     @php
         $currentAgreement = $agreements->matches($rental, $agreement);
     @endphp
     <style>
-        #rental-agreement .rcc-agreement-button { display:inline-flex; align-items:center; min-height:44px; padding:8px 14px; border:0; border-radius:8px; background:#126752; color:white; font-weight:700; margin:8px 0; }
+        #rental-agreement .rcc-agreement-button { display:inline-flex; align-items:center; min-height:44px; padding:8px 14px; border:0; border-radius:8px; background:var(--rental-accent,#1d4ed8); color:white; font-weight:700; margin:8px 0; }
         #rental-agreement .agreement-clause { margin:12px 0; overflow-wrap:anywhere; }
     </style>
-    <section class="rcc-card" id="rental-agreement" style="padding:16px;margin-bottom:16px;scroll-margin-top:20px">
+    <section class="rcc-card" id="rental-agreement" data-rental-anchor style="padding:16px;margin-bottom:16px">
         <h2>Rental agreement</h2>
         @if($agreement->signed_at)
             <p><strong>{{ $currentAgreement ? 'Signed' : 'Previous version signed' }}</strong>
@@ -24,7 +20,7 @@
                 @include('sales-workspace.rental-agreement-record')
             @endcan
         @endif
-        @if($rental->status === 'active' && !$agreements->readyFor($rental, $agreement))
+        @if($agreementPending)
             <p><strong>Awaiting signature.</strong> The customer must sign before dispatch.</p>
             @can('update', $rental)
                 @if($currentAgreement && !$agreement->quotation_id)

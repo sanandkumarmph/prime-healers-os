@@ -24,11 +24,15 @@ test('editable rental defaults include every product line while agreed and enter
    const page=await browser.newPage();page.on('pageerror',e=>report.errors.push(e.message));await page.setViewport({width,height:1000});
    await page.setRequestInterception(true);page.on('request',r=>r.url().startsWith(origin+'/')||r.url().startsWith('data:')?r.continue():r.respond({status:200,body:''}));
    await page.goto(origin+'/'+fixture,{waitUntil:'networkidle0'});await page.addStyleTag({content:'*{scroll-behavior:auto!important}'});
+   const summary = field => page.$eval('#rentalOrderSummary [data-summary-value="'+field+'"]', element => element.textContent.trim());
    if(fixture.startsWith('fresh')){
     assert.equal(Number(await value(page,'deposit_amount')),2000);assert.equal(Number(await value(page,'transport_amount')),800);
     assert.equal(await page.$eval('#rentalUseSuggestedTransport',e=>getComputedStyle(e).display),'none');
     await page.select('#duration_preset','30_days');await page.select('#product_id',String(products.small));
     assert.equal(Number(await value(page,'rental_amount')),3000);assert.equal(await value(page,'gst_mode'),'inclusive');assert.equal(Number(await value(page,'gst_rate')),5);
+    assert.equal(await summary('pricing'),'₹3,000.00');
+    assert.equal(await summary('gst'),'₹142.86');
+    assert.equal(await summary('netTotal'),'₹5,800.00');
     await set(page,'#quantity',4);assert.equal(Number(await value(page,'transport_amount')),2500);
     await set(page,'#quantity',3);assert.equal(Number(await value(page,'transport_amount')),800);
     await set(page,'#rental_amount',1111);await set(page,'#transport_amount',0);await set(page,'#deposit_amount',0);
@@ -56,7 +60,12 @@ test('editable rental defaults include every product line while agreed and enter
     const expected=fixture==='quotation'?{rental_amount:2100,transport_amount:600,deposit_amount:0}:fixture==='edit'?{rental_amount:1777,transport_amount:123,deposit_amount:0}:{rental_amount:0,transport_amount:0,deposit_amount:0};
     for(const [id,amount]of Object.entries(expected))assert.equal(Number(await value(page,id)),amount,fixture+' '+id);
     await set(page,'#quantity',4);for(const [id,amount]of Object.entries(expected))assert.equal(Number(await value(page,id)),amount,fixture+' keeps '+id+' after quantity');
-    if(fixture==='quotation')assert.equal(await value(page,'gst_mode'),'exclusive');
+    if(fixture==='quotation'){
+     assert.equal(await value(page,'gst_mode'),'exclusive');
+     assert.equal(await summary('pricing'),'₹2,205.00');
+     assert.equal(await summary('gst'),'₹105.00');
+     assert.equal(await summary('netTotal'),'₹2,805.00');
+    }
    }
    report.checks.push({width,fixture,defaultsOrPreservationVerified:true});await page.close();
   }

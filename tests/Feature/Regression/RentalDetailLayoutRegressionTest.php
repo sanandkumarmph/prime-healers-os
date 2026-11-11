@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Regression;
 
-use App\Models\{ActivityLog, Customer, Product, Rental, User};
+use App\Models\{ActivityLog, Customer, Invoice, Product, Rental, User};
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\TestData;
 use Tests\TestCase;
@@ -28,6 +28,12 @@ class RentalDetailLayoutRegressionTest extends TestCase
             'product_id' => $product->id, 'quantity' => 1, 'customer_name' => $customer->name,
             'phone' => $customer->phone, 'start_date' => '2026-10-01', 'end_date' => '2026-11-04',
             'rental_amount' => 2000, 'status' => 'active', 'created_by_user_id' => $sales->id]);
+        $invoice = Invoice::create([
+            'organization_id' => $organization->id, 'customer_id' => $customer->id, 'rental_id' => $rental->id,
+            'invoice_number' => 'RENTAL-LAYOUT-001', 'invoice_date' => '2026-10-01',
+            'subtotal' => 2000, 'total_amount' => 2000, 'paid_amount' => 0, 'balance_amount' => 2000,
+            'status' => 'unpaid', 'payment_status' => 'unpaid',
+        ]);
         foreach (['Partial delivery recorded.', 'Rental renewal and accessories confirmed.',
             'EquipmentCheckedAndAcceptedByCustomerWithCaregiver', 'Customer note saved.'] as $description) {
             $log = ActivityLog::create(['organization_id' => $organization->id, 'user_id' => $owner->id,
@@ -46,6 +52,10 @@ class RentalDetailLayoutRegressionTest extends TestCase
         $xpath = new \DOMXPath($document);
         $this->assertSame(3, $xpath->query('//*[@id="rental-overview-section"]/article')->length);
         $this->assertSame(4, $xpath->query('//*[@id="rental-overview-section"]//div[@class="rental-activity-mini-copy"]/time')->length);
+        $this->assertSame(2, $xpath->query('//*[@data-rental-next-action]')->length);
+        $this->assertSame(2, $xpath->query('//a[@href="' . route('invoices.download', $invoice) . '"]')->length);
+        $this->assertSame(1, $xpath->query('//*[@id="mobile-record-payment-panel"]//input[@name="payment_submission_token"]')->length);
+        $this->assertSame(1, $xpath->query('//*[@id="mobile-rental-notes"]//form[@action="' . route('rentals.notes.store', $rental) . '"]')->length);
         $this->assertSame($before, [$rental->fresh()->getRawOriginal(), ActivityLog::orderBy('id')->get()->map->getRawOriginal()->all()]);
         $folder = getenv('PHOS_RENTAL_DETAIL_RENDER_DIR');
         if ($folder) {

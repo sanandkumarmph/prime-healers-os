@@ -115,12 +115,48 @@ test('rendered rental overview keeps activity readable and uses its available wi
         }
         report.checks.push({salesMoreActions:['down', 'up']});
 
+        for (const width of [1024, 390, 320]) {
+            await page.setViewport({width, height: 840});
+            await page.goto(origin + new URL(fixture.url).pathname);
+            const mobile = width < 768;
+            const primaryActions = await page.$$eval('[data-rental-next-action]', nodes =>
+                nodes.filter(node => node.getClientRects().length).map(node => node.textContent.trim()));
+            assert.equal(primaryActions.length, 1);
+            const paymentLink = mobile ? '.ph-rental-quick-actions a[href="#record-payment-panel"]' : '.rental-action-pay';
+            await page.click(paymentLink);
+            await page.waitForFunction(() => document.activeElement?.name === 'amount');
+            assert.equal(await page.evaluate(() => document.activeElement.closest('details').open), true);
+            assert.equal(await page.evaluate(() => document.activeElement.getClientRects().length > 0), true);
+            const nav = mobile ? '.ph-rental-mobile-shell [data-rental-section-nav]' : '.rental-workspace-tabs';
+            await page.click(nav + ' a[href="#rental-notes-section"]');
+            await page.waitForFunction(() => document.activeElement?.name === 'note');
+            assert.equal(await page.evaluate(() => document.activeElement.closest('details').open), true);
+            assert.equal(await page.evaluate(() => document.activeElement.getClientRects().length > 0), true);
+            if (mobile) {
+                assert.equal(await page.$eval('#mobile-rental-notes > summary', summary => {
+                    const range = document.createRange();
+                    range.selectNodeContents(summary);
+                    return range.getClientRects().length;
+                }), 1);
+                await page.click('.ph-rental-footer-more > summary');
+                assert.equal(await page.$eval('.ph-rental-footer-more', menu => menu.open), true);
+                assert.equal(await page.$$eval('.ph-rental-footer-more a', links =>
+                    links.filter(link => link.hash === '#rental-notes-section').length), 1);
+                await page.keyboard.press('Escape');
+            }
+            report.checks.push({detailActionsWidth:width, paymentAndNoteFocus:true});
+        }
+
+        await page.setViewport({width:1024, height:550});
         await page.goto(origin + new URL(fixture.listUrl).pathname);
         const visibleChecks = () => page.$$eval('.rental-row input[type=checkbox]', inputs =>
             inputs.filter(input => input.getBoundingClientRect().width > 0).map(input => input.className));
         assert.deepEqual(await visibleChecks(), ['bulk-check rental-row-check rental-invoice-check']);
-        await page.click('.rental-row-check');
+        await page.focus('.rental-row-check');
+        await page.keyboard.press('Space');
+        await page.waitForFunction(() => document.querySelector('.rental-row-check')?.checked);
         await page.setViewport({width:390, height:840});
+        await page.waitForFunction(() => document.querySelector('.mobile-rental-select-proxy')?.getClientRects().length);
         assert.deepEqual(await visibleChecks(), ['bulk-check mobile-rental-select-proxy']);
         assert.equal(await page.$eval('.mobile-rental-select-proxy', input => input.checked), true);
         report.checks.push({salesRentalChecks:'one visible on desktop and mobile'});

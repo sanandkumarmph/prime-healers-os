@@ -2409,6 +2409,99 @@
     }
 </style>
 
+<style>
+    .rental-shell,
+    .rental-mobile-action-bar {
+        --rental-ink:#172b46;
+        --rental-blue:#1d4ed8;
+        --rental-blue-soft:#edf3ff;
+        --rental-rule:#d8e2ee;
+        --rental-muted:#53647a;
+        color:var(--rental-ink);
+    }
+    .rental-shell .rental-card,
+    .rental-shell .rental-order-summary,
+    .rental-shell .rental-wizard-nav {
+        border-color:var(--rental-rule);
+        box-shadow:0 2px 8px rgba(23,43,70,.05);
+    }
+    .rental-shell :is(h1,h2,h3) { color:var(--rental-ink); }
+    .rental-shell .section-copy { color:var(--rental-muted); }
+    .rental-shell :is(.rental-step-actions,.rental-actions) .ops-button,
+    .rental-mobile-action-buttons .ops-button {
+        background:var(--rental-blue);
+        border-color:var(--rental-blue);
+        color:#fff;
+    }
+    .rental-shell :is(.rental-wizard-tab.is-active,.party-flow-option.is-active) {
+        color:var(--rental-blue);
+        background:var(--rental-blue-soft);
+        border-color:#8caaf4;
+    }
+    .rental-shell .rental-wizard-tab.is-active span:first-child,
+    .rental-shell .rental-mobile-progress button.is-active > span:first-child {
+        background:var(--rental-blue);
+        border-color:var(--rental-blue);
+        color:#fff;
+    }
+    .rental-shell .rental-mobile-progress button.is-active,
+    .rental-shell .rental-summary-row.is-total strong { color:var(--rental-blue); }
+    .rental-shell .rental-wizard-tab.is-warning span:first-child { background:#fff4d5; color:#854d0e; }
+    .rental-shell .rental-mobile-progress button.is-complete { color:#166534; }
+    .rental-shell .rental-wizard-tab.is-complete:not(.is-active) span:first-child,
+    .rental-shell .rental-mobile-progress button.is-complete > span:first-child { background:#eaf8ef; border-color:#9fc9a9; color:#166534; }
+    .rental-step-guidance { flex:1 1 15rem; margin:0; color:#854d0e; font-size:12px; }
+    .rental-step-guidance[hidden] { display:none; }
+    .rental-mobile-action-state [hidden] { display:none; }
+    .rental-mobile-action-state .rental-draft-status:empty { display:none; }
+    .rental-city-suggestion[hidden] { display:none !important; }
+    .rental-city-suggestion { justify-self:start; text-align:left; }
+    .rental-shell .rental-asset-step-shortcut { display:none; }
+    .rental-referral-details { border:1px solid var(--rental-rule); border-radius:10px; padding:8px 10px; }
+    .rental-referral-details summary { color:var(--rental-blue); font-weight:700; cursor:pointer; }
+    .rental-referral-details .rental-grid { margin-top:10px; }
+    .rental-review-heading { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+    .rental-review-edit { border:0; background:none; color:var(--rental-blue); font:inherit; font-weight:700; padding:5px; cursor:pointer; }
+    .rental-review-box strong,
+    .rental-summary-secondary .rental-summary-row strong { overflow-wrap:anywhere; white-space:normal; }
+    .rental-shell .rental-summary-row span { text-transform:none; letter-spacing:normal; font-size:12px; color:var(--rental-muted); }
+    .rental-shell .rental-summary-row { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+    .rental-shell .rental-summary-row strong { text-align:right; font-variant-numeric:tabular-nums; }
+    .rental-summary-detail { padding-top:6px; border-top:1px solid var(--rental-rule); }
+    .rental-summary-detail > summary { color:var(--rental-blue); font-size:12px; font-weight:700; }
+    .rental-order-summary .rental-summary-detail:not([open]) > .rental-summary-list { display:none; }
+    .rental-order-summary .rental-summary-title { display:flex; gap:6px; align-items:center; }
+    .rental-summary-mobile-total { margin-inline-start:auto; color:var(--rental-blue); font-variant-numeric:tabular-nums; }
+    .rental-order-summary details[open] > summary > .rental-summary-mobile-total { display:none; }
+    .rental-order-summary details:not([open]) > summary::after { content:none; }
+    .rental-order-summary .rental-summary-detail > summary::before,
+    .rental-order-summary .rental-summary-title::before { content:"▸"; color:var(--rental-blue); }
+    .rental-order-summary details[open] > summary::before,
+    .rental-order-summary details[open] > summary .rental-summary-title::before { content:"▾"; }
+    .rental-order-summary #rentalOrderSummary > summary::before { content:none; }
+    @media (max-width:640px) {
+        body:has(#rentalMobileActionBar) .phos-release-badge {
+            top:calc(66px + env(safe-area-inset-top, 0px));
+            bottom:auto;
+        }
+        .rental-shell .rental-asset-step-shortcut { display:inline-flex; }
+        .rental-shell .rental-mobile-progress {
+            display:grid;
+            grid-template-columns:repeat(5,minmax(0,1fr));
+            gap:2px;
+            overflow:visible;
+        }
+        .rental-shell .rental-mobile-progress button { min-width:0; min-height:44px; align-content:center; }
+        .rental-shell .rental-mobile-progress .rental-mobile-step-label { display:block; width:auto; height:auto; border:0; background:none; color:inherit; border-radius:0; font-size:10px; }
+        .rental-mobile-action-bar { max-height:none; }
+        .rental-mobile-action-bar.is-ready,
+        .rental-mobile-action-bar.is-asset-selected { background:#fff; border-color:var(--rental-rule); }
+        .rental-mobile-action-state span { white-space:normal; max-width:none; color:var(--rental-muted); }
+        .rental-mobile-action-buttons :is(.ops-button,.ops-button-secondary) { min-height:44px; }
+        .rental-shell .rental-review-edit { min-height:34px; }
+    }
+</style>
+
 <div class="rental-shell">
     <div class="rental-toolbar">
         <div class="rental-title">
@@ -2436,58 +2529,27 @@
         </div>
     @endif
 
-    <div class="rental-wizard-nav" aria-label="Rental creation steps">
-        <button type="button" class="rental-wizard-tab is-active" data-rental-wizard-tab="fulfilment"><span>1</span><strong>Fulfilment & Customer</strong></button>
-        <button type="button" class="rental-wizard-tab" data-rental-wizard-tab="product"><span>2</span><strong>Products & Assets</strong></button>
+    <nav class="rental-wizard-nav" aria-label="Rental creation steps" id="rentalDesktopProgress">
+        <button type="button" class="rental-wizard-tab is-active" data-rental-wizard-tab="fulfilment" aria-current="step"><span>1</span><strong>Customer</strong></button>
+        <button type="button" class="rental-wizard-tab" data-rental-wizard-tab="product"><span>2</span><strong>Items &amp; dates</strong></button>
         <button type="button" class="rental-wizard-tab" data-rental-wizard-tab="dates"><span>3</span><strong>Charges</strong></button>
-        <button type="button" class="rental-wizard-tab" data-rental-wizard-tab="delivery"><span>4</span><strong>Delivery & Pickup</strong></button>
-        <button type="button" class="rental-wizard-tab" data-rental-wizard-tab="review"><span>5</span><strong>Review & Create</strong></button>
-    </div>
-    <div class="rental-mobile-progress" id="rentalMobileProgress" aria-label="Rental creation progress">
-        <button type="button" data-rental-mobile-step="customer"><span>1</span>Customer</button>
-        <button type="button" data-rental-mobile-step="product"><span>2</span>Products</button>
-        <button type="button" data-rental-mobile-step="asset"><span>3</span>Asset</button>
-        <button type="button" data-rental-mobile-step="pricing"><span>4</span>Charges</button>
-        <button type="button" data-rental-mobile-step="delivery"><span>5</span>Delivery</button>
-        <button type="button" data-rental-mobile-step="review"><span>6</span>Review</button>
-    </div>
+        <button type="button" class="rental-wizard-tab" data-rental-wizard-tab="delivery"><span>4</span><strong>Delivery</strong></button>
+        <button type="button" class="rental-wizard-tab" data-rental-wizard-tab="review"><span>5</span><strong>Review</strong></button>
+    </nav>
+    <nav class="rental-mobile-progress" id="rentalMobileProgress" aria-label="Rental creation steps">
+        <button type="button" data-rental-mobile-step="customer" aria-current="step"><span>1</span><span class="rental-mobile-step-label">Customer</span></button>
+        <button type="button" data-rental-mobile-step="product"><span>2</span><span class="rental-mobile-step-label">Items &amp; dates</span></button>
+        <button type="button" data-rental-mobile-step="pricing"><span>3</span><span class="rental-mobile-step-label">Charges</span></button>
+        <button type="button" data-rental-mobile-step="delivery"><span>4</span><span class="rental-mobile-step-label">Delivery</span></button>
+        <button type="button" data-rental-mobile-step="review"><span>5</span><span class="rental-mobile-step-label">Review</span></button>
+    </nav>
 
     <div class="rental-wizard-layout">
         <div class="rental-wizard-main">
     <section class="rental-card rental-wizard-step is-active" data-rental-wizard-step="fulfilment">
-        <h2>Fulfilment & Customer</h2>
-        <p class="section-copy">Select fulfilment and city.</p>
+        <h2>Customer</h2>
+        <p class="section-copy">Find the customer and confirm the service city.</p>
         <div class="rental-grid">
-            <div class="rental-col-12 section-nav-target" id="rental-fulfilment-section">
-                <div class="rental-grid" style="margin-bottom:10px;">
-                    <div class="rental-field rental-col-6{{ $hasFieldError('fulfilment_source') ? ' is-error' : '' }}">
-                        <label for="fulfilment_source">Step 1 - Fulfilment Source</label>
-                        <select name="fulfilment_source" id="fulfilment_source">
-                            <option value="in_house" {{ $selectedFulfilmentSource === 'in_house' ? 'selected' : '' }}>In-house Stock</option>
-                            <option value="vendor_supplied" {{ $selectedFulfilmentSource === 'vendor_supplied' ? 'selected' : '' }}>Vendor Supplied</option>
-                        </select>
-                        <span class="hint"></span>
-                        @if($hasFieldError('fulfilment_source'))
-                            <span class="field-error">{{ $fieldError('fulfilment_source') }}</span>
-                        @endif
-                    </div>
-                    <div class="rental-field rental-col-6{{ $hasFieldError('city_id') ? ' is-error' : '' }}">
-                        <label for="city_id">Step 2 - City</label>
-                        <select name="city_id" id="city_id">
-                            <option value="">Select city</option>
-                            @foreach($cities as $city)
-                                <option value="{{ $city->id }}" {{ $selectedCityId === (int) $city->id ? 'selected' : '' }}>
-                                    {{ $city->name }}{{ $city->state ? ' - ' . $city->state : '' }}
-                                </option>
-                            @endforeach
-                        </select>
-                        <span class="hint">City filters options.</span>
-                        @if($hasFieldError('city_id'))
-                            <span class="field-error">{{ $fieldError('city_id') }}</span>
-                        @endif
-                    </div>
-                </div>
-            </div>
             <div class="rental-col-12 party-flow-shell section-nav-target" id="rental-customer-section">
                 <div class="party-flow-toggle-wrap">
                     <div class="rental-field{{ $hasFieldError('customer_type') ? ' is-error' : '' }}" style="gap:8px;">
@@ -2504,7 +2566,7 @@
                             <span class="field-error">{{ $fieldError('customer_type') }}</span>
                         @endif
                     </div>
-                    <div class="party-flow-hint">Keep it fast: direct customer stays simple, while business partner only appears when billing and delivery go to different people.</div>
+                    <div class="party-flow-hint">Choose Business Partner when the partner is billed and a different client receives delivery.</div>
                     <div class="party-flow-admin-note"{{ $businessPartnerFlowAvailable ? ' hidden' : '' }}>
                         Business Partner setup pending. Run migrations to enable partner workflow.
                     </div>
@@ -2536,7 +2598,7 @@
                                 <span class="field-error">{{ $fieldError('customer_id') }}</span>
                             @endif
                         </div>
-                        <button type="button" class="party-flow-link" data-open-modal="rentalQuickCustomerModal">+ Add</button>
+                        <button type="button" class="party-flow-link" data-open-modal="rentalQuickCustomerModal">+ Add customer</button>
                     </div>
 
                     <div class="party-flow-row" data-customer-mode-block="business_partner">
@@ -2652,9 +2714,37 @@
                 </div>
             </div>
 
+            <div class="rental-field rental-col-6{{ $hasFieldError('city_id') ? ' is-error' : '' }}">
+                <label for="city_id">Service city</label>
+                <select name="city_id" id="city_id">
+                    <option value="">Select city</option>
+                    @foreach($cities as $city)
+                        <option value="{{ $city->id }}" data-service-city="{{ $city->name }}" data-service-state="{{ $city->state }}" {{ $selectedCityId === (int) $city->id ? 'selected' : '' }}>
+                            {{ $city->name }}{{ $city->state ? ' - ' . $city->state : '' }}
+                        </option>
+                    @endforeach
+                </select>
+                <span class="hint">Filters stock and delivery options.</span>
+                <button type="button" class="ops-button-secondary rental-city-suggestion" id="rentalUseSuggestedCity" hidden></button>
+                @if($hasFieldError('city_id'))
+                    <span class="field-error">{{ $fieldError('city_id') }}</span>
+                @endif
+            </div>
+
+            @php
+                $referralSourceType = old('referral_source_type', ($isEdit && $hasReferralSourceTypeColumn) ? ($rental->referral_source_type ?? '') : '');
+                $selectedReferralName = old('referred_by', ($isEdit && $hasReferredByColumn) ? ($rental->referred_by ?? '') : '');
+                $selectedReferralSourceId = (int) old('referral_source_id', ($isEdit && \Illuminate\Support\Facades\Schema::hasColumn('rentals', 'referral_source_id')) ? ($rental->referral_source_id ?? 0) : 0);
+                $referralContact = old('referral_contact', ($isEdit && $hasReferralContactColumn) ? ($rental->referral_contact ?? '') : '');
+                $referralCity = old('referral_city', ($isEdit && $hasReferralCityColumn) ? ($rental->referral_city ?? '') : '');
+                $openReferralDetails = $referralSourceType || $selectedReferralSourceId || $selectedReferralName || $referralContact || $referralCity
+                    || $hasFieldError('referral_source_type', 'referral_source_id', 'referred_by', 'referral_contact', 'referral_city');
+            @endphp
+            <details class="rental-col-12 rental-referral-details" @if($openReferralDetails) open @endif>
+                <summary>Referral details <span class="hint">(optional)</span></summary>
+                <div class="rental-grid">
             <div class="rental-field rental-col-3{{ $hasFieldError('referral_source_type') ? ' is-error' : '' }}">
                 <label for="referral_source_type">Referred By Type</label>
-                @php($referralSourceType = old('referral_source_type', ($isEdit && $hasReferralSourceTypeColumn) ? ($rental->referral_source_type ?? '') : ''))
                 <select name="referral_source_type" id="referral_source_type">
                     <option value="">No referral</option>
                     <option value="doctor" {{ $referralSourceType === 'doctor' ? 'selected' : '' }}>Doctor</option>
@@ -2673,8 +2763,6 @@
 
             <div class="rental-field rental-col-3{{ $hasFieldError('referral_source_id', 'referred_by') ? ' is-error' : '' }}">
                 <label for="referred_by">Referred By</label>
-                @php($selectedReferralName = old('referred_by', ($isEdit && $hasReferredByColumn) ? ($rental->referred_by ?? '') : ''))
-                @php($selectedReferralSourceId = (int) old('referral_source_id', ($isEdit && \Illuminate\Support\Facades\Schema::hasColumn('rentals', 'referral_source_id')) ? ($rental->referral_source_id ?? 0) : 0))
                 <select name="referral_source_id" id="referred_by" data-searchable-select data-search-placeholder="Search referral source">
                     <option value="">No referred person</option>
                     @foreach($referralSourceOptions as $option)
@@ -2703,7 +2791,7 @@
 
             <div class="rental-field rental-col-3{{ $hasFieldError('referral_contact') ? ' is-error' : '' }}">
                 <label for="referral_contact">Referral Contact</label>
-                <input type="text" name="referral_contact" id="referral_contact" value="{{ old('referral_contact', ($isEdit && $hasReferralContactColumn) ? ($rental->referral_contact ?? '') : '') }}" placeholder="Phone or email">
+                <input type="text" name="referral_contact" id="referral_contact" value="{{ $referralContact }}" placeholder="Phone or email">
                 @if($hasFieldError('referral_contact'))
                     <span class="field-error">{{ $fieldError('referral_contact') }}</span>
                 @endif
@@ -2711,11 +2799,13 @@
 
             <div class="rental-field rental-col-3{{ $hasFieldError('referral_city') ? ' is-error' : '' }}">
                 <label for="referral_city">Referral City</label>
-                <input type="text" name="referral_city" id="referral_city" value="{{ old('referral_city', ($isEdit && $hasReferralCityColumn) ? ($rental->referral_city ?? '') : '') }}" placeholder="City">
+                <input type="text" name="referral_city" id="referral_city" value="{{ $referralCity }}" placeholder="City">
                 @if($hasFieldError('referral_city'))
                     <span class="field-error">{{ $fieldError('referral_city') }}</span>
                 @endif
             </div>
+                </div>
+            </details>
 
             <input type="hidden" name="customer_name" id="customer_name" value="{{ old('customer_name', $isEdit ? $rental->customer_name : ($selectedCustomer?->name ?? '')) }}">
             <input type="hidden" name="phone_country_code" id="phone_country_code" value="{{ old('phone_country_code', $phoneParts['code']) }}">
@@ -2724,18 +2814,33 @@
         </div>
         <div class="rental-step-actions">
             <span class="rental-draft-status" data-rental-draft-status></span>
-            <button type="button" class="ops-button" data-rental-wizard-next="product">Next: Products & Assets</button>
+            <p class="rental-step-guidance" id="rentalCustomerGuidance" data-rental-step-guidance="fulfilment" role="status" hidden></p>
+            <button type="button" class="ops-button" data-rental-wizard-next="product" aria-describedby="rentalCustomerGuidance">Continue to items</button>
         </div>
     </section>
 
     <section class="rental-card rental-wizard-step" data-rental-wizard-step="product">
         <div class="rental-step-header">
             <div>
-                <h2 class="rental-icon-title" data-icon="P">Products & Assets</h2>
-                <p class="section-copy">Select product, stock, dates, price, and assets.</p>
+                <h2>Items &amp; dates</h2>
+                <p class="section-copy">Choose where stock comes from, then set the rental dates.</p>
             </div>
             <div class="rental-step-header-actions">
+                <button type="button" class="ops-button-secondary rental-asset-step-shortcut" data-rental-mobile-step="asset">Asset assignment</button>
                 <button type="button" class="ops-button-secondary add-line-cta" data-add-rental-item>+ Add Rental Product</button>
+            </div>
+        </div>
+        <div class="rental-grid section-nav-target" id="rental-fulfilment-section" style="margin-bottom:10px;">
+            <div class="rental-field rental-col-6{{ $hasFieldError('fulfilment_source') ? ' is-error' : '' }}">
+                <label for="fulfilment_source">Fulfilment source</label>
+                <select name="fulfilment_source" id="fulfilment_source">
+                    <option value="in_house" {{ $selectedFulfilmentSource === 'in_house' ? 'selected' : '' }}>In-house Stock</option>
+                    <option value="vendor_supplied" {{ $selectedFulfilmentSource === 'vendor_supplied' ? 'selected' : '' }}>Vendor Supplied</option>
+                </select>
+                <span class="hint">Where the equipment comes from.</span>
+                @if($hasFieldError('fulfilment_source'))
+                    <span class="field-error">{{ $fieldError('fulfilment_source') }}</span>
+                @endif
             </div>
         </div>
         <div class="primary-rental-product-card">
@@ -2854,6 +2959,7 @@
                     <option value="3_months">3 Months</option>
                     <option value="6_months">6 Months</option>
                 </select>
+                <span class="hint" data-summary-value="primaryDuration">Choose dates to see duration</span>
             </div>
 
             <div class="rental-field rental-col-3{{ $hasFieldError('start_date') ? ' is-error' : '' }}">
@@ -2939,9 +3045,9 @@
     </section>
 
 
-    <section class="rental-card rental-wizard-step{{ $assetAssignmentError ? ' is-error' : '' }} section-nav-target" data-rental-wizard-step="product" id="rental-assets-section">
-        <h2>Asset Assignment</h2>
-        <p class="section-copy">Assign rental asset.</p>
+    <section class="rental-card rental-wizard-step{{ $assetAssignmentError ? ' is-error' : '' }} section-nav-target" data-rental-wizard-step="product" id="rental-assets-section" tabindex="-1" aria-labelledby="rentalAssetsHeading">
+        <h2 id="rentalAssetsHeading">Assign assets to the primary item</h2>
+        <p class="section-copy">Select the equipment serial numbers for this item.</p>
         <div class="assignment-launch-card">
             <div>
                 <div class="assignment-launch-title">
@@ -3149,7 +3255,7 @@
         <h2>Charges</h2>
         <p class="section-copy">Order-level deposit, transport, and other charges.</p>
         <div class="rental-grid"><div class="rental-field rental-col-3{{ $hasFieldError('deposit_amount') ? ' is-error' : '' }}">
-                <label for="deposit_amount">Deposit</label>
+                <label for="deposit_amount">Refundable deposit</label>
                 <input type="number" step="0.01" min="0" name="deposit_amount" id="deposit_amount" value="{{ old('deposit_amount', $isEdit ? $rental->deposit_amount : \App\Support\CommercialDefaults::DEPOSIT) }}">
                 @if($hasFieldError('deposit_amount'))
                     <span class="field-error">{{ $fieldError('deposit_amount') }}</span>
@@ -3166,7 +3272,7 @@
             </div>
 
             <div class="rental-field rental-col-3{{ $hasFieldError('other_amount') ? ' is-error' : '' }}">
-                <label for="other_amount">Other</label>
+                <label for="other_amount">Other charges</label>
                 <input type="number" step="0.01" min="0" name="other_amount" id="other_amount" value="{{ old('other_amount', $isEdit ? $rental->other_amount : 0) }}">
                 @if($hasFieldError('other_amount'))
                     <span class="field-error">{{ $fieldError('other_amount') }}</span>
@@ -3181,16 +3287,17 @@
         </div>
         <div class="rental-step-actions">
             <button type="button" class="ops-button-secondary" data-rental-wizard-prev="product">Previous</button>
-            <button type="button" class="ops-button" data-rental-wizard-next="delivery">Next: Delivery & Pickup</button>
+            <p class="rental-step-guidance" id="rentalChargesGuidance" data-rental-step-guidance="dates" role="status" hidden></p>
+            <button type="button" class="ops-button" data-rental-wizard-next="delivery" aria-describedby="rentalChargesGuidance">Continue to delivery</button>
         </div>
     </section>
 
     <section class="rental-card rental-wizard-step" data-rental-wizard-step="delivery">
         <h2>Delivery & Pickup</h2>
-        <p class="section-copy">Assign dispatch responsibility and capture pickup handling.</p>
+        <p class="section-copy">Choose who will deliver and collect the equipment.</p>
         <div class="rental-grid">
             <div class="rental-field rental-col-3{{ $hasFieldError('delivery_assignment_type') ? ' is-error' : '' }} section-nav-target" id="rental-delivery-section">
-                <label for="delivery_assignment_type">Step 6 - Delivery Assignment</label>
+                <label for="delivery_assignment_type">Delivery method</label>
                 <select name="delivery_assignment_type" id="delivery_assignment_type">
                     <option value="ph_internal" {{ $selectedDeliveryAssignmentType === 'ph_internal' ? 'selected' : '' }}>PH Internal Delivery Staff</option>
                     <option value="customer_pickup" {{ $selectedDeliveryAssignmentType === 'customer_pickup' ? 'selected' : '' }}>Customer Pickup</option>
@@ -3360,22 +3467,43 @@
         </div>
         <div class="rental-step-actions">
             <button type="button" class="ops-button-secondary" data-rental-wizard-prev="dates">Previous</button>
-            <button type="button" class="ops-button" data-rental-wizard-next="review">Next: Review & Create</button>
+            <p class="rental-step-guidance" id="rentalDeliveryGuidance" data-rental-step-guidance="delivery" role="status" hidden></p>
+            <button type="button" class="ops-button" data-rental-wizard-next="review" aria-describedby="rentalDeliveryGuidance">Review rental</button>
         </div>
     </section>
 
     <section class="rental-card rental-wizard-step" data-rental-wizard-step="review" id="rental-review-section">
-        <h2>Review & Create</h2>
+        <h2>Review rental</h2>
+        <p class="section-copy">Confirm the booking details before saving.</p>
         @unless($isEdit)
             @include('sales-workspace.order-incentive-fields', ['fieldClass' => 'rental-field'])
         @endunless
 
         <div class="rental-review-grid is-compact-review">
-            <div class="rental-review-box"><span>Customer</span><strong data-summary-value="customer">Not selected</strong></div>
-            <div class="rental-review-box"><span>Product</span><strong data-summary-value="product" data-summary-product>Not selected</strong></div>
-            <div class="rental-review-box"><span>Dates</span><strong data-summary-value="dates">Not set</strong></div>
-            <div class="rental-review-box"><span>Rental</span><strong data-summary-value="pricing" data-summary-rental-total>0.00</strong></div>
-            <div class="rental-review-box"><span>Assets</span><strong data-summary-value="assets" data-summary-assets>Not assigned</strong></div>
+            <div class="rental-review-box">
+                <div class="rental-review-heading"><h3>Customer</h3><button type="button" class="rental-review-edit" data-rental-review-edit="fulfilment" aria-label="Edit customer and city">Edit</button></div>
+                <div class="rental-summary-row"><span>Customer</span><strong data-summary-value="customer">Not selected</strong></div>
+                <div class="rental-summary-row"><span>Service city</span><strong data-summary-value="city">Not selected</strong></div>
+            </div>
+            <div class="rental-review-box">
+                <div class="rental-review-heading"><h3>Items &amp; dates</h3><button type="button" class="rental-review-edit" data-rental-review-edit="product" aria-label="Edit items and dates">Edit</button></div>
+                <div class="rental-summary-row"><span>Product lines</span><strong data-summary-value="product" data-summary-product>Not selected</strong></div>
+                <div class="rental-summary-row"><span>Fulfilment source</span><strong data-summary-value="fulfilment">In-house Stock</strong></div>
+                <div class="rental-summary-row"><span>Rental dates</span><strong data-summary-value="dates">Not set</strong></div>
+                <div class="rental-summary-row"><span>Duration</span><strong data-summary-value="duration">Not set</strong></div>
+                <div class="rental-summary-row"><span>Assets</span><strong data-summary-value="assets" data-summary-assets>Not assigned</strong></div>
+            </div>
+            <div class="rental-review-box">
+                <div class="rental-review-heading"><h3>Charges</h3><button type="button" class="rental-review-edit" data-rental-review-edit="dates" aria-label="Edit charges">Edit</button></div>
+                <div class="rental-summary-row"><span>Rental incl. GST</span><strong data-summary-value="pricing" data-summary-rental-total>0.00</strong></div>
+                <div class="rental-summary-row"><span>Refundable deposit</span><strong data-summary-value="deposit">0.00</strong></div>
+                <div class="rental-summary-row"><span>Transport</span><strong data-summary-value="transport">0.00</strong></div>
+                <div class="rental-summary-row is-total"><span>Total at booking</span><strong data-summary-value="netTotal">0.00</strong></div>
+            </div>
+            <div class="rental-review-box">
+                <div class="rental-review-heading"><h3>Delivery</h3><button type="button" class="rental-review-edit" data-rental-review-edit="delivery" aria-label="Edit delivery">Edit</button></div>
+                <div class="rental-summary-row"><span>Delivery method</span><strong data-summary-value="delivery">PH Internal</strong></div>
+            </div>
         </div>
     </section>
 
@@ -3466,7 +3594,8 @@
 
     <div class="rental-step-actions rental-wizard-step" data-rental-wizard-step="product">
         <button type="button" class="ops-button-secondary" data-rental-wizard-prev="fulfilment">Previous</button>
-        <button type="button" class="ops-button" data-rental-wizard-next="dates">Next: Charges</button>
+        <p class="rental-step-guidance" id="rentalItemsGuidance" data-rental-step-guidance="product" role="status" hidden></p>
+        <button type="button" class="ops-button" data-rental-wizard-next="dates" aria-describedby="rentalItemsGuidance">Continue to charges</button>
     </div>
 
     <div class="rental-toolbar rental-wizard-step" data-rental-wizard-step="review" style="margin-top:-4px;">
@@ -3481,27 +3610,30 @@
         </div>
 
         <aside class="rental-order-summary" aria-label="Order summary">
-            <details open>
-                <summary data-mobile-summary="Live">
-                    <h2>Order Summary</h2>
-                    <span class="badge badge-blue">Live</span>
+            <details open id="rentalOrderSummary">
+                <summary>
+                    <h2 class="rental-summary-title">Order summary <span class="badge badge-blue">Live</span></h2>
+                    <strong class="rental-summary-mobile-total" data-summary-value="netTotal" aria-label="Total at booking">0.00</strong>
                 </summary>
                 <div class="rental-summary-list">
-                    <div class="rental-summary-row"><span>Fulfilment</span><strong data-summary-value="fulfilment">In-house Stock</strong></div>
-                    <div class="rental-summary-row"><span>Customer</span><strong data-summary-value="customer">Not selected</strong></div>
-                    <div class="rental-summary-row"><span>Product Lines</span><strong data-summary-value="product" data-summary-product>Not selected</strong></div>
-                    <div class="rental-summary-row"><span>Dates</span><strong data-summary-value="dates">Not set</strong></div>
-                    <div class="rental-summary-row"><span>Rental excl. GST</span><strong data-summary-value="pricing" data-summary-rental-total>0.00</strong></div>
-                    <div class="rental-summary-row"><span>GST</span><strong data-summary-value="gst">0%</strong></div>
-                    <div class="rental-summary-row"><span>Deposit</span><strong data-summary-value="deposit">0.00</strong></div>
-                    <div class="rental-summary-row"><span>Transportation</span><strong data-summary-value="transport">0.00</strong></div>
-                    <div class="rental-summary-row"><span>Assets</span><strong data-summary-value="assets" data-summary-assets>Not assigned</strong></div>
-                    <div class="rental-summary-row is-total"><span>Grand Total</span><strong data-summary-value="netTotal" data-summary-net-total>0.00</strong></div>
-                    <details class="rental-summary-secondary">
-                        <summary>More</summary>
+                    <div class="rental-summary-row"><span>Rental incl. GST</span><strong data-summary-value="pricing" data-summary-rental-total>0.00</strong></div>
+                    <div class="rental-summary-row"><span>Refundable deposit</span><strong data-summary-value="deposit">0.00</strong></div>
+                    <div class="rental-summary-row"><span>Transport</span><strong data-summary-value="transport">0.00</strong></div>
+                    <div class="rental-summary-row is-total"><span>Total at booking</span><strong data-summary-value="netTotal" data-summary-net-total>0.00</strong></div>
+                    <details class="rental-summary-secondary rental-summary-detail">
+                        <summary>Price breakdown &amp; booking details</summary>
                         <div class="rental-summary-list">
-                            <div class="rental-summary-row"><span>City</span><strong data-summary-value="city">Not selected</strong></div>
+                            <div class="rental-summary-row"><span>GST in total</span><strong data-summary-value="gst">0.00</strong></div>
+                            <div class="rental-summary-row"><span>Sale items incl. GST</span><strong data-summary-value="saleTotal">0.00</strong></div>
+                            <div class="rental-summary-row"><span>Other charges</span><strong data-summary-value="other">0.00</strong></div>
+                            <div class="rental-summary-row"><span>Fulfilment</span><strong data-summary-value="fulfilment">In-house Stock</strong></div>
+                            <div class="rental-summary-row"><span>Customer</span><strong data-summary-value="customer">Not selected</strong></div>
+                            <div class="rental-summary-row"><span>Service city</span><strong data-summary-value="city">Not selected</strong></div>
                             <div class="rental-summary-row"><span>Actual Client</span><strong data-summary-value="actualClient">Not applicable</strong></div>
+                            <div class="rental-summary-row"><span>Product lines</span><strong data-summary-value="product" data-summary-product>Not selected</strong></div>
+                            <div class="rental-summary-row"><span>Dates</span><strong data-summary-value="dates">Not set</strong></div>
+                            <div class="rental-summary-row"><span>Duration</span><strong data-summary-value="duration">Not set</strong></div>
+                            <div class="rental-summary-row"><span>Assets</span><strong data-summary-value="assets" data-summary-assets>Not assigned</strong></div>
                             <div class="rental-summary-row"><span>Quantity</span><strong data-summary-value="quantity">{{ old('quantity', $isEdit ? $rental->quantity : 1) }}</strong></div>
                             <div class="rental-summary-row"><span>Source</span><strong data-summary-value="source">Any warehouse</strong></div>
                             <div class="rental-summary-row"><span>Delivery</span><strong data-summary-value="delivery">PH Internal</strong></div>
@@ -3515,8 +3647,9 @@
 
 <div class="rental-mobile-action-bar" id="rentalMobileActionBar" aria-live="polite">
     <div class="rental-mobile-action-state">
-        <strong id="rentalMobileActionState">Start rental</strong>
+        <strong id="rentalMobileActionState">Step 1 of 5 · Customer</strong>
         <span id="rentalMobileActionHint">Complete this step.</span>
+        <span class="rental-draft-status" data-rental-draft-status></span>
     </div>
     <div class="rental-mobile-action-buttons">
         <button type="button" class="ops-button-secondary" id="rentalMobileBackButton">Back</button>
@@ -3538,10 +3671,11 @@
         const draftStatusNodes = Array.from(document.querySelectorAll('[data-rental-draft-status]'));
         const summaryValues = Array.from(document.querySelectorAll('[data-summary-value]'));
         const form = document.currentScript.closest('form') || document.querySelector('form[action*="rentals"]');
-        const orderSummaryTrigger = document.querySelector('.rental-order-summary summary');
+        const citySuggestion = document.getElementById('rentalUseSuggestedCity');
         const pricingWarning = document.getElementById('pricingWarning');
         const rentalSubmitButton = document.getElementById('rentalSubmitButton');
         const rentalMissingChecklist = document.getElementById('rentalMissingChecklist');
+        const rentalSaveGuidance = document.getElementById('rentalSaveGuidance');
         const mobileActionBar = document.getElementById('rentalMobileActionBar');
         const mobileActionState = document.getElementById('rentalMobileActionState');
         const mobileActionHint = document.getElementById('rentalMobileActionHint');
@@ -3550,8 +3684,19 @@
         const mobileContinueButton = document.getElementById('rentalMobileContinueButton');
         const mobileDraftButton = document.getElementById('rentalMobileDraftButton');
         const mobileSaveButton = document.getElementById('rentalMobileSaveButton');
-        const mobileProgressButtons = Array.from(document.querySelectorAll('[data-rental-mobile-step]'));
+        const mobileProgressButtons = Array.from(document.querySelectorAll('#rentalMobileProgress [data-rental-mobile-step]'));
+        const mobileAssetShortcut = document.querySelector('[data-rental-mobile-step="asset"]');
+        const guidanceNodes = Array.from(document.querySelectorAll('[data-rental-step-guidance]'));
         const openAssetAssignmentButton = document.getElementById('rentalAssignAssetButton');
+        const stepLabels = {
+            fulfilment: 'Customer',
+            product: 'Items & dates',
+            dates: 'Charges',
+            delivery: 'Delivery',
+            review: 'Review',
+        };
+        const wizardSteps = Object.keys(stepLabels);
+        const mobileToWizardStep = { customer: 'fulfilment', product: 'product', pricing: 'dates', delivery: 'delivery', review: 'review' };
         const wizardNextStep = {
             fulfilment: 'product',
             product: 'dates',
@@ -3570,6 +3715,37 @@
         const getEl = (id) => document.getElementById(id);
         const textOf = (select) => select?.selectedOptions?.[0]?.textContent?.trim() || '';
         const valueOf = (id) => getEl(id)?.value?.trim() || '';
+        const currency = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' });
+        const formatMoney = (amount) => currency.format(amount);
+        const normalizeLocation = (value) => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+        const suggestedCity = () => {
+            const city = getEl('city_id');
+            const customerId = valueOf('customer_type') === 'business_partner' ? 'partner_client_id' : 'customer_id';
+            const contact = getEl(customerId)?.selectedOptions?.[0];
+            const contactCity = normalizeLocation(contact?.dataset.city);
+            const contactState = normalizeLocation(contact?.dataset.state);
+            if (!city || city.value || !contact?.value || !contactCity) return null;
+
+            const matches = Array.from(city.options).filter((option) => option.value
+                && !option.disabled
+                && normalizeLocation(option.dataset.serviceCity) === contactCity
+                && (!contactState || normalizeLocation(option.dataset.serviceState) === contactState));
+            return matches.length === 1 ? matches[0] : null;
+        };
+        const updateCitySuggestion = () => {
+            if (!citySuggestion) return;
+            const match = suggestedCity();
+            citySuggestion.hidden = !match;
+            citySuggestion.textContent = match ? 'Use ' + match.textContent.trim() + ' from the service address' : '';
+        };
+        citySuggestion?.addEventListener('click', () => {
+            const match = suggestedCity();
+            if (!match) return;
+            const city = getEl('city_id');
+            city.value = match.value;
+            city.dispatchEvent(new Event('change', { bubbles: true }));
+            city.focus({ preventScroll: true });
+        });
         const setSummary = (key, value) => {
             summaryValues
                 .filter((node) => node.dataset.summaryValue === key)
@@ -3708,7 +3884,7 @@
             return hasValue('product_id') && quantity > 0;
         };
         const isCustomerStepComplete = () => {
-            if (!hasValue('fulfilment_source') || !hasValue('city_id')) {
+            if (!hasValue('city_id')) {
                 return false;
             }
 
@@ -3719,7 +3895,7 @@
             return hasValue('customer_id');
         };
         const isProductStepComplete = () => {
-            if (!isProductBasicsComplete()) {
+            if (!hasValue('fulfilment_source') || !isProductBasicsComplete()) {
                 return false;
             }
 
@@ -3788,17 +3964,17 @@
             const missing = [];
 
             if (stepName === 'fulfilment') {
-                if (!hasValue('fulfilment_source')) missing.push('fulfilment source');
-                if (!hasValue('city_id')) missing.push('city');
                 if (valueOf('customer_type') === 'business_partner') {
                     if (!hasValue('business_partner_id')) missing.push('business partner');
                     if (!hasValue('partner_client_id')) missing.push('actual client');
                 } else if (!hasValue('customer_id')) {
                     missing.push('customer');
                 }
+                if (!hasValue('city_id')) missing.push('service city');
             }
 
             if (stepName === 'product') {
+                if (!hasValue('fulfilment_source')) missing.push('fulfilment source');
                 if (!hasValue('product_id')) missing.push('product');
                 if (parseInt(valueOf('quantity') || '0', 10) <= 0) missing.push('quantity');
                 if (valueOf('fulfilment_source') === 'vendor_supplied') {
@@ -3825,11 +4001,16 @@
                 if (hasValue('collection_assignee_id') && !hasValue('collection_mode')) missing.push('payment collection type');
             }
 
+            if (stepName === 'review') {
+                return [...new Set(wizardSteps.filter((step) => step !== 'review').flatMap(missingFieldsForStep))];
+            }
             return missing;
         };
         const missingStepMessage = (stepName) => {
             const missing = missingFieldsForStep(stepName);
-            return missing.length ? 'Missing: ' + missing.join(', ') + '.' : '';
+            if (!missing.length) return '';
+            const where = stepName === 'dates' ? ' in Items & dates' : '';
+            return 'Required' + where + ': ' + missing.join(', ') + '.';
         };
         const updateMissingChecklist = (stepName = currentWizardStep()) => {
             if (!rentalMissingChecklist) {
@@ -3859,70 +4040,16 @@
             }
             return message;
         };
-        const mobileStepOrder = ['customer', 'product', 'asset', 'pricing', 'delivery', 'review'];
-        const mobileStepForWizard = (stepName) => {
-            if (stepName === 'fulfilment') {
-                return 'customer';
-            }
-            if (stepName === 'dates') {
-                return 'pricing';
-            }
-            if (stepName === 'product') {
-                return isProductBasicsComplete() && primaryProductRequiresAssets() && selectedAssetCount() === 0
-                    ? 'asset'
-                    : 'product';
-            }
-            return stepName;
-        };
-        const isMobileConceptComplete = (mobileStep) => {
-            if (mobileStep === 'customer') {
-                return isStepComplete('fulfilment');
-            }
-            if (mobileStep === 'product') {
-                return isProductBasicsComplete();
-            }
-            if (mobileStep === 'asset') {
-                return !primaryProductRequiresAssets() || !primaryAssetSelectionMessage();
-            }
-            if (mobileStep === 'pricing') {
-                return isStepComplete('dates');
-            }
-            if (mobileStep === 'delivery') {
-                return isStepComplete('delivery');
-            }
-            if (mobileStep === 'review') {
-                return isReviewStepComplete();
-            }
-
-            return false;
-        };
-        const updateMobileProgress = () => {
-            if (!mobileProgressButtons.length) {
-                return;
-            }
-
-            const activeMobileStep = mobileStepForWizard(currentWizardStep());
-            const activeIndex = mobileStepOrder.indexOf(activeMobileStep);
-            mobileProgressButtons.forEach((button) => {
-                const key = button.dataset.rentalMobileStep;
-                const index = mobileStepOrder.indexOf(key);
-                const complete = index < activeIndex || isMobileConceptComplete(key);
-                button.classList.toggle('is-active', key === activeMobileStep);
-                button.classList.toggle('is-complete', complete && key !== activeMobileStep);
-                const marker = button.querySelector('span');
-                if (marker) {
-                    marker.textContent = complete && key !== activeMobileStep ? 'OK' : String(index + 1);
-                }
-            });
-        };
         const showStep = (stepName, shouldScroll = true) => {
             tabs.forEach((tab) => tab.classList.toggle('is-active', tab.dataset.rentalWizardTab === stepName));
             steps.forEach((step) => step.classList.toggle('is-active', step.dataset.rentalWizardStep === stepName));
+            updateWizardState();
             if (shouldScroll) {
-                document.querySelector('[data-rental-wizard-tab="' + stepName + '"]')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                const activeNav = window.matchMedia('(max-width: 640px)').matches
+                    ? document.getElementById('rentalMobileProgress')
+                    : document.getElementById('rentalDesktopProgress');
+                activeNav?.scrollIntoView({ block: 'nearest' });
             }
-            updateMobileActionBar();
-            updateMissingChecklist(currentWizardStep());
         };
         const currentWizardStep = () => {
             const activeTab = tabs.find((tab) => tab.classList.contains('is-active'));
@@ -3937,41 +4064,22 @@
             const complete = isStepComplete(stepName);
             const assetCount = selectedAssetCount();
             const requiresAssets = primaryProductRequiresAssets();
-            let state = 'Complete this step';
-            let hint = 'Continue when the required details are ready.';
-
-            if (stepName === 'fulfilment') {
-                state = complete ? 'Customer Selected' : 'Select customer';
-                hint = complete ? 'Continue to product and asset.' : 'Choose fulfilment, city, and customer.';
-            } else if (stepName === 'product') {
-                if (requiresAssets && assetCount > 0) {
-                    state = 'Asset Selected';
-                    hint = lastSelectedAssetSerial
-                        ? 'Serial: ' + lastSelectedAssetSerial
-                        : (complete ? 'Continue to pricing.' : 'Match selected assets with quantity.');
-                } else if (requiresAssets) {
-                    state = 'Select asset';
-                    hint = 'Pick the rental asset to continue.';
-                } else {
-                    state = complete ? 'Product Ready' : 'Select product';
-                    hint = complete ? 'Continue to pricing.' : 'Choose product and quantity.';
-                }
-            } else if (stepName === 'dates') {
-                state = complete ? 'Pricing Ready' : 'Add pricing';
-                hint = complete ? 'Continue to delivery.' : 'Set dates and rental amount.';
-            } else if (stepName === 'delivery') {
-                state = complete ? 'Delivery Ready' : 'Set delivery';
-                hint = complete ? 'Review and save rental.' : 'Choose delivery assignment.';
-            } else {
-                state = rentalSubmitButton?.disabled ? 'Review rental' : 'Ready to save';
-                hint = rentalSubmitButton?.disabled ? 'Resolve warnings before saving.' : 'Save rental when ready.';
+            const state = 'Step ' + (wizardSteps.indexOf(stepName) + 1) + ' of ' + wizardSteps.length + ' · ' + stepLabels[stepName];
+            let hint = '';
+            if (!complete) {
+                hint = missingStepMessage(stepName) || 'Resolve the warning in this step.';
+            } else if (stepName === 'product' && lastSelectedAssetSerial) {
+                hint = 'Serial: ' + lastSelectedAssetSerial;
+            } else if (stepName === 'review') {
+                hint = 'Ready to save.';
             }
 
             if (mobileActionState) {
-                mobileActionState.textContent = state;
+                if (mobileActionState.textContent !== state) mobileActionState.textContent = state;
             }
             if (mobileActionHint) {
-                mobileActionHint.textContent = hint;
+                if (mobileActionHint.textContent !== hint) mobileActionHint.textContent = hint;
+                mobileActionHint.hidden = !hint;
             }
 
             const isReview = stepName === 'review';
@@ -3989,7 +4097,7 @@
             if (mobileContinueButton) {
                 mobileContinueButton.hidden = isReview || showAssignAction;
                 mobileContinueButton.disabled = !complete;
-                mobileContinueButton.title = complete ? '' : 'Complete this step first.';
+                mobileContinueButton.title = complete ? '' : hint;
             }
             if (mobileDraftButton) {
                 mobileDraftButton.hidden = !isReview;
@@ -4002,29 +4110,45 @@
 
             mobileActionBar.classList.toggle('is-ready', complete);
             mobileActionBar.classList.toggle('is-asset-selected', stepName === 'product' && assetCount > 0);
-            updateMobileProgress();
         };
         const updateWizardState = () => {
             syncPrimaryAssetWarning();
             syncPricingWarning();
-            tabs.forEach((tab) => {
-                const stepName = tab.dataset.rentalWizardTab;
+            const activeStep = currentWizardStep();
+            [...tabs, ...mobileProgressButtons].forEach((tab) => {
+                const stepName = tab.dataset.rentalWizardTab || mobileToWizardStep[tab.dataset.rentalMobileStep];
+                const active = stepName === activeStep;
                 const complete = isStepComplete(stepName);
                 const rawHasErrors = steps
                     .filter((step) => step.dataset.rentalWizardStep === stepName)
-                    .some((step) => step.querySelector('.is-error, .field-error'));
+                    .some((step) => Array.from(step.querySelectorAll('.is-error, .field-error')).some((error) =>
+                        !error.closest('[hidden], [aria-hidden="true"]')
+                        && error.style.display !== 'none'
+                        && Boolean(error.textContent.trim())
+                    ));
                 const hasErrors = rawHasErrors && !(stepName === 'product' && complete);
-                tab.classList.toggle('is-complete', complete && !hasErrors);
+                tab.classList.toggle('is-active', active);
+                tab.classList.toggle('is-complete', complete && !hasErrors && !active);
                 tab.classList.toggle('is-warning', hasErrors);
+                if (active) tab.setAttribute('aria-current', 'step');
+                else tab.removeAttribute('aria-current');
+                tab.setAttribute('aria-label', stepLabels[stepName] + (hasErrors ? ', check details' : (complete && !active ? ', complete' : '')));
                 const badge = tab.querySelector('span:first-child');
                 if (badge) {
-                    badge.textContent = hasErrors ? '!' : (complete ? 'OK' : String(tabs.indexOf(tab) + 1));
+                    badge.textContent = hasErrors && !active ? '!' : (complete && !active ? '✓' : String(wizardSteps.indexOf(stepName) + 1));
+                    badge.setAttribute('aria-hidden', 'true');
                 }
             });
             nextButtons.forEach((button) => {
                 const stepName = button.closest('[data-rental-wizard-step]')?.dataset.rentalWizardStep;
                 button.disabled = !!stepName && !isStepComplete(stepName);
                 button.title = button.disabled ? (missingStepMessage(stepName) || 'Complete required fields in this step first.') : '';
+            });
+            guidanceNodes.forEach((node) => {
+                const step = node.dataset.rentalStepGuidance;
+                const message = activeStep === step && !isStepComplete(step) ? missingStepMessage(step) : '';
+                if (node.textContent !== message) node.textContent = message;
+                node.hidden = !message;
             });
             updateMobileActionBar();
             updateMissingChecklist(currentWizardStep());
@@ -4055,15 +4179,16 @@
             const gstRateValue = parseFloat(valueOf('gst_rate') || '0') || 0;
             const gstModeValue = valueOf('gst_mode') === 'inclusive' ? 'inclusive' : 'exclusive';
             const gstValue = gstModeValue === 'exclusive' ? rentalValue * (gstRateValue / 100) : 0;
+            const includedPrimaryGst = gstModeValue === 'inclusive' ? rentalValue * gstRateValue / (100 + gstRateValue) : 0;
             const addOnSummary = typeof window.__phosRentalAdditionalSummary === 'function'
                 ? window.__phosRentalAdditionalSummary()
                 : { rentalCount: 0, saleCount: 0, rentalTotal: 0, saleTotal: 0, gstTotal: 0, assetCount: 0 };
             const additionalRentalTotal = parseFloat(addOnSummary.rentalTotal || '0') || 0;
             const saleAddOnTotal = parseFloat(addOnSummary.saleTotal || '0') || 0;
             const additionalGstValue = parseFloat(addOnSummary.gstTotal || '0') || 0;
-            const rentalSummaryTotal = rentalValue + additionalRentalTotal;
-            const gstSummaryTotal = gstValue + additionalGstValue;
-            const netTotal = rentalValue + gstValue + additionalRentalTotal + saleAddOnTotal + depositValue + transportValue + otherValue;
+            const rentalSummaryTotal = rentalValue + gstValue + additionalRentalTotal;
+            const gstSummaryTotal = gstValue + includedPrimaryGst + additionalGstValue;
+            const netTotal = rentalSummaryTotal + saleAddOnTotal + depositValue + transportValue + otherValue;
             const primaryProductLabel = textOf(getEl('product_id')) || 'Not selected';
             const productParts = [primaryProductLabel];
             if ((addOnSummary.rentalCount || 0) > 0) {
@@ -4074,15 +4199,20 @@
             }
             setSummary('product', productParts.join(' + '));
             setSummary('dates', addOnSummary.hasMixedDates ? 'Mixed dates' : (start && end ? start + ' - ' + end : 'Not set'));
-            setSummary('pricing', rentalSummaryTotal.toFixed(2));
-            setSummary('gst', gstSummaryTotal > 0
-                ? gstSummaryTotal.toFixed(2)
-                : (gstRateValue.toFixed(2).replace(/\.00$/, '') + '%' + (gstModeValue === 'inclusive' ? ' incl.' : '')));
-            setSummary('deposit', depositValue.toFixed(2));
-            setSummary('transport', transportValue.toFixed(2));
-            setSummary('netTotal', netTotal.toFixed(2));
-            orderSummaryTrigger?.setAttribute('data-mobile-summary', 'Live | Rs. ' + netTotal.toFixed(2));
-            setSummary('delivery', textOf(getEl('delivery_assignment_type')) || 'PH Internal');            const primaryAssetCount = selectedAssetCount();
+            const days = (Date.parse(end) - Date.parse(start)) / 86400000 + 1;
+            const duration = days > 0 ? days + (days === 1 ? ' day' : ' days') : 'Not set';
+            setSummary('duration', addOnSummary.hasMixedDates && days > 0 ? duration + ' (primary item)' : duration);
+            setSummary('primaryDuration', days > 0 ? duration : 'Choose dates to see duration');
+            setSummary('pricing', formatMoney(rentalSummaryTotal));
+            setSummary('gst', formatMoney(gstSummaryTotal));
+            setSummary('deposit', formatMoney(depositValue));
+            setSummary('transport', formatMoney(transportValue));
+            setSummary('netTotal', formatMoney(netTotal));
+            setSummary('saleTotal', formatMoney(saleAddOnTotal));
+            setSummary('other', formatMoney(otherValue));
+            setSummary('delivery', textOf(getEl('delivery_assignment_type')) || 'PH Internal');
+            updateCitySuggestion();
+            const primaryAssetCount = selectedAssetCount();
             const addOnAssetCount = parseInt(addOnSummary.assetCount || '0', 10) || 0;
             const assetCount = primaryAssetCount + addOnAssetCount;
             let assetSummary = assetCount ? assetCount + ' selected' : 'Not assigned';
@@ -4119,28 +4249,30 @@
             tab.addEventListener('click', () => showStep(tab.dataset.rentalWizardTab));
         });
         mobileProgressButtons.forEach((button) => {
+            button.addEventListener('click', () => showStep(mobileToWizardStep[button.dataset.rentalMobileStep]));
+        });
+        const revealSection = (section) => {
+            if (!section) return;
+            const focusTarget = section.querySelector('h2, h3, label');
+            if (focusTarget) {
+                focusTarget.setAttribute('tabindex', '-1');
+                focusTarget.focus({ preventScroll: true });
+            }
+            section.scrollIntoView({ block: 'start' });
+        };
+        mobileAssetShortcut?.addEventListener('click', () => {
+            showStep('product', false);
+            if (primaryProductRequiresAssets() && openAssetAssignmentButton && !openAssetAssignmentButton.disabled) {
+                openAssetAssignmentButton.click();
+            } else {
+                revealSection(getEl('rental-assets-section'));
+            }
+        });
+        document.querySelectorAll('[data-rental-review-edit]').forEach((button) => {
             button.addEventListener('click', () => {
-                const mobileStep = button.dataset.rentalMobileStep;
-                const targetStep = {
-                    customer: 'fulfilment',
-                    product: 'product',
-                    asset: 'product',
-                    pricing: 'dates',
-                    delivery: 'delivery',
-                    review: 'review',
-                }[mobileStep] || 'fulfilment';
-
-                showStep(targetStep);
-
-                if (mobileStep === 'asset') {
-                    window.setTimeout(() => {
-                        if (primaryProductRequiresAssets()) {
-                            openAssetAssignmentButton?.click();
-                        } else {
-                            document.getElementById('rental-assets-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        }
-                    }, 80);
-                }
+                const step = button.dataset.rentalReviewEdit;
+                showStep(step, false);
+                revealSection(steps.find((section) => section.tagName === 'SECTION' && section.dataset.rentalWizardStep === step));
             });
         });
         nextButtons.forEach((button) => {
@@ -4306,6 +4438,8 @@
         form?.addEventListener('invalid', (event) => {
             const stepName = event.target.closest('[data-rental-wizard-step]')?.dataset.rentalWizardStep;
             if (stepName) {
+                const disclosure = event.target.closest('details');
+                if (disclosure) disclosure.open = true;
                 showStep(stepName);
             }
         }, true);
@@ -4363,8 +4497,22 @@
         if (window.matchMedia('(max-width: 980px)').matches) {
             document.querySelector('.rental-order-summary details')?.removeAttribute('open');
         }
-        showStep(firstErrorStep || 'fulfilment', false);
+        const requestedSection = window.location.hash === '#rental-assets-section' ? getEl('rental-assets-section') : null;
+        showStep(firstErrorStep || requestedSection?.dataset.rentalWizardStep || 'fulfilment', false);
         updateSummary();
+        if (!firstErrorStep && requestedSection) {
+            const focusRequestedSection = () => window.requestAnimationFrame(() => {
+                if (currentWizardStep() !== 'product') return;
+                if (requestedSection.getClientRects().length) {
+                    requestedSection.focus({ preventScroll: true });
+                    requestedSection.scrollIntoView({ block: 'start' });
+                } else {
+                    revealSection(steps.find((section) => section.tagName === 'SECTION' && section.dataset.rentalWizardStep === 'product'));
+                }
+            });
+            if (document.readyState === 'complete') focusRequestedSection();
+            else window.addEventListener('load', focusRequestedSection, { once: true });
+        }
     })();
 </script>
 
@@ -6965,7 +7113,9 @@
             const gstMode = item?.gst_mode === 'inclusive' ? 'inclusive' : 'exclusive';
             const subtotal = quantity * unitPrice;
 
-            return gstMode === 'exclusive' && gstRate > 0 ? subtotal * (gstRate / 100) : 0;
+            return gstMode === 'inclusive'
+                ? subtotal * gstRate / (100 + gstRate)
+                : subtotal * gstRate / 100;
         }
 
         function activeAdditionalRentalItems() {

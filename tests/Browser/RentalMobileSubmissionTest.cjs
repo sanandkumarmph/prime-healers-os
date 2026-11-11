@@ -47,8 +47,38 @@ test('mobile rental create and edit submit the owning form and follow availabili
                 page.on('pageerror',e=>errors.push(e.message));
                 await page.setRequestInterception(true);
                 page.on('request',req=>req.url().startsWith(origin+'/')||req.url().startsWith('data:')?req.continue():req.respond({status:200,contentType:'text/css',body:''}));
-                await page.goto(origin+'/fixture/'+mode,{waitUntil:'networkidle0'});
+                await page.goto(origin+'/fixture/'+mode+(mode==='edit'?'#rental-assets-section':''),{waitUntil:'networkidle0'});
                 await page.addStyleTag({content:'*{scroll-behavior:auto!important}'});
+                const activeStep = () => page.$eval('#rentalDesktopProgress [aria-current="step"]', el => el.dataset.rentalWizardTab);
+                if(mode==='edit'){
+                    assert.equal(await activeStep(),'product');
+                    assert.equal(await page.evaluate(()=>document.activeElement?.closest('section')?.id),'rental-assets-section');
+                }else{
+                    assert.equal(await activeStep(),'fulfilment');
+                    const labels = await page.evaluate(()=>[
+                        [...document.querySelectorAll('#rentalDesktopProgress strong')].map(el=>el.textContent.trim()),
+                        [...document.querySelectorAll('#rentalMobileProgress .rental-mobile-step-label')].map(el=>el.textContent.trim()),
+                    ]);
+                    assert.deepEqual(labels[0], ['Customer','Items & dates','Charges','Delivery','Review']);
+                    assert.deepEqual(labels[1], labels[0]);
+                    assert.equal(await page.$eval('#rentalDesktopProgress [data-rental-wizard-tab="delivery"]', el=>el.classList.contains('is-warning')),false);
+                    if (width <= 640) {
+                        const badgeIsAboveActions = await page.evaluate(() => {
+                            const badge = document.querySelector('.phos-release-badge')?.getBoundingClientRect();
+                            const actions = document.getElementById('rentalMobileActionBar').getBoundingClientRect();
+                            return badge && badge.height > 0 && badge.bottom < actions.top;
+                        });
+                        assert.equal(badgeIsAboveActions,true);
+                    }
+                    assert.match(await page.$eval('#rentalUseSuggestedCity', el=>el.textContent), /Bengaluru/);
+                    await page.select('#city_id','2');
+                    assert.equal(await page.$eval('#rentalUseSuggestedCity', el=>el.hidden),true);
+                    assert.equal(await page.$eval('#city_id', el=>el.value),'2');
+                    await page.select('#city_id','');
+                    await page.$eval('#rentalUseSuggestedCity', el=>el.scrollIntoView({block:'center'}));
+                    await page.click('#rentalUseSuggestedCity');
+                    assert.equal(await page.$eval('#city_id', el=>el.value),'1');
+                }
                 const collectOnDelivery = mode === 'create' && [390, 1440].includes(width);
                 await page.evaluate((mode, collectOnDelivery)=>{
                     window.rentalSubmits=[];
@@ -82,6 +112,11 @@ test('mobile rental create and edit submit the owning form and follow availabili
                     }
                     document.querySelector('[data-rental-wizard-tab="review"]').click();
                 }, mode, collectOnDelivery);
+                assert.equal(await page.$eval('#rental-review-section [data-summary-value="duration"]', el=>el.textContent),'6 days');
+                await page.click('[data-rental-review-edit="product"]');
+                assert.equal(await activeStep(),'product');
+                assert.equal(await page.evaluate(()=>document.activeElement?.textContent.trim()),'Items & dates');
+                await page.$eval('[data-rental-wizard-tab="review"]',button=>button.click());
                 if(mode==='create'){
                     await page.waitForSelector('#incentive_owner_id',{visible:true});
                     const owner=await page.$eval('#incentive_owner_id',el=>[...el.options].find(option=>option.textContent==='Earlier shift salesperson').value);
