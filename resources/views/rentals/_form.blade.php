@@ -281,7 +281,6 @@
     .gst-details-collapse[open] summary::after { content:'^'; }
     .gst-details-collapse .hint { margin-left:4px; font-weight:700; color:#64748b; text-transform:none; letter-spacing:0; }
     .gst-details-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; padding:0 10px 10px; }
-    .assignment-launch-card { padding:12px; border-radius:12px; }
     .assignment-launch-grid { grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
     .assignment-launch-metric { min-height:54px; padding:9px 10px; }
     .asset-panel { margin-top:10px; }
@@ -925,27 +924,32 @@
     .assignment-launch-card {
         display:grid;
         grid-template-columns:minmax(0, 1fr) auto;
-        gap:14px;
+        gap:6px 12px;
         align-items:center;
-        border:1px solid #dbe3ef;
-        border-radius:14px;
-        padding:14px;
-        background:linear-gradient(135deg, #ffffff, #f8fbff);
+        border:1px solid #d8e2ee;
+        border-radius:10px;
+        padding:9px 12px;
+        background:#f3f6fa;
     }
-    .assignment-launch-title {
-        display:flex;
-        align-items:center;
-        gap:8px;
-        flex-wrap:wrap;
-        margin-bottom:8px;
+    .assignment-launch-card h2 {
+        margin:0;
+        color:#172b46;
+        font-size:14px;
+        line-height:1.35;
     }
-    .assignment-launch-title strong {
-        color:#0f172a;
-        font-size:16px;
+    .assignment-launch-card p {
+        margin:2px 0 0;
+        color:#53647a;
+        font-size:13px;
+        line-height:1.4;
     }
+    .assignment-launch-card #rentalAssignAssetButton { min-height:40px; }
+    .assignment-launch-details { grid-column:1 / -1; min-width:0; }
+    .assignment-launch-details > summary { width:fit-content; color:#1d4ed8; font-size:12px; font-weight:650; cursor:pointer; }
+    .assignment-launch-details[open] .assignment-launch-grid { margin-top:6px; }
     .assignment-launch-grid {
         display:grid;
-        grid-template-columns:repeat(4, minmax(0, 1fr));
+        grid-template-columns:repeat(auto-fit, minmax(min(100%, 135px), 1fr));
         gap:8px;
     }
     .assignment-launch-metric {
@@ -969,10 +973,51 @@
         color:#0f172a;
         font-size:13px;
         line-height:1.2;
-        overflow:hidden;
-        text-overflow:ellipsis;
-        white-space:nowrap;
+        overflow-wrap:anywhere;
     }
+    .rental-asset-inline { min-width:0; scroll-margin-top:92px; }
+    .rental-asset-inline:focus-visible { outline:2px solid #1d4ed8; outline-offset:3px; border-radius:10px; }
+    .rental-asset-picker {
+        position:fixed;
+        inset:0;
+        z-index:999999;
+        display:grid;
+        place-items:center;
+        padding:12px;
+        background:rgba(15,23,42,.58);
+    }
+    .rental-asset-picker-dialog {
+        width:min(100%, 820px);
+        max-height:calc(100dvh - 24px);
+        display:grid;
+        grid-template-rows:auto minmax(0, 1fr) auto;
+        overflow:hidden;
+        background:#fff;
+        border:1px solid #d8e2ee;
+        border-radius:14px;
+        box-shadow:0 20px 50px rgba(15,23,42,.22);
+    }
+    .rental-asset-picker-header {
+        display:grid;
+        grid-template-columns:minmax(0, 1fr) auto;
+        gap:8px 12px;
+        padding:12px 14px;
+        border-bottom:1px solid #d8e2ee;
+        color:#172b46;
+    }
+    .rental-asset-picker-header h2 { margin:0; font-size:18px; line-height:1.35; }
+    .rental-asset-picker-context { margin:2px 0 0; color:#53647a; font-size:13px; overflow-wrap:anywhere; }
+    .rental-asset-picker-counts { grid-column:1 / -1; margin:0; display:flex; flex-wrap:wrap; gap:8px 16px; font-size:13px; }
+    .rental-asset-picker-counts div { display:flex; gap:5px; }
+    .rental-asset-picker-counts dd { margin:0; font-weight:700; }
+    .rental-asset-picker-counts [data-dynamic-selected-count] { color:#1d4ed8; }
+    .rental-asset-picker-close { align-self:start; min-width:44px; min-height:44px; font-size:21px; line-height:1; }
+    .rental-asset-picker-body { min-width:0; overflow:auto; display:grid; gap:10px; padding:12px 14px; }
+    .rental-asset-picker-body input { width:100%; min-height:44px; border:1px solid #cbd5e1; border-radius:9px; padding:8px 10px; font-size:16px; }
+    .rental-asset-picker-body [data-dynamic-asset-empty] { padding:12px; border:1px dashed #cbd5e1; border-radius:9px; text-align:center; color:#53647a; }
+    .rental-asset-picker-body [data-dynamic-asset-grid] { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap:10px; overflow-wrap:anywhere; }
+    .rental-asset-picker-footer { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:8px; padding:10px 14px; border-top:1px solid #d8e2ee; background:#f3f6fa; }
+    .rental-asset-picker-footer button { min-height:44px; }
     .assignment-drawer-backdrop[hidden] {
         display:none !important;
     }
@@ -1987,23 +2032,13 @@
         }
         .asset-search { width:100%; }
         .assignment-launch-card {
-            grid-template-columns:1fr;
-            padding:10px;
-            gap:8px;
+            padding:8px 10px;
         }
+        .assignment-launch-card #rentalAssignAssetButton { min-height:44px; }
+        .assignment-launch-details > summary { padding:7px 0; }
         .assignment-asset-summary,
         .assignment-drawer-fields,
         .assignment-type-grid { grid-template-columns:1fr; }
-        .assignment-launch-grid {
-            grid-template-columns:repeat(2, minmax(0, 1fr));
-            gap:6px;
-        }
-        .assignment-launch-title {
-            margin-bottom:6px;
-        }
-        .assignment-launch-title strong {
-            font-size:14px;
-        }
         .assignment-launch-metric {
             padding:7px 8px;
         }
@@ -2946,6 +2981,28 @@
                 @endif
             </div>
 
+            <section class="rental-col-12 rental-asset-inline section-nav-target{{ $assetAssignmentError ? ' is-error' : '' }}" data-rental-wizard-step="product" id="rental-assets-section" tabindex="-1" aria-labelledby="rentalAssetsHeading">
+                <div class="assignment-launch-card">
+                    <div>
+                        <h2 id="rentalAssetsHeading">Assets for this item</h2>
+                        <p aria-live="polite"><strong id="assignmentLaunchSelected">{{ count($selectedAssetIds) }} of {{ (int) old('quantity', $isEdit ? $rental->quantity : 1) }}</strong> assigned</p>
+                    </div>
+                    <button type="button" class="ops-button js-open-rental-asset-modal" id="rentalAssignAssetButton" data-open-rental-asset-modal>Assign Asset</button>
+                    <details class="assignment-launch-details">
+                        <summary>Assignment details</summary>
+                        <div class="assignment-launch-grid">
+                            <div class="assignment-launch-metric"><span>Asset</span><strong id="assignmentLaunchTitle">Asset not assigned</strong></div>
+                            <div class="assignment-launch-metric"><span>Product</span><strong id="assignmentLaunchProduct">Select product</strong></div>
+                            <div class="assignment-launch-metric"><span>Warehouse</span><strong id="assignmentLaunchWarehouse">Any warehouse</strong></div>
+                            <div class="assignment-launch-metric"><span>Required</span><strong id="assignmentLaunchRequired">{{ (int) old('quantity', $isEdit ? $rental->quantity : 1) }}</strong></div>
+                        </div>
+                    </details>
+                </div>
+                @if($assetAssignmentDisplayError)
+                    <div class="field-error">{{ $assetAssignmentDisplayError }}</div>
+                @endif
+            </section>
+
             <div class="rental-col-12 rental-line-subsection">
                 <div class="rental-line-heading is-sub"><strong>Rental Details & Pricing</strong><span>Primary rental line</span></div>
             </div>
@@ -3045,37 +3102,7 @@
     </section>
 
 
-    <section class="rental-card rental-wizard-step{{ $assetAssignmentError ? ' is-error' : '' }} section-nav-target" data-rental-wizard-step="product" id="rental-assets-section" tabindex="-1" aria-labelledby="rentalAssetsHeading">
-        <h2 id="rentalAssetsHeading">Assign assets to the primary item</h2>
-        <p class="section-copy">Select the equipment serial numbers for this item.</p>
-        <div class="assignment-launch-card">
-            <div>
-                <div class="assignment-launch-title">
-                    <span class="badge badge-blue">Rental Asset</span>
-                    <strong id="assignmentLaunchTitle">Asset not assigned</strong>
-                </div>
-                <div class="assignment-launch-grid">
-                    <div class="assignment-launch-metric">
-                        <span>Product</span>
-                        <strong id="assignmentLaunchProduct">Select product</strong>
-                    </div>
-                    <div class="assignment-launch-metric">
-                        <span>Warehouse</span>
-                        <strong id="assignmentLaunchWarehouse">Any warehouse</strong>
-                    </div>
-                    <div class="assignment-launch-metric">
-                        <span>Required</span>
-                        <strong id="assignmentLaunchRequired">{{ (int) old('quantity', $isEdit ? $rental->quantity : 1) }}</strong>
-                    </div>
-                    <div class="assignment-launch-metric">
-                        <span>Selected</span>
-                        <strong id="assignmentLaunchSelected">{{ count($selectedAssetIds) }}</strong>
-                    </div>
-                </div>
-            </div>
-            <button type="button" class="ops-button js-open-rental-asset-modal" id="rentalAssignAssetButton" data-open-rental-asset-modal>Assign Asset</button>
-        </div>
-
+    <div class="rental-asset-dialogs">
         <div class="assignment-drawer-backdrop" id="rentalAssetAssignmentModal" data-rental-asset-modal hidden aria-hidden="true">
             <aside class="assignment-drawer" role="dialog" aria-modal="true" aria-labelledby="assetAssignmentDrawerTitle">
                 <div class="assignment-drawer-header">
@@ -3246,10 +3273,7 @@
             <div class="assignment-toast" id="rentalStockToast" hidden>Rental stock added and available for selection.</div>
 
         @endif
-        @if($assetAssignmentDisplayError)
-            <div class="field-error" style="margin-top:10px;">{{ $assetAssignmentDisplayError }}</div>
-        @endif
-    </section>
+    </div>
 
     <section class="rental-card rental-wizard-step" data-rental-wizard-step="dates">
         <h2>Charges</h2>
@@ -4749,9 +4773,6 @@
             return options.map(function (option) {
                 return `<option value="${escapeHtml(option)}"${option === normalized ? ' selected' : ''}>${escapeHtml(formatGstLabel(option))}</option>`;
             }).join('');
-            if (submittedAssetIds.length) {
-                clearPrimaryAssetServerValidationMessage();
-            }
         }
 
         rentalItems = (Array.isArray(rentalItems) ? rentalItems : []).map(function (item) {
@@ -6387,7 +6408,7 @@
             });
 
             selectedAssetIds = incomingIds;
-            syncPrimaryAssetHiddenInputs();
+            syncPrimaryAssetHiddenInputs({ replaceSelection: true });
             renderAssets();
             updateSelectionMetrics();
             updateAssignmentDrawerSummary();
@@ -6429,7 +6450,7 @@
                 assignmentLaunchRequired.textContent = requiredCount || 0;
             }
             if (assignmentLaunchSelected) {
-                assignmentLaunchSelected.textContent = selectedCount;
+                assignmentLaunchSelected.textContent = selectedCount + ' of ' + requiredCount;
             }
             if (assignmentDrawerAsset) {
                 assignmentDrawerAsset.textContent = assetLabel;
@@ -6732,23 +6753,11 @@
         }
 
 
-        function addAssetToRentalItemCache(asset) {
-            const normalizedAsset = normalizeRentalStockAsset(asset);
-            if (!normalizedAsset.id || !normalizedAsset.product_id) {
-                return;
-            }
-            const currentWarehouseId = parseInt(warehouseSelect?.value || '0', 10);
-            if (currentWarehouseId && normalizedAsset.warehouse_id && normalizedAsset.warehouse_id !== currentWarehouseId) {
-                return;
-            }
-            const cacheKey = rentalItemAssetCacheKey(normalizedAsset.product_id);
-            rentalItemAssetCache[cacheKey] = Array.isArray(rentalItemAssetCache[cacheKey]) ? rentalItemAssetCache[cacheKey] : [];
-            if (!rentalItemAssetCache[cacheKey].some(function (existing) { return parseInt(existing.id || '0', 10) === normalizedAsset.id; })) {
-                rentalItemAssetCache[cacheKey].unshift(normalizedAsset);
-            }
-            rentalItems.forEach(function (item, index) {
-                if (parseInt(item.product_id || '0', 10) === normalizedAsset.product_id) {
-                    syncRentalItem(index);
+        function refreshRentalItemStock(asset) {
+            Object.keys(rentalItemAssetCache).concat(Object.keys(rentalItemAssetRequests)).forEach(function (key) {
+                if (key.startsWith(asset.product_id + ' - ')) {
+                    delete rentalItemAssetCache[key];
+                    delete rentalItemAssetRequests[key];
                 }
             });
         }
@@ -6805,8 +6814,16 @@
 
         function injectRentalStockAsset(asset) {
             const normalizedAsset = normalizeRentalStockAsset(asset);
+            if (!normalizedAsset.id || !normalizedAsset.product_id) {
+                return;
+            }
+            refreshRentalItemStock(normalizedAsset);
+            if (normalizedAsset.asset_status !== 'available' || ['repair', 'needs_repair', 'damaged', 'inactive', 'retired'].includes(normalizedAsset.condition_status)) {
+                renderRentalItems();
+                return;
+            }
+
             addAssetToPrimaryIndex(normalizedAsset);
-            addAssetToRentalItemCache(normalizedAsset);
             updateProductOptionAvailability(normalizedAsset);
             primaryAvailabilityLoadedFor = null;
             lastPrimaryAssetSignature = null;
@@ -6843,7 +6860,7 @@
             }
         });
 
-        function syncPrimaryAssetHiddenInputs() {
+        function syncPrimaryAssetHiddenInputs({ replaceSelection = false } = {}) {
             if (!primaryAssetHiddenInputs) {
                 return;
             }
@@ -6852,13 +6869,15 @@
                 .map(function (input) { return input.getAttribute('data-asset-id') || input.value; });
             const hiddenInputAssetIds = Array.from(primaryAssetHiddenInputs.querySelectorAll('input[type="hidden"][name="asset_ids[]"]'))
                 .map(function (input) { return input.value; });
-            const submittedAssetIds = normalizeAssetIds([].concat(selectedAssetIds, checkedCardAssetIds, hiddenInputAssetIds));
+            const submittedAssetIds = normalizeAssetIds(replaceSelection
+                ? selectedAssetIds
+                : selectedAssetIds.concat(checkedCardAssetIds, hiddenInputAssetIds));
             selectedAssetIds = submittedAssetIds;
             primaryAssetHiddenInputs.innerHTML = submittedAssetIds.map(function (assetId) {
                 return `<input type="hidden" name="asset_ids[]" value="${assetId.replace(/&/g, '&amp;').replace(/"/g, '&quot;')}">`;
             }).join('');
             if (submittedAssetIds.length) {
-                clearPrimaryAssetServerValidationMessage();
+                window.primaryAssetServerValidationMessage = '';
             }
             const primaryAssetIdsInput = document.getElementById('primary_asset_ids');
             if (primaryAssetIdsInput) {
@@ -7034,6 +7053,7 @@
                 @endif
                 latestPrimaryAssetRequestUrl = '{{ route('rentals.available-assets') }}?' + params.toString();
                 return fetch(latestPrimaryAssetRequestUrl, {
+                    cache: 'no-store',
                     headers: {
                         'Accept': 'application/json',
                         'X-Requested-With': 'XMLHttpRequest'
@@ -7313,55 +7333,37 @@
             }
 
             const cacheKey = rentalItemAssetCacheKey(item.product_id);
+            const productId = String(item.product_id);
+            const warehouseId = warehouseSelect.value;
 
             if (rentalItemAssetCache[cacheKey] || rentalItemAssetRequests[cacheKey]) {
                 return;
             }
 
-            const requestRentalItemAssets = function (withWarehouseFilter) {
-                const params = new URLSearchParams({
-                    product_id: String(item.product_id)
-                });
+            const params = new URLSearchParams({ product_id: productId, dispatch_warehouse_id: warehouseId });
+            if (currentRentalId) params.set('rental_id', String(currentRentalId));
 
-                if (withWarehouseFilter && warehouseSelect.value) {
-                    params.append('dispatch_warehouse_id', warehouseSelect.value);
+            const request = fetch('{{ route('rentals.available-assets') }}?' + params.toString(), {
+                cache: 'no-store',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
                 }
-
-                if (currentRentalId) {
-                    params.append('rental_id', String(currentRentalId));
-                }
-
-                return fetch('{{ route('rentals.available-assets') }}?' + params.toString(), {
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }
-                }).then(function (response) {
-                    if (!response.ok) {
-                        throw new Error('Unable to load assets');
-                    }
-
+            })
+                .then(function (response) {
+                    if (!response.ok) throw new Error('Unable to load assets');
                     return response.json();
-                });
-            };
-
-            rentalItemAssetRequests[cacheKey] = requestRentalItemAssets(true)
-                .then(function (payload) {
-                    const initialAssets = Array.isArray(payload.data) ? payload.data : [];
-
-                    if (!initialAssets.length && warehouseSelect.value) {
-                        return requestRentalItemAssets(false);
-                    }
-
-                    return payload;
                 })
                 .then(function (payload) {
+                    if (rentalItemAssetRequests[cacheKey] !== request) {
+                        return;
+                    }
                     rentalItemAssetCache[cacheKey] = Array.isArray(payload.data) ? payload.data : [];
                     const rentalItemIndex = rentalItems.findIndex(function (candidate) {
                         return candidate === item;
                     });
 
-                    if (rentalItemIndex >= 0) {
+                    if (rentalItemIndex >= 0 && rentalItemAssetCacheKey(item.product_id) === cacheKey) {
                         autoSelectRentalItemAssets(rentalItemIndex, rentalItemAssetCache[cacheKey]);
                     }
 
@@ -7369,10 +7371,14 @@
                     renderRentalItems();
                 })
                 .catch(function () {
+                    if (rentalItemAssetRequests[cacheKey] !== request) {
+                        return;
+                    }
                     rentalItemAssetCache[cacheKey] = [];
                     delete rentalItemAssetRequests[cacheKey];
                     renderRentalItems();
                 });
+            rentalItemAssetRequests[cacheKey] = request;
         }
 
         function rentalItemAssetChoices(item, index) {
@@ -8335,7 +8341,9 @@
                 })
                 .then(function (payload) {
                     if (payload.asset) {
-                        injectRentalStockAsset(payload.asset);
+                        document.dispatchEvent(new CustomEvent('phos:rental-stock-created', {
+                            detail: { asset: payload.asset },
+                        }));
                     }
                     if (document.getElementById('rental_stock_serial_number')) {
                         document.getElementById('rental_stock_serial_number').value = '';
@@ -8805,10 +8813,10 @@
 <script>
 (function () {
     const availableAssetEndpoint = @json(route('rentals.available-assets'));
+    const rentalId = @json($isEdit ? $rental->id : null);
     let dynamicSelectedAssetIds = [];
     let dynamicAssets = [];
-    const dynamicAssetCache = new Map();
-    const dynamicAssetRequests = new Map();
+    let activeAssetRequest = null;
 
 
     function normalizeId(value) {
@@ -8865,55 +8873,24 @@
         return Math.max(parseInt(quantityInput()?.value || '0', 10), 0);
     }
 
-    function assetCacheKey(productId, warehouseId) {
-        return normalizeId(productId) + ':' + normalizeId(warehouseId);
-    }
-
-    function fetchDynamicAssetsFor(productId, warehouseId) {
-        const key = assetCacheKey(productId, warehouseId);
-        if (dynamicAssetCache.has(key)) {
-            return Promise.resolve(dynamicAssetCache.get(key));
-        }
-        if (dynamicAssetRequests.has(key)) {
-            return dynamicAssetRequests.get(key);
-        }
-
+    function fetchDynamicAssetsFor(productId, warehouseId, signal) {
         const params = new URLSearchParams({ product_id: productId });
-        if (warehouseId) {
-            params.set('dispatch_warehouse_id', warehouseId);
-        }
+        params.set('dispatch_warehouse_id', warehouseId);
+        if (rentalId) params.set('rental_id', String(rentalId));
 
-        const request = fetch(availableAssetEndpoint + '?' + params.toString(), {
+        return fetch(availableAssetEndpoint + '?' + params.toString(), {
+            cache: 'no-store',
+            signal,
             headers: {
                 Accept: 'application/json',
                 'X-Requested-With': 'XMLHttpRequest',
             },
         })
-            .then(function (response) { return response.ok ? response.json() : Promise.reject(response); })
-            .then(function (payload) {
-                const assets = Array.isArray(payload.data) ? payload.data : [];
-                dynamicAssetCache.set(key, assets);
-                dynamicAssetRequests.delete(key);
-                return assets;
+            .then(function (response) {
+                if (!response.ok) throw new Error('Unable to load rental assets');
+                return response.json();
             })
-            .catch(function (error) {
-                dynamicAssetRequests.delete(key);
-                throw error;
-            });
-
-        dynamicAssetRequests.set(key, request);
-        return request;
-    }
-
-    function preloadDynamicAssets() {
-        const productId = productSelect()?.value || '';
-        const warehouseId = warehouseSelect()?.value || '';
-        if (!productId || !warehouseId) {
-            return;
-        }
-
-        fetchDynamicAssetsFor(productId, warehouseId).catch(function () {
-        });
+            .then(function (payload) { return Array.isArray(payload.data) ? payload.data : []; });
     }
 
     function primaryAssetHiddenInputs() {
@@ -8959,12 +8936,13 @@
         const selectedAssets = dynamicAssets.filter(function (asset) {
             return selectedIds.includes(normalizeId(asset.id));
         });
-        const title = selectedAssets.length
-            ? selectedAssets.map(function (asset) { return asset.serial_number || asset.label || ('Asset #' + asset.id); }).join(', ')
-            : 'Asset not assigned';
-
-        setText('assignmentLaunchTitle', title);
-        setText('assignmentDrawerAsset', title);
+        if (!selectedCount || selectedAssets.length) {
+            const title = selectedAssets.length
+                ? selectedAssets.map(function (asset) { return asset.serial_number || asset.label || ('Asset #' + asset.id); }).join(', ')
+                : 'Asset not assigned';
+            setText('assignmentLaunchTitle', title);
+            setText('assignmentDrawerAsset', title);
+        }
         setText('assignmentLaunchProduct', selectedProductLabel());
         setText('assignmentDrawerProduct', selectedProductLabel());
         setText('assignmentLaunchWarehouse', selectedWarehouseLabel());
@@ -8984,6 +8962,8 @@
     }
 
     function removeDynamicModal() {
+        activeAssetRequest?.abort();
+        activeAssetRequest = null;
         document.getElementById('dynamicRentalAssetModal')?.remove();
         document.body.classList.remove('modal-open');
         document.body.classList.remove('assignment-drawer-open');
@@ -9003,11 +8983,12 @@
         const searchValue = modal.querySelector('[data-dynamic-asset-search]')?.value?.trim().toLowerCase() || '';
         const required = Math.max(selectedQuantity(), 1);
         const isLoading = modal.dataset.assetsLoading === '1';
+        const loadFailed = modal.dataset.assetsError === '1';
         const assignButton = modal.querySelector('[data-dynamic-asset-assign]');
         if (assignButton) {
-            assignButton.disabled = isLoading;
-            assignButton.style.opacity = isLoading ? '.55' : '1';
-            assignButton.style.cursor = isLoading ? 'not-allowed' : 'pointer';
+            assignButton.disabled = isLoading || loadFailed;
+            assignButton.style.opacity = assignButton.disabled ? '.55' : '1';
+            assignButton.style.cursor = assignButton.disabled ? 'not-allowed' : 'pointer';
         }
         const visibleAssets = dynamicAssets.filter(function (asset) {
             return !searchValue || assetSearchText(asset).includes(searchValue);
@@ -9018,7 +8999,8 @@
         empty.style.display = visibleAssets.length ? 'none' : 'block';
         empty.textContent = isLoading
             ? 'Loading available assets...'
-            : (dynamicAssets.length ? 'No matching assets.' : 'No available rental assets found.');
+            : (loadFailed ? 'Could not load available assets. Close the picker and try again.'
+                : (dynamicAssets.length ? 'No matching assets.' : 'No available rental assets found.'));
 
         visibleAssets.forEach(function (asset) {
             const assetId = normalizeId(asset.id);
@@ -9056,30 +9038,35 @@
 
         const modal = document.createElement('div');
         modal.id = 'dynamicRentalAssetModal';
+        modal.className = 'rental-asset-picker';
         modal.setAttribute('role', 'dialog');
         modal.setAttribute('aria-modal', 'true');
-        modal.style.cssText = 'position:fixed;inset:0;z-index:999999;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.58);padding:18px;';
-        modal.innerHTML = '<div style="width:min(860px, calc(100vw - 28px));max-height:90vh;overflow:auto;background:#fff;border-radius:18px;box-shadow:0 30px 80px rgba(15,23,42,.28);border:1px solid #dbe3ef;">'
-            + '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:18px 20px;border-bottom:1px solid #e2e8f0;">'
-            + '<div><h2 style="margin:0;color:#0f172a;font-size:22px;line-height:1.15;">Assign Rental Asset</h2><p style="margin:6px 0 0;color:#64748b;font-size:14px;">Select available serialized stock for this rental line.</p></div>'
-            + '<button type="button" data-dynamic-asset-cancel style="width:38px;height:38px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#334155;font-size:24px;line-height:1;cursor:pointer;">&times;</button>'
-            + '</div>'
-            + '<div style="padding:16px 20px;display:grid;gap:14px;">'
-            + '<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;">'
-            + '<div style="border:1px solid #e2e8f0;border-radius:12px;padding:10px;background:#f8fafc;"><span style="display:block;color:#64748b;font-size:11px;font-weight:800;text-transform:uppercase;">Product</span><strong style="display:block;margin-top:4px;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(context.productName) + '</strong></div>'
-            + '<div style="border:1px solid #e2e8f0;border-radius:12px;padding:10px;background:#f8fafc;"><span style="display:block;color:#64748b;font-size:11px;font-weight:800;text-transform:uppercase;">Warehouse</span><strong style="display:block;margin-top:4px;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(context.warehouseName) + '</strong></div>'
-            + '<div style="border:1px solid #e2e8f0;border-radius:12px;padding:10px;background:#f8fafc;"><span style="display:block;color:#64748b;font-size:11px;font-weight:800;text-transform:uppercase;">Required</span><strong style="display:block;margin-top:4px;color:#0f172a;font-size:22px;">' + escapeHtml(context.required) + '</strong></div>'
-            + '<div style="border:1px solid #bfdbfe;border-radius:12px;padding:10px;background:#eff6ff;"><span style="display:block;color:#1d4ed8;font-size:11px;font-weight:800;text-transform:uppercase;">Selected</span><strong data-dynamic-selected-count style="display:block;margin-top:4px;color:#0f172a;font-size:22px;">0</strong></div>'
-            + '</div>'
-            + '<input type="search" data-dynamic-asset-search placeholder="Search serial, barcode, or asset name" style="width:100%;min-height:46px;border:1px solid #cbd5e1;border-radius:12px;padding:10px 13px;font-size:16px;color:#0f172a;">'
-            + '<div data-dynamic-asset-empty style="display:none;border:1px dashed #cbd5e1;border-radius:14px;padding:18px;text-align:center;color:#64748b;"></div>'
-            + '<div data-dynamic-asset-grid style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;"></div>'
-            + '</div>'
-            + '<div style="display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid #e2e8f0;background:#f8fafc;">'
-            + '<button type="button" data-dynamic-asset-cancel class="ops-button-secondary">Cancel</button>'
-            + '<button type="button" data-dynamic-asset-assign class="ops-button" disabled style="opacity:.55;cursor:not-allowed;">Assign Asset</button>'
-            + '</div>'
-            + '</div>';
+        modal.setAttribute('aria-labelledby', 'dynamicRentalAssetTitle');
+        modal.innerHTML = `
+            <div class="rental-asset-picker-dialog">
+                <header class="rental-asset-picker-header">
+                    <div>
+                        <h2 id="dynamicRentalAssetTitle">Assign Rental Asset</h2>
+                        <p class="rental-asset-picker-context">
+                            <strong>${escapeHtml(context.productName)}</strong> · ${escapeHtml(context.warehouseName)}
+                        </p>
+                    </div>
+                    <button type="button" data-dynamic-asset-cancel class="ops-button-secondary rental-asset-picker-close" aria-label="Close asset picker">&times;</button>
+                    <dl class="rental-asset-picker-counts">
+                        <div><dt>Required</dt><dd>${escapeHtml(context.required)}</dd></div>
+                        <div><dt>Selected</dt><dd data-dynamic-selected-count>0</dd></div>
+                    </dl>
+                </header>
+                <div class="rental-asset-picker-body">
+                    <input type="search" data-dynamic-asset-search aria-label="Search assets" placeholder="Search serial, barcode, or asset name">
+                    <div data-dynamic-asset-empty role="status" style="display:none"></div>
+                    <div data-dynamic-asset-grid></div>
+                </div>
+                <footer class="rental-asset-picker-footer">
+                    <button type="button" data-dynamic-asset-cancel class="ops-button-secondary">Cancel</button>
+                    <button type="button" data-dynamic-asset-assign class="ops-button" disabled>Assign Asset</button>
+                </footer>
+            </div>`;
 
         modal.addEventListener('click', function (event) {
             if (event.target === modal || event.target.closest('[data-dynamic-asset-cancel]')) {
@@ -9136,38 +9123,53 @@
 
         dynamicSelectedAssetIds = hiddenAssetIds().slice(0, required);
         const modal = createDynamicModalShell(context);
-        const key = assetCacheKey(productId, warehouseId);
-        if (dynamicAssetCache.has(key)) {
-            dynamicAssets = dynamicAssetCache.get(key);
-            modal.dataset.assetsLoading = '0';
-            renderDynamicAssetCards(modal);
-            return;
-        }
+        modal.dataset.productId = productId;
+        modal.dataset.warehouseId = warehouseId;
+        loadDynamicAssets(modal);
+    }
 
+    function loadDynamicAssets(modal) {
+        activeAssetRequest?.abort();
+        const request = new AbortController();
+        activeAssetRequest = request;
         dynamicAssets = [];
         modal.dataset.assetsLoading = '1';
+        modal.dataset.assetsError = '0';
         renderDynamicAssetCards(modal);
 
-        fetchDynamicAssetsFor(productId, warehouseId)
+        fetchDynamicAssetsFor(modal.dataset.productId, modal.dataset.warehouseId, request.signal)
             .then(function (assets) {
+                if (activeAssetRequest !== request || !modal.isConnected) return;
                 dynamicAssets = assets;
+                const availableIds = new Set(assets.map(function (asset) { return normalizeId(asset.id); }));
+                dynamicSelectedAssetIds = dynamicSelectedAssetIds.filter(function (id) { return availableIds.has(id); });
                 modal.dataset.assetsLoading = '0';
                 renderDynamicAssetCards(modal);
             })
             .catch(function () {
-                dynamicAssets = [];
+                if (activeAssetRequest !== request || !modal.isConnected) return;
                 modal.dataset.assetsLoading = '0';
+                modal.dataset.assetsError = '1';
                 renderDynamicAssetCards(modal);
             });
     }
 
+    document.addEventListener('phos:rental-stock-created', function (event) {
+        const modal = document.getElementById('dynamicRentalAssetModal');
+        const asset = event.detail?.asset;
+        if (modal && asset && modal.dataset.productId === normalizeId(asset.product_id)
+            && modal.dataset.warehouseId === normalizeId(asset.warehouse_id)) {
+            loadDynamicAssets(modal);
+        }
+    });
+
     ['change', 'input', 'searchable-select:changed'].forEach(function (eventName) {
-        productSelect()?.addEventListener(eventName, function () { syncAssetAssignmentCard(true); preloadDynamicAssets(); });
-        warehouseSelect()?.addEventListener(eventName, function () { syncAssetAssignmentCard(true); preloadDynamicAssets(); });
+        productSelect()?.addEventListener(eventName, function () { syncAssetAssignmentCard(true); });
+        warehouseSelect()?.addEventListener(eventName, function () { syncAssetAssignmentCard(true); });
         quantityInput()?.addEventListener(eventName, function () { syncAssetAssignmentCard(false); });
     });
     window.setTimeout(function () { syncAssetAssignmentCard(false); }, 0);
-    window.setTimeout(function () { syncAssetAssignmentCard(false); preloadDynamicAssets(); }, 250);
+    window.setTimeout(function () { syncAssetAssignmentCard(false); }, 250);
 
     document.addEventListener('click', function (event) {
         const button = event.target.closest('[data-open-rental-asset-modal], #rentalAssignAssetButton, .js-open-rental-asset-modal');

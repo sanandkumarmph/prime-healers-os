@@ -22,13 +22,49 @@ test('mobile rental create and edit submit the owning form and follow availabili
             DB_CONNECTION:'sqlite',DB_DATABASE:':memory:',DB_URL:'',CACHE_STORE:'array',SESSION_DRIVER:'array',QUEUE_CONNECTION:'sync',MAIL_MAILER:'array',PHOS_RENTAL_MOBILE_RENDER_DIR:path.join(folder,'rendered')},
     }); } catch (error) {throw new Error(error.stdout?.toString() || error.message);}
     const publicRoot=path.join(repo,'public');
-    let origin; const writes=[], errors=[];
-    const server=http.createServer((req,res)=>{
-        if(!['GET','HEAD'].includes(req.method)){writes.push(req.method);res.writeHead(405);res.end();return;}
+    let origin, stockScenario;
+    const writes=[], errors=[];
+    const server=http.createServer(async (req,res)=>{
         const url=new URL(req.url,origin);
+        if (stockScenario && req.method === 'POST' && url.pathname === '/rentals/rental-stock') {
+            const chunks = [];
+            for await (const chunk of req) chunks.push(chunk);
+            const body = Buffer.concat(chunks).toString('utf8');
+            const field = name => body.match(new RegExp('name="' + name + '"\\r\\n\\r\\n([^\\r\\n]*)'))?.[1] || '';
+            const asset = {
+                id: 901 + stockScenario.assets.length,
+                product_id: Number(field('product_id')),
+                warehouse_id: Number(field('warehouse_id')),
+                label: 'Test serialized oxygen cylinder',
+                serial_number: field('serial_number'),
+                barcode_value: '',
+                asset_status: 'available',
+                condition_status: 'good',
+                warehouse: 'Main',
+            };
+            stockScenario.assets.push(asset);
+            res.writeHead(201, {'Content-Type':'application/json'});
+            res.end(JSON.stringify({asset}));
+            return;
+        }
+        if (stockScenario && req.method === 'GET' && url.pathname === '/rentals/available-assets') {
+            const product = Number(url.searchParams.get('product_id'));
+            const warehouse = Number(url.searchParams.get('dispatch_warehouse_id'));
+            const assets = stockScenario.assets.filter(asset => asset.product_id === product
+                && (!warehouse || asset.warehouse_id === warehouse));
+            stockScenario.lookups.push({product, warehouse, ids: assets.map(asset => asset.id)});
+            res.writeHead(200, {'Content-Type':'application/json'});
+            res.end(JSON.stringify({data:assets}));
+            return;
+        }
+        if(!['GET','HEAD'].includes(req.method)){writes.push(req.method);res.writeHead(405);res.end();return;}
         if(/^\/fixture\/(create|edit)$/.test(url.pathname)){
             res.setHeader('Content-Type','text/html; charset=utf-8');
-            res.end(fs.readFileSync(path.join(folder,'rendered','rental-'+url.pathname.split('/').pop()+'.html'),'utf8').replaceAll('http://127.0.0.1:8000',origin));return;
+            const html = fs.readFileSync(path.join(folder,'rendered','rental-'+url.pathname.split('/').pop()+'.html'),'utf8');
+            const escapedOrigin = value => value.replaceAll('/', '\\/');
+            res.end(html.replaceAll('http://127.0.0.1:8000',origin)
+                .replaceAll(escapedOrigin('http://127.0.0.1:8000'), escapedOrigin(origin)));
+            return;
         }
         const file=path.resolve(publicRoot,'.'+decodeURIComponent(url.pathname));
         if(file.startsWith(publicRoot+path.sep)&&fs.existsSync(file)&&fs.statSync(file).isFile()){
@@ -177,6 +213,100 @@ test('mobile rental create and edit submit the owning form and follow availabili
                 const owningStep=await page.$eval('#end_date',e=>e.closest('[data-rental-wizard-step]').dataset.rentalWizardStep);
                 assert.equal(await page.$eval('[data-rental-wizard-tab].is-active',e=>e.dataset.rentalWizardTab),owningStep);
             } finally {await page.close();}
+        });
+        for (const width of [390,1440]) await t.test('assign freshly added rental stock at ' + width, async () => {
+            stockScenario = {assets: [], lookups: []};
+            const page = await browser.newPage();
+            const click = async (selector) => {
+                await page.$eval(selector, element => element.scrollIntoView({block:'center', behavior:'instant'}));
+                await page.click(selector);
+            };
+            const addStock = async (trigger, serial) => {
+                await click(trigger);
+                await page.waitForSelector('#rentalStockModal', {visible:true});
+                assert.equal(await page.$eval('#rental_stock_warehouse_id', field => field.value), '1');
+                await page.type('#rental_stock_serial_number', serial);
+                await click('#saveRentalStockButton');
+                await page.waitForSelector('#rentalStockModal', {hidden:true});
+            };
+            const primaryAssetIds = () => page.$eval('#rentalCreateForm', form => new FormData(form).getAll('asset_ids[]'));
+
+            try {
+                await page.setViewport({width, height:width < 768 ? 844 : 1000});
+                page.on('pageerror', error => errors.push(error.message));
+                await page.setRequestInterception(true);
+                page.on('request', req => req.url().startsWith(origin + '/') || req.url().startsWith('data:')
+                    ? req.continue() : req.respond({status:200, body:''}));
+                await page.goto(origin + '/fixture/create', {waitUntil:'networkidle0'});
+                let pageNavigations = 0;
+                page.on('framenavigated', frame => { if (frame === page.mainFrame()) pageNavigations++; });
+                await page.select('#city_id', '1');
+                await click(width <= 640 ? '#rentalMobileProgress [data-rental-mobile-step="product"]' : '#rentalDesktopProgress [data-rental-wizard-tab="product"]');
+                const product = await page.$eval('#product_id', field => [...field.options]
+                    .find(option => option.dataset.productName === 'Test serialized oxygen cylinder')?.value);
+                assert.ok(product);
+                await page.select('#product_id', product);
+                await page.select('#dispatch_warehouse_id', '1');
+                await page.$eval('#rental_amount', field => {
+                    field.value = '789';
+                    field.dispatchEvent(new Event('input', {bubbles:true}));
+                });
+
+                // Open the empty picker first so a previously loaded result cannot mask the regression.
+                await click('#rentalAssignAssetButton');
+                await page.waitForSelector('#dynamicRentalAssetModal[data-assets-loading="0"]');
+                assert.equal(await page.$eval('#dynamicRentalAssetModal', modal => modal.dataset.assetsError), '0');
+                assert.ok(stockScenario.lookups.some(lookup => lookup.product === Number(product) && lookup.warehouse === 1 && lookup.ids.length === 0));
+                assert.equal(await page.$$eval('[data-dynamic-asset-id]', rows => rows.length), 0);
+                await page.keyboard.press('Escape');
+                await addStock('#openRentalStockModal', 'NEW-PRIMARY-901');
+                assert.deepEqual(stockScenario.assets.map(asset => [asset.serial_number, asset.product_id, asset.warehouse_id]),
+                    [['NEW-PRIMARY-901', Number(product), 1]]);
+                await click('#rentalAssignAssetButton');
+                await page.waitForSelector('#dynamicRentalAssetModal[data-assets-loading="0"]');
+                assert.ok(stockScenario.lookups.some(lookup => lookup.product === Number(product) && lookup.warehouse === 1 && lookup.ids.includes(901)),
+                    'Expected a fresh picker lookup after stock save: ' + JSON.stringify(stockScenario.lookups));
+                await page.waitForSelector('[data-dynamic-asset-id="901"]', {visible:true, timeout:4000});
+                assert.match(await page.$eval('[data-dynamic-asset-id="901"]', row => row.textContent), /NEW-PRIMARY-901/);
+                assert.equal(await page.$eval('#dynamicRentalAssetModal', modal => {
+                    const viewport = document.documentElement.clientWidth;
+                    const dialog = modal.firstElementChild;
+                    const bounds = dialog.getBoundingClientRect();
+                    return bounds.left >= 0 && bounds.right <= viewport && dialog.scrollWidth <= dialog.clientWidth;
+                }), true);
+                await click('[data-dynamic-asset-id="901"]');
+                await click('[data-dynamic-asset-assign]');
+                assert.deepEqual(await primaryAssetIds(), ['901']);
+                assert.equal(await page.$eval('#assignmentLaunchSelected', count => count.textContent.trim()), '1 of 1');
+
+                await click('.rental-step-header [data-add-rental-item]');
+                await page.select('[data-rental-product-index="0"]', product);
+                await addStock('[data-rental-stock-item="0"]', 'NEW-ADDITIONAL-902');
+                const additionalDetails = '[data-rental-line="0"] .sale-item-detail';
+                if (await page.$eval(additionalDetails, details => details.hidden)) {
+                    await click('[data-toggle-rental-item="0"]');
+                }
+                const addedAsset = '[data-rental-asset-input="0"][value="902"]';
+                const assetLabel = '.rental-line-asset-option:has(' + addedAsset + ')';
+                assert.equal(stockScenario.assets.length, 2);
+                await page.waitForSelector(assetLabel, {visible:true, timeout:4000});
+                assert.match(await page.$eval(assetLabel, label => label.textContent), /NEW-ADDITIONAL-902/);
+                assert.equal(await page.$('[data-rental-asset-input="0"][value="901"]'), null);
+                if (!await page.$eval(addedAsset, input => input.checked)) {
+                    await click(assetLabel);
+                }
+                assert.deepEqual(await page.$eval('#rentalCreateForm', form => new FormData(form).getAll('rental_items[0][asset_ids][]')), ['902']);
+                assert.deepEqual(await primaryAssetIds(), ['901']);
+                assert.equal(await page.$eval('#rental_amount', field => Number(field.value)), 789);
+                assert.equal(pageNavigations, 0);
+                assert.deepEqual(stockScenario.assets.map(asset => [asset.serial_number, asset.product_id, asset.warehouse_id]),
+                    [['NEW-PRIMARY-901', Number(product), 1], ['NEW-ADDITIONAL-902', Number(product), 1]]);
+                assert.equal(await page.$eval('#rentalAssignAssetButton', button => Boolean(button.closest('.primary-rental-product-card'))), true);
+                assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+            } finally {
+                await page.close();
+                stockScenario = null;
+            }
         });
         assert.deepEqual(errors,[]);assert.deepEqual(writes,[]);
     } finally {if(browser)await browser.close();await new Promise(r=>server.close(r));}

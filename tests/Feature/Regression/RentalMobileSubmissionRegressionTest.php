@@ -23,9 +23,13 @@ class RentalMobileSubmissionRegressionTest extends TestCase
         Vendor::create(['organization_id' => $org->id, 'city_id' => $city->id, 'name' => 'Synthetic delivery vendor', 'is_active' => true]);
         $customer = Customer::create(['organization_id' => $org->id, 'name' => 'Synthetic rental customer',
             'phone' => '9876543210', 'city' => 'Bengaluru', 'state' => 'Karnataka', 'address' => 'Synthetic address']);
-        Product::create(['organization_id' => $org->id, 'name' => 'Synthetic untracked rental product',
+        $product = Product::create(['organization_id' => $org->id, 'name' => 'Synthetic untracked rental product',
             'product_type' => Product::TYPE_RENTABLE, 'stock_mode' => Product::STOCK_MODE_UNTRACKED,
             'available_quantity' => 10, 'total_quantity' => 10, 'price_per_day' => 100, 'rental_price' => 100]);
+        Product::create(['organization_id' => $org->id, 'name' => 'Test serialized oxygen cylinder',
+            'product_type' => Product::TYPE_RENTABLE, 'stock_mode' => Product::STOCK_MODE_TRACKED_RENTAL,
+            'available_quantity' => 0, 'total_quantity' => 0,
+            'price_per_day' => 125, 'rental_price' => 125]);
         $response = $this->get(route('rentals.create', ['customer_id' => $customer->id]))->assertOk();
         $response->assertSee('id="rentalCreateForm"', false)
             ->assertSee('id="rentalMobileSaveButton"', false)->assertSee('name="_token"', false);
@@ -34,7 +38,6 @@ class RentalMobileSubmissionRegressionTest extends TestCase
             file_put_contents($folder . '/rental-create.html', $response->getContent());
         }
         $this->assertDatabaseCount('rentals', 0);
-        $product = Product::firstOrFail();
         $rental = Rental::create(['organization_id' => $org->id, 'customer_id' => $customer->id,
             'product_id' => $product->id, 'customer_name' => $customer->name, 'phone' => $customer->phone,
             'quantity' => 1, 'start_date' => '2026-11-05', 'end_date' => '2026-11-10',
