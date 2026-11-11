@@ -7,427 +7,559 @@
 @section('content')
 @php
     $money = fn ($amount) => 'Rs. ' . number_format((float) $amount, 2);
+    $queryFor = fn (array $overrides = []) => array_filter(array_merge([
+        'search' => $search, 'status' => $status, 'city' => $city, 'partner_type' => $partnerType,
+    ], $overrides), fn ($value) => filled($value));
+    $filters = [
+        'All' => ['status' => '', 'partner_type' => ''],
+        'GST' => ['partner_type' => 'gst_registered'],
+        'General' => ['partner_type' => 'general'],
+        'Active' => ['status' => 'active'],
+        'Inactive' => ['status' => 'inactive'],
+    ];
+    $activeFilters = array_filter([
+        'search' => filled($search) ? 'Search: ' . $search : null,
+        'status' => filled($status) ? 'Status: ' . ucfirst($status) : null,
+        'city' => filled($city) ? 'City: ' . $city : null,
+        'partner_type' => filled($partnerType) ? ($partnerType === 'gst_registered' ? 'GST registered' : 'General') : null,
+    ]);
     $partnerRows = $businessPartners->getCollection();
     $inactivePartners = max(0, (int) $totalPartners - (int) $activePartners);
-    $topRentalPartners = $partnerRows->sortByDesc(fn ($partner) => (int) ($partner->rentals_count ?? 0))->take(5);
+    $activePercent = $totalPartners ? round(($activePartners / $totalPartners) * 100) : 0;
+    $topRentalPartners = $partnerRows->sortByDesc('rentals_count')->take(5);
     $recentPartners = $partnerRows->sortByDesc('updated_at')->take(4);
 @endphp
 
 <style>
-    .bp-page { display:grid; gap:12px; padding:4px 0 24px; max-width:1460px; margin:0 auto; color:#20364a; min-width:0; }
-    .bp-header { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; }
-    .bp-breadcrumb { display:none; }
-    .bp-title { margin:0; font-size:26px; line-height:1.08; letter-spacing:0; }
-    .bp-subtitle { margin:5px 0 0; color:#5b6b84; font-size:14px; }
-    .bp-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
-    .bp-btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:38px; padding:9px 13px; border:1px solid #cbd7ea; border-radius:12px; background:#fff; color:#243246; font-size:13px; font-weight:800; text-decoration:none; cursor:pointer; white-space:nowrap; }
-    .bp-btn-primary { border-color:#0f75bd; background:#0f75bd; color:#fff; box-shadow:none; }
-    .bp-btn-icon { width:36px; min-width:36px; padding:0; }
-    .bp-btn-icon svg { width:17px; height:17px; stroke:currentColor; }
-    .bp-card { background:#fff; border:1px solid #dce5f2; border-radius:15px; box-shadow:0 8px 22px rgba(15,23,42,.04); }
-    .bp-kpis { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:10px; }
-    .bp-kpi { display:flex; align-items:center; gap:9px; padding:10px 12px; min-height:58px; min-width:0; }
-    .bp-icon { display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:12px; background:#eef2ff; color:#4f46e5; font-size:11px; font-weight:900; flex:0 0 auto; }
-    .bp-icon.green { background:#dcfce7; color:#047857; }
-    .bp-icon.blue { background:#dbeafe; color:#1d4ed8; }
-    .bp-icon.amber { background:#fff7ed; color:#c2410c; }
-    .bp-icon.red { background:#fee2e2; color:#b91c1c; }
-    .bp-kpi > div { min-width:0; }
-    .bp-kpi-label { color:#5b6b84; font-size:11px; font-weight:800; }
-    .bp-kpi-value { margin-top:1px; color:#111827; font-size:clamp(17px,1.35vw,21px); font-weight:900; line-height:1.05; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
-    .bp-kpi-note { margin-top:3px; color:#64748b; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .bp-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(260px,280px); gap:12px; align-items:start; }
-    .bp-layout > main { min-width:0; overflow:hidden; }
-    .bp-filter-card { padding:0; overflow:hidden; }
-    .bp-filter-summary { display:flex; justify-content:flex-end; align-items:center; min-height:46px; padding:7px 10px; cursor:pointer; list-style:none; }
-    .bp-filter-summary::-webkit-details-marker { display:none; }
-    .bp-filter-toggle { width:38px; height:38px; border:1px solid #cbd7ea; border-radius:12px; display:inline-flex; align-items:center; justify-content:center; color:#4338ca; background:#fff; }
-    .bp-filter-toggle svg { width:18px; height:18px; stroke:currentColor; }
-    .bp-filter-body { padding:0 10px 10px; }
-    .bp-filter-row { display:grid; grid-template-columns:minmax(220px,1fr) minmax(135px,.6fr) minmax(120px,.5fr) minmax(130px,.55fr) auto auto; gap:9px; align-items:end; }
-    .bp-field label { display:block; color:#475569; font-size:11px; font-weight:900; letter-spacing:.04em; text-transform:uppercase; margin-bottom:6px; }
-    .bp-field input, .bp-field select { width:100%; height:40px; box-sizing:border-box; border:1px solid #cbd7ea; border-radius:12px; padding:0 12px; color:#111827; background:#fff; font-size:14px; }
-    .bp-chips { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
-    .bp-chip { display:inline-flex; align-items:center; gap:6px; min-height:30px; padding:6px 11px; border:1px solid #d7e0ee; border-radius:999px; background:#fff; color:#34445b; font-size:12px; font-weight:800; text-decoration:none; }
-    .bp-chip.active { background:#eef2ff; border-color:#a5b4fc; color:#4338ca; }
-    .bp-table-card { overflow:hidden; }
-    .bp-table-top { display:flex; justify-content:space-between; gap:12px; align-items:center; padding:14px 16px; border-bottom:1px solid #e7edf6; }
-    .bp-table-title { margin:0; font-size:18px; }
-    .bp-table-sub { margin-top:3px; color:#64748b; font-size:12px; }
-    .bp-table-wrap { overflow:auto; }
-    .bp-table { width:100%; min-width:880px; border-collapse:separate; border-spacing:0; }
-    .bp-table th { padding:10px 12px; background:#f8fafc; border-bottom:1px solid #e4ebf5; color:#64748b; font-size:11px; letter-spacing:.05em; text-transform:uppercase; text-align:left; }
-    .bp-table td { padding:12px; border-bottom:1px solid #edf2f8; vertical-align:top; font-size:13px; }
-    .bp-table td:nth-child(4) { min-width:118px; }
-    .bp-table td:nth-child(4) > .bp-muted { white-space:nowrap; }
-    .bp-partner { display:flex; gap:7px; align-items:flex-start; min-width:210px; }
-    .bp-avatar { width:30px; height:30px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; background:#edf5fc; color:#0b5e99; font-size:11px; font-weight:600; border:1px solid #d9e5ee; }
-    .bp-name { font-weight:600; color:#20364a; font-size:12px; line-height:1.35; }
-    .bp-muted { color:#627589; font-size:11px; line-height:1.35; }
-    .bp-link { color:#0b5e99; font-weight:500; text-decoration:none; }
-    .bp-status { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:5px 9px; border-radius:999px; font-size:11px; font-weight:900; line-height:1; text-transform:uppercase; white-space:nowrap; word-break:normal; overflow-wrap:normal; writing-mode:horizontal-tb; min-width:max-content; flex:0 0 auto; }
-    .bp-status.active { background:#dcfce7; color:#166534; }
-    .bp-status.inactive { background:#e2e8f0; color:#475569; }
-    .bp-type { display:inline-flex; padding:3px 6px; border-radius:5px; background:#edf5fc; color:#0b5e99; font-size:10px; font-weight:600; }
-    .bp-money { color:#9e1423; font-weight:600; font-variant-numeric:tabular-nums; }
-    .bp-actions-cell { display:flex; gap:7px; align-items:center; }
-    .bp-more { position:relative; }
-    .bp-more summary { list-style:none; }
-    .bp-more summary::-webkit-details-marker { display:none; }
-    .bp-menu { position:absolute; right:0; top:42px; z-index:20; min-width:170px; padding:8px; border:1px solid #dbe4f1; border-radius:14px; background:#fff; box-shadow:0 18px 36px rgba(15,23,42,.16); display:grid; gap:6px; }
-    .bp-menu a, .bp-menu button { display:flex; width:100%; box-sizing:border-box; padding:9px 10px; border:0; border-radius:10px; background:#f8fafc; color:#243246; text-decoration:none; font-size:13px; font-weight:800; text-align:left; cursor:pointer; }
-    .bp-clients { margin-top:3px; }
-    .bp-clients summary { cursor:pointer; color:#2563eb; font-weight:900; font-size:12px; list-style:none; }
-    .bp-clients summary::-webkit-details-marker { display:none; }
-    .bp-table .bp-clients summary { white-space:nowrap; font-size:11px; font-weight:600; color:#0b5e99; }
-    .bp-client-grid { display:grid; gap:8px; margin-top:9px; }
-    .bp-client { display:flex; justify-content:space-between; gap:10px; padding:9px 10px; border:1px solid #dce5f2; border-radius:12px; background:#f8fafc; }
-    .bp-side { display:grid; gap:10px; position:sticky; top:82px; min-width:0; width:100%; }
-    .bp-side-card { padding:12px; min-width:0; }
-    .bp-side-title { margin:0 0 8px; font-size:15px; }
-    .bp-health { display:grid; grid-template-columns:76px 1fr; gap:10px; align-items:center; }
-    .bp-ring { width:68px; height:68px; border-radius:50%; background:conic-gradient(#22c55e var(--pct), #e2e8f0 0); display:grid; place-items:center; }
-    .bp-ring-inner { width:50px; height:50px; border-radius:50%; background:#fff; display:grid; place-items:center; font-size:15px; font-weight:900; }
-    .bp-side-row { display:flex; justify-content:space-between; gap:10px; padding:7px 0; border-bottom:1px solid #eef2f7; color:#475569; font-size:12px; }
-    .bp-side-row strong { color:#111827; }
-    .bp-mobile-list { display:none; }
-    .bp-mobile-card { padding:10px; display:grid; gap:7px; }
-    .bp-mobile-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
-    .bp-mobile-head .bp-partner { min-width:0; }
-    .bp-mobile-head .bp-status { margin-left:auto; align-self:flex-start; }
-    .bp-mobile-metrics { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px; }
-    .bp-mini { padding:9px; border:1px solid #e1e8f3; border-radius:12px; background:#f8fafc; }
-    .bp-mini span { display:block; color:#64748b; font-size:11px; font-weight:800; text-transform:uppercase; }
-    .bp-mini strong { display:block; margin-top:2px; font-size:15px; }
-    .bp-filter-actions { display:flex; gap:8px; flex-wrap:wrap; grid-column:1 / -1; }
-    .bp-icon svg { width:18px; height:18px; stroke:currentColor; }
-    @media (max-width: 1320px) {
-        .bp-layout { grid-template-columns:1fr; }
-        .bp-side { position:static; grid-template-columns:repeat(3, minmax(0,1fr)); }
-        .bp-kpis { grid-template-columns:repeat(3, minmax(0,1fr)); }
+    .bp-directory {
+        --bp-ink: #172944;
+        --bp-muted: #52657f;
+        --bp-line: #dce5ef;
+        --bp-soft: #f4f8fc;
+        --bp-blue: #174f8e;
+        display: grid;
+        gap: 10px;
+        width: 100%;
+        max-width: 1460px;
+        min-width: 0;
+        margin-inline: auto;
+        color: var(--bp-ink);
     }
-    @media (max-width: 900px) {
-        .bp-header { display:grid; }
-        .bp-actions { justify-content:flex-start; }
-        .bp-filter-row { grid-template-columns:1fr 1fr; }
-        .bp-side { grid-template-columns:1fr; }
-        .bp-kpis { grid-template-columns:repeat(2, minmax(0,1fr)); }
-        .bp-table-wrap { display:none; }
-        .bp-mobile-list { display:grid; gap:10px; padding:12px; }
+    .bp-directory .bp-header {
+        display: grid;
+        grid-template: "title search actions" / auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px 14px;
     }
-    @media (max-width: 560px) {
-        .bp-page { padding:12px 10px 92px; gap:12px; }
-        .bp-title { font-size:24px; }
-        .bp-subtitle { font-size:13px; }
-        .bp-kpis { grid-template-columns:1fr 1fr; gap:8px; }
-        .bp-kpi { padding:11px; min-height:64px; }
-        .bp-kpi-value { font-size:20px; }
-        .bp-icon { width:36px; height:36px; border-radius:12px; }
-        .bp-filter-row { grid-template-columns:1fr; }
-        .bp-mobile-metrics { grid-template-columns:1fr 1fr; }
-        .bp-btn { min-height:36px; padding:8px 11px; }
+    .bp-header h1 { grid-area: title; }
+    .bp-directory :is(.bp-search, .bp-header-actions, .bp-filter-actions, .bp-quick-filters, .bp-filter-chips) {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        min-width: 0;
+    }
+    .bp-search { grid-area: search; }
+    .bp-search label { flex: 1; min-width: 0; }
+    .bp-header-actions { grid-area: actions; justify-content: flex-end; }
+    .bp-directory :is(.bp-search input, .bp-filter-form input, .bp-filter-form select) {
+        width: 100%;
+        min-width: 0;
+        min-height: 38px;
+        padding: 7px 10px;
+        border: 1px solid #becde0;
+        border-radius: 8px;
+        background: #fff;
+        color: var(--bp-ink);
+        font-size: 13px;
+    }
+    .bp-directory .bp-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        min-height: 36px;
+        padding: 7px 10px;
+        border: 1px solid #c7d6e6;
+        border-radius: 8px;
+        background: #fff;
+        color: var(--bp-blue);
+        font-size: 13px;
+        font-weight: 650;
+        line-height: 1.2;
+        text-decoration: none;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    .bp-directory .bp-btn:hover { background: var(--bp-soft); }
+    .bp-directory .bp-btn-primary { border-color: #0f75bd; background: #0f75bd; color: #fff; }
+    .bp-directory .bp-btn-primary:hover { background: #0b5e99; }
+    .bp-directory :focus-visible { outline: 2px solid #2361ad; outline-offset: 2px; }
+    .bp-header-actions .phos-list-filter-toggle { display: flex; gap: 6px; width: auto; }
+    .bp-header-actions .phos-list-filter-toggle::after { content: "Filters"; }
+    .bp-add-short { display: none; }
+    .bp-filter-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; }
+    .bp-filter-form > label { display: grid; gap: 4px; font-size: 12px; font-weight: 650; }
+    .bp-filter-actions { grid-column: 1 / -1; }
+    .bp-directory :is(.bp-summary, .bp-list, .bp-insights) {
+        min-width: 0;
+        border: 1px solid var(--bp-line);
+        border-radius: 12px;
+        background: #fff;
+    }
+    .bp-directory .bp-summary {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        margin: 0;
+        background: var(--bp-soft);
+    }
+    .bp-summary > div { min-width: 0; padding: 8px 11px; }
+    .bp-summary > div + div { border-inline-start: 1px solid var(--bp-line); }
+    .bp-summary dt { color: var(--bp-muted); font-size: 11px; font-weight: 650; }
+    .bp-summary dd { margin: 1px 0 0; font-size: 15px; font-weight: 750; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+    .bp-summary small { margin-inline-start: 5px; color: var(--bp-muted); font-size: 11px; font-weight: 500; }
+    .bp-list-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 7px 12px; padding: 8px 11px; }
+    .bp-result-count { color: var(--bp-ink); font-size: 13px; }
+    .bp-quick-filters, .bp-filter-chips { flex-wrap: wrap; }
+    .bp-directory :is(.bp-quick-filters, .bp-filter-chips) a {
+        padding: 3px 6px;
+        border-radius: 6px;
+        color: var(--bp-blue);
+        font-size: 12px;
+        font-weight: 650;
+        text-decoration: none;
+    }
+    .bp-quick-filters a.is-active, .bp-filter-chips a { background: #eaf3fc; }
+    .bp-directory :is(.bp-quick-filters, .bp-filter-chips) a:hover { text-decoration: underline; }
+    .bp-directory .bp-filter-chips { flex-basis: 100%; }
+    .bp-table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+    body.phos-list-page .bp-directory .bp-table :is(th, td) {
+        padding: 8px 10px !important;
+        border-top: 1px solid var(--bp-line);
+        text-align: left;
+        vertical-align: top;
+    }
+    .bp-table thead th { background: var(--bp-soft); }
+    .bp-table .bp-location-col { width: 16%; }
+    .bp-table .bp-activity-col { width: 23%; }
+    .bp-table .bp-billing-col { width: 15%; }
+    .bp-table .bp-updated-col { width: 12%; }
+    .bp-table .bp-actions-col { width: 64px; }
+    .bp-table td { overflow-wrap: anywhere; }
+    .bp-table tbody tr:hover { background: #f7fbff; }
+    .bp-identity { display: flex; align-items: flex-start; gap: 8px; }
+    .bp-avatar {
+        display: grid;
+        place-items: center;
+        flex: 0 0 28px;
+        height: 28px;
+        border-radius: 8px;
+        background: #eaf3fc;
+        color: var(--bp-blue);
+        font-size: 11px;
+        font-weight: 750;
+    }
+    .bp-record-name { display: block; color: var(--bp-blue); font-size: 13px; font-weight: 750; text-decoration: none; }
+    .bp-directory .bp-link { color: var(--bp-blue); font-weight: 650; text-decoration: none; }
+    .bp-directory :is(.bp-record-name, .bp-link):hover { text-decoration: underline; }
+    .bp-meta { color: var(--bp-muted); font-size: 11px; }
+    .bp-identity .bp-meta { display: block; }
+    .bp-labels { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+    .bp-badge { display: inline-block; padding: 1px 5px; border-radius: 5px; background: #eaf3fc; color: var(--bp-blue); font-size: 10px; white-space: nowrap; }
+    .bp-badge.is-active { background: #ecf5ef; color: #206043; }
+    .bp-badge.is-inactive { background: #f1f4f8; color: var(--bp-muted); }
+    .bp-clients { margin-top: 4px; }
+    .bp-clients summary { width: fit-content; color: var(--bp-blue); font-size: 11px; font-weight: 650; cursor: pointer; }
+    .bp-client-preview { display: grid; gap: 5px; margin-top: 6px; }
+    .bp-client {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 4px 6px;
+        padding: 6px;
+        border-radius: 6px;
+        background: var(--bp-soft);
+        font-size: 11px;
+    }
+    .bp-client .bp-meta { display: block; }
+    .bp-money { font-size: 12px; font-weight: 750; font-variant-numeric: tabular-nums; }
+    .bp-money.is-due { color: #a52230; }
+    .bp-more { position: relative; margin-inline-start: auto; width: fit-content; }
+    .bp-more summary {
+        display: grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        border: 1px solid var(--bp-line);
+        border-radius: 7px;
+        background: #fff;
+        color: var(--bp-blue);
+        font-size: 17px;
+        line-height: 1;
+        list-style: none;
+        cursor: pointer;
+    }
+    .bp-more summary::-webkit-details-marker { display: none; }
+    .bp-more[open] summary, .bp-more summary:hover { background: #eaf3fc; }
+    .bp-table tr:has(.bp-more[open]) { position: relative; z-index: 60; }
+    .bp-menu {
+        position: absolute;
+        z-index: 1;
+        inset-inline-end: 0;
+        top: calc(100% + 4px);
+        display: grid;
+        gap: 2px;
+        width: 160px;
+        padding: 5px;
+        border: 1px solid var(--bp-line);
+        border-radius: 9px;
+        background: #fff;
+        box-shadow: 0 10px 24px rgb(23 41 68 / 15%);
+    }
+    .bp-more.opens-up .bp-menu { top: auto; bottom: calc(100% + 4px); }
+    .bp-menu a {
+        display: flex;
+        align-items: center;
+        min-height: 34px;
+        padding: 6px 8px;
+        border-radius: 6px;
+        color: var(--bp-ink);
+        font-size: 12px;
+        text-decoration: none;
+    }
+    .bp-menu a:hover { background: var(--bp-soft); }
+    .bp-pagination { padding: 9px 11px; border-top: 1px solid var(--bp-line); }
+    .bp-empty { padding: 12px 8px; color: var(--bp-muted); text-align: center; }
+    .bp-insights > summary { padding: 10px 12px; color: var(--bp-blue); font-size: 13px; font-weight: 650; cursor: pointer; }
+    .bp-insight-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 0 12px 10px; gap: 12px; }
+    .bp-insight-grid h2 { margin: 0; font-size: 13px; font-weight: 750; }
+    .bp-insight-grid ul { list-style: none; margin: 5px 0 0; padding: 0; }
+    .bp-insight-grid li {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 6px;
+        padding: 4px 0;
+        border-top: 1px solid var(--bp-line);
+        font-size: 11px;
+        overflow-wrap: anywhere;
+    }
+    .bp-insight-grid li strong { flex: none; }
+    .bp-insight-help { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 0 12px; padding: 7px 0; border-top: 1px solid var(--bp-line); }
+    .bp-insight-help p { margin: 0; font-size: 11px; color: var(--bp-muted); }
+    @media (max-width: 1080px) {
+        .bp-directory .bp-header { grid-template: "title actions" "search search" / minmax(0, 1fr) auto; }
+    }
+    @media (max-width: 940px) {
+        .bp-directory { gap: 8px; }
+        .bp-table, .bp-table tbody { display: block; }
+        .bp-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+        .bp-table .bp-row {
+            display: grid;
+            grid-template: "identity identity actions" "location updated updated" "activity billing billing"
+                / minmax(0, 1.6fr) minmax(0, 1fr) auto;
+            align-items: start;
+            gap: 7px 12px;
+            padding: 9px 11px;
+            border-top: 1px solid var(--bp-line);
+        }
+        body.phos-list-page .bp-directory .bp-table .bp-row td { width: auto; min-width: 0; padding: 0 !important; border: 0; }
+        .bp-identity-col { grid-area: identity; }
+        .bp-location-col { grid-area: location; }
+        .bp-activity-col { grid-area: activity; }
+        .bp-billing-col { grid-area: billing; }
+        .bp-updated-col { grid-area: updated; }
+        .bp-actions-col { grid-area: actions; }
+        .bp-more summary { width: 38px; height: 38px; }
+    }
+    @media (max-width: 640px) {
+        .bp-directory .bp-header { gap: 8px; }
+        .bp-header-actions .phos-list-filter-toggle::after { content: none; }
+        .bp-add-full { display: none; }
+        .bp-add-short { display: inline; }
+        .bp-directory .bp-summary { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+        .bp-summary > div { grid-column: span 2; padding: 5px 8px; }
+        .bp-summary > div:nth-child(4) { border-inline-start: 0; }
+        .bp-summary > div:nth-child(n+4) { grid-column: span 3; border-top: 1px solid var(--bp-line); }
+        .bp-summary dd { font-size: 13px; }
+        .bp-summary small { margin-inline-start: 3px; }
+        .bp-insight-grid { grid-template-columns: 1fr; }
     }
 </style>
 
-<div class="bp-page" data-phos-compact-page="business-partners">
+<div class="bp-directory" data-phos-compact-page="business-partners" data-business-partner-directory>
     <header class="bp-header phos-page-header">
-        <div>
-            <div class="bp-breadcrumb">Home / Business Partners</div>
-            <h1 class="bp-title">Business Partners</h1>
-            <p class="bp-subtitle">Manage tie-up partners and their actual clients.</p>
-        </div>
-        <div class="bp-actions">
+        <h1>Business Partners</h1>
+        <form method="GET" action="{{ route('business-partners.index') }}" class="bp-search" data-business-partner-search role="search">
+            @foreach($queryFor(['search' => '']) as $key => $value)
+                <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+            @endforeach
+            <label>
+                <span class="sr-only">Search by partner name, contact, phone, email, city, or state</span>
+                <input type="search" name="search" value="{{ $search }}" placeholder="Name, contact or city">
+            </label>
+            <button type="submit" class="bp-btn">Search</button>
+        </form>
+        <div class="bp-header-actions">
             @if(Route::has('business-partners.export'))
                 <a href="{{ route('business-partners.export', request()->query()) }}" class="bp-btn" title="Export partners">Export</a>
             @endif
             @if(Route::has('import.index'))
                 <a href="{{ route('import.index') }}" class="bp-btn" title="Import partners">Import Partners</a>
             @endif
-            <x-phos-list-filter id="business-partners-list-filters" label="Filter business partners" :active="filled($search) || filled($partnerType) || filled($status) || filled($city)">
-                    <div class="bp-filter-fields">
-                        <form method="GET" class="bp-filter-row filter-grid">
-                            <div class="bp-field">
-                                <label for="bp-search">Search</label>
-                                <input id="bp-search" type="search" name="search" value="{{ $search }}" placeholder="Partner name, contact, phone, email, city">
-                            </div>
-                            <div class="bp-field">
-                                <label for="bp-type">Partner Type</label>
-                                <select id="bp-type" name="partner_type">
-                                    <option value="">All types</option>
-                                    <option value="gst_registered" {{ $partnerType === 'gst_registered' ? 'selected' : '' }}>GST registered</option>
-                                    <option value="general" {{ $partnerType === 'general' ? 'selected' : '' }}>General</option>
-                                </select>
-                            </div>
-                            <div class="bp-field">
-                                <label for="bp-status">Status</label>
-                                <select id="bp-status" name="status">
-                                    <option value="">All</option>
-                                    <option value="active" {{ $status === 'active' ? 'selected' : '' }}>Active</option>
-                                    <option value="inactive" {{ $status === 'inactive' ? 'selected' : '' }}>Inactive</option>
-                                </select>
-                            </div>
-                            <div class="bp-field">
-                                <label for="bp-city">City</label>
-                                <select id="bp-city" name="city">
-                                    <option value="">All cities</option>
-                                    @foreach($cityOptions as $cityOption)
-                                        <option value="{{ $cityOption }}" {{ $city === $cityOption ? 'selected' : '' }}>{{ $cityOption }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            <div class="bp-filter-actions">
-                                <button type="submit" class="bp-btn bp-btn-primary">Apply</button>
-                                <a href="{{ route('business-partners.index') }}" class="bp-btn">Clear</a>
-                            </div>
-                        </form>
-                        <div class="bp-chips" aria-label="Quick partner filters">
-                            <a class="bp-chip {{ $status === '' && $partnerType === '' ? 'active' : '' }}" href="{{ route('business-partners.index', array_filter(['search' => $search, 'city' => $city])) }}">All</a>
-                            <a class="bp-chip {{ $partnerType === 'gst_registered' ? 'active' : '' }}" href="{{ route('business-partners.index', array_filter(['search' => $search, 'city' => $city, 'status' => $status, 'partner_type' => 'gst_registered'])) }}">GST</a>
-                            <a class="bp-chip {{ $partnerType === 'general' ? 'active' : '' }}" href="{{ route('business-partners.index', array_filter(['search' => $search, 'city' => $city, 'status' => $status, 'partner_type' => 'general'])) }}">General</a>
-                            <a class="bp-chip {{ $status === 'active' ? 'active' : '' }}" href="{{ route('business-partners.index', array_filter(['search' => $search, 'city' => $city, 'partner_type' => $partnerType, 'status' => 'active'])) }}">Active</a>
-                            <a class="bp-chip {{ $status === 'inactive' ? 'active' : '' }}" href="{{ route('business-partners.index', array_filter(['search' => $search, 'city' => $city, 'partner_type' => $partnerType, 'status' => 'inactive'])) }}">Inactive</a>
-                        </div>
+            <x-phos-list-filter id="business-partners-list-filters" label="Filter business partners" :active="$activeFilters !== []">
+                <form method="GET" action="{{ route('business-partners.index') }}" class="bp-filter-form">
+                    <label for="bp-search">Search
+                        <input id="bp-search" type="search" name="search" value="{{ $search }}">
+                    </label>
+                    <label for="bp-type">Partner type
+                        <select id="bp-type" name="partner_type">
+                            <option value="">All types</option>
+                            <option value="gst_registered" @selected($partnerType === 'gst_registered')>GST registered</option>
+                            <option value="general" @selected($partnerType === 'general')>General</option>
+                        </select>
+                    </label>
+                    <label for="bp-status">Status
+                        <select id="bp-status" name="status">
+                            <option value="">All statuses</option>
+                            <option value="active" @selected($status === 'active')>Active</option>
+                            <option value="inactive" @selected($status === 'inactive')>Inactive</option>
+                        </select>
+                    </label>
+                    <label for="bp-city">City
+                        <select id="bp-city" name="city">
+                            <option value="">All cities</option>
+                            @foreach($cityOptions as $cityOption)
+                                <option value="{{ $cityOption }}" @selected($city === $cityOption)>{{ $cityOption }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                    <div class="bp-filter-actions">
+                        <button type="submit" class="bp-btn bp-btn-primary">Apply filters</button>
+                        <a href="{{ route('business-partners.index') }}" class="bp-btn">Clear</a>
                     </div>
+                </form>
             </x-phos-list-filter>
             @can('create', App\Models\BusinessPartner::class)
-                <a href="{{ route('business-partners.create') }}" class="bp-btn bp-btn-primary">+ Add Partner</a>
+                <a href="{{ route('business-partners.create') }}" class="bp-btn bp-btn-primary" aria-label="Add Partner"><span class="bp-add-full">Add Partner</span><span class="bp-add-short" aria-hidden="true">Add</span></a>
             @endcan
         </div>
     </header>
 
-    <section class="bp-kpis" aria-label="Business partner summary">
-        <div class="bp-card bp-kpi"><span class="bp-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M22 21v-2a4 4 0 0 0-3-3.9"/><circle cx="9" cy="7" r="4"/><path d="M16 3.1a4 4 0 0 1 0 7.8"/></svg></span><div><div class="bp-kpi-label">Partners</div><div class="bp-kpi-value">{{ $totalPartners }}</div><div class="bp-kpi-note">{{ $activePartners }} active</div></div></div>
-        <div class="bp-card bp-kpi"><span class="bp-icon green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a6 6 0 0 1 12 0v2m1-9 2 2 4-4"/></svg></span><div><div class="bp-kpi-label">Actual Clients</div><div class="bp-kpi-value">{{ $totalClients }}</div><div class="bp-kpi-note">{{ $activeClients }} active</div></div></div>
-        <div class="bp-card bp-kpi"><span class="bp-icon blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 11h18m-13 5h2m4 0h2"/></svg></span><div><div class="bp-kpi-label">Active Rentals</div><div class="bp-kpi-value">{{ $totalRentals }}</div><div class="bp-kpi-note">Linked rentals</div></div></div>
-        <div class="bp-card bp-kpi"><span class="bp-icon amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 9h20m-6 5h3m-13 0h3"/></svg></span><div><div class="bp-kpi-label">Outstanding</div><div class="bp-kpi-value">{{ $money($totalOutstandingAmount) }}</div><div class="bp-kpi-note">Linked invoice balance</div></div></div>
-        <div class="bp-card bp-kpi"><span class="bp-icon red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6V3Zm9 0v5h4M9 12h7m-7 4h7"/></svg></span><div><div class="bp-kpi-label">Partner Invoices</div><div class="bp-kpi-value">{{ $totalPartnerInvoices }}</div><div class="bp-kpi-note">Linked invoices</div></div></div>
-    </section>
+    <dl class="bp-summary" aria-label="Business partner summary" data-business-partner-summary>
+        <div><dt>Partners</dt><dd>{{ $totalPartners }} <small>{{ $activePartners }} active</small></dd></div>
+        <div><dt>Actual clients</dt><dd>{{ $totalClients }} <small>{{ $activeClients }} active</small></dd></div>
+        <div><dt>Linked rentals</dt><dd>{{ $totalRentals }}</dd></div>
+        <div><dt>Outstanding balance</dt><dd>{{ $money($totalOutstandingAmount) }}</dd></div>
+        <div><dt>Partner invoices</dt><dd>{{ $totalPartnerInvoices }}</dd></div>
+    </dl>
 
-    <div class="bp-layout">
-        <main style="display:grid;gap:12px;min-width:0;">
-            <section class="bp-card bp-table-card">
-                <div class="bp-table-top">
-                    <div>
-                        <h2 class="bp-table-title">Partner Operations</h2>
-                        <div class="bp-table-sub">{{ $businessPartners->total() }} partner{{ $businessPartners->total() === 1 ? '' : 's' }} matched</div>
-                    </div>
-                    <span class="bp-chip active">{{ $businessPartners->count() }} shown</span>
+    <section class="bp-list" aria-labelledby="bp-result-count">
+        <div class="bp-list-toolbar">
+            <strong class="bp-result-count" id="bp-result-count">
+                @if($businessPartners->count())
+                    {{ $businessPartners->firstItem() }}–{{ $businessPartners->lastItem() }} of {{ $businessPartners->total() }} partners
+                @else
+                    {{ $businessPartners->total() }} partners
+                @endif
+            </strong>
+            <nav class="bp-quick-filters" aria-label="Quick partner filters">
+                @foreach($filters as $label => $values)
+                    @php
+                        $current = collect($values)->every(fn ($value, $key) => ($key === 'status' ? $status : $partnerType) === $value);
+                    @endphp
+                    <a href="{{ route('business-partners.index', $queryFor($values)) }}" @if($current) class="is-active" aria-label="{{ $label }}, selected" @endif>{{ $label }}</a>
+                @endforeach
+            </nav>
+            @if($activeFilters)
+                <div class="bp-filter-chips" aria-label="Active filters">
+                    @foreach($activeFilters as $key => $label)
+                        <a href="{{ route('business-partners.index', $queryFor([$key => ''])) }}" aria-label="Remove {{ $label }}">{{ $label }} <span aria-hidden="true">×</span></a>
+                    @endforeach
+                    <a href="{{ route('business-partners.index') }}">Clear all</a>
                 </div>
+            @endif
+        </div>
 
-                <div class="bp-table-wrap">
-                    <table class="bp-table">
-                        <thead>
-                            <tr>
-                                <th>Partner Details</th>
-                                <th>Type</th>
-                                <th>Location</th>
-                                <th>Clients & Rentals</th>
-                                <th>Outstanding</th>
-                                <th>Status</th>
-                                <th>Last Activity</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse($businessPartners as $partner)
-                                @php
-                                    $initials = collect(explode(' ', $partner->displayName()))->filter()->map(fn ($part) => mb_substr($part, 0, 1))->take(2)->implode('') ?: 'BP';
-                                    $clientsPreview = $partner->partnerClients->take(3);
-                                    $statusClass = $partner->status === 'inactive' ? 'inactive' : 'active';
-                                    $typeLabel = $partner->gst_registered ? 'GST Partner' : 'General';
-                                @endphp
-                                <tr>
-                                    <td>
-                                        <div class="bp-partner">
-                                            <span class="bp-avatar">{{ $initials }}</span>
-                                            <div>
-                                                <div class="bp-name">{{ $partner->displayName() }}</div>
-                                                <div class="bp-muted">{{ $partner->contact_person ?: 'No contact person' }}</div>
-                                                <div class="bp-muted">{{ $partner->phone ?: 'No phone' }} @if($partner->email) <span aria-hidden="true">&middot;</span> <a class="bp-link" href="mailto:{{ $partner->email }}" title="Email {{ $partner->email }}">Email</a> @endif</div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td><span class="bp-type">{{ $typeLabel }}</span></td>
-                                    <td>
-                                        <strong>{{ collect([$partner->city, $partner->state])->filter()->implode(', ') ?: 'Not set' }}</strong>
-                                        <div class="bp-muted">{{ $partner->pincode ?: 'No pincode' }}</div>
-                                    </td>
-                                    <td>
-                                        <strong>{{ $partner->partner_clients_count }} client{{ $partner->partner_clients_count === 1 ? '' : 's' }}</strong>
-                                        <div class="bp-muted">{{ $partner->rentals_count }} rentals <span aria-hidden="true">&middot;</span> {{ $partner->sales_count }} sales</div>
-                                        <details class="bp-clients">
-                                            <summary>Actual clients</summary>
-                                            <div class="bp-client-grid">
-                                                @forelse($clientsPreview as $client)
-                                                    <div class="bp-client">
-                                                        <div>
-                                                            <strong>{{ $client->displayName() }}</strong>
-                                                            <div class="bp-muted">{{ $client->primaryPhone() ?: 'No phone' }}</div>
-                                                        </div>
-                                                        <span class="bp-status {{ $client->status === 'inactive' ? 'inactive' : 'active' }}">{{ ucfirst($client->status ?: 'active') }}</span>
-                                                    </div>
-                                                @empty
-                                                    <div class="bp-muted">No actual clients linked.</div>
-                                                @endforelse
-                                                @if($partner->partner_clients_count > $clientsPreview->count())
-                                                    <a class="bp-link" href="{{ route('business-partners.show', $partner) }}">View all {{ $partner->partner_clients_count }}</a>
-                                                @endif
-                                            </div>
-                                        </details>
-                                    </td>
-                                    <td>
-                                        <div class="bp-money">{{ $money($partner->outstanding_amount ?? 0) }}</div>
-                                        <div class="bp-muted">{{ $partner->linked_invoices_count }} invoice{{ (int) $partner->linked_invoices_count === 1 ? '' : 's' }}</div>
-                                        @if((int) $partner->linked_invoices_count > 0)
-                                            <a class="bp-link" href="{{ route('business-partners.show', $partner) }}">View invoices</a>
+        <table class="bp-table" role="table" aria-label="Business partner list">
+            <thead role="rowgroup">
+                <tr role="row">
+                    <th class="bp-identity-col" role="columnheader" scope="col">Partner &amp; contact</th>
+                    <th class="bp-location-col" role="columnheader" scope="col">Location</th>
+                    <th class="bp-activity-col" role="columnheader" scope="col">Clients &amp; activity</th>
+                    <th class="bp-billing-col" role="columnheader" scope="col">Outstanding</th>
+                    <th class="bp-updated-col" role="columnheader" scope="col">Last activity</th>
+                    <th class="bp-actions-col" role="columnheader" scope="col">Actions</th>
+                </tr>
+            </thead>
+            <tbody role="rowgroup">
+                @forelse($businessPartners as $partner)
+                    @php
+                        $partnerName = $partner->displayName();
+                        $partnerUrl = route('business-partners.show', $partner);
+                        $initials = collect(preg_split('/\s+/', trim($partnerName)))->filter()->take(2)
+                            ->map(fn ($part) => mb_strtoupper(mb_substr($part, 0, 1)))->implode('') ?: 'BP';
+                        $clientsPreview = $partner->partnerClients->take(3);
+                    @endphp
+                    <tr class="bp-row" role="row" data-business-partner-row>
+                        <td class="bp-identity-col" role="cell">
+                            <div class="bp-identity">
+                                <span class="bp-avatar" aria-hidden="true">{{ $initials }}</span>
+                                <div>
+                                    <a href="{{ $partnerUrl }}" class="bp-record-name" data-ph-action="view">{{ $partnerName }}</a>
+                                    @if($partner->contact_person)<span class="bp-meta">{{ $partner->contact_person }}</span>@endif
+                                    <span class="bp-meta">
+                                        {{ $partner->phone ?: 'No phone' }}
+                                        @if($partner->email)
+                                            <span aria-hidden="true">&middot;</span>
+                                            <a href="mailto:{{ $partner->email }}" class="bp-link" title="{{ $partner->email }}">Email</a>
                                         @endif
-                                    </td>
-                                    <td><span class="bp-status {{ $statusClass }}">{{ ucfirst($partner->status ?: 'active') }}</span></td>
-                                    <td>
-                                        <strong>Updated</strong>
-                                        <div class="bp-muted">{{ optional($partner->updated_at)->diffForHumans() ?: 'No activity' }}</div>
-                                    </td>
-                                    <td>
-                                        <div class="bp-actions-cell">
-                                            <a class="bp-btn bp-btn-icon" data-ph-action="view" href="{{ route('business-partners.show', $partner) }}" title="View partner" aria-label="View {{ $partner->displayName() }}"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.7" stroke-width="1.8"/></svg></a>
-                                            @can('update', $partner)
-                                                <a class="bp-btn bp-btn-icon" data-ph-action="edit" href="{{ route('business-partners.edit', $partner) }}" title="Edit partner" aria-label="Edit {{ $partner->displayName() }}"><x-phos-action-icon name="edit" label="Edit partner" /></a>
-                                            @endcan
-                                            <details class="bp-more">
-                                                <summary class="bp-btn bp-btn-icon" title="More actions" aria-label="More actions">...</summary>
-                                                <div class="bp-menu">
-                                                    <a href="{{ route('business-partners.show', $partner) }}">Open profile</a>
-                                                    <a href="{{ route('business-partners.clients.create', $partner) }}">Add actual client</a>
-                                                    @can('update', $partner)
-                                                        <a href="{{ route('business-partners.edit', $partner) }}">Edit partner</a>
-                                                    @endcan
-                                                </div>
-                                            </details>
-                                        </div>
-                                    </td>
-                                </tr>
-                            @empty
-                                <tr><td colspan="8" class="bp-muted">No business partners found.</td></tr>
-                            @endforelse
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="bp-mobile-list">
-                    @forelse($businessPartners as $partner)
-                        @php
-                            $initials = collect(explode(' ', $partner->displayName()))->filter()->map(fn ($part) => mb_substr($part, 0, 1))->take(2)->implode('') ?: 'BP';
-                            $clientsPreview = $partner->partnerClients->take(3);
-                        @endphp
-                        <article class="bp-card bp-mobile-card">
-                            <div class="bp-mobile-head">
-                                <div class="bp-partner">
-                                    <span class="bp-avatar">{{ $initials }}</span>
-                                    <div>
-                                        <div class="bp-name">{{ $partner->displayName() }}</div>
-                                        <div class="bp-muted">{{ collect([$partner->city, $partner->state])->filter()->implode(', ') ?: 'Location not set' }}</div>
-                                        <div class="bp-muted">{{ $partner->phone ?: 'No phone' }}</div>
+                                    </span>
+                                    <div class="bp-labels">
+                                        <span class="bp-badge {{ $partner->status === 'inactive' ? 'is-inactive' : 'is-active' }}">{{ ucfirst($partner->status ?: 'active') }}</span>
+                                        <span class="bp-badge">{{ $partner->gst_registered ? 'GST Partner' : 'General' }}</span>
                                     </div>
                                 </div>
-                                <span class="bp-status {{ $partner->status === 'inactive' ? 'inactive' : 'active' }}">{{ ucfirst($partner->status ?: 'active') }}</span>
                             </div>
-                            <div class="bp-mobile-metrics">
-                                <div class="bp-mini"><span>Clients</span><strong>{{ $partner->partner_clients_count }}</strong></div>
-                                <div class="bp-mini"><span>Rentals</span><strong>{{ $partner->rentals_count }}</strong></div>
-                                <div class="bp-mini"><span>Due</span><strong>{{ $money($partner->outstanding_amount ?? 0) }}</strong></div>
-                            </div>
+                        </td>
+                        <td class="bp-location-col" role="cell">
+                            <div>{{ collect([$partner->city, $partner->state])->filter()->implode(', ') ?: 'Location not set' }}</div>
+                            @if($partner->pincode)<div class="bp-meta">{{ $partner->pincode }}</div>@endif
+                        </td>
+                        <td class="bp-activity-col" role="cell">
+                            <div class="bp-meta">{{ $partner->rentals_count }} rentals <span aria-hidden="true">&middot;</span> {{ $partner->sales_count }} sales</div>
                             <details class="bp-clients">
-                                <summary>Actual clients</summary>
-                                <div class="bp-client-grid">
+                                <summary>{{ $partner->partner_clients_count }} actual {{ Str::plural('client', (int) $partner->partner_clients_count) }}</summary>
+                                <div class="bp-client-preview">
                                     @forelse($clientsPreview as $client)
                                         <div class="bp-client">
-                                            <div><strong>{{ $client->displayName() }}</strong><div class="bp-muted">{{ $client->primaryPhone() ?: 'No phone' }}</div></div>
-                                            <span class="bp-status {{ $client->status === 'inactive' ? 'inactive' : 'active' }}">{{ ucfirst($client->status ?: 'active') }}</span>
+                                            <div><strong>{{ $client->displayName() }}</strong><span class="bp-meta">{{ $client->primaryPhone() ?: 'No phone' }}</span></div>
+                                            <span class="bp-badge {{ $client->status === 'inactive' ? 'is-inactive' : 'is-active' }}">{{ ucfirst($client->status ?: 'active') }}</span>
                                         </div>
                                     @empty
-                                        <div class="bp-muted">No actual clients linked.</div>
+                                        <span class="bp-meta">No actual clients linked.</span>
                                     @endforelse
+                                    @if($partner->partner_clients_count > $clientsPreview->count())
+                                        <a class="bp-link" href="{{ $partnerUrl }}#actual-clients">View all {{ $partner->partner_clients_count }}</a>
+                                    @endif
                                 </div>
                             </details>
-                            <div class="bp-actions-cell">
-                                <a class="bp-btn bp-btn-icon" data-ph-action="view" href="{{ route('business-partners.show', $partner) }}" title="View partner" aria-label="View {{ $partner->displayName() }}"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.7" stroke-width="1.8"/></svg></a>
-                                @can('update', $partner)<a class="bp-btn bp-btn-icon" data-ph-action="edit" href="{{ route('business-partners.edit', $partner) }}" title="Edit partner" aria-label="Edit {{ $partner->displayName() }}"><x-phos-action-icon name="edit" label="Edit partner" /></a>@endcan
-                                <a class="bp-btn" href="{{ route('business-partners.clients.create', $partner) }}">Add Client</a>
-                            </div>
-                        </article>
+                        </td>
+                        <td class="bp-billing-col" role="cell">
+                            <div class="bp-money @if($partner->outstanding_amount > 0) is-due @endif">{{ $money($partner->outstanding_amount ?? 0) }}</div>
+                            <div class="bp-meta">{{ $partner->linked_invoices_count }} {{ Str::plural('invoice', (int) $partner->linked_invoices_count) }}</div>
+                            @if((int) $partner->linked_invoices_count > 0)
+                                <a class="bp-link" href="{{ $partnerUrl }}">View invoices</a>
+                            @endif
+                        </td>
+                        <td class="bp-updated-col" role="cell">
+                            <span class="bp-meta">Updated {{ $partner->updated_at?->diffForHumans() ?: '—' }}</span>
+                        </td>
+                        <td class="bp-actions-col" role="cell">
+                            <details class="bp-more" data-business-partner-actions>
+                                <summary aria-label="More actions for {{ $partnerName }}">⋯</summary>
+                                <div class="bp-menu">
+                                    <a href="{{ $partnerUrl }}" data-ph-action="view">Open profile</a>
+                                    @can('update', $partner)
+                                        <a href="{{ route('business-partners.edit', $partner) }}" data-ph-action="edit">Edit partner</a>
+                                    @endcan
+                                    @can('create', App\Models\PartnerClient::class)
+                                        <a href="{{ route('business-partners.clients.create', $partner) }}">Add actual client</a>
+                                    @endcan
+                                </div>
+                            </details>
+                        </td>
+                    </tr>
+                @empty
+                    <tr role="row"><td colspan="6" role="cell"><p class="bp-empty">No business partners found.</p></td></tr>
+                @endforelse
+            </tbody>
+        </table>
+        @if($businessPartners->hasPages())
+            <div class="bp-pagination">{{ $businessPartners->links() }}</div>
+        @endif
+    </section>
+
+    <details class="bp-insights">
+        <summary>Partner insights</summary>
+        <div class="bp-insight-grid">
+            <section>
+                <h2>Partner health</h2>
+                <ul>
+                    <li><span>Active share</span><strong>{{ $activePercent }}%</strong></li>
+                    <li><span>Active</span><strong>{{ $activePartners }}</strong></li>
+                    <li><span>Inactive</span><strong>{{ $inactivePartners }}</strong></li>
+                    <li><span>Clients</span><strong>{{ $totalClients }}</strong></li>
+                </ul>
+            </section>
+            <section>
+                <h2>Top partners by rentals</h2>
+                <ul>
+                    @forelse($topRentalPartners as $partner)
+                        <li><span>{{ $partner->displayName() }}</span><strong>{{ $partner->rentals_count }}</strong></li>
                     @empty
-                        <div class="bp-muted">No business partners found.</div>
+                        <li>No rental-linked partners yet.</li>
                     @endforelse
-                </div>
-
-                <div style="padding:12px 16px;">{{ $businessPartners->links() }}</div>
+                </ul>
             </section>
-        </main>
-
-        <aside class="bp-side" aria-label="Business partner insights">
-            <section class="bp-card bp-side-card">
-                <h3 class="bp-side-title">Partner Health</h3>
-                @php $activePercent = $totalPartners > 0 ? round(($activePartners / max(1, $totalPartners)) * 100) : 0; @endphp
-                <div class="bp-health">
-                    <div class="bp-ring" style="--pct: {{ $activePercent }}%"><div class="bp-ring-inner">{{ $activePercent }}%</div></div>
-                    <div>
-                        <div class="bp-side-row"><span>Active</span><strong>{{ $activePartners }}</strong></div>
-                        <div class="bp-side-row"><span>Inactive</span><strong>{{ $inactivePartners }}</strong></div>
-                        <div class="bp-side-row"><span>Clients</span><strong>{{ $totalClients }}</strong></div>
-                    </div>
-                </div>
+            <section>
+                <h2>Recent activity</h2>
+                <ul>
+                    @forelse($recentPartners as $partner)
+                        <li><span>{{ $partner->displayName() }}<br><small class="bp-meta">Partner updated</small></span><strong>{{ $partner->updated_at?->diffForHumans() }}</strong></li>
+                    @empty
+                        <li>No recent partner activity.</li>
+                    @endforelse
+                </ul>
             </section>
-
-            <section class="bp-card bp-side-card">
-                <h3 class="bp-side-title">Top Partners by Rentals</h3>
-                @forelse($topRentalPartners as $partner)
-                    <div class="bp-side-row"><span>{{ $partner->displayName() }}</span><strong>{{ $partner->rentals_count }}</strong></div>
-                @empty
-                    <div class="bp-muted">No rental-linked partners yet.</div>
-                @endforelse
-            </section>
-
-            <section class="bp-card bp-side-card">
-                <h3 class="bp-side-title">Recent Activity</h3>
-                @forelse($recentPartners as $partner)
-                    <div class="bp-side-row"><span>{{ $partner->displayName() }}<br><small class="bp-muted">Partner updated</small></span><strong>{{ optional($partner->updated_at)->diffForHumans() }}</strong></div>
-                @empty
-                    <div class="bp-muted">No recent partner activity.</div>
-                @endforelse
-            </section>
-
-            <section class="bp-card bp-side-card">
-                <h3 class="bp-side-title">Need help managing partners?</h3>
-                <p class="bp-muted" style="margin:0 0 10px;">Partners are billed contacts. Actual clients receive delivery and service.</p>
-                <a class="bp-btn" href="{{ route('business-partners.create') }}">Add Partner</a>
-            </section>
-        </aside>
-    </div>
+        </div>
+        <div class="bp-insight-help">
+            <p>Partners are billed contacts. Actual clients receive delivery and service.</p>
+            @can('create', App\Models\BusinessPartner::class)
+                <a class="bp-link" href="{{ route('business-partners.create') }}">Add Partner</a>
+            @endcan
+        </div>
+    </details>
 </div>
+
 <script>
-    document.addEventListener('click', function (event) {
-        document.querySelectorAll('.bp-more[open]').forEach(function (menu) {
-            if (!menu.contains(event.target)) {
-                menu.removeAttribute('open');
-            }
-        });
-    });
+    (() => {
+        const directory = document.querySelector('[data-business-partner-directory]');
+        const menus = [...directory.querySelectorAll('[data-business-partner-actions]')];
 
-    document.addEventListener('keydown', function (event) {
-        if (event.key !== 'Escape') return;
-        document.querySelectorAll('.bp-more[open]').forEach(function (menu) {
-            menu.removeAttribute('open');
-        });
-    });
+        function closeMenus(except) {
+            menus.forEach(menu => {
+                if (menu.open && menu !== except) menu.open = false;
+            });
+        }
 
-    document.addEventListener('toggle', function (event) {
-        const current = event.target;
-        if (!current.matches || !current.matches('.bp-more[open]')) return;
-        document.querySelectorAll('.bp-more[open]').forEach(function (menu) {
-            if (menu !== current) {
-                menu.removeAttribute('open');
-            }
+        menus.forEach(menu => {
+            menu.addEventListener('toggle', () => {
+                menu.classList.remove('opens-up');
+                if (!menu.open) return;
+
+                closeMenus(menu);
+                const summary = menu.querySelector('summary').getBoundingClientRect();
+                const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+                const below = viewportHeight - summary.bottom;
+                const above = summary.top;
+                if (below < menu.querySelector('.bp-menu').offsetHeight + 8 && above > below) {
+                    menu.classList.add('opens-up');
+                }
+            });
         });
-    }, true);
+
+        document.addEventListener('click', event => {
+            if (!event.target.closest('[data-business-partner-actions]')) closeMenus();
+        });
+
+        document.addEventListener('keydown', event => {
+            if (event.key !== 'Escape') return;
+            const openMenu = menus.find(menu => menu.open);
+            if (!openMenu) return;
+
+            openMenu.open = false;
+            openMenu.querySelector('summary').focus();
+        });
+    })();
 </script>
 @endsection
