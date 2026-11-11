@@ -12,13 +12,19 @@
     $hasReferralContactColumn = \Illuminate\Support\Facades\Schema::hasColumn('rentals', 'referral_contact');
     $hasReferralCityColumn = \Illuminate\Support\Facades\Schema::hasColumn('rentals', 'referral_city');
     $referralSourceOptions = collect($referralSourceOptions ?? collect())->values();
-    $customerTypeValue = old('customer_type', $isEdit ? $rental->customerTypeValue() : 'direct_customer');
+    $prefilledBusinessPartner = !$isEdit && !session()->hasOldInput() && request()->query('customer_type') === 'business_partner'
+        ? $businessPartners->firstWhere('id', request()->integer('business_partner_id'))
+        : null;
+    $prefilledPartnerClient = $prefilledBusinessPartner
+        ? $initialPartnerClients->firstWhere('id', request()->integer('partner_client_id'))
+        : null;
+    $customerTypeValue = old('customer_type', $isEdit ? $rental->customerTypeValue() : ($prefilledBusinessPartner ? 'business_partner' : 'direct_customer'));
     if (!$businessPartnerFlowAvailable && $customerTypeValue === 'business_partner') {
         $customerTypeValue = 'direct_customer';
     }
     $selectedCustomerId = old('customer_id', $isEdit ? $rental->customer_id : ($selectedCustomer?->id));
-    $selectedBusinessPartnerId = (int) old('business_partner_id', $isEdit ? ($rental->business_partner_id ?? 0) : 0);
-    $selectedPartnerClientId = (int) old('partner_client_id', $isEdit ? ($rental->partner_client_id ?? 0) : 0);
+    $selectedBusinessPartnerId = (int) old('business_partner_id', $isEdit ? $rental->business_partner_id : $prefilledBusinessPartner?->id);
+    $selectedPartnerClientId = (int) old('partner_client_id', $isEdit ? $rental->partner_client_id : $prefilledPartnerClient?->id);
     $selectedBusinessPartner = $businessPartners->firstWhere('id', $selectedBusinessPartnerId);
     $selectedPartnerClient = $initialPartnerClients->firstWhere('id', $selectedPartnerClientId);
     $shouldShowRentalCustomerSummary = $customerTypeValue === 'business_partner'

@@ -5,13 +5,19 @@
     $initialPartnerClients = $initialPartnerClients ?? collect();
     $businessPartnerFlowAvailable = $businessPartnerFlowAvailable ?? true;
     $referralSourceOptions = collect($referralSourceOptions ?? collect())->values();
-    $selectedCustomerType = old('customer_type', $sale?->customerTypeValue() ?? 'direct_customer');
+    $prefilledBusinessPartner = !$isEdit && !session()->hasOldInput() && request()->query('customer_type') === 'business_partner'
+        ? $businessPartners->firstWhere('id', request()->integer('business_partner_id'))
+        : null;
+    $prefilledPartnerClient = $prefilledBusinessPartner
+        ? $initialPartnerClients->firstWhere('id', request()->integer('partner_client_id'))
+        : null;
+    $selectedCustomerType = old('customer_type', $sale?->customerTypeValue() ?? ($prefilledBusinessPartner ? 'business_partner' : 'direct_customer'));
     if (!$businessPartnerFlowAvailable && $selectedCustomerType === 'business_partner') {
         $selectedCustomerType = 'direct_customer';
     }
     $selectedCustomerId = (int) old('customer_id', $sale->customer_id ?? request('customer_id'));
-    $selectedBusinessPartnerId = (int) old('business_partner_id', $sale->business_partner_id ?? 0);
-    $selectedPartnerClientId = (int) old('partner_client_id', $sale->partner_client_id ?? 0);
+    $selectedBusinessPartnerId = (int) old('business_partner_id', $isEdit ? $sale->business_partner_id : $prefilledBusinessPartner?->id);
+    $selectedPartnerClientId = (int) old('partner_client_id', $isEdit ? $sale->partner_client_id : $prefilledPartnerClient?->id);
     $selectedRentalId = (int) old('rental_id', $sale->rental_id ?? null);
     $selectedCustomer = $customers->firstWhere('id', $selectedCustomerId);
     $selectedBusinessPartner = $businessPartners->firstWhere('id', $selectedBusinessPartnerId);
