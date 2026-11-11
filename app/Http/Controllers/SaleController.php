@@ -616,6 +616,7 @@ class SaleController extends Controller
                     $row['unit_price'] ?? null,
                     $row['discount_amount'] ?? null,
                     $row['tax_percentage'] ?? null,
+                    $row['hsn_code'] ?? null,
                     $row['notes'] ?? null,
                 ])->contains(fn ($value) => filled($value) && $value !== '0' && $value !== 0 && $value !== '0.00');
             })
@@ -655,8 +656,12 @@ class SaleController extends Controller
 
         $customerState = $this->normalizeStateName($taxState ?? $customer?->state);
         $organizationState = $this->currentOrganizationState();
+        $previousItems = $sale && $rows->contains(fn (array $row) => !array_key_exists('hsn_code', $row))
+            ? $sale->displaySaleItems()
+            : collect();
+        $legacyHsnCodes = $previousItems->isNotEmpty() ? $this->legacySaleInvoiceHsnCodes($sale) : [];
 
-        return $rows->map(function (array $row, int $index) use ($products, $customerState, $organizationState) {
+        return $rows->map(function (array $row, int $index) use ($products, $customerState, $organizationState, $previousItems, $legacyHsnCodes) {
             $productId = (int) ($row['product_id'] ?? 0);
             $product = $products->get($productId);
 
@@ -684,6 +689,14 @@ class SaleController extends Controller
             $taxType = in_array(($row['tax_type'] ?? null), Product::GST_TAX_TYPES, true)
                 ? $row['tax_type']
                 : $this->recommendedTaxTypeForStates($customerState, $organizationState);
+            $previousItem = $previousItems->get($index);
+            $previousHsn = $previousItem && (int) $previousItem->product_id === $productId
+                ? ($previousItem->hsn_code ?? $legacyHsnCodes[$index] ?? null)
+                : null;
+            // Null on an existing line means no snapshot yet. An empty string records an intentional clear.
+            $hsnCode = array_key_exists('hsn_code', $row)
+                ? (string) ($row['hsn_code'] ?? '')
+                : ($previousHsn ?? $product->hsn_code ?? '');
 
             if ($quantity < 1) {
                 throw ValidationException::withMessages([
@@ -730,6 +743,7 @@ class SaleController extends Controller
                 'tax_percentage' => $taxPercentage,
                 'tax_calculation_mode' => $taxCalculationMode,
                 'tax_type' => $taxSnapshot['tax_type'],
+                'hsn_code' => $hsnCode,
                 'notes' => filled($row['notes'] ?? null) ? trim((string) $row['notes']) : null,
                 'commercials' => array_merge($commercials, $taxSnapshot),
                 'product' => $product,
@@ -872,6 +886,7 @@ class SaleController extends Controller
                 'tax_percentage' => $line['tax_percentage'],
                 'tax_calculation_mode' => $line['tax_calculation_mode'],
                 'tax_type' => $line['tax_type'],
+                'hsn_code' => $line['hsn_code'],
                 'taxable_amount' => $line['commercials']['taxable_amount'],
                 'total_tax_amount' => $line['commercials']['total_tax_amount'],
                 'line_total' => $line['commercials']['sale_amount'],
@@ -884,13 +899,41 @@ class SaleController extends Controller
         $sale->unsetRelation('saleItems');
     }
 
-    private function saleInvoiceLines(Sale $sale): array
+    private function legacySaleInvoiceHsnCodes(Sale $sale, ?Invoice $invoice = null): array
+    {
+        $saleItems = $sale->displaySaleItems();
+        if (!$saleItems->contains(fn (SaleItem $item) => $item->hsn_code === null)) {
+            return [];
+        }
+
+        $invoice ??= $this->saleInvoice($sale);
+        if (!$invoice) {
+            return [];
+        }
+
+        $invoiceItems = $invoice->items()
+            ->where('source_type', 'sale')
+            ->where('source_id', $sale->id)
+            ->orderBy('id')
+            ->get(['product_id', 'hsn_sac_code']);
+
+        // Older invoices could have their HSN edited directly. Only reuse it for the matching line.
+        $saleProductIds = $saleItems->pluck('product_id')->map(fn ($id) => (int) $id)->all();
+        $invoiceProductIds = $invoiceItems->pluck('product_id')->map(fn ($id) => (int) $id)->all();
+        if ($saleProductIds !== $invoiceProductIds) {
+            return [];
+        }
+
+        return $invoiceItems->pluck('hsn_sac_code')->all();
+    }
+
+    private function saleInvoiceLines(Sale $sale, array $legacyHsnCodes = []): array
     {
         $customerState = $this->normalizeStateName($sale->primaryTaxState());
         $organizationState = $this->currentOrganizationState();
 
         return $sale->displaySaleItems()
-            ->map(function ($item) use ($customerState, $organizationState) {
+            ->map(function ($item, int $index) use ($customerState, $organizationState, $legacyHsnCodes) {
                 $product = $item->product ?: Product::query()
                     ->where('organization_id', $this->orgId())
                     ->find($item->product_id);
@@ -923,6 +966,7 @@ class SaleController extends Controller
                     'tax_percentage' => $taxPercentage,
                     'tax_calculation_mode' => $taxCalculationMode,
                     'tax_type' => $taxSnapshot['tax_type'],
+                    'hsn_code' => $item->hsn_code ?? $legacyHsnCodes[$index] ?? $product?->hsn_code,
                     'notes' => $item->notes,
                     'commercials' => [
                         'subtotal' => round($quantity * $unitPrice, 2),
@@ -1063,7 +1107,7 @@ class SaleController extends Controller
                 'source_type' => 'sale',
                 'source_id' => $sale->id,
                 'description' => $description . ' | Unit: sale | Qty: ' . (float) $line['quantity'] . $assetNote,
-                'hsn_sac_code' => null,
+                'hsn_sac_code' => filled($line['hsn_code']) ? $line['hsn_code'] : null,
                 'quantity' => (float) $line['quantity'],
                 'unit' => 'sale',
                 'days' => null,
@@ -1092,7 +1136,7 @@ class SaleController extends Controller
         }
 
         $organization = Organization::findOrFail($this->orgId());
-        $saleItems = $this->saleInvoiceLines($sale);
+        $saleItems = $this->saleInvoiceLines($sale, $this->legacySaleInvoiceHsnCodes($sale, $invoice));
         $commercials = $this->aggregateSaleCommercials($saleItems, $sale->resolvedShippingCharges());
         $taxType = $this->resolveSaleInvoiceTaxType($commercials);
 
@@ -1239,6 +1283,7 @@ class SaleController extends Controller
             'sale_items.*.tax_percentage' => 'nullable|numeric|min:0|max:100',
             'sale_items.*.tax_calculation_mode' => 'nullable|in:exclusive,inclusive',
             'sale_items.*.tax_type' => 'nullable|in:cgst_sgst,igst',
+            'sale_items.*.hsn_code' => 'nullable|string|max:255',
             'sale_items.*.notes' => 'nullable|string',
         ];
     }
@@ -2670,7 +2715,9 @@ class SaleController extends Controller
             $sale->loadMissing(['saleItems.product', 'saleItems.asset.warehouse', 'saleItems.warehouse']);
         }
 
-        return view('sales.edit', compact('sale', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'saleStockAssets', 'saleInventorySummaries', 'warehouses', 'rentals', 'fulfilmentVendors', 'referralSourceOptions'));
+        $legacyHsnCodes = $this->legacySaleInvoiceHsnCodes($sale);
+
+        return view('sales.edit', compact('sale', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'saleStockAssets', 'saleInventorySummaries', 'warehouses', 'rentals', 'fulfilmentVendors', 'referralSourceOptions', 'legacyHsnCodes'));
     }
 
     public function update(Request $request, Sale $sale)

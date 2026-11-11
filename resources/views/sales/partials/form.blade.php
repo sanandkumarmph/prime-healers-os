@@ -42,7 +42,7 @@
 
     if (!is_array($initialSaleItems) || $initialSaleItems === []) {
         if ($isEdit) {
-            $initialSaleItems = $sale->displaySaleItems()->map(function ($item) {
+            $initialSaleItems = $sale->displaySaleItems()->map(function ($item, $index) use ($legacyHsnCodes) {
                 return [
                     'product_id' => $item->product_id,
                     'asset_id' => $item->asset_id,
@@ -52,6 +52,7 @@
                     'tax_percentage' => number_format((float) ($item->tax_percentage ?? 0), 2, '.', ''),
                     'tax_calculation_mode' => $item->tax_calculation_mode ?? 'exclusive',
                     'tax_type' => $item->tax_type ?? null,
+                    'hsn_code' => $item->hsn_code ?? $legacyHsnCodes[$index] ?? $item->product?->hsn_code,
                     'notes' => $item->notes,
                 ];
             })->values()->all();
@@ -1986,6 +1987,7 @@
                 tax_calculation_mode: 'inclusive',
                 tax_type: recommendedTaxType(),
                 tax_type_auto: true,
+                hsn_code: '',
                 notes: ''
             };
         }
@@ -2014,9 +2016,10 @@
 
         function normalizeItem(item) {
             const hasTaxType = ['cgst_sgst', 'igst'].includes(item.tax_type);
+            const productId = item.product_id ? parseInt(item.product_id, 10) : null;
 
             return {
-                product_id: item.product_id ? parseInt(item.product_id, 10) : null,
+                product_id: productId,
                 asset_id: item.asset_id ? parseInt(item.asset_id, 10) : null,
                 quantity: Math.max(parseInt(item.quantity || 1, 10), 1),
                 unit_price: normalizeMoney(item.unit_price),
@@ -2025,6 +2028,7 @@
                 tax_calculation_mode: item.tax_calculation_mode === 'inclusive' ? 'inclusive' : 'exclusive',
                 tax_type: hasTaxType ? item.tax_type : recommendedTaxType(),
                 tax_type_auto: !hasTaxType,
+                hsn_code: Object.hasOwn(item, 'hsn_code') ? (item.hsn_code ?? '') : (productMap.get(productId)?.hsn_code ?? ''),
                 notes: item.notes || ''
             };
         }
@@ -3201,7 +3205,6 @@
                 const total = lineCommercials(item);
                 const product = item.product_id ? productMap.get(parseInt(item.product_id, 10)) : null;
                 const productMeta = compactProductMeta(product);
-                const hsnCode = product?.hsn_code || '';
                 const addStockHref = addSaleStockUrl(product ? product.id : '');
                 const discountedUnit = Math.max(parseFloat(item.unit_price || 0) - parseFloat(item.discount_amount || 0), 0);
                 const stock = saleStockSummary(product);
@@ -3301,7 +3304,7 @@
                                 <details class="sales-tax-details">
                                     <summary>
                                         <span>GST Details</span>
-                                        <em>Auto from Product Master</em>
+                                        <em>Product defaults</em>
                                         <b aria-hidden="true">v</b>
                                     </summary>
                                     <div class="sales-grid sales-tax-grid">
@@ -3319,8 +3322,8 @@
                                             </select>
                                         </div>
                                         <div class="sales-field sales-col-4">
-                                            <label>HSN</label>
-                                            <input type="text" value="${escapeHtml(hsnCode || 'Not set')}" readonly>
+                                            <label for="sale_item_hsn_${index}">HSN</label>
+                                            <input type="text" name="sale_items[${index}][hsn_code]" id="sale_item_hsn_${index}" value="${escapeHtml(item.hsn_code)}" maxlength="255" placeholder="Not set">
                                         </div>
                                     </div>
                                 </details>
@@ -3351,6 +3354,7 @@
                 const taxInput = row.querySelector('#sale_item_tax_' + index);
                 const taxModeSelect = row.querySelector('#sale_item_tax_mode_' + index);
                 const taxTypeSelect = row.querySelector('#sale_item_tax_type_' + index);
+                const hsnInput = row.querySelector('#sale_item_hsn_' + index);
                 const notesInput = row.querySelector('#sale_item_notes_' + index);
                 const totalLabel = row.querySelector('#sale_item_total_' + index);
                 const removeButton = row.querySelector('[data-remove-index="' + index + '"]');
@@ -3372,10 +3376,14 @@
 
                 productSelect.addEventListener('change', function () {
                     const restoreFocus = row.contains(document.activeElement);
+                    const previousProductId = saleItems[index].product_id;
                     saleItems[index].product_id = this.value ? parseInt(this.value, 10) : null;
                     saleItems[index].asset_id = null;
 
                     const selectedProduct = saleItems[index].product_id ? productMap.get(saleItems[index].product_id) : null;
+                    if (saleItems[index].product_id !== previousProductId) {
+                        saleItems[index].hsn_code = selectedProduct?.hsn_code ?? '';
+                    }
                     if (selectedProduct) {
                         saleItems[index].unit_price = normalizeMoney(selectedProduct.sale_price);
                         saleItems[index].tax_percentage = normalizeMoney(selectedProduct.tax_percentage);
@@ -3419,10 +3427,14 @@
                         return;
                     }
 
+                    const previousProductId = saleItems[index].product_id;
                     saleItems[index].asset_id = parseInt(matchedAsset.id, 10);
                     saleItems[index].product_id = parseInt(matchedAsset.product_id, 10);
                     saleItems[index].quantity = 1;
                     const matchedProduct = productMap.get(saleItems[index].product_id);
+                    if (saleItems[index].product_id !== previousProductId) {
+                        saleItems[index].hsn_code = matchedProduct?.hsn_code ?? '';
+                    }
                     if (matchedProduct) {
                         saleItems[index].unit_price = normalizeMoney(matchedProduct.sale_price);
                         saleItems[index].tax_percentage = normalizeMoney(matchedProduct.tax_percentage);
@@ -3484,6 +3496,10 @@
                 taxTypeSelect.addEventListener('change', function () {
                     saleItems[index].tax_type = this.value === 'igst' ? 'igst' : 'cgst_sgst';
                     saleItems[index].tax_type_auto = false;
+                });
+
+                hsnInput.addEventListener('input', function () {
+                    saleItems[index].hsn_code = this.value;
                 });
 
                 notesInput.addEventListener('input', function () {

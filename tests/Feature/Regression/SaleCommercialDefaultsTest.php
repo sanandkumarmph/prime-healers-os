@@ -45,17 +45,27 @@ class SaleCommercialDefaultsTest extends TestCase
     {
         $role=Role::create(['organization_id'=>$this->admin->organization_id,'name'=>'Sales','slug'=>'sales','is_system'=>true,'is_active'=>true,'permissions'=>Role::defaultSystemRoleTemplates()['sales']['permissions']]);
         $sales=TestData::user($this->admin->organization,['role'=>'sales','role_id'=>$role->id]);
+        $driverRole = Role::create([
+            'organization_id' => $this->admin->organization_id, 'name' => 'Delivery', 'slug' => User::ROLE_DELIVERY,
+            'is_system' => true, 'is_active' => true, 'permissions' => ['deliveries' => ['read', 'update']],
+        ]);
+        $driver = TestData::user($this->admin->organization, ['role' => 'staff', 'role_id' => $driverRole->id]);
         foreach(['admin'=>$this->admin,'sales'=>$sales] as $name=>$actor){
             $this->actingAs($actor);$this->session(['_old_input'=>[]]);
             $response=$this->get(route('sales.create'))->assertOk()->assertSee('let saleTransportAutomatic = true',false)->assertSee('"tax_mode":"inclusive"',false)->assertDontSee('name="deposit_amount"',false);
             $this->assertSame('800.00',$this->shipping($response));$this->fixture('fresh-'.$name,$response);
         }
+        $this->withSession(['_old_input' => [
+            'payment_status' => 'paid', 'collection_owner' => 'delivery', 'collection_enabled' => 1,
+            'collection_amount' => '300.00', 'collection_methods' => 'online', 'delivery_operator_id' => $driver->id,
+        ]]);
+        $this->fixture('paid-retry', $this->get(route('sales.create'))->assertOk());
         $this->assertSame('exclusive',$this->small->fresh()->gst_calculation_mode);$this->assertDatabaseCount('sales',0);Mail::assertNothingSent();
     }
 
     public function test_validation_retry_preserves_zero_transport_and_edited_prices_and_tax(): void
     {
-        $old=['shipping_charges'=>0,'customer_id'=>$this->customer->id,'sale_items'=>[['product_id'=>$this->small->id,'quantity'=>4,'unit_price'=>777,'discount_amount'=>0,'tax_percentage'=>5,'tax_calculation_mode'=>'exclusive','tax_type'=>'cgst_sgst']]];
+        $old=['shipping_charges'=>0,'customer_id'=>$this->customer->id,'sale_items'=>[['product_id'=>$this->small->id,'quantity'=>4,'unit_price'=>777,'discount_amount'=>0,'tax_percentage'=>5,'tax_calculation_mode'=>'exclusive','tax_type'=>'cgst_sgst','hsn_code'=>'00123456']]];
         $response=$this->withSession(['_old_input'=>$old])->get(route('sales.create'))->assertOk()->assertSee('let saleTransportAutomatic = false',false);
         $this->assertSame('0.00',$this->shipping($response));$response->assertSee('"unit_price":777',false)->assertSee('"tax_calculation_mode":"exclusive"',false);$this->fixture('retry',$response);
         $this->assertDatabaseCount('sales',0);
@@ -91,8 +101,11 @@ class SaleCommercialDefaultsTest extends TestCase
         $response=$this->get(route('sales.create',['quotation_id'=>$quote->id]))->assertOk()->assertSee('const salePricingFromQuote = true',false)->assertSee('let saleTransportAutomatic = false',false);
         $this->assertSame('0.00',$this->shipping($response));$response->assertSee('"unit_price":777',false)->assertSee('"tax_calculation_mode":"exclusive"',false);$this->fixture('conversion',$response);
         $payload=app(\App\Services\Sales\QuotationConversion::class)->prefill($quote->fresh());$payload['quotation_recipient_confirmed']=1;
+        $payload['sale_items'][0]['hsn_code'] = '63023100';
         $this->post(route('sales.store'),$payload)->assertSessionHasNoErrors();
         $sale=Sale::sole();$this->assertSame(0.0,(float)$sale->shipping_charges);$this->assertSame(777.0,(float)$sale->saleItems()->sole()->unit_price);$this->assertSame('exclusive',$sale->saleItems()->sole()->tax_calculation_mode);
+        $this->assertSame('63023100', $sale->saleItems()->sole()->hsn_code);
+        $this->assertSame('63023100', Invoice::sole()->items()->where('source_type', 'sale')->sole()->hsn_sac_code);
         Mail::assertNothingSent();
     }
 }

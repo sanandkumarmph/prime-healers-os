@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\Rental;
 use App\Models\Sale;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\TestData;
 use Tests\TestCase;
@@ -34,6 +35,7 @@ class SalesMultiItemRegressionTest extends TestCase
                     'discount_amount' => 0,
                     'tax_percentage' => 0,
                     'tax_calculation_mode' => 'exclusive',
+                    'hsn_code' => '06302',
                 ],
                 [
                     'product_id' => $productB->id,
@@ -42,6 +44,7 @@ class SalesMultiItemRegressionTest extends TestCase
                     'discount_amount' => 100,
                     'tax_percentage' => 0,
                     'tax_calculation_mode' => 'exclusive',
+                    'hsn_code' => '9619',
                 ],
             ],
         ])->assertRedirect(route('sales.index', ['sort_by' => 'latest']));
@@ -63,8 +66,100 @@ class SalesMultiItemRegressionTest extends TestCase
         $this->assertSame(1850.0, (float) $invoice->total_amount);
         $this->assertSame(50.0, (float) $invoice->shipping_charges);
         $this->assertCount(2, $invoice->items->where('source_type', 'sale'));
+        $this->assertSame(['06302', '9619'], $sale->saleItems->pluck('hsn_code')->all());
+        $this->assertSame(['06302', '9619'], $invoice->items->pluck('hsn_sac_code')->all());
         $this->assertTrue($invoice->items->contains(fn ($item) => str_contains((string) $item->description, $productA->name)));
         $this->assertTrue($invoice->items->contains(fn ($item) => str_contains((string) $item->description, $productB->name)));
+    }
+
+    public function test_sales_staff_can_update_or_clear_hsn_and_regenerate_the_invoice(): void
+    {
+        [$organization, $customer, $product] = $this->saleContext();
+        $this->actingAs(TestData::user($organization, ['role' => User::ROLE_SALES]));
+
+        $payload = [
+            'customer_id' => $customer->id,
+            'sale_date' => '2026-05-13',
+            'payment_status' => 'pending',
+            'sale_items' => [[
+                'product_id' => $product->id,
+                'quantity' => 1,
+                'unit_price' => 500,
+                'hsn_code' => '06302',
+            ]],
+        ];
+
+        $this->post(route('sales.store'), $payload)->assertSessionHasNoErrors();
+        $sale = Sale::sole();
+        $invoice = Invoice::sole();
+
+        $this->get(route('sales.edit', $sale))->assertOk()->assertSee('"hsn_code":"06302"', false);
+
+        $payload['sale_items'][0]['hsn_code'] = '63023100';
+        $this->put(route('sales.update', $sale), $payload)->assertSessionHasNoErrors();
+        $this->assertSame('63023100', $sale->saleItems()->sole()->hsn_code);
+        $this->assertSame('63023100', $invoice->items()->sole()->hsn_sac_code);
+        $this->get(route('invoices.show', $invoice))->assertOk()->assertSee('63023100');
+
+        unset($payload['sale_items'][0]['hsn_code']);
+        $this->put(route('sales.update', $sale), $payload)->assertSessionHasNoErrors();
+        $this->assertSame('63023100', $sale->saleItems()->sole()->hsn_code);
+
+        $this->post(route('sales.invoice', $sale))->assertRedirect(route('invoices.show', $invoice));
+        $this->assertSame('63023100', $invoice->items()->sole()->hsn_sac_code);
+
+        $payload['sale_items'][0]['hsn_code'] = '';
+        $this->put(route('sales.update', $sale), $payload)->assertSessionHasNoErrors();
+        $this->assertSame('', $sale->saleItems()->sole()->hsn_code);
+        $this->assertNull($invoice->items()->sole()->hsn_sac_code);
+        $this->assertNull($product->fresh()->hsn_code);
+    }
+
+    public function test_legacy_invoice_hsn_is_preserved_when_editing_or_regenerating_the_sale(): void
+    {
+        [$organization, $customer, $product] = $this->saleContext();
+        $this->actingAs(TestData::user($organization));
+
+        $payload = [
+            'customer_id' => $customer->id,
+            'sale_date' => '2026-05-13',
+            'payment_status' => 'pending',
+            'sale_items' => [['product_id' => $product->id, 'quantity' => 1, 'unit_price' => 500]],
+        ];
+        $this->post(route('sales.store'), $payload)->assertSessionHasNoErrors();
+        $sale = Sale::sole();
+        $invoice = Invoice::sole();
+        $sale->saleItems()->sole()->update(['hsn_code' => null]);
+        $invoice->items()->sole()->update(['hsn_sac_code' => '63023100']);
+
+        $this->get(route('sales.edit', $sale))->assertOk()->assertSee('"hsn_code":"63023100"', false);
+        $this->post(route('sales.invoice', $sale))->assertRedirect(route('invoices.show', $invoice));
+        $this->assertSame('63023100', $invoice->items()->sole()->hsn_sac_code);
+
+        $this->put(route('sales.update', $sale), $payload)->assertSessionHasNoErrors();
+        $this->assertSame('63023100', $sale->saleItems()->sole()->hsn_code);
+        $this->assertSame('63023100', $invoice->items()->sole()->hsn_sac_code);
+    }
+
+    public function test_invalid_hsn_code_does_not_create_a_sale_or_invoice(): void
+    {
+        [$organization, $customer, $product] = $this->saleContext();
+        $this->actingAs(TestData::user($organization));
+
+        $this->from(route('sales.create'))->post(route('sales.store'), [
+            'customer_id' => $customer->id,
+            'sale_date' => '2026-05-13',
+            'payment_status' => 'pending',
+            'sale_items' => [[
+                'product_id' => $product->id,
+                'quantity' => 1,
+                'unit_price' => 500,
+                'hsn_code' => str_repeat('0', 256),
+            ]],
+        ])->assertSessionHasErrors('sale_items.0.hsn_code');
+
+        $this->assertDatabaseCount('sales', 0);
+        $this->assertDatabaseCount('invoices', 0);
     }
 
     public function test_sale_line_tax_type_defaults_from_customer_state_and_persists_override_into_invoice(): void

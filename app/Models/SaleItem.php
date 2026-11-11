@@ -20,6 +20,7 @@ class SaleItem extends Model
         'tax_percentage',
         'tax_calculation_mode',
         'tax_type',
+        'hsn_code',
         'taxable_amount',
         'total_tax_amount',
         'line_total',

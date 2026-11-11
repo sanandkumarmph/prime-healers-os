@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Regression;
 
-use App\Models\{Customer, Delivery, FollowUp, Invoice, Product, Rental, User};
+use App\Models\{Customer, Delivery, FollowUp, Invoice, Product, Rental, Sale, User};
 use App\Services\Deliveries\OrderCollectionSetup;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
@@ -69,6 +69,52 @@ class UnifiedCollectionSetupTest extends TestCase
         $this->assertDatabaseCount('rentals',0);$this->assertDatabaseCount('invoices',0);
         $this->assertDatabaseCount('payments',0);$this->assertDatabaseCount('order_collection_submissions',0);
         $this->assertSame(10,(int)$this->product->fresh()->available_quantity);
+    }
+
+    public function test_paid_sale_retry_hides_and_disables_collection_fields(): void
+    {
+        $response = $this->withSession(['_old_input' => $this->deliverySetup(['payment_status' => 'paid'])])
+            ->get(route('sales.create'))->assertOk();
+        $dom = new \DOMDocument();
+        @$dom->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($dom);
+
+        $this->assertCount(1, $xpath->query('//section[@data-order-collection="sale"][@hidden]'));
+        $this->assertCount(1, $xpath->query('//*[@id="collection_owner"][@disabled]/option[@value="none"][@selected]'));
+        $this->assertCount(2, $xpath->query('//section[@data-order-collection="sale"]/fieldset[@hidden][@disabled]'));
+    }
+
+    public function test_paid_sale_can_be_saved_without_a_collection_and_rejects_collection_assignments(): void
+    {
+        $this->product->update(['product_type' => Product::TYPE_BOTH, 'is_sellable' => true]);
+        $payload = [
+            'customer_id' => $this->customer->id,
+            'sale_date' => '2026-11-10',
+            'payment_status' => 'paid',
+            'delivery_responsibility' => 'ph_internal_delivery',
+            'sale_items' => [['product_id' => $this->product->id, 'quantity' => 1, 'unit_price' => 500]],
+        ];
+
+        $this->post(route('sales.store'), $payload)->assertSessionHasNoErrors();
+        $sale = Sale::sole();
+        $invoice = Invoice::sole();
+        $this->assertSame('paid', $sale->payment_status);
+        $this->assertSame(0.0, (float) $invoice->balance_amount);
+
+        $this->post(route('sales.store'), $payload + $this->deliverySetup(['delivery_operator_id' => $this->driver->id]))
+            ->assertSessionHasErrors('collection_amount');
+        $this->post(route('sales.store'), $payload + [
+            'collection_owner' => 'sales',
+            'collection_mode' => 'cash',
+            'collection_assignee_id' => $this->sales->id,
+        ])->assertSessionHasErrors('collection_mode');
+
+        $this->assertDatabaseCount('sales', 1);
+        $this->assertDatabaseCount('invoices', 1);
+        $this->assertDatabaseCount('payments', 1);
+        $this->assertDatabaseCount('order_collection_submissions', 0);
+        $this->assertFalse(Delivery::where('collection_required', true)->exists());
+        $this->assertFalse(FollowUp::where('source', 'like', 'order_collection:%')->exists());
     }
 
     public function test_internal_collection_assigns_one_delivery_and_does_not_record_a_payment(): void

@@ -14,6 +14,11 @@ document.querySelectorAll('[data-order-collection]').forEach(block => {
     let manual = block.dataset.manualAmount === '1', previousOwner = owner.value;
 
     function sync() {
+        const collectionUnavailable = sale && ['paid', 'void'].includes(field('payment_status')?.value);
+        if (sale) {
+            block.hidden = owner.disabled = collectionUnavailable;
+            if (collectionUnavailable) owner.value = 'none';
+        }
         const internal = sale ? field('delivery_responsibility')?.value === 'ph_internal_delivery'
             : field('delivery_assignment_type')?.value === 'ph_internal';
         if (!internal && deliveryOption?.parentElement) {
@@ -30,13 +35,17 @@ document.querySelectorAll('[data-order-collection]').forEach(block => {
         if (!sales) { if (mode) mode.value = ''; if (assignee) assignee.value = ''; }
         if (mode) mode.required = sales;
         if (assignee) assignee.required = sales;
-        if (!delivery && (previousOwner === 'delivery' || !internal)) {
+        if (!delivery && (collectionUnavailable || previousOwner === 'delivery' || !internal)) {
             if (amount) amount.value = '';
             const instructions = field('collection_instructions'); if (instructions) instructions.value = '';
             const operator = field('delivery_operator_id'); if (operator) operator.value = '';
             manual = false;
         }
-        const unpaid = sale && ['paid', 'void'].includes(field('payment_status')?.value) ? 0 : Math.max(0, cents(total?.textContent));
+        if (collectionUnavailable) {
+            const methods = field('collection_methods');
+            if (methods) methods.value = 'cash';
+        }
+        const unpaid = collectionUnavailable ? 0 : Math.max(0, cents(total?.textContent));
         if (amount) {
             if (delivery && !manual) amount.value = (unpaid / 100).toFixed(2);
             amount.max = (unpaid / 100).toFixed(2); amount.required = delivery;
