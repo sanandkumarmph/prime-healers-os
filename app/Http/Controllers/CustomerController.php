@@ -10,6 +10,7 @@ use App\Support\ActivityTimelineService;
 use App\Support\CustomerProfileSupport;
 use App\Support\PhoneNumber;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -542,8 +543,14 @@ class CustomerController extends Controller
 
         $validated = $this->validateCustomer($request, false, $customer);
 
-        $customer->update($this->customerPayload($validated, false));
-        $this->syncCustomerUploads($request, $customer);
+        $payload = $this->customerPayload($validated, false);
+        unset($payload['id_proof_file_path'], $payload['id_proof_original_name']);
+
+        if ($request->hasFile('id_proof_file') && Customer::hasIdProofFilePathColumn()) {
+            $customer = $this->replaceCustomerProof($customer, $request->file('id_proof_file'), $payload);
+        } else {
+            $customer->update($payload);
+        }
         ActivityLogger::log('customer.updated', $customer->fresh(), [
             'customer_type' => $customer->normalizedCustomerType(),
         ], 'Customer updated.');
@@ -797,5 +804,47 @@ class CustomerController extends Controller
         }
 
         $customer->forceFill($updatePayload)->save();
+    }
+
+    private function replaceCustomerProof(Customer $customer, UploadedFile $file, array $payload): Customer
+    {
+        $disk = Storage::disk('local');
+        $path = $file->store('customer-id-proofs', 'local');
+        if ($path === false) {
+            throw ValidationException::withMessages(['id_proof_file' => 'Could not save the new ID proof. Please try again.']);
+        }
+
+        try {
+            if (!$disk->exists($path)) {
+                throw ValidationException::withMessages(['id_proof_file' => 'Could not save the new ID proof. Please try again.']);
+            }
+
+            $proof = ['id_proof_file_path' => $path];
+            if (Customer::hasIdProofOriginalNameColumn()) {
+                $proof['id_proof_original_name'] = $file->getClientOriginalName();
+            }
+
+            [$customer, $previousCustomer] = app(\App\Services\Finance\OrganizationFinancialTransaction::class)->run(
+                (int) $customer->organization_id,
+                function () use ($customer, $payload, $proof): array {
+                    $current = Customer::where('organization_id', $customer->organization_id)->findOrFail($customer->id);
+                    $previous = clone $current;
+                    if (!$current->update($payload + $proof) || $current->refresh()->only(array_keys($proof)) !== $proof) {
+                        throw new \RuntimeException('Could not update the customer ID proof.');
+                    }
+
+                    return [$current, $previous];
+                }
+            );
+        } catch (\Throwable $exception) {
+            $disk->delete($path);
+            throw $exception;
+        }
+
+        if ($previousCustomer->id_proof_file_path !== $path) {
+            $this->deleteCustomerProofFile($previousCustomer);
+        }
+
+        return $customer;
     }
 }
