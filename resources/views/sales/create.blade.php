@@ -1,6 +1,8 @@
 @extends('layouts.app')
 
 @section('content')
+@include('sales.partials.stock-modal')
+
 <div class="ph-mobile-form-page">
     <form id="saleForm" action="{{ route('sales.store') }}" method="POST" novalidate>
         @include('sales-workspace.conversion-banner')

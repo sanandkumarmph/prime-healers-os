@@ -1091,13 +1091,136 @@
             grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
         }
     }
+
+    .sales-shell {
+        --sale-ink:#172b46;
+        --sale-muted:#53647a;
+        --sale-blue:#1d4ed8;
+        --sale-rule:#d8e2ee;
+        --sale-surface:#f3f6fa;
+    }
+    .sales-shell :is(h1, h2, h3) { color:var(--sale-ink); }
+    .sales-shell .sales-btn { background:var(--sale-blue); border-color:var(--sale-blue); }
+    .sales-shell .sales-btn:hover { background:#1e40af; border-color:#1e40af; }
+    .sales-shell .sale-step-card { scroll-margin-top:96px; }
+    .sales-shell :is(button, a, summary):focus-visible { outline:2px solid var(--sale-blue); outline-offset:2px; }
+    .sale-wizard-tabs {
+        display:grid;
+        grid-template-columns:repeat(5,minmax(0,1fr));
+        gap:5px;
+        padding:6px;
+        border:1px solid var(--sale-rule);
+        border-radius:12px;
+        background:#fff;
+        box-shadow:none;
+        overflow:visible;
+    }
+    .sale-wizard-tab {
+        min-width:0;
+        min-height:44px;
+        padding:4px 3px;
+        border:1px solid transparent;
+        border-radius:8px;
+        background:#fff;
+        color:var(--sale-ink);
+        box-shadow:none;
+        font-size:12px;
+    }
+    .sale-wizard-tab::before {
+        content:attr(data-step-index);
+        display:grid;
+        place-items:center;
+        width:22px;
+        height:22px;
+        flex:0 0 22px;
+        border-radius:50%;
+        background:var(--sale-surface);
+        color:var(--sale-muted);
+        font-size:11px;
+        font-weight:750;
+    }
+    .sale-wizard-tab.is-active {
+        background:#edf3ff;
+        border-color:#bfdbfe;
+        color:var(--sale-blue);
+        box-shadow:none;
+    }
+    .sale-wizard-tab.is-active::before { background:var(--sale-blue); color:#fff; }
+    .sale-wizard-tab.is-complete { background:#f0fdf4; border-color:#dcfce7; color:#166534; }
+    .sale-wizard-tab.is-complete::before { content:"✓"; background:#dcfce7; color:#166534; }
+    .sale-summary-panel { display:block; padding:0; border-radius:12px; background:#fff; }
+    .sale-summary-panel summary {
+        display:flex;
+        align-items:center;
+        gap:8px;
+        min-height:44px;
+        padding:10px 12px;
+        color:var(--sale-ink);
+        cursor:pointer;
+        list-style:none;
+    }
+    .sale-summary-panel summary::before { content:"▸"; color:var(--sale-blue); }
+    .sale-summary-panel details[open] > summary::before { content:"▾"; }
+    .sale-summary-panel summary::-webkit-details-marker { display:none; }
+    .sale-summary-panel #saleSummaryToggle { display:flex !important; }
+    .sale-summary-panel #saleSummaryNet { margin-left:auto; color:var(--sale-blue); font-size:16px; font-variant-numeric:tabular-nums; }
+    .sale-summary-body { padding:0 12px 12px; }
+    .sale-summary-line { padding:6px 0; }
+    .sale-summary-context { margin-top:6px; border-top:1px solid var(--sale-rule); }
+    .sale-summary-panel .sale-summary-context summary { padding:4px 0; color:var(--sale-blue); font-size:13px; font-weight:700; }
+    .sale-step-feedback { flex:1 1 180px; margin:0; align-self:center; color:#92400e; font-size:13px; line-height:1.35; }
+    .sale-review-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin:12px 0; }
+    .sale-review-row {
+        display:grid;
+        grid-template-columns:minmax(0,1fr) auto;
+        align-items:start;
+        gap:4px 8px;
+        padding:9px 10px;
+        min-width:0;
+        border:1px solid var(--sale-rule);
+        border-radius:9px;
+        background:#fff;
+    }
+    .sale-review-row h3 { margin:0; font-size:13px; }
+    .sale-review-row dl { grid-column:1 / -1; margin:0; font-size:13px; }
+    .sale-review-row dl div { display:flex; justify-content:space-between; gap:8px; padding:3px 0; }
+    .sale-review-row dt { color:var(--sale-muted); }
+    .sale-review-row dd { margin:0; text-align:right; overflow-wrap:anywhere; min-width:0; }
+    .sale-review-edit { padding:4px 7px; border:1px solid #bfdbfe; border-radius:6px; background:#edf3ff; color:var(--sale-blue); font:inherit; font-size:12px; font-weight:700; cursor:pointer; }
+    .sale-fulfilment-row { margin:0 0 12px; padding:10px; border:1px solid var(--sale-rule); border-radius:10px; background:var(--sale-surface); }
+    .sale-fulfilment-row #saleVendorField[hidden] { display:none !important; }
+    .sale-item-asset { min-width:0; padding:8px; border:1px solid var(--sale-rule); border-radius:9px; background:var(--sale-surface); }
+    .sale-asset-scan > summary, .sale-line-stock > summary, .sales-referral-card > summary {
+        color:var(--sale-blue);
+        font-weight:700;
+        font-size:13px;
+        cursor:pointer;
+        padding:5px 0;
+    }
+    .sale-asset-scan .sales-field { margin-top:4px; }
+    .sale-line-stock .sales-stock-chip-row { margin-top:5px; }
+    .sales-referral-card .sales-referral-grid { margin-top:8px; }
+    @media (max-width:980px) {
+        .sale-summary-panel { order:-1; }
+    }
+    @media (max-width:720px) {
+        .sales-shell .sales-header .sales-actions { display:flex; }
+        .sales-shell .sales-header .sales-actions a { min-height:36px; }
+        .sale-wizard-tabs { padding:3px; gap:1px; }
+        .sale-wizard-tab { font-size:10px; min-height:44px; padding:3px 0; }
+        .sale-review-grid { grid-template-columns:1fr; }
+        #sale-save-section .sale-review-edit { min-height:44px; min-width:44px; width:auto; }
+        .sale-asset-scan > summary, .sale-line-stock > summary, .sales-referral-card > summary { padding:10px 0; }
+        .sale-mobile-sticky-actions .sales-btn { background:#1d4ed8; border-color:#1d4ed8; }
+        .sale-mobile-sticky-footer .sale-step-feedback { grid-column:1 / -1; text-align:left; }
+    }
 </style>
 
 <div class="container sales-shell">
     <div class="sales-header">
         <div>
             <h1>{{ $isEdit ? 'Edit Sale' : 'Create Sale' }}</h1>
-            <p>Create sales order with customer, products, pricing, referral, and delivery.</p>
+            <p>{{ $isEdit ? 'Review or update this sales order.' : 'Set up the order and review it before saving.' }}</p>
         </div>
         <div class="sales-actions">
             <a href="{{ route('sales.index') }}" class="sales-btn-light">Back to Sales</a>
@@ -1108,7 +1231,7 @@
     </div>
 
     @if ($errors->any())
-        <div class="sales-errors">
+        <div class="sales-errors" role="alert">
             <strong>Please review the sale details below.</strong>
             <ul style="margin:8px 0 0 18px; padding:0;">
                 @foreach ($errors->all() as $error)
@@ -1118,13 +1241,13 @@
         </div>
     @endif
 
-    <div class="sale-wizard-tabs" role="tablist" aria-label="Create sale steps">
-        <button type="button" class="sale-wizard-tab is-active" data-step-index="1" data-sale-step-button="customer">Customer</button>
-        <button type="button" class="sale-wizard-tab" data-step-index="2" data-sale-step-button="products">Products</button>
-        <button type="button" class="sale-wizard-tab" data-step-index="3" data-sale-step-button="pricing">Pricing</button>
-        <button type="button" class="sale-wizard-tab" data-step-index="4" data-sale-step-button="delivery">Delivery</button>
-        <button type="button" class="sale-wizard-tab" data-step-index="5" data-sale-step-button="review">Review</button>
-    </div>
+    <nav class="sale-wizard-tabs" data-sale-wizard aria-label="Create sale steps">
+        <button type="button" class="sale-wizard-tab is-active" data-step-index="1" data-sale-step-button="customer" aria-controls="sale-customer-section" aria-current="step">Customer</button>
+        <button type="button" class="sale-wizard-tab" data-step-index="2" data-sale-step-button="products" aria-controls="sale-products-section">Items</button>
+        <button type="button" class="sale-wizard-tab" data-step-index="3" data-sale-step-button="pricing" aria-controls="sale-pricing-section">Charges</button>
+        <button type="button" class="sale-wizard-tab" data-step-index="4" data-sale-step-button="delivery" aria-controls="sale-details-section">Delivery</button>
+        <button type="button" class="sale-wizard-tab" data-step-index="5" data-sale-step-button="review" aria-controls="sale-save-section">Review</button>
+    </nav>
 
     <div class="sale-create-workspace">
         <div class="sale-step-column">
@@ -1153,8 +1276,8 @@
     </div>
 
     <div class="sales-card sale-step-card section-nav-target" id="sale-details-section" data-sale-step="delivery">
-        <h2>Delivery & Fulfilment</h2>
-        <p>Choose fulfilment source, delivery responsibility, and operational notes.</p>
+        <h2>Delivery and payment</h2>
+        <p>Confirm who handles delivery and how the customer will pay.</p>
         <div class="sales-grid">
             <div class="sales-field sales-col-4 {{ $errors->has('sale_date') ? 'is-error' : '' }}">
                 <label for="sale_date">Sale Date</label>
@@ -1194,27 +1317,6 @@
                 @error('rental_id')<div class="sales-field-error">{{ $message }}</div>@enderror
                 <small>Optional link to an existing rental.</small>
             </div>
-            <div class="sales-field sales-col-4 {{ $errors->has('fulfilment_source') ? 'is-error' : '' }}">
-                <label for="sale_fulfilment_source">Fulfilment Source</label>
-                <select name="fulfilment_source" id="sale_fulfilment_source">
-                    <option value="in_house" {{ $selectedFulfilmentSource === 'in_house' ? 'selected' : '' }}>In-house Stock</option>
-                    <option value="vendor_supplied" {{ $selectedFulfilmentSource === 'vendor_supplied' ? 'selected' : '' }}>Vendor Supplied</option>
-                </select>
-                <small>Vendor supplied skips PH stock reduction.</small>
-                @error('fulfilment_source')<div class="sales-field-error">{{ $message }}</div>@enderror
-            </div>
-            <div class="sales-field sales-col-4 {{ $errors->has('vendor_id') ? 'is-error' : '' }}" id="saleVendorField"{{ $selectedFulfilmentSource === 'vendor_supplied' ? '' : ' hidden' }}>
-                <label for="sale_vendor_id">Vendor</label>
-                <select name="vendor_id" id="sale_vendor_id">
-                    <option value="">Select vendor when vendor supplied</option>
-                    @foreach($fulfilmentVendors as $vendor)
-                        <option value="{{ $vendor->id }}" {{ $selectedFulfilmentVendorId === (int) $vendor->id ? 'selected' : '' }}>
-                            {{ $vendor->name }}{{ $vendor->vendor_type ? ' - ' . $vendor->vendor_type : '' }}
-                        </option>
-                    @endforeach
-                </select>
-                @error('vendor_id')<div class="sales-field-error">{{ $message }}</div>@enderror
-            </div>
             <div class="sales-field sales-col-4 {{ $errors->has('delivery_responsibility') ? 'is-error' : '' }}">
                 <label for="sale_delivery_responsibility">Delivery Responsibility</label>
                 <select name="delivery_responsibility" id="sale_delivery_responsibility">
@@ -1232,13 +1334,14 @@
         </div>
         <div class="sale-step-footer">
             <button type="button" class="sales-btn-light" data-sale-step-prev="pricing">Previous</button>
-            <button type="button" class="sales-btn" data-sale-step-next="review">Next: Review & Create</button>
+            <p class="sale-step-feedback" id="saleDeliveryFeedback" data-sale-step-feedback="delivery" hidden></p>
+            <button type="button" class="sales-btn" data-sale-step-next="review" aria-describedby="saleDeliveryFeedback">Review order</button>
         </div>
     </div>
 
     <div class="sales-card sale-step-card is-active section-nav-target" id="sale-customer-section" data-sale-step="customer">
         <h2>Customer</h2>
-        <p>Select billing contact, actual client, city, phone, and referral source.</p>
+        <p>Choose the customer or business partner for this order.</p>
         <div class="sales-grid">
             <div class="sales-col-12 party-flow-shell">
                 <div class="party-flow-toggle-wrap">
@@ -1382,11 +1485,14 @@
             </div>
         </div>
 
-        <div class="sales-referral-card" style="margin-top:14px;">
-            <div>
-                <h3>Referral</h3>
-                <p>Track who introduced this sale for reporting and incentive review.</p>
-            </div>
+        @php
+            $referralFields = ['referral_source_type', 'referral_source_id', 'referral_source_name', 'referral_contact', 'referral_city', 'referral_notes'];
+            $hasReferralDetails = $errors->hasAny($referralFields)
+                || collect($referralFields)->contains(fn ($field) => filled(old($field, $sale?->{$field})));
+        @endphp
+        <details class="sales-referral-card" style="margin-top:14px;" @if($hasReferralDetails) open @endif>
+            <summary>Referral details (optional)</summary>
+            <p>Track who introduced this sale for reporting and incentive review.</p>
             <div class="sales-referral-grid">
                 <div class="sales-field sales-col-3 {{ $errors->has('referral_source_type') ? 'is-error' : '' }}">
                     <label for="referral_source_type">Referral Source Type</label>
@@ -1447,16 +1553,40 @@
                     @error('referral_notes')<div class="sales-field-error">{{ $message }}</div>@enderror
                 </div>
             </div>
-        </div>
+        </details>
         <div class="sale-step-footer">
-            <span></span>
-            <button type="button" class="sales-btn" data-sale-step-next="products">Next: Products</button>
+            <p class="sale-step-feedback" id="saleCustomerFeedback" data-sale-step-feedback="customer" hidden></p>
+            <button type="button" class="sales-btn" data-sale-step-next="products" aria-describedby="saleCustomerFeedback">Continue to items</button>
         </div>
     </div>
 
     <div class="sales-card sale-step-card section-nav-target" id="sale-products-section" data-sale-step="products">
-        <h2>Products</h2>
-        <p>Add one or many sale products. Existing rows stay intact when a new product is added.</p>
+        <h2>Items and stock</h2>
+        <p>Choose the stock source and add the products for this order.</p>
+
+        <div class="sales-grid sale-fulfilment-row">
+            <div class="sales-field sales-col-6 {{ $errors->has('fulfilment_source') ? 'is-error' : '' }}">
+                <label for="sale_fulfilment_source">Fulfilment Source</label>
+                <select name="fulfilment_source" id="sale_fulfilment_source">
+                    <option value="in_house" {{ $selectedFulfilmentSource === 'in_house' ? 'selected' : '' }}>In-house Stock</option>
+                    <option value="vendor_supplied" {{ $selectedFulfilmentSource === 'vendor_supplied' ? 'selected' : '' }}>Vendor Supplied</option>
+                </select>
+                <small>Vendor supplied orders use the vendor’s stock.</small>
+                @error('fulfilment_source')<div class="sales-field-error">{{ $message }}</div>@enderror
+            </div>
+            <div class="sales-field sales-col-6 {{ $errors->has('vendor_id') ? 'is-error' : '' }}" id="saleVendorField"{{ $selectedFulfilmentSource === 'vendor_supplied' ? '' : ' hidden' }}>
+                <label for="sale_vendor_id">Vendor</label>
+                <select name="vendor_id" id="sale_vendor_id">
+                    <option value="">Select vendor when vendor supplied</option>
+                    @foreach($fulfilmentVendors as $vendor)
+                        <option value="{{ $vendor->id }}" {{ $selectedFulfilmentVendorId === (int) $vendor->id ? 'selected' : '' }}>
+                            {{ $vendor->name }}{{ $vendor->vendor_type ? ' - ' . $vendor->vendor_type : '' }}
+                        </option>
+                    @endforeach
+                </select>
+                @error('vendor_id')<div class="sales-field-error">{{ $message }}</div>@enderror
+            </div>
+        </div>
 
         <div class="sales-items-toolbar">
             <strong id="salesItemsToolbarSummary">{{ count($initialSaleItems) }} product line(s)</strong>
@@ -1466,13 +1596,14 @@
         <div class="sales-item-list" id="saleItemsList"></div>
         <div class="sale-step-footer">
             <button type="button" class="sales-btn-light" data-sale-step-prev="customer">Previous</button>
-            <button type="button" class="sales-btn" data-sale-step-next="pricing">Next: Pricing</button>
+            <p class="sale-step-feedback" id="saleItemsFeedback" data-sale-step-feedback="products" hidden></p>
+            <button type="button" class="sales-btn" data-sale-step-next="pricing" aria-describedby="saleItemsFeedback">Continue to charges</button>
         </div>
     </div>
 
     <div class="sales-card sale-step-card section-nav-target" id="sale-pricing-section" data-sale-step="pricing">
-        <h2>Pricing</h2>
-        <p>Review subtotal, discount, GST, transport, and net amount.</p>
+        <h2>Charges</h2>
+        <p>Check the price breakdown and confirm transport.</p>
         <div class="sales-order-total">
             <div class="sales-pricing-net">
                 <div style="color:#64748b; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;">Sale Net Amount</div>
@@ -1487,7 +1618,7 @@
                 <strong id="saleDiscountSummary">Rs. 0.00</strong>
             </div>
             <div class="sales-field" style="min-width:180px; margin:0;">
-                <label>GST</label>
+                <label>GST included in total</label>
                 <strong id="saleGstSummary">Rs. 0.00</strong>
             </div>
             <div class="sales-field sales-pricing-full {{ $errors->has('shipping_charges') ? 'is-error' : '' }}" style="min-width:160px; margin:0;">
@@ -1505,26 +1636,52 @@
         </div>
         <div class="sale-step-footer">
             <button type="button" class="sales-btn-light" data-sale-step-prev="products">Previous</button>
-            <button type="button" class="sales-btn" data-sale-step-next="delivery">Next: Delivery</button>
+            <p class="sale-step-feedback" id="saleChargesFeedback" data-sale-step-feedback="pricing" hidden></p>
+            <button type="button" class="sales-btn" data-sale-step-next="delivery" aria-describedby="saleChargesFeedback">Continue to delivery</button>
         </div>
     </div>
 
 
     <div class="sales-card sale-step-card section-nav-target" id="sale-save-section" data-sale-step="review">
-        <h2>Review & Create</h2>
+        <h2>Review order</h2>
         @unless($isEdit)
             @include('sales-workspace.order-incentive-fields', ['fieldClass' => 'sales-field'])
         @endunless
-        <p>Confirm customer, referral, products, pricing, delivery, and fulfilment before saving.</p>
-        <div class="sales-summary">
-            <div class="sales-metric"><span>Customer</span><strong id="saleReviewCustomer">Select customer</strong></div>
-            <div class="sales-metric"><span>Referral</span><strong id="saleReviewReferral">None</strong></div>
-            <div class="sales-metric"><span>Products</span><strong id="saleReviewProducts">{{ count($initialSaleItems) }} line(s)</strong></div>
-            <div class="sales-metric"><span>Pricing</span><strong id="saleReviewPricing">Rs. 0.00</strong></div>
-            <div class="sales-metric"><span>Delivery</span><strong id="saleReviewDelivery">Not assigned</strong></div>
-            <div class="sales-metric"><span>Fulfilment</span><strong id="saleReviewFulfilment">In-house</strong></div>
+        <div class="sale-review-grid">
+            <section class="sale-review-row">
+                <h3>Customer</h3>
+                <button type="button" class="sale-review-edit" data-sale-review-edit="customer" aria-label="Edit customer and referral">Edit</button>
+                <dl>
+                    <div><dt>Billing contact</dt><dd id="saleReviewCustomer">Select customer</dd></div>
+                    <div><dt>City</dt><dd id="saleReviewCity">Not set</dd></div>
+                    <div><dt>Referral</dt><dd id="saleReviewReferral">None</dd></div>
+                </dl>
+            </section>
+            <section class="sale-review-row">
+                <h3>Items and stock</h3>
+                <button type="button" class="sale-review-edit" data-sale-review-edit="products" aria-label="Edit items and fulfilment">Edit</button>
+                <dl>
+                    <div><dt>Products</dt><dd id="saleReviewProducts">{{ count($initialSaleItems) }} line(s)</dd></div>
+                    <div><dt>Fulfilment</dt><dd id="saleReviewFulfilment">In-house</dd></div>
+                </dl>
+            </section>
+            <section class="sale-review-row">
+                <h3>Charges</h3>
+                <button type="button" class="sale-review-edit" data-sale-review-edit="pricing" aria-label="Edit charges">Edit</button>
+                <dl>
+                    <div><dt>Total</dt><dd id="saleReviewPricing">Rs. 0.00</dd></div>
+                </dl>
+            </section>
+            <section class="sale-review-row">
+                <h3>Delivery and payment</h3>
+                <button type="button" class="sale-review-edit" data-sale-review-edit="delivery" aria-label="Edit delivery and payment">Edit</button>
+                <dl>
+                    <div><dt>Delivery</dt><dd id="saleReviewDelivery">Not assigned</dd></div>
+                    <div><dt>Payment status</dt><dd id="saleReviewPayment">Pending</dd></div>
+                </dl>
+            </section>
         </div>
-        <div class="sale-step-warning" id="saleReviewWarnings"></div>
+        <div class="sale-step-warning" id="saleReviewWarnings" role="status"></div>
         <div class="sales-actions sale-step-footer">
             <button type="button" class="sales-btn-light" data-sale-step-prev="delivery">Previous</button>
             <a href="{{ route('sales.index') }}" class="sales-btn-light">Cancel</a>
@@ -1533,29 +1690,29 @@
     </div>
 </div>
 
-<aside class="sale-summary-panel" data-collapsible>
-    <button type="button" class="sales-btn-light" id="saleSummaryToggle" style="display:none;">Sale Summary</button>
-    <div>
-        <h2>Sale Summary</h2>
-        <p>Live order snapshot</p>
-    </div>
-    <div class="sale-summary-body">
-        <div class="sale-summary-line"><span>Customer</span><strong id="saleSummaryCustomer">Select customer</strong></div>
-        <div class="sale-summary-line"><span>City</span><strong id="saleSummaryCity">Not set</strong></div>
-        <div class="sale-summary-line"><span>Referral</span><strong id="saleSummaryReferral">None</strong></div>
-        <div class="sale-summary-line"><span>Fulfilment</span><strong id="saleSummaryFulfilment">In-house</strong></div>
-        <div class="sale-summary-line"><span>Products</span><strong id="saleSummaryProducts">{{ count($initialSaleItems) }} line(s)</strong></div>
-        <div class="sale-summary-line"><span>Subtotal</span><strong id="saleSummarySubtotal">Rs. 0.00</strong></div>
-        <div class="sale-summary-line"><span>Discount</span><strong id="saleSummaryDiscount">Rs. 0.00</strong></div>
-        <div class="sale-summary-line"><span>GST</span><strong id="saleSummaryGst">Rs. 0.00</strong></div>
-        <div class="sale-summary-line"><span>Transport</span><strong id="saleSummaryTransport">Rs. 0.00</strong></div>
-        <div class="sale-summary-line"><span>Net Amount</span><strong id="saleSummaryNet">Rs. 0.00</strong></div>
-        <div class="sale-summary-line"><span>Delivery</span><strong id="saleSummaryDelivery">Not assigned</strong></div>
-        @if($canViewSaleProfitability)
-            <div class="sale-summary-line"><span>Vendor Cost</span><strong id="saleSummaryVendorCost">After save</strong></div>
-            <div class="sale-summary-line"><span>Margin</span><strong id="saleSummaryMargin">After save</strong></div>
-        @endif
-    </div>
+<aside class="sale-summary-panel" aria-label="Order summary">
+    <details id="saleSummaryDetails" open>
+        <summary id="saleSummaryToggle"><strong>Order summary</strong><strong id="saleSummaryNet" aria-label="Order total">Rs. 0.00</strong></summary>
+        <div class="sale-summary-body">
+            <div class="sale-summary-line"><span>Subtotal</span><strong id="saleSummarySubtotal">Rs. 0.00</strong></div>
+            <div class="sale-summary-line"><span>Discount</span><strong id="saleSummaryDiscount">Rs. 0.00</strong></div>
+            <div class="sale-summary-line"><span>GST included in total</span><strong id="saleSummaryGst">Rs. 0.00</strong></div>
+            <div class="sale-summary-line"><span>Transport</span><strong id="saleSummaryTransport">Rs. 0.00</strong></div>
+            <details class="sale-summary-context">
+                <summary>Order details</summary>
+                <div class="sale-summary-line"><span>Customer</span><strong id="saleSummaryCustomer">Select customer</strong></div>
+                <div class="sale-summary-line"><span>City</span><strong id="saleSummaryCity">Not set</strong></div>
+                <div class="sale-summary-line"><span>Referral</span><strong id="saleSummaryReferral">None</strong></div>
+                <div class="sale-summary-line"><span>Fulfilment</span><strong id="saleSummaryFulfilment">In-house</strong></div>
+                <div class="sale-summary-line"><span>Products</span><strong id="saleSummaryProducts">{{ count($initialSaleItems) }} line(s)</strong></div>
+                <div class="sale-summary-line"><span>Delivery</span><strong id="saleSummaryDelivery">Not assigned</strong></div>
+                @if($canViewSaleProfitability)
+                    <div class="sale-summary-line"><span>Vendor Cost</span><strong id="saleSummaryVendorCost">After save</strong></div>
+                    <div class="sale-summary-line"><span>Margin</span><strong id="saleSummaryMargin">After save</strong></div>
+                @endif
+            </details>
+        </div>
+    </details>
 </aside>
 </div>
 </div>
@@ -1609,79 +1766,6 @@
         </div>
     </div>
 </div>
-<div class="sales-stock-popup" id="saleStockPopup" data-sale-stock-modal aria-hidden="true">
-    <div class="sales-stock-popup-panel" role="dialog" aria-modal="true" aria-labelledby="saleStockPopupTitle">
-        <form id="saleStockModalForm" data-sale-stock-modal-form novalidate>
-            <input type="hidden" name="asset_stage" value="new_stock">
-            <input type="hidden" name="asset_status" value="available_for_sale">
-            <input type="hidden" name="asset_name" id="saleStockAssetName">
-            <input type="hidden" name="product_id" id="saleStockProductId">
-            <div class="sales-stock-popup-head">
-                <div>
-                    <strong id="saleStockPopupTitle">Add Sale Stock</strong>
-                    <span id="saleStockProductSubtitle">Select a sale product first.</span>
-                </div>
-                <button type="button" class="sales-stock-close" data-close-sale-stock-popup aria-label="Close Add Sale Stock modal">&times;</button>
-            </div>
-            <div class="sales-stock-modal-body">
-                <div class="sales-stock-context" id="saleStockProductContext">
-                    <div class="sales-product-thumb" id="saleStockProductThumb">P</div>
-                    <div>
-                        <strong id="saleStockProductName">Product not selected</strong>
-                        <span id="saleStockProductMeta">Choose a product line before adding stock.</span>
-                    </div>
-                </div>
-                <div class="sales-stock-modal-summary" aria-label="Current sale stock summary">
-                    <span>Available <strong id="saleStockCurrentAvailable">0</strong></span>
-                    <span>Total <strong id="saleStockCurrentTotal">0</strong></span>
-                    <span>Sold <strong id="saleStockCurrentSold">0</strong></span>
-                </div>
-                <div class="sales-stock-modal-error" id="saleStockModalError" hidden></div>
-                <div class="sales-stock-modal-grid">
-                    <div class="sales-field">
-                        <label for="saleStockWarehouseId">Warehouse <span style="color:#dc2626;">*</span></label>
-                        <select name="warehouse_id" id="saleStockWarehouseId" required></select>
-                    </div>
-                    <div class="sales-field">
-                        <label for="saleStockSerialNumber">Serial Number <span style="color:#dc2626;">*</span></label>
-                        <input type="text" name="serial_number" id="saleStockSerialNumber" autocomplete="off" required>
-                    </div>
-                    <div class="sales-field">
-                        <label for="saleStockBarcodeValue">Barcode</label>
-                        <input type="text" name="barcode_value" id="saleStockBarcodeValue" autocomplete="off">
-                    </div>
-                    <div class="sales-field">
-                        <label for="saleStockConditionStatus">Condition</label>
-                        <select name="condition_status" id="saleStockConditionStatus">
-                            <option value="new">New</option>
-                            <option value="good">Good</option>
-                            <option value="fair">Fair</option>
-                            <option value="needs_repair">Needs repair</option>
-                            <option value="damaged">Damaged</option>
-                        </select>
-                    </div>
-                    <div class="sales-field">
-                        <label for="saleStockPurchaseDate">Purchase Date</label>
-                        <input type="date" name="purchase_date" id="saleStockPurchaseDate">
-                    </div>
-                    <div class="sales-field">
-                        <label for="saleStockPurchaseCost">Purchase Cost</label>
-                        <input type="number" min="0" step="0.01" name="purchase_cost" id="saleStockPurchaseCost" placeholder="0.00">
-                    </div>
-                    <div class="sales-field sales-stock-modal-notes">
-                        <label for="saleStockNotes">Notes</label>
-                        <textarea name="notes" id="saleStockNotes" rows="2" placeholder="Optional stock note"></textarea>
-                    </div>
-                </div>
-            </div>
-            <div class="sales-stock-modal-footer">
-                <button type="button" class="sales-btn-light" data-close-sale-stock-popup>Cancel</button>
-                <button type="submit" class="sales-btn-light" data-sale-stock-submit="add_another">Save & Add Another</button>
-                <button type="submit" class="sales-btn" data-sale-stock-submit="save">Save Stock</button>
-            </div>
-        </form>
-    </div>
-</div>
 <div class="sale-mobile-sticky-footer" id="saleMobileStickyFooter" data-current-step="customer">
     <div class="sale-mobile-sticky-meta">
         <span><strong id="saleMobileStickyItems">{{ count($initialSaleItems) }}</strong> Items</span>
@@ -1689,9 +1773,10 @@
     </div>
     <div class="sale-mobile-sticky-actions">
         <button type="button" class="sales-btn-light" id="saleMobileBackButton">Back</button>
-        <button type="button" class="sales-btn" id="saleMobileNextButton">Continue</button>
+        <button type="button" class="sales-btn" id="saleMobileNextButton" aria-describedby="saleMobileStepFeedback">Continue</button>
         <button type="submit" form="saleForm" class="sales-btn sales-submit-btn" id="saleMobileSaveButton" data-sale-submit hidden>{{ $isEdit ? 'Update Sale' : 'Create Sale' }}</button>
     </div>
+    <p class="sale-step-feedback" id="saleMobileStepFeedback" role="status" hidden></p>
 </div>
 
     <script>
@@ -1730,14 +1815,18 @@
         const saleStepCards = Array.from(document.querySelectorAll('[data-sale-step]'));
         const saleStepNextButtons = Array.from(document.querySelectorAll('[data-sale-step-next]'));
         const saleStepPrevButtons = Array.from(document.querySelectorAll('[data-sale-step-prev]'));
-        const saleSummaryToggle = document.getElementById('saleSummaryToggle');
-        const saleSummaryPanel = document.querySelector('.sale-summary-panel');
+        const saleReviewEditButtons = document.querySelectorAll('[data-sale-review-edit]');
+        const saleStepFeedback = document.querySelectorAll('[data-sale-step-feedback]');
+        const saleSummaryDetails = document.getElementById('saleSummaryDetails');
         const saleMobileStickyFooter = document.getElementById('saleMobileStickyFooter');
         const saleMobileStickyItems = document.getElementById('saleMobileStickyItems');
         const saleMobileStickyTotal = document.getElementById('saleMobileStickyTotal');
         const saleMobileBackButton = document.getElementById('saleMobileBackButton');
         const saleMobileNextButton = document.getElementById('saleMobileNextButton');
         const saleMobileSaveButton = document.getElementById('saleMobileSaveButton');
+        const saleMobileStepFeedback = document.getElementById('saleMobileStepFeedback');
+        const saleDate = document.getElementById('sale_date');
+        const salePaymentStatus = document.getElementById('payment_status');
         const saleShippingInput = document.getElementById('shipping_charges');
         const saleTransportDefaultStatus = document.getElementById('saleTransportDefaultStatus');
         const saleUseSuggestedTransport = document.getElementById('saleUseSuggestedTransport');
@@ -1791,10 +1880,12 @@
             net: document.getElementById('saleSummaryNet'),
             delivery: document.getElementById('saleSummaryDelivery'),
             reviewCustomer: document.getElementById('saleReviewCustomer'),
+            reviewCity: document.getElementById('saleReviewCity'),
             reviewReferral: document.getElementById('saleReviewReferral'),
             reviewProducts: document.getElementById('saleReviewProducts'),
             reviewPricing: document.getElementById('saleReviewPricing'),
             reviewDelivery: document.getElementById('saleReviewDelivery'),
+            reviewPayment: document.getElementById('saleReviewPayment'),
             reviewFulfilment: document.getElementById('saleReviewFulfilment'),
             reviewWarnings: document.getElementById('saleReviewWarnings'),
             subtotalInline: document.getElementById('saleSubtotalSummary'),
@@ -1879,6 +1970,7 @@
         const partnerClientCache = new Map();
         let partnerClientRequestToken = 0;
         const saleStepOrder = ['customer', 'products', 'pricing', 'delivery', 'review'];
+        const visitedSaleSteps = new Set();
         let currentSaleStep = 'customer';
 
         let saleItems = initialSaleItems.length ? initialSaleItems.map(normalizeItem) : [defaultSaleItem()];
@@ -2439,7 +2531,7 @@
             const activeOption = mode === 'business_partner' ? (clientOption || option) : option;
 
             return {
-                name: option?.dataset?.name || option?.textContent?.trim() || '',
+                name: option?.value ? (option.dataset.name || option.textContent.trim()) : '',
                 city: activeOption?.dataset?.city || '',
                 phone: activeOption?.dataset?.phone || '',
             };
@@ -2465,8 +2557,9 @@
             const referral = selectedReferral && selectedReferral.value
                 ? (selectedReferral.getAttribute('data-referral-name') || selectedReferral.textContent.trim() || 'None')
                 : (referralNameSnapshotInput?.value || readable(referralTypeSelect?.value) || 'None');
-            const fulfilment = readable(saleFulfilmentSource?.value || 'in_house');
-            const delivery = readable(saleDeliveryResponsibilitySelect?.value || 'not_assigned');
+            const fulfilment = selectedOption(saleFulfilmentSource)?.textContent.trim() || 'In-house';
+            const delivery = selectedOption(saleDeliveryResponsibilitySelect)?.textContent.trim() || 'Not assigned';
+            const payment = selectedOption(salePaymentStatus)?.textContent.trim() || 'Not set';
             const selectedSaleItems = saleItems.filter(function (item) {
                 return item.product_id;
             });
@@ -2489,70 +2582,93 @@
             if (summaryEls.net) summaryEls.net.textContent = formatCurrency(total);
             if (summaryEls.delivery) summaryEls.delivery.textContent = delivery;
             if (summaryEls.reviewCustomer) summaryEls.reviewCustomer.textContent = customerData.name || 'Missing';
+            if (summaryEls.reviewCity) summaryEls.reviewCity.textContent = customerData.city || 'Not set';
             if (summaryEls.reviewReferral) summaryEls.reviewReferral.textContent = referral;
             if (summaryEls.reviewProducts) summaryEls.reviewProducts.textContent = productCount;
             if (summaryEls.reviewPricing) summaryEls.reviewPricing.textContent = formatCurrency(total);
             if (summaryEls.reviewDelivery) summaryEls.reviewDelivery.textContent = delivery;
+            if (summaryEls.reviewPayment) summaryEls.reviewPayment.textContent = payment;
             if (summaryEls.reviewFulfilment) summaryEls.reviewFulfilment.textContent = fulfilment;
             if (summaryEls.subtotalInline) summaryEls.subtotalInline.textContent = formatCurrency(totals.subtotal);
             if (summaryEls.discountInline) summaryEls.discountInline.textContent = formatCurrency(totals.discount);
             if (summaryEls.gstInline) summaryEls.gstInline.textContent = formatCurrency(totals.gst);
 
-            updateWizardCompletion();
-            updateReviewWarnings();
+            updateSaleStepFeedback();
         }
 
-        function updateReviewWarnings() {
-            if (!summaryEls.reviewWarnings) {
-                return;
+        function saleStepIssues() {
+            let customer = '';
+            if (customerMode() === 'business_partner') {
+                if (!businessPartnerSelect?.value) customer = 'Select a business partner.';
+                else if (!partnerClientSelect?.value) customer = 'Select the client for this order.';
+            } else if (!customerSelect?.value) {
+                customer = 'Select a customer.';
             }
 
-            const warnings = [];
-            if (!customerSelect?.value && customerMode() === 'direct_customer') warnings.push('No customer selected.');
-            if (customerMode() === 'business_partner' && (!businessPartnerSelect?.value || !partnerClientSelect?.value)) warnings.push('Business partner or actual client missing.');
-            if (!saleItems.some((item) => item.product_id)) warnings.push('No product selected.');
-            if (!saleDeliveryResponsibilitySelect?.value) warnings.push('No delivery responsibility selected.');
+            let products = '';
+            if (!saleItems.some((item) => item.product_id)) products = 'Add at least one product.';
+            else if (saleFulfilmentSource?.value === 'vendor_supplied' && !saleVendorSelect?.value) products = 'Select the supplying vendor.';
 
-            summaryEls.reviewWarnings.textContent = warnings.join(' ');
-            summaryEls.reviewWarnings.classList.toggle('is-visible', warnings.length > 0);
+            let delivery = '';
+            if (!saleDate?.value) delivery = 'Enter a sale date.';
+            else if (!salePaymentStatus?.value) delivery = 'Select the payment status.';
+            else if (!saleDeliveryResponsibilitySelect?.value) delivery = 'Choose who will handle delivery.';
+
+            return {
+                customer,
+                products,
+                pricing: saleShippingInput?.validity.valid === false ? 'Check the transport charge.' : '',
+                delivery,
+            };
         }
 
-        function updateWizardCompletion() {
-            const currentStepIndex = saleStepOrder.indexOf(currentSaleStep);
-            const deliveryStepIndex = saleStepOrder.indexOf('delivery');
-            const complete = {
-                customer: customerMode() === 'business_partner'
-                    ? Boolean(businessPartnerSelect?.value && partnerClientSelect?.value)
-                    : Boolean(customerSelect?.value),
-                products: saleItems.some((item) => item.product_id),
-                pricing: parseFloat(saleAmountInput?.value || '0') > 0,
-                delivery: Boolean(saleDeliveryResponsibilitySelect?.value) && currentStepIndex > deliveryStepIndex,
-                review: false,
-            };
+        function updateSaleStepFeedback() {
+            const issues = saleStepIssues();
+            const warnings = Object.values(issues).filter(Boolean).join(' ');
+            summaryEls.reviewWarnings.textContent = warnings;
+            summaryEls.reviewWarnings.classList.toggle('is-visible', Boolean(warnings));
+
+            saleStepFeedback.forEach(function (feedback) {
+                const issue = issues[feedback.dataset.saleStepFeedback] || '';
+                if (feedback.textContent !== issue) feedback.textContent = issue;
+                feedback.hidden = !issue;
+            });
+            const currentIssue = issues[currentSaleStep] || '';
+            if (saleMobileStepFeedback.textContent !== currentIssue) saleMobileStepFeedback.textContent = currentIssue;
+            saleMobileStepFeedback.hidden = !currentIssue;
 
             saleStepButtons.forEach(function (button) {
                 const step = button.dataset.saleStepButton;
-                button.classList.toggle('is-complete', Boolean(complete[step]) && !button.classList.contains('is-active'));
+                const complete = step !== 'review' && visitedSaleSteps.has(step) && step !== currentSaleStep && !issues[step];
+                button.classList.toggle('is-complete', complete);
+                const label = button.textContent.trim();
+                button.setAttribute('aria-label', complete ? label + ', complete' : label);
             });
         }
 
-        function showSaleStep(step) {
+        function showSaleStep(step, {focus = true, scroll = true} = {}) {
             if (!saleStepOrder.includes(step)) {
                 step = 'customer';
             }
             currentSaleStep = step;
+            visitedSaleSteps.add(step);
+            const activeCard = saleStepCards.find((card) => card.dataset.saleStep === step);
             saleStepCards.forEach(function (card) {
-                card.classList.toggle('is-active', card.dataset.saleStep === step);
+                card.classList.toggle('is-active', card === activeCard);
             });
             saleStepButtons.forEach(function (button) {
-                button.classList.toggle('is-active', button.dataset.saleStepButton === step);
+                const active = button.dataset.saleStepButton === step;
+                button.classList.toggle('is-active', active);
+                if (active) button.setAttribute('aria-current', 'step');
+                else button.removeAttribute('aria-current');
             });
-            if (window.matchMedia('(max-width: 720px)').matches) {
-                document.querySelector('.sale-wizard-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            } else {
-                document.querySelector('.sale-create-workspace')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if (focus) {
+                const heading = activeCard.querySelector('h2');
+                heading.tabIndex = -1;
+                heading.focus({preventScroll: true});
             }
-            updateWizardCompletion();
+            if (scroll) activeCard.scrollIntoView({block: 'start'});
+            updateSaleStepFeedback();
             updateMobileStickyFooter();
         }
 
@@ -2564,14 +2680,14 @@
             const index = saleStepOrder.indexOf(currentSaleStep);
             const isFirst = index <= 0;
             const isReview = currentSaleStep === 'review';
-            const nextLabel = currentSaleStep === 'delivery' ? 'Review' : 'Continue';
+            const nextLabels = {customer: 'Next: Items', products: 'Next: Charges', pricing: 'Next: Delivery', delivery: 'Review order'};
 
             saleMobileStickyFooter.dataset.currentStep = currentSaleStep;
             saleMobileStickyFooter.classList.toggle('is-review', isReview);
             saleMobileBackButton.hidden = isFirst;
             saleMobileNextButton.hidden = isReview;
             saleMobileSaveButton.hidden = !isReview;
-            saleMobileNextButton.textContent = nextLabel;
+            saleMobileNextButton.textContent = nextLabels[currentSaleStep] || 'Continue';
         }
 
         function updateCustomerPanel() {
@@ -3088,6 +3204,7 @@
                 const hsnCode = product?.hsn_code || '';
                 const addStockHref = addSaleStockUrl(product ? product.id : '');
                 const discountedUnit = Math.max(parseFloat(item.unit_price || 0) - parseFloat(item.discount_amount || 0), 0);
+                const stock = saleStockSummary(product);
 
                 const row = document.createElement('div');
                 row.className = 'sales-item-card is-compact';
@@ -3097,15 +3214,15 @@
                 row.innerHTML = `
                     <div class="sales-item-head">
                         <div class="sales-item-title">
-                            <strong>Product Line #${index + 1}</strong>
+                            <strong>${escapeHtml(product?.name || ('Product Line #' + (index + 1)))}</strong>
                             <span class="sales-line-pill">Line ${index + 1}</span>
                         </div>
                         <div class="sales-line-actions">
                             ${saleItems.length > 1 ? '<button type="button" class="sales-remove-btn" data-remove-index="' + index + '">Remove</button>' : ''}
-                            <button type="button" class="sales-collapse-btn" aria-label="Collapse product line" data-toggle-line-details="${index}">^</button>
+                            <button type="button" class="sales-collapse-btn" aria-label="Collapse product line" aria-expanded="true" aria-controls="sale_item_details_${index}" data-toggle-line-details="${index}">^</button>
                         </div>
                     </div>
-                    <div class="sales-product-details" data-line-details="${index}">
+                    <div class="sales-product-details" id="sale_item_details_${index}" data-line-details="${index}">
                         <div class="sales-product-first-row">
                             <div class="sales-field">
                                 <div class="sales-field-label-row">
@@ -3120,13 +3237,23 @@
                                 </select>
                                 <input type="hidden" data-sale-product-id value="${product ? escapeHtml(product.id) : ''}">
                             </div>
-                            <div class="sales-field">
+                            <div class="sales-field sale-item-asset">
                                 <label for="sale_item_asset_${index}">Asset Link <span style="color:#64748b; text-transform:none; font-weight:700;">(Optional)</span></label>
                                 <select name="sale_items[${index}][asset_id]" id="sale_item_asset_${index}">
                                     ${assetOptionsHtml(item, index)}
                                 </select>
+                                <details class="sale-asset-scan">
+                                    <summary>Scan serial or barcode</summary>
+                                    <div class="sales-field">
+                                        <label for="sale_item_asset_scan_${index}">Serial / Barcode</label>
+                                        <div class="sales-scan-row">
+                                            <input type="text" id="sale_item_asset_scan_${index}" placeholder="Scan or type serial/barcode">
+                                            <button type="button" class="sales-btn-light" data-scan-asset-index="${index}">Link</button>
+                                        </div>
+                                    </div>
+                                </details>
                             </div>
-</div>
+                        </div>
 
                         <div class="sales-product-preview" ${product ? '' : 'hidden'}>
                             <div class="sales-product-thumb">${product && product.image_url ? `<img src="${escapeHtml(product.image_url)}" alt="" onerror="this.parentElement.textContent='${escapeHtml(productInitial(product))}'">` : escapeHtml(productInitial(product))}</div>
@@ -3137,16 +3264,12 @@
                             </div>
                         </div>
 
-                        ${stockChipsHtml(product)}
+                        <details class="sale-line-stock">
+                            <summary>Stock details${stock ? ' · ' + escapeHtml(stock.available) + ' available' : ''}</summary>
+                            ${stockChipsHtml(product)}
+                        </details>
 
                         <div class="sales-commercial-grid">
-                            <div class="sales-field">
-                                <label for="sale_item_asset_scan_${index}">Scan Serial / Barcode</label>
-                                <div class="sales-scan-row">
-                                    <input type="text" id="sale_item_asset_scan_${index}" placeholder="Scan or type serial/barcode">
-                                    <button type="button" class="sales-btn-light" data-scan-asset-index="${index}">Link</button>
-                                </div>
-                            </div>
                             <div class="sales-field">
                                 <label for="sale_item_quantity_${index}">Qty <span style="color:#dc2626;">*</span></label>
                                 <div class="sales-qty-stepper">
@@ -3248,6 +3371,7 @@
                 }
 
                 productSelect.addEventListener('change', function () {
+                    const restoreFocus = row.contains(document.activeElement);
                     saleItems[index].product_id = this.value ? parseInt(this.value, 10) : null;
                     saleItems[index].asset_id = null;
 
@@ -3262,14 +3386,20 @@
                     }
 
                     renderSaleItems();
+                    if (restoreFocus) {
+                        const nextSelect = document.getElementById(this.id);
+                        nextSelect?.closest('.searchable-select')?.querySelector('.searchable-select-trigger')?.focus({preventScroll: true});
+                    }
                 });
 
                 assetSelect.addEventListener('change', function () {
+                    const restoreFocus = document.activeElement === this;
                     saleItems[index].asset_id = this.value ? parseInt(this.value, 10) : null;
                     if (saleItems[index].asset_id) {
                         saleItems[index].quantity = 1;
                     }
                     renderSaleItems();
+                    if (restoreFocus) document.getElementById(this.id)?.focus({preventScroll: true});
                 });
 
                 function applyAssetScan() {
@@ -3302,6 +3432,7 @@
                         }
                     }
                     renderSaleItems();
+                    document.getElementById(assetSelect.id)?.focus({preventScroll: true});
                 }
 
                 assetScanButton?.addEventListener('click', applyAssetScan);
@@ -3363,6 +3494,7 @@
                     const collapsed = !detailsBlock.hidden;
                     detailsBlock.hidden = collapsed;
                     collapseButton.textContent = collapsed ? 'v' : '^';
+                    collapseButton.setAttribute('aria-expanded', String(!collapsed));
                     collapseButton.setAttribute('aria-label', collapsed ? 'Expand product line' : 'Collapse product line');
                 });
 
@@ -3840,8 +3972,10 @@
             showSaleStep(saleStepOrder[Math.min(index + 1, saleStepOrder.length - 1)] || 'review');
         });
 
-        saleSummaryToggle?.addEventListener('click', function () {
-            saleSummaryPanel?.classList.toggle('is-open');
+        saleReviewEditButtons.forEach(function (button) {
+            button.addEventListener('click', function () {
+                showSaleStep(button.dataset.saleReviewEdit);
+            });
         });
 
         customerTypeButtons.forEach(function (button) {
@@ -3866,7 +4000,10 @@
         partnerClientSelect?.addEventListener('change', updateCustomerPanel);
         rentalSelect.addEventListener('change', syncCustomerFromRental);
         saleFulfilmentSource?.addEventListener('change', syncSaleFulfilmentControls);
+        saleVendorSelect?.addEventListener('change', updateSaleSummary);
         saleDeliveryResponsibilitySelect?.addEventListener('change', updateSaleSummary);
+        saleDate?.addEventListener('change', updateSaleSummary);
+        salePaymentStatus?.addEventListener('change', updateSaleSummary);
         referralTypeSelect?.addEventListener('change', updateSaleSummary);
         referralNameInput?.addEventListener('change', function () {
             const selected = selectedOption(referralNameInput);
@@ -3962,9 +4099,16 @@
         syncCustomerFromRental();
         syncSaleFulfilmentControls();
         renderSaleItems();
-        updateMobileStickyFooter();
 
-        if (window.matchMedia('(max-width: 720px)').matches && !window.location.hash) {
+        const saleErrors = @json(array_keys($errors->getMessages()));
+        const itemError = saleErrors.some((field) => /^(sale_items|product_id|asset_id)(\.|$)/.test(field));
+        const errorCard = saleStepCards.find((card) => card.querySelector('.is-error, .sales-field-error'));
+        const linkedCard = saleStepCards.find((card) => '#' + card.id === window.location.hash);
+        const initialStep = itemError ? 'products' : (errorCard || linkedCard)?.dataset.saleStep;
+        saleSummaryDetails.open = !window.matchMedia('(max-width: 980px)').matches;
+        showSaleStep(initialStep || 'customer', {focus: false, scroll: Boolean(linkedCard)});
+
+        if (window.matchMedia('(max-width: 720px)').matches && !initialStep && !window.location.hash) {
             if ('scrollRestoration' in window.history) {
                 window.history.scrollRestoration = 'manual';
             }
