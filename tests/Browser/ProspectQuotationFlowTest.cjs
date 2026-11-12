@@ -57,6 +57,7 @@ test('enquiry-first capture and customer-free quotation review work on phones',{
    assert.equal(await page.$eval('[name=quotation_recipient_confirmed]',e=>e.required),true);
    if(width===390 || width===1440){
     const workflow = 'nav[aria-label="Sales progress"] a';
+    const orderAction = '[data-sales-next-action][data-action-key="ready_order"] a[data-sales-current-action]';
     const clickStep = step => page.click(workflow+step);
     await page.goto(origin+'/enquiry',{waitUntil:'domcontentloaded'});
     await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),clickStep('[href*="quotations/create"]')]);
@@ -76,7 +77,7 @@ test('enquiry-first capture and customer-free quotation review work on phones',{
     await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),clickStep('[href$="#enquiry-response"]')]);
     assert.equal(new URL(page.url()).hash,'#enquiry-response');
     await page.goto(origin+'/enquiry-order-ready',{waitUntil:'domcontentloaded'});
-    const primary=await page.$eval('.sw-head .sw-primary',link=>({text:link.textContent.trim(),href:link.href}));
+    const primary=await page.$eval(orderAction,link=>({text:link.textContent.trim(),href:link.href}));
     assert.equal(primary.text,'Create Rental');
     assert.equal(await page.$eval('nav[aria-label="Sales progress"] a[aria-current="step"]',link=>link.href),primary.href);
     await Promise.all([page.waitForNavigation({waitUntil:'domcontentloaded'}),page.click('nav[aria-label="Sales progress"] a[aria-current="step"]')]);
@@ -87,6 +88,7 @@ test('enquiry-first capture and customer-free quotation review work on phones',{
     assert.equal(await page.$$eval(workflow,links=>links.length),4);
     assert.equal(await page.$eval(workflow+'[aria-current="step"]',link=>link.textContent.trim()),'4. Order');
     await page.goto(origin+'/quote-order-ready',{waitUntil:'domcontentloaded'});
+    assert.equal(await page.$eval(orderAction,link=>link.href),primary.href);
     assert.equal(await page.$eval(workflow+'[href*="rentals/create"]',link=>link.href),primary.href);
    }
   }

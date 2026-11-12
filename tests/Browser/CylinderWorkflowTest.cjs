@@ -55,26 +55,28 @@ test('cylinder service forms fit phones and capture and clear a named signature'
      if(width===390)await page.screenshot({path:path.join(folder,'cylinder-registration-result-390.png'),fullPage:true});
     }
     if(name==='rental'){
-     if(width<768)await page.evaluate(()=>{const el=[...document.querySelectorAll('.ph-rental-mobile-accordion')].find(el=>el.querySelector('summary')?.textContent.includes('Operations'));el.open=true;});
-     else await page.$eval('.rental-tab-row a[href="#rental-operations-workspace"]',el=>el.click());
+     if(width<768)await page.$eval('#mobile-rental-operations > summary',el=>{if(!el.parentElement.open)el.click();});
+     else await page.$eval('.rental-workspace-tabs a[href="#rental-operations-workspace"]',el=>el.click());
+     const section=width<768?'#mobile-rental-operations':'#rental-operations-workspace';
+     await page.waitForSelector(`${section} .rcc-cylinder-panel`,{visible:true});
      const controls=await page.$$eval('.rcc-cylinder-panel',els=>els.filter(el=>el.getBoundingClientRect().width>0&&el.getBoundingClientRect().height>0).map(el=>({
-      text:el.textContent,links:[...el.querySelectorAll('a')].map(a=>{const r=a.getBoundingClientRect(),s=getComputedStyle(a);return {left:r.left,right:r.right,height:r.height,font:parseFloat(s.fontSize),background:s.backgroundColor,color:s.color,href:a.getAttribute('href')};})
+      text:el.textContent,links:[...el.querySelectorAll('a[data-open-cylinder-refill]')].map(a=>{const r=a.getBoundingClientRect(),s=getComputedStyle(a);return {left:r.left,right:r.right,height:r.height,font:parseFloat(s.fontSize),background:s.backgroundColor,href:a.getAttribute('href'),text:a.textContent.trim()};})
      })));
      assert.equal(controls.length,1,`one visible cylinder panel at ${width}`);
      assert.match(controls[0].text,/Refill cylinder/);
-     assert.equal(controls[0].links.length,2);
+     assert.deepEqual(controls[0].links.map(a=>a.text),['Refill cylinder','Refill history']);
      for(const a of controls[0].links){assert.ok(a.height>=44&&a.font>=14,`readable touch button at ${width}`);assert.ok(a.left>=0&&a.right<=width+1);}
      assert.notEqual(controls[0].links[0].background,controls[0].links[1].background);
-     assert.ok(controls[0].links[0].href.includes('/cylinder-refills'));
+     for(const a of controls[0].links)assert.match(new URL(a.href,origin).pathname,/^\/rentals\/\d+\/cylinder-refills$/);
      for(const index of [0,1]){
-      const reachable=await page.evaluate(index=>{
-       const el=[...document.querySelectorAll('.rcc-cylinder-panel')].find(el=>el.getBoundingClientRect().height>0).querySelectorAll('a')[index];
+      const reachable=await page.$$eval(`${section} [data-open-cylinder-refill]`,(links,index)=>{
+       const el=links[index];
        el.scrollIntoView({block:'center'});const r=el.getBoundingClientRect();
        return document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)?.closest('a')===el;
       },index);
       assert.equal(reachable,true,`cylinder action ${index} is not covered by fixed mobile controls at ${width}`);
      }
-     const panel=await page.evaluateHandle(()=>[...document.querySelectorAll('.rcc-cylinder-panel')].find(el=>el.getBoundingClientRect().height>0));
+     const panel=await page.$(`${section} .rcc-cylinder-panel`);
      await page.evaluate(el=>el.scrollIntoView({block:'center'}),panel);
      if([390,1440].includes(width))await panel.screenshot({path:path.join(folder,`cylinder-rental-actions-${width}.png`)});
     }
