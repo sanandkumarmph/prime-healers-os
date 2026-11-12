@@ -7,13 +7,32 @@
         $subject->setRelation('assignedRole', $role);
     }
     $scopeLabels = ['all' => 'Organization', 'assigned' => 'Assigned work', 'self_created' => 'Own records'];
+    $isSalesRole = $subject->effective_role === \App\Models\User::ROLE_SALES;
+    $dashboardAllowed = $subject->canAccessDashboard();
     $summaryRows = [
         'Account access' => $subject->hasActiveAccess() ? 'Enabled' : 'Blocked — inactive account or invalid role',
-        'Dashboard' => $subject->canAccessDashboard() ? 'Allowed — role widgets and permissions apply' : 'Blocked',
-        'Rental records' => $scopeLabels[$subject->scopeType('rentals')] ?? 'Role permissions',
-        'Delivery tasks' => $scopeLabels[$subject->scopeType('deliveries')] ?? 'Role permissions',
-        'Finance dashboard' => $subject->hasActiveAccess() && $subject->canAccessDashboard() && $subject->canViewFinanceDashboard() ? 'Permitted widgets only' : 'Hidden',
-        'Team performance' => $subject->isSuperAdmin() && $subject->canAccessDashboard() ? 'Allowed' : 'Hidden',
+        'Dashboard' => $dashboardAllowed ? 'Allowed — role widgets and permissions apply' : 'Blocked',
+    ];
+    if ($isSalesRole) {
+        $rentalAccess = $subject->canAccessModule('rentals', 'read');
+        $summaryRows += [
+            'Rental records' => $rentalAccess ? 'Company-wide' : 'No access',
+            'Sales orders' => $subject->canAccessModule('sales', 'read') ? 'Company-wide' : 'No access',
+            'Renewal Center' => $rentalAccess ? 'Eligible rentals across the company' : 'No access',
+            'Delivery tasks' => $subject->canAccessModule('deliveries', 'read') ? 'Company-wide' : 'No access',
+        ];
+        if ($dashboardAllowed && $rentalAccess) {
+            $summaryRows['Dashboard rentals and renewals'] = 'Own records · Rentals created by this user';
+        }
+    } else {
+        $summaryRows += [
+            'Rental records' => $scopeLabels[$subject->scopeType('rentals')] ?? 'Role permissions',
+            'Delivery tasks' => $scopeLabels[$subject->scopeType('deliveries')] ?? 'Role permissions',
+        ];
+    }
+    $summaryRows += [
+        'Finance dashboard' => $subject->hasActiveAccess() && $dashboardAllowed && $subject->canViewFinanceDashboard() ? 'Permitted widgets only' : 'Hidden',
+        'Team performance' => $subject->isSuperAdmin() && $dashboardAllowed ? 'Allowed' : 'Hidden',
     ];
 @endphp
 <section aria-label="Effective access" style="margin:18px 0;padding:18px;border:1px solid #dce7ee;border-radius:16px;background:#f8fbfd;">

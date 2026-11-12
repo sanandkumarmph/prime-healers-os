@@ -92,6 +92,33 @@ class RoleDashboardAccessRegressionTest extends TestCase
         $this->putJson(route('roles.update', $role), ['name' => $role->name, 'dashboard_access' => 'invalid'])->assertUnprocessable()->assertJsonValidationErrors('dashboard_access');
     }
 
+    public function test_sales_access_summary_distinguishes_company_orders_from_own_dashboard_rentals(): void
+    {
+        $organization = TestData::organization();
+        $owner = TestData::user($organization);
+        $role = $this->role($organization->id, User::ROLE_SALES, [
+            'rentals' => ['read'], 'sales' => ['read'], 'deliveries' => ['read'],
+        ]);
+        $worker = TestData::user($organization, ['role_id' => $role->id, 'role' => $role->slug]);
+
+        $this->actingAs($owner);
+        foreach ([route('roles.show', $role), route('users.show', $worker)] as $url) {
+            $this->get($url)->assertOk()->assertSeeTextInOrder([
+                'Effective access',
+                'Rental records', 'Company-wide',
+                'Sales orders', 'Company-wide',
+                'Renewal Center', 'Eligible rentals across the company',
+                'Delivery tasks', 'Company-wide',
+                'Dashboard rentals and renewals', 'Own records · Rentals created by this user',
+            ]);
+        }
+
+        $role->update(['permissions' => ['rentals' => ['read'], '__dashboard' => 'deny']]);
+        $this->get(route('roles.show', $role))->assertOk()->assertSeeTextInOrder([
+            'Dashboard', 'Blocked', 'Rental records', 'Company-wide', 'Sales orders', 'No access',
+        ])->assertDontSeeText('Dashboard rentals and renewals');
+    }
+
     private function role(int $organizationId, string $slug, array $permissions): Role
     {
         return Role::create(['organization_id' => $organizationId, 'slug' => $slug, 'name' => $slug,
