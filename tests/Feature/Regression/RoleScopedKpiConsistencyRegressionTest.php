@@ -11,6 +11,7 @@ use App\Models\Role;
 use App\Models\Sale;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Schema;
 use Tests\Support\TestData;
 use Tests\TestCase;
@@ -21,6 +22,8 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
 
     public function test_superadmin_and_delivery_team_share_org_level_module_kpis_while_my_tasks_is_explicit(): void
     {
+        $this->travelTo(Carbon::parse('2026-11-12 09:00:00', 'Asia/Kolkata'));
+
         $organization = TestData::organization();
         $superadmin = TestData::user($organization);
         $deliveryRole = $this->deliveryTeamRole($organization->id);
