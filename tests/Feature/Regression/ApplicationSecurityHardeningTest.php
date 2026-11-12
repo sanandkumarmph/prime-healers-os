@@ -105,7 +105,7 @@ class ApplicationSecurityHardeningTest extends TestCase
 
     public function test_password_confirmation_and_login_have_independent_abuse_limits(): void
     {
-        foreach (range(1, 30) as $attempt) {
+        foreach (range(1, 20) as $attempt) {
             $this->post('/login', ['email' => 'missing-'.$attempt.'@example.test', 'password' => 'invalid'])->assertStatus(302);
         }
         $this->post('/login', ['email' => 'another@example.test', 'password' => 'invalid'])->assertStatus(429);

@@ -95,6 +95,7 @@
         --bp-detail-blue: #234fb8;
         --bp-detail-soft: #eef4ff;
         display: grid;
+        grid-template-columns: minmax(0, 1fr);
         gap: 12px;
         min-width: 0;
         color: var(--bp-detail-ink);

@@ -238,6 +238,8 @@
         margin:0;
     }
     .rental-shell { display:grid; gap:10px; width:100%; max-width:100%; min-width:0; overflow-x:clip; }
+    .rental-shell .party-flow-shell { grid-template-columns:minmax(0, 1fr); min-width:0; }
+    .rental-shell .party-flow-shell > *, .rental-shell .party-flow-row > * { min-width:0; max-width:100%; }
     .rental-toolbar { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:0; }
     .rental-title h1 { margin:0; font-size:24px; color:#0f172a; }
     .rental-title p { margin:4px 0 0; color:#64748b; font-size:13px; }
@@ -5999,6 +6001,7 @@
                 return 0;
             }
 
+            // Calendar-day durations must not depend on the browser's daylight-saving transitions.
             const startDate = new Date(startDateInput.value + 'T00:00:00Z');
             const endDate = new Date(endDateInput.value + 'T00:00:00Z');
 
