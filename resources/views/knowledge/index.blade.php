@@ -195,7 +195,7 @@
                                 <p style="margin:8px 0 0; color:#64748b; font-size:13px; line-height:1.65;">{{ $article->excerpt ?: \Illuminate\Support\Str::limit(strip_tags($article->content), 150) }}</p>
                             </div>
                             <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; color:#64748b; font-size:12px; font-weight:700;">
-                                <span>{{ optional($article->published_at)->format('d M Y') ?: optional($article->updated_at)->format('d M Y') }}</span>
+                                <span>{{ \App\Support\ActionTimestamp::label($article->published_at) ?: \App\Support\ActionTimestamp::label($article->updated_at) }}</span>
                                 <span class="rn-knowledge-read-btn">
                                     <span>Read</span>
                                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 5 7 7-7 7"></path></svg>
@@ -237,7 +237,7 @@
                             <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; color:#64748b; font-size:12px; font-weight:700;">
                                 <span>{{ $article->category?->name ?: 'General' }}</span>
                                 <span>&bull;</span>
-                                <span>{{ optional($article->published_at)->format('d M Y') ?: optional($article->updated_at)->format('d M Y') }}</span>
+                                <span>{{ \App\Support\ActionTimestamp::label($article->published_at) ?: \App\Support\ActionTimestamp::label($article->updated_at) }}</span>
                             </div>
                         </a>
                     @endforeach

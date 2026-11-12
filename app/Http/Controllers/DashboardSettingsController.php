@@ -39,7 +39,8 @@ class DashboardSettingsController extends Controller
         $roles = Role::forOrganization($this->orgId())
             ->where('is_active', true)
             ->orderBy('name')
-            ->get();
+            ->get()
+            ->filter(fn (Role $role) => $role->slug !== \App\Models\User::ROLE_SUPER_ADMIN || $request->user()->isSuperAdmin());
 
         $selectedRole = $roles->firstWhere('id', (int) $request->integer('role_id')) ?? $roles->first();
 
@@ -66,9 +67,13 @@ class DashboardSettingsController extends Controller
             'widgets.*.sort_order' => ['nullable', 'integer', 'min:1', 'max:9999'],
         ]);
 
-        $role = Role::forOrganization($this->orgId())->findOrFail((int) $validated['role_id']);
+        $role = app(\App\Services\RoleGrantGuard::class)->mutate($request->user(), 'settings', 'update', function () use ($validated, $request) {
+            $role = Role::forOrganization($this->orgId())->findOrFail((int) $validated['role_id']);
+            abort_if($role->slug === \App\Models\User::ROLE_SUPER_ADMIN && !$request->user()->isSuperAdmin(), 403);
+            $this->registry()->saveRoleConfiguration($role, $validated['widgets'] ?? []);
 
-        $this->registry()->saveRoleConfiguration($role, $validated['widgets'] ?? []);
+            return $role;
+        });
 
         return redirect()
             ->route('organization.dashboard-settings.edit', ['role_id' => $role->id])

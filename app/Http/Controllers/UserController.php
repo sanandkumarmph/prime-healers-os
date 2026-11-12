@@ -9,7 +9,7 @@ use App\Models\Rental;
 use App\Models\Role;
 use App\Models\Sale;
 use App\Models\User;
-use App\Services\Access\RoleGrantGuard;
+use App\Services\RoleGrantGuard;
 use App\Services\Auth\RevokeAccountSessions;
 use App\Support\InternalOrganization;
 use App\Support\PhoneNumber;
@@ -88,7 +88,7 @@ class UserController extends Controller
             'roleId' => $roleId,
             'cityId' => $cityId,
             'status' => $status,
-            'roles' => Role::forOrganization($this->orgId())->where('is_active', true)->orderBy('name')->get(),
+            'roles' => Role::forOrganization($this->orgId())->where('is_active', true)->inAccessOrder()->orderBy('name')->get(),
             'cities' => City::forOrganization($this->orgId())->where('is_active', true)->orderBy('name')->get(),
         ]);
     }
@@ -97,7 +97,7 @@ class UserController extends Controller
     {
         return view('users.create', [
             'user' => new User(['is_active' => true]),
-            'roles' => Role::forOrganization($this->orgId())->where('is_active', true)->orderBy('name')->get()
+            'roles' => Role::forOrganization($this->orgId())->where('is_active', true)->inAccessOrder()->orderBy('name')->get()
                 ->filter(fn (Role $role) => app(RoleGrantGuard::class)->canGrantRole(auth()->user(), $role))->values(),
             'cities' => City::forOrganization($this->orgId())->where('is_active', true)->orderBy('name')->get(),
         ]);
@@ -148,7 +148,7 @@ class UserController extends Controller
 
         return view('users.edit', [
             'user' => $user,
-            'roles' => Role::forOrganization($this->orgId())->where('is_active', true)->orderBy('name')->get()
+            'roles' => Role::forOrganization($this->orgId())->where('is_active', true)->inAccessOrder()->orderBy('name')->get()
                 ->filter(fn (Role $role) => app(RoleGrantGuard::class)->canGrantRole(auth()->user(), $role))->values(),
             'cities' => City::forOrganization($this->orgId())->where('is_active', true)->orderBy('name')->get(),
         ]);
@@ -167,6 +167,8 @@ class UserController extends Controller
             $guard = app(RoleGrantGuard::class);
             $guard->authorizeUserMutation($request->user(), $user);
             $guard->authorizeUserRole($request->user(), $role);
+            abort_if($user->is($request->user()) && $user->email !== $validated['email'] && ! $request->user()->isSuperAdmin(),
+                403, 'Only a Super Admin can change their login email.');
             $attributes = [
                 'name' => $validated['name'],
                 'email' => $validated['email'],

@@ -199,4 +199,6 @@
         </div>
     </div>
 </div>
+
+@include('partials.record-timestamps', ['timestampRecord' => $staff, 'timestampFields' => ['created_at' => 'Created', 'updated_at' => 'Last updated']])
 @endsection

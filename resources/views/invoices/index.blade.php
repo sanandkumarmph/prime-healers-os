@@ -3,11 +3,14 @@
 @section('content')
 @php
     $currentUser = auth()->user();
+    $canManageBulkRecords = $currentUser?->can('manage-bulk-records') ?? false;
+    $isSalesLogin = $currentUser?->isSales() || $currentUser?->isSalesRenewals();
     $canCreateInvoices = $currentUser?->canAccessModule('invoices', 'create') ?? false;
     $canUpdateInvoices = $currentUser?->canAccessModule('invoices', 'update') ?? false;
     $canDeleteInvoices = $currentUser?->canAccessModule('invoices', 'delete') ?? false;
     $canCreatePayments = $currentUser?->canAccessModule('payments', 'create') ?? false;
     $canViewFinance = $currentUser?->canViewFinance() ?? false;
+    $canViewDues = $currentUser?->canViewDues() ?? false;
     $canViewRecordFinance = $currentUser?->canViewRecordFinance() ?? false;
     $totalInvoices = (int) ($invoiceStats['totalInvoices'] ?? $invoices->total());
     $paidInvoices = (int) ($invoiceStats['paidInvoices'] ?? 0);
@@ -18,7 +21,7 @@
     $collectedThisMonth = (float) ($invoiceStats['collectedThisMonth'] ?? 0);
     $collectedToday = (float) ($invoiceStats['collectedToday'] ?? 0);
     $overdueAmount = (float) ($invoiceStats['overdueAmount'] ?? 0);
-    $largestInvoice = (float) ($invoiceStats['largestInvoice'] ?? ($invoices->max('total_amount') ?? 0));
+    $largestInvoice = $canViewFinance ? (float) ($invoiceStats['largestInvoice'] ?? ($invoices->max('total_amount') ?? 0)) : 0;
     $averageInvoiceValue = $totalInvoices > 0 ? ($totalBilled / max(1, $totalInvoices)) : 0;
     $currency = fn ($value, $decimals = 0) => '&#8377;' . number_format((float) $value, $decimals);
     $invoiceIcon = function (string $name): string {
@@ -38,6 +41,7 @@
     };
     $invoiceUrl = function (array $overrides = []) use ($search, $status, $customerId, $city, $fromDate, $toDate, $perPage) {
         return route('invoices.index', array_filter(array_merge([
+            'salesperson_id' => request()->integer('salesperson_id') ?: null,
             'search' => $search ?: null,
             'status' => $status ?: null,
             'customer_id' => $customerId ?: null,
@@ -47,8 +51,9 @@
             'per_page' => $perPage ?: null,
         ], $overrides), fn ($value) => $value !== null && $value !== ''));
     };
-    $hasActiveFilters = filled($search) || filled($status) || filled($customerId) || filled($city) || filled($fromDate) || filled($toDate);
+    $hasActiveFilters = request()->integer('salesperson_id') !== 0 || filled($search) || filled($status) || filled($customerId) || filled($city) || filled($fromDate) || filled($toDate);
     $activeFilterChips = collect([
+        $salespersonOptions->get(request()->integer('salesperson_id')) ? 'Staff member '.$salespersonOptions->get(request()->integer('salesperson_id')) : null,
         filled($search) ? 'Search: ' . $search : null,
         filled($status) ? 'Status: ' . ucfirst(str_replace('_', ' ', $status)) : null,
         filled($customerId) ? 'Customer selected' : null,
@@ -65,27 +70,18 @@
 
         return 'No prior comparison';
     };
-    $agingBuckets = collect([
-        '0-30 Days' => ['amount' => 0.0, 'tone' => 'green'],
-        '31-60 Days' => ['amount' => 0.0, 'tone' => 'amber'],
-        '61-90 Days' => ['amount' => 0.0, 'tone' => 'orange'],
-        '90+ Days' => ['amount' => 0.0, 'tone' => 'red'],
-    ]);
-    foreach ($invoices->getCollection() as $agingInvoice) {
-        $balance = (float) ($agingInvoice->balance_amount ?? 0);
-        if ($balance <= 0) {
-            continue;
-        }
-
-        $days = optional($agingInvoice->due_date)->isPast()
-            ? max(0, optional($agingInvoice->due_date)->diffInDays(now()))
-            : 0;
-        $bucket = $days <= 30 ? '0-30 Days' : ($days <= 60 ? '31-60 Days' : ($days <= 90 ? '61-90 Days' : '90+ Days'));
-        $currentBucket = $agingBuckets->get($bucket);
-        $currentBucket['amount'] += $balance;
-        $agingBuckets->put($bucket, $currentBucket);
-    }
-    $agingTotal = max(1, (float) $agingBuckets->sum('amount'));
+    $canViewAging = isset($invoiceAging);
+    $agingBuckets = [
+        ['0-30 Days', 'green', $invoiceAging['current'] ?? 0],
+        ['31-60 Days', 'amber', $invoiceAging['days_31_60'] ?? 0],
+        ['61-90 Days', 'orange', $invoiceAging['days_61_90'] ?? 0],
+        ['91+ Days', 'red', $invoiceAging['days_91_plus'] ?? 0],
+    ];
+    $agingTotal = array_sum(array_column($agingBuckets, 2));
+    $agingPercent = fn ($amount) => $agingTotal > 0 ? round($amount / $agingTotal * 100, 1) : 0;
+    $agingFirst = $agingBuckets[0][2];
+    $agingSecond = $agingFirst + $agingBuckets[1][2];
+    $agingThird = $agingSecond + $agingBuckets[2][2];
 @endphp
 
 <div class="invoice-ledger rn-list-page">
@@ -871,7 +867,8 @@
         /* Compact invoice command center overrides */
         .invoice-breadcrumb{display:flex;gap:7px;align-items:center;color:#64748b;font-size:12px;font-weight:800;margin-bottom:6px}
         .invoice-icon-btn{gap:7px}.invoice-icon-btn svg,.invoice-tile-icon svg,.invoice-row-actions svg,.invoice-side-action svg,.invoice-action-icon svg{width:16px;height:16px;display:block}
-        .invoice-summary-strip{grid-template-columns:repeat(6,minmax(126px,1fr));gap:10px}
+        .invoice-summary-strip{grid-template-columns:repeat(var(--invoice-summary-columns,6),minmax(126px,1fr));gap:10px}
+        .invoice-summary-strip.is-sales{--invoice-summary-columns:4}
         .invoice-summary-tile{display:grid;grid-template-columns:36px minmax(0,1fr);grid-template-rows:auto auto auto;justify-content:flex-start;align-items:center;padding:10px 12px;min-height:76px;box-shadow:var(--ph-shadow-soft)}
         .invoice-summary-tile .invoice-tile-icon{grid-row:1/4;width:34px;height:34px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;background:#eef2ff;color:#4f46e5}
         .invoice-summary-tile strong{font-size:18px}.invoice-summary-tile small{font-size:11px;color:#64748b;font-weight:700}.invoice-summary-tile>span:not(.invoice-tile-icon){font-size:10px}
@@ -895,7 +892,11 @@
         .invoice-finance-panel{gap:10px;top:74px}.invoice-side-card{padding:10px;border-radius:14px}.invoice-side-list div{padding:6px 0;font-size:12px}.invoice-side-head{margin-bottom:6px}.invoice-side-actions{gap:7px}.invoice-side-action{min-height:36px;padding:8px 10px;font-size:12px;border-radius:10px}
         .invoice-aging-body{display:grid;grid-template-columns:92px minmax(0,1fr);gap:10px;align-items:center}.invoice-aging-donut{width:86px;height:86px;border-radius:999px;background:conic-gradient(#16a34a 0 var(--p1),#f59e0b var(--p1) var(--p2),#fb7185 var(--p2) var(--p3),#ef4444 var(--p3) 100%);display:grid;place-items:center;position:relative;text-align:center}.invoice-aging-donut:before{content:'';position:absolute;inset:11px;border-radius:999px;background:#fff}.invoice-aging-donut strong,.invoice-aging-donut span{position:relative;z-index:1}.invoice-aging-donut strong{font-size:13px;line-height:1.05}.invoice-aging-donut span{font-size:10px;color:#64748b;font-weight:800}.invoice-aging-list{display:grid;gap:6px}.invoice-aging-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px}.invoice-aging-row span{display:inline-flex;align-items:center;gap:6px;color:#475569}.invoice-aging-row i{width:8px;height:8px;border-radius:999px;background:#16a34a}.invoice-aging-row.tone-amber i{background:#f59e0b}.invoice-aging-row.tone-orange i{background:#fb7185}.invoice-aging-row.tone-red i{background:#ef4444}.invoice-aging-row strong{font-size:11px;color:#0f172a;text-align:right}.invoice-aging-row em{font-style:normal;color:#64748b;font-weight:700}
         @media(max-width:1180px){.invoice-aging-body{grid-template-columns:80px minmax(0,1fr)}.invoice-aging-donut{width:76px;height:76px}.invoice-finance-panel{grid-template-columns:repeat(3,minmax(0,1fr))}}
-        @media(max-width:820px){.invoice-finance-panel{grid-template-columns:1fr 1fr}.invoice-aging-card{grid-column:1/-1}}</style>
+        .invoice-aging-donut.is-empty{background:#e2e8f0}
+        .invoice-aging-note{margin:8px 0 0;color:#475569;font-size:11px}
+        @media(max-width:820px){.invoice-finance-panel{grid-template-columns:1fr 1fr}.invoice-aging-card{grid-column:1/-1}}
+        @media(max-width:640px){.invoice-finance-panel.has-sales-aging{display:grid;grid-template-columns:minmax(0,1fr)}.has-sales-aging .invoice-side-card:not(.invoice-aging-card){display:none}}
+    </style>
 
     <div class="invoice-toolbar">
         <div>
@@ -905,7 +906,9 @@
         </div>
         <div class="invoice-toolbar-actions">
             <button type="button" class="invoice-btn invoice-icon-btn" data-invoice-filter-trigger title="Filters" aria-label="Open invoice filters">{!! $invoiceIcon('filter') !!}<span>Filters</span></button>
-            <a href="{{ route('invoices.export.csv', request()->query()) }}" class="invoice-btn soft invoice-icon-btn">{!! $invoiceIcon('download') !!}<span>Export CSV</span></a>
+            @if($canManageBulkRecords)
+                <a href="{{ route('invoices.export.csv', request()->query()) }}" class="invoice-btn soft invoice-icon-btn">{!! $invoiceIcon('download') !!}<span>Export CSV</span></a>
+            @endif
             @if($canCreateInvoices)
                 <a href="{{ route('invoices.create') }}" class="invoice-btn primary invoice-icon-btn">{!! $invoiceIcon('plus') !!}<span>Create Invoice</span></a>
             @endif
@@ -956,6 +959,7 @@
                                 @endforeach
                             </select>
                         </div>
+                        @include('sales-workspace.salesperson-filter', ['filterId' => 'invoice_mobile_salesperson', 'fieldClass' => 'mobile-sheet-field', 'selectClass' => 'invoice-select', 'showBookingMode' => false])
                         <div class="mobile-sheet-field">
                             <label for="mobile_invoice_from">From</label>
                             <input id="mobile_invoice_from" class="invoice-input" type="date" name="from_date" value="{{ $fromDate ?? '' }}">
@@ -1012,7 +1016,7 @@
         </div>
     </div>
 
-    <div class="invoice-summary-strip">
+    <div class="invoice-summary-strip {{ $isSalesLogin ? 'is-sales' : '' }}">
         <a href="{{ $invoiceUrl(['status' => null]) }}" class="invoice-summary-tile tone-purple">
             <span class="invoice-tile-icon">{!! $invoiceIcon('file') !!}</span><span>Total Invoices</span>
             <strong>{{ $totalInvoices }}</strong><small>{{ $comparisonLabel('totalInvoicesChangePercent') }}</small>
@@ -1029,14 +1033,16 @@
             <span class="invoice-tile-icon">{!! $invoiceIcon('alert') !!}</span><span>Overdue</span>
             <strong>{{ $overdueInvoices }}</strong><small>{{ $comparisonLabel('overdueInvoicesChangePercent') }}</small>
         </a>
-        <a href="{{ $invoiceUrl(['status' => 'open']) }}" class="invoice-summary-tile tone-amber">
-            <span class="invoice-tile-icon">{!! $invoiceIcon('rupee') !!}</span><span>Outstanding</span>
-            <strong>@if($canViewRecordFinance){!! $currency($outstandingAmount) !!}@else Restricted @endif</strong><small>{{ $comparisonLabel('outstandingAmountChangePercent') }}</small>
-        </a>
-        <div class="invoice-summary-tile tone-green">
-            <span class="invoice-tile-icon">{!! $invoiceIcon('card') !!}</span><span>Collected Month</span>
-            <strong>@if($canViewFinance){!! $currency($collectedThisMonth) !!}@else Restricted @endif</strong><small>{{ $comparisonLabel('collectedThisMonthChangePercent') }}</small>
-        </div>
+        @unless($isSalesLogin)
+            <a href="{{ $invoiceUrl(['status' => 'open']) }}" class="invoice-summary-tile tone-amber">
+                <span class="invoice-tile-icon">{!! $invoiceIcon('rupee') !!}</span><span>Outstanding</span>
+                <strong>@if($canViewDues){!! $currency($outstandingAmount) !!}@else Restricted @endif</strong><small>{{ $comparisonLabel('outstandingAmountChangePercent') }}</small>
+            </a>
+            <div class="invoice-summary-tile tone-green">
+                <span class="invoice-tile-icon">{!! $invoiceIcon('card') !!}</span><span>Collected Month</span>
+                <strong>@if($canViewFinance){!! $currency($collectedThisMonth) !!}@else Restricted @endif</strong><small>{{ $comparisonLabel('collectedThisMonthChangePercent') }}</small>
+            </div>
+        @endunless
     </div>
 
     <div class="invoice-search-shell">
@@ -1044,6 +1050,7 @@
             <input type="hidden" name="status" value="{{ $status ?? '' }}">
             <input type="hidden" name="customer_id" value="{{ $customerId ?? '' }}">
             <input type="hidden" name="city" value="{{ $city ?? '' }}">
+            <input type="hidden" name="salesperson_id" value="{{ request()->integer('salesperson_id') ?: '' }}">
             <input type="hidden" name="from_date" value="{{ $fromDate ?? '' }}">
             <input type="hidden" name="to_date" value="{{ $toDate ?? '' }}">
             <input type="hidden" name="per_page" value="{{ $perPage ?? 20 }}">
@@ -1112,6 +1119,7 @@
                         @endforeach
                     </select>
                 </div>
+                @include('sales-workspace.salesperson-filter', ['filterId' => 'invoice_desktop_salesperson', 'fieldClass' => 'invoice-field', 'selectClass' => 'invoice-select', 'showBookingMode' => false])
                 <div class="invoice-field">
                     <label for="from_date">From</label>
                     <input id="from_date" class="invoice-input" type="date" name="from_date" value="{{ $fromDate ?? '' }}">
@@ -1156,20 +1164,26 @@
 
     <div class="invoice-workspace-grid">
     <div class="invoice-list-shell rn-table-shell">
-        <form id="invoiceBulkForm" method="POST" action="{{ route('invoices.bulk.print') }}" target="_blank">
-            @csrf
+        @if($canManageBulkRecords)
+            <form id="invoiceBulkForm" method="POST" action="{{ route('invoices.bulk.print') }}" target="_blank">
+                @csrf
+        @endif
             <div class="invoice-list-top">
                 <div>
                     <strong>{{ $totalInvoices }} invoice{{ $totalInvoices === 1 ? '' : 's' }}</strong>
-                    <span class="invoice-selected-count" id="invoiceSelectedCount">0 selected</span>
-                </div>
-                <div class="invoice-bulk-actions" id="invoiceBulkActions" hidden>
-                    <button type="submit" class="invoice-btn" data-bulk-action="{{ route('invoices.bulk.print') }}">Bulk PDF / Print</button>
-                    <button type="submit" class="invoice-btn soft" data-bulk-action="{{ route('invoices.bulk.export.csv') }}">Export Selected CSV</button>
-                    @if($canDeleteInvoices)
-                        <button type="button" class="invoice-btn danger" id="bulkDeleteInvoices">Bulk Delete</button>
+                    @if($canManageBulkRecords)
+                        <span class="invoice-selected-count" id="invoiceSelectedCount">0 selected</span>
                     @endif
                 </div>
+                @if($canManageBulkRecords)
+                    <div class="invoice-bulk-actions" id="invoiceBulkActions" hidden>
+                        <button type="submit" class="invoice-btn" data-bulk-action="{{ route('invoices.bulk.print') }}">Bulk PDF / Print</button>
+                        <button type="submit" class="invoice-btn soft" data-bulk-action="{{ route('invoices.bulk.export.csv') }}">Export Selected CSV</button>
+                        @if($canDeleteInvoices)
+                            <button type="button" class="invoice-btn danger" id="bulkDeleteInvoices">Bulk Delete</button>
+                        @endif
+                    </div>
+                @endif
             </div>
 
             @if($invoices->isEmpty())
@@ -1192,7 +1206,9 @@
                         @endphp
                         <article class="invoice-mobile-card">
                             <div class="invoice-mobile-top">
-                                <input type="checkbox" class="invoice-mobile-check invoice-row-check" name="invoice_ids[]" value="{{ $invoice->id }}" aria-label="Select invoice {{ $invoice->invoice_number }}">
+                                @if($canManageBulkRecords)
+                                    <input type="checkbox" class="invoice-mobile-check invoice-row-check" name="invoice_ids[]" value="{{ $invoice->id }}" aria-label="Select invoice {{ $invoice->invoice_number }}">
+                                @endif
                                 <div class="invoice-mobile-main">
                                     <div class="invoice-mobile-heading">
                                         <div>
@@ -1216,7 +1232,7 @@
                                         </div>
                                         <div class="invoice-mobile-metric">
                                             <span>Balance</span>
-                                            <strong>@if($canViewRecordFinance)&#8377;{{ number_format($invoice->balance_amount, 2) }}@else Restricted @endif</strong>
+                                            <strong>@if($canViewRecordFinance || $canViewDues)&#8377;{{ number_format($invoice->balance_amount, 2) }}@else Restricted @endif</strong>
                                         </div>
                                     </div>
                                     <div class="invoice-mobile-meta">
@@ -1265,7 +1281,9 @@
                     <table class="invoice-table">
                         <thead>
                             <tr>
-                                <th style="width:42px;"><input type="checkbox" class="invoice-check" id="selectAllInvoices" aria-label="Select all invoices"></th>
+                                @if($canManageBulkRecords)
+                                    <th style="width:42px;"><input type="checkbox" class="invoice-check" id="selectAllInvoices" aria-label="Select all invoices"></th>
+                                @endif
                                 <th>Invoice</th>
                                 <th>Customer</th>
                                 <th>Status</th>
@@ -1292,9 +1310,11 @@
                                     $gstTotal = (float) $invoice->cgst_amount + (float) $invoice->sgst_amount + (float) $invoice->igst_amount;
                                 @endphp
                                 <tr>
-                                    <td>
-                                        <input type="checkbox" class="invoice-check invoice-row-check" name="invoice_ids[]" value="{{ $invoice->id }}" aria-label="Select invoice {{ $invoice->invoice_number }}">
-                                    </td>
+                                    @if($canManageBulkRecords)
+                                        <td>
+                                            <input type="checkbox" class="invoice-check invoice-row-check" name="invoice_ids[]" value="{{ $invoice->id }}" aria-label="Select invoice {{ $invoice->invoice_number }}">
+                                        </td>
+                                    @endif
                                     <td>
                                         <a href="{{ route('invoices.show', $invoice->id) }}" class="invoice-number-link">{{ $invoice->invoice_number }}</a>
                                         <div class="invoice-muted">{{ optional($invoice->invoice_date)->format('d/m/Y') ?: 'No date' }}</div>
@@ -1306,7 +1326,7 @@
                                     <td><span class="invoice-status-badge rn-badge {{ $statusClass }}">{{ $statusLabel }}</span></td>
                                     <td>{{ optional($invoice->due_date)->format('d/m/Y') ?: 'N/A' }}</td>
                                     <td class="invoice-money">@if($canViewRecordFinance)&#8377;{{ number_format($invoice->total_amount, 2) }}@else Restricted @endif</td>
-                                    <td class="invoice-money">@if($canViewRecordFinance)&#8377;{{ number_format($invoice->balance_amount, 2) }}@else Restricted @endif</td>
+                                    <td class="invoice-money">@if($canViewRecordFinance || $canViewDues)&#8377;{{ number_format($invoice->balance_amount, 2) }}@else Restricted @endif</td>
                                     <td>
                                         <div class="invoice-gst-compact">
                                             @if($canViewRecordFinance)
@@ -1361,26 +1381,32 @@
                     </table>
                 </div>
             @endif
+        @if($canManageBulkRecords)
         </form>
+        @endif
     </div>
 
-    <aside class="invoice-finance-panel" aria-label="Invoice finance summary">
+    <aside class="invoice-finance-panel {{ $isSalesLogin && $canViewAging ? 'has-sales-aging' : '' }}" aria-label="Invoice tools and balances">
+        @unless($isSalesLogin)
         <div class="invoice-side-card">
             <div class="invoice-side-head"><strong>Finance Summary</strong><span>Live</span></div>
             <div class="invoice-side-list">
-                <div><span>Outstanding</span><strong>@if($canViewRecordFinance){!! $currency($outstandingAmount) !!}@else Restricted @endif</strong></div>
-                <div><span>Overdue</span><strong class="danger">@if($canViewRecordFinance){!! $currency($overdueAmount) !!}@else Restricted @endif</strong></div>
+                <div><span>Outstanding</span><strong>@if($canViewDues){!! $currency($outstandingAmount) !!}@else Restricted @endif</strong></div>
+                <div><span>Overdue</span><strong class="danger">@if($canViewDues){!! $currency($overdueAmount) !!}@else Restricted @endif</strong></div>
                 <div><span>Collected Today</span><strong class="success">@if($canViewFinance){!! $currency($collectedToday) !!}@else Restricted @endif</strong></div>
                 <div><span>Collected Month</span><strong class="success">@if($canViewFinance){!! $currency($collectedThisMonth) !!}@else Restricted @endif</strong></div>
-                <div><span>Largest Invoice</span><strong>@if($canViewRecordFinance){!! $currency($largestInvoice) !!}@else Restricted @endif</strong></div>
-                <div><span>Average Invoice</span><strong>@if($canViewRecordFinance){!! $currency($averageInvoiceValue) !!}@else Restricted @endif</strong></div>
+                <div><span>Largest Invoice</span><strong>@if($canViewFinance){!! $currency($largestInvoice) !!}@else Restricted @endif</strong></div>
+                <div><span>Average Invoice</span><strong>@if($canViewFinance){!! $currency($averageInvoiceValue) !!}@else Restricted @endif</strong></div>
             </div>
         </div>
+        @endunless
         <div class="invoice-side-card">
             <div class="invoice-side-head"><strong>Quick Actions</strong></div>
             <div class="invoice-side-actions">
                 @if($canCreatePayments)<button type="button" class="invoice-side-action" data-invoice-filter-trigger>{!! $invoiceIcon('card') !!}<span>Find Invoice to Pay</span></button>@endif
-                <a href="{{ route('invoices.export.csv', request()->query()) }}" class="invoice-side-action">{!! $invoiceIcon('download') !!}<span>Export All</span></a>
+                @if($canManageBulkRecords)
+                    <a href="{{ route('invoices.export.csv', request()->query()) }}" class="invoice-side-action">{!! $invoiceIcon('download') !!}<span>Export All</span></a>
+                @endif
                 @if($canCreateInvoices)<a href="{{ route('invoices.create') }}" class="invoice-side-action">{!! $invoiceIcon('plus') !!}<span>Create Invoice</span></a>@endif
                 <button type="button" class="invoice-side-action" data-invoice-filter-trigger>{!! $invoiceIcon('filter') !!}<span>Filter Invoices</span></button>
             </div>
@@ -1388,20 +1414,22 @@
         <div class="invoice-side-card invoice-aging-card">
             <div class="invoice-side-head"><strong>Outstanding by Aging</strong><span>Balance</span></div>
             <div class="invoice-aging-body">
-                <div class="invoice-aging-donut" style="--p1: {{ round(($agingBuckets->get('0-30 Days')['amount'] / $agingTotal) * 100, 1) }}%; --p2: {{ round((($agingBuckets->get('0-30 Days')['amount'] + $agingBuckets->get('31-60 Days')['amount']) / $agingTotal) * 100, 1) }}%; --p3: {{ round((($agingBuckets->get('0-30 Days')['amount'] + $agingBuckets->get('31-60 Days')['amount'] + $agingBuckets->get('61-90 Days')['amount']) / $agingTotal) * 100, 1) }}%;">
-                    <strong>@if($canViewRecordFinance){!! $currency($agingBuckets->sum('amount')) !!}@else -- @endif</strong>
+                <div class="invoice-aging-donut {{ $agingTotal > 0 ? '' : 'is-empty' }}" style="--p1: {{ $agingPercent($agingFirst) }}%; --p2: {{ $agingPercent($agingSecond) }}%; --p3: {{ $agingPercent($agingThird) }}%;">
+                    <strong>@if($canViewAging){!! $currency($agingTotal, 2) !!}@else -- @endif</strong>
                     <span>Total</span>
                 </div>
                 <div class="invoice-aging-list">
-                    @foreach($agingBuckets as $label => $bucket)
-                        @php $agingPercent = $agingBuckets->sum('amount') > 0 ? round(($bucket['amount'] / max(1, $agingBuckets->sum('amount'))) * 100) : 0; @endphp
-                        <div class="invoice-aging-row tone-{{ $bucket['tone'] }}">
+                    @foreach($agingBuckets as [$label, $tone, $amount])
+                        <div class="invoice-aging-row tone-{{ $tone }}">
                             <span><i></i>{{ $label }}</span>
-                            <strong>@if($canViewRecordFinance){!! $currency($bucket['amount']) !!} <em>{{ $agingPercent }}%</em>@else Restricted @endif</strong>
+                            <strong>@if($canViewAging){!! $currency($amount, 2) !!} <em>{{ round($agingPercent($amount)) }}%</em>@else Restricted @endif</strong>
                         </div>
                     @endforeach
                 </div>
             </div>
+            @if($canViewAging)
+                <p class="invoice-aging-note">Balances across matching invoices. The first group includes invoices that aren’t overdue.</p>
+            @endif
         </div>
     </aside>
     </div>
@@ -1435,7 +1463,7 @@
         @endif
     @endforeach
 
-    @if($canDeleteInvoices)
+    @if($canManageBulkRecords && $canDeleteInvoices)
         <form id="invoiceBulkDeleteForm" method="POST" action="{{ route('invoices.bulk.delete') }}" style="display:none;">
             @csrf
         </form>

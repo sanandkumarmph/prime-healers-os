@@ -1315,7 +1315,7 @@
                                     </div>
                                     <div class="renewal-muted">{{ $daysLabel($rental) }}</div>
                                     @if($rental->latestReminderSentAt())
-                                        <div class="renewal-muted" style="margin-top:8px;">Last reminder {{ $rental->latestReminderSentAt()->format('d M Y h:i A') }}</div>
+                                        <div class="renewal-muted" style="margin-top:8px;">Last reminder @include('partials.action-time', ['actionAt' => $rental->latestReminderSentAt(), 'clockOnly' => false])</div>
                                     @endif
                                 </td>
                                 <td>

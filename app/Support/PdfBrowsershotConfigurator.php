@@ -9,15 +9,19 @@ use Spatie\Browsershot\Browsershot;
 
 class PdfBrowsershotConfigurator
 {
+    private array $renderProfiles = [];
+
     public function configure(Browsershot $browsershot): Browsershot
     {
         $browsershot->setNodeBinary((string) config('pdf.node_binary', 'node'));
         $browsershot->setCustomTempPath($this->tempPath());
         $browsershot->setOption('headless', true);
+        $browsershot->usePipe();
         $browsershot->dismissDialogs();
 
         $nodeModulePath = trim((string) config('pdf.node_module_path', ''));
         if ($nodeModulePath !== '') {
+            $this->requireAbsolutePath($nodeModulePath);
             $browsershot->setNodeModulePath($nodeModulePath);
         }
 
@@ -25,8 +29,6 @@ class PdfBrowsershotConfigurator
         if ($browserPath) {
             $browsershot->setChromePath($browserPath);
         }
-
-        $browsershot->userDataDir($this->userDataDir());
 
         $environmentOptions = $this->environmentOptions();
         if ($environmentOptions !== []) {
@@ -51,6 +53,12 @@ class PdfBrowsershotConfigurator
             $browsershot->noSandbox();
         }
 
+        // Separate profiles avoid Chromium's process lock when invoices are
+        // rendered concurrently. Only this render's profile is cleaned up.
+        $profile = $this->ensureDirectory($this->userDataDir().DIRECTORY_SEPARATOR.'p-'.Str::random(16));
+        $this->renderProfiles[] = $profile;
+        $browsershot->userDataDir($profile);
+
         return $browsershot;
     }
 
@@ -58,6 +66,7 @@ class PdfBrowsershotConfigurator
     {
         $configuredPath = trim((string) config('pdf.browser_path', ''));
         if ($configuredPath !== '') {
+            $this->requireAbsolutePath($configuredPath);
             if (is_file($configuredPath) || is_executable($configuredPath)) {
                 return $configuredPath;
             }
@@ -152,7 +161,7 @@ class PdfBrowsershotConfigurator
         $configuredPath = trim((string) config('pdf.temp_path', ''));
 
         return $this->ensureDirectory(
-            $configuredPath !== '' ? $configuredPath : storage_path('app/pdf-runtime/tmp')
+            $configuredPath !== '' ? $configuredPath : $this->runtimePath('tmp')
         );
     }
 
@@ -161,7 +170,7 @@ class PdfBrowsershotConfigurator
         $configuredPath = trim((string) config('pdf.user_data_dir', ''));
 
         return $this->ensureDirectory(
-            $configuredPath !== '' ? $configuredPath : storage_path('app/pdf-runtime/profile')
+            $configuredPath !== '' ? $configuredPath : $this->runtimePath('profile')
         );
     }
 
@@ -180,6 +189,10 @@ class PdfBrowsershotConfigurator
             if (is_string($previousDirectory) && $previousDirectory !== '' && is_dir($previousDirectory)) {
                 @chdir($previousDirectory);
             }
+            foreach ($this->renderProfiles as $profile) {
+                File::deleteDirectory($profile);
+            }
+            $this->renderProfiles = [];
         }
     }
 
@@ -191,14 +204,45 @@ class PdfBrowsershotConfigurator
             throw new RuntimeException('PDF runtime path configuration resolved to an empty directory path.');
         }
 
-        File::ensureDirectoryExists($path);
+        $this->requireAbsolutePath($path);
+        $current = $path;
+        while (true) {
+            if (is_link($current)) {
+                throw new RuntimeException('PDF runtime directories cannot contain symbolic links.');
+            }
+            $parent = dirname($current);
+            if ($parent === $current) {
+                break;
+            }
+            $current = $parent;
+        }
+
+        File::ensureDirectoryExists($path, 0700);
+        if (! is_dir($path) || ! is_writable($path)) {
+            throw new RuntimeException('PDF runtime directory must be writable by the website account.');
+        }
 
         return $path;
     }
 
+    private function runtimePath(string $child): string
+    {
+        return rtrim((string) (config('pdf.runtime_path') ?: storage_path('app/pdf-runtime')), '/\\')
+            .DIRECTORY_SEPARATOR.$child;
+    }
+
+    private function requireAbsolutePath(string $path): void
+    {
+        $absolute = str_starts_with($path, '/') || preg_match('/^[A-Za-z]:[\\\\\/]/', $path);
+        if (! $absolute || preg_match('/[\x00-\x1f\x7f]/', $path)
+            || in_array('..', preg_split('~[\\\\/]~', $path), true)) {
+            throw new RuntimeException('PDF paths must be absolute and cannot contain traversal or control characters.');
+        }
+    }
+
     private function disableSandbox(): bool
     {
-        return (bool) config('pdf.disable_sandbox', DIRECTORY_SEPARATOR !== '\\');
+        return (bool) config('pdf.disable_sandbox', false);
     }
 
     private function platformKey(): string

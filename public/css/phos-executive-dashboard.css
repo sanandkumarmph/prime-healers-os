@@ -404,6 +404,7 @@ body.phos-executive-page [data-executive-dashboard] :is(.dashboard-empty svg, .r
 }
 @media (max-width: 1024px) {
     body.phos-executive-page .app-shell-main { padding: 16px 18px 90px; }
+    body.phos-executive-page [data-executive-dashboard] .dashboard-center-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 760px) {
     body.phos-executive-page :is(.phos-dashboard-filter-panel, .phos-dashboard-period-menu) { position: fixed; top: 110px; left: 14px; right: 14px; width: auto; max-height: calc(100vh - 214px); max-height: calc(100dvh - 214px); overscroll-behavior: contain; }
@@ -425,6 +426,16 @@ body.phos-executive-page [data-executive-dashboard] :is(.dashboard-empty svg, .r
     body.phos-executive-page [data-executive-dashboard] :is(.dashboard-mobile-command, .dashboard-mobile-fab) { display: none; }
     body.phos-executive-page [data-executive-dashboard] .control-room-shell > .executive-command-card { display: grid; }
     body.phos-executive-page [data-executive-dashboard] .control-room-shell > .dashboard-center-groups { display: grid; }
+    body.phos-executive-page [data-executive-dashboard] .dashboard-center-groups { grid-template-columns: minmax(0, 1fr); gap: 10px; align-items: start; }
+    body.phos-executive-page [data-executive-dashboard] .dashboard-center-group { min-width: 0; }
+    body.phos-executive-page [data-executive-dashboard] .dashboard-center-summary { padding: 14px; gap: 12px; align-items: flex-start; }
+    body.phos-executive-page [data-executive-dashboard] .dashboard-center-summary > div { flex: 1; min-width: 0; }
+    body.phos-executive-page [data-executive-dashboard] .dashboard-center-summary strong { font-size: 14px; line-height: 1.4; word-break: normal; overflow-wrap: normal; }
+    body.phos-executive-page [data-executive-dashboard] .dashboard-center-summary span { margin-top: 4px; font-size: 12px; line-height: 1.5; word-break: normal; overflow-wrap: normal; }
+    body.phos-executive-page [data-executive-dashboard] .dashboard-center-summary::after { flex: 0 0 20px; text-align: center; }
+    body.phos-executive-page [data-executive-dashboard] .dashboard-center-link { min-height: 40px; max-width: 100%; white-space: normal; }
+    body.phos-executive-page [data-executive-dashboard] :is(.phos-overview-figures, .phos-overview-aging) > summary { flex-direction: column; align-items: flex-start; }
+    body.phos-executive-page [data-executive-dashboard] :is(.phos-overview-figures, .phos-overview-aging) > summary > span { max-width: 100%; white-space: normal; }
 }
 @media (max-width: 480px) {
     body.phos-executive-page [data-dashboard-filter-form] .dashboard-filter-grid { grid-template-columns: minmax(0, 1fr); }

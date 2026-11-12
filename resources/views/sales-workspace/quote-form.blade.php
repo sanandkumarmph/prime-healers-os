@@ -1,20 +1,33 @@
 @extends('layouts.app')
 @section('content')
 @include('sales-workspace.style')
+<style>
+.sw .sw-product-picker{position:relative}.sw .sw-product-native{position:absolute!important;width:1px!important;height:1px!important;min-height:0!important;padding:0!important;opacity:0;overflow:hidden;clip-path:inset(50%);pointer-events:none}
+.sw-product-results{position:absolute;top:100%;left:0;right:0;z-index:90;max-height:260px;overflow:auto;overscroll-behavior:contain;padding:5px;border:1px solid #cbd6e3;border-radius:8px;box-shadow:0 12px 28px #17335520;background:#fff}
+.sw-product-results button{display:block;width:100%;min-height:36px;text-align:left;padding:8px;border:0;border-radius:5px;background:#fff;color:#172b4d;font:inherit;font-size:12px;overflow-wrap:anywhere;cursor:pointer}.sw-product-results button:hover,.sw-product-results button[aria-selected=true]{background:#edf3ff}.sw-product-results p{font-size:12px;padding:8px;margin:0}.sw-product-match-count{font-size:10px;color:#63748b}.sw-product-match-count:empty{display:none}
+#quote-use-suggested-transport[hidden]{display:none!important}
+@media(max-width:600px){.sw-product-picker input[type=search]{font-size:16px}.sw-product-results button{min-height:42px}}
+</style>
 @php
     $s = $quote?->snapshot ?? [];
     $lines = array_values(array_filter((array) old('lines',$s['lines'] ?? []),'is_array'));
     if (!$lines) $lines = [['product_id'=>'','quantity'=>1,'rate'=>0,'tax_rate'=>0,'tax_mode'=>'inclusive']];
     $originalKind = $quote?->kind ?? $enquiry->intent;
     $kind = old('kind',$originalKind ?: 'rental');
-    $productData = $products->mapWithKeys(fn($p)=>[$p->id=>['name'=>$p->name,'rental'=>(float)($p->rental_price ?: $p->rental_price_30_days ?: 0),'sale'=>(float)$p->sale_price,'tax_rate'=>$p->defaultGstRate(),'tax_mode'=>$p->defaultGstMode(),'can_rent'=>$p->canRent(),'can_sell'=>$p->canSell()]]);
+    $productData = $products->mapWithKeys(fn($p)=>[$p->id=>\App\Support\CommercialDefaults::productData($p)+['name'=>$p->name,'can_rent'=>$p->canRent(),'can_sell'=>$p->canSell()]]);
     $selectedRecipient = old('customer_id',$s['customer_id'] ?? $enquiry->customer_id);
+    $freshCommercialDefaults = !$quote && !session()->hasOldInput();
 @endphp
 <div class="sw">
     <a href="{{ route('enquiries.show',$enquiry) }}">← Back to enquiry</a>
     <header class="sw-head"><div><div class="sw-eyebrow">{{ $quote?->number() ?? 'New quotation' }}</div><h1>Prepare quotation</h1><p class="sw-muted">{{ $enquiry->subject }} · Contact: {{ $enquiry->name }}</p></div>@if($quote)<a class="sw-btn" id="saved-draft-pdf" href="{{ route('quotations.pdf',$quote) }}">Saved draft PDF</a>@endif</header>
+    @include('sales-workspace.workflow-navigation', [
+        'workflowEnquiry' => $enquiry, 'workflowStep' => 'quotation',
+        'workflowQuotationUrl' => $quote ? route('quotations.show', $quote) : route('quotations.create', $enquiry),
+    ])
     @include('sales-workspace.alerts')
     <p class="sw-guide"><strong>Next:</strong> Confirm the recipient and prices, then review before sharing.</p>
+    <p class="sw-meta">A full address and customer registration are not required for a quotation. Complete customer and delivery details after order confirmation.</p>
     <form method="post" action="{{ $quote ? route('quotations.update',$quote) : route('quotations.store',$enquiry) }}" id="quotation-form" data-original-kind="{{ $originalKind }}">
         @csrf
         @if($quote)@method('PUT')<input type="hidden" name="lock_version" value="{{ old('lock_version',$quote->lock_version) }}">@endif
@@ -24,8 +37,8 @@
         <div class="sw-grid sw-editor">
             <div>
                 <section class="sw-panel">
-                    <details class="sw-recipient" @if(!$selectedRecipient || $errors->has('customer_id')) open @endif>
-                        <summary>Quotation addressed to <span class="sw-meta" id="recipient-label">{{ $customers->firstWhere('id',(int)$selectedRecipient)?->name ?: 'Select or add customer' }} · Change</span></summary>
+                    <details class="sw-recipient" @if($errors->has('customer_id')) open @endif>
+                        <summary>Quotation addressed to <span class="sw-meta" id="recipient-label">{{ $customers->firstWhere('id',(int)$selectedRecipient)?->name ?: $enquiry->name }} · Change</span></summary>
                         <p class="sw-meta">Enquiry contact: {{ $enquiry->name }}{{ $enquiry->phone ? ' · '.$enquiry->phone : '' }}</p>
                         @include('sales-workspace.customer-picker')
                     </details>
@@ -35,6 +48,7 @@
                         <div class="sw-field"><label for="kind">Order type *</label><select id="kind" name="kind"><option value="rental" @selected($kind==='rental')>Rental</option><option value="sale" @selected($kind==='sale')>Sale</option></select>@error('kind')<span class="sw-overdue">{{ $message }}</span>@enderror</div>
                         <div class="sw-field"><label for="valid_until">Valid until *</label><input id="valid_until" name="valid_until" type="date" value="{{ old('valid_until',$quote?->valid_until->toDateString() ?? now(config('app.timezone'))->addDays(7)->toDateString()) }}" required></div>
                         <div class="sw-field" data-rental-dates><label for="start_date">Rental start *</label><input type="date" name="start_date" id="start_date" value="{{ old('start_date',$s['start_date'] ?? '') }}"></div>
+                        <div class="sw-field" data-rental-dates><label for="quote-duration">Duration</label><select id="quote-duration"><option value="custom">Custom dates</option><option value="7">7 days</option><option value="15">15 days</option><option value="30">30 days</option></select></div>
                         <div class="sw-field" data-rental-dates><label for="end_date">Rental end *</label><input type="date" name="end_date" id="end_date" value="{{ old('end_date',$s['end_date'] ?? '') }}"></div>
                     </div>
                     <div id="price-review" class="sw-alert" hidden role="status">
@@ -46,11 +60,13 @@
                 <section class="sw-panel">
                     <h2>Products & pricing</h2>
                     <p class="sw-meta" id="rental-rate-hint">Price per unit for the entire rental period. Confirm the price when changing dates.</p>
+                    <p class="sw-meta" id="quote-duration-note" role="status"></p>
+                    <button type="button" class="sw-btn sw-small" id="quote-period-prices" data-rental-dates>Use saved prices for these dates</button>
                     <div id="quotation-lines">@foreach($lines as $i=>$line)@include('sales-workspace.quote-line',['i'=>$i,'line'=>$line])@endforeach</div>
                     <p id="line-status" role="status" class="sw-meta"></p>
                     <button class="sw-btn sw-small" type="button" id="add-quote-line">+ Add product</button>
                     <div data-rental-dates style="margin-top:16px">
-                        <button type="button" class="sw-btn" data-quote-availability="{{ route('availability.check') }}">Check availability for these dates</button>
+                        <button type="button" class="sw-btn" data-quote-rental-check="{{ route('availability.check') }}">Check rental availability for these dates</button>
                         <a href="{{ route('availability.index') }}" target="_blank" rel="noopener" class="sw-meta">Check by warehouse ↗</a>
                         <div data-quote-availability-results role="status" style="margin-top:12px"></div>
                         <p class="sw-meta">Readiness is checked again when creating the order. Forecasts do not reserve stock.</p>
@@ -60,9 +76,9 @@
             </div>
             <aside><section class="sw-panel sw-sticky-summary">
                 <h2>Summary <span class="sw-meta">{{ $enquiry->organization->currency_code ?: 'INR' }}</span></h2>
-                <p id="quote-recipient" class="sw-muted">{{ $customers->firstWhere('id',(int)$selectedRecipient)?->name ?: 'Choose a recipient' }}</p>
-                <div class="sw-field"><label for="transport">Delivery / transport</label><input id="transport" type="number" name="transport" value="{{ old('transport',$s['transport'] ?? 0) }}" min="0" max="99999999.99" step="0.01" required></div>
-                <div class="sw-field" data-rental-dates style="margin-top:10px"><label for="deposit">Refundable deposit</label><input id="deposit" type="number" name="deposit" value="{{ old('deposit',$s['deposit'] ?? 0) }}" min="0" max="99999999.99" step="0.01" required></div>
+                <p id="quote-recipient" class="sw-muted">{{ $customers->firstWhere('id',(int)$selectedRecipient)?->name ?: $enquiry->name }}</p>
+                <div class="sw-field"><label for="transport">Delivery / transport</label><input id="transport" type="number" name="transport" value="{{ old('transport',$s['transport'] ?? \App\Support\CommercialDefaults::SMALL_TRANSPORT) }}" data-commercial-auto="{{ $freshCommercialDefaults ? '1' : '0' }}" min="0" max="99999999.99" step="0.01" required><div class="sw-meta"><span id="quote-transport-suggestion"></span> <button type="button" class="sw-btn sw-small" id="quote-use-suggested-transport" hidden>Use suggested</button></div></div>
+                <div class="sw-field" data-rental-dates style="margin-top:10px"><label for="deposit">Refundable deposit</label><input id="deposit" type="number" name="deposit" value="{{ old('deposit',$s['deposit'] ?? \App\Support\CommercialDefaults::depositFor($kind)) }}" data-commercial-auto="{{ $freshCommercialDefaults ? '1' : '0' }}" min="0" max="99999999.99" step="0.01" required><span class="sw-meta">Editable · standard rental deposit ₹2,000</span></div>
                 <details><summary>Tax settings</summary><div class="sw-field"><label for="tax_type">Tax split</label><select id="tax_type" name="tax_type"><option value="cgst_sgst" @selected(old('tax_type',$s['tax_type'] ?? 'cgst_sgst')==='cgst_sgst')>CGST + SGST</option><option value="igst" @selected(old('tax_type',$s['tax_type'] ?? '')==='igst')>IGST / single tax</option></select></div></details>
                 <div class="sw-totals"><div><span>Taxable amount</span><strong id="preview-subtotal">—</strong></div><div><span>Tax</span><strong id="preview-tax">—</strong></div><div class="sw-grand"><span>Total</span><span id="preview-total">—</span></div><div data-rental-dates><span>With deposit</span><strong id="preview-payable">—</strong></div></div>
                 <p class="sw-meta">Stock and delivery are confirmed when creating the order.</p>
@@ -72,7 +88,7 @@
         </div>
     </form>
     <template id="quote-line-template">@include('sales-workspace.quote-line',['i'=>'__INDEX__','line'=>['product_id'=>'','quantity'=>1,'rate'=>0,'tax_rate'=>0,'tax_mode'=>'inclusive']])</template>
-    @if($quote && $quote->snapshot['customer_id'])
+    @if($quote)
     <dialog id="quotation-review" class="sw-review" aria-labelledby="review-title" data-open="{{ session('review_ready') ? '1' : '0' }}">
         <header class="sw-review-head"><div><h2 id="review-title">Review quotation</h2><p class="sw-meta">Check the recipient, order type and total.</p></div><button type="button" class="sw-btn" data-close-review>Back to editing</button></header>
         @include('sales-workspace.quote-document')
@@ -80,11 +96,10 @@
     </dialog>
     @endif
 </div>
-@if(auth()->user()->canAccessModule('customers','create'))
-@include('customers.partials.quick-create-modal', ['quickModalId'=>'salesQuickCustomerModal','quickFormId'=>'salesQuickCustomerForm','quickSelectTarget'=>'customer_id','quickPrefill'=>['name'=>$enquiry->name,'phone'=>$enquiry->phone,'email'=>$enquiry->email]])
-@endif
 @endsection
 @push('scripts')
 @include('sales-workspace.customer-script')
 @include('sales-workspace.quotation-script')
+<script src="{{ asset('js/phos-quote-product-search.js') }}?v={{ hash_file('sha256', public_path('js/phos-quote-product-search.js')) }}" defer></script>
+<script src="{{ asset('js/phos-quotation-availability.js') }}?v={{ hash_file('sha256', public_path('js/phos-quotation-availability.js')) }}" defer></script>
 @endpush

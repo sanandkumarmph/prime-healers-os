@@ -60,6 +60,55 @@ class PhosCashWorkflowTest extends TestCase
         return DeliveryCashHandover::latest('id')->firstOrFail();
     }
 
+    public function test_assigned_driver_records_split_collection_once_and_accounts_verify_the_online_portion(): void
+    {
+        $this->task->forceFill(['collection_allowed_methods' => 'both', 'collection_instructions' => 'Synthetic instructions'])->save();
+        $this->get(route('deliveries.show', $this->task))->assertOk()->assertSee('Record collection outcome');
+        $this->get(route('delivery-collections.show', $this->task))->assertOk()
+            ->assertSee('Synthetic instructions')->assertSee('Save collection outcome');
+        $data = $this->payload([
+            'outcome' => 'partial', 'amount' => 180, 'method' => 'split', 'cash_amount' => 100,
+            'online_method' => 'upi', 'reference' => 'UAT-SPLIT-REFERENCE', 'note' => 'Customer will pay the rest later.',
+        ]);
+        $this->post(route('delivery-collections.store', $this->task), $data)->assertSessionHasNoErrors();
+        $this->post(route('delivery-collections.store', $this->task), $data)->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('delivery_collections', 2);
+        $this->assertDatabaseCount('payments', 1);
+        $this->assertEquals(200, $this->invoice->fresh()->balance_amount);
+        $cash = DeliveryCollection::where('method', 'cash')->sole();
+        $online = DeliveryCollection::where('method', 'upi')->sole();
+        $this->assertEquals(100, $cash->cashAmounts()['available'] / 100);
+        $this->assertSame('pending_review', $online->status);
+
+        $decision = ['action' => 'verify', 'reason' => 'Checked the synthetic UPI transaction.', 'confirmed' => 1];
+        $this->actingAs($this->finance)->post(route('delivery-collections.review', $online), $decision)->assertForbidden();
+        $this->actingAs($this->admin)->post(route('delivery-collections.review', $online), $decision)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('payments', 2);
+        $this->assertEquals(120, $this->invoice->fresh()->balance_amount);
+    }
+
+    public function test_managed_collection_requires_its_operator_and_can_record_a_missed_payment(): void
+    {
+        $this->task->forceFill(['collection_allowed_methods' => 'cash'])->save();
+        $this->actingAs($this->admin)
+            ->post(route('delivery-collections.store', $this->task), $this->payload(['outcome' => 'collected', 'amount' => 250]))
+            ->assertForbidden();
+        $this->actingAs($this->collector)
+            ->put(route('deliveries.complete', $this->task), ['workflow_capture_form' => 1, 'confirm_partial' => 1])
+            ->assertRedirect(route('delivery-collections.show', $this->task));
+        $this->post(route('delivery-collections.store', $this->task), $this->payload([
+            'outcome' => 'collected', 'amount' => 250, 'method' => 'upi', 'reference' => 'TEST',
+        ]))->assertSessionHasErrors('collection');
+
+        $data = $this->payload(['outcome' => 'none', 'note' => 'Customer was unable to pay.']);
+        unset($data['amount'], $data['method']);
+        $this->post(route('delivery-collections.store', $this->task), $data)->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('payments', 0);
+        $this->assertDatabaseHas('delivery_collections', ['outcome' => 'none', 'status' => 'not_collected', 'amount' => 0]);
+        $this->assertTrue($this->task->hasRecordedCollectionOutcome());
+        $this->get(route('deliveries.show', $this->task))->assertOk()->assertSee('Collection outcome saved.');
+    }
+
     public function test_cash_posts_once_and_changed_token_replay_cannot_credit_twice(): void
     {
         $data=$this->payload();
@@ -72,6 +121,38 @@ class PhosCashWorkflowTest extends TestCase
         $this->assertDatabaseCount('payments',1);
     }
 
+    public function test_vendor_receipts_are_attributed_once_and_excluded_from_employee_cash_handover(): void
+    {
+        $vendor = \App\Models\Vendor::create(['organization_id' => $this->task->organization_id, 'name' => 'Synthetic Collection Vendor', 'is_active' => true]);
+        \App\Models\VendorOrderDetail::create([
+            'organization_id' => $this->task->organization_id, 'vendor_id' => $vendor->id, 'rental_id' => $this->task->rental_id,
+            'order_type' => 'rental', 'fulfilment_source' => 'vendor_supplied', 'delivery_responsibility' => 'vendor_delivery',
+        ]);
+        $this->task->update(['assignment_type' => 'vendor', 'assigned_user_id' => null, 'status' => 'completed', 'completed_at' => now()]);
+        $this->actingAs($this->admin);
+        $this->get(route('delivery-collections.show', $this->task))->assertOk()->assertSee('Synthetic Collection Vendor');
+        $this->post(route('delivery-collections.store', $this->task), $this->payload())->assertSessionHasErrors('collection_recipient');
+        $payload = $this->payload(['collection_recipient' => 'vendor']);
+        $this->post(route('delivery-collections.store', $this->task), $payload)->assertSessionHasNoErrors();
+        $this->post(route('delivery-collections.store', $this->task), $payload)->assertSessionHasNoErrors();
+        $entry = DeliveryCollection::sole();
+        $this->assertSame('vendor:'.$vendor->id, $entry->collection_vendor_key);
+        $this->assertEquals(150, $this->invoice->fresh()->paid_amount);
+        $this->assertDatabaseCount('payments', 1);
+        $this->assertSame(0, $entry->cashAmounts()['available']);
+        $this->get(route('cash-handovers.index'))->assertOk()->assertDontSee('Collection #'.$entry->id);
+
+        $this->task->forceFill(['collection_amount_collected' => 150, 'collection_recipient' => 'vendor',
+            'collection_vendor_key' => $entry->collection_vendor_key, 'collection_vendor_name' => $entry->collection_vendor_name])->save();
+        $report = route('reports.vendor-collections');
+        $this->get($report)->assertOk()->assertSee('Synthetic Collection Vendor')
+            ->assertViewHas('postedTotals', fn ($rows) => (float) $rows->sum('amount') === 150.0)
+            ->assertViewHas('reportedTotals', fn ($rows) => (float) $rows->sum('amount') === 150.0);
+        $this->post(route('delivery-collections.reverse', $entry), ['reason' => 'Synthetic correction', 'confirmed' => 1])->assertSessionHasNoErrors();
+        $this->get($report)->assertOk()->assertViewHas('postedTotals', fn ($rows) => $rows->isEmpty());
+        $this->actingAs($this->collector)->get($report)->assertForbidden();
+    }
+
     public function test_authorisation_invoice_balance_and_stale_state_block_excess_or_uncertain_receipts(): void
     {
         $this->post(route('delivery-collections.store',$this->task),$this->payload(['amount'=>251]))->assertSessionHasErrors('collection');
@@ -82,7 +163,7 @@ class PhosCashWorkflowTest extends TestCase
         $this->post(route('delivery-collections.store',$this->task),$this->payload(['amount'=>301]))->assertSessionHasErrors('collection');
     }
 
-    public function test_online_report_requires_evidence_and_finance_verification_before_credit(): void
+    public function test_online_report_requires_evidence_and_admin_verification_before_credit(): void
     {
         $this->post(route('delivery-collections.store',$this->task),$this->payload(['method'=>'upi']))->assertSessionHasErrors('collection');
         $entry=$this->collect(['method'=>'upi','reference'=>'SYNTHETIC-TRANSFER-1']);
@@ -90,6 +171,8 @@ class PhosCashWorkflowTest extends TestCase
         $decision=['action'=>'verify','reason'=>'Checked synthetic bank receipt','confirmed'=>1];
         $this->post(route('delivery-collections.review',$entry),$decision)->assertForbidden();
         $this->actingAs($this->finance);
+        $this->post(route('delivery-collections.review',$entry),$decision)->assertForbidden();
+        $this->actingAs($this->admin);
         $this->get(route('delivery-collections.index'))->assertOk()->assertSee('SYNTHETIC-TRANSFER-1');
         $this->post(route('delivery-collections.review',$entry),$decision)->assertSessionHasNoErrors();
         $this->post(route('delivery-collections.review',$entry),$decision)->assertSessionHasNoErrors();
@@ -119,7 +202,7 @@ class PhosCashWorkflowTest extends TestCase
         $entry=$this->collect(); $handover=$this->handover($entry);
         $this->assertEquals(50,$entry->fresh()->cashAmounts()['available']/100);
         $decision=['confirmation_token'=>(string)Str::uuid(),'received_amount'=>60,'confirmed'=>1];
-        $this->actingAs($this->finance);
+        $this->actingAs($this->admin);
         if ($directory=getenv('GETTING_STARTED_PREVIEW_DIR')) file_put_contents($directory.'/phos-cash-handovers.html',$this->get(route('cash-handovers.index'))->assertOk()->getContent());
         $this->post(route('cash-handovers.confirm',$handover),$decision)->assertSessionHasErrors('handover');
         $decision['reason']='Received only part of the submitted cash';
@@ -147,9 +230,8 @@ class PhosCashWorkflowTest extends TestCase
     public function test_receipt_and_collection_corrections_keep_all_original_history(): void
     {
         $entry=$this->collect(); $handover=$this->handover($entry);
-        $this->actingAs($this->finance);
-        $this->post(route('cash-handovers.confirm',$handover),['confirmation_token'=>(string)Str::uuid(),'received_amount'=>100,'confirmed'=>1])->assertSessionHasNoErrors();
         $this->actingAs($this->admin);
+        $this->post(route('cash-handovers.confirm',$handover),['confirmation_token'=>(string)Str::uuid(),'received_amount'=>100,'confirmed'=>1])->assertSessionHasNoErrors();
         $correction=['reason'=>'Synthetic wrong collection entry','confirmed'=>1];
         $this->post(route('delivery-collections.reverse',$entry),$correction)->assertSessionHasErrors('collection');
         $this->post(route('cash-handovers.correct',$handover),['action'=>'reverse','reason'=>'Synthetic cash receipt mistake','confirmed'=>1])->assertSessionHasNoErrors();

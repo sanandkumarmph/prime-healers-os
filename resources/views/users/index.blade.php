@@ -155,10 +155,10 @@
                             <td style="padding:16px 18px; text-align:right;">
                                 <div class="users-table-actions">
                                     <a href="{{ route('users.show', $user) }}" style="color:#0f766e; font-weight:700; text-decoration:none;">View</a>
-                                    @if($canUpdateUsers)
+                                    @if($canUpdateUsers && app(\App\Services\RoleGrantGuard::class)->mayManage($currentUser, $user))
                                         <a href="{{ route('users.edit', $user) }}" style="color:#1d4ed8; font-weight:700; text-decoration:none;">Edit</a>
                                     @endif
-                                    @if($canDeleteUsers && (int) $user->id !== (int) auth()->id())
+                                    @if($canDeleteUsers && app(\App\Services\RoleGrantGuard::class)->mayManage($currentUser, $user) && (int) $user->id !== (int) auth()->id())
                                         <form method="POST" action="{{ route('users.destroy', $user) }}" style="margin:0;" onsubmit="return confirm('Delete this user? This will be blocked if dependencies exist.');">
                                             @csrf
                                             @method('DELETE')

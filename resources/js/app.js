@@ -765,8 +765,8 @@ const initializeUnifiedInAppNotifications = () => {
     const primaryRoot = roots.find((root) => root.dataset.notificationsLatestUrl) || roots[0];
     const latestUrl = primaryRoot.dataset.notificationsLatestUrl;
     const readAllUrl = primaryRoot.dataset.notificationsReadAllUrl;
-    const readVisibleUrl = primaryRoot.dataset.notificationsReadVisibleUrl;
     const readUrlTemplate = primaryRoot.dataset.notificationsReadUrlTemplate;
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
     const preferencesUrl = primaryRoot.dataset.notificationsPreferencesUrl;
     const soundSrc = primaryRoot.dataset.notificationSoundSrc;
     const toastStack = document.querySelector('[data-notification-toast-stack]');
@@ -811,8 +811,6 @@ const initializeUnifiedInAppNotifications = () => {
         testVoiceButtons: Array.from(root.querySelectorAll('[data-notification-test-voice]')),
         emptyStates: Array.from(root.querySelectorAll('[data-notification-empty]')),
         isMobileSheet: root.classList.contains('mobile-notification-menu'),
-        markVisibleHandle: null,
-        isMarkingVisible: false,
     })).filter((state) => state.panel instanceof HTMLElement);
 
     if (!rootStates.length) {
@@ -888,10 +886,6 @@ const initializeUnifiedInAppNotifications = () => {
             return;
         }
 
-        if (state.markVisibleHandle) {
-            window.clearTimeout(state.markVisibleHandle);
-            state.markVisibleHandle = null;
-        }
 
         state.root.open = false;
         state.root.removeAttribute('open');
@@ -1189,54 +1183,6 @@ const initializeUnifiedInAppNotifications = () => {
         });
     };
 
-    const markItemReadInDom = (notificationId) => {
-        if (!notificationId) {
-            return;
-        }
-
-        rootStates.forEach((state) => {
-            state.root.querySelectorAll(`[data-notification-id="${notificationId}"]`).forEach((item) => {
-                item.classList.remove('is-unread');
-                item.querySelectorAll('.topbar-bell-count').forEach((chip) => chip.remove());
-            });
-        });
-    };
-
-    const visibleUnreadIds = (state) => Array.from(state.root.querySelectorAll('[data-notification-item].is-unread[data-notification-id]'))
-        .map((item) => item.getAttribute('data-notification-id') || '')
-        .filter((id) => id !== '');
-
-    const markVisibleNotificationsRead = async (state) => {
-        if (!readVisibleUrl || state.isMarkingVisible) {
-            return;
-        }
-
-        const notificationIds = visibleUnreadIds(state);
-        if (!notificationIds.length) {
-            return;
-        }
-
-        state.isMarkingVisible = true;
-
-        try {
-            const response = await window.axios.post(readVisibleUrl, {
-                notification_ids: notificationIds,
-            });
-
-            notificationIds.forEach((notificationId) => {
-                markItemReadInDom(notificationId);
-                seenIds.add(notificationId);
-            });
-
-            persistSeenIds(seenIds);
-            syncCountUi(Number(response.data?.unread_count || 0));
-        } catch (error) {
-            // Keep current unread state on failure.
-        } finally {
-            state.isMarkingVisible = false;
-        }
-    };
-
     const buildNotificationItem = (notification) => {
         const href = notification.action_url || '#';
         const anchor = document.createElement('a');
@@ -1323,6 +1269,7 @@ const initializeUnifiedInAppNotifications = () => {
             const action = document.createElement('a');
             action.href = notification.action_url;
             action.textContent = 'View task';
+            action.addEventListener('click', (event) => openNotification(event, notification.id, action.href));
             toast.appendChild(action);
         }
 
@@ -1366,17 +1313,30 @@ const initializeUnifiedInAppNotifications = () => {
         }
     };
 
-    const markRead = async (notificationId) => {
-        if (!readUrlTemplate || !notificationId) {
-            return null;
+    // Submit before navigating so the server saves the read state and redirects to the task.
+    const submitRead = (event, action, destination = window.location.href) => {
+        if (!action || !csrfToken) return;
+        event.preventDefault();
+        const form = document.createElement('form');
+        form.hidden = true;
+        form.method = 'POST';
+        form.action = action;
+        for (const [name, value] of [['_token', csrfToken], ['redirect_to', destination]]) {
+            const field = document.createElement('input');
+            field.type = 'hidden';
+            field.name = name;
+            field.value = value;
+            form.appendChild(field);
         }
+        document.body.appendChild(form);
+        form.submit();
+    };
 
-        try {
-            const response = await window.axios.post(readUrlTemplate.replace('__NOTIFICATION__', notificationId));
-            return response.data || null;
-        } catch (error) {
-            return null;
-        }
+    const openNotification = (event, notificationId, href) => {
+        if (!readUrlTemplate || !notificationId || event.defaultPrevented
+            || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        const action = readUrlTemplate.replace('__NOTIFICATION__', encodeURIComponent(notificationId));
+        submitRead(event, action, href === '#' ? window.location.href : href);
     };
 
     syncPreferenceControls();
@@ -1406,75 +1366,21 @@ const initializeUnifiedInAppNotifications = () => {
                 setMobileSheetLock(state.root.open);
             }
 
-            if (state.markVisibleHandle) {
-                window.clearTimeout(state.markVisibleHandle);
-                state.markVisibleHandle = null;
-            }
-
-            if (state.root.open) {
-                state.markVisibleHandle = window.setTimeout(() => {
-                    markVisibleNotificationsRead(state);
-                }, 900);
-            }
         });
 
-        state.root.addEventListener('click', async (event) => {
+        state.root.addEventListener('click', (event) => {
             const markAll = event.target.closest('[data-notification-mark-all]');
             if (markAll) {
-                event.preventDefault();
-                if (!readAllUrl) {
-                    return;
-                }
-
-                try {
-                    const response = await window.axios.post(readAllUrl);
-                    rootStates.forEach((innerState) => {
-                        innerState.root.querySelectorAll('[data-notification-item]').forEach((item) => item.classList.remove('is-unread'));
-                        innerState.root.querySelectorAll('.topbar-bell-count').forEach((chip) => chip.remove());
-                        innerState.root.querySelectorAll('[data-notification-id]').forEach((item) => {
-                            const id = item.getAttribute('data-notification-id');
-                            if (id) {
-                                seenIds.add(id);
-                            }
-                        });
-                    });
-                    persistSeenIds(seenIds);
-                    syncCountUi(Number(response.data?.unread_count || 0));
-                } catch (error) {
-                    // Keep current state on failure.
-                }
-
+                submitRead(event, readAllUrl);
                 return;
             }
 
-            const item = event.target.closest('[data-notification-item]');
+            const item = event.target.closest('[data-notification-item].is-unread');
             if (!item) {
                 return;
             }
 
-            const href = item.getAttribute('href') || '#';
-            const notificationId = item.getAttribute('data-notification-id') || '';
-
-            if (href === '#') {
-                event.preventDefault();
-            }
-
-            const response = await markRead(notificationId);
-
-            if (notificationId) {
-                seenIds.add(notificationId);
-                persistSeenIds(seenIds);
-                markItemReadInDom(notificationId);
-            }
-
-            if (response && typeof response.unread_count !== 'undefined') {
-                syncCountUi(Number(response.unread_count || 0));
-            }
-
-            if (href !== '#') {
-                closeNotificationRoot(state);
-                window.location.assign(href);
-            }
+            openNotification(event, item.dataset.notificationId, item.getAttribute('href') || '#');
         });
 
         state.markAllButtons.forEach((button) => {
@@ -1584,6 +1490,10 @@ const initializeUnifiedInAppNotifications = () => {
 
     hydrate();
     pollingHandle = window.setInterval(hydrate, 30000);
+
+    window.addEventListener('pageshow', (event) => {
+        if (event.persisted) hydrate();
+    });
 
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {

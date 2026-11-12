@@ -57,24 +57,21 @@ class SidebarNotificationCacheRegressionTest extends TestCase
         $provider = new AppServiceProvider($this->app);
 
         $authorizedData = $this->invokeSidebarCounts($provider, $organizationA->id, $authorizedUser);
-        $this->assertSame(1, (int) (($authorizedData['sidebarPendingCounts']['rentals'] ?? 0)));
-        $this->assertSame(1, (int) ($authorizedData['overdueRentalsCount'] ?? 0));
+        $this->assertSame(1, (int) ($authorizedData['rentals'] ?? 0));
 
         $this->actingAs($restrictedUser)
             ->get(route('profile.edit'))
             ->assertOk();
 
         $restrictedData = $this->invokeSidebarCounts($provider, $organizationA->id, $restrictedUser);
-        $this->assertArrayNotHasKey('rentals', $restrictedData['sidebarPendingCounts'] ?? []);
-        $this->assertSame(0, (int) ($restrictedData['overdueRentalsCount'] ?? 0));
+        $this->assertArrayNotHasKey('rentals', $restrictedData);
 
         $this->actingAs($otherOrgUser)
             ->get(route('profile.edit'))
             ->assertOk();
 
         $otherOrgData = $this->invokeSidebarCounts($provider, $organizationB->id, $otherOrgUser);
-        $this->assertArrayNotHasKey('rentals', $otherOrgData['sidebarPendingCounts'] ?? []);
-        $this->assertSame(0, (int) ($otherOrgData['overdueRentalsCount'] ?? 0));
+        $this->assertArrayNotHasKey('rentals', $otherOrgData);
     }
 
     private function createOverdueDeliveredRental(int $organizationId): void

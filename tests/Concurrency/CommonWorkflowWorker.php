@@ -17,7 +17,7 @@ if ($mode==='init') {
 }
 if ($mode==='fixture') {
     $org=TestData::organization(['name'=>'Synthetic concurrency '.bin2hex(random_bytes(4))]);
-    $collector=TestData::user($org,['role'=>User::ROLE_DELIVERY]); $finance=TestData::user($org,['role'=>User::ROLE_FINANCE]); $admin=TestData::user($org);
+    $collector=TestData::user($org,['role'=>User::ROLE_DELIVERY]); $admin=TestData::user($org);
     auth()->guard('web')->setUser($admin);
     $customer=Customer::create(['organization_id'=>$org->id,'name'=>'Synthetic concurrency contact','phone'=>'9000000000']);
     $product=Product::create(['organization_id'=>$org->id,'name'=>'Synthetic unit','product_type'=>'both','stock_mode'=>'untracked',
@@ -48,7 +48,7 @@ if ($mode==='fixture') {
     }
     $invoice->refresh();
     $quote?->refresh();
-    echo json_encode(['organization'=>$org->id,'collector'=>$collector->id,'finance'=>$finance->id,'admin'=>$admin->id,'task'=>$task->id,'invoice'=>$invoice->id,
+    echo json_encode(['organization'=>$org->id,'collector'=>$collector->id,'admin'=>$admin->id,'task'=>$task->id,'invoice'=>$invoice->id,
         'rental'=>$rental->id,'item'=>$rental->rentalItems()->sole()->id,'product'=>$product->id,'collection'=>$entry?->id,'handover'=>$handover?->id,
         'quote'=>$quote?->id,'quotePayload'=>$quote?app(QuotationConversion::class)->prefill($quote):null,
         'version'=>app(DeliveryCollectionService::class)->version($task,$invoice)]),PHP_EOL; exit;
@@ -85,8 +85,8 @@ $op=$input['operation'];
     'collection'=>['delivery-collections.store','/deliveries/'.$input['task'].'/collections','POST',$input['collector'],
         ['submission_token'=>$input['token'],'version'=>$input['version'],'amount'=>$input['amount']??150,'method'=>'cash','confirmed'=>1]],
     'handover'=>['cash-handovers.store','/cash-handovers/'.$input['collection'],'POST',$input['collector'],['submission_token'=>$input['token'],'amount'=>$input['amount']??100,'confirmed'=>1]],
-    'confirm'=>['cash-handovers.confirm','/cash-handovers/'.$input['handover'].'/confirm','POST',$input['finance'],['confirmation_token'=>$input['token'],'received_amount'=>$input['amount']??60,'reason'=>'Synthetic partial cash receipt','confirmed'=>1]],
-    'review'=>['delivery-collections.review','/collections/'.$input['collection'].'/review','POST',$input['finance'],['action'=>'verify','reason'=>'Synthetic verification against bank receipt','confirmed'=>1]],
+    'confirm'=>['cash-handovers.confirm','/cash-handovers/'.$input['handover'].'/confirm','POST',$input['admin'],['confirmation_token'=>$input['token'],'received_amount'=>$input['amount']??60,'reason'=>'Synthetic partial cash receipt','confirmed'=>1]],
+    'review'=>['delivery-collections.review','/collections/'.$input['collection'].'/review','POST',$input['admin'],['action'=>'verify','reason'=>'Synthetic verification against bank receipt','confirmed'=>1]],
     'reverse'=>['delivery-collections.reverse','/collections/'.$input['collection'].'/reverse','POST',$input['admin'],['reason'=>'Synthetic incorrect collection','confirmed'=>1]],
     'partial'=>['deliveries.partial_delivery','/deliveries/'.$input['task'].'/partial-delivery','PUT',$input['collector'],['rental_item_id'=>$input['item'],'quantity'=>$input['amount']??1,'workflow_submission_token'=>$input['token']]],
     'quotation'=>['sales.store','/sales','POST',$input['admin'],$input['quotePayload']],

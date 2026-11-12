@@ -117,11 +117,7 @@ class Role extends Model
             'admin_operations' => [
                 'name' => 'Operations Admin',
                 'description' => 'Operations Admin role',
-                'permissions' => array_merge($modulePermissions, [
-                    'roles' => ['read'],
-                    'users' => ['read', 'update'],
-                    'settings' => ['read'],
-                ]),
+                'permissions' => $modulePermissions,
             ],
             'sales' => [
                 'name' => 'Sales',
@@ -177,9 +173,39 @@ class Role extends Model
         ];
     }
 
+    /** Explicit presets for newly configured roles; never rewrite existing roles. */
+    public static function accessPresets(): array
+    {
+        $defaults = self::defaultSystemRoleTemplates();
+        $preset = fn (string $name, string $slug, array $modules, array $special = []) => [
+            'name' => $name, 'slug' => $slug, 'modules' => $modules, 'special' => $special,
+        ];
+
+        return [
+            'super_admin' => $preset('Super Admin', 'super_admin', $defaults['super_admin']['permissions'], array_keys(self::SPECIAL_PERMISSIONS)),
+            'admin' => $preset('Admin', 'admin_operations', $defaults['admin_operations']['permissions'], array_keys(self::SPECIAL_PERMISSIONS)),
+            'sales' => $preset('Sales', 'sales', $defaults['sales']['permissions'], ['finance.view_dues', 'invoices.print']),
+            'service' => $preset('Service', 'service', [
+                'customers' => ['read', 'update'], 'products' => ['read'], 'assets' => ['read'],
+                'rentals' => ['read', 'update'], 'deliveries' => ['read', 'create', 'update'],
+                'invoices' => ['read'],
+            ], ['finance.view_dues']),
+            'delivery' => $preset('Delivery', 'delivery', $defaults['delivery']['permissions']),
+            'finance' => $preset('Accounts / Finance', 'finance', [
+                'invoices' => ['read'], 'payments' => ['read'], 'reports' => ['read'],
+            ], ['finance.view_revenue', 'finance.view_dues', 'finance.view_payments', 'finance.view_deposits',
+                'finance.view_transport', 'finance.view_other_charges', 'finance.view_reports']),
+            'custom' => $preset('Custom', 'custom', []),
+        ];
+    }
+
     public static function normalizePermissions(array $permissions): array
     {
         $normalized = [];
+
+        if (in_array('read', $permissions['dashboard'] ?? [], true)) {
+            $normalized['dashboard'] = ['read'];
+        }
 
         foreach (self::MODULES as $module => $label) {
             $actions = collect($permissions[$module] ?? [])
@@ -206,6 +232,9 @@ class Role extends Model
             $normalized['__special'] ??= [];
             $normalized['__special_explicit'] = true;
         }
+        if (in_array($permissions['__dashboard'] ?? null, ['auto', 'allow', 'deny'], true)) {
+            $normalized['__dashboard'] = $permissions['__dashboard'];
+        }
 
         return $normalized;
     }
@@ -216,6 +245,11 @@ class Role extends Model
             '__special' => $permissions['__special'] ?? [],
             '__special_explicit' => true,
         ]));
+    }
+
+    public function scopeInAccessOrder(Builder $query): Builder
+    {
+        return $query->orderByRaw("CASE slug WHEN 'super_admin' THEN 0 WHEN 'admin_operations' THEN 1 WHEN 'admin' THEN 1 WHEN 'sales' THEN 2 WHEN 'service' THEN 3 WHEN 'delivery' THEN 4 WHEN 'finance' THEN 5 ELSE 6 END");
     }
 
     public function scopeForOrganization(Builder $query, int $organizationId): Builder

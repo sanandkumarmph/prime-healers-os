@@ -8,6 +8,7 @@ use App\Support\InvoicePdfAssetResolver;
 use Barryvdh\DomPDF\Facade\Pdf as DomPdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LedgerController extends Controller
@@ -25,11 +26,14 @@ class LedgerController extends Controller
         $statement = $this->ledgerService->statement($organizationId, $filters);
         $filterOptions = $this->ledgerService->filterOptions($organizationId);
 
-        return view('ledger.index', compact('statement', 'filterOptions'));
+        $canExportLedgerPdf = $this->canExportPdf($request, $filters);
+
+        return view('ledger.index', compact('statement', 'filterOptions', 'canExportLedgerPdf'));
     }
 
     public function exportCsv(Request $request): StreamedResponse
     {
+        abort_if($request->user()->isFinance(), 403);
         $filters = $this->ledgerService->filtersFromRequest($request);
         $this->authorizeLedgerAccess($filters);
 
@@ -61,6 +65,7 @@ class LedgerController extends Controller
     public function previewPdf(Request $request)
     {
         $filters = $this->ledgerService->filtersFromRequest($request);
+        abort_unless($this->canExportPdf($request, $filters), 403);
         $this->authorizeLedgerAccess($filters);
 
         return $this->statementPdf($filters)->stream($this->statementFilename(), ['Attachment' => false]);
@@ -69,6 +74,7 @@ class LedgerController extends Controller
     public function exportPdf(Request $request)
     {
         $filters = $this->ledgerService->filtersFromRequest($request);
+        abort_unless($this->canExportPdf($request, $filters), 403);
         $this->authorizeLedgerAccess($filters);
 
         return $this->statementPdf($filters)->download($this->statementFilename());
@@ -99,20 +105,28 @@ class LedgerController extends Controller
         return 'statement-of-accounts-' . now()->format('Ymd-His') . '.pdf';
     }
 
-    private function authorizeLedgerAccess(array $filters): void
+    private function canExportPdf(Request $request, array $filters): bool
     {
-        $user = Auth::user();
-        abort_unless($user, 403);
+        return !$request->user()->isFinance() && (Gate::allows('manage-bulk-records') || $this->isRecordLedger($filters));
+    }
 
-        $isRecordLedger = collect([
+    private function isRecordLedger(array $filters): bool
+    {
+        return collect([
             $filters['customer_id'] ?? null,
             $filters['business_partner_id'] ?? null,
             $filters['rental_id'] ?? null,
             $filters['sale_id'] ?? null,
             $filters['invoice_id'] ?? null,
         ])->filter()->isNotEmpty();
+    }
 
-        if ($isRecordLedger) {
+    private function authorizeLedgerAccess(array $filters): void
+    {
+        $user = Auth::user();
+        abort_unless($user, 403);
+
+        if ($this->isRecordLedger($filters)) {
             abort_unless($user->canViewRecordFinance(), 403);
             return;
         }

@@ -151,6 +151,7 @@
         'location_latitude',
         'location_longitude',
         'collection_amount_collected',
+        'collection_recipient',
         'collection_payment_mode',
         'collection_payment_proof',
         'collection_transaction_reference',
@@ -162,7 +163,8 @@
     $hasCancellationErrors = $errors->has('cancellation_reason') || $errors->has('cancellation_notes');
     $selectedCancellationReason = old('cancellation_reason', $delivery->cancellation_reason);
     $selectedCancellationNotes = old('cancellation_notes', $delivery->cancellation_notes);
-    $supportsCollectionStep = (bool) ($delivery->collection_required ?? false);
+    $supportsCollectionStep = $delivery->collection_required && !$delivery->hasOrderCollection();
+    $collectionVendor = $supportsCollectionStep ? app(\App\Services\Deliveries\VendorCollectionAttribution::class)->vendor($delivery) : null;
     $collectionAmountToCollect = (float) ($delivery->collection_amount_to_collect ?? 0);
     $collectionModes = [
         'cash' => 'Cash',
@@ -227,7 +229,7 @@
             break;
         }
     }
-    if ($supportsCollectionStep && collect(['collection_amount_collected', 'collection_payment_mode', 'collection_payment_proof', 'collection_transaction_reference', 'collection_note', 'collection_not_collected_reason'])->contains(fn ($field) => $errors->has($field))) {
+    if ($supportsCollectionStep && collect(['collection_amount_collected', 'collection_recipient', 'collection_payment_mode', 'collection_payment_proof', 'collection_transaction_reference', 'collection_note', 'collection_not_collected_reason'])->contains(fn ($field) => $errors->has($field))) {
         $initialCompletionStep = $delivery->type === 'pickup' ? 6 : 5;
     }
     if ($errors->has('completion_confirmed')) {
@@ -384,6 +386,7 @@
 @endphp
 
 <style>
+    :is(.delivery-detail,.delivery-mobile-sticky-cta) { --field-primary:#12546b; }
     .delivery-detail { display:grid; gap:10px; padding:8px 0 16px; max-width:1120px; margin:0 auto; }
     .delivery-detail-header { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; }
     .delivery-detail-header h1 { margin:0; font-size:23px; color:#0f172a; line-height:1.04; letter-spacing:-0.03em; }
@@ -869,7 +872,7 @@
         border-radius:10px; padding:8px 12px; font-size:12px; font-weight:700; text-decoration:none;
         border:1px solid transparent; cursor:pointer; white-space:nowrap; min-width:0; text-align:center; line-height:1.2;
     }
-    .detail-btn { background:#2563eb; color:#fff; }
+    .detail-btn { background:var(--field-primary); color:#fff; }
     .detail-btn-secondary { background:#fff; border-color:#cbd5e1; color:#334155; }
     .detail-card { background:#fff; border:1px solid #dbe3ef; border-radius:16px; padding:13px; box-shadow:0 8px 24px rgba(15, 23, 42, 0.04); }
     .detail-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:14px; }
@@ -1831,12 +1834,12 @@
             font-size:9.5px;
         }
         .delivery-mobile-titlebar.is-pending .status-badge {
-            background:#fee2e2 !important;
-            color:#b91c1c !important;
+            background:#e4f0f4 !important;
+            color:#154b5e !important;
         }
         .delivery-mobile-titlebar.is-progress .status-badge {
-            background:#ffedd5 !important;
-            color:#c2410c !important;
+            background:#e8eefb !important;
+            color:#294784 !important;
         }
         .delivery-mobile-titlebar.is-completed .status-badge {
             background:#dcfce7 !important;
@@ -1856,13 +1859,10 @@
             border-radius:16px;
             box-shadow:0 12px 28px rgba(15,23,42,.08);
         }
-        .fieldops-task-shell--pending {
-            border-color:#fecaca;
-            background:linear-gradient(135deg, #fff1f2 0%, #fff7ed 46%, #ffffff 100%);
-        }
+        .fieldops-task-shell--pending,
         .fieldops-task-shell--progress {
-            border-color:#fed7aa;
-            background:linear-gradient(135deg, #fff7ed 0%, #ffffff 100%);
+            border-color:#cddde4;
+            background:#f1f6f8;
         }
         .fieldops-task-shell--completed {
             border-color:#bbf7d0;
@@ -1872,25 +1872,22 @@
             border-color:#cbd5e1;
             background:linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
         }
-        .fieldops-task-shell--pending .fieldops-task-shell-ill {
-            background:#fee2e2;
-            border-color:#fecaca;
-        }
+        .fieldops-task-shell--pending .fieldops-task-shell-ill,
         .fieldops-task-shell--progress .fieldops-task-shell-ill {
-            background:#ffedd5;
-            border-color:#fed7aa;
+            background:#e4f0f4;
+            border-color:#cddde4;
         }
         .fieldops-task-shell--completed .fieldops-task-shell-ill {
             background:#dcfce7;
             border-color:#bbf7d0;
         }
         .fieldops-task-shell--pending .fieldops-task-shell-chips .status-badge:first-child {
-            background:#fee2e2 !important;
-            color:#b91c1c !important;
+            background:#e4f0f4 !important;
+            color:#154b5e !important;
         }
         .fieldops-task-shell--progress .fieldops-task-shell-chips .status-badge:first-child {
-            background:#ffedd5 !important;
-            color:#c2410c !important;
+            background:#e8eefb !important;
+            color:#294784 !important;
         }
         .fieldops-task-shell--completed .fieldops-task-shell-chips .status-badge:first-child {
             background:#dcfce7 !important;
@@ -1939,7 +1936,8 @@
             box-shadow:inset 0 1px 0 rgba(255,255,255,.75);
         }
         .fieldops-task-meta strong {
-            font-size:12px;
+            font-size:13px;
+            overflow-wrap:anywhere;
         }
         .mobile-inline-actions { display:none; }
         .item-progress-form { display:none; }
@@ -2417,13 +2415,10 @@
             z-index:34;
             display:block;
         }
-        .delivery-mobile-sticky-cta.is-pending a {
-            background:#dc2626;
-            box-shadow:0 18px 36px rgba(220,38,38,.28);
-        }
+        .delivery-mobile-sticky-cta.is-pending a,
         .delivery-mobile-sticky-cta.is-progress a {
-            background:#f97316;
-            box-shadow:0 18px 36px rgba(249,115,22,.26);
+            background:var(--field-primary);
+            box-shadow:0 12px 28px rgba(18,84,107,.23);
         }
         .delivery-mobile-sticky-cta.is-completed a {
             background:#16a34a;
@@ -2712,7 +2707,19 @@
 
 <div class="delivery-detail">
     @if($delivery->collection_required && ((int)$delivery->assigned_user_id === (int)auth()->id() || app(\App\Services\Deliveries\DeliveryCollectionService::class)->canReceive(auth()->user())))
-    <div class="detail-card"><strong>Collections & cash accountability</strong><p>Use the collection ledger to record a customer receipt and submit cash handovers. Existing completion reports remain in task history.</p><a class="detail-btn" href="{{ route('delivery-collections.show',$delivery) }}">Open collection ledger</a></div>
+    <div class="detail-card">
+        @if($delivery->hasOrderCollection())
+            <strong>Payment to collect · ₹{{ number_format($delivery->collection_amount_to_collect, 2) }}</strong>
+            <p>{{ \App\Services\Deliveries\OrderCollectionSetup::METHODS[$delivery->collection_allowed_methods] }}</p>
+            @if($delivery->collection_instructions)<p>{{ $delivery->collection_instructions }}</p>@endif
+            @if($collectionOutcome)<p role="status">Collection outcome saved. {{ \App\Models\DeliveryCollection::OUTCOMES[$collectionOutcome] }}</p>@endif
+            <a class="detail-btn" href="{{ route('delivery-collections.show', $delivery) }}">{{ $collectionOutcome || $delivery->status !== 'in_progress' || (int)$delivery->assigned_user_id !== (int)auth()->id() ? 'View collection' : 'Record collection outcome' }}</a>
+        @else
+            <strong>Collections & cash accountability</strong><p>Use the collection ledger to record a customer receipt and submit cash handovers. Existing completion reports remain in task history.</p>
+            @if($delivery->collection_vendor_name)<p>Vendor reported as collector · {{ $delivery->collection_vendor_name }}</p>@endif
+            <a class="detail-btn" href="{{ route('delivery-collections.show', $delivery) }}">Open collection ledger</a>
+        @endif
+    </div>
     @endif
     <div class="delivery-mobile-titlebar is-{{ $mobileTaskTone }}" aria-label="{{ ucfirst($delivery->type) }} task header">
         <a href="{{ route('deliveries.index') }}" aria-label="Back to deliveries">
@@ -2724,6 +2731,9 @@
     <div class="delivery-detail-header">
         <div>
             <h1>{{ ucfirst($delivery->type) }} #{{ $delivery->id }}</h1>
+            @error('rental_agreement')
+                <p role="alert">{{ $message }}</p>
+            @enderror
             <p>Compact field summary, guided proof, and one clear action path.</p>
             <div class="desktop-task-header-meta" aria-label="Task summary">
                 <span class="status-badge" style="{{ $statusStyle }}">{{ $displayStatusLabel }}</span>
@@ -3595,6 +3605,9 @@
                                     <div class="workflow-proof-help" style="color:#b91c1c;">{{ $message }}</div>
                                 @enderror
                             </div>
+                            @if($collectionVendor)
+                                <div class="workflow-proof-field">@include('deliveries.collection-recipient')</div>
+                            @endif
                             <div class="workflow-proof-field">
                                 <label for="collection_payment_mode">Payment mode</label>
                                 <select id="collection_payment_mode" name="collection_payment_mode" style="width:100%; border:1px solid #cbd5e1; border-radius:12px; padding:10px 12px; font-size:13px; color:#0f172a; background:#fff;">
@@ -3873,7 +3886,9 @@
         </div>
     </div>
 
-    @include('partials.activity-timeline', [
+
+
+@include('partials.activity-timeline', [
         'logs' => $activityLogs ?? collect(),
         'title' => 'Operations History',
         'subtitle' => 'Assignment, start, completion, and linked order updates for this task.',
@@ -4668,7 +4683,9 @@ document.addEventListener('DOMContentLoaded', () => {
         })();
         const collectionReason = form.querySelector('select[name="collection_not_collected_reason"]')?.value || '';
         const collectionMode = form.querySelector('select[name="collection_payment_mode"]')?.value || '';
-        const collectionReady = !collectionRequired || ((hasCollectedAmount && collectionMode !== '') || (!hasCollectedAmount && collectionReason !== ''));
+        const collectionRecipient = form.querySelector('select[name="collection_recipient"]');
+        const recipientReady = !collectionRecipient || collectionRecipient.value !== '';
+        const collectionReady = !collectionRequired || ((hasCollectedAmount && collectionMode !== '' && recipientReady) || (!hasCollectedAmount && collectionReason !== ''));
         const consentReady = Boolean(form.querySelector('input[name="completion_confirmed"]')?.checked);
 
         return {
@@ -4784,7 +4801,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (state.collectionRequired && ((workflowType === 'pickup' && currentStep === 6) || (workflowType === 'delivery' && currentStep === 5)) && !state.collectionReady) {
-            form.querySelector('input[name="collection_amount_collected"]')?.focus();
+            const recipient = form.querySelector('select[name="collection_recipient"]');
+            const amount = form.querySelector('input[name="collection_amount_collected"]');
+            (recipient && !recipient.value && Number(amount?.value) > 0 ? recipient : amount)?.focus();
             return false;
         }
 
@@ -5073,4 +5092,5 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 @endpush
+@include('partials.record-timestamps', ['timestampRecord' => $delivery, 'timestampFields' => ['created_at' => 'Created', 'updated_at' => 'Last updated', 'completed_at' => 'Completed', 'failed_attempt_at' => 'Failed attempt', 'last_pickup_note_at' => 'Pickup note added']])
 @endsection

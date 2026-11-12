@@ -8,6 +8,30 @@ use Illuminate\Database\Eloquent\Builder;
 
 class Asset extends Model
 {
+    protected static function booted(): void
+    {
+        static::saving(function (Asset $asset) {
+            if (!$asset->exists || !Cylinder::hasTable()) return;
+            $cylinder = Cylinder::where('asset_id', $asset->id)->first();
+            if (!$cylinder) return;
+            if ($asset->isDirty('product_id') || $asset->isDirty('organization_id')) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['asset' => 'A registered cylinder must retain its product and organisation for asset history.']);
+            }
+            if ($asset->asset_stage !== self::STAGE_RENTAL_STOCK) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['asset_stage' => 'Registered cylinders must remain PHOS-owned rental assets.']);
+            }
+            if ($asset->asset_status === self::STATUS_AVAILABLE && ($cylinder->contents !== 'full' || $cylinder->custody !== 'warehouse' || $cylinder->reserved_for_rental_id || !in_array($asset->condition_status,['new','good'],true))) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['asset_status' => 'Only full warehouse cylinders in New or Good condition and without a reservation can be made available.']);
+            }
+        });
+        static::deleting(function (Asset $asset) {
+            if (Cylinder::hasTable() && Cylinder::where('asset_id', $asset->id)->exists()) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['asset' => 'Cylinder asset history must be retained. Retire the asset instead of deleting it.']);
+            }
+        });
+    }
+
+    public function cylinder() { return $this->hasOne(Cylinder::class); }
     public const SERIAL_PENDING_PREFIX = 'PENDING-';
     public const STAGE_NEW_STOCK = 'new_stock';
     public const STAGE_RENTAL_STOCK = 'rental_stock';
@@ -196,6 +220,10 @@ class Asset extends Model
 
     public function scopeRentalReady(Builder $query): Builder
     {
+        if (Cylinder::hasTable()) {
+            $query->where(fn ($q) => $q->whereDoesntHave('cylinder')->orWhere(fn ($r) => $r->whereIn('condition_status', ['new','good'])
+                ->whereHas('cylinder', fn ($c) => $c->where('contents', 'full')->where('custody', 'warehouse')->whereNull('reserved_for_rental_id'))));
+        }
         $query
             ->where('asset_stage', self::STAGE_RENTAL_STOCK)
             ->where('asset_status', self::STATUS_AVAILABLE)

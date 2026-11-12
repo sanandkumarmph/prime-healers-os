@@ -613,7 +613,7 @@
                                 <form method="POST" action="{{ route('communication-center.reschedule', $followUp) }}" class="comms-reschedule-form">
                                     @csrf
                                     <div class="comms-modal-field">
-                                        <label>Due Date & Time</label>
+                                        <label>Due Date & Time (IST)</label>
                                         <input class="comms-input" type="datetime-local" name="due_at" value="{{ optional($followUp->due_at)->format('Y-m-d\TH:i') }}">
                                     </div>
                                     <div class="comms-modal-field">

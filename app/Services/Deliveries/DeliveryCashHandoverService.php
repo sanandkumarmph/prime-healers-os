@@ -18,7 +18,9 @@ class DeliveryCashHandoverService
     {
         abort_unless(app(DeliveryCollectionService::class)->canViewCash($actor), 403);
         $collection = DeliveryCollection::where('organization_id', $actor->organization_id)->lockForUpdate()->findOrFail($id);
-        if ($collection->status !== 'cash_received') $this->fail('Only a posted cash collection can be handed over.');
+        if ($collection->status !== 'cash_received' || $collection->collection_recipient === 'vendor') {
+            $this->fail('Cash handover applies to posted collections held by Prime Healers staff.');
+        }
         $collection->setRelation('handovers', $collection->handovers()->orderBy('id')->lockForUpdate()->get());
         return $collection;
     }

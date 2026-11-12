@@ -616,6 +616,7 @@ class SaleController extends Controller
                     $row['unit_price'] ?? null,
                     $row['discount_amount'] ?? null,
                     $row['tax_percentage'] ?? null,
+                    $row['hsn_code'] ?? null,
                     $row['notes'] ?? null,
                 ])->contains(fn ($value) => filled($value) && $value !== '0' && $value !== 0 && $value !== '0.00');
             })
@@ -655,8 +656,12 @@ class SaleController extends Controller
 
         $customerState = $this->normalizeStateName($taxState ?? $customer?->state);
         $organizationState = $this->currentOrganizationState();
+        $previousItems = $sale && $rows->contains(fn (array $row) => !array_key_exists('hsn_code', $row))
+            ? $sale->displaySaleItems()
+            : collect();
+        $legacyHsnCodes = $previousItems->isNotEmpty() ? $this->legacySaleInvoiceHsnCodes($sale) : [];
 
-        return $rows->map(function (array $row, int $index) use ($products, $customerState, $organizationState) {
+        return $rows->map(function (array $row, int $index) use ($products, $customerState, $organizationState, $previousItems, $legacyHsnCodes) {
             $productId = (int) ($row['product_id'] ?? 0);
             $product = $products->get($productId);
 
@@ -684,6 +689,14 @@ class SaleController extends Controller
             $taxType = in_array(($row['tax_type'] ?? null), Product::GST_TAX_TYPES, true)
                 ? $row['tax_type']
                 : $this->recommendedTaxTypeForStates($customerState, $organizationState);
+            $previousItem = $previousItems->get($index);
+            $previousHsn = $previousItem && (int) $previousItem->product_id === $productId
+                ? ($previousItem->hsn_code ?? $legacyHsnCodes[$index] ?? null)
+                : null;
+            // Null on an existing line means no snapshot yet. An empty string records an intentional clear.
+            $hsnCode = array_key_exists('hsn_code', $row)
+                ? (string) ($row['hsn_code'] ?? '')
+                : ($previousHsn ?? $product->hsn_code ?? '');
 
             if ($quantity < 1) {
                 throw ValidationException::withMessages([
@@ -730,6 +743,7 @@ class SaleController extends Controller
                 'tax_percentage' => $taxPercentage,
                 'tax_calculation_mode' => $taxCalculationMode,
                 'tax_type' => $taxSnapshot['tax_type'],
+                'hsn_code' => $hsnCode,
                 'notes' => filled($row['notes'] ?? null) ? trim((string) $row['notes']) : null,
                 'commercials' => array_merge($commercials, $taxSnapshot),
                 'product' => $product,
@@ -872,6 +886,7 @@ class SaleController extends Controller
                 'tax_percentage' => $line['tax_percentage'],
                 'tax_calculation_mode' => $line['tax_calculation_mode'],
                 'tax_type' => $line['tax_type'],
+                'hsn_code' => $line['hsn_code'],
                 'taxable_amount' => $line['commercials']['taxable_amount'],
                 'total_tax_amount' => $line['commercials']['total_tax_amount'],
                 'line_total' => $line['commercials']['sale_amount'],
@@ -884,13 +899,41 @@ class SaleController extends Controller
         $sale->unsetRelation('saleItems');
     }
 
-    private function saleInvoiceLines(Sale $sale): array
+    private function legacySaleInvoiceHsnCodes(Sale $sale, ?Invoice $invoice = null): array
+    {
+        $saleItems = $sale->displaySaleItems();
+        if (!$saleItems->contains(fn (SaleItem $item) => $item->hsn_code === null)) {
+            return [];
+        }
+
+        $invoice ??= $this->saleInvoice($sale);
+        if (!$invoice) {
+            return [];
+        }
+
+        $invoiceItems = $invoice->items()
+            ->where('source_type', 'sale')
+            ->where('source_id', $sale->id)
+            ->orderBy('id')
+            ->get(['product_id', 'hsn_sac_code']);
+
+        // Older invoices could have their HSN edited directly. Only reuse it for the matching line.
+        $saleProductIds = $saleItems->pluck('product_id')->map(fn ($id) => (int) $id)->all();
+        $invoiceProductIds = $invoiceItems->pluck('product_id')->map(fn ($id) => (int) $id)->all();
+        if ($saleProductIds !== $invoiceProductIds) {
+            return [];
+        }
+
+        return $invoiceItems->pluck('hsn_sac_code')->all();
+    }
+
+    private function saleInvoiceLines(Sale $sale, array $legacyHsnCodes = []): array
     {
         $customerState = $this->normalizeStateName($sale->primaryTaxState());
         $organizationState = $this->currentOrganizationState();
 
         return $sale->displaySaleItems()
-            ->map(function ($item) use ($customerState, $organizationState) {
+            ->map(function ($item, int $index) use ($customerState, $organizationState, $legacyHsnCodes) {
                 $product = $item->product ?: Product::query()
                     ->where('organization_id', $this->orgId())
                     ->find($item->product_id);
@@ -923,6 +966,7 @@ class SaleController extends Controller
                     'tax_percentage' => $taxPercentage,
                     'tax_calculation_mode' => $taxCalculationMode,
                     'tax_type' => $taxSnapshot['tax_type'],
+                    'hsn_code' => $item->hsn_code ?? $legacyHsnCodes[$index] ?? $product?->hsn_code,
                     'notes' => $item->notes,
                     'commercials' => [
                         'subtotal' => round($quantity * $unitPrice, 2),
@@ -1063,7 +1107,7 @@ class SaleController extends Controller
                 'source_type' => 'sale',
                 'source_id' => $sale->id,
                 'description' => $description . ' | Unit: sale | Qty: ' . (float) $line['quantity'] . $assetNote,
-                'hsn_sac_code' => null,
+                'hsn_sac_code' => filled($line['hsn_code']) ? $line['hsn_code'] : null,
                 'quantity' => (float) $line['quantity'],
                 'unit' => 'sale',
                 'days' => null,
@@ -1092,7 +1136,7 @@ class SaleController extends Controller
         }
 
         $organization = Organization::findOrFail($this->orgId());
-        $saleItems = $this->saleInvoiceLines($sale);
+        $saleItems = $this->saleInvoiceLines($sale, $this->legacySaleInvoiceHsnCodes($sale, $invoice));
         $commercials = $this->aggregateSaleCommercials($saleItems, $sale->resolvedShippingCharges());
         $taxType = $this->resolveSaleInvoiceTaxType($commercials);
 
@@ -1145,6 +1189,7 @@ class SaleController extends Controller
             'amount' => 'required|numeric|min:0.01',
             'payment_method' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
+            'collection_recipient' => 'nullable|in:company,vendor',
         ]);
     }
 
@@ -1238,6 +1283,7 @@ class SaleController extends Controller
             'sale_items.*.tax_percentage' => 'nullable|numeric|min:0|max:100',
             'sale_items.*.tax_calculation_mode' => 'nullable|in:exclusive,inclusive',
             'sale_items.*.tax_type' => 'nullable|in:cgst_sgst,igst',
+            'sale_items.*.hsn_code' => 'nullable|string|max:255',
             'sale_items.*.notes' => 'nullable|string',
         ];
     }
@@ -1958,7 +2004,8 @@ class SaleController extends Controller
         $legacyCreatedBy = (int) $request->get('created_by', 0);
         $sortBy = (string) $request->get('sort_by', 'latest');
 
-        $applyIndexFilters = function ($query) use ($customerId, $paymentStatus, $fulfilmentSource, $search, $fromDate, $toDate, $createdByUserId, $legacyCreatedBy) {
+        $staffFilter = app(\App\Services\Sales\OrderStaffFilter::class);
+        $applyIndexFilters = function ($query) use ($customerId, $paymentStatus, $fulfilmentSource, $search, $fromDate, $toDate, $createdByUserId, $legacyCreatedBy, $request, $staffFilter) {
             $query
                 ->when($customerId !== '', fn ($innerQuery) => $innerQuery->where('customer_id', $customerId))
                 ->when($paymentStatus !== '', fn ($innerQuery) => $innerQuery->where('payment_status', $paymentStatus))
@@ -1988,13 +2035,18 @@ class SaleController extends Controller
                     });
                 });
 
-            $this->applyDateRangeFilter($query, $fromDate, $toDate);
+            if (!$staffFilter->applyToOrders($query, $request, $request->user(), 'sale', $fromDate, $toDate)) {
+                $this->applyDateRangeFilter($query, $fromDate, $toDate);
+            }
 
             return $query;
         };
 
-        $salesQuery = $applyIndexFilters($this->baseSalesQuery(true));
-        $summaryQuery = $applyIndexFilters($this->baseSalesQuery(false, false));
+        $salesQuery = $applyIndexFilters($this->baseSalesQuery(true))->with('warehouse');
+        if ($this->hasSaleItemsTable()) {
+            $salesQuery->with(['saleItems.product', 'saleItems.asset', 'saleItems.warehouse']);
+        }
+        $summaryQuery = $applyIndexFilters($this->baseSalesQuery(false, $request->integer('salesperson_id') !== 0));
 
         $sales = $this->applySorting(clone $salesQuery, $sortBy)
             ->paginate(20)
@@ -2005,7 +2057,9 @@ class SaleController extends Controller
         $salesSummary = $this->salesMetrics()->summary(
             $summaryQuery,
             $this->orgId(),
-            $this->hasInvoiceSaleColumn()
+            $this->hasInvoiceSaleColumn(),
+            $request->user()->canViewFinance(),
+            $request->user()->canViewDues()
         );
         $totalSales = (int) ($salesSummary['totalSales'] ?? 0);
         $paidSales = (int) ($salesSummary['paidSalesCount'] ?? 0);
@@ -2024,10 +2078,12 @@ class SaleController extends Controller
         $customers = Customer::where('organization_id', $this->orgId())
             ->orderBy('name')
             ->get(['id', 'name']);
+        $salespersonOptions = $staffFilter->options($request->user(), 'sales');
 
         return view('sales.index', compact(
             'sales',
             'customers',
+            'salespersonOptions',
             'search',
             'customerId',
             'paymentStatus',
@@ -2075,7 +2131,9 @@ class SaleController extends Controller
         $timelineFilter = ActivityTimelineService::normalizeFilter((string) $request->query('timeline_filter', 'all'));
         $activityLogs = app(ActivityTimelineService::class)->forSubject($sale, $timelineFilter, 25, 'timeline_page');
 
-        return view('sales.show', compact('sale', 'saleInvoice', 'activityLogs', 'timelineFilter'));
+        $orderOwnership = app(ActivityTimelineService::class)->orderOwnership($sale);
+
+        return view('sales.show', compact('sale', 'saleInvoice', 'activityLogs', 'timelineFilter', 'orderOwnership'));
     }
 
     public function addNote(Request $request, Sale $sale)
@@ -2149,7 +2207,10 @@ class SaleController extends Controller
         $fulfilmentVendors = $this->vendorMasterOptions();
         $referralSourceOptions = $this->referralSourceOptions();
 
-        return view('sales.create', compact('customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'saleStockAssets', 'saleInventorySummaries', 'warehouses', 'rentals', 'fulfilmentVendors', 'referralSourceOptions'));
+        $collectionAssignees = app(\App\Support\FollowUpManager::class)->collectionAssignees($this->orgId());
+        $collectionOperators = app(\App\Services\Deliveries\OrderCollectionSetup::class)->operators($this->orgId());
+
+        return view('sales.create', compact('customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'saleStockAssets', 'saleInventorySummaries', 'warehouses', 'rentals', 'fulfilmentVendors', 'referralSourceOptions', 'collectionAssignees', 'collectionOperators'));
     }
 
     public function businessPartnerActualClients(BusinessPartner $businessPartner)
@@ -2204,6 +2265,8 @@ class SaleController extends Controller
         $this->synchronizeLinkedRentalContext($request);
         $this->hydrateSaleBusinessPartnerInputs($request);
         $request->validate($this->saleValidationRules());
+        $incentive = app(\App\Services\Sales\OrderIncentiveCredit::class);
+        $credit = $incentive->prepare($request);
         $fulfilment = $this->normalizedSaleFulfilmentInput($request);
         $vendorSupplied = $fulfilment['fulfilment_source'] === VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED;
         $partyContext = $this->validatedSalePartyContext($request);
@@ -2228,16 +2291,47 @@ class SaleController extends Controller
             $salePayload['stock_applied'] = !$vendorSupplied;
         }
 
-        [$sale, $invoice] = DB::transaction(function () use ($salePayload, $saleItems, $vendorSupplied, $fulfilment, $request) {
+        $followUps = app(\App\Support\FollowUpManager::class);
+        $collector = $followUps->collectionAssignment($request);
+        $collectionSetup = app(\App\Services\Deliveries\OrderCollectionSetup::class);
+        $collection = $collectionSetup->validate($request, 'sales');
+        if ($collection) {
+            $request->validate([
+                'delivery_operator_id' => ['required', 'integer', Rule::exists('users', 'id')->where('organization_id', $this->orgId())],
+            ]);
+            if (in_array($request->input('payment_status'), ['paid', 'void'], true)) {
+                throw ValidationException::withMessages(['collection_amount' => 'Only an unpaid invoice balance can be assigned for delivery collection.']);
+            }
+            if ($fulfilment['delivery_responsibility'] !== 'ph_internal_delivery') {
+                throw ValidationException::withMessages(['collection_enabled' => 'Choose PH internal delivery for this collection.']);
+            }
+        }
+        [$sale, $invoice] = DB::transaction(function () use ($salePayload, $saleItems, $vendorSupplied, $fulfilment, $request, $incentive, $credit, $followUps, $collector, $collectionSetup, $collection) {
+            if ($collection) {
+                $collectionSetup->claim($collection, $this->orgId());
+            }
             $sale = Sale::create($salePayload);
             $this->syncSaleItems($sale, $saleItems);
             if (!$vendorSupplied) {
                 $this->applySaleStock($sale);
             }
             $invoice = $this->createSaleInvoice($sale);
+            if ($collection) {
+                $delivery = Delivery::create([
+                    'organization_id' => $this->orgId(), 'sale_id' => $sale->id, 'type' => 'delivery',
+                    'assignment_type' => 'delivery_team', 'assigned_user_id' => $request->integer('delivery_operator_id'),
+                    'scheduled_at' => $sale->sale_date->copy()->setTime(10, 0), 'status' => 'pending',
+                    'notes' => 'Created with the sale payment collection assignment.',
+                ]);
+                $collectionSetup->attach($collection, $delivery, $invoice);
+            }
+            if ($collector) {
+                $followUps->assignOrderCollection($sale, $invoice, $collector, $request->input('collection_mode'), $request->user());
+            }
             $this->vendorFulfilmentService()->syncSale($sale, $fulfilment + [
                 'notes' => $request->input('notes'),
             ]);
+            $incentive->save($sale, $credit);
 
             return [$sale, $invoice];
         });
@@ -2621,7 +2715,9 @@ class SaleController extends Controller
             $sale->loadMissing(['saleItems.product', 'saleItems.asset.warehouse', 'saleItems.warehouse']);
         }
 
-        return view('sales.edit', compact('sale', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'saleStockAssets', 'saleInventorySummaries', 'warehouses', 'rentals', 'fulfilmentVendors', 'referralSourceOptions'));
+        $legacyHsnCodes = $this->legacySaleInvoiceHsnCodes($sale);
+
+        return view('sales.edit', compact('sale', 'customers', 'businessPartners', 'businessPartnerFlowAvailable', 'initialPartnerClients', 'products', 'assets', 'saleStockAssets', 'saleInventorySummaries', 'warehouses', 'rentals', 'fulfilmentVendors', 'referralSourceOptions', 'legacyHsnCodes'));
     }
 
     public function update(Request $request, Sale $sale)
@@ -2751,6 +2847,10 @@ class SaleController extends Controller
             return redirect()->route('sales.show', $sale)->with('success', 'Sale invoice is already settled.');
         }
 
+        if (app(\App\Services\Deliveries\VendorCollectionAttribution::class)->forOrder($sale)) {
+            return redirect()->route('sales.show', $sale)->with('error', 'Use Record Payment to choose who collected the payment for this vendor delivery.');
+        }
+
         DB::transaction(function () use ($sale, $invoice) {
             $payment = $this->createInvoicePaymentForSale($sale, $invoice, [
                 'payment_date' => now()->toDateString(),
@@ -2775,6 +2875,8 @@ class SaleController extends Controller
     {
         $sale = $this->scopedSale($sale);
         $validated = $this->validateQuickPayment($request);
+        $validated = array_replace($validated, app(\App\Services\Deliveries\VendorCollectionAttribution::class)
+            ->forOrderPayment($sale, $validated['collection_recipient'] ?? null));
         $invoice = $this->createSaleInvoice($sale);
 
         DB::transaction(function () use ($sale, $invoice, $validated) {

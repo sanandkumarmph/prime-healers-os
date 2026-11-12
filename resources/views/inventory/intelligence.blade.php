@@ -159,7 +159,7 @@
                 <p class="ii-subtitle">Daily closing stock matrix and movement drill-down from the immutable ledger.</p>
             </div>
             <div class="ii-actions">
-                @if($canExport)
+                @if($canExport && auth()->user()->can('manage-bulk-records'))
                     <a href="{{ route('inventory-intelligence.export-matrix', request()->query()) }}" class="ii-button"><span aria-hidden="true">CSV</span> Matrix</a>
                     <a href="{{ route('inventory-intelligence.export-movements', request()->query()) }}" class="ii-button"><span aria-hidden="true">CSV</span> Movement</a>
                 @endif
@@ -307,7 +307,7 @@
                 <span class="ii-button" style="pointer-events:none;">{{ $focusedBucketLabel }}</span>
                 <input type="date" class="ii-matrix-date" value="{{ $focusedBucket ? $focusedBucket['start']->toDateString() : now()->toDateString() }}" data-matrix-date aria-label="Select matrix date">
                 <button type="button" class="ii-button" data-matrix-next>Next date</button>
-                @if($canExport)
+                @if($canExport && auth()->user()->can('manage-bulk-records'))
                     <a href="{{ route('inventory-intelligence.export-matrix', request()->query()) }}" class="ii-button">Export Matrix CSV</a>
                 @endif
             </div>
@@ -478,7 +478,7 @@
                     <strong style="font-size:15px;">Needs Reconciliation Asset List</strong>
                     <span class="ii-help">Assets that need operational review before the stock position can be trusted.</span>
                 </div>
-                @if($canExport ?? false)
+                @if(($canExport ?? false) && auth()->user()->can('manage-bulk-records'))
                     <a href="{{ route('inventory-intelligence.export-reconciliation', request()->query()) }}" class="ii-button">Export CSV</a>
                 @endif
             </div>
@@ -625,7 +625,7 @@
                             <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap;">
                                 <div style="display:grid; gap:4px;">
                                     <strong style="font-size:14px;">{{ strtoupper(str_replace('_', ' ', $movement->movement_type)) }}</strong>
-                                    <span style="font-size:12px; color:#64748b;">{{ optional($movement->movement_at)->format('d M Y h:i A') }} - Qty {{ $movement->quantity }}</span>
+                                    <span style="font-size:12px; color:#64748b;">{{ \App\Support\ActionTimestamp::label($movement->movement_at) }} - Qty {{ $movement->quantity }}</span>
                                 </div>
                                 <span style="font-size:12px; color:#64748b;">{{ $movement->performedBy?->name ?: 'System' }}</span>
                             </div>

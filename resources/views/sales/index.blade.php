@@ -11,13 +11,17 @@
     $canReadRentals = $currentUser?->canAccessModule('rentals', 'read') ?? false;
     $canCreateDeliveries = $currentUser?->canAccessModule('deliveries', 'create') ?? false;
     $canReadInvoices = $currentUser?->canAccessModule('invoices', 'read') ?? false;
+    $canManageBulkRecords = $currentUser?->can('manage-bulk-records') ?? false;
     $canCreatePayments = $currentUser?->canAccessModule('payments', 'create') ?? false;
     $hasSaleDeliverySupport = \Illuminate\Support\Facades\Schema::hasColumn('deliveries', 'sale_id');
+    $canViewDues = $currentUser?->canViewDues() ?? false;
     $canViewFinance = $currentUser?->canViewFinance() ?? false;
-    $canViewFinanceSummary = $currentUser?->isSuperAdmin() ?? false;
+    $canViewFinanceSummary = $currentUser?->canViewFinance() ?? false;
     $currency = fn ($value) => "\u{20B9}" . number_format((float) $value, 2);
     $salesUrl = function (array $overrides = []) use ($search, $customerId, $paymentStatus, $fulfilmentSource, $fromDate, $toDate, $sortBy) {
         return route('sales.index', array_filter(array_merge([
+            'salesperson_id' => request()->integer('salesperson_id') ?: null,
+            'salesperson_match' => request()->query('salesperson_match'),
             'search' => $search ?: null,
             'customer_id' => $customerId ?: null,
             'payment_status' => $paymentStatus ?: null,
@@ -96,8 +100,9 @@
         ['value' => 'priority', 'label' => 'Priority'],
     ];
     $currentMobileSortLabel = collect($mobileSortOptions)->firstWhere('value', $sortBy)['label'] ?? 'Newest First';
-    $hasActiveFilters = filled($search) || filled($customerId) || filled($paymentStatus) || filled($fulfilmentSource) || filled($fromDate) || filled($toDate) || $sortBy !== 'priority';
+    $hasActiveFilters = request()->integer('salesperson_id') !== 0 || filled($search) || filled($customerId) || filled($paymentStatus) || filled($fulfilmentSource) || filled($fromDate) || filled($toDate) || $sortBy !== 'priority';
     $activeFilterChips = collect([
+        $salespersonOptions->get(request()->integer('salesperson_id')) ? (request()->query('salesperson_match') === 'booked' ? 'Booked by ' : 'Staff member ').$salespersonOptions->get(request()->integer('salesperson_id')) : null,
         filled($search) ? 'Search: ' . $search : null,
         filled($customerId) ? 'Customer selected' : null,
         filled($paymentStatus) ? 'Payment: ' . ucfirst($paymentStatus) : null,
@@ -719,6 +724,7 @@
                                     </select>
                                 </div>
 
+                                @include('sales-workspace.salesperson-filter', ['filterId' => 'sale_desktop_salesperson', 'fieldClass' => 'filter-field', 'selectClass' => 'ops-select', 'showBookingMode' => true])
                                 <div class="filter-field">
                                     <label for="from_date">From Date</label>
                                     <input id="from_date" class="ops-input" type="date" name="from_date" value="{{ $fromDate }}">
@@ -810,6 +816,7 @@
                                 <option value="{{ \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED }}" @selected($fulfilmentSource === \App\Models\VendorOrderDetail::FULFILMENT_SOURCE_VENDOR_SUPPLIED)>Vendor Supplied</option>
                             </select>
                         </div>
+                        @include('sales-workspace.salesperson-filter', ['filterId' => 'sale_mobile_salesperson', 'fieldClass' => 'mobile-sheet-field', 'selectClass' => 'ops-select', 'showBookingMode' => true])
                         <div class="mobile-sheet-field">
                             <label for="mobile_from_date">From</label>
                             <input id="mobile_from_date" class="ops-input" type="date" name="from_date" value="{{ $fromDate }}">
@@ -867,7 +874,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18v10H3z"/><path d="M7 15h5"/><path d="M17 11h.01"/></svg>
             </span>
             <span>Outstanding Sales Invoices</span>
-            <strong style="font-size:18px;">{{ $currency($outstandingInvoiceAmount) }}</strong>
+            <strong style="font-size:18px;">@if($canViewDues){{ $currency($outstandingInvoiceAmount) }}@else Restricted @endif</strong>
             <small>{{ $outstandingInvoiceCount }} open sales invoices</small>
         </a>
         <a href="{{ $salesUrl(['payment_status' => null]) }}" class="summary-card warning rn-summary-link">
@@ -932,7 +939,7 @@
             <a href="{{ $salesUrl(['payment_status' => null]) }}"><span>Sales</span><strong>{{ $totalSales }}</strong></a>
             <a href="{{ $salesUrl(['payment_status' => 'paid']) }}"><span>Paid</span><strong>{{ $paidSales }}</strong></a>
             <a href="{{ $salesUrl(['payment_status' => 'pending']) }}"><span>Pending</span><strong>{{ $pendingSales }}</strong></a>
-            <a href="{{ route('invoices.index', ['status' => 'unpaid']) }}"><span>Due</span><strong>{{ $currency($outstandingInvoiceAmount) }}</strong></a>
+            <a @if($canViewDues) href="{{ route('invoices.index', ['status' => 'open']) }}" @else aria-disabled="true" @endif data-sales-dues-summary><span>Due</span><strong>@if($canViewDues){{ $currency($outstandingInvoiceAmount) }}@else Restricted @endif</strong></a>
         </div>
 
         @if($canViewFinanceSummary || $canViewFinance)
@@ -1004,7 +1011,7 @@
                         </label>
                         <span>Bulk actions appear after selection</span>
                     </div>
-                    <form id="saleInvoiceBulkForm" method="GET" action="{{ route('invoices.bulk.print') }}" target="_blank" class="bulk-toolbar" hidden>
+                    <form id="saleInvoiceBulkForm" method="{{ $canManageBulkRecords ? 'GET' : 'POST' }}" action="{{ route($canManageBulkRecords ? 'invoices.bulk.print' : 'invoices.bulk.action') }}" target="{{ $canManageBulkRecords ? '_blank' : '_self' }}" class="bulk-toolbar" hidden>
                         @csrf
                     <x-payment-submission-token />
                         <div>
@@ -1012,8 +1019,10 @@
                             <span id="saleInvoiceSelectedCount">0 selected</span>
                         </div>
                         <div class="bulk-actions">
-                            <button type="submit" class="ops-btn-light" data-sale-bulk-action="{{ route('invoices.bulk.print') }}" data-sale-bulk-method="GET" data-sale-bulk-target="_blank">Bulk PDF / Print</button>
-                            <button type="submit" class="ops-btn-light" data-sale-bulk-action="{{ route('invoices.export.csv') }}" data-sale-bulk-method="GET" data-sale-bulk-target="_self">Export Selected CSV</button>
+                            @if($canManageBulkRecords)
+                                <button type="submit" class="ops-btn-light" data-sale-bulk-action="{{ route('invoices.bulk.print') }}" data-sale-bulk-method="GET" data-sale-bulk-target="_blank">Bulk PDF / Print</button>
+                                <button type="submit" class="ops-btn-light" data-sale-bulk-action="{{ route('invoices.export.csv') }}" data-sale-bulk-method="GET" data-sale-bulk-target="_self">Export Selected CSV</button>
+                            @endif
                             <button type="submit" class="ops-btn-light" data-sale-bulk-action="{{ route('invoices.bulk.action') }}" data-sale-bulk-method="POST" data-sale-bulk-task="mark_paid" data-sale-bulk-target="_self">Mark Paid</button>
                             <button type="submit" class="ops-btn-light" data-sale-bulk-action="{{ route('invoices.bulk.action') }}" data-sale-bulk-method="POST" data-sale-bulk-task="void" data-sale-bulk-target="_self" data-sale-confirm="Void selected invoices?">Void</button>
                         </div>

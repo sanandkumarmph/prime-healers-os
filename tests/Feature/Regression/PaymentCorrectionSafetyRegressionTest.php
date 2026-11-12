@@ -297,6 +297,6 @@ class PaymentCorrectionSafetyRegressionTest extends TestCase
         $role->update(['permissions' => ['payments' => ['delete'], '__special' => ['dashboard.finance.full']]]);
         $this->actingAs($user->fresh());
         $this->get(route('payments.correction', $payment))->assertOk()
-            ->assertViewHas('canViewFinance', true)->assertSee('400.00')->assertDontSee('Restricted');
+            ->assertViewHas('canViewFinance', false)->assertDontSee('400.00')->assertSee('Restricted');
     }
 }

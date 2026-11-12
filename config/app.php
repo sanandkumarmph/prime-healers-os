@@ -54,6 +54,8 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    'rental_agreements' => (bool) env('RENTAL_AGREEMENTS', false),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone
@@ -61,11 +63,11 @@ return [
     |
     | Here you may specify the default timezone for your application, which
     | will be used by the PHP date and date-time functions. The timezone
-    | is set to "UTC" by default as it is suitable for most use cases.
+    | is fixed to IST for PHOS operations, reporting and scheduled commands.
     |
     */
 
-    'timezone' => env('APP_TIMEZONE', 'Asia/Kolkata'),
+    'timezone' => 'Asia/Kolkata',
 
     /*
     |--------------------------------------------------------------------------

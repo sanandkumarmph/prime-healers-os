@@ -229,7 +229,9 @@
         </div>
 
         <div class="ops-header-actions">
-            <a href="{{ route('dashboard.export.csv', $baseFilters) }}" class="ops-btn-secondary">Export CSV</a>
+            @can('manage-bulk-records')
+                <a href="{{ route('dashboard.export.csv', $baseFilters) }}" class="ops-btn-secondary">Export CSV</a>
+            @endcan
             <a href="{{ route('rentals.create') }}" class="ops-btn">+ New Rental</a>
         </div>
     </div>
@@ -306,7 +308,9 @@
                 <div class="ops-filter-actions">
                     <button type="submit" class="ops-btn">Apply Filters</button>
                     <a href="{{ route('dashboard') }}" class="ops-btn-secondary">Reset</a>
-                    <a href="{{ route('dashboard.export.csv', $baseFilters) }}" class="ops-btn-secondary">Export Current View</a>
+                    @can('manage-bulk-records')
+                        <a href="{{ route('dashboard.export.csv', $baseFilters) }}" class="ops-btn-secondary">Export Current View</a>
+                    @endcan
                 </div>
             </form>
         </div>
@@ -375,7 +379,9 @@
                         {!! $metricCard('Sales Value', $currency($totalSalesAmount), $salesIndexUrl, 'success', 'Gross sales amount') !!}
                         {!! $metricCard('Available Stock Signal', $availableProducts, $productsIndexUrl, 'default', 'Current stock count') !!}
                         {!! $metricCard('Inventory Dashboard', 'Open', $inventoryUrl, 'default', 'Asset and warehouse view') !!}
-                        {!! $metricCard('Rental Export', 'CSV', route('dashboard.export.csv', $baseFilters), 'default', 'Download filtered rentals') !!}
+                        @can('manage-bulk-records')
+                            {!! $metricCard('Rental Export', 'CSV', route('dashboard.export.csv', $baseFilters), 'default', 'Download filtered rentals') !!}
+                        @endcan
                     </div>
                 </div>
             </div>

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\{Customer, Enquiry, EnquiryFollowUp, Product, Quotation};
-use App\Services\Sales\SalesWorkspace;
+use App\Services\Sales\{RentalAgreements, SalesWorkspace};
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\{Rule, ValidationException};
@@ -14,31 +14,64 @@ class SalesWorkspaceController extends Controller
 
     public function index(Request $request)
     {
-        $data = $request->validate(['view' => 'nullable|in:enquiries,followups,quotations', 'queue' => 'nullable|in:all,today,overdue',
-            'stage' => ['nullable', Rule::in(array_keys(Enquiry::STAGES))], 'q' => 'nullable|string|max:100', 'mine' => 'nullable|boolean']);
-        $mode = $data['view'] ?? 'enquiries';
+        $data = $request->validate(['view' => 'nullable|in:attention,enquiries,followups,quotations', 'queue' => 'nullable|in:all,today,overdue',
+            'attention' => ['nullable', Rule::in(array_keys(\App\Services\Sales\SalesAttentionQueue::CATEGORIES))],
+            'stage' => ['nullable', Rule::in(array_keys(Enquiry::STAGES))], 'q' => 'nullable|string|max:100', 'mine' => 'nullable|boolean',
+            'source' => ['nullable', Rule::in(array_keys(Enquiry::SOURCES))],
+            'owner_id' => ['nullable', 'integer', Rule::exists('users', 'id')->where('organization_id', $request->user()->organization_id)],
+            'from_date' => 'nullable|date_format:Y-m-d', 'to_date' => ['nullable', 'date_format:Y-m-d', ...($request->filled('from_date') ? ['after_or_equal:from_date'] : [])],
+            'focus' => 'nullable|in:open,all,no_followup', 'sort' => 'nullable|in:newest,oldest,updated,due']);
+        $mode = $data['view'] ?? ($request->user()->isSales() ? 'attention' : 'enquiries');
         $base = $this->workspace->query($request->user());
         $tz = $this->workspace->timezone(); $today = now($tz)->startOfDay()->utc(); $tomorrow = $today->copy()->timezone($tz)->addDay()->utc();
         $openIds = (clone $base)->whereNotIn('stage', ['won', 'lost'])->select('id');
         $due = EnquiryFollowUp::whereIn('enquiry_id', $openIds)->whereNull('completed_at');
         $counts = ['open' => (clone $openIds)->count(), 'today' => (clone $due)->where('due_at', '>=', $today)->where('due_at', '<', $tomorrow)->count(),
             'overdue' => (clone $due)->where('due_at', '<', now('UTC'))->count()];
-        $query = (clone $base)->when($request->boolean('mine'), fn ($q) => $q->where('owner_id', $request->user()->id))
+        $query = (clone $base)->when($request->boolean('mine') && empty($data['owner_id']), fn ($q) => $q->where('owner_id', $request->user()->id))
+            ->when($data['owner_id'] ?? null, fn ($q, $owner) => $q->where('owner_id', $owner))
+            ->when($data['source'] ?? null, fn ($q, $source) => $q->where('source', $source))
             ->when($data['stage'] ?? null, fn ($q, $stage) => $q->where('stage', $stage))
-            ->when($data['q'] ?? null, fn ($q, $term) => $q->where(fn ($q) => $q->where('subject', 'like', '%'.$term.'%')->orWhere('name', 'like', '%'.$term.'%')->orWhere('phone', 'like', '%'.$term.'%')));
-        if ($mode === 'followups') {
-            $records = EnquiryFollowUp::whereIn('enquiry_id', (clone $query)->whereNotIn('stage', ['won', 'lost'])->select('id'))->whereNull('completed_at')
+            ->when($data['q'] ?? null, fn ($q, $term) => $q->where(fn ($q) => $q->where('subject', 'like', '%'.$term.'%')
+                ->orWhere('name', 'like', '%'.$term.'%')->orWhere('phone', 'like', '%'.$term.'%')->orWhere('requirements', 'like', '%'.$term.'%')));
+        $focus = in_array($data['stage'] ?? '', ['won', 'lost'], true) ? 'all' : ($data['focus'] ?? 'open');
+        $sort = $data['sort'] ?? ($mode === 'followups' ? 'due' : 'newest');
+        if (($mode !== 'followups' && $sort === 'due') || ($mode === 'followups' && $sort === 'updated')) $sort = $mode === 'followups' ? 'due' : 'newest';
+        // Creation timestamps use PHOS's application timezone; due_at is stored separately in UTC.
+        $createdRange = function ($query) use ($data, $tz) {
+            return $query->when($data['from_date'] ?? null, fn ($q, $day) => $q->where('created_at', '>=', Carbon::parse($day, $tz)->startOfDay()->format('Y-m-d H:i:s')))
+                ->when($data['to_date'] ?? null, fn ($q, $day) => $q->where('created_at', '<', Carbon::parse($day, $tz)->addDay()->startOfDay()->format('Y-m-d H:i:s')));
+        };
+        $attentionCounts=[];$attentionCategory=$data['attention'] ?? 'all';
+        if ($mode === 'attention') {
+            $createdRange($query);
+            ['records'=>$records,'attentionCounts'=>$attentionCounts,'attentionCategory'=>$attentionCategory]=app(\App\Services\Sales\SalesAttentionQueue::class)->page($query,$request->user(),$attentionCategory);
+        } elseif ($mode === 'followups') {
+            $recordQuery = EnquiryFollowUp::whereIn('enquiry_id', (clone $query)->whereNotIn('stage', ['won', 'lost'])->select('id'))->whereNull('completed_at')
                 ->when(($data['queue'] ?? '') === 'today', fn ($q) => $q->where('due_at', '>=', $today)->where('due_at', '<', $tomorrow))
                 ->when(($data['queue'] ?? '') === 'overdue', fn ($q) => $q->where('due_at', '<', now('UTC')))
-                ->with('enquiry.owner')->orderBy('due_at')->orderBy('id')->paginate(20)->withQueryString();
+                ->with('enquiry.owner');
+            $createdRange($recordQuery);
+            $records = ($sort === 'due' ? $recordQuery->orderBy('due_at')->orderBy('id')
+                : $recordQuery->orderBy('created_at', $sort === 'oldest' ? 'asc' : 'desc')->orderBy('id', $sort === 'oldest' ? 'asc' : 'desc'))
+                ->paginate(20)->withQueryString();
         } elseif ($mode === 'quotations') {
             abort_unless($request->user()->canAccessModule('quotations', 'read'), 403);
             if ($request->user()->scopeType('quotations') !== 'all') $query->where('owner_id', $request->user()->id);
-            $records = Quotation::whereIn('enquiry_id', $query->select('id'))->with('enquiry.owner')->latest('id')->paginate(20)->withQueryString();
+            $recordQuery = Quotation::whereIn('enquiry_id', $query->select('id'))->with('enquiry.owner');
+            $createdRange($recordQuery);
+            $records = $recordQuery->orderBy($sort === 'updated' ? 'updated_at' : 'created_at', $sort === 'oldest' ? 'asc' : 'desc')
+                ->orderBy('id', $sort === 'oldest' ? 'asc' : 'desc')->paginate(20)->withQueryString();
         } else {
-            $records = $query->with('owner')->withMin(['followUps as next_follow_up' => fn ($q) => $q->whereNull('completed_at')], 'due_at')->latest('updated_at')->paginate(20)->withQueryString();
+            if ($focus !== 'all') $query->whereNotIn('stage', ['won', 'lost']);
+            if ($focus === 'no_followup') $query->whereDoesntHave('followUps', fn ($q) => $q->whereNull('completed_at'));
+            $createdRange($query);
+            $records = $query->with('owner')->withMin(['followUps as next_follow_up' => fn ($q) => $q->whereNull('completed_at')], 'due_at')
+                ->orderBy($sort === 'updated' ? 'updated_at' : 'created_at', $sort === 'oldest' ? 'asc' : 'desc')
+                ->orderBy('id', $sort === 'oldest' ? 'asc' : 'desc')->paginate(20)->withQueryString();
         }
-        return view('sales-workspace.index', compact('records', 'mode', 'counts', 'tz'));
+        $owners = $request->user()->scopeType('enquiries') === 'all' ? $this->workspace->owners() : collect([$request->user()]);
+        return view('sales-workspace.index', compact('records', 'mode', 'counts', 'tz', 'focus', 'sort', 'owners','attentionCounts','attentionCategory'));
     }
 
     private function form(?Enquiry $enquiry = null)
@@ -54,10 +87,11 @@ class SalesWorkspaceController extends Controller
     private function input(Request $request): array
     {
         $org = $request->user()->organization_id;
-        $data = $request->validate(['name' => 'required|string|max:255', 'subject' => 'required|string|max:255',
+        $data = $request->validate(['name' => 'required|string|max:255', 'salutation' => ['nullable', Rule::in(Enquiry::SALUTATIONS)], 'subject' => 'required|string|max:255',
             'phone' => 'nullable|string|max:40', 'email' => 'nullable|email|max:255', 'requirements' => 'nullable|string|max:5000',
             'intent' => 'nullable|in:rental,sale',
-            'source' => 'nullable|string|max:80', 'owner_id' => ['required', 'integer', Rule::in($this->workspace->owners()->pluck('id')->all())],
+            'source' => ['required', 'string', Rule::in(array_keys(Enquiry::SOURCES))],
+            'owner_id' => ['required', 'integer', Rule::in($this->workspace->owners()->pluck('id')->all())],
             'customer_id' => ['nullable', 'integer', Rule::exists('customers', 'id')->where('organization_id', $org)]]);
         if ($request->user()->scopeType('enquiries') !== 'all' && (int) $data['owner_id'] !== $request->user()->id) abort(403);
         return $data;
@@ -68,16 +102,11 @@ class SalesWorkspaceController extends Controller
         abort_unless($request->user()->canAccessModule('enquiries', 'create'), 403);
         $data = $this->input($request);
         $request->validate(['next' => 'nullable|in:enquiry,quotation']);
-        if ($request->input('next') === 'quotation') {
-            abort_unless($request->user()->canAccessModule('quotations', 'create') && $request->user()->canAccessModule('enquiries', 'update'), 403);
-            abort_if($request->user()->scopeType('quotations') !== 'all' && (int) $data['owner_id'] !== (int) $request->user()->id, 403);
-        }
         $enquiry = $this->workspace->atomic($request->user()->organization_id, function () use ($request, $data) {
             $enquiry = Enquiry::create($data + ['organization_id' => $request->user()->organization_id, 'created_by_user_id' => $request->user()->id]);
             $this->workspace->event($enquiry, 'enquiry.created', 'Enquiry captured and assigned to '.$enquiry->owner->name.'.');
             return $enquiry;
         });
-        if ($request->input('next') === 'quotation') return redirect()->route('quotations.create', $enquiry);
         return redirect()->route('enquiries.show', $enquiry)->with('success', 'Enquiry created. Set the next follow-up or prepare a quotation.');
     }
 
@@ -99,10 +128,24 @@ class SalesWorkspaceController extends Controller
     {
         $enquiry = $this->workspace->enquiry($enquiry)->load('owner', 'customer');
         $followUps = $enquiry->followUps()->whereNull('completed_at')->orderBy('due_at')->get();
-        $quotes = auth()->user()->canAccessModule('quotations', 'read') && (auth()->user()->scopeType('quotations') === 'all' || (int) $enquiry->owner_id === (int) auth()->id()) ? $enquiry->quotations()->latest('revision')->get() : collect();
+        $user = auth()->user();
+        $inQuoteScope = $user->scopeType('quotations') === 'all' || (int) $enquiry->owner_id === (int) $user->id;
+        $quotes = $inQuoteScope && $user->canAccessModule('quotations', 'read')
+            ? $enquiry->quotations()->latest('revision')->get() : collect();
+        $latestQuote = $quotes->first();
+        $canEdit = $user->canAccessModule('enquiries', 'update');
+        $canUpdateQuote = $canEdit && $user->canAccessModule('quotations', 'update');
+        $canCreateQuote = !$enquiry->closed() && $inQuoteScope && $canEdit && $user->canAccessModule('quotations', 'create');
+        $agreements = app(RentalAgreements::class);
+        $agreement = $latestQuote ? $agreements->quotation($latestQuote) : null;
+        $requiresSignature = RentalAgreements::enabled() && $latestQuote?->kind === 'rental';
+        $quoteStatus = $latestQuote?->displayStatus();
+        $orderAction = $this->workspace->orderAction($user, $enquiry, $latestQuote, $agreement);
         $activities = $enquiry->activities()->with('user')->latest('id')->paginate(30);
         $tz = $this->workspace->timezone();
-        return view('sales-workspace.show', compact('enquiry', 'followUps', 'quotes', 'activities', 'tz'));
+
+        return view('sales-workspace.show', compact('enquiry', 'followUps', 'quotes', 'activities', 'tz', 'latestQuote',
+            'canEdit', 'canUpdateQuote', 'canCreateQuote', 'agreements', 'agreement', 'requiresSignature', 'quoteStatus', 'orderAction'));
     }
 
     public function stage(Request $request, int $enquiry)

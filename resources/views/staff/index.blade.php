@@ -113,7 +113,9 @@
         </div>
 
         <div class="staff-actions">
-            <a href="{{ route('staff.export.csv', request()->query()) }}" class="staff-btn-secondary">Export CSV</a>
+            @can('manage-bulk-records')
+                <a href="{{ route('staff.export.csv', request()->query()) }}" class="staff-btn-secondary">Export CSV</a>
+            @endcan
             <a href="{{ route('staff.create') }}" class="staff-btn">+ Add Staff</a>
         </div>
     </div>

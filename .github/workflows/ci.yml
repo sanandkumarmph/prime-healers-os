@@ -64,6 +64,12 @@ jobs:
       - name: Test password visibility package and source-only recovery offline
         run: python3 -I -B -m unittest discover -s ops/phos-password-visibility-uat -p 'test_deploy.py' -v
 
+      - name: Test role-access package and recovery offline
+        run: sudo python3 -I -B -m unittest discover -s ops/phos-role-access-uat -p 'test_deploy.py' -v
+
+      - name: Test role-access activation and recovery in disposable Linux fixtures
+        run: sudo python3 -I -B -m unittest discover -s ops/phos-role-access-uat -p 'test_linux_coordinator.py' -v
+
       - name: Install npm dependencies
         run: npm ci
 
@@ -83,6 +89,8 @@ jobs:
 
       - name: Test dashboard browser navigation
         run: node --test tests/Browser/*Test.cjs
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
 
       - name: Prepare environment file
         run: |
@@ -111,6 +119,97 @@ jobs:
           QUEUE_CONNECTION: sync
           SESSION_DRIVER: array
 
+      - name: Render synthetic mobile layout pages
+        run: vendor/bin/pest tests/Feature/Regression/MobileDashboardTasksProductsRegressionTest.php --filter=test_mobile_dashboard_task_and_product_pages
+        env:
+          APP_ENV: testing
+          CACHE_STORE: array
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ":memory:"
+          QUEUE_CONNECTION: sync
+          SESSION_DRIVER: array
+          PHOS_MOBILE_LAYOUT_RENDER_DIR: ${{ runner.temp }}/phos-mobile-layout-fixtures
+
+      - name: Test actual dashboard task and product layouts on phones
+        run: node --test tests/Browser/MobileDashboardTasksProductsTest.cjs
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
+          PHOS_MOBILE_LAYOUT_RENDER_DIR: ${{ runner.temp }}/phos-mobile-layout-fixtures
+
+      - name: Render synthetic action timestamp pages
+        run: vendor/bin/pest tests/Feature/Regression/ActionTimestampsRegressionTest.php
+        env:
+          APP_ENV: testing
+          CACHE_STORE: array
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ":memory:"
+          QUEUE_CONNECTION: sync
+          SESSION_DRIVER: array
+          PHOS_ACTION_TIMESTAMPS_RENDER_DIR: ${{ runner.temp }}/phos-action-timestamps
+
+      - name: Test action timestamp readability and browser timezone independence
+        run: node --test tests/Browser/ActionTimestampsTest.cjs
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
+          PHOS_ACTION_TIMESTAMPS_RENDER_DIR: ${{ runner.temp }}/phos-action-timestamps
+
+      - name: Render synthetic rental overview and invoice list
+        run: >-
+          vendor/bin/pest tests/Feature/Regression/RentalDetailLayoutRegressionTest.php
+          tests/Feature/Regression/InvoiceRecordFinanceVisibilityRegressionTest.php --do-not-cache-result
+        env:
+          PHOS_RENTAL_DETAIL_RENDER_DIR: ${{ runner.temp }}/phos-rental-detail
+
+      - name: Test rental overview across phone tablet and desktop widths
+        run: node --test tests/Browser/RentalDetailLayoutTest.cjs
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
+          PHOS_RENTAL_DETAIL_RENDER_DIR: ${{ runner.temp }}/phos-rental-detail
+
+      - name: Render mixed quotations and sender sign-off
+        run: vendor/bin/pest tests/Feature/Regression/QuotationSharingEnhancementTest.php --do-not-cache-result
+        env:
+          PHOS_QUOTE_ENHANCEMENT_RENDER_DIR: ${{ runner.temp }}/phos-quotation-sharing
+
+      - name: Render synthetic cylinder services
+        run: vendor/bin/pest tests/Feature/Regression/CylinderWorkflowTest.php --do-not-cache-result
+        env:
+          PHOS_CYLINDER_RENDER_DIR: ${{ runner.temp }}/phos-cylinder-services
+
+      - name: Test cylinder service layouts and signature controls
+        run: node --test tests/Browser/CylinderWorkflowTest.cjs
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
+          PHOS_CYLINDER_RENDER_DIR: ${{ runner.temp }}/phos-cylinder-services
+
+      - name: Render simplified refill popup and driver tasks
+        run: vendor/bin/pest tests/Feature/Regression/SimpleCylinderRefillsTest.php --do-not-cache-result
+        env:
+          PHOS_SIMPLE_REFILL_RENDER_DIR: ${{ runner.temp }}/phos-simple-refills
+
+      - name: Test refill booking inside rental popup on phones and desktop
+        run: node --test tests/Browser/SimpleCylinderRefillsTest.cjs
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
+          PHOS_SIMPLE_REFILL_RENDER_DIR: ${{ runner.temp }}/phos-simple-refills
+
+      - name: Test quotation duration pricing availability and WhatsApp preview
+        run: node --test tests/Browser/QuotationSharingEnhancementTest.cjs
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
+          PHOS_QUOTE_ENHANCEMENT_RENDER_DIR: ${{ runner.temp }}/phos-quotation-sharing
+
+      - name: Render enquiry-first and prospect quotation pages
+        run: vendor/bin/pest tests/Feature/Regression/ProspectQuotationFlowTest.php --do-not-cache-result
+        env:
+          PHOS_PROSPECT_RENDER_DIR: ${{ runner.temp }}/phos-prospect-quotation
+
+      - name: Test prospect quotation capture review and confirmed customer stage
+        run: node --test tests/Browser/ProspectQuotationFlowTest.cjs
+        env:
+          PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
+          PHOS_PROSPECT_RENDER_DIR: ${{ runner.temp }}/phos-prospect-quotation
+
       - name: Setup patched PHOS PDF Node runtime
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -119,3 +218,51 @@ jobs:
 
       - name: Verify PDF compatibility on the patched Node 22 runtime
         run: node --test tests/Browser/PdfRuntimeTest.cjs
+
+  cylinder-mariadb:
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: synthetic-ci-root
+          MARIADB_DATABASE: phos_cylinder_ci
+          MARIADB_USER: phos_ci
+          MARIADB_PASSWORD: synthetic-ci-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -uroot -psynthetic-ci-root"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # reviewed v2
+        with:
+          php-version: '8.2'
+          coverage: none
+          extensions: mbstring, dom, fileinfo, pdo_mysql, gd
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.4'
+          cache: npm
+      - run: composer install --no-interaction --prefer-dist --optimize-autoloader
+      - run: npm ci
+      - run: npm run build
+      - run: cp .env.example .env
+      - run: php artisan key:generate
+      - name: Test cylinder migration, serial movements and billing on MariaDB
+        run: vendor/bin/pest tests/Feature/Regression/CylinderWorkflowTest.php tests/Feature/Regression/SimpleCylinderRefillsTest.php --do-not-cache-result
+        env:
+          APP_ENV: testing
+          CACHE_STORE: array
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: phos_cylinder_ci
+          DB_USERNAME: phos_ci
+          DB_PASSWORD: synthetic-ci-password
+          DB_URL: ''
+          SESSION_DRIVER: array
+          MAIL_MAILER: array

@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
         commands: __DIR__.'/../routes/console.php',
+        api: __DIR__.'/../routes/customer-payment-webhooks.php',
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
@@ -51,6 +52,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->dontFlash(['signature_data', 'rental_agreement_id_reference', 'key_id', 'key_secret', 'webhook_secret', 'current_password']);
         $handleExpiredSession = function ($request) {
             if ($request->expectsJson()) {
                 return response()->json([

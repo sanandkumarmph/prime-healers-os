@@ -84,6 +84,11 @@ class User extends Authenticatable
         return $this->hasActiveAccess() && $this->effective_role === self::ROLE_SALES;
     }
 
+    public function isFinance(): bool
+    {
+        return $this->matchesLegacyRoles([self::ROLE_FINANCE]);
+    }
+
     public function isSalesRenewals(): bool
     {
         return $this->hasActiveAccess() && $this->effective_role === self::ROLE_SALES_RENEWALS;
@@ -134,6 +139,12 @@ class User extends Authenticatable
             ]);
     }
 
+    public function canPlanDeliveryRoutes(): bool
+    {
+        return $this->canAccessModule('deliveries', 'read')
+            && ($this->isSales() || $this->isSalesRenewals() || $this->isDelivery() || $this->canViewConsolidatedFinance());
+    }
+
     public function canAccessAssignedWork(): bool
     {
         return $this->canAccessModule('deliveries', 'read');
@@ -141,7 +152,8 @@ class User extends Authenticatable
 
     public function canSeeFinanceSummary(): bool
     {
-        return $this->canAccessModule('payments', 'read')
+        return $this->canViewConsolidatedFinance()
+            && $this->canAccessModule('payments', 'read')
             && $this->canAccessModule('invoices', 'read');
     }
 
@@ -173,6 +185,10 @@ class User extends Authenticatable
             self::ROLE_DELIVERY_EXECUTIVE,
         ])) {
             return false;
+        }
+
+        if ($this->effective_role === self::ROLE_FINANCE && $this->canViewDues()) {
+            return true;
         }
 
         return $this->matchesLegacyRoles([
@@ -246,6 +262,20 @@ class User extends Authenticatable
             return true;
         }
 
+        if ($this->isFinance()) {
+            return $action === 'read' && in_array($module, ['invoices', 'payments', 'reports'], true);
+        }
+
+        if (in_array($module, ['enquiries', 'quotations'], true)
+            && $this->isSales() && $this->assignedRole?->allows('sales', 'read')
+            && !array_key_exists($module, $this->assignedRole->permissions ?? [])) {
+            return in_array($action, ['read', 'create', 'update'], true);
+        }
+
+        if ($this->hasStandardAdminAccess() && isset(Role::MODULES[$module])) {
+            return in_array($action, Role::ACTIONS, true);
+        }
+
         if ($this->assignedRole) {
             return $this->assignedRole->allows($module, $action);
         }
@@ -264,6 +294,10 @@ class User extends Authenticatable
 
         if ($this->effective_role === self::ROLE_SUPER_ADMIN) {
             return true;
+        }
+
+        if ($this->isFinance() && $module !== 'dashboard') {
+            return $this->hasModulePermission($module, $action);
         }
 
         if ($module === 'dashboard') {
@@ -297,16 +331,40 @@ class User extends Authenticatable
             return true;
         }
 
+        if ($this->isFinance()) {
+            return in_array($permission, [
+                'invoices.read', 'payments.read', 'reports.read', 'finance.view_revenue',
+                'finance.view_dues', 'finance.view_payments', 'finance.view_deposits',
+                'finance.view_transport', 'finance.view_other_charges', 'finance.view_reports',
+            ], true);
+        }
+
+        if ($this->hasStandardAdminAccess() && isset(Role::SPECIAL_PERMISSIONS[$permission])) {
+            return true;
+        }
+
+        if ($this->isSales() && in_array($permission, [
+            'dashboard.organization_analytics', 'dashboard.staff_workload', 'dashboard.inventory_intelligence',
+            'dashboard.sales_analytics', 'dashboard.business_signals',
+        ], true)) {
+            return false;
+        }
+
+        // Record-level work access is separate from organization-wide finance.
+        if (! $this->canViewConsolidatedFinance() && (
+            (str_starts_with($permission, 'finance.') && $permission !== 'finance.view_dues')
+            || $permission === 'dashboard.finance.full'
+            || str_starts_with($permission, 'vendor_costs.')
+            || str_starts_with($permission, 'vendor_reports.')
+        )) {
+            return false;
+        }
+
         if (str_contains($permission, '.')) {
             [$group, $action] = explode('.', $permission, 2);
 
             if (array_key_exists($group, Role::moduleOptions()) && in_array($action, Role::actionOptions(), true)) {
-                if ($this->assignedRole) {
-                    return $this->hasModulePermission($group, $action);
-                }
-
-                return $this->hasModulePermission($group, $action)
-                    || $this->legacyRoleAllows($group, $action);
+                return $this->canAccessModule($group, $action);
             }
         }
 
@@ -343,8 +401,30 @@ class User extends Authenticatable
         return false;
     }
 
+    public function canViewConsolidatedFinance(): bool
+    {
+        return $this->isSuperAdmin() || $this->isAdminOperations()
+            || ($this->hasActiveAccess() && $this->effective_role === 'admin');
+    }
+
+    private function hasStandardAdminAccess(): bool
+    {
+        return $this->canViewConsolidatedFinance() && (!$this->assignedRole || $this->assignedRole->is_system);
+    }
+
+    public function canViewDues(): bool
+    {
+        return $this->hasPermission('finance.view_dues') && $this->canAccessModule('invoices', 'read');
+    }
+
     public function canViewFinance(?string $permission = null): bool
     {
+        if ($permission === 'finance.view_dues') {
+            return $this->canViewDues();
+        }
+        if (! $this->canViewConsolidatedFinance() && ! $this->isFinance()) {
+            return false;
+        }
         if ($permission !== null) {
             return $this->hasPermission($permission);
         }
@@ -364,7 +444,7 @@ class User extends Authenticatable
 
     public function canViewFinanceDashboard(): bool
     {
-        return $this->canViewFinance();
+        return !$this->isFinance() && $this->canViewFinance();
     }
 
     public function canViewProfitability(): bool
@@ -387,17 +467,23 @@ class User extends Authenticatable
 
     public function canViewSensitiveBusinessAnalytics(): bool
     {
-        return $this->isSuperAdmin()
+        return $this->canViewConsolidatedFinance() && ($this->isSuperAdmin()
             || $this->isAdminOperations()
             || $this->hasAnyPermission([
                 'dashboard.business_signals',
                 'dashboard.organization_analytics',
-            ]);
+            ]));
     }
 
     public function canAccessGeneralReports(): bool
     {
-        return $this->canAccessModule('reports', 'read')
+        return $this->canViewStaffIncentives() || $this->isFinance();
+    }
+
+    public function canViewStaffIncentives(): bool
+    {
+        return $this->canViewConsolidatedFinance()
+            && $this->canAccessModule('reports', 'read')
             && ! $this->matchesLegacyRoles([
                 self::ROLE_SALES,
                 self::ROLE_SALES_RENEWALS,
@@ -422,9 +508,13 @@ class User extends Authenticatable
 
     public function defaultRedirectRoute(): string
     {
+        if ($this->isFinance()) {
+            return 'reports.index';
+        }
+
         $candidates = [
-            'dashboard' => fn () => $this->hasPermission('dashboard.main') || $this->hasModulePermission('dashboard', 'read'),
-            'inventory.dashboard' => fn () => $this->hasPermission('dashboard.inventory'),
+            'dashboard' => fn () => $this->canAccessDashboard() && ($this->hasPermission('dashboard.main') || $this->hasModulePermission('dashboard', 'read') || ($this->assignedRole?->permissions['__dashboard'] ?? 'auto') === 'allow'),
+            'inventory.dashboard' => fn () => $this->canAccessDashboard() && $this->hasPermission('dashboard.inventory'),
             'enquiries.index' => fn () => $this->canAccessModule('enquiries', 'read'),
             'rentals.index' => fn () => $this->canAccessModule('rentals', 'read'),
             'deliveries.index' => fn () => $this->canAccessModule('deliveries', 'read'),
@@ -482,6 +572,19 @@ class User extends Authenticatable
     {
         if (! $this->hasActiveAccess()) {
             return false;
+        }
+
+        if ($this->isFinance()) {
+            return false;
+        }
+
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        $access = $this->assignedRole?->permissions['__dashboard'] ?? 'auto';
+        if ($access !== 'auto') {
+            return $access === 'allow';
         }
 
         return true
@@ -555,6 +658,7 @@ class User extends Authenticatable
                 'products' => $readOnly,
                 'rentals' => $salesCrud,
                 'sales' => $salesCrud,
+                'deliveries' => $readOnly,
                 'invoices' => $readUpdate,
                 'payments' => $readOnly,
             ],

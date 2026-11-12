@@ -2046,11 +2046,25 @@ class ReportController extends Controller
         $this->authorize('viewAny', self::class);
 
         $filters = $this->filters($request);
+        $reportGroups = $this->reportGroups($filters);
+        if ($request->user()->isFinance()) {
+            return response()->view('reports.finance', [
+                'filters' => $filters,
+                'revenue' => $reportGroups['revenue_analytics'],
+                'collections' => $reportGroups['collection_reports'],
+            ])->header('Cache-Control', 'private, no-store');
+        }
+        if (! $request->user()->isSuperAdmin()) {
+            unset($reportGroups['product_trends'], $reportGroups['profitability_reports']['estimated_ebitda']);
+            if ($filters['tab'] === 'trends') {
+                $filters['tab'] = 'revenue';
+            }
+        }
         $payload = [
             'filters' => $filters,
             'filterOptions' => $this->filterOptions(),
             'summaryCards' => $this->buildSummaryCards($filters),
-            'reportGroups' => $this->reportGroups($filters),
+            'reportGroups' => $reportGroups,
             'exportUrl' => route('reports.export.csv', $filters),
         ];
 

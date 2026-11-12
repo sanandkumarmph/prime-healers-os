@@ -780,7 +780,7 @@
                     <div class="asset-timeline">
                         @forelse($asset->movements->take(6) as $movement)
                             <div class="asset-timeline-item">
-                                <div class="asset-timeline-date">{{ $movement->created_at->diffForHumans() }}</div>
+                                <div class="asset-timeline-date">@include('partials.action-time', ['actionAt' => $movement->created_at, 'clockOnly' => false])</div>
                                 <div>
                                     <div class="asset-timeline-title">{{ str_replace('_', ' ', $movement->movement_type) }}</div>
                                     <div class="asset-timeline-meta">
@@ -862,6 +862,8 @@
             </main>
         </div>
     </div>
+
+@include('partials.record-timestamps', ['timestampRecord' => $asset, 'timestampFields' => ['created_at' => 'Created', 'updated_at' => 'Last updated']])
 @endsection
 
 @push('scripts')

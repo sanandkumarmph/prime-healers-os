@@ -3,6 +3,9 @@
 namespace App\Support;
 
 use App\Models\ActivityLog;
+use App\Services\Sales\OrderStaffFilter;
+use App\Models\Rental;
+use App\Models\Sale;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -31,6 +34,25 @@ class ActivityTimelineService
             ->latest()
             ->paginate($perPage, ['*'], $pageName)
             ->appends(['timeline_filter' => $filter]);
+    }
+
+    public function orderOwnership(Rental|Sale $order): ?array
+    {
+        $organizationId = (int) $order->organization_id;
+        $kind = $order instanceof Sale ? 'sale' : 'rental';
+        [$orders, $creator] = app(OrderStaffFilter::class)->ordersWithCreator($organizationId, $kind, (int) $order->getKey());
+
+        $record = $orders->join('order_incentive_attributions as attribution', function ($join) use ($kind) {
+            $join->on('attribution.organization_id', '=', 'order_record.organization_id')
+                ->on('attribution.order_id', '=', 'order_record.id')->where('attribution.order_type', $kind);
+        })
+            ->join('users as order_owner', 'order_owner.id', '=', 'attribution.sales_user_id')
+            ->where('order_owner.organization_id', $organizationId)
+            ->leftJoin('users as order_creator', fn ($join) => $join->whereRaw('order_creator.id = '.$creator)
+                ->where('order_creator.organization_id', $organizationId))
+            ->first(['order_owner.name as owner_name', 'order_creator.name as creator_name']);
+
+        return $record ? ['owner' => $record->owner_name, 'creator' => $record->creator_name] : null;
     }
 
     public static function normalizeFilter(?string $filter): string

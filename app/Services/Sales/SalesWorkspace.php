@@ -2,7 +2,7 @@
 
 namespace App\Services\Sales;
 
-use App\Models\{Customer, Enquiry, EnquiryActivity, Organization, Product, Quotation, User};
+use App\Models\{Customer, Enquiry, EnquiryActivity, Organization, Product, Quotation, Rental, RentalAgreement, Sale, User};
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -34,6 +34,31 @@ class SalesWorkspace
         return $quote;
     }
 
+    public function orderAction(User $user, Enquiry $enquiry, ?Quotation $quote, ?RentalAgreement $agreement): ?array
+    {
+        if (!$quote) {
+            return null;
+        }
+
+        $module = $quote->kind.'s';
+        $canCreate = $user->canAccessModule('enquiries', 'update') && $user->canAccessModule('quotations', 'update')
+            && $user->canAccessModule($module, 'read') && $user->canAccessModule($module, 'create');
+        $requiresSignature = $quote->kind === 'rental' && RentalAgreements::enabled();
+        if ($quote->displayStatus() === 'accepted' && !$enquiry->closed() && $canCreate && (!$requiresSignature || app(RentalAgreements::class)->readyForQuote($quote, $agreement))) {
+            return ['label' => 'Create '.ucfirst($quote->kind), 'url' => route($module.'.create', ['quotation_id' => $quote->id])];
+        }
+
+        if ($quote->status === 'converted' && in_array($quote->order_type, ['rental', 'sale'], true)) {
+            $class = $quote->order_type === 'rental' ? Rental::class : Sale::class;
+            $order = $class::where('organization_id', $enquiry->organization_id)->find($quote->order_id);
+            if ($order && $user->can('view', $order)) {
+                return ['label' => 'View '.ucfirst($quote->order_type), 'url' => route($quote->order_type.'s.show', $order)];
+            }
+        }
+
+        return null;
+    }
+
     public function owners(): \Illuminate\Support\Collection
     {
         return User::where('organization_id', auth()->user()->organization_id)->where('is_active', true)
@@ -50,7 +75,7 @@ class SalesWorkspace
     public function customers(): \Illuminate\Support\Collection
     {
         return Customer::where('organization_id', auth()->user()->organization_id)
-            ->orderBy('name')->get(['id', 'name', 'phone', 'email']);
+            ->orderBy('name')->get(['id', 'name', 'phone', 'email', 'salutation']);
     }
 
     /** Called inside the organisation/enquiry transaction; draft validation rolls this back on failure. */
@@ -76,9 +101,6 @@ class SalesWorkspace
                 $enquiry->unsetRelation('customer');
                 $this->event($enquiry, 'enquiry.customer', 'Quotation recipient selected. Finalised quotation revisions remain unchanged.');
             }
-        }
-        if ($request->input('next') === 'review' && !$enquiry->customer_id) {
-            throw ValidationException::withMessages(['customer_id' => 'Select a customer or add one here to review and share. You can still save a draft.']);
         }
     }
 
@@ -125,6 +147,7 @@ class SalesWorkspace
             'deposit' => 'required|numeric|min:0|max:99999999.99|decimal:0,2',
             'lines' => 'required|array|min:1|max:30',
             'lines.*.product_id' => ['required', 'integer', Rule::exists('products', 'id')->where('organization_id', $enquiry->organization_id)],
+            'lines.*.line_type' => 'nullable|in:rental,sale',
             'lines.*.quantity' => 'required|integer|min:1|max:10000',
             'lines.*.rate' => 'required|numeric|min:0|max:9999999.99|decimal:0,2',
             'lines.*.tax_rate' => 'required|numeric|min:0|max:100|decimal:0,2',
@@ -135,11 +158,15 @@ class SalesWorkspace
         $products = Product::where('organization_id', $org->id)->whereIn('id', array_column($data['lines'], 'product_id'))->get()->keyBy('id');
         $lines = [];
         foreach (array_values($data['lines']) as $i => $line) {
+            $lineType = $line['line_type'] ?? $data['kind'];
+            if ($data['kind'] === 'sale' && $lineType !== 'sale') {
+                throw ValidationException::withMessages(['lines.'.$i.'.line_type' => 'Sale quotations can contain one-time purchases only.']);
+            }
             $product = $products->get((int) $line['product_id']);
-            if (!$product || !($data['kind'] === 'rental' ? $product->canRent() : $product->canSell())) {
+            if (!$product || !($lineType === 'rental' ? $product->canRent() : $product->canSell())) {
                 throw ValidationException::withMessages(['lines.'.$i.'.product_id' => 'Choose a product available for this order type.']);
             }
-            $allowedRates = collect([0, 5, 12, 18, 28, $product->defaultGstRate()])
+            $allowedRates = collect([0, 5, 12, 18, 28, $product->defaultGstRate(), \App\Support\CommercialDefaults::productData($product)['tax_rate']])
                 ->map(fn ($rate) => number_format($rate, 2, '.', ''))->unique()->all();
             if (!in_array(number_format((float) $line['tax_rate'], 2, '.', ''), $allowedRates, true)) {
                 throw ValidationException::withMessages(['lines.'.$i.'.tax_rate' => 'Choose a standard GST slab or this product\'s saved tax rate.']);
@@ -147,19 +174,27 @@ class SalesWorkspace
             $base = round((int) $line['quantity'] * (float) $line['rate'], 2);
             $taxable = $line['tax_mode'] === 'inclusive' ? round($base / (1 + (float) $line['tax_rate'] / 100), 2) : $base;
             $tax = $line['tax_mode'] === 'inclusive' ? round($base - $taxable, 2) : round($base * (float) $line['tax_rate'] / 100, 2);
-            $lines[] = ['product_id' => $product->id, 'name' => $product->name, 'quantity' => (int) $line['quantity'],
+            $lines[] = ['product_id' => $product->id, 'name' => $product->name, 'line_type' => $lineType, 'quantity' => (int) $line['quantity'],
                 'rate' => round((float) $line['rate'], 2), 'tax_rate' => (float) $line['tax_rate'], 'tax_mode' => $line['tax_mode'],
                 'taxable' => $taxable, 'tax' => $tax, 'total' => $line['tax_mode'] === 'inclusive' ? $base : round($base + $tax, 2)];
+        }
+        if ($data['kind'] === 'rental' && !collect($lines)->contains('line_type', 'rental')) {
+            throw ValidationException::withMessages(['lines' => 'Add at least one rental product, or change the order type to Sale.']);
         }
         $deposit = $data['kind'] === 'rental' ? round((float) $data['deposit'], 2) : 0;
         $total = round(array_sum(array_column($lines, 'total')) + (float) $data['transport'], 2);
         if ($total > 99999999.99) throw ValidationException::withMessages(['lines' => 'The quotation total exceeds the supported order amount.']);
         return ['lines' => $lines, 'product_ids' => array_values(array_unique(array_column($lines, 'product_id'))), 'customer_id' => $customer?->id,
-            'contact' => ['name' => $enquiry->name, 'phone' => $enquiry->phone, 'email' => $enquiry->email],
+            'contact' => ['name' => $enquiry->name, 'phone' => $enquiry->phone, 'email' => $enquiry->email, 'salutation' => $enquiry->salutation],
             'recipient' => ['name' => $customer?->name ?? $enquiry->name, 'email' => $customer?->email ?? $enquiry->email,
+                'salutation' => $customer ? $customer->salutation : $enquiry->salutation,
+                'first_name' => $customer ? ($customer->first_name ?: $customer->name) : $enquiry->name, 'last_name' => $customer?->last_name ?? '',
+                'whatsapp_number' => $customer ? ($customer->whatsapp_number ?: $customer->phone) : $enquiry->phone,
+                'city' => $customer?->city, 'state' => $customer?->state, 'pincode' => $customer?->pincode,
                 'phone' => $customer?->phone ?? $enquiry->phone, 'address' => $customer?->billing_address ?: ($customer?->address ?? ''), 'tax_number' => $customer?->gst_number],
             'issuer' => ['name' => $org->name, 'address' => $org->address, 'email' => $org->email, 'phone' => $org->phone, 'tax_number' => $org->gst_number,
                 'logo' => app(\App\Support\InvoicePdfAssetResolver::class)->logoDataUri($org->logo)],
+            'sender' => app(QuotationSharing::class)->sender(auth()->user(), $org),
             'region' => $this->region($org), 'currency' => $org->currency_code ?: 'INR', 'timezone' => config('app.timezone', 'Asia/Kolkata'),
             'tax_label' => ($org->country_code ?: 'IN') === 'IN' ? 'GST' : 'Tax', 'tax_type' => $data['tax_type'],
             'start_date' => $data['kind'] === 'rental' ? $data['start_date'] : null, 'end_date' => $data['kind'] === 'rental' ? $data['end_date'] : null,

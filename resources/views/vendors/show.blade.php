@@ -5,7 +5,7 @@
     $currentUser = auth()->user();
     $canUpdateVendors = $currentUser?->canAccessModule('vendors', 'update') ?? false;
     $canDeleteVendors = $currentUser?->canAccessModule('vendors', 'delete') ?? false;
-    $canExportVendors = $currentUser?->hasPermission('vendors.export') ?? false;
+    $canExportVendors = $currentUser?->can('manage-bulk-records') && $currentUser->hasPermission('vendors.export');
     $vendorInitials = collect(preg_split('/\s+/', trim((string) $vendor->name)) ?: [])->filter()->take(2)->map(fn ($part) => strtoupper(substr($part, 0, 1)))->implode('') ?: 'VN';
     $cityLabel = $vendor->cityRecord?->name ?? $vendor->city ?? 'City not set';
 @endphp
@@ -312,4 +312,6 @@
         </div>
     </div>
 </div>
+
+@include('partials.record-timestamps', ['timestampRecord' => $vendor, 'timestampFields' => ['created_at' => 'Created', 'updated_at' => 'Last updated', 'deactivated_at' => 'Deactivated']])
 @endsection

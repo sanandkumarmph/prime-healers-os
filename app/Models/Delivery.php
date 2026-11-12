@@ -101,6 +101,14 @@ class Delivery extends Model
 
     protected static function booted(): void
     {
+        static::saving(function (Delivery $delivery): void {
+            if (\App\Services\Sales\RentalAgreements::enabled() && $delivery->rental_id && $delivery->type === 'delivery'
+                && in_array($delivery->status, ['in_progress', 'completed'], true)
+                && $delivery->isDirty(['status', 'rental_id', 'type'])) {
+                app(\App\Services\Sales\RentalAgreements::class)->dispatch($delivery->rental()->first());
+            }
+        });
+
         static::created(function (Delivery $delivery): void {
             $delivery->dispatchAssignmentNotification(null);
         });
@@ -127,6 +135,26 @@ class Delivery extends Model
     public function organization()
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    public function hasOrderCollection(): bool
+    {
+        return $this->collection_required && filled($this->collection_allowed_methods);
+    }
+
+    public function hasRecordedCollectionOutcome(): bool
+    {
+        return DeliveryCollection::where('organization_id', $this->organization_id)
+            ->where('delivery_id', $this->id)->whereNotNull('outcome')->exists();
+    }
+
+    public function allowedCollectionMethods(): array
+    {
+        return match ($this->collection_allowed_methods) {
+            'cash' => ['cash'],
+            'online' => ['upi', 'bank_transfer', 'card'],
+            default => self::COLLECTION_PAYMENT_MODES,
+        };
     }
 
     public function assignedUser()
@@ -360,7 +388,7 @@ class Delivery extends Model
 
     public function hasProtectedWorkflowHistory(): bool
     {
-        return $this->status === 'completed' || $this->completed_at || $this->proofs()->exists()
+        return $this->hasOrderCollection() || $this->status === 'completed' || $this->completed_at || $this->proofs()->exists()
             || DeliveryCollection::where('organization_id', $this->organization_id)->where('delivery_id', $this->id)->exists()
             || DB::table('delivery_workflow_submissions')->where('organization_id', $this->organization_id)->where('delivery_id', $this->id)->exists();
     }

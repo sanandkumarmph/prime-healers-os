@@ -282,6 +282,10 @@ class InvoiceController extends Controller
         $toDate = trim((string) $request->get('to_date', ''));
         $createdByUserId = (int) $request->get('created_by_user_id', 0);
         $legacyCreatedBy = (int) $request->get('created_by', 0);
+        $staffFilter = app(\App\Services\Sales\OrderStaffFilter::class);
+        if ($staff = $staffFilter->selected($request, $request->user(), 'invoices')) {
+            $staffFilter->applyToInvoices($query, $this->orgId(), $staff);
+        }
 
         if ($search !== '') {
             $query->where(function ($invoiceQuery) use ($search) {
@@ -432,11 +436,10 @@ class InvoiceController extends Controller
         $invoices->each(function (Invoice $invoice) {
             $this->syncPaidSaleInvoice($invoice);
             $this->syncOpeningPaymentEntry($invoice);
-            $invoice->refresh();
-            $invoice->syncFinancialStatus();
+            $invoice->unsetRelations()->refresh()->syncFinancialStatus();
         });
 
-        return $invoices;
+        return $invoices->load(['customer', 'items', 'payments']);
     }
 
     private function syncPaidSaleInvoice(Invoice $invoice): void
@@ -523,8 +526,13 @@ class InvoiceController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
-        $summaryQuery = $this->applyInvoiceFilters($this->invoiceBaseQuery(false, false), $request);
-        $invoiceSummary = $this->invoiceMetrics()->summary($summaryQuery);
+        $summaryQuery = $this->applyInvoiceFilters($this->invoiceBaseQuery(false, $request->integer('salesperson_id') !== 0), $request);
+        $viewer = $request->user();
+        $invoiceSummary = $this->invoiceMetrics()->summary($summaryQuery, null,
+            $viewer->canViewFinance(), $viewer->canViewDues());
+        $canViewAging = $viewer->canViewDues()
+            || (($viewer->isSales() || $viewer->isSalesRenewals()) && $viewer->canViewRecordFinance());
+        $invoiceAging = $canViewAging ? $this->invoiceMetrics()->aging($summaryQuery, now()) : null;
         $invoiceStats = [
             'totalInvoices' => (int) ($invoiceSummary['totalInvoices'] ?? 0),
             'paidInvoices' => (int) ($invoiceSummary['paidInvoices'] ?? 0),
@@ -541,10 +549,13 @@ class InvoiceController extends Controller
         ];
 
         $this->syncInvoiceCollectionStatuses($invoices->getCollection());
+        $salespersonOptions = app(\App\Services\Sales\OrderStaffFilter::class)->options($request->user(), 'invoices');
 
         return view('invoices.index', compact(
             'invoices',
+            'salespersonOptions',
             'invoiceStats',
+            'invoiceAging',
             'customers',
             'cities',
             'search',
@@ -693,6 +704,72 @@ class InvoiceController extends Controller
             'invoiceNumber',
             'taxOptions'
         ));
+    }
+
+    public function simpleCylinderRefill(Request $request, \App\Models\CylinderRefill $refill)
+    {
+        $this->authorize('create',Invoice::class);
+        $service=app(\App\Services\Cylinders\SimpleCylinderRefills::class);$service->authorize($request->user(),$refill);
+        app(\App\Services\Cylinders\CylinderWorkflow::class)->atomic($request->user(),function()use($refill){
+            $refill=\App\Models\CylinderRefill::lockForUpdate()->findOrFail($refill->id);if($refill->invoice_id)return;
+            abort_unless($refill->status!=='cancelled'&&$refill->delivered_quantity===$refill->quantity,409,'Record the refill delivered before invoicing.');
+            $rental=$refill->rental;$organization=Organization::findOrFail($this->orgId());
+            $input=['invoice_number'=>'INV-REFILL-'.str_pad((string)$refill->id,8,'0',STR_PAD_LEFT),
+                'invoice_date'=>today()->toDateString(),'due_date'=>today()->toDateString(),'customer_id'=>$rental->customer_id,
+                'reference_number'=>'Cylinder refill #'.$refill->id.' / Rental #'.$rental->id,
+                'bill_to_name'=>$rental->billingContactName(),'bill_to_phone'=>$rental->billingContactPhone(),'bill_to_email'=>$rental->billingContactEmail(),
+                'bill_to_address'=>$rental->billingContactAddress(),'bill_to_city'=>$rental->billingContactCity(),'bill_to_state'=>$rental->billingContactState(),'bill_to_pincode'=>$rental->billingContactPincode(),
+                'place_of_supply_state'=>$rental->deliveryContactState()?:$rental->billingContactState(),'ship_to_name'=>$rental->deliveryContactName(),'ship_to_phone'=>$rental->deliveryContactPhone(),
+                'ship_to_address'=>$rental->deliveryContactAddress(),'ship_to_city'=>$rental->deliveryContactCity(),'ship_to_state'=>$rental->deliveryContactState(),'ship_to_pincode'=>$rental->deliveryContactPincode(),
+                'tax_calculation_mode'=>'inclusive','paid_amount'=>0,'deposit_amount'=>0,
+                'item_description'=>['Cylinder refill — '.$refill->capacity_label.' ('.$refill->quantity.')','Refill transportation'],
+                'item_source_type'=>['refill','refill'],'item_source_id'=>[$refill->id,$refill->id],'item_quantity'=>[1,1],
+                'item_rate'=>[$refill->refill_charge,$refill->transport_charge],'item_tax_percentage'=>[$refill->tax_rate,$refill->tax_rate],
+                'notes'=>'Refill #'.$refill->id.'. Rental period and deposit are unchanged.'];
+            $invoiceRequest=new Request($input);$this->validateInvoice($invoiceRequest);
+            [$invoiceData,$items]=$this->prepareInvoiceData($invoiceRequest,$organization,$this->orgId());
+            $invoice=Invoice::create($invoiceData);foreach($items as$item)$invoice->items()->create($item);$invoice->syncFinancialStatus();
+            $refill->update(['invoice_id'=>$invoice->id,'lock_version'=>$refill->lock_version+1]);
+            ActivityLogger::log('invoice.created',$invoice,['cylinder_refill_id'=>$refill->id],'Cylinder refill invoice created.');
+        });
+        return app(CylinderRefillController::class)->renderForRental($request,$refill->rental,'Service invoice created. Use the existing payment workflow to record collections.');
+    }
+
+    public function cylinderService(Request $request, \App\Models\CylinderJob $job)
+    {
+        $this->authorize('create', Invoice::class);
+        $workflow = app(\App\Services\Cylinders\CylinderWorkflow::class);
+        $workflow->authorize($request->user(), 'read', $job);
+        $workflow->atomic($request->user(), function () use ($job) {
+            $job = \App\Models\CylinderJob::lockForUpdate()->findOrFail($job->id);
+            if ($job->invoice_id) return;
+            abort_unless($job->status === 'completed', 409, 'Complete the cylinder handover and warehouse receipt before invoicing.');
+            $rental = $job->rental; $organization = Organization::findOrFail($this->orgId());
+            $input = ['invoice_number' => 'INV-CYL-'.str_pad((string) $job->id, 8, '0', STR_PAD_LEFT),
+                'invoice_date' => today()->toDateString(), 'due_date' => today()->toDateString(),
+                'customer_id' => $rental->customer_id, 'reference_number' => 'Cylinder service #'.$job->id.' / Rental #'.$rental->id,
+                'bill_to_name' => $rental->billingContactName(), 'bill_to_phone' => $rental->billingContactPhone(),
+                'bill_to_email' => $rental->billingContactEmail(), 'bill_to_address' => $rental->billingContactAddress(),
+                'bill_to_city' => $rental->billingContactCity(), 'bill_to_state' => $rental->billingContactState(), 'bill_to_pincode' => $rental->billingContactPincode(),
+                'place_of_supply_state' => $rental->deliveryContactState() ?: $rental->billingContactState(),
+                'ship_to_name' => $rental->deliveryContactName(), 'ship_to_phone' => $rental->deliveryContactPhone(),
+                'ship_to_address' => $rental->deliveryContactAddress(), 'ship_to_city' => $rental->deliveryContactCity(),
+                'ship_to_state' => $rental->deliveryContactState(), 'ship_to_pincode' => $rental->deliveryContactPincode(),
+                'tax_calculation_mode' => 'inclusive', 'paid_amount' => 0, 'deposit_amount' => 0,
+                'item_description' => ['Oxygen cylinder refill service', 'Cylinder service transportation'],
+                'item_source_type' => ['refill', 'refill'], 'item_source_id' => [$job->id, $job->id],
+                'item_quantity' => [1, 1], 'item_rate' => [$job->refill_charge, $job->transport_charge],
+                'item_tax_percentage' => [$job->tax_rate, $job->tax_rate], 'notes' => 'Cylinder job #'.$job->id.'. Rental charges and security deposit are billed separately.'];
+            $invoiceRequest = new Request($input);
+            $this->validateInvoice($invoiceRequest);
+            [$invoiceData, $items] = $this->prepareInvoiceData($invoiceRequest, $organization, $this->orgId());
+            $invoice = Invoice::create($invoiceData);
+            foreach ($items as $item) $invoice->items()->create($item);
+            $invoice->syncFinancialStatus();
+            $job->update(['invoice_id' => $invoice->id, 'lock_version' => $job->lock_version + 1]);
+            ActivityLogger::log('invoice.created', $invoice, ['cylinder_job_id' => $job->id], 'Cylinder service invoice created.');
+        });
+        return redirect()->route('cylinder-services.show', $job)->with('success', 'Cylinder service invoice is available. Record payments through the existing payment workflow.');
     }
 
     public function store(Request $request)
@@ -993,6 +1070,13 @@ class InvoiceController extends Controller
 
         if ((float) $invoice->balance_amount <= 0) {
             return redirect()->route('invoices.show', $invoice->id)->with('success', 'Invoice is already settled.');
+        }
+
+        $collector = app(\App\Services\Deliveries\VendorCollectionAttribution::class);
+        $order = $collector->invoiceOrder($invoice);
+        if ($order && $collector->forOrder($order)) {
+            $route = $invoice->sale_id ? 'sales.show' : 'rentals.show';
+            return redirect()->route($route, $order)->with('error', 'Use Record Payment to choose who collected the payment for this vendor delivery.');
         }
 
         if (!$invoice->linkedRentalId() && !$this->paymentsRentalIdIsNullable()) {

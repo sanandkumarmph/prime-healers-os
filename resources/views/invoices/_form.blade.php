@@ -1745,7 +1745,7 @@
                     </select>
                 </td>
                 <td><input type="number" name="item_source_id[]" value="${data.source_id ?? ''}" class="invoice-input calc-input item-source-id" placeholder="Editable ID" min="1" step="1" style="min-width: 110px;"></td>
-                <td><input type="text" name="item_hsn_sac_code[]" value="${data.hsn_sac_code ?? ''}" class="invoice-input calc-input" style="min-width: 110px;"></td>
+                <td><input type="text" name="item_hsn_sac_code[]" value="${escapeHtml(data.hsn_sac_code)}" class="invoice-input calc-input" style="min-width: 110px;"></td>
                 <td>
                     <div class="invoice-stack" style="gap:6px; min-width: 260px;">
                         <input type="text" name="item_description[]" value="${data.description ?? ''}" class="invoice-input calc-input item-description" placeholder="Custom item, service, or billing description">

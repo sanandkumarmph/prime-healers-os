@@ -34,7 +34,7 @@ class NotificationController extends Controller
 
         return response()->json([
             'unread_count' => $user ? $this->notifications->unreadCountFor($user) : 0,
-        ]);
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     public function latest(Request $request): JsonResponse
@@ -44,7 +44,7 @@ class NotificationController extends Controller
         return response()->json([
             'unread_count' => $user ? $this->notifications->unreadCountFor($user) : 0,
             'notifications' => $user ? $this->notifications->latestFor($user, 8)->all() : [],
-        ]);
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     public function markRead(Request $request, string $notification): JsonResponse|RedirectResponse
@@ -55,7 +55,7 @@ class NotificationController extends Controller
         abort_unless($this->notifications->markAsRead($user, $notification), 404);
 
         if (!$request->expectsJson()) {
-            return redirect($request->input('redirect_to', route('notifications.index')));
+            return redirect(\App\Support\LocalRedirect::path($request->input('redirect_to'), route('notifications.index')));
         }
 
         return response()->json([
@@ -72,7 +72,7 @@ class NotificationController extends Controller
         $updated = $this->notifications->markAllAsRead($user);
 
         if (!$request->expectsJson()) {
-            return redirect($request->input('redirect_to', route('notifications.index')));
+            return redirect(\App\Support\LocalRedirect::path($request->input('redirect_to'), route('notifications.index')));
         }
 
         return response()->json([

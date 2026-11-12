@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
 @section('content')
+@include('customer-payments.entry', ['paymentInvoice' => $invoice])
 @php
     $statusClass = match ($invoice->payment_status) {
         'paid' => 'status-paid',
@@ -1150,7 +1151,9 @@
             <strong>Subject</strong>{{ $subjectLine }}
         </div>
 
-        @include('partials.activity-timeline', [
+
+
+@include('partials.activity-timeline', [
             'logs' => $activityLogs ?? collect(),
             'title' => 'Operations History',
             'subtitle' => 'Creation, edits, payment actions, and linked rental or sale events for this invoice.',
@@ -1255,7 +1258,7 @@
                         <tbody>
                             @foreach($invoice->payments as $payment)
                                 <tr>
-                                    <td data-label="Date">{{ optional($payment->payment_date)->format('d M Y') ?: '-' }}</td>
+                                    <td data-label="Date">{{ optional($payment->payment_date)->format('d M Y') ?: '-' }}<small style="display:block; font-size:11px; color:#64748b;">Recorded @include('partials.action-time', ['actionAt' => $payment->created_at, 'clockOnly' => false])</small></td>
                                     <td data-label="Mode">{{ $payment->paymentMethodLabel() }}</td>
                                     <td data-label="Reference">
                                         @if($payment->reversal_of_payment_id)
@@ -1288,4 +1291,5 @@
 
 @include('partials.follow-up-modal')
 
+@include('partials.record-timestamps', ['timestampRecord' => $invoice, 'timestampFields' => ['created_at' => 'Created', 'updated_at' => 'Last updated']])
 @endsection

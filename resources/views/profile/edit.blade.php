@@ -216,7 +216,7 @@
     <div class="profile-card">
         <div class="profile-card-head">
             <h2>Profile Information</h2>
-            <p>Keep your name and email current so account and notification details stay accurate.</p>
+            <p>{{ $user->isSuperAdmin() ? 'Update your name or login email.' : 'Update your name. Contact a Super Admin if your login email needs to change.' }}</p>
         </div>
         <div class="profile-card-body">
             <form method="POST" action="{{ route('profile.update') }}">
@@ -234,11 +234,25 @@
 
                     <div class="profile-field">
                         <label for="email">Email</label>
-                        <input id="email" class="profile-input" name="email" type="email" value="{{ old('email', $user->email) }}" required autocomplete="username">
+                        @if($user->isSuperAdmin())
+                            <input id="email" class="profile-input" name="email" type="email" value="{{ old('email', $user->email) }}" required autocomplete="username">
+                        @else
+                            <input id="email" class="profile-input" type="email" value="{{ $user->email }}" readonly>
+                        @endif
                         @error('email')
                             <div class="profile-error">{{ $message }}</div>
                         @enderror
                     </div>
+                    @if($user->isSuperAdmin())
+                    <div class="profile-field full">
+                        <label for="profile_current_password">Current password to change email</label>
+                        <input id="profile_current_password" class="profile-input" name="current_password" type="password" autocomplete="current-password">
+                        <small>Required only when changing your login email.</small>
+                        @error('current_password')
+                            <div class="profile-error">{{ $message }}</div>
+                        @enderror
+                    </div>
+                    @endif
                 </div>
 
                 @if ($user instanceof \Illuminate\Contracts\Auth\MustVerifyEmail && ! $user->hasVerifiedEmail())
@@ -304,6 +318,7 @@
         </div>
     </div>
 
+    @if($user->isSuperAdmin())
     <div class="profile-card">
         <div class="profile-card-head">
             <h2>Delete Account</h2>
@@ -330,5 +345,6 @@
             </form>
         </div>
     </div>
+    @endif
 </div>
 @endsection

@@ -64,6 +64,7 @@ class Product extends Model
         'rental_price_3_months',
         'sale_price',
         'rental_price',
+        'transport_class',
         'gst_tax_type',
         'gst_calculation_mode',
         'cgst_rate',

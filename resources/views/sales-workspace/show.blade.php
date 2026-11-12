@@ -1,22 +1,141 @@
 @extends('layouts.app')
 @section('content')
 @include('sales-workspace.style')
-@php($canEdit=auth()->user()->canAccessModule('enquiries','update'))
-<div class="sw"><a href="{{ route('enquiries.index') }}">← Sales workspace</a><header class="sw-head" style="margin-top:20px"><div><div class="sw-eyebrow">Enquiry #{{ $enquiry->id }}</div><h1 class="sw-wrap">{{ $enquiry->subject }}</h1><p class="sw-muted">{{ $enquiry->name }} · Assigned to {{ $enquiry->owner?->name ?? 'Unassigned' }}</p></div><div class="sw-actions">
-@if($canEdit && !$enquiry->closed())<a class="sw-btn" href="{{ route('enquiries.edit',$enquiry) }}">Edit details</a>@if(auth()->user()->canAccessModule('quotations','create') && $quotes->isEmpty())<a class="sw-btn sw-primary" href="{{ route('quotations.create',$enquiry) }}">Create quotation</a>@elseif($quotes->isNotEmpty())<a class="sw-btn sw-primary" href="{{ route('quotations.show',$quotes->first()) }}">Open latest quotation</a>@endif @endif</div></header>
-@include('sales-workspace.alerts')
-@if($enquiry->stage==='lost')<div class="sw-alert"><strong>Closed as lost</strong><p>{{ $enquiry->lost_reason }}</p></div>@else
-@php($progress = $enquiry->stage==='won' ? 'order' : (in_array($enquiry->stage,['quoted','accepted']) ? 'response' : ($quotes->isNotEmpty() ? 'quotation' : 'enquiry')))
-<ol class="sw-stage" aria-label="Sales progress">@foreach(['enquiry'=>'1. Enquiry','quotation'=>'2. Quotation','response'=>'3. Response','order'=>'4. Order'] as $key=>$label)<li @if($progress===$key) aria-current="step" @endif>{{ $label }}</li>@endforeach</ol>@endif
-<p class="sw-guide"><strong>Next:</strong> @if($enquiry->closed())This enquiry is closed. Its history remains available below.@elseif($quotes->isEmpty())Confirm the requirement, then create a quotation.@elseif($quotes->first()->status==='draft')Complete the quotation and review it before sharing.@elseif($quotes->first()->status==='accepted')Create the order from the accepted quotation to keep the agreed prices.@elseif($quotes->first()->status==='sent'){{ $quotes->first()->shared_at ? 'Follow up and record the customer response.' : 'Open the quotation and share it with the customer.' }}@else Open the latest quotation to review the response or prepare a revision.@endif</p>
-<div class="sw-grid"><div>
-<section class="sw-panel"><h2>Follow-ups <span class="sw-meta">Optional</span></h2>@if($enquiry->closed())<p class="sw-muted">This enquiry is closed. Its conversations and quotations remain available below.</p>@elseif($followUps->isEmpty())<p class="sw-meta">No follow-up scheduled.</p>@endif
-@foreach($followUps as $task)<article class="sw-row"><div><strong>{{ $task->subject }}</strong><div class="sw-meta {{ $task->due_at->isPast() ? 'sw-overdue' : '' }}">{{ ucfirst($task->channel) }} · {{ $task->due_at->timezone($tz)->format('d M Y, H:i') }} {{ $tz }} {{ $task->due_at->isPast() ? '· Overdue' : '' }}</div>
-@if($canEdit)<details><summary>Complete follow-up</summary><form action="{{ route('enquiries.follow-up.complete',[$enquiry,$task]) }}" method="post">@csrf<div class="sw-fields"><div class="sw-field"><label for="outcome-{{ $task->id }}">Outcome</label><select name="outcome" id="outcome-{{ $task->id }}" required><option value="connected">Connected</option><option value="no_response">No response</option><option value="requested_revision">Revision requested</option><option value="cancelled">Cancelled</option></select></div><div class="sw-field"><label for="completion-{{ $task->id }}">What happened?</label><textarea id="completion-{{ $task->id }}" name="completion_note" required maxlength="3000" rows="2"></textarea></div></div><button class="sw-btn sw-small" style="margin-top:10px">Save outcome</button></form></details>@endif</div></article>@endforeach
-@if($canEdit && !$enquiry->closed())@include('sales-workspace.follow-up-form')@endif</section>
-@if(auth()->user()->canAccessModule('quotations','read'))<section class="sw-panel"><h2>Quotations</h2>@forelse($quotes as $q)<div class="sw-row"><div><a href="{{ route('quotations.show',$q) }}"><strong>{{ $q->number() }}</strong></a><div class="sw-meta">{{ ucfirst($q->kind) }} · {{ $q->snapshot['currency'] }} {{ number_format($q->snapshot['total'],2) }} · Valid until {{ $q->valid_until->format('d M Y') }}</div></div><span class="sw-badge" data-status="{{ $q->displayStatus() }}">{{ $q->statusLabel() }}</span></div>@empty<p class="sw-muted">Create a quotation when the requirements are clear. It will not reserve stock.</p>@endforelse</section>@endif
-<section class="sw-panel"><h2>Activity</h2>@if($canEdit)<form action="{{ route('enquiries.note',$enquiry) }}" method="post" style="margin-bottom:24px">@csrf<div class="sw-field"><label for="note">Add an internal note</label><textarea name="note" id="note" rows="2" required maxlength="5000" placeholder="Keep the next person up to date">{{ old('note') }}</textarea></div><button class="sw-btn sw-small" style="margin-top:10px">Add note</button></form>@endif
-<ol class="sw-timeline">@foreach($activities as $activity)<li><p>{{ $activity->body }}</p><div class="sw-meta">{{ $activity->user?->name ?? 'Customer response' }} · {{ $activity->created_at->timezone($tz)->format('d M Y, H:i') }}</div></li>@endforeach</ol>{{ $activities->links() }}</section></div>
-<aside><section class="sw-panel"><h2>Contact & requirement</h2><p><strong>{{ $enquiry->name }}</strong></p>@if($enquiry->phone)<p class="sw-wrap">{{ $enquiry->phone }}</p>@endif @if($enquiry->email)<p class="sw-wrap">{{ $enquiry->email }}</p>@endif<p class="sw-meta">Source: {{ $enquiry->source ?: 'Not specified' }}</p><p class="sw-meta">Customer: {{ $enquiry->customer?->name ?? 'Not linked yet' }}</p><hr style="border:0;border-top:1px solid #e0e7ef;margin:18px 0"><p class="sw-note">{{ $enquiry->requirements ?: 'No additional requirements recorded.' }}</p></section>
-@if($canEdit && $enquiry->stage!=='won')<section class="sw-panel"><details @if($errors->has('stage') || $errors->has('reason')) open @endif><summary>Update stage / close enquiry</summary><p class="sw-meta">Quotation and order stages update automatically. Withdraw an active quotation before closing or reopening the enquiry.</p><form action="{{ route('enquiries.stage',$enquiry) }}" method="post">@csrf<input type="hidden" name="lock_version" value="{{ $enquiry->lock_version }}"><div class="sw-field"><label for="next-stage">Stage</label><select name="stage" id="next-stage"><option value="qualified">Qualified</option><option value="new">New / reopen</option><option value="lost">Lost</option></select></div><div class="sw-field" style="margin-top:12px"><label for="reason">Reason (required when lost)</label><textarea name="reason" id="reason" rows="2" maxlength="2000">{{ old('reason') }}</textarea></div><button class="sw-btn" style="margin-top:12px">Update stage</button></form></details></section>@endif</aside></div></div>
+@include('sales-workspace.details-style')
+@php
+    $salesNextAction = app(\App\Services\Sales\SalesNextAction::class)->for(auth()->user(),$enquiry,$latestQuote,$agreement,$followUps->first());
+    $quotationUrl = $latestQuote ? route('quotations.show', $latestQuote)
+        : ($canCreateQuote ? route('quotations.create', $enquiry) : '#enquiry-quotations');
+    $progress = match (true) {
+        $orderAction !== null || $enquiry->stage === 'won' => 'order',
+        in_array($enquiry->stage, ['quoted', 'accepted'], true) => 'response',
+        $latestQuote !== null => 'quotation',
+        default => 'enquiry',
+    };
+
+@endphp
+<div class="sw sw-detail" data-enquiry-detail @if($latestQuote) data-quote-live="{{ $latestQuote->id }}" data-live-page="enquiry" data-live-status-url="{{ route('quotations.status',$latestQuote) }}" @endif>
+    <a class="swd-back" href="{{ route('enquiries.index') }}">← Sales workspace</a>
+    <header class="sw-head swd-header">
+        <div class="swd-heading">
+            <div class="swd-identity"><span class="sw-eyebrow">Enquiry #{{ $enquiry->id }}</span><span class="sw-badge" data-live-enquiry-stage data-status="{{ $enquiry->stage }}">{{ \App\Models\Enquiry::STAGES[$enquiry->stage] }}</span></div>
+            <h1 class="sw-wrap">{{ $enquiry->subject }}</h1>
+            <p class="sw-meta">{{ $enquiry->name }} <span aria-hidden="true">·</span> Owner: <strong>{{ $enquiry->owner?->name ?? 'Unassigned' }}</strong></p>
+        </div>
+        <div class="sw-actions">
+            @if($canEdit && !$enquiry->closed())<a class="sw-btn" href="{{ route('enquiries.edit',$enquiry) }}">Edit details</a>@endif
+
+        </div>
+    </header>
+    @include('sales-workspace.alerts', ['showSuccess'=>true])
+    @if($latestQuote)@include('sales-workspace.live-status',['liveQuote'=>$latestQuote,'liveAgreement'=>$agreement])@endif
+    @if($enquiry->stage==='lost')<div class="sw-alert sw-error"><strong>Closed as lost</strong><p>{{ $enquiry->lost_reason }}</p></div>@endif
+    <div class="swd-progress">
+    @include('sales-workspace.workflow-navigation', [
+        'workflowEnquiry' => $enquiry, 'workflowQuotationUrl' => $quotationUrl, 'workflowOrderUrl' => $orderAction['url'] ?? null,
+        'workflowOnEnquiry' => true, 'workflowStep' => $progress,
+    ])
+    @include('sales-workspace.next-action')
+    </div>
+    <div class="swd-grid">
+        <aside class="swd-contact-column">
+            <section class="sw-panel" id="enquiry-details" tabindex="-1">
+                <h2>Contact & requirement</h2>
+                <strong class="swd-customer">{{ $enquiry->name }}</strong>
+                <div class="swd-contact-links">
+                    @if($enquiry->phone)<a href="tel:{{ preg_replace('/[^0-9+]/','',$enquiry->phone) }}">{{ $enquiry->phone }}</a>@endif
+                    @if($enquiry->email)<a href="mailto:{{ $enquiry->email }}">{{ $enquiry->email }}</a>@endif
+                </div>
+                <dl class="swd-facts" data-record-timestamps>
+                    <div><dt>Source</dt><dd>{{ $enquiry->source_label ?: 'Not specified' }}</dd></div>
+                    <div><dt>Customer</dt><dd>{{ $enquiry->customer?->name ?? 'Not linked yet' }}</dd></div>
+                    <div><dt>Created</dt><dd>@include('partials.action-time',['actionAt'=>$enquiry->created_at,'clockOnly'=>false])</dd></div>
+                    <div><dt>Last updated</dt><dd>@include('partials.action-time',['actionAt'=>$enquiry->updated_at,'clockOnly'=>false])</dd></div>
+                </dl>
+                <div class="swd-requirement"><h3>Requirement</h3><p class="sw-note">{{ $enquiry->requirements ?: 'No additional requirements recorded.' }}</p></div>
+            </section>
+            <section class="sw-panel" id="enquiry-activity" tabindex="-1">
+                <h2>Activity</h2>
+                @if($canEdit)<form class="swd-note-form" action="{{ route('enquiries.note',$enquiry) }}" method="post">@csrf
+                    <div class="sw-field"><label for="note">Add an internal note</label><textarea name="note" id="note" rows="2" required maxlength="5000" placeholder="Keep the next person up to date">{{ old('note') }}</textarea></div><button class="sw-btn sw-small" type="submit">Add note</button>
+                </form>@endif
+                <details data-detail-history @if(request()->filled('page')) open @endif><summary>Activity history <span class="swd-count">{{ $activities->total() }}</span></summary>
+                    <ol class="sw-timeline">@forelse($activities as $activity)<li><p>{{ $activity->body }}</p><div class="sw-meta">{{ $activity->user?->name ?? 'Customer response' }} · {{ $activity->created_at?->copy()->timezone('Asia/Kolkata')->format('d M Y, h:i:s A \I\S\T') }}</div></li>@empty<li class="sw-meta">No activity recorded yet.</li>@endforelse</ol>{{ $activities->links() }}
+                </details>
+            </section>
+            @if($canEdit && $enquiry->stage!=='won')
+            <section class="sw-panel swd-stage-panel"><details @if($errors->has('stage') || $errors->has('reason')) open @endif>
+                <summary>Update stage / close enquiry</summary>
+                <p class="sw-meta">Quotation and order stages update automatically. Withdraw an active quotation before closing or reopening the enquiry.</p>
+                <form action="{{ route('enquiries.stage',$enquiry) }}" method="post">@csrf
+                    <input type="hidden" name="lock_version" value="{{ $enquiry->lock_version }}">
+                    <div class="sw-field"><label for="next-stage">Stage</label><select name="stage" id="next-stage"><option value="qualified" @selected(old('stage')==='qualified')>Qualified</option><option value="new" @selected(old('stage')==='new')>New / reopen</option><option value="lost" @selected(old('stage')==='lost')>Lost</option></select></div>
+                    <div class="sw-field"><label for="reason">Reason (required when lost)</label><textarea name="reason" id="reason" rows="2" maxlength="2000">{{ old('reason') }}</textarea></div>
+                    <button class="sw-btn sw-small" type="submit">Update stage</button>
+                </form>
+            </details></section>
+            @endif
+        </aside>
+        <div class="swd-main-column" role="region" aria-label="Enquiry actions">
+            <details class="sw-panel sw-guided-section" id="enquiry-response" data-sales-section="enquiry-response" tabindex="-1" @if($salesNextAction['section']==='enquiry-response' || $errors->has('note') || $errors->has('contact_name')) open @endif>
+                <summary>Quotation response <span class="sw-meta" data-live-quote-label>{{ $latestQuote?->statusLabel() ?? 'Not prepared' }}</span></summary>
+                <div class="swd-section-heading">@if($latestQuote)<a href="{{ $quotationUrl }}">Open quotation →</a>@endif</div>
+                @if($latestQuote)
+                    <div class="swd-quote-summary">
+                        <div><strong>{{ $latestQuote->number() }}</strong><span class="sw-meta">{{ ucfirst($latestQuote->kind) }} · {{ $latestQuote->snapshot['currency'] }} {{ number_format($latestQuote->snapshot['total'],2) }}</span></div>
+                        <div><span class="sw-badge" data-live-quote-label data-status="{{ $quoteStatus }}">{{ $quoteStatus==='sent' ? 'Awaiting quotation acceptance' : $latestQuote->statusLabel() }}</span><span class="sw-meta">Valid until {{ $latestQuote->valid_until->format('d M Y') }}</span></div>
+                    </div>
+                    <div data-live-response>
+                    @if($canUpdateQuote && $quoteStatus==='sent' && !$enquiry->closed())
+                        @include('sales-workspace.quotation-response',['quote'=>$latestQuote,'returnToEnquiry'=>true,'showResponseForm'=>app(\App\Services\Sales\RentalAgreements::class)->readyForQuote($latestQuote,$agreement)])
+                    @endif
+                    </div>
+                @else
+                    <p class="sw-muted">The quotation response will appear here.</p>
+                @endif
+            </details>
+            @include('sales-workspace.enquiry-agreement',['quote'=>$latestQuote])
+            <details class="sw-panel sw-guided-section" id="enquiry-followups" data-sales-section="enquiry-followups" tabindex="-1" @if($salesNextAction['section']==='enquiry-followups' || $errors->has('due_at') || $errors->has('completion_note')) open @endif>
+                <summary>Follow-ups <span class="sw-meta">{{ $followUps->count() }} scheduled</span></summary>
+                <div class="swd-section-heading"><span class="sw-meta">Upcoming contacts</span><span class="sw-meta">Optional</span></div>
+                @if($enquiry->closed())<p class="sw-muted">This enquiry is closed. Its conversations and quotations remain available below.</p>
+                @elseif($followUps->isEmpty())<p class="sw-meta">No follow-up scheduled.</p>@endif
+                @foreach($followUps as $task)
+                    <article class="swd-follow-up">
+                        <div><strong>{{ $task->subject }}</strong><div class="sw-meta {{ $task->due_at->isPast() ? 'sw-overdue' : '' }}">{{ ucfirst($task->channel) }} · {{ $task->due_at->timezone($tz)->format('d M Y, h:i A') }} IST {{ $task->due_at->isPast() ? '· Overdue' : '' }}</div></div>
+                        @if($canEdit)<details @if($errors->has('outcome') || $errors->has('completion_note')) open @endif><summary>Complete follow-up</summary>
+                            <form action="{{ route('enquiries.follow-up.complete',[$enquiry,$task]) }}" method="post">@csrf
+                                <div class="sw-fields"><div class="sw-field"><label for="outcome-{{ $task->id }}">Outcome</label><select name="outcome" id="outcome-{{ $task->id }}" required>@foreach(['connected'=>'Connected','no_response'=>'No response','requested_revision'=>'Revision requested','cancelled'=>'Cancelled'] as $key=>$label)<option value="{{ $key }}" @selected(old('outcome')===$key)>{{ $label }}</option>@endforeach</select></div>
+                                <div class="sw-field"><label for="completion-{{ $task->id }}">What happened?</label><textarea id="completion-{{ $task->id }}" name="completion_note" required maxlength="3000" rows="2">{{ old('completion_note') }}</textarea></div></div>
+                                <button class="sw-btn sw-small" type="submit">Save outcome</button>
+                            </form>
+                        </details>@endif
+                    </article>
+                @endforeach
+                @if($canEdit && !$enquiry->closed())@include('sales-workspace.follow-up-form')@endif
+            </details>
+            <section class="sw-panel swd-history" id="enquiry-quotations" tabindex="-1"><details data-detail-history>
+                <summary>Quotations <span class="swd-count">{{ $quotes->count() }}</span></summary>
+                @forelse($quotes as $q)<div class="sw-row"><div><a href="{{ route('quotations.show',$q) }}"><strong>{{ $q->number() }}</strong></a><div class="sw-meta">{{ ucfirst($q->kind) }} · {{ $q->snapshot['currency'] }} {{ number_format($q->snapshot['total'],2) }} · Valid until {{ $q->valid_until->format('d M Y') }}</div></div><span class="sw-badge" data-status="{{ $q->displayStatus() }}">{{ $q->statusLabel() }}</span></div>
+                @empty<p class="sw-muted">Create a quotation when the requirements are clear. It will not reserve stock.</p>@endforelse
+            </details></section>
+
+        </div>
+    </div>
+</div>
+<script>
+(() => {
+    const reveal = () => {
+        let id; try { id = decodeURIComponent(location.hash.slice(1)); } catch { return; }
+        const target = document.getElementById(id);
+        if (!target || !target.closest('[data-enquiry-detail]')) return;
+        for (let el = target; el; el = el.parentElement) if (el.tagName === 'DETAILS') el.open = true;
+        if (id === 'enquiry-response' || id === 'enquiry-quotations' || id === 'enquiry-activity') {
+            const details = target.querySelector('details'); if (details) details.open = true;
+        }
+    };
+    document.querySelectorAll('[data-enquiry-detail] a[href^="#"]').forEach(link => link.addEventListener('click', () => setTimeout(reveal, 0)));
+    addEventListener('hashchange', reveal); reveal();
+})();
+</script>
 @endsection

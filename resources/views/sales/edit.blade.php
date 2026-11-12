@@ -1,6 +1,8 @@
 @extends('layouts.app')
 
 @section('content')
+@include('sales.partials.stock-modal')
+
 <form id="saleForm" action="{{ route('sales.update', $sale->id) }}" method="POST" novalidate>
     @csrf
     @method('PUT')

@@ -47,9 +47,9 @@
             </div>
 
             <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; color:#64748b; font-size:12px; font-weight:700;">
-                <span>Published {{ optional($article->published_at)->format('d M Y') ?: optional($article->created_at)->format('d M Y') }}</span>
+                <span>Published {{ \App\Support\ActionTimestamp::label($article->published_at) ?: \App\Support\ActionTimestamp::label($article->created_at) }}</span>
                 <span>&bull;</span>
-                <span>Updated {{ optional($article->updated_at)->format('d M Y') }}</span>
+                <span>Updated {{ \App\Support\ActionTimestamp::label($article->updated_at) }}</span>
             </div>
         </section>
 

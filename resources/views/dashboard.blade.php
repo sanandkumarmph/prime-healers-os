@@ -1,9 +1,11 @@
 @extends('layouts.app')
 
 @section('content')
+@include('cylinder-refills.dashboard-tasks')
 @php
     $currentUser = auth()->user();
     $dashboardVisibility = $dashboardVisibility ?? [];
+    $isSalesDashboard = (bool) ($dashboardVisibility['sales_focused'] ?? false);
     $safeRoute = function (string $routeName, array $parameters = []) {
         return \Illuminate\Support\Facades\Route::has($routeName) ? route($routeName, $parameters) : null;
     };
@@ -315,7 +317,7 @@
             'href' => $mergeDashboardQuery('invoices.index', ['status' => 'open']),
             'tone' => 'blue',
             'icon' => 'payment',
-            'visible' => $canViewFinance,
+            'visible' => (auth()->user()?->canViewDues() ?? false),
         ],
         [
             'widget_key' => 'primary_pending_pickups',
@@ -686,7 +688,7 @@
             'href' => $mergeDashboardQuery('invoices.index', ['status' => 'overdue']),
             'icon' => 'payment',
             'tone' => 'red',
-            'visible' => $canViewFinance,
+            'visible' => (auth()->user()?->canViewDues() ?? false),
         ],
         [
             'widget_key' => 'snapshot_asset_alerts',
@@ -1112,7 +1114,7 @@
             'title' => 'Payment received  /  ' . (optional($payment->customer)->name ?? 'Customer'),
             'meta' => optional($payment->invoice)->invoice_number ?? 'Payment entry',
             'amount' => $currency($payment->amount ?? 0),
-            'timestamp' => optional($payment->payment_date)?->format('d M Y') ?? 'Recent',
+            'timestamp' => 'Payment date: ' . (optional($payment->payment_date)?->format('d M Y') ?? 'Not recorded') . ' · Recorded: ' . \App\Support\ActionTimestamp::label($payment->created_at),
             'badge' => 'Payment',
             'href' => $invoiceIndexUrl ? route('invoices.index', ['search' => $payment->invoice->invoice_number ?? null]) : $dashboardUrl,
         ]))
@@ -1120,7 +1122,7 @@
             'title' => 'Sales order  /  SALE-' . $sale->id,
             'meta' => optional($sale->customer)->name ?? 'Customer',
             'amount' => $currency($sale->sale_amount ?? 0),
-            'timestamp' => optional($sale->sale_date)?->format('d M Y') ?? 'Recent',
+            'timestamp' => 'Sale date: ' . (optional($sale->sale_date)?->format('d M Y') ?? 'Not recorded') . ' · Recorded: ' . \App\Support\ActionTimestamp::label($sale->created_at),
             'badge' => 'Sales',
             'href' => $salesIndexUrl ?: $dashboardUrl,
         ]))
@@ -1255,7 +1257,7 @@
             return [
                 'title' => \Illuminate\Support\Str::headline(str_replace('.', ' ', (string) $activity->action)),
                 'meta' => $activity->description ?: 'Inventory event recorded.',
-                'time' => optional($activity->created_at)?->diffForHumans() ?? 'Recently',
+                'time' => 'Recorded: ' . \App\Support\ActionTimestamp::label($activity->created_at),
                 'href' => $inventoryUrl,
             ];
         })
@@ -1388,35 +1390,35 @@
         'all' => $recentActivitiesSummary->map(fn ($activity) => [
             'title' => \Illuminate\Support\Str::headline(str_replace('.', ' ', (string) $activity->action)),
             'meta' => $activity->description ?: 'Activity recorded in the operational timeline.',
-            'time' => optional($activity->created_at)?->diffForHumans() ?? 'Recently',
+            'time' => 'Recorded: ' . \App\Support\ActionTimestamp::label($activity->created_at),
             'tone' => 'blue',
             'href' => $dashboardUrl,
         ])->values()->all(),
         'rentals' => $recentRentalsSummary->map(fn ($rental) => [
             'title' => 'Rental #' . $rental->id . '  /  ' . ($rental->customer_name ?? optional($rental->customer)->name ?? 'Customer'),
             'meta' => (optional($rental->product)->name ?? 'Product') . '  /  ' . $currency((float) ($rental->rental_amount ?? 0)),
-            'time' => optional($rental->created_at)?->diffForHumans() ?? 'Recently',
+            'time' => 'Created: ' . \App\Support\ActionTimestamp::label($rental->created_at),
             'tone' => 'violet',
             'href' => route('rentals.show', $rental),
         ])->values()->all(),
         'payments' => $recentPaymentsSummary->map(fn ($payment) => [
             'title' => 'Payment received from ' . ($payment->customer->name ?? 'Customer'),
             'meta' => ($payment->invoice->invoice_number ?? 'Invoice') . '  /  ' . $currency((float) ($payment->amount ?? 0)),
-            'time' => optional($payment->payment_date)?->format('d M Y') ?? 'Recently',
+            'time' => 'Payment date: ' . (optional($payment->payment_date)?->format('d M Y') ?? 'Not recorded') . ' · Recorded: ' . \App\Support\ActionTimestamp::label($payment->created_at),
             'tone' => 'green',
             'href' => $invoiceIndexUrl ? route('invoices.index', ['search' => $payment->invoice->invoice_number ?? null]) : $dashboardUrl,
         ])->values()->all(),
         'tasks' => $recentDeliveriesSummary->map(fn ($task) => [
             'title' => ucfirst((string) $task->type) . ' #' . $task->id . '  /  ' . ($task->linkedCustomerName() ?: 'Customer'),
             'meta' => optional($task->scheduled_at)?->format('d M, h:i A') ?? 'Schedule pending',
-            'time' => optional($task->updated_at)?->diffForHumans() ?? 'Recently',
+            'time' => 'Last updated: ' . \App\Support\ActionTimestamp::label($task->updated_at),
             'tone' => 'amber',
             'href' => route('deliveries.show', $task),
         ])->values()->all(),
         'alerts' => $highPriorityFollowUpSummary->map(fn ($followUp) => [
             'title' => $followUp->title ?: 'High priority follow-up',
             'meta' => $followUp->note ?: ($followUp->customer?->name ?? $followUp->businessPartner?->displayName() ?? 'Customer coordination'),
-            'time' => optional($followUp->due_at)?->diffForHumans() ?? 'Today',
+            'time' => 'Due: ' . \App\Support\ActionTimestamp::label($followUp->due_at) . ' · Created: ' . \App\Support\ActionTimestamp::label($followUp->created_at),
             'tone' => 'red',
             'href' => $communicationCenterUrl ? route('communication-center.index', ['priority' => 'high']) : $dashboardUrl,
         ])->values()->all(),
@@ -1732,16 +1734,16 @@
         : $activePercent;
     $executiveBusinessHealthRows = collect([
         $canViewFinance ? $buildExecutiveTrendMetric('Revenue Trend', $executiveRevenueTrendCurrent, $executiveRevenueTrendPrevious, fn ($value) => $currency($value), !empty($previousTrendRow)) : null,
-        $buildExecutiveTrendMetric('Orders Trend', $executiveOrdersTrendCurrent, $executiveOrdersTrendPrevious, fn ($value) => number_format((int) $value) . ' order(s)', !empty($previousTrendRow)),
+        !$isSalesDashboard ? $buildExecutiveTrendMetric('Orders Trend', $executiveOrdersTrendCurrent, $executiveOrdersTrendPrevious, fn ($value) => number_format((int) $value) . ' order(s)', !empty($previousTrendRow)) : null,
         $canViewFinance ? $buildExecutiveTrendMetric('Collection Trend', $executiveCollectionTrendCurrent, $executiveCollectionTrendPrevious, fn ($value) => $currency($value), !empty($previousRevenueTrendRow)) : null,
-        [
+        !$isSalesDashboard ? [
             'label' => 'Rental Utilization',
             'value' => number_format($executiveRentalUtilizationPercent, 1) . '%',
             'tone' => $executiveRentalUtilizationPercent >= 65 ? 'green' : ($executiveRentalUtilizationPercent >= 35 ? 'amber' : 'blue'),
             'direction' => 'none',
             'comparison_label' => 'Current stock position',
             'tooltip' => 'Current Period: ' . number_format($onRentInventoryCount) . ' on-rent rental asset(s) / ' . number_format($inventoryAvailabilityTotal) . ' total rental asset(s)' . "\n" . 'Previous Period: Not period-based',
-        ],
+        ] : null,
     ])->filter()->values();
     $executiveCommunicationPulseRows = collect([
         ['label' => 'Follow-ups Pending', 'value' => (int) (($pendingRenewalFollowUpsCount ?? 0) + ($pendingPaymentFollowUpsCount ?? 0) + ($pendingPickupFollowUpsCount ?? 0)), 'tone' => ((int) ($overdueFollowUpsCount ?? 0)) > 0 ? 'red' : 'blue'],
@@ -1874,6 +1876,7 @@
         ],
         [
             'label' => 'Revenue Center',
+            'visible' => $canViewFinance,
             'copy' => 'Sales pulse, finance summary, invoice pressure, and collection actions.',
             'links' => collect([
                 ['label' => 'Revenue Center', 'href' => '#sales-pulse-panel'],
@@ -6498,6 +6501,13 @@
         display:grid;
         gap:10px;
     }
+    .fieldops-workspace-links {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 172px), 1fr));
+        gap: 8px;
+        margin-top: 10px;
+    }
+    .fieldops-workspace-links a { min-height: 44px; text-align: center; }
     .fieldops-home-hero {
         display:grid;
         gap:10px;
@@ -7437,6 +7447,29 @@
 
 <link rel="stylesheet" href="{{ asset('css/phos-executive-dashboard.css') }}?v={{ hash_file('sha256', public_path('css/phos-executive-dashboard.css')) }}">
 <div class="dashboard-shell rx-page {{ $isDeliveryFacingMenuRole ? 'is-delivery-focused' : '' }}" @if(!$isDeliveryFacingMenuRole) data-executive-dashboard data-active-dashboard-tab="{{ $activeDashboardTab }}" @endif>
+    @if($currentUser?->isSales())
+        @php
+            $shortcuts = [
+                ['enquiries', 'enquiries.index', 'Enquiries & quotations', []],
+                ['sales', 'sales.index', 'Sales orders', []],
+                ['rentals', 'rentals.index', 'Rental orders', []],
+                ['invoices', 'invoices.index', 'Invoices & individual payments', []],
+                ['deliveries', 'deliveries.index', 'Delivery & pickup tasks', []],
+                ['customers', 'communication-center.index', 'Customer follow-ups', []],
+            ];
+        @endphp
+        <section class="rx-card" aria-labelledby="role-workspace-heading" style="padding:16px;margin-bottom:16px">
+            <h2 id="role-workspace-heading" class="rx-card-title">Sales workspace</h2>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
+                @foreach($shortcuts as [$module, $name, $label, $params])
+                    @if($currentUser->canAccessModule($module, 'read'))
+                        <a class="rx-btn-secondary" href="{{ route($name, $params) }}">{{ $label }}</a>
+                    @endif
+                @endforeach
+
+            </div>
+        </section>
+    @endif
     @if($isDeliveryFacingMenuRole)
         @php
             $fieldOpsTiles = collect($deliveryMiniTiles)->take(5)->values();
@@ -7463,7 +7496,7 @@
                     <div class="fieldops-home-hero-ill">{!! $fieldOpsIll !!}</div>
                     <div class="fieldops-home-hero-copy">
                         <strong>Hi, Delivery Team</strong>
-                        <p>Here / s your field work today.</p>
+                        <p>Here’s your field work today.</p>
                     </div>
                 </div>
                 <div class="fieldops-home-kpis">
@@ -7528,6 +7561,28 @@
                     </div>
                 @endif
             </div>
+            @if($currentUser->isDelivery() && $canReadDeliveries)
+                <section class="fieldops-home-section" aria-labelledby="role-workspace-heading">
+                    <div class="fieldops-home-section-head">
+                        <h2 id="role-workspace-heading">Delivery workspace</h2>
+                    </div>
+                    <div class="fieldops-workspace-links">
+                        @foreach([
+                            'delivery_workload' => 'Assigned deliveries',
+                            'pickup_workload' => 'Assigned pickups',
+                            'completed_delivery' => 'Completed deliveries',
+                            'completed_pickup' => 'Completed pickups',
+                        ] as $board => $label)
+                            <a class="rx-btn-secondary" href="{{ route('deliveries.index', ['board' => $board]) }}">{{ $label }}</a>
+                        @endforeach
+                        <a class="rx-btn-secondary" href="{{ route('communication-center.index') }}">Communication Center</a>
+                        @if($currentUser->canAccessModule('deliveries', 'update'))
+                            <a class="rx-btn-secondary" href="{{ route('cash-handovers.index') }}">Cash collected &amp; handovers</a>
+                            <a class="rx-btn-secondary" href="{{ route('deliveries.assets.create') }}">Add an asset</a>
+                        @endif
+                    </div>
+                </section>
+            @endif
         </section>
     @else
     @include('dashboard.executive-navigation')
@@ -7695,6 +7750,7 @@
                 </div>
             </details>
 
+            @if($canViewFinance)
             <details class="dashboard-mobile-section">
                 <summary class="dashboard-mobile-summary">
                     <div>
@@ -7728,6 +7784,7 @@
                     @endif
                 </div>
             </details>
+            @endif
 
             <details class="dashboard-mobile-section">
                 <summary class="dashboard-mobile-summary">
@@ -7888,10 +7945,11 @@
             <div class="control-room-card-header">
                 <div>
                     <h2 class="control-room-card-title">Executive Command Center</h2>
-                    <p class="control-room-card-copy">Top KPIs plus compact business health, communication pressure, forecast, and performance signals.</p>
+                    <p class="control-room-card-copy">{{ $isSalesDashboard ? 'Track sales activity, follow-ups, and upcoming work.' : 'Top KPIs plus compact business health, communication pressure, forecast, and performance signals.' }}</p>
                 </div>
             </div>
 
+            @if($executiveBusinessHealthRows->isNotEmpty())
             <div class="executive-health-strip">
                 @foreach($executiveBusinessHealthRows as $row)
                     <div class="executive-health-chip {{ $toneCardClass($row['tone'] ?? null) }}" title="{{ $row['tooltip'] ?? '' }}">
@@ -7915,6 +7973,7 @@
                     </div>
                 @endforeach
             </div>
+            @endif
 
             <div class="control-room-priority-grid">
                 @foreach($executiveCommandCards as $card)
@@ -8679,8 +8738,10 @@
     </section>
 
     @endif
-    @include('dashboard.overview-summary')
-    @unless($dashboardTabs->has('revenue'))
+    @unless($isSalesDashboard)
+        @include('dashboard.overview-summary')
+    @endunless
+    @if(!$isSalesDashboard && !$dashboardTabs->has('revenue'))
     <section class="dashboard-trend-layout">
         <div class="rx-card dashboard-trend-card">
             <div class="rx-card-header">
@@ -8798,7 +8859,7 @@
             </div>
         </div>
     </section>
-    @endunless
+    @endif
     </section>
     @endif
     @if($dashboardTabs->has('team'))
@@ -9272,6 +9333,7 @@
                     </section>
                 </div>
 
+                @unless($isSalesDashboard)
                 <div class="operations-layout-grid">
                     <section class="control-room-card operations-command-panel">
                         <div class="control-room-card-header">
@@ -9337,6 +9399,7 @@
                         </div>
                     </section>
                 </div>
+                @endunless
 
                 <details class="operations-detail-group">
                     <summary class="operations-detail-summary">
@@ -10527,6 +10590,7 @@
         </section>
     @endif
 
+    @unless($isSalesDashboard)
     <section class="dashboard-trend-layout">
         <div class="rx-card dashboard-trend-card">
             <div class="rx-card-header">
@@ -10644,6 +10708,7 @@
             </div>
         </div>
     </section>
+    @endunless
     </section>
     @endif
     @if($dashboardTabs->has('inventory'))

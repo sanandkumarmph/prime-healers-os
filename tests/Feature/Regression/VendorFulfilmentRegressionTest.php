@@ -58,6 +58,116 @@ class VendorFulfilmentRegressionTest extends TestCase
         $this->assertSame($vendor->id, $rental->vendorOrderDetail?->vendor_id);
     }
 
+    public function test_sales_can_assign_order_collections_and_book_vendor_or_third_party_delivery(): void
+    {
+        $organization = TestData::organization();
+        $actor = TestData::user($organization);
+        $salesRole = Role::create([
+            'organization_id' => $organization->id, 'name' => 'Sales', 'slug' => 'sales', 'is_active' => true,
+            'permissions' => ['sales' => ['read', 'create'], 'deliveries' => ['read'], 'invoices' => ['read'], 'payments' => ['read']],
+        ]);
+        $collector = TestData::user($organization, ['role_id' => $salesRole->id]);
+        $driver = TestData::user($organization, ['role' => User::ROLE_DELIVERY]);
+        $customer = $this->makeCustomer($organization->id);
+        $product = $this->makeRentalProduct($organization->id);
+        $vendor = $this->makeVendor($organization->id);
+
+        $this->actingAs($collector)->get(route('enquiries.index'))->assertOk()
+            ->assertSee('Sales workspace')->assertSee('Route planner');
+        $this->get(route('enquiries.index', ['view' => 'quotations']))->assertOk();
+        $this->get(route('enquiries.create'))->assertOk();
+        $this->assertFalse($collector->canAccessModule('quotations', 'delete'));
+
+        $this->actingAs($actor)->get(route('rentals.create'))->assertOk()
+            ->assertSee('Vendor Delivery')->assertSee('Third Party Logistics')->assertSee('Assign collection to Sales');
+        $rentalData = $this->rentalPayload($customer->id, $product->id, [
+            'delivery_assignment_type' => 'vendor',
+            'delivery_vendor_id' => $vendor->id,
+            'collection_mode' => 'pay_on_delivery',
+        ]);
+        $this->post(route('rentals.store'), $rentalData + ['collection_assignee_id' => $driver->id])
+            ->assertSessionHasErrors('collection_assignee_id');
+        $this->post(route('rentals.store'), $rentalData + ['collection_assignee_id' => $collector->id])
+            ->assertSessionHasNoErrors();
+        $rental = \App\Models\Rental::sole();
+        $this->assertFalse($rental->isVendorSupplied());
+        $this->assertSame(3, (int) $product->fresh()->available_quantity);
+        $this->assertSame($vendor->id, $rental->vendorOrderDetail->vendor_id);
+        $this->assertSame('vendor_delivery', $rental->vendorOrderDetail->delivery_responsibility);
+        $this->assertDatabaseHas('deliveries', ['rental_id' => $rental->id, 'assignment_type' => 'vendor']);
+        $this->assertDatabaseHas('follow_ups', [
+            'assigned_user_id' => $collector->id, 'rental_id' => $rental->id,
+            'invoice_id' => \App\Models\Invoice::where('rental_id', $rental->id)->sole()->id,
+            'source' => 'order_collection:pay_on_delivery',
+        ]);
+
+        $this->post(route('rentals.store'), $this->rentalPayload($customer->id, $product->id, [
+            'delivery_assignment_type' => 'third_party', 'third_party_name' => 'One-time courier',
+        ]))->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('deliveries', ['assignment_type' => 'third_party', 'third_party_name' => 'One-time courier']);
+
+        $sellable = $this->makeSaleProduct($organization->id);
+        $this->get(route('sales.create'))->assertOk()->assertSee('Assign collection to Sales');
+        $this->post(route('sales.store'), $this->salePayload($customer->id, $sellable->id, [
+            'collection_mode' => 'cash', 'collection_assignee_id' => $collector->id,
+        ]))->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('follow_ups', [
+            'assigned_user_id' => $collector->id, 'sale_id' => Sale::sole()->id, 'source' => 'order_collection:cash',
+        ]);
+        $this->assertDatabaseCount('payments', 0);
+        $this->actingAs($collector)->get(route('communication-center.index'))
+            ->assertOk()->assertSee('Payment on delivery for')->assertSee('Cash collection for');
+    }
+
+    public function test_order_collection_creates_only_one_assigned_task_and_no_receipt(): void
+    {
+        $organization = TestData::organization();
+        $admin = TestData::user($organization, ['role' => User::ROLE_SUPER_ADMIN]);
+        $driver = TestData::user($organization, ['role' => User::ROLE_DELIVERY]);
+        $customer = $this->makeCustomer($organization->id);
+        $product = $this->makeRentalProduct($organization->id);
+        $this->actingAs($admin);
+
+        $assignment = [
+            'collection_enabled' => 1, 'collection_amount' => '100.00', 'collection_methods' => 'cash',
+            'collection_instructions' => 'Ask for exact change.',
+            'collection_submission_token' => (string) \Illuminate\Support\Str::uuid(),
+        ];
+        $rental = $this->rentalPayload($customer->id, $product->id, $assignment + [
+            'delivery_assignment_type' => 'ph_internal', 'delivery_staff_id' => 'user:'.$driver->id,
+        ]);
+        $this->get(route('rentals.create'))->assertOk()->assertSee('Collect payment on delivery');
+        $this->post(route('rentals.store'), array_replace($rental, ['collection_amount' => '99999.00']))
+            ->assertSessionHasErrors('collection_amount');
+        $this->assertDatabaseCount('rentals', 0);
+        $this->assertDatabaseCount('order_collection_submissions', 0);
+        $this->post(route('rentals.store'), $rental)->assertSessionHasNoErrors();
+        $this->postJson(route('rentals.store'), $rental)->assertConflict()->assertJsonValidationErrors('collection_enabled');
+        $this->assertDatabaseCount('rentals', 1);
+        $this->assertDatabaseHas('deliveries', [
+            'rental_id' => \App\Models\Rental::sole()->id, 'assigned_user_id' => $driver->id,
+            'collection_required' => true, 'collection_allowed_methods' => 'cash',
+            'collection_instructions' => 'Ask for exact change.', 'collection_amount_to_collect' => 100,
+        ]);
+
+        $productForSale = $this->makeSaleProduct($organization->id);
+        $sale = $this->salePayload($customer->id, $productForSale->id, array_replace($assignment, [
+            'delivery_operator_id' => $driver->id, 'collection_methods' => 'both',
+            'collection_submission_token' => (string) \Illuminate\Support\Str::uuid(),
+        ]));
+        $this->get(route('sales.create'))->assertOk()->assertSee('Collect payment on delivery')->assertSee($driver->name);
+        $this->post(route('sales.store'), array_replace($sale, ['delivery_operator_id' => $admin->id]))
+            ->assertSessionHasErrors('collection_enabled');
+        $this->assertDatabaseCount('sales', 0);
+        $this->post(route('sales.store'), $sale)->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('deliveries', [
+            'sale_id' => Sale::sole()->id, 'type' => 'delivery', 'assigned_user_id' => $driver->id,
+            'assignment_type' => 'delivery_team', 'collection_required' => true, 'collection_allowed_methods' => 'both',
+        ]);
+        $this->assertDatabaseCount('deliveries', 2);
+        $this->assertDatabaseCount('payments', 0);
+    }
+
     public function test_vendor_supplied_rental_accepts_dual_purpose_product_without_ph_asset_requirement(): void
     {
         $organization = TestData::organization();
@@ -201,11 +311,11 @@ class VendorFulfilmentRegressionTest extends TestCase
     public function test_vendor_costs_are_only_visible_to_authorized_users_and_report_export_filters(): void
     {
         $organization = TestData::organization();
-        $viewer = $this->userWithRole($organization, 'Vendor Report Viewer', [
+        $viewer = $this->userWithRole($organization, 'Admin', [
             'vendors' => ['read'],
             '__special' => ['vendor_reports.view'],
         ]);
-        $finance = $this->userWithRole($organization, 'Vendor Finance', [
+        $finance = $this->userWithRole($organization, 'Admin Operations', [
             'vendors' => ['read'],
             '__special' => ['vendor_reports.view', 'vendor_reports.export', 'vendor_costs.view', 'vendor_costs.update'],
         ]);
@@ -266,9 +376,9 @@ class VendorFulfilmentRegressionTest extends TestCase
         $financeResponse->assertSee('Gross Margin');
         $financeResponse->assertSee($vendor->name);
 
-        $exportResponse = $this->actingAs($finance)->get(route('vendor-orders.export.csv', [
-            'vendor_id' => $vendor->id,
-        ]));
+        $exportUrl = route('vendor-orders.export.csv', ['vendor_id' => $vendor->id]);
+        $this->actingAs($finance)->getJson($exportUrl)->assertForbidden();
+        $exportResponse = $this->actingAs(TestData::user($organization))->get($exportUrl);
         $exportResponse->assertOk();
         $this->assertStringContainsString($vendor->name, $exportResponse->streamedContent());
         $this->assertSame($beforeCount, VendorOrderDetail::count());
@@ -352,6 +462,21 @@ class VendorFulfilmentRegressionTest extends TestCase
             'type' => 'delivery',
         ]);
 
+        $admin = TestData::user($organization, ['role' => User::ROLE_SUPER_ADMIN]);
+        $this->actingAs($admin)->get(route('rentals.show', $vendorRental))
+            ->assertOk()->assertSee('Who received the customer')->assertSee($vendor->name);
+        $this->post(route('rentals.recordPayment', $vendorRental), [
+            'payment_date' => today()->toDateString(), 'amount' => 100, 'payment_method' => 'cash',
+            'collection_recipient' => 'vendor',
+            'payment_submission_token' => (string) \Illuminate\Support\Str::uuid(),
+        ])->assertSessionHasNoErrors()->assertRedirect(route('rentals.show', $vendorRental));
+        $this->assertDatabaseHas('payments', [
+            'rental_id' => $vendorRental->id, 'amount' => 100,
+            'collection_recipient' => 'vendor', 'collection_vendor_key' => 'vendor:'.$vendor->id,
+        ]);
+        $this->get(route('reports.vendor-collections'))->assertOk()
+            ->assertSee($vendor->name)->assertSee('₹100.00');
+
         $internalProduct = $this->makeRentalProduct($organization->id, [
             'name' => 'PH Queue Product',
             'available_quantity' => 2,
@@ -408,7 +533,7 @@ class VendorFulfilmentRegressionTest extends TestCase
     public function test_vendor_report_detects_negative_margin_and_vendor_payment_reconciliation(): void
     {
         $organization = TestData::organization();
-        $finance = $this->userWithRole($organization, 'Vendor Finance', [
+        $finance = $this->userWithRole($organization, 'Admin Operations', [
             'vendors' => ['read'],
             '__special' => ['vendor_reports.view', 'vendor_reports.export', 'vendor_costs.view', 'vendor_costs.update'],
         ]);
@@ -501,9 +626,14 @@ class VendorFulfilmentRegressionTest extends TestCase
         $response = $this->actingAs($user)->get(route('rentals.create'));
 
         $response->assertOk();
-        $response->assertSee('Step 1 - Fulfilment Source', false);
-        $response->assertSee('Step 2 - City', false);
-        $response->assertSee('Step 6 - Delivery Assignment', false);
+        $response->assertSeeInOrder([
+            '<label for="city_id">Service city</label>',
+            '<select name="city_id" id="city_id">',
+            '<label for="fulfilment_source">Fulfilment source</label>',
+            '<select name="fulfilment_source" id="fulfilment_source">',
+            '<label for="delivery_assignment_type">Delivery method</label>',
+            '<select name="delivery_assignment_type" id="delivery_assignment_type">',
+        ], false);
         $response->assertDontSee('Pickup Responsibility', false);
     }
 

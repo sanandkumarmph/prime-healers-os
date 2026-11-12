@@ -174,15 +174,9 @@ class TabbedExecutiveDashboardRegressionTest extends TestCase
             'invoices' => ['read', 'update'],
             'payments' => ['read', 'create', 'update'],
         ]);
-        $response = $this->actingAs($finance)->get(route('dashboard', ['dashboard_tab' => 'team']))->assertOk();
-        $xpath = $this->xpath($response);
-
-        $this->assertContains('revenue', $this->tabNames($xpath));
-        $this->assertNotContains('team', $this->tabNames($xpath));
-        $this->assertSame(0, $xpath->query('//*[@data-dashboard-panel="team"]')->length);
-        $response->assertDontSee('id="team-performance"', false);
-        $this->assertActivePanel($xpath, 'overview');
-        $this->exportFixture('dashboard-finance', $response, ['role' => 'finance', 'active_tab' => 'overview', 'unavailable_tabs' => ['team']]);
+        $this->actingAs($finance)->getJson(route('dashboard', ['dashboard_tab' => 'team']))->assertForbidden();
+        $this->get(route('reports.index', ['tab' => 'staff']))->assertOk()->assertSee('Finance reports')
+            ->assertDontSee('id="team-performance"', false)->assertDontSee('Staff Performance');
     }
 
     public function test_warehouse_user_has_inventory_but_no_finance_or_team_tab_data(): void
@@ -215,6 +209,7 @@ class TabbedExecutiveDashboardRegressionTest extends TestCase
         $this->assertSame([], $this->tabNames($xpath));
         $this->assertSame(0, $xpath->query('//*[@data-dashboard-panel]')->length);
         $response->assertSeeText('My Assigned Tasks')->assertSeeText('My Deliveries Today')
+            ->assertSeeTextInOrder(["Today's Task Flow", 'Delivery workspace', 'Assigned deliveries', 'Add an asset'])
             ->assertDontSeeText('Team Performance')->assertDontSeeText('Revenue Center');
         $this->exportFixture('dashboard-delivery', $response, ['role' => 'delivery', 'active_tab' => null, 'unavailable_tabs' => self::EXECUTIVE_TABS]);
     }
@@ -353,12 +348,15 @@ class TabbedExecutiveDashboardRegressionTest extends TestCase
         }
 
         $delivery = $this->roleUser($organization, User::ROLE_DELIVERY, [
-            'deliveries' => ['read', 'update'], 'rentals' => ['read'],
+            'deliveries' => ['read', 'update'], 'rentals' => ['read'], 'products' => ['read'], 'assets' => ['read'],
         ]);
         $response = $this->actingAs($delivery)->get(route('profile.edit'))->assertOk();
+        foreach (['products.index', 'product-categories.index', 'product-brands.index', 'assets.index'] as $route) {
+            $response->assertDontSee('href="'.route($route).'"', false);
+        }
         $xpath = $this->xpath($response);
         $this->assertSame(['Dashboard', 'Collections & cash'], $this->sidebarLabels($xpath, 'main'));
-        $this->assertSame(['Pickup Center', 'Tasks Board'], $this->sidebarLabels($xpath, 'operations'));
+        $this->assertSame(['Pickup Center', 'Communication Center', 'Add an asset', 'Tasks Board', 'Route planner'], $this->sidebarLabels($xpath, 'operations'));
         $this->assertSame(['Knowledge Hub'], $this->sidebarLabels($xpath, 'help'));
     }
 

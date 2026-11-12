@@ -40,7 +40,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return auth()->check()
-        ? redirect()->route('dashboard')
+        ? redirect()->to(auth()->user()->defaultRedirectPath())
         : redirect()->route('login');
 });
 
@@ -57,8 +57,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/knowledge/categories/{category}', [KnowledgeController::class, 'category'])->name('knowledge.categories.show');
 
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
-    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    Route::patch('/profile', [ProfileController::class, 'update'])->middleware('throttle:account-security')->name('profile.update');
+    Route::delete('/profile', [ProfileController::class, 'destroy'])->middleware('throttle:account-security')->name('profile.destroy');
 
     Route::post('/products/{product}/convert-to-rental', [ProductController::class, 'convertToRental'])
         ->middleware('module:products,update')
@@ -68,13 +68,16 @@ Route::middleware('auth')->group(function () {
         ->name('products.convert-to-sellable');
     Route::get('/products/export/csv', [ProductController::class, 'exportCsv'])
         ->middleware('module:products,read')
+        ->middleware('can:manage-bulk-records')
         ->name('products.export.csv');
     Route::get('/assets/export/csv', [AssetController::class, 'exportCsv'])
         ->middleware('module:assets,read')
+        ->middleware('can:manage-bulk-records')
         ->name('assets.export.csv');
 
     Route::get('/customers/export/csv', [CustomerController::class, 'exportCsv'])
         ->middleware('permission:customers.export')
+        ->middleware('can:manage-bulk-records')
         ->name('customers.export.csv');
     Route::get('/search', [GlobalSearchController::class, 'index'])
         ->name('search.global');
@@ -85,9 +88,11 @@ Route::middleware('auth')->group(function () {
         ->name('customers.id-proof.download');
     Route::post('/customers/bulk/export-csv', [CustomerController::class, 'bulkExportCsv'])
         ->middleware('permission:customers.export')
+        ->middleware('can:manage-bulk-records')
         ->name('customers.bulk.export.csv');
     Route::delete('/customers/bulk/delete', [CustomerController::class, 'bulkDelete'])
         ->middleware('module:customers,delete')
+        ->middleware('can:manage-bulk-records')
         ->name('customers.bulk.delete');
     Route::post('/customers/quick-store', [CustomerController::class, 'quickStore'])
         ->middleware('module:customers,create')
@@ -119,6 +124,7 @@ Route::middleware('auth')->group(function () {
         ->name('rentals.business-partners.actual-clients');
     Route::get('/rentals/export/csv', [RentalController::class, 'exportCsv'])
         ->middleware('module:rentals,read')
+        ->middleware('can:manage-bulk-records')
         ->name('rentals.export.csv');
     Route::get('/renewal-center', [RenewalCenterController::class, 'index'])
         ->middleware('module:rentals,read')
@@ -186,9 +192,11 @@ Route::middleware('auth')->group(function () {
         ->name('rentals.reminders.open');
     Route::get('/dashboard/export/csv', [RentalController::class, 'exportDashboardCsv'])
         ->middleware('permission:dashboard.main')
+        ->middleware('can:manage-bulk-records')
         ->name('dashboard.export.csv');
     Route::get('/organization/vendors/export/csv', [VendorController::class, 'exportCsv'])
         ->middleware('permission:vendors.export')
+        ->middleware('can:manage-bulk-records')
         ->name('vendors.export.csv');
     Route::get('/organization/referral-sources', [ReferralSourceController::class, 'index'])
         ->name('referral-sources.index');
@@ -214,6 +222,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/payments/export/csv', [PaymentController::class, 'exportCsv'])
         ->middleware('permission:payments.export')
+        ->middleware('can:manage-bulk-records')
         ->name('payments.export.csv');
     Route::get('/rentals/{rental}/payments/create', [PaymentController::class, 'create'])
         ->middleware('module:payments,create')
@@ -236,9 +245,31 @@ Route::middleware('auth')->group(function () {
         ->middleware('module:payments,delete')
         ->name('payments.destroy');
 
+    Route::get('/rentals/{rental}/cylinder-refills', [\App\Http\Controllers\CylinderRefillController::class, 'renderForRental'])->name('cylinder-refills.popup');
+    Route::post('/rentals/{rental}/cylinder-refills', [\App\Http\Controllers\CylinderRefillController::class, 'store'])->name('cylinder-refills.store');
+    Route::post('/cylinder-refills/{refill}/progress', [\App\Http\Controllers\CylinderRefillController::class, 'change'])->name('cylinder-refills.change');
+    Route::post('/cylinder-refills/{refill}/invoice', [InvoiceController::class, 'simpleCylinderRefill'])->name('cylinder-refills.invoice');
+    Route::get('/deliveries/cylinder-refills', [\App\Http\Controllers\CylinderRefillController::class, 'tasks'])->name('cylinder-refills.tasks');
+    Route::get('/cylinder-services', [\App\Http\Controllers\CylinderServiceController::class, 'index'])->name('cylinder-services.index');
+    Route::get('/cylinder-services/stock', [\App\Http\Controllers\CylinderServiceController::class, 'stock'])->name('cylinder-services.stock');
+    Route::post('/cylinder-services/stock', [\App\Http\Controllers\CylinderServiceController::class, 'register'])->name('cylinder-services.register');
+    Route::post('/cylinder-services/stock/{cylinder}', [\App\Http\Controllers\CylinderServiceController::class, 'stockAction'])->name('cylinder-services.stock-action');
+    Route::get('/rentals/{rental}/cylinder-services/create', [\App\Http\Controllers\CylinderServiceController::class, 'create'])->name('cylinder-services.create');
+    Route::post('/rentals/{rental}/cylinder-services', [\App\Http\Controllers\CylinderServiceController::class, 'store'])->name('cylinder-services.store');
+    Route::get('/cylinder-services/{job}', [\App\Http\Controllers\CylinderServiceController::class, 'show'])->name('cylinder-services.show');
+    Route::post('/cylinder-services/{job}/action', [\App\Http\Controllers\CylinderServiceController::class, 'action'])->name('cylinder-services.action');
+    Route::get('/cylinder-services/{job}/signatures/{event}', [\App\Http\Controllers\CylinderServiceController::class, 'signature'])->name('cylinder-services.signature');
+    Route::post('/cylinder-services/{job}/invoice', [InvoiceController::class, 'cylinderService'])->name('cylinder-services.invoice');
+
     Route::get('/deliveries/assigned', [DeliveryController::class, 'assigned'])
         ->middleware('module:deliveries,read')
         ->name('deliveries.assigned');
+    Route::get('/deliveries/assets/new', [AssetController::class, 'deliveryCreate'])
+        ->middleware('module:deliveries,update')->name('deliveries.assets.create');
+    Route::post('/deliveries/assets', [AssetController::class, 'deliveryStore'])
+        ->middleware('module:deliveries,update')->name('deliveries.assets.store');
+    Route::get('/deliveries/route-plan', [DeliveryController::class, 'routePlan'])
+        ->middleware('module:deliveries,read')->name('deliveries.route-plan');
     Route::get('/pickups', function () {
         $query = request()->query();
         $query['tab'] = $query['tab'] ?? 'pickups';
@@ -272,18 +303,27 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/staff/export/csv', [StaffController::class, 'exportCsv'])
         ->middleware('module:users,read')
+        ->middleware('can:manage-bulk-records')
         ->name('staff.export.csv');
     Route::get('/reports', [ReportController::class, 'index'])
         ->middleware('module:reports,read')
         ->name('reports.index');
     Route::get('/reports/export/csv', [ReportController::class, 'exportCsv'])
         ->middleware('module:reports,read')
+        ->middleware('can:manage-bulk-records')
         ->name('reports.export.csv');
     Route::get('/reports/vendor-orders', [VendorOrderReportController::class, 'index'])
         ->middleware('permission:vendor_reports.view')
         ->name('vendor-orders.index');
+    Route::get('/reports/vendor-collections', [\App\Http\Controllers\VendorCollectionReportController::class, 'index'])
+        ->name('reports.vendor-collections');
+    Route::get('/reports/staff-incentives', [\App\Http\Controllers\StaffIncentiveReportController::class, 'index'])
+        ->name('reports.staff-incentives');
+    Route::post('/reports/staff-incentives/attribution', [\App\Http\Controllers\StaffIncentiveReportController::class, 'assign'])
+        ->name('reports.staff-incentives.assign');
     Route::get('/reports/vendor-orders/export/csv', [VendorOrderReportController::class, 'exportCsv'])
         ->middleware('permission:vendor_reports.export')
+        ->middleware('can:manage-bulk-records')
         ->name('vendor-orders.export.csv');
     Route::patch('/reports/vendor-orders/{vendorOrderDetail}/costs', [VendorOrderReportController::class, 'updateCosts'])
         ->middleware('permission:vendor_costs.update')
@@ -363,18 +403,22 @@ Route::middleware('auth')->group(function () {
         ->name('stock-history.index');
     Route::get('/inventory/stock-history/export/csv', [StockHistoryController::class, 'exportCsv'])
         ->middleware('permission:stock_history.export')
+        ->middleware('can:manage-bulk-records')
         ->name('stock-history.export.csv');
     Route::get('/inventory/intelligence', [InventoryIntelligenceController::class, 'index'])
         ->middleware('permission:stock_history.view')
         ->name('inventory-intelligence.index');
     Route::get('/inventory/intelligence/export/matrix-csv', [InventoryIntelligenceController::class, 'exportMatrixCsv'])
         ->middleware('permission:stock_history.export')
+        ->middleware('can:manage-bulk-records')
         ->name('inventory-intelligence.export-matrix');
     Route::get('/inventory/intelligence/export/movements-csv', [InventoryIntelligenceController::class, 'exportMovementBreakdownCsv'])
         ->middleware('permission:stock_history.export')
+        ->middleware('can:manage-bulk-records')
         ->name('inventory-intelligence.export-movements');
     Route::get('/inventory/intelligence/export/reconciliation-csv', [InventoryIntelligenceController::class, 'exportReconciliationCsv'])
         ->middleware('permission:stock_history.export')
+        ->middleware('can:manage-bulk-records')
         ->name('inventory-intelligence.export-reconciliation');
     Route::post('/inventory/intelligence/reconcile-assets', [InventoryIntelligenceController::class, 'bulkResolve'])
         ->middleware('permission:stock_history.view')
@@ -403,12 +447,15 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/invoices/export/csv', [InvoiceController::class, 'exportCsv'])
         ->middleware('permission:invoices.export')
+        ->middleware('can:manage-bulk-records')
         ->name('invoices.export.csv');
     Route::post('/invoices/bulk/export-csv', [InvoiceController::class, 'bulkExportCsv'])
         ->middleware('permission:invoices.export')
+        ->middleware('can:manage-bulk-records')
         ->name('invoices.bulk.export.csv');
     Route::match(['get', 'post'], '/invoices/bulk/print', [InvoiceController::class, 'bulkPrint'])
         ->middleware('permission:invoices.print')
+        ->middleware('can:manage-bulk-records')
         ->name('invoices.bulk.print');
     Route::post('/invoices/bulk/action', [InvoiceController::class, 'bulkAction'])
         ->middleware('module:invoices,update')
@@ -416,6 +463,7 @@ Route::middleware('auth')->group(function () {
         ->name('invoices.bulk.action');
     Route::post('/invoices/bulk/delete', [InvoiceController::class, 'bulkDelete'])
         ->middleware('module:invoices,delete')
+        ->middleware('can:manage-bulk-records')
         ->name('invoices.bulk.delete');
     Route::get('/invoices/{id}/print', [InvoiceController::class, 'print'])
         ->middleware('permission:invoices.print')
@@ -430,6 +478,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/ledger', [LedgerController::class, 'index'])
         ->name('ledger.index');
     Route::get('/ledger/export/csv', [LedgerController::class, 'exportCsv'])
+        ->middleware('can:manage-bulk-records')
         ->name('ledger.export.csv');
     Route::get('/ledger/export/pdf/preview', [LedgerController::class, 'previewPdf'])
         ->name('ledger.preview.pdf');
@@ -607,3 +656,4 @@ require __DIR__ . '/auth.php';
 
 require __DIR__.'/sales-workspace.php';
 require __DIR__.'/common-features.php';
+require __DIR__.'/customer-payments.php';

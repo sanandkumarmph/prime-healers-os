@@ -73,13 +73,13 @@ class RentalShowPremiumUiRegressionTest extends TestCase
             ->assertSee('Rental Command Center')
             ->assertSee('Customer Details')
             ->assertSee('id="renewal-workspace"', false)
-            ->assertSee('Operations Workspace')
-            ->assertSee('Product Workspace')
+            ->assertSeeText('Delivery & pickup')
+            ->assertSee('Rental items')
             ->assertSee('href="#rental-notes-section"', false)
             ->assertSeeText('Timeline & Communication', false)
             ->assertSee('Recent events and notes')
             ->assertSee('Direct Customer')
-            ->assertSee('Finance Workspace')
+            ->assertSee('Billing details')
             ->assertSee('1,500.00');
     }
 
@@ -148,7 +148,7 @@ class RentalShowPremiumUiRegressionTest extends TestCase
             ->assertSee('Customer Details')
             ->assertSeeText($partner->displayName())
             ->assertSeeText($client->displayName())
-            ->assertSee('Finance Workspace')
+            ->assertSee('Billing details')
             ->assertSee('2,500.00')
             ->assertSee('800.00')
             ->assertDontSee('Finance amounts are hidden for your role.');
@@ -183,8 +183,9 @@ class RentalShowPremiumUiRegressionTest extends TestCase
 
         $this->assertTrue($superAdmin->canViewFinance());
         $this->assertTrue($finance->canViewFinance());
+        $this->assertFalse($finance->canViewFinanceDashboard());
         $this->assertFalse($sales->canViewFinance());
-        $this->assertFalse($operations->canViewFinance());
+        $this->assertTrue($operations->canViewFinance());
 
         $this->assertTrue($superAdmin->canViewRecordFinance());
         $this->assertTrue($finance->canViewRecordFinance());

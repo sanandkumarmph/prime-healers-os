@@ -1598,7 +1598,9 @@
                             @endforeach
                         </select>
                     </form>
-                    <a href="{{ route('assets.export.csv', request()->query()) }}" class="ph-btn-secondary">Export CSV</a>
+                    @can('manage-bulk-records')
+                        <a href="{{ route('assets.export.csv', request()->query()) }}" class="ph-btn-secondary">Export CSV</a>
+                    @endcan
                     <span class="asset-badge is-neutral" style="padding:8px 12px;">
                         Physical units only
                     </span>
@@ -1610,7 +1612,9 @@
                     <a href="{{ route('assets.pending-verification') }}" class="ph-btn-secondary">Bulk Verify</a>
                     <a href="{{ route('assets.index', ['asset_status' => 'available']) }}" class="ph-btn-secondary">Bulk Transfer</a>
                     <button type="button" class="ph-btn-secondary">Print Labels</button>
-                    <a href="{{ route('assets.export.csv', request()->query()) }}" class="ph-btn-secondary">Export</a>
+                    @can('manage-bulk-records')
+                        <a href="{{ route('assets.export.csv', request()->query()) }}" class="ph-btn-secondary">Export</a>
+                    @endcan
                     @if($canDeleteAssets)
                         <button type="button" class="ph-btn-secondary">Archive</button>
                     @endif
@@ -2017,7 +2021,9 @@
                         <a href="{{ route('assets.pending-verification') }}" class="asset-operation-btn">Bulk Verify</a>
                         <a href="{{ route('assets.index', ['asset_status' => 'available']) }}" class="asset-operation-btn">Bulk Transfer</a>
                         <a href="{{ route('assets.index') }}" class="asset-operation-btn">Print Labels</a>
-                        <a href="{{ route('assets.export.csv', request()->query()) }}" class="asset-operation-btn">Export CSV</a>
+                        @can('manage-bulk-records')
+                            <a href="{{ route('assets.export.csv', request()->query()) }}" class="asset-operation-btn">Export CSV</a>
+                        @endcan
                     </div>
                 </section>
             </aside>

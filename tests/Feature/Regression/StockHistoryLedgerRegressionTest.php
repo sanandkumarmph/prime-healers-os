@@ -47,7 +47,7 @@ class StockHistoryLedgerRegressionTest extends TestCase
             ->assertSee($product->name);
     }
 
-    public function test_user_with_general_stock_history_permission_can_view_export_and_see_sidebar_link(): void
+    public function test_stock_history_reader_can_view_history_but_only_super_admin_can_export(): void
     {
         $organization = TestData::organization();
         $user = $this->userWithRole($organization, 'Inventory Ledger Viewer', [
@@ -77,9 +77,13 @@ class StockHistoryLedgerRegressionTest extends TestCase
             ->get(route('stock-history.index'))
             ->assertOk()
             ->assertSee($product->name)
-            ->assertSee(route('stock-history.export.csv'), false);
+            ->assertDontSee(route('stock-history.export.csv'), false);
 
         $this->actingAs($user)
+            ->get(route('stock-history.export.csv'))
+            ->assertForbidden();
+
+        $this->actingAs(TestData::user($organization))
             ->get(route('stock-history.export.csv'))
             ->assertOk()
             ->assertHeader('content-type', 'text/csv; charset=UTF-8');

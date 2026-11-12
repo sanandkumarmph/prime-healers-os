@@ -98,14 +98,14 @@ class AuthorizationPolicyRegressionTest extends TestCase
 
         $this->assertTrue(Gate::forUser($financeUser)->allows('viewAny', Invoice::class));
         $this->assertTrue(Gate::forUser($financeUser)->allows('view', $invoice));
-        $this->assertTrue(Gate::forUser($financeUser)->allows('export', Invoice::class));
-        $this->assertTrue(Gate::forUser($financeUser)->allows('printAny', Invoice::class));
-        $this->assertTrue(Gate::forUser($financeUser)->allows('print', $invoice));
+        $this->assertFalse(Gate::forUser($financeUser)->allows('export', Invoice::class));
+        $this->assertFalse(Gate::forUser($financeUser)->allows('printAny', Invoice::class));
+        $this->assertFalse(Gate::forUser($financeUser)->allows('print', $invoice));
         $this->assertTrue(Gate::forUser($financeUser)->allows('viewAny', Payment::class));
-        $this->assertTrue(Gate::forUser($financeUser)->allows('create', Payment::class));
-        $this->assertTrue(Gate::forUser($financeUser)->allows('createForRental', [Payment::class, $rental]));
-        $this->assertTrue(Gate::forUser($financeUser)->allows('delete', $payment));
-        $this->assertTrue(Gate::forUser($financeUser)->allows('export', Payment::class));
+        $this->assertFalse(Gate::forUser($financeUser)->allows('create', Payment::class));
+        $this->assertFalse(Gate::forUser($financeUser)->allows('createForRental', [Payment::class, $rental]));
+        $this->assertFalse(Gate::forUser($financeUser)->allows('delete', $payment));
+        $this->assertFalse(Gate::forUser($financeUser)->allows('export', Payment::class));
 
         $this->assertFalse(Gate::forUser($deliveryUser)->allows('export', Invoice::class));
         $this->assertFalse(Gate::forUser($deliveryUser)->allows('printAny', Invoice::class));
@@ -142,7 +142,7 @@ class AuthorizationPolicyRegressionTest extends TestCase
         $this->assertFalse(Gate::forUser($otherUser)->allows('print', $invoice));
     }
 
-    public function test_delivery_policy_allows_same_org_view_but_keeps_updates_assignment_bound(): void
+    public function test_delivery_policy_limits_same_org_views_and_updates_to_the_assignee(): void
     {
         $organization = TestData::organization();
         $assignedUser = TestData::user($organization, [
@@ -168,12 +168,12 @@ class AuthorizationPolicyRegressionTest extends TestCase
         $this->assertTrue(Gate::forUser($assignedUser)->allows('viewAny', Delivery::class));
         $this->assertTrue(Gate::forUser($assignedUser)->allows('view', $ownDelivery));
         $this->assertTrue(Gate::forUser($assignedUser)->allows('update', $ownDelivery));
-        $this->assertTrue(Gate::forUser($assignedUser)->allows('view', $otherDelivery));
+        $this->assertFalse(Gate::forUser($assignedUser)->allows('view', $otherDelivery));
         $this->assertFalse(Gate::forUser($assignedUser)->allows('update', $otherDelivery));
         $this->assertFalse(Gate::forUser($assignedUser)->allows('view', $otherOrgDelivery));
     }
 
-    public function test_delivery_policy_allows_delivery_team_to_operate_unowned_third_party_task(): void
+    public function test_unassigned_third_party_task_requires_an_admin_for_internal_operations(): void
     {
         $organization = TestData::organization();
         $deliveryUser = TestData::user($organization, [
@@ -193,9 +193,11 @@ class AuthorizationPolicyRegressionTest extends TestCase
             'assigned_staff_id' => 42,
         ]);
 
-        $this->assertTrue(Gate::forUser($deliveryUser)->allows('view', $thirdPartyDelivery));
-        $this->assertTrue(Gate::forUser($deliveryUser)->allows('update', $thirdPartyDelivery));
+        $this->assertFalse(Gate::forUser($deliveryUser)->allows('view', $thirdPartyDelivery));
+        $this->assertFalse(Gate::forUser($deliveryUser)->allows('update', $thirdPartyDelivery));
         $this->assertFalse(Gate::forUser($deliveryUser)->allows('update', $vendorOwnedDelivery));
+        $admin = TestData::user($organization, ['role' => User::ROLE_ADMIN_OPERATIONS]);
+        $this->assertTrue(Gate::forUser($admin)->allows('update', $thirdPartyDelivery));
     }
 
     public function test_organization_settings_policy_allows_settings_role_and_denies_unrelated_roles(): void
@@ -234,8 +236,8 @@ class AuthorizationPolicyRegressionTest extends TestCase
             'role' => 'admin',
         ]);
 
-        $this->assertTrue(Gate::forUser($reportUser)->allows('viewAny', ReportController::class));
-        $this->assertTrue(Gate::forUser($reportUser)->allows('export', ReportController::class));
+        $this->assertFalse(Gate::forUser($reportUser)->allows('viewAny', ReportController::class));
+        $this->assertFalse(Gate::forUser($reportUser)->allows('export', ReportController::class));
         $this->assertFalse(Gate::forUser($deliveryUser)->allows('viewAny', ReportController::class));
         $this->assertFalse(Gate::forUser($deliveryUser)->allows('export', ReportController::class));
 

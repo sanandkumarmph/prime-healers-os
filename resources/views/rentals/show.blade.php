@@ -2,6 +2,10 @@
 
 @section('content')
 @php
+    $viewer = auth()->user();
+    $canEditRentalRecord = $viewer?->can('update', $rental) ?? false;
+    $canViewRentalInvoice = $rentalInvoice && ($viewer?->can('view', $rentalInvoice) ?? false);
+    $canDownloadRentalInvoice = $rentalInvoice && ($viewer?->can('print', $rentalInvoice) ?? false);
     $deliveryRecord = $rental->deliveryRecord;
     $pickupRecord = $rental->pickupRecord;
     $activeAssets = $rental->activeRentalAssets ?? collect();
@@ -13,6 +17,7 @@
     $canUpdateDeliveries = auth()->user()?->canAccessModule('deliveries', 'update') ?? false;
     $canDeleteDeliveries = auth()->user()?->canAccessModule('deliveries', 'delete') ?? false;
     $canCreatePayments = auth()->user()?->canAccessModule('payments', 'create') ?? false;
+    $paymentVendor = $canCreatePayments ? app(\App\Services\Deliveries\VendorCollectionAttribution::class)->forOrder($rental) : null;
     $renewalValidationFailed = $errors->any() && old('_rental_form') === 'renewal';
     $operationalStatus = $rental->operationalStatus();
     $isHotlisted = $rental->shouldHotlist();
@@ -269,11 +274,13 @@
         'href' => '#rental-activity-timeline',
     ]);
 
-    $rentalMoreActions->push([
-        'type' => 'link',
-        'label' => 'Add Note',
-        'href' => '#rental-activity-timeline',
-    ]);
+    if ($canEditRentalRecord) {
+        $rentalMoreActions->push([
+            'type' => 'link',
+            'label' => 'Add Note',
+            'href' => '#rental-notes-section',
+        ]);
+    }
     $rentalMoreActions->push([
         'type' => 'button',
         'label' => 'Add Follow-up',
@@ -446,17 +453,19 @@
 
 
     if ($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true)) {
-        $pushMoreAction([
-            'type' => 'form',
-            'label' => 'Mark as Paid',
-            'action' => route('rentals.markPaid', $rental),
-            'payment_submission' => true,
-            'method' => 'POST',
-        ]);
+        if (!$paymentVendor) {
+            $pushMoreAction([
+                'type' => 'form',
+                'label' => 'Mark as Paid',
+                'action' => route('rentals.markPaid', $rental),
+                'payment_submission' => true,
+                'method' => 'POST',
+            ]);
+        }
         $pushMoreAction([
             'type' => 'link',
-            'label' => 'Partial Payment',
-            'href' => '#rental-billing-actions',
+            'label' => $paymentVendor ? 'Record Payment' : 'Partial Payment',
+            'href' => '#record-payment-panel',
         ]);
     }
 
@@ -560,7 +569,6 @@
         ]);
     }
 
-    $viewer = auth()->user();
     $canViewFinanceAmounts = $viewer?->canViewRecordFinance() ?? false;
     $canSeeRentalFinance = $canViewFinanceAmounts;
     if (!$canViewFinanceAmounts) {
@@ -621,19 +629,21 @@
     $paymentStatusLabel = $rentalInvoiceStatus ? ucfirst(str_replace('_', ' ', $rentalInvoiceStatus)) : 'Pending';
     $latestPayment = ($rental->payments ?? collect())->sortByDesc('payment_date')->sortByDesc('id')->first();
     $lifecycleSteps = collect([
-        ['label' => 'Created', 'meta' => optional($rental->created_at)->format('d M Y') ?: 'Logged', 'tone' => 'done'],
-        ['label' => 'Delivered', 'meta' => $deliveryRecord?->completed_at ? $deliveryRecord->completed_at->format('d M Y') : $deliveryStatusLabel($rental->deliveryStatus()), 'tone' => $rental->deliveryStatus() === 'completed' ? 'done' : ($hasOpenDeliveryTask ? 'active' : 'pending')],
+        ['label' => 'Created', 'meta' => \App\Support\ActionTimestamp::label($rental->created_at) ?: 'Logged', 'tone' => 'done'],
+        ['label' => 'Delivered', 'meta' => $deliveryRecord?->completed_at ? \App\Support\ActionTimestamp::label($deliveryRecord->completed_at) : $deliveryStatusLabel($rental->deliveryStatus()), 'tone' => $rental->deliveryStatus() === 'completed' ? 'done' : ($hasOpenDeliveryTask ? 'active' : 'pending')],
         ['label' => 'Active', 'meta' => ucfirst(str_replace('_', ' ', $operationalStatus)), 'tone' => in_array($operationalStatus, ['active', 'delivery_pending'], true) ? 'active' : ($operationalStatus === 'returned' ? 'done' : ($isHotlisted ? 'problem' : 'pending'))],
         ['label' => 'Return Due', 'meta' => optional($rental->end_date)->format('d M Y') ?: 'Not set', 'tone' => $daysUntilEnd !== null && $daysUntilEnd < 0 ? 'problem' : ($daysUntilEnd !== null && $daysUntilEnd <= 2 ? 'warn' : 'pending')],
-        ['label' => 'Completed', 'meta' => $rental->returned_at ? $rental->returned_at->format('d M Y') : 'Pending', 'tone' => $operationalStatus === 'returned' ? 'done' : 'pending'],
+        ['label' => 'Completed', 'meta' => $rental->returned_at ? \App\Support\ActionTimestamp::label($rental->returned_at) : 'Pending', 'tone' => $operationalStatus === 'returned' ? 'done' : 'pending'],
     ]);
     $workflowSteps = collect([
         [
             'label' => 'Rental',
             'status' => ucfirst(str_replace('_', ' ', $operationalStatus)),
-            'person' => $rental->createdBy->name ?? 'System',
+            'person' => $orderOwnership['owner'] ?? ($rental->createdBy->name ?? 'System'),
+            'personLabel' => isset($orderOwnership['owner']) ? 'Owner' : 'Created by',
+            'creator' => isset($orderOwnership['owner']) ? ($orderOwnership['creator'] ?? 'Unavailable') : null,
             'scheduled' => optional($rental->start_date)->format('d M Y') ?: 'Not set',
-            'completed' => optional($rental->created_at)->format('d M Y h:i A') ?: null,
+            'completed' => \App\Support\ActionTimestamp::label($rental->created_at) ?: null,
             'tone' => $isHotlisted ? 'problem' : 'done',
             'action' => $canUpdateRentals ? ['label' => 'Edit', 'href' => route('rentals.edit', $rental)] : null,
         ],
@@ -642,7 +652,7 @@
             'status' => $deliveryStatusLabel($rental->deliveryStatus()),
             'person' => $deliveryAssigneeLabel,
             'scheduled' => $deliveryRecord?->scheduled_at ? $deliveryRecord->scheduled_at->format('d M Y h:i A') : 'Not scheduled',
-            'completed' => $deliveryRecord?->completed_at ? $deliveryRecord->completed_at->format('d M Y h:i A') : null,
+            'completed' => $deliveryRecord?->completed_at ? $deliveryRecord->completed_at?->copy()->timezone('Asia/Kolkata')->format('d M Y, h:i:s A \I\S\T') : null,
             'tone' => $rental->deliveryStatus() === 'completed' ? 'done' : ($hasOpenDeliveryTask ? 'active' : 'pending'),
             'action' => $deliveryRecord ? ['label' => 'Open', 'href' => route('deliveries.show', $deliveryRecord)] : (($canCreateDeliveries && $hasPendingDeliveryItems) ? ['label' => 'Assign', 'href' => route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'delivery'])] : null),
         ],
@@ -660,7 +670,7 @@
             'status' => ucfirst(str_replace('_', ' ', $rental->pickupStatus() ?: 'pending')),
             'person' => $pickupAssigneeLabel,
             'scheduled' => $pickupRecord?->scheduled_at ? $pickupRecord->scheduled_at->format('d M Y h:i A') : 'Not scheduled',
-            'completed' => $pickupRecord?->completed_at ? $pickupRecord->completed_at->format('d M Y h:i A') : null,
+            'completed' => $pickupRecord?->completed_at ? $pickupRecord->completed_at?->copy()->timezone('Asia/Kolkata')->format('d M Y, h:i:s A \I\S\T') : null,
             'tone' => in_array($rental->pickupStatus(), ['completed', 'picked_up', 'returned'], true) ? 'done' : ($hasOpenPickupTask ? 'active' : ($isHotlisted ? 'problem' : 'pending')),
             'action' => $pickupRecord ? ['label' => 'Open', 'href' => route('deliveries.show', $pickupRecord)] : ($canAssignPickup ? ['label' => 'Schedule', 'button' => true, 'attributes' => ['data-open-pickup-modal' => true]] : null),
         ],
@@ -668,7 +678,7 @@
             'label' => 'Return Verification',
             'status' => $returnVerificationStatusLabel,
             'person' => $pickupAssigneeLabel,
-            'scheduled' => $rental->returned_at ? $rental->returned_at->format('d M Y h:i A') : 'After pickup',
+            'scheduled' => $rental->returned_at ? $rental->returned_at?->copy()->timezone('Asia/Kolkata')->format('d M Y, h:i:s A \I\S\T') : 'After pickup',
             'completed' => $returnVerificationCompletedAt,
             'tone' => $returnVerificationTone,
             'action' => $returnVerificationAction,
@@ -722,8 +732,8 @@
     if ($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true)) {
         $mobileHeroActions->push([
             'type' => 'link',
-            'label' => 'Payment',
-            'href' => '#mobile-rental-finance',
+            'label' => 'Record payment',
+            'href' => '#record-payment-panel',
             'icon' => 'payment',
         ]);
     }
@@ -801,6 +811,63 @@
         ['label' => 'Paid Amount', 'value' => $canSeeRentalFinance ? $currency($invoicePaidAmount) : 'Hidden', 'tone' => 'green', 'icon' => 'wallet'],
         ['label' => 'Outstanding', 'value' => $canSeeRentalFinance ? $currency($invoiceBalanceAmount) : 'Hidden', 'tone' => $invoiceBalanceAmount > 0 ? 'red' : 'green', 'icon' => 'payment'],
     ]);
+
+    $rentalAgreementService = app(\App\Services\Sales\RentalAgreements::class);
+    $rentalPageAgreement = $rentalAgreementService->current($rental);
+    $rentalAgreementPending = $rentalPageAgreement && $rental->status === 'active'
+        && !$rentalAgreementService->readyFor($rental, $rentalPageAgreement);
+    $rentalOpen = !in_array($operationalStatus, ['returned', 'cancelled'], true);
+    $rentalReadyToRenew = $rental->canRenew() && $canEditRentalRecord && $daysUntilEnd !== null && $daysUntilEnd <= 2;
+    $rentalPaymentFeedback = in_array(session('success'), ['Rental payment recorded successfully.', 'Rental marked as paid.', 'Rental invoice is already settled.'], true)
+        ? session('success') : null;
+    $rentalNoteFeedback = session('success') === 'Rental note added.' ? session('success') : null;
+    $rentalReturnAnchor = match (true) {
+        $rentalNoteFeedback !== null, $errors->any() && old('note_type') => 'rental-notes-section',
+        $rentalPaymentFeedback !== null => 'rental-billing-actions',
+        $errors->any() && old('payment_date') && !$renewalValidationFailed => 'record-payment-panel',
+        default => null,
+    };
+
+    $rentalNextAction = match (true) {
+        $rentalOpen && !empty($needsAssetAssignment) && $canEditRentalRecord => [
+            'label' => 'Assign assets', 'hint' => 'Some tracked units still need an asset.', 'href' => route('rentals.edit', $rental).'#rental-assets-section',
+        ],
+        $rentalAgreementPending && ($operationalStatus === 'delivery_pending' || $hasPendingDeliveryItems || $hasOpenDeliveryTask) && $canEditRentalRecord => [
+            'label' => 'Review agreement', 'hint' => 'Check the signature or approved exception before dispatch.', 'href' => '#rental-agreement',
+        ],
+        $rentalOpen && $hasOpenDeliveryTask && ($viewer?->can('view', $deliveryRecord) ?? false) => [
+            'label' => 'Open delivery task', 'hint' => 'Check the assignment, schedule and delivery progress.', 'href' => route('deliveries.show', $deliveryRecord),
+        ],
+        $rentalOpen && !$hasOpenDeliveryTask && $hasPendingDeliveryItems && $canCreateDeliveries => [
+            'label' => 'Assign delivery', 'hint' => 'Choose who will deliver the remaining items.', 'href' => route('deliveries.create', ['rental_id' => $rental->id, 'type' => 'delivery']),
+        ],
+        $rentalOpen && $hasOpenPickupTask && ($viewer?->can('view', $pickupRecord) ?? false) => [
+            'label' => 'Open pickup task', 'hint' => 'Check the scheduled pickup and its progress.', 'href' => route('deliveries.show', $pickupRecord),
+        ],
+        $hasPendingReturnVerification && ($viewer?->canAccessModule('assets', 'read') ?? false) => [
+            'label' => 'Verify return', 'hint' => 'The equipment is awaiting a return check.', 'href' => route('assets.pending-verification'),
+        ],
+        $rentalOpen && $rentalReadyToRenew => [
+            'label' => 'Review renewal', 'hint' => 'The rental is due soon or overdue. Pickup remains available under Delivery & pickup.', 'attribute' => 'data-open-renewal-modal',
+        ],
+        $canCreatePayments && $canSeeRentalFinance && $rentalInvoiceDue > 0 && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true) => [
+            'label' => 'Record payment', 'hint' => 'Use this when money has already been received.', 'href' => '#record-payment-panel',
+        ],
+        default => ['label' => 'View items', 'hint' => 'Review quantities, assets and item progress.', 'href' => '#rental-products-section'],
+    };
+
+    $rentalSectionLinks = collect([
+        ['Overview', '#rental-overview-section'],
+        ['Delivery & pickup', '#rental-operations-workspace'],
+        ['Items', '#rental-products-section'],
+        ['Billing', '#rental-billing-actions'],
+        $rentalPageAgreement ? ['Agreement', '#rental-agreement'] : null,
+        ['Renewal', '#renewal-workspace'],
+        ['Activity', '#rental-timeline-workspace'],
+        ['Notes', '#rental-notes-section'],
+    ])->filter();
+    $rentalUnifiedMobileActions = $mobilePrimaryActions->concat($rentalMoreActions)->concat($mobileMoreActions)
+        ->unique(fn ($action) => implode('|', [$action['label'], $action['href'] ?? $action['action'] ?? 'button', $action['method'] ?? '']));
 @endphp
 
 <style>
@@ -2717,7 +2784,8 @@
     }
     .rental-overview-grid-v2 {
         display:grid;
-        grid-template-columns:1.05fr 1fr 1fr .95fr 1.15fr;
+        grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));
+        align-items:start;
         gap:10px;
         padding:12px;
     }
@@ -2763,7 +2831,7 @@
     }
     .rental-line-item {
         display:grid;
-        grid-template-columns:minmax(0,1fr) auto;
+        grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);
         gap:10px;
         align-items:start;
         color:#475569;
@@ -2782,13 +2850,23 @@
     }
     .rental-activity-mini-row {
         display:grid;
-        grid-template-columns:24px minmax(0,1fr) auto;
+        grid-template-columns:24px minmax(0,1fr);
         gap:8px;
         align-items:start;
         padding-top:8px;
         border-top:1px solid #edf2f7;
     }
     .rental-activity-mini-row:first-child { border-top:0; padding-top:0; }
+    .rental-activity-mini-copy {
+        display:grid;
+        gap:3px;
+        min-width:0;
+        overflow-wrap:anywhere;
+    }
+    .rental-activity-mini-copy time {
+        display:block;
+        font-variant-numeric:tabular-nums;
+    }
     .rental-activity-dot {
         display:grid;
         place-items:center;
@@ -3137,8 +3215,6 @@
         .rental-exec-cell:nth-child(5),
         .rental-exec-cell:nth-child(6) { border-top:1px solid #e5edf6; }
         .rental-kpi-strip { grid-template-columns:repeat(3,minmax(0,1fr)); }
-        .rental-overview-grid-v2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
-        .rental-overview-card-v2:last-child { grid-column:1 / -1; }
     }
     @media (max-width: 900px) {
         .rental-exec-grid,
@@ -3492,7 +3568,7 @@
         .ph-rental-mobile-accordion:first-child {
             border-top:0;
         }
-        .ph-rental-mobile-accordion summary {
+        .ph-rental-mobile-accordion > summary {
             list-style:none;
             display:grid;
             grid-template-columns:42px 1fr 24px;
@@ -3502,7 +3578,7 @@
             cursor:pointer;
             min-height:56px;
         }
-        .ph-rental-mobile-accordion summary::-webkit-details-marker {
+        .ph-rental-mobile-accordion > summary::-webkit-details-marker {
             display:none;
         }
         .ph-rental-section-icon {
@@ -3707,9 +3783,123 @@
             display:grid;
         }
     }
+    .rcc-shell .rcc-cylinder-panel {display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;margin:0 0 18px;padding:18px;border:1px solid #b8d9ec;border-left:4px solid #0879b8;border-radius:14px;background:#f0f8fd;}
+    .rcc-shell .rcc-cylinder-copy {flex:1 1 260px;min-width:0;}
+    .rcc-shell .rcc-cylinder-copy h3 {margin:0 0 5px;font-size:16px;font-weight:800;color:#123d58;}
+    .rcc-shell .rcc-cylinder-copy p {margin:0;font-size:13px;line-height:1.5;color:#48667b;}
+    .rcc-shell .rcc-cylinder-actions {display:flex;flex-wrap:wrap;gap:10px;min-width:0;}
+    .rcc-shell .rcc-cylinder-action {display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 16px;border:1px solid #94bfd8;border-radius:10px;background:white;color:#075c91;font-size:14px;font-weight:750;line-height:1.4;text-align:center;text-decoration:none;}
+    .rcc-shell .rcc-cylinder-action-primary {background:#0879b8;border-color:#0879b8;color:white;}
+    .rcc-shell .rcc-cylinder-action svg {width:20px;height:20px;flex-shrink:0;}
+    .rcc-shell .rcc-cylinder-action:hover {box-shadow:0 3px 10px #075c9120;}
+    .rcc-shell .rcc-cylinder-action:focus-visible {outline:3px solid #41b6d9;outline-offset:3px;}
+    @media(max-width:640px) {.rcc-shell .rcc-cylinder-panel {padding:14px;gap:12px;}.rcc-shell .rcc-cylinder-copy {flex-basis:100%;}.rcc-shell .rcc-cylinder-actions {display:grid;grid-template-columns:minmax(0,1fr);width:100%;}}
+    [data-rental-menu-placement][open] > :last-child {
+        position:absolute;
+        margin-top:0;
+        box-sizing:border-box;
+        max-height:var(--rental-menu-height);
+        overflow-y:auto;
+        overscroll-behavior:contain;
+    }
+    [data-rental-menu-placement="down"][open] > :last-child { top:calc(100% + 8px); bottom:auto; }
+    [data-rental-menu-placement="up"][open] > :last-child { top:auto; bottom:calc(100% + 8px); }
+    .rental-detail-redesign {
+        --rental-accent:#1d4ed8;
+        --rental-ink:#172b46;
+        --rental-canvas:#f3f6fa;
+        --rental-line:#d8e2ee;
+        color:var(--rental-ink);
+    }
+    .rental-detail-redesign #rental-executive-command-center,
+    .rental-detail-redesign .ph-rental-mobile-hero { background:#fff; }
+    .rental-detail-redesign #rental-executive-command-center h1,
+    .rental-detail-redesign .ph-rental-customer-copy h1 { color:var(--rental-ink); }
+    .rental-next-step {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+        margin:10px 0;
+        padding:10px 12px;
+        border:1px solid #d3e1fa;
+        border-radius:10px;
+        background:#edf3ff;
+        color:var(--rental-ink);
+    }
+    .rental-next-step strong { display:block; font-size:14px; }
+    .rental-next-step p { margin:2px 0 0; color:#465b75; font-size:13px; line-height:1.4; }
+    .rental-detail-redesign [data-rental-next-action] {
+        flex-shrink:0;
+        min-height:44px;
+        background:var(--rental-accent);
+        border-color:var(--rental-accent);
+        color:#fff;
+        white-space:normal;
+        text-align:center;
+    }
+    .rental-billing-overview {
+        min-width:0;
+        padding:0 12px;
+        border:1px solid var(--rental-line);
+        border-radius:12px;
+        background:#fff;
+    }
+    .rental-billing-overview > summary {
+        min-height:42px;
+        padding:10px 0;
+        cursor:pointer;
+        color:var(--rental-accent);
+        font-weight:700;
+    }
+    .rental-billing-overview > section,
+    .rental-billing-overview > .ph-rental-kpi-grid { margin:0 0 10px; }
+    .rental-detail-redesign .rental-tab-row { flex-wrap:wrap; gap:2px 5px; overflow:visible; }
+    .rental-detail-redesign .rental-tab-row a {
+        min-height:44px;
+        padding:0 11px;
+        color:var(--rental-ink);
+        border-color:transparent;
+        font-weight:700;
+    }
+    .rental-detail-redesign .rental-tab-row a[aria-current="location"] {
+        color:var(--rental-accent);
+        border-color:var(--rental-accent);
+    }
+    .rental-detail-redesign [data-rental-focus]:focus-visible,
+    .rental-detail-redesign a:focus-visible,
+    .rental-detail-redesign button:focus-visible,
+    .rental-detail-redesign summary:focus-visible {
+        outline:2px solid var(--rental-accent);
+        outline-offset:2px;
+    }
+    .rental-detail-redesign [data-rental-anchor], .rental-detail-redesign .section-nav-target { scroll-margin-top:96px; }
+    .rental-detail-redesign .rental-activity-mini-copy strong { white-space:normal; }
+    .rental-section-feedback { margin:8px 0; padding:8px 10px; color:#166534; background:#eaf8ef; border-radius:8px; }
+    .rental-note-form { display:grid; gap:8px; margin:8px 0 12px; }
+    .rental-note-form label { font-size:13px; font-weight:700; }
+    .rental-note-form textarea { width:100%; border:1px solid #cbd5e1; border-radius:10px; padding:10px; font-size:14px; resize:vertical; }
+    .rental-note-form > div { display:flex; justify-content:flex-end; }
+    @media (max-width:767px) {
+        .rental-desktop-only { display:none; }
+        .rental-detail-redesign .rental-next-step { margin:0; }
+        .rental-detail-redesign .rental-tab-row { gap:0 4px; }
+        .rental-detail-redesign .rental-tab-row a { min-height:44px; padding:0 7px; }
+        .rental-detail-redesign .ph-rental-mobile-top { grid-template-columns:auto minmax(0,1fr); }
+        .rental-detail-redesign .ph-rental-kpi-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); overflow:visible; }
+        .rental-detail-redesign .ph-rental-kpi-card { min-width:0; }
+        .rental-detail-redesign .ph-rental-quick-actions { flex-wrap:wrap; }
+        .rental-detail-redesign .ph-rental-quick-action,
+        .rental-detail-redesign .ph-rental-quick-action button { width:auto; min-width:54px; max-width:100%; padding:2px 3px; }
+        .rental-detail-redesign .ph-rental-action-icon { border-radius:10px; box-shadow:none; color:var(--rental-accent); background:var(--rental-canvas); }
+        .rental-detail-redesign #mobile-rental-notes > summary { min-height:44px; }
+        .rental-detail-redesign .ph-rental-footer-more summary { min-height:44px; }
+        .rental-detail-redesign .ph-rental-footer-panel .is-danger { color:#991b1b; }
+    }
 </style>
 
-<div class="container detail-page rcc-shell">
+@include('cylinder-refills.modal')
+<div class="container detail-page rcc-shell rental-detail-redesign" id="rental-detail-page" data-rental-return-anchor="{{ $rentalReturnAnchor }}">
     @if($errors->any() && !$renewalValidationFailed)
         <div id="rental-validation-errors" role="alert" tabindex="-1" style="background:#fee2e2;color:#991b1b;border:1px solid #fecaca;padding:12px 14px;border-radius:12px;">
             <ul style="margin:0;padding-left:18px;">
@@ -3733,8 +3923,8 @@
             ]"
         />
 
-        @if(session('success'))
-            <div style="background:#dcfce7;color:#166534;border:1px solid #bbf7d0;padding:12px 14px;border-radius:12px;">
+        @if(session('success') && !$rentalPaymentFeedback && !$rentalNoteFeedback)
+            <div role="status" style="background:#dcfce7;color:#166534;border:1px solid #bbf7d0;padding:12px 14px;border-radius:12px;">
                 {{ session('success') }}
             </div>
         @endif
@@ -3759,6 +3949,13 @@
             </div>
         @endif
 
+        @include('customer-payments.watch', ['paymentInvoice' => $rentalInvoice ?? null])
+        @if($canViewRentalInvoice)
+            @once
+                <script src="{{ asset('js/phos-customer-payments.js') }}?v={{ hash_file('sha256', public_path('js/phos-customer-payments.js')) }}" defer></script>
+            @endonce
+        @endif
+
         <section class="ph-rental-mobile-shell" aria-label="Rental mobile overview">
             <div class="ph-rental-mobile-top">
                 <a href="{{ route('rentals.index') }}" class="ph-rental-icon-btn" aria-label="Back to rentals">
@@ -3768,26 +3965,10 @@
                     <strong>Rental #{{ $rental->id }}</strong>
                     <span class="ph-rental-pill {{ $rentalStatusTone }}">{{ ucfirst(str_replace('_', ' ', $operationalStatus)) }}</span>
                 </div>
-                <details class="mobile-actions-menu ph-rental-top-more" style="position:relative;" data-rental-mobile-menu>
-                    <summary class="ph-rental-icon-btn" aria-label="More rental actions">&ctdot;</summary>
-                    <div class="mobile-actions-panel">
-                        @foreach($rentalMoreActions->take(8) as $action)
-                            @if(($action['type'] ?? 'link') === 'form')
-                                <form action="{{ $action['action'] }}" method="POST" style="margin:0;">
-                                    @csrf
-                                    @if(($action['method'] ?? 'POST') !== 'POST')
-                                        @method($action['method'])
-                                    @endif
-                                    <button type="submit" @if(!empty($action['confirm'])) onclick="return confirm('{{ $action['confirm'] }}');" @endif class="{{ !empty($action['danger']) ? 'is-danger' : '' }}">{{ $action['label'] }}</button>
-                                </form>
-                            @elseif(($action['type'] ?? 'link') === 'button')
-                                <button type="button" @foreach(($action['attributes'] ?? []) as $attribute => $value) {{ $attribute }}="{{ is_bool($value) ? ($value ? 'true' : 'false') : $value }}" @endforeach>{{ $action['label'] }}</button>
-                            @else
-                                <a href="{{ $action['href'] }}" @if(!empty($action['target'])) target="{{ $action['target'] }}" rel="noopener" @endif>{{ $action['label'] }}</a>
-                            @endif
-                        @endforeach
-                    </div>
-                </details>
+            </div>
+
+            <div class="rental-next-step" aria-label="Next step">
+                <div><strong>{{ $rentalNextAction['label'] }}</strong><p>{{ $rentalNextAction['hint'] }}</p></div>
             </div>
 
             <div class="ph-rental-mobile-hero">
@@ -3822,15 +4003,10 @@
                                 'call' => '',
                                 'whatsapp' => '',
                                 'invoice' => '',
-                                'payment' => 'Pay',
+                                'payment' => "\u{20B9}",
                                 default => 'Go',
                             };
-                            $mobileActionLabel = match ($action['label']) {
-                                'WhatsApp' => 'WA',
-                                'Invoice' => 'Inv',
-                                'Payment' => 'Pay',
-                                default => $action['label'],
-                            };
+                            $mobileActionLabel = $action['label'];
                         @endphp
                         @if(($action['type'] ?? 'link') === 'form')
                             <form action="{{ $action['action'] }}" method="POST" class="ph-rental-quick-action">
@@ -3870,31 +4046,11 @@
                             </a>
                         @endif
                     @endforeach
-                    <details class="mobile-actions-menu ph-rental-hero-more" style="position:relative;" data-rental-mobile-menu>
-                        <summary class="ph-rental-more-summary">
-                            <span class="ph-rental-action-icon">&ctdot;</span>
-                        </summary>
-                        <div class="mobile-actions-panel">
-                            @foreach($rentalMoreActions->take(8) as $action)
-                                @if(($action['type'] ?? 'link') === 'form')
-                                    <form action="{{ $action['action'] }}" method="POST" style="margin:0;">
-                                        @csrf
-                                        @if(($action['method'] ?? 'POST') !== 'POST')
-                                            @method($action['method'])
-                                        @endif
-                                        <button type="submit" @if(!empty($action['confirm'])) onclick="return confirm('{{ $action['confirm'] }}');" @endif class="{{ !empty($action['danger']) ? 'is-danger' : '' }}">{{ $action['label'] }}</button>
-                                    </form>
-                                @elseif(($action['type'] ?? 'link') === 'button')
-                                    <button type="button" @foreach(($action['attributes'] ?? []) as $attribute => $value) {{ $attribute }}="{{ is_bool($value) ? ($value ? 'true' : 'false') : $value }}" @endforeach>{{ $action['label'] }}</button>
-                                @else
-                                    <a href="{{ $action['href'] }}" @if(!empty($action['target'])) target="{{ $action['target'] }}" rel="noopener" @endif>{{ $action['label'] }}</a>
-                                @endif
-                            @endforeach
-                        </div>
-                    </details>
                 </div>
             </div>
 
+            <details class="rental-billing-overview">
+                <summary>Billing summary</summary>
             <div class="ph-rental-kpi-grid" aria-label="Rental finance summary">
                 @foreach($mobileFinanceKpis as $kpi)
                     <div class="ph-rental-kpi-card {{ $kpi['tone'] }}">
@@ -3926,8 +4082,16 @@
                 @endforeach
             </div>
 
+            </details>
+
+            <nav class="rental-tab-row" data-rental-section-nav aria-label="Rental sections">
+                @foreach($rentalSectionLinks as [$label, $href])
+                    <a href="{{ $href }}" @if($loop->first) aria-current="location" @endif>{{ $label }}</a>
+                @endforeach
+            </nav>
+
             <div class="ph-rental-mobile-accordions">
-                <details class="ph-rental-mobile-accordion" open>
+                <details class="ph-rental-mobile-accordion" id="mobile-rental-overview" data-rental-anchor open>
                     <summary>
                         <span class="ph-rental-section-icon">O</span>
                         <span class="ph-rental-section-title">
@@ -3948,30 +4112,41 @@
                     </div>
                 </details>
 
-                <details class="ph-rental-mobile-accordion">
+                <details class="ph-rental-mobile-accordion" id="mobile-rental-operations" data-rental-anchor>
                     <summary>
                         <span class="ph-rental-section-icon">D</span>
                         <span class="ph-rental-section-title">
-                            <strong>Operations</strong>
+                            <strong>Delivery &amp; pickup</strong>
                             <span>Delivery, pickup, return, assignments</span>
                         </span>
                         <span class="ph-rental-chevron">v</span>
                     </summary>
                     <div class="ph-rental-accordion-body">
+                        @include('cylinder-services.rental-actions')
                         @foreach($workflowSteps as $step)
                             <div class="ph-rental-mobile-line">
-                                <span>{{ $step['label'] }} - {{ $step['person'] }}</span>
+                                <span>
+                                    {{ $step['label'] }} · @if(isset($step['personLabel'])){{ $step['personLabel'] }} – @endif{{ $step['person'] }}
+                                    @if(isset($step['creator']))<br>Created by – {{ $step['creator'] }}@endif
+                                </span>
                                 <strong>{{ $step['status'] }}</strong>
                             </div>
                         @endforeach
+                        <div class="rcc-finance-actions">
+                            @if($hasOpenPickupTask && ($viewer?->can('view', $pickupRecord) ?? false))
+                                <a href="{{ route('deliveries.show', $pickupRecord) }}" class="detail-btn-secondary">Open pickup task</a>
+                            @elseif($canAssignPickup && !$hasOpenPickupTask)
+                                <button type="button" class="detail-btn-secondary" data-open-pickup-modal>Assign Pickup</button>
+                            @endif
+                        </div>
                     </div>
                 </details>
 
-                <details class="ph-rental-mobile-accordion">
+                <details class="ph-rental-mobile-accordion" id="mobile-rental-products" data-rental-anchor>
                     <summary>
                         <span class="ph-rental-section-icon">P</span>
                         <span class="ph-rental-section-title">
-                            <strong>Products</strong>
+                            <strong>Items</strong>
                             <span>{{ $mobileProductSummary->count() }} item{{ $mobileProductSummary->count() === 1 ? '' : 's' }} - {{ $allRentalAssetAssignments->count() }} asset{{ $allRentalAssetAssignments->count() === 1 ? '' : 's' }}</span>
                         </span>
                         <span class="ph-rental-chevron">v</span>
@@ -3988,37 +4163,52 @@
                     </div>
                 </details>
 
-                <details class="ph-rental-mobile-accordion" id="mobile-rental-finance">
+                <details class="ph-rental-mobile-accordion" id="mobile-rental-finance" data-rental-anchor @if($rentalPaymentFeedback) open @endif>
                     <summary>
                         <span class="ph-rental-section-icon">F</span>
                         <span class="ph-rental-section-title">
-                            <strong>Finance</strong>
+                            <strong>Billing</strong>
                             <span>Invoice, payments, deposit, transport</span>
                         </span>
                         <span class="ph-rental-chevron">v</span>
                     </summary>
                     <div class="ph-rental-accordion-body">
+                        @if($rentalPaymentFeedback)
+                            <p class="rental-section-feedback" role="status">{{ $rentalPaymentFeedback }}</p>
+                        @endif
                         @foreach($mobileFinanceKpis as $kpi)
                             <div class="ph-rental-mobile-line">
                                 <span>{{ $kpi['label'] }}</span>
                                 <strong>{{ $kpi['value'] }}</strong>
                             </div>
                         @endforeach
+                        <div class="rcc-finance-actions">
+                            @if($canViewRentalInvoice)
+                                <a href="{{ route('invoices.show', $rentalInvoice) }}" class="detail-btn-secondary">Open invoice</a>
+                                <a href="{{ route('customer-payments.invoice', $rentalInvoice->id) }}" class="detail-btn-secondary">{{ $viewer->can('createForInvoice', [\App\Models\Payment::class, $rentalInvoice]) ? 'Send payment link' : 'Payment link status' }}</a>
+                            @endif
+                            @if($canDownloadRentalInvoice)
+                                <a href="{{ route('invoices.download', $rentalInvoice) }}" class="detail-btn-secondary">Download invoice PDF</a>
+                            @endif
+                        </div>
                         @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
-                            <form action="{{ route('rentals.recordPayment', $rental) }}" method="POST" class="rcc-payment-form" style="margin-top:4px;">
+                            <form id="mobile-record-payment-panel" data-rental-anchor action="{{ route('rentals.recordPayment', $rental) }}" method="POST" class="rcc-payment-form" style="margin-top:4px;">
                                 @csrf
-                    <x-payment-submission-token />
+                                <x-payment-submission-token />
                                 <label>Date<input type="date" name="payment_date" value="{{ old('payment_date', now()->toDateString()) }}"></label>
-                                <label>Amount<input type="number" step="0.01" min="0.01" name="amount" value="{{ old('amount', $rentalInvoiceDue > 0 ? number_format($rentalInvoiceDue, 2, '.', '') : '') }}"></label>
+                                <label>Amount<input type="number" step="0.01" min="0.01" name="amount" data-rental-focus value="{{ old('amount', $rentalInvoiceDue > 0 ? number_format($rentalInvoiceDue, 2, '.', '') : '') }}"></label>
                                 <label>Method<input type="text" name="payment_method" value="{{ old('payment_method', 'other') }}" placeholder="cash / upi / bank"></label>
                                 <label>Note<input type="text" name="notes" value="{{ old('notes') }}" placeholder="Payment note"></label>
+                                @if($paymentVendor)
+                                    @include('deliveries.collection-recipient', ['collectionVendor' => $paymentVendor, 'required' => true])
+                                @endif
                                 <button type="submit" class="detail-btn">Record Payment</button>
                             </form>
                         @endif
                     </div>
                 </details>
 
-                <details class="ph-rental-mobile-accordion">
+                <details class="ph-rental-mobile-accordion" id="mobile-rental-renewal" data-rental-anchor>
                     <summary>
                         <span class="ph-rental-section-icon">R</span>
                         <span class="ph-rental-section-title">
@@ -4042,7 +4232,7 @@
                     </div>
                 </details>
 
-                <details class="ph-rental-mobile-accordion">
+                <details class="ph-rental-mobile-accordion" id="mobile-rental-activity" data-rental-anchor>
                     <summary>
                         <span class="ph-rental-section-icon">A</span>
                         <span class="ph-rental-section-title">
@@ -4052,14 +4242,41 @@
                         <span class="ph-rental-chevron">v</span>
                     </summary>
                     <div class="ph-rental-accordion-body">
+                        @include('partials.order-ownership', ['orderOwnership' => $orderOwnership ?? null])
                         @forelse($timelinePreview->take(5) as $log)
-                            <div class="ph-rental-mobile-line">
-                                <span>{{ optional($log->created_at)->format('d M h:i A') }}</span>
-                                <strong>{{ \Illuminate\Support\Str::limit($log->description ?? ucfirst(str_replace(['_', '.'], ' ', $log->action ?? 'Activity')), 32) }}</strong>
+                            <div class="rental-activity-mini-row">
+                                <span class="rental-activity-dot" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg></span>
+                                <div class="rental-activity-mini-copy">
+                                    <strong>{{ $log->description ?? ucfirst(str_replace(['_', '.'], ' ', $log->action ?? 'Activity')) }}</strong>
+                                    @include('partials.action-time', ['actionAt' => $log->created_at])
+                                </div>
                             </div>
                         @empty
                             <div class="ph-rental-mobile-line"><span>No activity yet.</span><strong>-</strong></div>
                         @endforelse
+                        <details class="rcc-details" id="mobile-rental-notes" data-rental-anchor>
+                            <summary>Notes and full activity</summary>
+                            @if($rentalNoteFeedback)
+                                <p class="rental-section-feedback" role="status">{{ $rentalNoteFeedback }}</p>
+                            @endif
+                            @if($canEditRentalRecord)
+                                <form action="{{ route('rentals.notes.store', $rental) }}" method="POST" class="rental-note-form">
+                                    @csrf
+                                    <input type="hidden" name="note_type" value="general">
+                                    <label for="mobile-rental-note">Internal note</label>
+                                    <textarea id="mobile-rental-note" name="note" rows="3" maxlength="2000" required data-rental-focus>{{ old('note') }}</textarea>
+                                    <div><button type="submit" class="detail-btn-secondary">Add Note</button></div>
+                                </form>
+                            @endif
+                            <div class="rcc-timeline-list" style="padding:0;">
+                                @foreach(($activityLogs ?? collect())->take(20) as $log)
+                                    <div class="rcc-timeline-item">
+                                        @include('partials.action-time', ['actionAt' => $log->created_at])
+                                        <strong>{{ $log->description ?? ucfirst(str_replace(['_', '.'], ' ', $log->action ?? 'Activity')) }}</strong>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </details>
                     </div>
                 </details>
             </div>
@@ -4078,9 +4295,18 @@
                 <div class="rental-exec-tools">
                     <a href="{{ route('rentals.index') }}" class="detail-btn-secondary">Back</a>
                     @if($canUpdateRentals)
-                        <a href="{{ route('rentals.edit', $rental) }}" class="detail-btn">Edit Rental</a>
+                        <a href="{{ route('rentals.edit', $rental) }}" class="detail-btn-secondary">Edit Rental</a>
                     @endif
                 </div>
+            </div>
+
+            <div class="rental-next-step" aria-label="Next step">
+                <div><strong>Next step</strong><p>{{ $rentalNextAction['hint'] }}</p></div>
+                @if(!empty($rentalNextAction['attribute']))
+                    <button type="button" class="detail-btn" data-rental-next-action {{ $rentalNextAction['attribute'] }}>{{ $rentalNextAction['label'] }}</button>
+                @else
+                    <a href="{{ $rentalNextAction['href'] }}" class="detail-btn" data-rental-next-action>{{ $rentalNextAction['label'] }}</a>
+                @endif
             </div>
 
             <div class="rental-exec-grid">
@@ -4150,16 +4376,12 @@
                     </form>
                 @endif
                 @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
-                    <button
-                        type="button"
-                        class="detail-btn-secondary rental-action-pay"
-                        onclick="document.getElementById('rental-finance-workspace')?.setAttribute('open', 'open'); document.getElementById('record-payment-panel')?.setAttribute('open', 'open'); document.getElementById('record-payment-panel')?.scrollIntoView({behavior:'smooth', block:'center'});"
-                    ><svg class="rental-action-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12"/><path d="M6 8h12"/><path d="M6 13l8 8"/><path d="M6 13h3.5a4.5 4.5 0 0 0 0-9H6"/></svg><span>Pay</span></button>
+                    <a href="#record-payment-panel" class="detail-btn-secondary rental-action-pay"><svg class="rental-action-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h12"/><path d="M6 8h12"/><path d="M6 13l8 8"/><path d="M6 13h3.5a4.5 4.5 0 0 0 0-9H6"/></svg><span>Record payment</span></a>
                 @endif
                 @if($rental->canRenew() && $canUpdateRentals)
-                    <button type="button" class="detail-btn rental-renew-primary" data-open-renewal-modal>Renew Rental</button>
+                    <button type="button" class="detail-btn-secondary rental-renew-primary" data-open-renewal-modal>Renew Rental</button>
                 @endif
-                <details class="rcc-action-more">
+                <details class="rcc-action-more" data-rental-mobile-menu>
                     <summary class="detail-btn-secondary">More Actions</summary>
                     <div class="rcc-more-menu">
                         @if($deliveryUrl)
@@ -4211,6 +4433,8 @@
             </div>
         </section>
 
+        <details class="rental-billing-overview rental-desktop-only">
+            <summary>Billing summary</summary>
         <section class="rental-kpi-strip" id="rental-kpi-strip" aria-label="Rental financial summary">
             @foreach($desktopKpiCards as $kpi)
                 <div class="rental-kpi-card {{ $kpi['tone'] }}">
@@ -4245,17 +4469,14 @@
                 </div>
             @endforeach
         </section>
+        </details>
 
         <section class="rcc-card rental-workspace-shell" id="rental-workspace-shell">
-            <nav class="rental-workspace-tabs" aria-label="Rental workspace sections">
+            <nav class="rental-workspace-tabs" data-rental-section-nav aria-label="Rental workspace sections">
                 <div class="rental-tab-row">
-                    <a href="#rental-overview-section">Overview</a>
-                    <a href="#rental-operations-workspace">Operations</a>
-                    <a href="#rental-products-section">Products</a>
-                    <a href="#rental-billing-actions">Finance</a>
-                    <a href="#renewal-workspace">Renewal</a>
-                    <a href="#rental-timeline-workspace">Activity</a>
-                    <a href="#rental-notes-section">Notes</a>
+                    @foreach($rentalSectionLinks as [$label, $href])
+                        <a href="{{ $href }}" @if($loop->first) aria-current="location" @endif>{{ $label }}</a>
+                    @endforeach
                 </div>
             </nav>
             <div class="rental-overview-grid-v2 section-nav-target" id="rental-overview-section">
@@ -4290,11 +4511,11 @@
                         @forelse($desktopRecentActivity as $log)
                             <div class="rental-activity-mini-row">
                                 <span class="rental-activity-dot" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg></span>
-                                <div>
-                                    <strong>{{ \Illuminate\Support\Str::limit($log->description ?? ucfirst(str_replace(['_', '.'], ' ', $log->action ?? 'Activity')), 44) }}</strong>
+                                <div class="rental-activity-mini-copy">
+                                    <strong>{{ $log->description ?? ucfirst(str_replace(['_', '.'], ' ', $log->action ?? 'Activity')) }}</strong>
                                     <span>{{ $log->causer?->name ?? 'System' }}</span>
+                                    @include('partials.action-time', ['actionAt' => $log->created_at])
                                 </div>
-                                <time>{{ optional($log->created_at)->format('d M h:i A') }}</time>
                             </div>
                         @empty
                             <div class="rental-line-item"><span>No recent activity</span><strong>-</strong></div>
@@ -4305,19 +4526,26 @@
             </div>
         </section>
 
-        <section class="rcc-card" id="rental-operations-workspace">
+        @include('rentals.agreement', [
+            'agreements' => $rentalAgreementService,
+            'agreement' => $rentalPageAgreement,
+            'agreementPending' => $rentalAgreementPending,
+        ])
+        <section class="rcc-card" id="rental-operations-workspace" data-rental-anchor>
             <div class="rcc-section-head">
                 <div>
-                    <h2>Operations Workspace</h2>
-                    <p>Rental, delivery, active usage, pickup, and return verification in one operational row.</p>
+                    <h2>Delivery &amp; pickup</h2>
+                    <p>Assignments, schedules, and return verification.</p>
                 </div>
             </div>
+            @include('cylinder-services.rental-actions')
             <div class="rcc-workflow">
                 @foreach($workflowSteps as $step)
                     <div class="rcc-workflow-item">
                         <span class="rcc-chip {{ $step['tone'] }}">{{ $step['status'] }}</span>
                         <strong>{{ $step['label'] }}</strong>
-                        <small>Owner: {{ $step['person'] }}</small>
+                        <small>{{ $step['personLabel'] ?? 'Owner' }} – {{ $step['person'] }}</small>
+                        @if(isset($step['creator']))<small>Created by – {{ $step['creator'] }}</small>@endif
                         <small>Scheduled: {{ $step['scheduled'] }}</small>
                         @if($step['completed'])
                             <small>Completed: {{ $step['completed'] }}</small>
@@ -4339,11 +4567,11 @@
         </section>
 
         <div class="rcc-two-col">
-            <section class="rcc-card" id="rental-products-section">
+            <section class="rcc-card" id="rental-products-section" data-rental-anchor>
                 <div class="rcc-section-head">
                     <div>
-                        <h2>Product Workspace</h2>
-                        <p>Rental items, tracked assets, progress quantities, period, status, and amount.</p>
+                        <h2>Rental items</h2>
+                        <p>Quantities, tracked assets, and progress.</p>
                     </div>
                 </div>
                 <div class="rcc-product-list">
@@ -4379,16 +4607,18 @@
                 </div>
             </section>
 
-            <details class="rcc-card rcc-accordion-section" id="rental-finance-workspace">
-                <span id="rental-billing-actions" class="section-nav-target"></span>
+            <details class="rcc-card rcc-accordion-section" id="rental-finance-workspace" data-rental-anchor @if($rentalPaymentFeedback) open @endif>
                 <summary>
-                    <span class="rcc-accordion-title"><span class="rental-overview-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12"/><path d="M6 8h12"/><path d="M6 13l8 8"/><path d="M6 13h3.5a4.5 4.5 0 0 0 0-9H6"/></svg></span><span><strong>Finance</strong><br><span>Invoice, payments, deposit, transport</span></span></span>
+                    <span class="rcc-accordion-title"><span class="rental-overview-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12"/><path d="M6 8h12"/><path d="M6 13l8 8"/><path d="M6 13h3.5a4.5 4.5 0 0 0 0-9H6"/></svg></span><span><strong>Billing</strong><br><span>Invoice, payments, deposit, transport</span></span></span>
                     <span class="rcc-accordion-meta"><span class="rcc-chip {{ $rentalInvoiceStatus === 'paid' ? 'done' : ($rentalInvoiceStatus === 'partial' ? 'warn' : 'problem') }}">{{ $paymentStatusLabel }}</span><span>{{ $canSeeRentalFinance ? $currency($invoiceBalanceAmount) . ' Outstanding' : 'Restricted' }}</span><span class="rcc-accordion-chevron"></span></span>
                 </summary>
-                <div class="rcc-accordion-body">
+                <div class="rcc-accordion-body" id="rental-billing-actions" data-rental-anchor>
+                    @if($rentalPaymentFeedback)
+                        <p class="rental-section-feedback" role="status">{{ $rentalPaymentFeedback }}</p>
+                    @endif
                     <div class="rcc-section-head">
                     <div>
-                        <h2>Finance Workspace</h2>
+                        <h2>Billing details</h2>
                         <p>Invoice, payment, deposit, transport, and latest collection in one place.</p>
                     </div>
                     <span class="rcc-chip {{ $rentalInvoiceStatus === 'paid' ? 'done' : ($rentalInvoiceStatus === 'partial' ? 'warn' : 'problem') }}">{{ $paymentStatusLabel }}</span>
@@ -4410,14 +4640,17 @@
                         <div class="rcc-meta"><div>Finance amounts are hidden for your role.</div></div>
                     @endif
                     <div class="rcc-finance-actions">
-                        @if($rentalInvoice)
+                        @if($canViewRentalInvoice)
                             <a href="{{ route('invoices.show', $rentalInvoice) }}" class="detail-btn-secondary">Open Invoice</a>
-                            <a href="{{ route('invoices.show', $rentalInvoice) }}" class="detail-btn-secondary">Download PDF</a>
-                        @elseif($canUpdateRentals)
+                            <a href="{{ route('customer-payments.invoice', $rentalInvoice->id) }}" class="detail-btn-secondary">{{ $viewer->can('createForInvoice', [\App\Models\Payment::class, $rentalInvoice]) ? 'Send payment link' : 'Payment link status' }}</a>
+                        @elseif(!$rentalInvoice && $canUpdateRentals)
                             <form action="{{ route('rentals.invoice', $rental) }}" method="POST" style="margin:0;">
                                 @csrf
                                 <button type="submit" class="detail-btn-secondary">Create Invoice</button>
                             </form>
+                        @endif
+                        @if($canDownloadRentalInvoice)
+                            <a href="{{ route('invoices.download', $rentalInvoice) }}" class="detail-btn-secondary">Download invoice PDF</a>
                         @endif
                         @if($renewalUrl)
                             <a href="{{ $renewalUrl }}" target="_blank" rel="noopener" class="detail-btn-secondary">Send Reminder</a>
@@ -4433,7 +4666,7 @@
                                 @forelse(($rental->payments ?? collect())->sortByDesc('payment_date')->sortByDesc('id')->take(8) as $payment)
                                     <div class="rcc-payment-line">
                                         <div>
-                                            <strong>{{ optional($payment->payment_date)->format('d M Y') ?: 'Date not set' }}</strong>
+                                            <strong>{{ optional($payment->payment_date)->format('d M Y') ?: 'Date not set' }}<small style="display:block;font-weight:400;">Recorded @include('partials.action-time', ['actionAt' => $payment->created_at, 'clockOnly' => false])</small></strong>
                                             <div>{{ $payment->reversal_of_payment_id ? 'Correction of receipt #'.$payment->reversal_of_payment_id : 'Receipt #'.$payment->id.(($rental->payments ?? collect())->firstWhere('reversal_of_payment_id', $payment->id) ? ' — Reversed' : '') }}</div>
                                             <div>{{ ucfirst(str_replace('_', ' ', $payment->payment_method ?? 'payment')) }}{{ $payment->invoice?->invoice_number ? '  -  ' . $payment->invoice->invoice_number : '' }}</div>
                                             @if(filled($payment->notes ?? null))
@@ -4449,7 +4682,7 @@
                         </details>
                     @endif
                     @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
-                        <details class="rcc-details-panel rcc-payment-details" id="record-payment-panel">
+                        <details class="rcc-details-panel rcc-payment-details" id="record-payment-panel" data-rental-anchor>
                             <summary>
                                 <span>Record Payment</span>
                                 <span class="rcc-chip active">{{ $currency($rentalInvoiceDue) }} due</span>
@@ -4459,9 +4692,12 @@
                                     @csrf
                     <x-payment-submission-token />
                                     <label>Date<input type="date" name="payment_date" value="{{ old('payment_date', now()->toDateString()) }}"></label>
-                                    <label>Amount<input type="number" step="0.01" min="0.01" name="amount" value="{{ old('amount', $rentalInvoiceDue > 0 ? number_format($rentalInvoiceDue, 2, '.', '') : '') }}"></label>
+                                    <label>Amount<input type="number" step="0.01" min="0.01" name="amount" data-rental-focus value="{{ old('amount', $rentalInvoiceDue > 0 ? number_format($rentalInvoiceDue, 2, '.', '') : '') }}"></label>
                                     <label>Method<input type="text" name="payment_method" value="{{ old('payment_method', 'other') }}" placeholder="cash / upi / bank"></label>
                                     <label>Note<input type="text" name="notes" value="{{ old('notes') }}" placeholder="Payment note"></label>
+                                    @if($paymentVendor)
+                                        @include('deliveries.collection-recipient', ['collectionVendor' => $paymentVendor, 'required' => true])
+                                    @endif
                                     <button type="submit" class="detail-btn">Record</button>
                                 </form>
                             </div>
@@ -4472,7 +4708,7 @@
             </details>
         </div>
 
-        <details class="rcc-card rcc-accordion-section" id="renewal-workspace">
+        <details class="rcc-card rcc-accordion-section" id="renewal-workspace" data-rental-anchor>
             <summary>
                 <span class="rcc-accordion-title"><span class="rental-overview-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></span><span><strong>Renewal</strong><br><span>Due {{ optional($rental->end_date)->format('d M Y') ?: 'Not set' }}</span></span></span>
                 <span class="rcc-accordion-meta"><span class="rcc-chip {{ $daysRemainingTone }}">{{ $daysRemainingLabel }}</span><span>{{ $renewalSummaryStatus }}</span><span class="rcc-accordion-chevron"></span></span>
@@ -4521,7 +4757,7 @@
             </div>
         </details>
 
-        <details class="rcc-card rcc-accordion-section" id="rental-timeline-workspace">
+        <details class="rcc-card rcc-accordion-section" id="rental-timeline-workspace" data-rental-anchor>
             <summary>
                 <span class="rcc-accordion-title"><span class="rental-overview-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg></span><span><strong>Activity</strong><br><span>Recent events and notes</span></span></span>
                 <span class="rcc-accordion-meta"><span>{{ $timelinePreview->count() }} recent</span><span class="rcc-accordion-chevron"></span></span>
@@ -4531,13 +4767,14 @@
                 <div>
                     <h2>Timeline & Communication</h2>
                     <p>Latest rental activity, reminders, invoice events, delivery updates, and notes.</p>
+                    @include('partials.order-ownership', ['orderOwnership' => $orderOwnership ?? null])
                 </div>
                 <a href="#rental-full-timeline" class="detail-btn-secondary">View full timeline</a>
             </div>
             <div class="rcc-timeline-list">
                 @forelse($timelinePreview as $log)
                     <div class="rcc-timeline-item">
-                        <time>{{ optional($log->created_at)->format('d M Y h:i A') }}</time>
+                        <time>{{ \App\Support\ActionTimestamp::label($log->created_at) }}</time>
                         <div>
                             <strong>{{ $log->description ?? ucfirst(str_replace(['_', '.'], ' ', $log->action ?? 'Activity')) }}</strong>
                             @if(!empty($log->properties) && is_array($log->properties))
@@ -4552,19 +4789,31 @@
             <details class="rcc-details" id="rental-full-timeline">
                 <summary>Open notes and recent activity</summary>
                 <div class="section-nav-target" id="rental-activity-timeline"></div>
-                <div class="section-nav-target" id="rental-notes-section"></div>
-                <form action="{{ route('rentals.notes.store', $rental) }}" method="POST" style="display:grid;gap:8px;margin:0 0 12px;">
-                    @csrf
-                    <input type="hidden" name="note_type" value="general">
-                    <textarea name="note" rows="3" placeholder="Add internal note..." style="width:100%;border:1px solid #cbd5e1;border-radius:10px;padding:10px;font-size:13px;resize:vertical;"></textarea>
-                    <div style="display:flex;justify-content:flex-end;">
-                        <button type="submit" class="detail-btn-secondary">Add Note</button>
-                    </div>
-                </form>
+                <div id="rental-notes-section" class="section-nav-target" data-rental-anchor>
+                    @if($rentalNoteFeedback)
+                        <p class="rental-section-feedback" role="status">{{ $rentalNoteFeedback }}</p>
+                    @endif
+                    @if($canEditRentalRecord)
+                        <form action="{{ route('rentals.notes.store', $rental) }}" method="POST" class="rental-note-form">
+                            @csrf
+                            <input type="hidden" name="note_type" value="general">
+                            <label for="desktop-rental-note">Internal note</label>
+                            <textarea id="desktop-rental-note" name="note" rows="3" maxlength="2000" required data-rental-focus>{{ old('note') }}</textarea>
+                            <div><button type="submit" class="detail-btn-secondary">Add Note</button></div>
+                        </form>
+                    @else
+                        <div class="rental-note-form">
+                            <label for="desktop-rental-note">Internal note</label>
+                            <textarea id="desktop-rental-note" rows="3" aria-describedby="rental-note-permission" disabled></textarea>
+                            <p id="rental-note-permission" class="ops-muted">Adding notes requires permission to update rentals.</p>
+                            <div><button type="button" class="detail-btn-secondary" disabled>Add Note</button></div>
+                        </div>
+                    @endif
+                </div>
                 <div class="rcc-timeline-list" style="padding:0;">
                     @foreach(($activityLogs ?? collect())->take(20) as $log)
                         <div class="rcc-timeline-item">
-                            <time>{{ optional($log->created_at)->format('d M Y h:i A') }}</time>
+                            <time>{{ \App\Support\ActionTimestamp::label($log->created_at) }}</time>
                             <div>
                                 <strong>{{ $log->description ?? ucfirst(str_replace(['_', '.'], ' ', $log->action ?? 'Activity')) }}</strong>
                             </div>
@@ -4798,30 +5047,26 @@
     </div>
 </div>
 
-<div class="ph-rental-mobile-footer" aria-label="Rental quick actions">
-    @if($rental->canRenew() && $canUpdateRentals)
-        <button type="button" class="detail-btn" data-open-renewal-modal>Renew Rental</button>
-    @elseif($rentalInvoice)
-        <a href="{{ route('invoices.show', $rentalInvoice) }}" class="detail-btn">Open Invoice</a>
-    @elseif($canUpdateRentals)
-        <form action="{{ route('rentals.invoice', $rental) }}" method="POST" style="margin:0;">
-            @csrf
-            <button type="submit" class="detail-btn">Create Invoice</button>
-        </form>
+<div class="ph-rental-mobile-footer rental-detail-redesign" aria-label="Rental quick actions">
+    @if(!empty($rentalNextAction['attribute']))
+        <button type="button" class="detail-btn" data-rental-next-action {{ $rentalNextAction['attribute'] }}>{{ $rentalNextAction['label'] }}</button>
     @else
-        <a href="{{ route('rentals.index') }}" class="detail-btn">Back to Rentals</a>
+        <a href="{{ $rentalNextAction['href'] }}" class="detail-btn" data-rental-next-action>{{ $rentalNextAction['label'] }}</a>
     @endif
     <details class="ph-rental-footer-more" data-rental-mobile-menu>
         <summary><span aria-hidden="true">&ctdot;</span> More Actions</summary>
         <div class="ph-rental-footer-panel">
-            @foreach($mobileMoreActions->take(10) as $action)
+            @foreach($rentalUnifiedMobileActions as $action)
                 @if(($action['type'] ?? 'link') === 'form')
                     <form action="{{ $action['action'] }}" method="POST" style="margin:0;">
                         @csrf
+                        @if(!empty($action['payment_submission']))
+                            <x-payment-submission-token />
+                        @endif
                         @if(($action['method'] ?? 'POST') !== 'POST')
                             @method($action['method'])
                         @endif
-                        <button type="submit" @if(!empty($action['confirm'])) onclick="return confirm('{{ $action['confirm'] }}');" @endif>{{ $action['label'] }}</button>
+                        <button type="submit" @if(!empty($action['confirm'])) onclick="return confirm('{{ $action['confirm'] }}');" @endif class="{{ !empty($action['danger']) ? 'is-danger' : '' }}">{{ $action['label'] }}</button>
                     </form>
                 @elseif(($action['type'] ?? 'link') === 'button')
                     <button type="button" @foreach(($action['attributes'] ?? []) as $attribute => $value) {{ $attribute }}="{{ is_bool($value) ? ($value ? 'true' : 'false') : $value }}" @endforeach>{{ $action['label'] }}</button>
@@ -4833,12 +5078,6 @@
     </details>
 </div>
 
-@include('partials.mobile-action-bar', [
-    'label' => 'Rental mobile actions',
-    'moreLabel' => 'Rental secondary actions',
-    'actions' => $mobilePrimaryActions->all(),
-    'moreActions' => $mobileMoreActions->all(),
-])
 @include('partials.follow-up-modal')
     {{--
         <div class="rental-cta-meta">
@@ -4883,12 +5122,14 @@
                         <a href="tel:{{ preg_replace('/\D+/', '', $rental->reminderContactPhone()) }}">Call Customer</a>
                     @endif
                     @if($canCreatePayments && !in_array($rentalInvoiceStatus, ['paid', 'cancelled'], true))
+                        @unless($paymentVendor)
                         <form action="{{ route('rentals.markPaid', $rental) }}" method="POST" style="margin:0;">
                             @csrf
                     <x-payment-submission-token />
                             <button type="submit">Mark as Paid</button>
                         </form>
-                        <a href="#rental-billing-actions">Partial Payment</a>
+                        @endunless
+                        <a href="#rental-billing-actions">{{ $paymentVendor ? 'Record Payment' : 'Partial Payment' }}</a>
                     @endif
                     @if($deliveryRecord && $hasOpenDeliveryTask && auth()->user()?->canAccessModule('deliveries', 'update'))
                         <a href="{{ route('deliveries.edit', $deliveryRecord) }}">Edit Delivery Assignment</a>
@@ -4938,24 +5179,71 @@
     </div>
 </div>
     --}}
+
+@include('partials.record-timestamps', ['timestampRecord' => $rental, 'timestampFields' => ['created_at' => 'Created', 'updated_at' => 'Last updated', 'returned_at' => 'Rental closed']])
 @endsection
 
 @push('scripts')
 <script>
     (() => {
-        const rentalMobileMenus = document.querySelectorAll('[data-rental-mobile-menu]');
+        const rentalMenus = document.querySelectorAll('[data-rental-mobile-menu], .ph-mobile-action-bar[aria-label="Rental mobile actions"] .ph-mobile-action-menu');
+        const topbars = document.querySelectorAll('.app-shell-topbar, .mobile-topbar');
+        const bottomNav = document.querySelector('.mobile-bottom-nav');
 
-        if (!rentalMobileMenus.length) {
+        if (!rentalMenus.length) {
             return;
         }
 
-        rentalMobileMenus.forEach((menu) => {
+        const placeMenu = (menu) => {
+            const trigger = menu.firstElementChild.getBoundingClientRect();
+            const panel = menu.lastElementChild;
+            if (!trigger.width || !trigger.height) return;
+
+            const viewport = window.visualViewport;
+            const top = Math.max(viewport?.offsetTop ?? 0, ...Array.from(topbars, (bar) => bar.getBoundingClientRect().bottom));
+            const viewportBottom = (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight);
+            const navTop = bottomNav?.getBoundingClientRect();
+            const bottom = navTop?.height ? Math.min(viewportBottom, navTop.top) : viewportBottom;
+            if (trigger.bottom <= top || trigger.top >= bottom) {
+                menu.open = false;
+                return;
+            }
+
+            // Allow for the 8px anchor gap and an 8px margin at the viewport edge.
+            const above = Math.max(0, trigger.top - top - 16);
+            const below = Math.max(0, bottom - trigger.bottom - 16);
+            const contentHeight = panel.scrollHeight + panel.offsetHeight - panel.clientHeight;
+            const preferUp = menu.matches('.ph-rental-footer-more, .ph-mobile-action-menu');
+            const openUp = preferUp
+                ? above >= contentHeight || above >= below
+                : below < contentHeight && above > below;
+            menu.dataset.rentalMenuPlacement = openUp ? 'up' : 'down';
+            panel.style.setProperty('--rental-menu-height', `${openUp ? above : below}px`);
+        };
+
+        let placementFrame;
+        const updatePlacement = () => {
+            if (placementFrame) return;
+            placementFrame = window.requestAnimationFrame(() => {
+                placementFrame = null;
+                rentalMenus.forEach((menu) => { if (menu.open) placeMenu(menu); });
+            });
+        };
+        window.addEventListener('scroll', updatePlacement, { capture: true, passive: true });
+        window.addEventListener('resize', updatePlacement);
+        window.visualViewport?.addEventListener('resize', updatePlacement);
+        window.visualViewport?.addEventListener('scroll', updatePlacement);
+
+        rentalMenus.forEach((menu) => {
             menu.addEventListener('toggle', () => {
                 if (!menu.open) {
+                    delete menu.dataset.rentalMenuPlacement;
+                    menu.lastElementChild.style.removeProperty('--rental-menu-height');
                     return;
                 }
 
-                rentalMobileMenus.forEach((otherMenu) => {
+                placeMenu(menu);
+                rentalMenus.forEach((otherMenu) => {
                     if (otherMenu !== menu) {
                         otherMenu.open = false;
                     }
@@ -4964,7 +5252,7 @@
         });
 
         document.addEventListener('click', (event) => {
-            rentalMobileMenus.forEach((menu) => {
+            rentalMenus.forEach((menu) => {
                 if (menu.open && !menu.contains(event.target)) {
                     menu.open = false;
                 }
@@ -4976,8 +5264,11 @@
                 return;
             }
 
-            rentalMobileMenus.forEach((menu) => {
-                menu.open = false;
+            rentalMenus.forEach((menu) => {
+                if (menu.open) {
+                    menu.open = false;
+                    menu.firstElementChild.focus();
+                }
             });
         });
     })();
@@ -5132,7 +5423,7 @@
                 return;
             }
 
-            const endDate = new Date(activeCurrentEndDate + 'T00:00:00');
+            const endDate = new Date(activeCurrentEndDate + 'T00:00:00Z');
 
             if (Number.isNaN(endDate.getTime())) {
                 return;
@@ -5140,27 +5431,27 @@
 
             switch (durationPreset.value) {
                 case '7_days':
-                    endDate.setDate(endDate.getDate() + 7);
+                    endDate.setUTCDate(endDate.getUTCDate() + 7);
                     break;
                 case '15_days':
-                    endDate.setDate(endDate.getDate() + 15);
+                    endDate.setUTCDate(endDate.getUTCDate() + 15);
                     break;
                 case '30_days':
-                    endDate.setDate(endDate.getDate() + 30);
+                    endDate.setUTCDate(endDate.getUTCDate() + 30);
                     break;
                 case '3_months':
-                    endDate.setMonth(endDate.getMonth() + 3);
+                    endDate.setUTCMonth(endDate.getUTCMonth() + 3);
                     break;
                 case '6_months':
-                    endDate.setMonth(endDate.getMonth() + 6);
+                    endDate.setUTCMonth(endDate.getUTCMonth() + 6);
                     break;
                 default:
                     return;
             }
 
-            const year = endDate.getFullYear();
-            const month = String(endDate.getMonth() + 1).padStart(2, '0');
-            const day = String(endDate.getDate()).padStart(2, '0');
+            const year = endDate.getUTCFullYear();
+            const month = String(endDate.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(endDate.getUTCDate()).padStart(2, '0');
             newEndDateInput.value = `${year}-${month}-${day}`;
         };
 
@@ -5347,12 +5638,34 @@
 </script>
 <script>
     (() => {
+        const page = document.getElementById('rental-detail-page');
         const compactPanels = ['rental-finance-workspace', 'renewal-workspace', 'rental-timeline-workspace'];
         const storageKey = 'phos:rental:compact-panels';
+        const mobileLayout = window.matchMedia('(max-width: 767px)');
+        const mobileAnchors = {
+            'rental-overview-section': 'mobile-rental-overview',
+            'rental-operations-workspace': 'mobile-rental-operations',
+            'rental-products-section': 'mobile-rental-products',
+            'rental-finance-workspace': 'mobile-rental-finance',
+            'rental-billing-actions': 'mobile-rental-finance',
+            'record-payment-panel': 'mobile-record-payment-panel',
+            'renewal-workspace': 'mobile-rental-renewal',
+            'rental-timeline-workspace': 'mobile-rental-activity',
+            'rental-full-timeline': 'mobile-rental-notes',
+            'rental-activity-timeline': 'mobile-rental-notes',
+            'rental-notes-section': 'mobile-rental-notes',
+        };
+        const sectionAliases = {
+            'rental-finance-workspace': 'rental-billing-actions',
+            'record-payment-panel': 'rental-billing-actions',
+            'rental-full-timeline': 'rental-timeline-workspace',
+            'rental-activity-timeline': 'rental-notes-section',
+        };
+        const sectionLinks = page.querySelectorAll('[data-rental-section-nav] a');
 
         const loadState = () => {
             try {
-                return JSON.parse(localStorage.getItem(storageKey) || '{}');
+                return JSON.parse(localStorage.getItem(storageKey) || '{}') || {};
             } catch (error) {
                 return {};
             }
@@ -5366,35 +5679,66 @@
                     state[id] = panel.open === true;
                 }
             });
-            localStorage.setItem(storageKey, JSON.stringify(state));
+            try {
+                localStorage.setItem(storageKey, JSON.stringify(state));
+            } catch (error) {
+                // Section navigation remains usable without browser storage.
+            }
         };
 
-        const openPanelForTarget = (target) => {
-            if (!target) return;
-            const element = document.getElementById(target.replace('#', ''));
-            const panel = element?.closest?.('.rcc-accordion-section');
-            if (panel && panel.tagName === 'DETAILS') {
-                panel.open = true;
-                saveState();
+        const revealSection = (anchor, moveFocus = false) => {
+            if (!anchor) return false;
+            const desktopAnchor = anchor === 'rental-activity-timeline' ? 'rental-notes-section' : anchor;
+            const id = mobileLayout.matches ? (mobileAnchors[anchor] || anchor) : desktopAnchor;
+            const section = document.getElementById(id);
+            if (!section || !page.contains(section)) return false;
+
+            for (let panel = section; panel && panel !== page; panel = panel.parentElement) {
+                if (panel.tagName === 'DETAILS') panel.open = true;
             }
+            if (!section.getClientRects().length) return false;
+
+            const sectionAnchor = sectionAliases[anchor] || anchor;
+            sectionLinks.forEach((link) => {
+                if (link.hash === '#' + sectionAnchor) link.setAttribute('aria-current', 'location');
+                else link.removeAttribute('aria-current');
+            });
+
+            const field = moveFocus ? section.querySelector('[data-rental-focus]') : null;
+            if (moveFocus) {
+                const target = field || section.querySelector(':scope > summary') || section;
+                if (target === section) target.setAttribute('tabindex', '-1');
+                target.focus({preventScroll:true});
+            }
+            (field || section).scrollIntoView({block: field ? 'center' : 'start'});
+            return true;
         };
 
         const state = loadState();
         compactPanels.forEach((id) => {
             const panel = document.getElementById(id);
             if (!panel) return;
-            panel.open = state[id] === true;
+            panel.open = panel.open || state[id] === true;
             panel.addEventListener('toggle', saveState);
         });
 
-        openPanelForTarget(window.location.hash);
-        window.addEventListener('hashchange', () => openPanelForTarget(window.location.hash));
+        const fromHash = () => revealSection(window.location.hash.slice(1));
+        window.requestAnimationFrame(() => {
+            if (page.dataset.rentalReturnAnchor) revealSection(page.dataset.rentalReturnAnchor);
+            else fromHash();
+        });
+        window.addEventListener('hashchange', fromHash);
+        mobileLayout.addEventListener('change', fromHash);
 
         document.addEventListener('click', (event) => {
             const link = event.target.closest('a[href^="#"]');
-            if (link) {
-                openPanelForTarget(link.getAttribute('href'));
-            }
+            if (!link?.closest('#rental-detail-page, .ph-rental-mobile-footer')) return;
+            if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+            if (!revealSection(link.hash.slice(1), true)) return;
+            event.preventDefault();
+            if (window.location.hash !== link.hash) history.pushState(null, '', link.hash);
+            const menu = link.closest('[data-rental-mobile-menu]');
+            if (menu) menu.open = false;
         });
     })();
 </script>

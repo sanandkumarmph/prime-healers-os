@@ -163,7 +163,7 @@
         $rentalUtilization <= 95 => ['High Demand', 'info', '#eff6ff', '#bfdbfe', '#1d4ed8', 'Consider purchasing additional assets.'],
         default => ['Stock Constraint', 'danger', '#fff1f2', '#fecdd3', '#be123c', 'Consider purchasing additional assets.'],
     };
-    $formatWhen = fn ($value) => $value ? \Illuminate\Support\Carbon::parse($value)->diffForHumans() : 'No activity yet';
+    $formatWhen = fn ($value) => $value ? \App\Support\ActionTimestamp::label($value) : 'No activity yet';
     $attentionItems = collect([
         $availableForRentCount === 0 && $canRent ? ['label' => 'No rental assets available', 'tone' => 'danger'] : null,
         $saleAvailableCount === 0 && $canSell ? ['label' => 'No sale units available', 'tone' => 'danger'] : null,
@@ -189,7 +189,7 @@
         ['label' => 'Tax', 'value' => $gstRateSummary],
         ['label' => 'Stock Mode', 'value' => $stockModeLabel],
         ['label' => 'Product Type', 'value' => $productTypeLabel],
-        ['label' => 'Created', 'value' => optional($product->created_at)->format('d M Y')],
+        ['label' => 'Created', 'value' => \App\Support\ActionTimestamp::label($product->created_at)],
     ])->filter(fn ($item) => filled($item['value']))->values();
     $mobilePricingDetails = collect([
         ['label' => 'Sale Price', 'value' => $product->sale_price !== null ? $rupee . number_format((float) $product->sale_price, 2) : null],
@@ -1268,7 +1268,7 @@
                                 <div class="product-mobile-activity-row">
                                     <div>
                                         <strong>{{ $conversion->conversion_type === \App\Models\InventoryConversion::TYPE_RENTAL_TO_SALE ? 'Rental to Sale' : 'Sale to Rental' }}</strong><br>
-                                        <span>{{ optional($conversion->created_at)->format('d M Y, h:i A') }}</span>
+                                        <span>{{ \App\Support\ActionTimestamp::label($conversion->created_at) }}</span>
                                     </div>
                                     <span>{{ $conversion->quantity_converted }} unit(s)</span>
                                 </div>
@@ -1758,7 +1758,7 @@
                                     <span style="color:#475569; font-size:13px;">{{ $conversion->quantity_converted }} unit(s)</span>
                                 </div>
                                 <div style="text-align:right; color:#64748b; font-size:12px;">
-                                    <div>{{ optional($conversion->created_at)->format('d M Y, h:i A') }}</div>
+                                    <div>{{ \App\Support\ActionTimestamp::label($conversion->created_at) }}</div>
                                     <div style="margin-top:4px;">{{ optional($conversion->convertedBy)->name ?: 'System / User' }}</div>
                                 </div>
                             </div>
@@ -1780,6 +1780,8 @@
         </div>
         </div>
     </div>
+
+@include('partials.record-timestamps', ['timestampRecord' => $product, 'timestampFields' => ['created_at' => 'Created', 'updated_at' => 'Last updated']])
 @endsection
 
 @push('scripts')

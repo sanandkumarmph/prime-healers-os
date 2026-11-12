@@ -172,11 +172,11 @@
         <div class="reports-title">
             <div class="rx-eyebrow">Analytics</div>
             <h1>Reports & Insights</h1>
-            <p>Structured analytics center for revenue, rentals, inventory, customers, staff, vendors, profitability, and product trends.</p>
+            <p>Analytics for revenue, rentals, inventory, customers, staff, vendors and profitability.</p>
         </div>
         <div class="reports-actions">
             <a href="{{ route('dashboard') }}" class="reports-btn">Dashboard</a>
-            <a href="{{ $exportUrl }}" class="reports-btn primary">Export CSV</a>
+            @can('manage-bulk-records')<a href="{{ $exportUrl }}" class="reports-btn primary">Export CSV</a>@endcan
         </div>
     </div>
 
@@ -228,7 +228,7 @@
         <div class="reports-actions">
             <button type="submit" class="reports-btn primary">Apply Filters</button>
             <a href="{{ route('reports.index', ['tab' => $activeTab]) }}" class="reports-btn">Reset</a>
-            <a href="{{ $exportUrl }}" class="reports-btn">Export Current View</a>
+            @can('manage-bulk-records')<a href="{{ $exportUrl }}" class="reports-btn">Export Current View</a>@endcan
         </div>
     </form>
     </details>
@@ -241,7 +241,9 @@
     <input class="reports-radio" type="radio" id="tab-vendors" name="reports-tab" value="vendors" @checked($activeTab === 'vendors')>
     <input class="reports-radio" type="radio" id="tab-referrals" name="reports-tab" value="referrals" @checked($activeTab === 'referrals')>
     <input class="reports-radio" type="radio" id="tab-profit" name="reports-tab" value="profit" @checked($activeTab === 'profit')>
-    <input class="reports-radio" type="radio" id="tab-trends" name="reports-tab" value="trends" @checked($activeTab === 'trends')>
+    @if(auth()->user()->isSuperAdmin())
+        <input class="reports-radio" type="radio" id="tab-trends" name="reports-tab" value="trends" @checked($activeTab === 'trends')>
+    @endif
 
     <div class="reports-panel">
         <div class="reports-tabs">
@@ -252,14 +254,16 @@
             <label class="reports-tab" for="tab-staff">Staff Performance</label>
             <label class="reports-tab" for="tab-vendors">Vendor Analytics</label>
             <label class="reports-tab" for="tab-referrals">Referral Analytics</label>
-            <label class="reports-tab" for="tab-profit">Profitability / EBITDA</label>
-            <label class="reports-tab" for="tab-trends">Product Trends</label>
+            <label class="reports-tab" for="tab-profit">Profitability</label>
+            @if(auth()->user()->isSuperAdmin())
+                <label class="reports-tab" for="tab-trends">Product Trends</label>
+            @endif
         </div>
 
         <section class="reports-tab-content revenue-tab">
             <div class="metric-strip">
                 <div class="metric"><span>Total Revenue</span><strong>{{ $currency($revenue['total_revenue'] ?? 0) }}</strong><small>Invoices or available order value</small></div>
-                <div class="metric"><span>Rental Revenue</span><strong>{{ $currency($revenue['rental_revenue'] ?? 0) }}</strong><small><a href="{{ $exportFor('active_rentals') }}">Export rentals</a></small></div>
+                <div class="metric"><span>Rental Revenue</span><strong>{{ $currency($revenue['rental_revenue'] ?? 0) }}</strong><small>@can('manage-bulk-records')<a href="{{ $exportFor('active_rentals') }}">Export rentals</a>@endcan</small></div>
                 <div class="metric"><span>Sales Revenue</span><strong>{{ $currency($revenue['sales_revenue'] ?? 0) }}</strong><small><a href="{{ $salesUrl() }}">View details</a></small></div>
                 <div class="metric"><span>Deposit</span><strong>{{ $currency($revenue['deposit'] ?? 0) }}</strong><small>Deposit component</small></div>
                 <div class="metric"><span>Transport</span><strong>{{ $currency($revenue['transport'] ?? 0) }}</strong><small>Shipping and transport</small></div>
@@ -267,7 +271,7 @@
             </div>
             <div class="reports-grid-2">
                 <div class="mini-card">
-                    <div class="mini-head"><div><h2>Revenue Composition</h2><p>Rental, sales, deposit, transport, and other mix.</p></div><a class="reports-btn" href="{{ $exportUrl }}">Export CSV</a></div>
+                    <div class="mini-head"><div><h2>Revenue Composition</h2><p>Rental, sales, deposit, transport, and other mix.</p></div>@can('manage-bulk-records')<a class="reports-btn" href="{{ $exportUrl }}">Export CSV</a>@endcan</div>
                     <div class="mini-body donut-wrap">
                         <div class="donut" style="{{ $donutStyle }}"></div>
                         <div class="legend">
@@ -293,7 +297,7 @@
             </div>
             <div class="reports-grid-2">
                 <div class="mini-card"><div class="mini-head"><div><h2>Rental vs Sales Trend</h2><p>Rental volume against sales value.</p></div></div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Period</th><th>Rentals</th><th>Sales Value</th></tr></thead><tbody>@forelse(collect($revenue['rental_trend'] ?? []) as $row)<tr><td>{{ $monthLabel($row['month']) }}</td><td>{{ $number($row['value']) }}</td><td>{{ $currency(collect($revenue['sales_trend'] ?? [])->firstWhere('month', $row['month'])['value'] ?? 0) }}</td></tr>@empty<tr><td colspan="3"><div class="empty">No rental vs sales trend available.</div></td></tr>@endforelse</tbody></table></div></div>
-                <div class="mini-card"><div class="mini-head"><div><h2>Collection Performance</h2><p>Outstanding and collection workload.</p></div><a class="reports-btn" href="{{ $exportFor('customer_outstanding') }}">Export Dues</a></div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Customer</th><th>Outstanding</th></tr></thead><tbody>@forelse(collect($collections['customer_outstanding'] ?? [])->take(8) as $row)<tr><td><a href="{{ $customerUrl($row->customer_id ?? null) }}">{{ $row->label }}</a></td><td>{{ $currency($row->total) }}</td></tr>@empty<tr><td colspan="2"><div class="empty">No outstanding dues.</div></td></tr>@endforelse</tbody></table></div></div>
+                <div class="mini-card"><div class="mini-head"><div><h2>Collection Performance</h2><p>Outstanding and collection workload.</p></div>@can('manage-bulk-records')<a class="reports-btn" href="{{ $exportFor('customer_outstanding') }}">Export Dues</a>@endcan</div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Customer</th><th>Outstanding</th></tr></thead><tbody>@forelse(collect($collections['customer_outstanding'] ?? [])->take(8) as $row)<tr><td><a href="{{ $customerUrl($row->customer_id ?? null) }}">{{ $row->label }}</a></td><td>{{ $currency($row->total) }}</td></tr>@empty<tr><td colspan="2"><div class="empty">No outstanding dues.</div></td></tr>@endforelse</tbody></table></div></div>
             </div>
         </section>
 
@@ -304,7 +308,7 @@
                 <a class="metric" href="{{ $rentalsUrl(['filter' => 'overdue']) }}"><span>Overdue Rentals</span><strong>{{ $number($rentalMetrics['overdueRentals'] ?? 0) }}</strong><small>Export available</small></a>
                 <a class="metric" href="{{ $rentalsUrl(['filter' => 'ending_soon']) }}"><span>Ending Soon</span><strong>{{ $number($rentalMetrics['endingSoonRentals'] ?? 0) }}</strong><small>Renewal planning</small></a>
                 <div class="metric"><span>Sales Count</span><strong>{{ $number($salesInvoices['sales_count'] ?? 0) }}</strong><small>Filtered sales</small></div>
-                <div class="metric"><span>Invoices This Month</span><strong>{{ $number($salesInvoices['invoices_this_month'] ?? 0) }}</strong><small><a href="{{ $exportFor('invoices_this_month') }}">Export CSV</a></small></div>
+                <div class="metric"><span>Invoices This Month</span><strong>{{ $number($salesInvoices['invoices_this_month'] ?? 0) }}</strong><small>@can('manage-bulk-records')<a href="{{ $exportFor('invoices_this_month') }}">Export CSV</a>@endcan</small></div>
             </div>
             <div class="reports-grid-3">
                 @foreach(['city_wise' => 'City-wise Rentals', 'vendor_wise' => 'Vendor-wise Rentals', 'warehouse_wise' => 'Warehouse-wise Rentals'] as $key => $title)
@@ -312,7 +316,7 @@
                 @endforeach
             </div>
             <div class="reports-grid-2">
-                <div class="mini-card"><div class="mini-head"><div><h2>Product-wise Rentals</h2><p>Most active rented products.</p></div><a class="reports-btn" href="{{ $exportFor('product_utilization') }}">Export CSV</a></div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Product</th><th>Rentals</th><th>Quantity</th></tr></thead><tbody>@forelse(collect($rentals['product_wise'] ?? []) as $row)<tr><td>{{ $row->label }}</td><td>{{ $number($row->total) }}</td><td>{{ $number($row->quantity_total) }}</td></tr>@empty<tr><td colspan="3"><div class="empty">No product rental data.</div></td></tr>@endforelse</tbody></table></div></div>
+                <div class="mini-card"><div class="mini-head"><div><h2>Product-wise Rentals</h2><p>Most active rented products.</p></div>@can('manage-bulk-records')<a class="reports-btn" href="{{ $exportFor('product_utilization') }}">Export CSV</a>@endcan</div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Product</th><th>Rentals</th><th>Quantity</th></tr></thead><tbody>@forelse(collect($rentals['product_wise'] ?? []) as $row)<tr><td>{{ $row->label }}</td><td>{{ $number($row->total) }}</td><td>{{ $number($row->quantity_total) }}</td></tr>@empty<tr><td colspan="3"><div class="empty">No product rental data.</div></td></tr>@endforelse</tbody></table></div></div>
                 <div class="mini-card"><div class="mini-head"><div><h2>Monthly Rental Trend</h2><p>Rental volume movement.</p></div></div><div class="mini-body trend-list">@php($maxRentals = max(1, collect($rentals['monthly_trend'] ?? [])->max('value') ?: 1))@forelse(collect($rentals['monthly_trend'] ?? [])->take(12) as $row)<div class="trend-row"><strong>{{ $monthLabel($row['month']) }}</strong><span class="bar"><i style="width:{{ min(100, (((float)$row['value']) / $maxRentals) * 100) }}%"></i></span><span>{{ $number($row['value']) }}</span></div>@empty<div class="empty">No rental trend available.</div>@endforelse</div></div>
             </div>
         </section>
@@ -327,18 +331,18 @@
                 <div class="metric"><span>Low Stock</span><strong>{{ collect($inventory['low_stock_products'] ?? [])->count() }}</strong><small>Products below threshold</small></div>
             </div>
             <div class="reports-grid-2">
-                <div class="mini-card"><div class="mini-head"><div><h2>Product Availability</h2><p>Available, deployed, maintenance, and utilization.</p></div><a class="reports-btn" href="{{ $exportFor('product_utilization') }}">Export CSV</a></div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Product</th><th>Avail</th><th>Rented</th><th>Maint.</th><th>Util.</th></tr></thead><tbody>@forelse(collect($inventory['product_utilization'] ?? []) as $row)<tr><td><a href="{{ $productUrl($row->id) }}">{{ $row->name }}</a></td><td>{{ $number($row->available_assets ?? 0) }}</td><td>{{ $number($row->rented_assets ?? 0) }}</td><td>{{ $number($row->maintenance_assets ?? 0) }}</td><td>{{ ($row->total_assets ?? 0) > 0 ? $number((($row->rented_assets ?? 0) / $row->total_assets) * 100, 1) : '0.0' }}%</td></tr>@empty<tr><td colspan="5"><div class="empty">No product utilization data.</div></td></tr>@endforelse</tbody></table></div></div>
+                <div class="mini-card"><div class="mini-head"><div><h2>Product Availability</h2><p>Available, deployed, maintenance, and utilization.</p></div>@can('manage-bulk-records')<a class="reports-btn" href="{{ $exportFor('product_utilization') }}">Export CSV</a>@endcan</div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Product</th><th>Avail</th><th>Rented</th><th>Maint.</th><th>Util.</th></tr></thead><tbody>@forelse(collect($inventory['product_utilization'] ?? []) as $row)<tr><td><a href="{{ $productUrl($row->id) }}">{{ $row->name }}</a></td><td>{{ $number($row->available_assets ?? 0) }}</td><td>{{ $number($row->rented_assets ?? 0) }}</td><td>{{ $number($row->maintenance_assets ?? 0) }}</td><td>{{ ($row->total_assets ?? 0) > 0 ? $number((($row->rented_assets ?? 0) / $row->total_assets) * 100, 1) : '0.0' }}%</td></tr>@empty<tr><td colspan="5"><div class="empty">No product utilization data.</div></td></tr>@endforelse</tbody></table></div></div>
                 <div class="mini-card"><div class="mini-head"><div><h2>Category Availability</h2><p>Product/category availability chart.</p></div></div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Category</th><th>Available</th><th>Committed</th><th>Total</th></tr></thead><tbody>@forelse(collect($inventory['category_availability'] ?? []) as $row)<tr><td>{{ $row->label }}</td><td>{{ $number($row->available_count) }}</td><td>{{ $number($row->committed_count) }}</td><td>{{ $number($row->total_count) }}</td></tr>@empty<tr><td colspan="4"><div class="empty">No category availability data.</div></td></tr>@endforelse</tbody></table></div></div>
             </div>
             <div class="reports-grid-2">
                 <div class="mini-card"><div class="mini-head"><div><h2>Low Stock</h2><p>Products needing availability attention.</p></div></div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Product</th><th>Available</th><th>Total</th></tr></thead><tbody>@forelse(collect($inventory['low_stock_products'] ?? []) as $row)<tr><td>{{ $row->name }}</td><td>{{ $number($row->available_quantity) }}</td><td>{{ $number($row->total_quantity) }}</td></tr>@empty<tr><td colspan="3"><div class="empty">No low stock products under current filters.</div></td></tr>@endforelse</tbody></table></div></div>
-                <div class="mini-card"><div class="mini-head"><div><h2>Warehouse Stock</h2><p>Warehouse contribution summary.</p></div><a class="reports-btn" href="{{ $exportFor('warehouse_stock_summary') }}">Export CSV</a></div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Warehouse</th><th>Total Assets</th></tr></thead><tbody>@forelse(collect($inventory['warehouse_stock_summary'] ?? []) as $row)<tr><td>{{ $row->label }}</td><td>{{ $number($row->total) }}</td></tr>@empty<tr><td colspan="2"><div class="empty">No warehouse stock data.</div></td></tr>@endforelse</tbody></table></div></div>
+                <div class="mini-card"><div class="mini-head"><div><h2>Warehouse Stock</h2><p>Warehouse contribution summary.</p></div>@can('manage-bulk-records')<a class="reports-btn" href="{{ $exportFor('warehouse_stock_summary') }}">Export CSV</a>@endcan</div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Warehouse</th><th>Total Assets</th></tr></thead><tbody>@forelse(collect($inventory['warehouse_stock_summary'] ?? []) as $row)<tr><td>{{ $row->label }}</td><td>{{ $number($row->total) }}</td></tr>@empty<tr><td colspan="2"><div class="empty">No warehouse stock data.</div></td></tr>@endforelse</tbody></table></div></div>
             </div>
         </section>
 
         <section class="reports-tab-content customers-tab">
             <div class="reports-grid-2">
-                <div class="mini-card"><div class="mini-head"><div><h2>Business Partner Performance</h2><p>Revenue, actual clients, orders, dues, and collection performance.</p></div><a class="reports-btn" href="{{ $exportFor('customer_outstanding') }}">Export Dues</a></div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Partner</th><th>Revenue</th><th>Clients</th><th>Rentals</th><th>Sales</th><th>Dues</th><th>Collection</th></tr></thead><tbody>@forelse(collect($customersReport['business_partner_performance'] ?? []) as $row)<tr><td>{{ $row->label }}</td><td>{{ $currency($row->revenue) }}</td><td>{{ $number($row->actual_clients) }}</td><td>{{ $number($row->rentals_count) }}</td><td>{{ $number($row->sales_count) }}</td><td>{{ $currency($row->outstanding) }}</td><td>{{ $number($row->collection_percent, 1) }}%</td></tr>@empty<tr><td colspan="7"><div class="empty">No business partner data for current filters.</div></td></tr>@endforelse</tbody></table></div></div>
+                <div class="mini-card"><div class="mini-head"><div><h2>Business Partner Performance</h2><p>Revenue, actual clients, orders, dues, and collection performance.</p></div>@can('manage-bulk-records')<a class="reports-btn" href="{{ $exportFor('customer_outstanding') }}">Export Dues</a>@endcan</div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Partner</th><th>Revenue</th><th>Clients</th><th>Rentals</th><th>Sales</th><th>Dues</th><th>Collection</th></tr></thead><tbody>@forelse(collect($customersReport['business_partner_performance'] ?? []) as $row)<tr><td>{{ $row->label }}</td><td>{{ $currency($row->revenue) }}</td><td>{{ $number($row->actual_clients) }}</td><td>{{ $number($row->rentals_count) }}</td><td>{{ $number($row->sales_count) }}</td><td>{{ $currency($row->outstanding) }}</td><td>{{ $number($row->collection_percent, 1) }}%</td></tr>@empty<tr><td colspan="7"><div class="empty">No business partner data for current filters.</div></td></tr>@endforelse</tbody></table></div></div>
                 <div class="mini-card"><div class="mini-head"><div><h2>Top Customers</h2><p>Direct customers by rental count.</p></div></div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Customer</th><th>Type</th><th>Rentals</th></tr></thead><tbody>@forelse(collect($customersReport['top_customers'] ?? []) as $row)<tr><td><a href="{{ $customerUrl($row->id) }}">{{ $row->name }}</a></td><td><span class="badge good">Top</span></td><td>{{ $number($row->rentals_count) }}</td></tr>@empty<tr><td colspan="3"><div class="empty">No customer data available.</div></td></tr>@endforelse @foreach(collect($customersReport['repeat_customers'] ?? [])->take(5) as $row)<tr><td><a href="{{ $customerUrl($row->id) }}">{{ $row->name }}</a></td><td><span class="badge">Repeat</span></td><td>{{ $number($row->rentals_count) }}</td></tr>@endforeach</tbody></table></div></div>
             </div>
             <div class="reports-grid-2">
@@ -368,7 +372,7 @@
                 <div class="mini-head">
                     <div><h2>Referral Order Details</h2><p>Latest individual referral-linked rentals and sales. Limited to 10 rows here.</p></div>
                     <div class="reports-actions">
-                        <a class="reports-btn" href="{{ $exportFor('referral_order_details') }}">View All / Export</a>
+                        @can('manage-bulk-records')<a class="reports-btn" href="{{ $exportFor('referral_order_details') }}">View All / Export</a>@endcan
                     </div>
                 </div>
                 <div class="mini-body reports-table-wrap">
@@ -397,6 +401,9 @@
         </section>
 
         <section class="reports-tab-content staff-tab">
+            @if(auth()->user()->canViewStaffIncentives())
+                <div class="mini-card"><div class="mini-head"><div><h2>Staff incentive revenue</h2><p>See eligible invoiced sales and rentals by staff member and enquiry source.</p></div><a class="reports-btn" href="{{ route('reports.staff-incentives') }}">View incentive revenue</a></div></div>
+            @endif
             <div class="reports-grid-2">
                 <div class="mini-card"><div class="mini-head"><div><h2>Sales Staff</h2><p>Orders created, revenue generated, collections supported, and follow-ups completed.</p></div></div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Staff</th><th>Orders</th><th>Revenue</th><th>Collections</th><th>Follow-ups</th></tr></thead><tbody>@forelse(collect($staff['sales_staff'] ?? []) as $row)<tr><td>{{ $row->label }}</td><td>{{ $number($row->orders_created) }}</td><td>{{ $currency($row->revenue_generated) }}</td><td>{{ $number($row->collections_supported) }}</td><td>{{ $number($row->followups_completed) }}</td></tr>@empty<tr><td colspan="5"><div class="empty">No sales staff activity under current filters.</div></td></tr>@endforelse</tbody></table></div></div>
                 <div class="mini-card"><div class="mini-head"><div><h2>Delivery Staff</h2><p>Assigned deliveries, completions, delays, and pickups completed.</p></div></div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Staff</th><th>Assigned</th><th>Completed</th><th>Delayed</th><th>Pickups</th></tr></thead><tbody>@forelse(collect($staff['delivery_staff'] ?? []) as $row)<tr><td>{{ $row->label }}</td><td>{{ $number($row->assigned_deliveries) }}</td><td>{{ $number($row->completed_deliveries) }}</td><td>{{ $number($row->delayed_deliveries) }}</td><td>{{ $number($row->pickups_completed) }}</td></tr>@empty<tr><td colspan="5"><div class="empty">No delivery staff activity under current filters.</div></td></tr>@endforelse</tbody></table></div></div>
@@ -404,6 +411,9 @@
         </section>
 
         <section class="reports-tab-content vendors-tab">
+            @if(auth()->user()->hasPermission('vendor_reports.view'))
+                <div class="mini-card"><div class="mini-head"><div><h2>Vendor-collected payments</h2><p>Review receipts and delivery collection reports by vendor.</p></div><a class="reports-btn" href="{{ route('reports.vendor-collections') }}">View collections</a></div></div>
+            @endif
             <div class="mini-card">
                 <div class="mini-head"><div><h2>Vendor Performance Summary</h2><p>Financial view of vendor-supplied rental and sales business.</p></div><a class="reports-btn" href="{{ route('vendor-orders.index') }}">View Details</a></div>
             </div>
@@ -486,7 +496,7 @@
                 <div class="mini-card">
                     <div class="mini-head">
                         <div><h2>Referral Leaderboard</h2><p>Track referral volume and product revenue for incentive review. Referral revenue excludes deposits and transport.</p></div>
-                        <a class="reports-btn" href="{{ $exportFor('referral_order_details') }}">Export Details CSV</a>
+                        @can('manage-bulk-records')<a class="reports-btn" href="{{ $exportFor('referral_order_details') }}">Export Details CSV</a>@endcan
                     </div>
                     <div class="mini-body reports-table-wrap">
                         <table class="reports-table">
@@ -594,11 +604,14 @@
                 <div class="metric"><span>Logistics Cost</span><strong>{{ $currency($profitability['delivery_logistics_cost'] ?? 0) }}</strong><small>Delivery/pickup cost</small></div>
                 <div class="metric"><span>Repair Cost</span><strong>{{ $currency($profitability['repair_maintenance_cost'] ?? 0) }}</strong><small>Available maintenance cost</small></div>
                 <div class="metric"><span>Gross Margin</span><strong>{{ $currency($profitability['gross_margin'] ?? 0) }}</strong><small>Revenue less vendor cost</small></div>
-                <div class="metric"><span>Estimated EBITDA</span><strong>{{ $currency($profitability['estimated_ebitda'] ?? 0) }}</strong><small>Estimated based on available cost data.</small></div>
+                @if(auth()->user()->isSuperAdmin())
+                    <div class="metric"><span>Estimated EBITDA</span><strong>{{ $currency($profitability['estimated_ebitda']) }}</strong><small>Estimated based on available cost data.</small></div>
+                @endif
             </div>
             <div class="mini-card"><div class="mini-head"><div><h2>Profitability Notes</h2><p>Estimated based on available cost data.</p></div></div><div class="mini-body"><div class="empty">Delivery/logistics and repair/maintenance costs are included only when captured in vendor order cost fields. Missing cost categories are intentionally labelled as estimates rather than inferred.</div></div></div>
         </section>
 
+        @if(auth()->user()->isSuperAdmin())
         <section class="reports-tab-content trends-tab">
             <div class="metric-strip">
                 <div class="metric"><span>Fast-moving Products</span><strong>{{ collect($productTrends['fast_moving_products'] ?? [])->count() }}</strong><small>Ranked by rental frequency</small></div>
@@ -607,10 +620,11 @@
                 <div class="metric"><span>Procurement Signals</span><strong>{{ collect($productTrends['suggested_procurement'] ?? [])->count() }}</strong><small>Products to monitor</small></div>
             </div>
             <div class="reports-grid-2">
-                <div class="mini-card"><div class="mini-head"><div><h2>Product Trend & Forecasting</h2><p>Frequency, duration proxy, utilization trend, projection, and procurement signal.</p></div><a class="reports-btn" href="{{ $exportFor('product_utilization') }}">Export CSV</a></div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Product</th><th>Freq.</th><th>Qty.</th><th>Util.</th><th>Demand</th><th>Procurement</th></tr></thead><tbody>@forelse(collect($productTrends['utilization_trend'] ?? []) as $row)<tr><td>{{ $row->label }}</td><td>{{ $number($row->rental_frequency) }}</td><td>{{ $number($row->quantity_total) }}</td><td>{{ $number($row->utilization_percent, 1) }}%</td><td><span class="badge {{ $row->demand_projection === 'Rising' ? 'good' : '' }}">{{ $row->demand_projection }}</span></td><td>{{ $row->suggested_procurement }}</td></tr>@empty<tr><td colspan="6"><div class="empty">No product trend data under current filters.</div></td></tr>@endforelse</tbody></table></div></div>
+                <div class="mini-card"><div class="mini-head"><div><h2>Product Trend & Forecasting</h2><p>Frequency, duration proxy, utilization trend, projection, and procurement signal.</p></div>@can('manage-bulk-records')<a class="reports-btn" href="{{ $exportFor('product_utilization') }}">Export CSV</a>@endcan</div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Product</th><th>Freq.</th><th>Qty.</th><th>Util.</th><th>Demand</th><th>Procurement</th></tr></thead><tbody>@forelse(collect($productTrends['utilization_trend'] ?? []) as $row)<tr><td>{{ $row->label }}</td><td>{{ $number($row->rental_frequency) }}</td><td>{{ $number($row->quantity_total) }}</td><td>{{ $number($row->utilization_percent, 1) }}%</td><td><span class="badge {{ $row->demand_projection === 'Rising' ? 'good' : '' }}">{{ $row->demand_projection }}</span></td><td>{{ $row->suggested_procurement }}</td></tr>@empty<tr><td colspan="6"><div class="empty">No product trend data under current filters.</div></td></tr>@endforelse</tbody></table></div></div>
                 <div class="mini-card"><div class="mini-head"><div><h2>High Demand Products</h2><p>Fast-moving products by rental frequency.</p></div></div><div class="mini-body reports-table-wrap"><table class="reports-table"><thead><tr><th>Product</th><th>Rentals</th><th>Quantity</th></tr></thead><tbody>@forelse(collect($productTrends['fast_moving_products'] ?? []) as $row)<tr><td>{{ $row->label }}</td><td>{{ $number($row->total) }}</td><td>{{ $number($row->quantity_total) }}</td></tr>@empty<tr><td colspan="3"><div class="empty">No fast-moving product data.</div></td></tr>@endforelse</tbody></table></div></div>
             </div>
         </section>
+        @endif
     </div>
 </div>
 <script>

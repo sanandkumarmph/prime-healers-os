@@ -875,6 +875,31 @@ class AssetController extends Controller
         ]));
     }
 
+    public function deliveryCreate()
+    {
+        abort_unless(auth()->user()->isDelivery(), 403);
+
+        return view('assets.delivery-create', $this->formData());
+    }
+
+    public function deliveryStore(Request $request)
+    {
+        abort_unless($request->user()->isDelivery(), 403);
+        $request->validate([
+            'asset_stage' => ['required', Rule::in([Asset::STAGE_RENTAL_STOCK, Asset::STAGE_NEW_STOCK])],
+            'warehouse_id' => ['required', Rule::exists('warehouses', 'id')->where(fn ($query) => $query
+                ->where('organization_id', $this->orgId())->where('is_active', true))],
+        ]);
+        $request->replace($request->only(['product_id', 'warehouse_id', 'asset_stage', 'serial_number',
+            'serial_pending', 'barcode_value', 'batch_number', 'notes']));
+        $request->merge([
+            'asset_status' => Asset::defaultStatusForStage($request->input('asset_stage')),
+            'condition_status' => Asset::CONDITION_STATUS_NEW,
+        ]);
+
+        return $this->store($request);
+    }
+
     public function store(Request $request)
     {
         $validated = $this->normalizeAssetPayload(
@@ -893,7 +918,7 @@ class AssetController extends Controller
             $asset = Asset::create([
                 ...$validated,
                 'organization_id' => $this->orgId(),
-                'asset_name' => $validated['asset_name'] ?: $product->name,
+                'asset_name' => ($validated['asset_name'] ?? null) ?: $product->name,
                 'serial_number' => $resolvedSerial,
                 'barcode_value' => filled($validated['barcode_value'] ?? null) ? trim((string) $validated['barcode_value']) : null,
             ]);
@@ -954,6 +979,9 @@ class AssetController extends Controller
                     'total' => $available + $sold + $reserved + $inTransit,
                 ],
             ], 201);
+        }
+        if ($request->routeIs('deliveries.assets.store')) {
+            return redirect()->route('deliveries.assets.create')->with('success', 'Asset added to the selected warehouse.');
         }
         if ($request->input('save_action') === 'add_another') {
             return redirect()
@@ -1155,6 +1183,11 @@ class AssetController extends Controller
         }
 
         DB::transaction(function () use ($request, $asset, $validated, $state, $conditionAfter, $accessories) {
+            // Physical inspection alone does not confirm a cylinder's contents.
+            // Keep it blocked until warehouse receipt/refill is recorded.
+            if (\App\Models\Cylinder::hasTable() && $asset->cylinder && $state['asset_status'] === Asset::STATUS_AVAILABLE) {
+                $state['asset_status'] = Asset::STATUS_MAINTENANCE;
+            }
             $previousStatus = $asset->asset_status;
             $previousCondition = $asset->condition_status;
             $rentalAssignment = $this->latestReturnedRentalAssignment($asset->loadMissing([
@@ -1242,6 +1275,7 @@ class AssetController extends Controller
             }
         });
 
+        if (\App\Models\Cylinder::hasTable() && $asset->cylinder) return redirect()->route('cylinder-services.stock')->with('success', 'Cylinder inspected. Confirm its contents and warehouse receipt before making it available.');
         return redirect()->route('assets.pending-verification')->with('success', 'Returned asset verified successfully.');
     }
 

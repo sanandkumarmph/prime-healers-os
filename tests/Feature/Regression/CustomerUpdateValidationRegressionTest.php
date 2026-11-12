@@ -5,6 +5,8 @@ namespace Tests\Feature\Regression;
 use App\Models\Customer;
 use App\Support\PhoneNumber;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\Support\TestData;
 use Tests\TestCase;
 
@@ -131,5 +133,54 @@ class CustomerUpdateValidationRegressionTest extends TestCase
             'whatsapp_number',
             'email',
         ]);
+    }
+
+    public function test_customer_update_keeps_the_current_proof_until_a_replacement_is_saved(): void
+    {
+        Storage::fake('local');
+        $organization = TestData::organization();
+        $this->actingAs(TestData::user($organization));
+        $oldPath = 'customer-id-proofs/existing-proof.pdf';
+        Storage::disk('local')->put($oldPath, 'Synthetic proof fixture');
+        $customer = Customer::create([
+            'organization_id' => $organization->id,
+            'customer_type' => 'Individual',
+            'name' => 'Proof test customer',
+            'first_name' => 'Proof test customer',
+            'id_proof_file_path' => $oldPath,
+            'id_proof_original_name' => 'existing-proof.pdf',
+        ]);
+        $url = route('customers.update', $customer);
+        $fields = [
+            'customer_type' => 'Individual',
+            'first_name' => 'Proof test customer',
+            'address' => 'Synthetic updated address',
+        ];
+
+        $this->put($url, $fields)->assertRedirect(route('customers.index'))->assertSessionHasNoErrors();
+        $this->assertSame($oldPath, $customer->fresh()->id_proof_file_path);
+        $this->get(route('customers.id-proof.download', $customer))->assertDownload('existing-proof.pdf');
+
+        Customer::saving(static function (Customer $record) use ($customer) {
+            if ($record->is($customer) && $record->isDirty('id_proof_file_path')
+                && $record->id_proof_original_name === 'refused-proof.pdf') {
+                return false;
+            }
+        });
+        $this->put($url, $fields + [
+            'id_proof_file' => UploadedFile::fake()->create('refused-proof.pdf', 1, 'application/pdf'),
+        ])->assertServerError();
+        $this->assertSame($oldPath, $customer->fresh()->id_proof_file_path);
+        $this->assertSame([$oldPath], Storage::disk('local')->allFiles('customer-id-proofs'));
+        $this->get(route('customers.id-proof.download', $customer))->assertDownload('existing-proof.pdf');
+
+        $this->put($url, $fields + [
+            'id_proof_file' => UploadedFile::fake()->create('replacement-proof.pdf', 1, 'application/pdf'),
+        ])->assertRedirect(route('customers.index'))->assertSessionHasNoErrors();
+        $customer->refresh();
+        $this->assertNotSame($oldPath, $customer->id_proof_file_path);
+        Storage::disk('local')->assertExists($customer->id_proof_file_path);
+        Storage::disk('local')->assertMissing($oldPath);
+        $this->get(route('customers.id-proof.download', $customer))->assertDownload('replacement-proof.pdf');
     }
 }

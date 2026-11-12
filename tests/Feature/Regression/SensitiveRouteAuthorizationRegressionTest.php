@@ -17,7 +17,7 @@ class SensitiveRouteAuthorizationRegressionTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_customer_export_requires_dedicated_export_permission(): void
+    public function test_customer_export_requires_super_admin_even_with_export_permission(): void
     {
         $organization = TestData::organization();
         $customerReader = $this->userWithRole($organization, 'Customer Reader', [
@@ -47,13 +47,11 @@ class SensitiveRouteAuthorizationRegressionTest extends TestCase
 
         $this->actingAs($customerExporter)
             ->get(route('customers.export.csv'))
-            ->assertOk()
-            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+            ->assertForbidden();
 
         $this->actingAs($legacyAdmin)
             ->get(route('customers.export.csv'))
-            ->assertOk()
-            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+            ->assertForbidden();
 
         $this->actingAs($customerReader)
             ->get(route('customers.export.csv'))
@@ -71,7 +69,7 @@ class SensitiveRouteAuthorizationRegressionTest extends TestCase
             ->assertSessionHas('error', 'You are not authorized to access this section.');
     }
 
-    public function test_invoice_and_payment_exports_require_dedicated_finance_permissions(): void
+    public function test_invoice_and_payment_exports_require_super_admin_even_with_export_permission(): void
     {
         $organization = TestData::organization();
         $financeUser = $this->userWithRole($organization, 'Finance Reader', [
@@ -93,23 +91,19 @@ class SensitiveRouteAuthorizationRegressionTest extends TestCase
 
         $this->actingAs($financeUser)
             ->get(route('invoices.export.csv'))
-            ->assertOk()
-            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+            ->assertForbidden();
 
         $this->actingAs($financeUser)
             ->get(route('payments.export.csv'))
-            ->assertOk()
-            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+            ->assertForbidden();
 
         $this->actingAs($legacyAdmin)
             ->get(route('invoices.export.csv'))
-            ->assertOk()
-            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+            ->assertForbidden();
 
         $this->actingAs($legacyAdmin)
             ->get(route('payments.export.csv'))
-            ->assertOk()
-            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+            ->assertForbidden();
 
         $this->actingAs($financeReaderOnly)
             ->get(route('invoices.export.csv'))
@@ -135,6 +129,61 @@ class SensitiveRouteAuthorizationRegressionTest extends TestCase
             ->get(route('payments.export.csv'))
             ->assertRedirect($staffUser->defaultRedirectPath())
             ->assertSessionHas('error', 'You are not authorized to access this section.');
+    }
+
+    public function test_admin_cannot_download_or_delete_selected_records(): void
+    {
+        $organization = TestData::organization();
+        $admin = TestData::user($organization, ['role' => 'admin']);
+        $superAdmin = TestData::user($organization);
+        $invoice = $this->invoiceFor($organization);
+        $customer = $invoice->customer;
+        $invoiceSelection = ['invoice_ids' => [$invoice->id]];
+        $customerSelection = ['customer_ids' => [$customer->id]];
+
+        $this->actingAs($admin);
+        $this->getJson(route('invoices.bulk.print', $invoiceSelection))->assertForbidden();
+        foreach (['invoices.bulk.print', 'invoices.bulk.export.csv', 'invoices.bulk.delete'] as $route) {
+            $this->postJson(route($route), $invoiceSelection)->assertForbidden();
+        }
+        $this->postJson(route('customers.bulk.export.csv'), $customerSelection)->assertForbidden();
+        $this->deleteJson(route('customers.bulk.delete'), $customerSelection)->assertForbidden();
+        $this->assertModelExists($invoice);
+        $this->assertModelExists($customer);
+
+        $this->get(route('invoices.index'))->assertOk()
+            ->assertDontSee('id="invoiceBulkForm"', false)
+            ->assertSee(route('invoices.print', $invoice), false);
+        $this->get(route('customers.index'))->assertOk()
+            ->assertDontSee('id="customerBulkExportForm"', false)
+            ->assertDontSee('id="customerBulkDeleteForm"', false);
+
+        $this->actingAs($superAdmin)->get(route('customers.index'))->assertOk()
+            ->assertSee('id="customerBulkExportForm"', false)
+            ->assertSee('id="customerBulkDeleteForm"', false);
+        $this->post(route('invoices.bulk.export.csv'), $invoiceSelection)->assertOk()
+            ->assertHeader('content-type', 'text/csv; charset=UTF-8');
+    }
+
+    public function test_global_ledger_exports_are_restricted_and_customer_pdf_remains_available(): void
+    {
+        $organization = TestData::organization();
+        $admin = TestData::user($organization, ['role' => 'admin']);
+        $superAdmin = TestData::user($organization);
+        $customer = $this->invoiceFor($organization)->customer;
+        $scope = ['customer_id' => $customer->id];
+
+        $this->actingAs($admin)->get(route('ledger.index'))->assertOk()
+            ->assertDontSee('Export CSV')
+            ->assertDontSee('Preview PDF');
+        $this->getJson(route('ledger.export.csv', $scope))->assertForbidden();
+        foreach (['ledger.preview.pdf', 'ledger.export.pdf'] as $route) {
+            $this->get(route($route))->assertForbidden();
+            $this->get(route($route, $scope))->assertOk()->assertHeader('content-type', 'application/pdf');
+        }
+
+        $this->actingAs($superAdmin)->get(route('ledger.export.pdf'))->assertOk()
+            ->assertHeader('content-type', 'application/pdf');
     }
 
     public function test_invoice_print_route_requires_dedicated_print_permission(): void

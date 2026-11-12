@@ -6,6 +6,12 @@ use Illuminate\Database\Eloquent\Model;
 
 class DeliveryCollection extends Model
 {
+    public const OUTCOMES = [
+        'collected' => 'Collected in full',
+        'partial' => 'Partially collected',
+        'none' => 'Nothing collected',
+    ];
+
     protected $guarded = ['id'];
     protected $casts = ['amount' => 'decimal:2', 'received_at' => 'datetime', 'reviewed_at' => 'datetime', 'reversed_at' => 'datetime'];
 
@@ -21,7 +27,7 @@ class DeliveryCollection extends Model
     public function cashAmounts(): array
     {
         $cents = fn ($value) => \App\Services\Deliveries\DeliveryCollectionService::cents($value);
-        $collected = $this->status === 'cash_received' ? $cents($this->amount) : 0;
+        $collected = $this->status === 'cash_received' && $this->collection_recipient !== 'vendor' ? $cents($this->amount) : 0;
         $confirmed = $this->handovers->where('status', 'confirmed')->sum(fn ($row) => $cents($row->received_amount));
         $pending = $this->handovers->where('status', 'pending')->sum(fn ($row) => $cents($row->submitted_amount));
 

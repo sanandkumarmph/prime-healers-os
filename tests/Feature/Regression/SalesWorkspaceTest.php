@@ -39,7 +39,7 @@ class SalesWorkspaceTest extends TestCase
     private function enquiry(array $extra = []): Enquiry
     {
         $this->post(route('enquiries.store'), array_replace(['name' => 'Asha Rao', 'subject' => 'Bed rental for recovery', 'owner_id' => $this->owner->id,
-            'phone' => '9876543210', 'customer_id' => $this->customer->id, 'source' => 'Referral', 'requirements' => 'Internal: ask about access to the building.'], $extra))->assertSessionHasNoErrors()->assertRedirect();
+            'phone' => '9876543210', 'customer_id' => $this->customer->id, 'source' => 'referral', 'requirements' => 'Internal: ask about access to the building.'], $extra))->assertSessionHasNoErrors()->assertRedirect();
         return Enquiry::latest('id')->firstOrFail();
     }
 
@@ -91,13 +91,14 @@ class SalesWorkspaceTest extends TestCase
         $this->assertNotNull($q->fresh()->viewed_at);
     }
 
-    public function test_enquiry_can_be_captured_without_customer_but_sharing_requires_one(): void
+    public function test_enquiry_contact_can_receive_a_quotation_without_customer_registration(): void
     {
         $e = $this->enquiry(['customer_id' => null]);
         $this->post(route('quotations.store', $e), $this->payload())->assertSessionHasNoErrors();
         $q = $e->quotations()->sole();
-        $this->post(route('quotations.action', $q), ['action' => 'send', 'lock_version' => 1])->assertSessionHasErrors('workspace');
-        $this->assertSame('draft', $q->fresh()->status);
+        $this->post(route('quotations.action', $q), ['action' => 'send', 'lock_version' => 1])->assertSessionHasNoErrors();
+        $this->assertSame('sent', $q->fresh()->status);
+        $this->assertNull($q->fresh()->snapshot['customer_id']);
     }
 
     public function test_server_calculates_prices_and_ignores_forged_totals(): void
@@ -144,8 +145,14 @@ class SalesWorkspaceTest extends TestCase
         $q = $this->quote();
         $role = Role::create(['organization_id' => $this->owner->organization_id, 'name' => 'Read only sales', 'slug' => 'read_only_sales', 'scope_type' => 'all', 'is_active' => true,
             'permissions' => ['enquiries' => ['read'], 'quotations' => ['read']]]);
-        $this->actingAs(TestData::user($this->owner->organization, ['role_id' => $role->id]))->get(route('quotations.show', $q))->assertOk()->assertDontSee('id="quotation-form"', false)->assertDontSee('Create sharing link');
+        $reader = TestData::user($this->owner->organization, ['role_id' => $role->id]);
+        $this->actingAs($reader)->get(route('quotations.show', $q))->assertOk()->assertSee('Sales progress')
+            ->assertDontSee('id="quotation-form"', false)->assertDontSee('Create sharing link');
         $this->post(route('quotations.action', $q), ['action' => 'send', 'lock_version' => 1])->assertForbidden();
+        $this->actingAs($this->owner);
+        $q = $this->transition($this->transition($q, 'send'), 'accepted');
+        $this->actingAs($reader)->get(route('quotations.show', $q))->assertOk()->assertSee('Sales progress')
+            ->assertDontSee(route('rentals.create', ['quotation_id' => $q->id]));
     }
 
     public function test_stale_edits_are_rejected_and_sent_snapshots_are_immutable(): void
@@ -164,6 +171,8 @@ class SalesWorkspaceTest extends TestCase
         $this->transition($q, 'revise');
         $next = $q->enquiry->quotations()->latest('revision')->first();
         $this->assertEquals(2, $next->revision); $this->assertSame('draft', $next->status); $this->assertSame('superseded', $q->fresh()->status); $this->assertSame($original, $q->fresh()->snapshot);
+        $this->get(route('quotations.show', $q))->assertOk()->assertSee('Sales progress')->assertSee(route('quotations.show', $next))
+            ->assertDontSee(route('rentals.create', ['quotation_id' => $q->id]));
         auth()->logout(); $this->get($url)->assertStatus(410); $this->post($url, ['decision' => 'accepted', 'contact_name' => 'Asha', 'acknowledge' => 1])->assertStatus(410);
         $this->actingAs($this->owner)->get(route('rentals.create', ['quotation_id' => $q->id]))->assertStatus(409);
     }
@@ -257,7 +266,8 @@ class SalesWorkspaceTest extends TestCase
     public function test_accepted_sale_converts_once_through_existing_stock_and_invoice_flow(): void
     {
         $q = $this->accepted('sale'); $payload = app(QuotationConversion::class)->prefill($q);
-        $this->get(route('sales.create', ['quotation_id' => $q->id]))->assertOk()->assertSee('Creating an order from');
+        $this->get(route('sales.create', ['quotation_id' => $q->id]))->assertOk()->assertSee('Creating an order from')
+            ->assertSee('Sales progress')->assertSee(route('quotations.show', $q));
         $this->post(route('sales.store'), $payload)->assertSessionHasNoErrors()->assertRedirect(route('sales.index', ['sort_by' => 'latest']));
         $sale = Sale::sole(); $this->assertSame($q->snapshot['terms'], $sale->invoice()->firstOrFail()->terms_conditions); $this->assertEquals($q->snapshot['total'], $sale->sale_amount); $this->assertEquals(236, $sale->saleItems()->sole()->line_total);
         $this->assertSame('converted', $q->fresh()->status); $this->assertEquals($sale->id, $q->fresh()->order_id); $this->assertSame('won', $q->enquiry->fresh()->stage);
@@ -277,6 +287,257 @@ class SalesWorkspaceTest extends TestCase
         $this->delete(route('rentals.destroy', $rental))->assertSessionHas('error');
         $this->assertDatabaseHas('rentals', ['id'=>$rental->id]);
         $this->post(route('rentals.store'), $payload)->assertRedirect(route('rentals.show', $rental)); $this->assertDatabaseCount('rentals', 1);
+    }
+
+    public function test_staff_incentive_visibility_is_limited_to_administrator_roles(): void
+    {
+        $org = $this->owner->organization;
+        $report = route('reports.staff-incentives');
+        $assign = route('reports.staff-incentives.assign');
+        $download = route('reports.staff-incentives', ['download' => 'xlsx']);
+        $opsAdmin = TestData::user($org, ['role_id' => $this->systemRole(User::ROLE_ADMIN_OPERATIONS)->id]);
+        $legacyAdmin = TestData::user($org, ['role' => 'admin']);
+        foreach ([$this->owner, $opsAdmin, $legacyAdmin] as $admin) {
+            $this->actingAs($admin)->get($report)->assertOk()->assertSee('Staff incentive revenue');
+            if ($admin->isSuperAdmin()) {
+                $this->get($download)->assertOk()
+                    ->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            } else {
+                $this->get($download)->assertForbidden();
+            }
+            $this->get(route('reports.index', ['tab' => 'staff']))->assertOk()->assertSee('View incentive revenue');
+        }
+        $this->actingAs($opsAdmin)->postJson($assign)->assertUnprocessable();
+        $this->actingAs($this->owner)->postJson($assign)->assertUnprocessable();
+
+        $sales = TestData::user($org, ['role' => User::ROLE_SALES]);
+        $finance = TestData::user($org, ['role' => User::ROLE_FINANCE]);
+        $customRole = Role::create(['organization_id' => $org->id, 'name' => 'Custom reports', 'slug' => 'custom_reports',
+            'is_active' => true, 'permissions' => ['reports' => ['read'], '__special' => ['finance.view_revenue']]]);
+        $custom = TestData::user($org, ['role_id' => $customRole->id]);
+        foreach ([$sales, $finance, $custom] as $staff) {
+            $this->actingAs($staff)->get($report)->assertForbidden();
+            $this->get($download)->assertForbidden();
+            $this->postJson($assign)->assertForbidden();
+        }
+        foreach (['rentals.create', 'sales.create'] as $form) {
+            $this->actingAs($sales)->get(route($form))->assertOk()->assertSee('Order owner')
+                ->assertDontSee($report, false)->assertDontSee('eligible revenue');
+        }
+    }
+
+    public function test_incentive_report_requires_known_sources_and_counts_only_eligible_invoiced_lines(): void
+    {
+        $capture = ['name' => 'Test lead', 'subject' => 'Test', 'owner_id' => $this->owner->id];
+        $this->post(route('enquiries.store'), $capture)->assertSessionHasErrors('source');
+        $this->post(route('enquiries.store'), $capture + ['source' => 'unspecified marketing'])->assertSessionHasErrors('source');
+
+        $salesperson = TestData::user($this->owner->organization, ['name' => 'Assigned sales representative', 'role' => User::ROLE_SALES]);
+        $saleQuote = $this->accepted('sale');
+        $saleQuote->enquiry->update(['source' => 'indiamart', 'owner_id' => $salesperson->id]);
+        $this->post(route('sales.store'), app(QuotationConversion::class)->prefill($saleQuote))
+            ->assertSessionHasNoErrors();
+        $this->assertSame('indiamart', $saleQuote->fresh()->conversion_source);
+        $this->assertEquals($this->owner->id, $saleQuote->fresh()->converted_by_user_id);
+        $this->assertDatabaseHas('order_incentive_attributions', ['order_type' => 'sale', 'sales_user_id' => $salesperson->id, 'source' => 'indiamart']);
+        $saleQuote->enquiry->update(['source' => 'website', 'owner_id' => $this->owner->id]);
+
+        $rentalQuote = $this->accepted();
+        $rentalQuote->enquiry->update(['source' => 'incoming_phone', 'owner_id' => $salesperson->id]);
+        $this->post(route('rentals.store'), app(QuotationConversion::class)->prefill($rentalQuote) + ['delivery_assignment_type' => 'customer_pickup'])
+            ->assertSessionHasNoErrors();
+        $rentalInvoice = \App\Models\Invoice::where('rental_id', $rentalQuote->fresh()->order_id)->firstOrFail();
+        $rentalInvoice->items()->create(['source_type' => 'manual', 'description' => 'Transport adjustment', 'quantity' => 1, 'rate' => 2000, 'taxable_amount' => 2000, 'line_total' => 2000]);
+        $duplicateInvoice = $rentalInvoice->replicate();
+        $duplicateInvoice->invoice_number = 'INELIGIBLE-DUPLICATE';
+        $duplicateInvoice->save();
+        $duplicateInvoice->items()->save($rentalInvoice->items()->where('source_type','rental')->firstOrFail()->replicate());
+
+        $route = route('reports.staff-incentives');
+        $this->get($route)->assertOk()->assertViewHas('total', 400)
+            ->assertSee($salesperson->name)->assertSee('IndiaMART')->assertSee('Incoming phone call')->assertDontSee('INELIGIBLE-DUPLICATE');
+        $this->get(route('reports.staff-incentives', ['source' => 'indiamart']))->assertOk()->assertViewHas('total', 200);
+        $this->get(route('reports.staff-incentives', ['from' => '2026-10-25', 'to' => '2026-10-31']))
+            ->assertOk()->assertViewHas('total', fn ($total) => (float) $total === 0.0);
+        Sale::sole()->update(['referral_source_type' => 'business_partner']);
+        $this->get($route)->assertOk()->assertViewHas('total', 200);
+        $this->actingAs(TestData::user($this->owner->organization, ['role' => User::ROLE_SALES]))->get($route)->assertForbidden();
+    }
+
+    public function test_invoiced_order_without_quotation_requires_confirmed_source_and_salesperson(): void
+    {
+        $salesperson = TestData::user($this->owner->organization, ['name' => 'Direct booking salesperson', 'role' => User::ROLE_SALES]);
+        $quote = $this->accepted('sale');
+        $payload = app(QuotationConversion::class)->prefill($quote);
+        unset($payload['quotation_id'], $payload['quotation_version']);
+        $this->post(route('sales.store'), $payload)->assertSessionHasNoErrors();
+        $sale = Sale::sole();
+        $invoice = \App\Models\Invoice::sole();
+        $invoice->update(['sale_id' => null]);
+
+        $report = route('reports.staff-incentives');
+        $this->get($report)->assertOk()->assertViewHas('total', 0)
+            ->assertSee($salesperson->name)->assertSee('Confirm source and salesperson')->assertSee($invoice->invoice_number);
+        $assign = route('reports.staff-incentives.assign');
+        $review = ['kind' => 'sale', 'order' => $sale->id, 'from' => '2026-10-01', 'to' => '2026-10-24', 'source' => 'justdial'];
+        $this->post($assign, $review)->assertSessionHasErrors('staff');
+        $this->post($assign, $review + ['staff' => $this->owner->id])->assertSessionHasErrors('staff');
+        $this->post($assign, $review + ['staff' => $salesperson->id])->assertSessionHasNoErrors()->assertRedirect();
+        $this->get(route('reports.staff-incentives', ['staff' => $salesperson->id]))->assertOk()->assertViewHas('total', 200)
+            ->assertDontSee('Confirm source and salesperson');
+        $this->post($assign, $review + ['staff' => $salesperson->id])->assertConflict();
+        $this->actingAs($salesperson)->post($assign, $review + ['staff' => $salesperson->id])->assertForbidden();
+    }
+
+    public function test_sales_handoff_splits_incentive_and_keeps_bookings_with_the_creator(): void
+    {
+        $org = $this->owner->organization;
+        $first = TestData::user($org, ['name' => 'Earlier shift', 'role' => User::ROLE_SALES]);
+        $closer = TestData::user($org, ['name' => 'Later shift', 'role' => User::ROLE_SALES]);
+        $outsider = TestData::user(TestData::organization(), ['role' => User::ROLE_SALES]);
+        $sale = app(QuotationConversion::class)->prefill($this->accepted('sale'));
+        $rental = app(QuotationConversion::class)->prefill($this->accepted()) + ['delivery_assignment_type' => 'customer_pickup'];
+        unset($sale['quotation_id'], $sale['quotation_version'], $rental['quotation_id'], $rental['quotation_version']);
+        $this->actingAs($closer);
+        foreach (['sales.create', 'rentals.create'] as $form) {
+            $this->get(route($form))->assertOk()->assertSee('Order owner')->assertSee('Myself')->assertSee($first->name);
+        }
+        $this->post(route('sales.store'), $sale + ['incentive_owner_id' => $first->id])->assertSessionHasErrors('incentive_source');
+        $this->post(route('sales.store'), $sale + ['incentive_owner_id' => $outsider->id, 'incentive_source' => 'justdial'])
+            ->assertSessionHasErrors('incentive_owner_id');
+        $this->assertDatabaseCount('sales', 0);
+        $this->post(route('sales.store'), $sale + ['incentive_owner_id' => $first->id, 'incentive_source' => 'justdial'])
+            ->assertSessionHasNoErrors();
+        $this->post(route('rentals.store'), $rental + ['incentive_owner_id' => $closer->id, 'incentive_source' => 'incoming_phone'])
+            ->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('order_incentive_attributions', [
+            'order_type' => 'sale', 'sales_user_id' => $first->id, 'closer_user_id' => $closer->id,
+        ]);
+        $saleRecord = Sale::sole();
+        $saleRecord->forceFill(['created_at' => '2026-07-25 10:00:00'])->save();
+        \App\Models\Invoice::where('sale_id', $saleRecord->id)->update(['invoice_date' => '2026-07-25']);
+
+        $this->actingAs($this->owner);
+        $this->get(route('reports.staff-incentives'))->assertOk()->assertViewHas('total', 400)
+            ->assertViewHas('bookedSales', fn ($counts) => $counts->get($closer->id) == 1 && !$counts->has($first->id))
+            ->assertViewHas('bookedRentals', fn ($counts) => $counts->get($closer->id) == 1)
+            ->assertViewHas('sourceTotals', fn ($totals) => $totals['justdial']['orders'] === 1)
+            ->assertSee('Owner · 80%')->assertSee('Closer · 20%')->assertSee('Owner · 100%');
+        $this->get(route('reports.staff-incentives', ['staff' => $first->id]))->assertOk()->assertViewHas('total', 160);
+        $this->get(route('reports.staff-incentives', ['staff' => $closer->id]))->assertOk()->assertViewHas('total', 240);
+        $this->get(route('reports.staff-incentives', ['from' => '2026-10-01']))->assertOk()->assertViewHas('total', 200);
+
+        $saleInvoice = \App\Models\Invoice::where('sale_id', $saleRecord->id)->firstOrFail();
+        $saleInvoice->update(['sale_id' => null]);
+        $booked = ['salesperson_id' => $closer->id, 'salesperson_match' => 'booked', 'from_date' => '2026-07-01', 'to_date' => '2026-07-31'];
+        $this->get(route('sales.index', $booked))->assertOk()->assertViewHas('sales', fn ($rows) => $rows->total() === 1)
+            ->assertSee('Booked by Later shift');
+        $this->get(route('sales.index', ['salesperson_id' => $first->id]))->assertOk()
+            ->assertViewHas('sales', fn ($rows) => $rows->total() === 1);
+        $this->get(route('invoices.index', ['salesperson_id' => $first->id]))->assertOk()
+            ->assertViewHas('invoices', fn ($rows) => $rows->total() === 1 && $rows->first()->id === $saleInvoice->id);
+        $this->get(route('rentals.index', ['salesperson_id' => $closer->id, 'salesperson_match' => 'booked']))
+            ->assertOk()->assertViewHas('rentals', fn ($rows) => $rows->total() === 1);
+        $this->get(route('rentals.index', ['salesperson_id' => $outsider->id]))->assertNotFound();
+    }
+
+    public function test_historical_attribution_uses_the_recorded_salesperson_who_booked_the_rental(): void
+    {
+        $org = $this->owner->organization;
+        $salesOwner = TestData::user($org, ['name' => 'Original salesperson', 'role' => User::ROLE_SALES]);
+        $bookedBy = TestData::user($org, ['name' => 'Shift closer', 'role_id' => $this->systemRole(User::ROLE_SALES)->id]);
+        $payload = app(QuotationConversion::class)->prefill($this->accepted()) + ['delivery_assignment_type' => 'customer_pickup'];
+        unset($payload['quotation_id'], $payload['quotation_version']);
+        $this->actingAs($bookedBy)->post(route('rentals.store'), $payload)->assertSessionHasNoErrors();
+        $rental = Rental::sole();
+        DB::table('order_incentive_attributions')->where('order_type', 'rental')->where('order_id', $rental->id)->delete();
+
+        $this->actingAs($this->owner);
+        $this->post(route('reports.staff-incentives.assign'), [
+            'kind' => 'rental', 'order' => $rental->id, 'from' => '2026-10-01', 'to' => '2026-10-24',
+            'source' => 'incoming_phone', 'staff' => $salesOwner->id,
+        ])->assertSessionHasNoErrors()->assertRedirect();
+        $this->assertDatabaseHas('order_incentive_attributions', [
+            'order_type' => 'rental', 'order_id' => $rental->id, 'sales_user_id' => $salesOwner->id, 'closer_user_id' => $bookedBy->id,
+        ]);
+
+        // Older manually attributed orders have an owner but no saved closer.
+        DB::table('order_incentive_attributions')->where('order_type', 'rental')->where('order_id', $rental->id)
+            ->update(['closer_user_id' => null]);
+        $this->get(route('reports.staff-incentives', ['staff' => $salesOwner->id]))->assertOk()
+            ->assertViewHas('total', 160)->assertSee('Owner · 80%');
+        $this->get(route('reports.staff-incentives', ['staff' => $bookedBy->id]))->assertOk()
+            ->assertViewHas('total', 40)->assertSee('Closer · 20%');
+        $this->get(route('reports.staff-incentives'))->assertOk()->assertViewHas('total', 200);
+        $this->get(route('rentals.index', ['salesperson_id' => $bookedBy->id]))->assertOk()
+            ->assertViewHas('rentals', fn ($rows) => $rows->total() === 1 && $rows->first()->id === $rental->id);
+        $this->get(route('invoices.index', ['salesperson_id' => $bookedBy->id]))->assertOk()
+            ->assertViewHas('invoices', fn ($rows) => $rows->total() === 1 && $rows->first()->rental_id === $rental->id);
+    }
+
+    public function test_admin_myself_excludes_sales_credit_and_credited_rentals_link_to_the_order(): void
+    {
+        $org = $this->owner->organization;
+        $salesperson = TestData::user($org, ['name' => 'Rental owner', 'role' => User::ROLE_SALES]);
+        $admin = TestData::user($org, ['name' => 'Operations admin', 'role' => User::ROLE_ADMIN_OPERATIONS]);
+        $finance = TestData::user($org, ['role' => User::ROLE_FINANCE]);
+        $vendor = TestData::user($org, ['role' => User::ROLE_VENDOR]);
+        $quote = $this->accepted();
+        $quote->enquiry->update(['source' => 'incoming_phone', 'owner_id' => $salesperson->id]);
+        $rental = app(QuotationConversion::class)->prefill($quote) + ['delivery_assignment_type' => 'customer_pickup'];
+        foreach ([$this->owner, $admin] as $actor) {
+            $this->actingAs($actor)->get(route('rentals.create'))->assertOk()->assertSee('Myself');
+            $this->get(route('sales.create'))->assertOk()->assertSee('Myself');
+        }
+        $this->post(route('rentals.store'), $rental + ['incentive_owner_id' => $admin->id])->assertSessionHasNoErrors();
+        $adminRental = Rental::sole();
+        $this->assertDatabaseHas('order_incentive_attributions', [
+            'order_type' => 'rental', 'sales_user_id' => $admin->id, 'excluded_from_incentives' => true,
+        ]);
+        unset($rental['quotation_id'], $rental['quotation_version']);
+        $this->post(route('rentals.store'), $rental + ['incentive_owner_id' => $salesperson->id, 'incentive_source' => 'incoming_phone'])
+            ->assertSessionHasNoErrors();
+        $creditedRental = Rental::latest('id')->firstOrFail();
+        $report = route('reports.staff-incentives', ['staff' => $salesperson->id, 'credit_kind' => 'rental']);
+        $this->actingAs($this->owner)->get($report)->assertOk()->assertViewHas('total', 200)
+            ->assertViewHas('bookedRentals', fn ($counts) => !$counts->has($salesperson->id))
+            ->assertViewHas('staffTotals', fn ($totals) => $totals[$salesperson->id]['rentals_credited'] === 1)
+            ->assertViewHas('reviewOrders', fn ($rows) => $rows->total() === 0)
+            ->assertSee(route('rentals.show', $creditedRental), false);
+        $download = $this->get($report.'&download=xlsx')->assertOk()
+            ->assertHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        $path = tempnam(sys_get_temp_dir(), 'phos-incentives-test-');
+        try {
+            file_put_contents($path, $download->getContent());
+            $workbook = new \ZipArchive();
+            $this->assertTrue($workbook->open($path));
+            try {
+                $detail = $workbook->getFromName('xl/worksheets/sheet2.xml');
+                $this->assertStringContainsString('Rental #'.$creditedRental->id, $detail);
+                $this->assertStringNotContainsString('Rental #'.$adminRental->id.'</t>', $detail);
+                $this->assertStringContainsString('<c r="G2" t="n"><v>200</v></c>', $detail);
+            } finally {
+                $workbook->close();
+            }
+        } finally {
+            unlink($path);
+        }
+        $this->get(route('rentals.index', ['salesperson_id' => $salesperson->id]))->assertOk()
+            ->assertViewHas('rentals', fn ($rows) => $rows->total() === 1 && $rows->first()->id === $creditedRental->id);
+        $this->get(route('invoices.index', ['salesperson_id' => $salesperson->id]))->assertOk()
+            ->assertViewHas('invoices', fn ($rows) => $rows->total() === 1 && $rows->first()->rental_id === $creditedRental->id);
+        foreach (['rentals.index', 'sales.index', 'invoices.index'] as $list) {
+            $this->get(route($list))->assertOk()->assertViewHas('salespersonOptions', fn ($options) => $options->has($admin->id)
+                && $options->has($this->owner->id) && $options->has($finance->id) && !$options->has($vendor->id))
+                ->assertSee('Staff member')->assertSee('All staff');
+        }
+        $this->get(route('rentals.index', ['salesperson_id' => $admin->id]))->assertOk()
+            ->assertViewHas('rentals', fn ($rows) => $rows->total() === 1 && $rows->first()->id === $adminRental->id);
+        $this->get(route('invoices.index', ['salesperson_id' => $admin->id]))->assertOk()
+            ->assertViewHas('invoices', fn ($rows) => $rows->total() === 1 && $rows->first()->rental_id === $adminRental->id);
+        $this->get(route('rentals.index', ['salesperson_id' => $admin->id, 'salesperson_match' => 'booked']))
+            ->assertOk()->assertViewHas('rentals', fn ($rows) => $rows->total() === 2);
+        $this->actingAs($salesperson)->get(route('rentals.index', ['salesperson_id' => $admin->id]))->assertNotFound();
     }
 
     public static function negotiatedRentalPrices(): array
@@ -362,7 +623,7 @@ class SalesWorkspaceTest extends TestCase
     public function test_staff_response_requires_evidence_and_reassignment_removes_previous_owner_access(): void
     {
         $q = $this->transition($this->quote(), 'send');
-        $this->post(route('quotations.action', $q), ['action' => 'accepted', 'lock_version' => $q->lock_version])->assertSessionHasErrors(['contact_name', 'note']);
+        $this->post(route('quotations.action', $q), ['action' => 'accepted', 'lock_version' => $q->lock_version])->assertSessionHasErrors('note');
         $role = $this->systemRole('sales');
         $a = TestData::user($this->owner->organization, ['role_id' => $role->id, 'role' => 'sales']);
         $b = TestData::user($this->owner->organization, ['role_id' => $role->id, 'role' => 'sales']);

@@ -10,6 +10,9 @@ use App\Models\PartnerClient;
 use App\Models\Product;
 use App\Models\Rental;
 use App\Models\Sale;
+use App\Models\User;
+use DOMDocument;
+use DOMXPath;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\Support\TestData;
@@ -161,6 +164,124 @@ class BusinessPartnerFlowRegressionTest extends TestCase
             ->assertJsonPath('partner_clients.0.id', $client->id);
 
         $this->assertNotSame($partner->id, $otherPartner->id);
+    }
+
+    public function test_sales_staff_can_open_and_save_both_order_types_from_an_edited_actual_client(): void
+    {
+        [$partner] = $this->makeBusinessPartnerContext();
+        $this->actingAs(TestData::user($partner->organization, ['role' => User::ROLE_SALES]));
+
+        $profile = route('business-partners.show', $partner);
+        $clientDetails = [
+            'client_name' => 'Synthetic order recipient',
+            'phone' => '+12025550141',
+            'alternate_phone' => '+12025550142',
+            'address' => 'Original synthetic delivery address',
+            'city' => 'Chennai',
+            'state' => 'Tamil Nadu',
+            'pincode' => '600001',
+            'status' => 'active',
+        ];
+        $this->get(route('business-partners.clients.create', $partner))->assertOk();
+        $this->post(route('business-partners.clients.store', $partner), $clientDetails)
+            ->assertRedirect($profile)->assertSessionHasNoErrors();
+        $client = $partner->partnerClients()->where('client_name', $clientDetails['client_name'])->sole();
+
+        $edit = route('business-partners.clients.edit', [$partner, $client]);
+        $this->get($edit)->assertOk()->assertSee($clientDetails['address']);
+        $updatedDetails = array_replace($clientDetails, [
+            'address' => 'Updated synthetic delivery address',
+            'location' => 'https://maps.google.com/?q=13.0827001,80.2707001',
+            'latitude' => '13.0827001',
+            'longitude' => '80.2707001',
+            'delivery_notes' => 'Synthetic access instruction',
+        ]);
+        $this->put(route('business-partners.clients.update', [$partner, $client]), $updatedDetails)
+            ->assertRedirect($profile)->assertSessionHasNoErrors();
+        $client->refresh();
+
+        $orderContext = ['customer_type' => 'business_partner', 'business_partner_id' => $partner->id, 'partner_client_id' => $client->id];
+        $rentalUrl = route('rentals.create', $orderContext);
+        $saleUrl = route('sales.create', $orderContext);
+        $this->get($profile)->assertOk()->assertSee($client->displayName())
+            ->assertSee($rentalUrl)->assertSee($saleUrl)->assertSee($client->address);
+
+        foreach ([$rentalUrl => '', $saleUrl => 'sale'] as $url => $prefix) {
+            $form = $this->orderFormDom($this->get($url)->assertOk()->getContent());
+            foreach ($orderContext as $field => $value) {
+                $this->assertSame((string) $value, $form->evaluate('string(//select[@id="' . $field . '"]/option[@selected]/@value)'));
+            }
+            foreach ([
+                'ReminderContactSummary' => $partner->displayName(),
+                'DeliveryContactSummary' => $client->displayName(),
+                'DeliveryAddressSummary' => $client->address,
+                'DeliveryNotesSummary' => $client->delivery_notes,
+            ] as $summary => $value) {
+                $elementId = $prefix ? $prefix . $summary : lcfirst($summary);
+                $this->assertStringContainsString($value, $form->evaluate('string(//*[@id="' . $elementId . '"])'));
+            }
+            $mapId = $prefix ? 'saleDeliveryOpenMapLink' : 'deliveryOpenMapLink';
+            $this->assertSame($client->openMapUrl(), $form->evaluate('string(//a[@id="' . $mapId . '"]/@href)'));
+        }
+
+        $start = now()->addDay();
+        $this->post(route('rentals.store'), $orderContext + [
+            'product_id' => $this->makeRentalProduct()->id,
+            'quantity' => 1,
+            'start_date' => $start->toDateString(),
+            'end_date' => $start->copy()->addDays(7)->toDateString(),
+            'rental_amount' => 1000,
+            'deposit_amount' => 0,
+            'transport_amount' => 0,
+            'other_amount' => 0,
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->post(route('sales.store'), $orderContext + [
+            'sale_date' => now()->toDateString(),
+            'payment_status' => 'pending',
+            'shipping_charges' => 0,
+            'sale_items' => [[
+                'product_id' => $this->makeSaleProduct()->id,
+                'quantity' => 1,
+                'unit_price' => 5000,
+            ]],
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        foreach ([Rental::sole(), Sale::sole()] as $order) {
+            $this->assertSame($client->id, $order->partner_client_id);
+            $this->assertSame($partner->id, $order->business_partner_id);
+            $this->assertSame($client->primaryPhone(), $order->deliveryContactPhone());
+            $this->assertSame($client->openMapUrl(), $order->deliveryContactMapUrl());
+            $this->assertSame($client->delivery_notes, $order->deliveryContactNotes());
+        }
+        $this->assertDatabaseCount('invoices', 2);
+        foreach (Invoice::all() as $invoice) {
+            $this->assertSame($partner->displayName(), $invoice->bill_to_name);
+            $this->assertSame($partner->address, $invoice->bill_to_address);
+            $this->assertSame($client->displayName(), $invoice->ship_to_name);
+            $this->assertSame($client->address, $invoice->ship_to_address);
+        }
+    }
+
+    public function test_order_create_keeps_old_input_and_does_not_prefill_a_client_from_another_partner(): void
+    {
+        [$partner, $client] = $this->makeBusinessPartnerContext();
+        [, $unrelatedClient] = $this->makeBusinessPartnerContext('Other billing partner', 'Unrelated client');
+
+        foreach (['rentals.create', 'sales.create'] as $route) {
+            $context = ['customer_type' => 'business_partner', 'business_partner_id' => $partner->id];
+            $form = $this->orderFormDom($this->get(route($route, $context + ['partner_client_id' => $unrelatedClient->id]))
+                ->assertOk()->getContent());
+            $this->assertSame((string) $partner->id, $form->evaluate('string(//select[@id="business_partner_id"]/option[@selected]/@value)'));
+            $this->assertSame(0, $form->query('//select[@id="partner_client_id"]/option[@value="' . $unrelatedClient->id . '"]')->length);
+            $this->assertSame('', $form->evaluate('string(//select[@id="partner_client_id"]/option[@selected]/@value)'));
+
+            $retry = $this->withSession(['_old_input' => ['customer_type' => 'direct_customer']])
+                ->get(route($route, $context + ['partner_client_id' => $client->id]))->assertOk();
+            $form = $this->orderFormDom($retry->getContent());
+            $this->assertSame('direct_customer', $form->evaluate('string(//select[@id="customer_type"]/option[@selected]/@value)'));
+            $this->assertSame('', $form->evaluate('string(//select[@id="partner_client_id"]/option[@selected]/@value)'));
+            $this->app['session']->driver()->forget('_old_input');
+        }
     }
 
     public function test_business_partner_can_be_created_with_gst_details_and_sale_invoice_uses_them(): void
@@ -437,6 +558,14 @@ class BusinessPartnerFlowRegressionTest extends TestCase
         ]);
 
         return [$partner, $client];
+    }
+
+    private function orderFormDom(string $html): DOMXPath
+    {
+        $document = new DOMDocument();
+        $document->loadHTML($html, LIBXML_NOERROR | LIBXML_NOWARNING);
+
+        return new DOMXPath($document);
     }
 
     private function makeRentalProduct(): Product

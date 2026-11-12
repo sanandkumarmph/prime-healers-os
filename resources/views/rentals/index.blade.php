@@ -11,8 +11,9 @@
     $canCreateDeliveries = $currentUser?->canAccessModule('deliveries', 'create') ?? false;
     $canUpdateDeliveries = $currentUser?->canAccessModule('deliveries', 'update') ?? false;
     $canReadInvoices = $currentUser?->canAccessModule('invoices', 'read') ?? false;
+    $canManageBulkRecords = $currentUser?->can('manage-bulk-records') ?? false;
     $canSeeRentalFinance = $currentUser?->canSeeRentalFinance() ?? false;
-    $canViewFinanceSummary = $currentUser?->isSuperAdmin() ?? false;
+    $canViewFinanceSummary = $currentUser?->canViewFinance() ?? false;
     $currency = fn ($value) => "\u{20B9}" . number_format((float) $value, 2);
     $queryWithoutPage = collect(request()->query())->except('page')->all();
     $rentalUrl = function (array $overrides = []) use ($queryWithoutPage) {
@@ -118,8 +119,9 @@
     ];
     $currentMobileSortLabel = collect($mobileSortOptions)->firstWhere('value', $sortBy)['label'] ?? 'Newest First';
     $referredBy = $referredBy ?? '';
-    $hasActiveFilters = filled($search) || filled($status) || filled($deliveryStatus) || filled($pickupStatus) || filled($warehouseId) || filled($city) || filled($vendorId) || filled($referredBy) || filled($fromDate) || filled($toDate) || $sortBy !== 'priority';
+    $hasActiveFilters = request()->integer('salesperson_id') !== 0 || filled($search) || filled($status) || filled($deliveryStatus) || filled($pickupStatus) || filled($warehouseId) || filled($city) || filled($vendorId) || filled($referredBy) || filled($fromDate) || filled($toDate) || $sortBy !== 'priority';
     $activeFilterChips = collect([
+        $salespersonOptions->get(request()->integer('salesperson_id')) ? (request()->query('salesperson_match') === 'booked' ? 'Booked by ' : 'Staff member ').$salespersonOptions->get(request()->integer('salesperson_id')) : null,
         filled($search) ? 'Search: ' . $search : null,
         filled($status) ? 'Rental: ' . ucfirst(str_replace('_', ' ', $status)) : null,
         filled($deliveryStatus) ? 'Delivery: ' . ucfirst(str_replace('_', ' ', $deliveryStatus)) : null,
@@ -203,6 +205,7 @@
     .bulk-actions { display:flex; gap:8px; flex-wrap:wrap; }
     .bulk-col { width:38px; text-align:center; }
     .bulk-check { width:16px; height:16px; accent-color:#2563eb; }
+    .mobile-selection-toggle { display:none; }
     .rental-smart-filter { display:grid; gap:8px; padding:9px 10px; border:1px solid #dbe3ef; border-radius:14px; background:#fff; box-shadow:var(--ph-shadow-soft); min-width:0; overflow:hidden; }
     .rental-smart-filter-main { display:grid; grid-template-columns:minmax(220px, 1.4fr) repeat(auto-fit, minmax(118px, 1fr)); gap:8px; align-items:end; min-width:0; }
     .rental-smart-filter-more summary { list-style:none; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; min-height:36px; padding:7px 11px; border:1px solid var(--ph-color-border-strong); border-radius:10px; background:#fff; color:var(--ph-color-text); font-size:12px; font-weight:800; }
@@ -231,10 +234,10 @@
     }
     .alert-item strong { display:block; color:#0f172a; font-size:13px; }
     .alert-item span { color:#64748b; font-size:12px; }
-    .table-wrap { overflow-x:auto; overflow-y:visible; width:100%; max-width:100%; min-width:0; border-radius:12px; }
+    .table-wrap { overflow:visible; width:100%; max-width:100%; min-width:0; border-radius:12px; container:rental-list / inline-size; }
     .table-wrap::-webkit-scrollbar { height:8px; }
     .table-wrap::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:999px; }
-    .ops-table { width:100%; border-collapse:separate; border-spacing:0; min-width:980px; table-layout:auto; }
+    .ops-table { width:100%; border-collapse:separate; border-spacing:0; min-width:0; table-layout:fixed; }
     .ops-table th, .ops-table td { padding:8px 10px; border-bottom:1px solid #e2e8f0; text-align:left; vertical-align:top; position:relative; }
     .ops-table tr:has(.ops-action-menu[open]) { position:relative; z-index:60; }
     .ops-table th {
@@ -257,11 +260,14 @@
     .serial-col,
     .rental-id-col,
     .due-date-col { display:none; }
-    .customer-col { width:240px; min-width:240px; }
-    .items-col { width:210px; min-width:210px; }
-    .date-col { width:116px; min-width:116px; }
-    .status-col { width:190px; min-width:190px; }
-    .balance-col { width:130px; min-width:130px; }
+    .ops-table .bulk-col { width:4%; }
+    .customer-col { width:22%; min-width:0; }
+    .items-col { width:19%; min-width:0; }
+    .date-col { width:11%; min-width:0; }
+    .status-col { width:19%; min-width:0; }
+    .balance-col { width:12%; min-width:0; }
+    .ops-table td { overflow-wrap:anywhere; }
+    .cell-title > div, .cell-stack, .items-line { min-width:0; }
     .cell-title { display:flex; align-items:flex-start; gap:8px; }
     .cell-title.has-wa { justify-content:space-between; }
     .cell-title strong { display:block; font-size:13px; color:#0f172a; }
@@ -270,11 +276,11 @@
     .cell-subtle.is-warning { color:#b45309; font-weight:700; }
     .customer-contact-actions { display:flex; align-items:flex-start; gap:8px; flex:0 0 auto; padding-top:1px; }
     .product-wrap { white-space:normal; word-break:break-word; overflow-wrap:anywhere; }
-    .items-cell { min-width:220px; }
+    .items-cell { min-width:0; }
     .items-line {
         display:flex; align-items:center; gap:6px; flex-wrap:wrap;
     }
-    .items-primary { max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .items-primary { max-width:100%; white-space:normal; }
     .item-qty {
         display:inline-flex; align-items:center; justify-content:center; min-height:20px; padding:0 7px;
         border-radius:999px; background:var(--ph-color-info-soft); color:var(--ph-color-primary); font-size:10px; font-weight:800; letter-spacing:.04em; text-transform:uppercase;
@@ -291,6 +297,7 @@
     }
     .cell-stack { display:grid; gap:5px; }
     .cell-stack.compact { gap:3px; }
+    .amount-stack .badge { justify-self:start; }
     .cell-inline { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
     .row-actions { display:flex; flex-wrap:wrap; gap:6px; align-items:flex-start; }
     .row-actions-primary { display:flex; flex-wrap:wrap; gap:6px; align-items:flex-start; }
@@ -308,7 +315,7 @@
     .action-icon {
         width:14px; height:14px; flex:0 0 14px;
     }
-    .actions-cell { position:static; right:auto; z-index:auto; width:190px; min-width:190px; text-align:left; background:#fff !important; box-shadow:none; overflow:visible; }
+    .actions-cell { position:static; right:auto; z-index:auto; width:13%; min-width:0; text-align:left; background:#fff !important; box-shadow:none; overflow:visible; }
     .rental-open-link { display:inline-flex; align-items:center; gap:5px; font-weight:900; color:#4f46e5; text-decoration:none; }
     .rental-open-link:hover { color:#3730a3; text-decoration:underline; }
     .rental-open-icon { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:999px; background:#eef2ff; color:#4338ca; font-size:12px; line-height:1; }
@@ -368,11 +375,9 @@
     @media (max-width: 1180px) {
         .summary-grid { grid-template-columns:repeat(4, minmax(150px, 1fr)); }
         .rental-smart-filter-main { grid-template-columns:repeat(3, minmax(0, 1fr)); }
-        .ops-table { min-width:980px; }
     }
     @media (max-width: 820px) {
         .summary-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
-        .ops-table { min-width:920px; }
     }
     @media (max-width: 767px) {
         .rentals-page { padding:4px 0 112px; gap:8px; }
@@ -558,7 +563,6 @@
             margin-top:0;
         }
         .mobile-selection-toggle {
-            display:none;
             position:absolute;
             left:10px;
             top:12px;
@@ -580,6 +584,39 @@
         .rentals-page.is-selection-mode .mobile-selection-toggle { display:block; }
         .rentals-page.is-selection-mode .mobile-rental-card { padding-left:42px; }
         .rental-row.is-selected .mobile-rental-card { background:#eff6ff; }
+    }
+    @media (min-width: 768px) {
+        @container rental-list (max-width: 1000px) {
+            .ops-table, .ops-table tbody { display:block; }
+            .ops-table thead, .ops-table thead tr { display:block; }
+            .ops-table thead th { display:none; }
+            .ops-table thead .bulk-col { display:block; width:auto; padding:8px 12px; }
+            .ops-table thead .bulk-col::after { content:'Select all'; margin-left:8px; }
+            .ops-table tbody tr.rental-row {
+                display:grid; grid-template-columns:repeat(3, minmax(0, 1fr));
+                position:relative; margin-bottom:10px; padding:10px; gap:12px;
+                border:1px solid #e2e8f0; border-radius:12px; background:#fff;
+            }
+            .ops-table tbody tr.rental-row td,
+            .ops-table tbody tr.rental-row td:first-child,
+            .ops-table tbody tr.rental-row td:last-child {
+                width:auto; min-width:0; padding:0; border:0; border-radius:0; background:transparent;
+            }
+            .ops-table tbody tr.row-overdue { background:#fff7f7; border-color:#fecaca; }
+            .ops-table tbody tr.row-due-today, .ops-table tbody tr.row-due-soon { background:#fffcf4; }
+            .ops-table tbody .bulk-col { position:absolute; right:10px; top:10px; }
+            .ops-table .customer-col { grid-column:1; grid-row:1; }
+            .ops-table .items-col { grid-column:2; grid-row:1; }
+            .ops-table .status-col { grid-column:3; grid-row:1; padding-right:24px; }
+            .ops-table .rental-period-cell { grid-column:1; grid-row:2; }
+            .ops-table .balance-col { grid-column:2; grid-row:2; }
+            .ops-table .actions-cell { grid-column:3; grid-row:2; }
+            .ops-table td[data-label]::before {
+                display:block; content:attr(data-label); margin-bottom:5px;
+                color:#64748b; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em;
+            }
+            .ops-table td.actions-cell[data-label]::before { display:none; }
+        }
     }
     .rentals-page [data-phos-list-filter-panel] .rental-smart-filter { padding:0; border:0; border-radius:0; box-shadow:none; }
     .rentals-page [data-phos-list-filter-panel] .rental-smart-filter-main { grid-template-columns:repeat(3, minmax(0, 1fr)); }
@@ -630,7 +667,9 @@
         </div>
 
         <div class="rentals-actions">
-            <a href="{{ route('rentals.export.csv', $queryWithoutPage) }}" class="ops-btn-light" data-ph-action="download" aria-label="Export rentals" title="Export rentals"><x-phos-action-icon name="download" label="Export rentals" /></a>
+            @can('manage-bulk-records')
+                <a href="{{ route('rentals.export.csv', $queryWithoutPage) }}" class="ops-btn-light" data-ph-action="download" aria-label="Export rentals" title="Export rentals"><x-phos-action-icon name="download" label="Export rentals" /></a>
+            @endcan
             <x-phos-list-filter id="rentals-list-filters" label="Filter rentals" :active="$hasActiveFilters">
                 <form method="GET" action="{{ route('rentals.index') }}" class="rental-smart-filter" aria-label="Rental filters">
                     @if($filter)
@@ -690,6 +729,7 @@
                                 @endforeach
                             </select>
                         </div>
+                        @include('sales-workspace.salesperson-filter', ['filterId' => 'rental_desktop_salesperson', 'fieldClass' => 'filter-field', 'selectClass' => 'ops-select', 'showBookingMode' => true])
                         <div class="filter-field">
                             <label for="smart_from_date">From</label>
                             <input id="smart_from_date" class="ops-input" type="date" name="from_date" value="{{ $fromDate }}">
@@ -775,6 +815,15 @@
                     @endif
                     <input type="hidden" name="search" value="{{ $search }}">
                     <div class="mobile-sheet-grid">
+                        @include('sales-workspace.salesperson-filter', ['filterId' => 'rental_mobile_salesperson', 'fieldClass' => 'mobile-sheet-field', 'selectClass' => 'ops-select', 'showBookingMode' => true])
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_rental_from">From</label>
+                            <input id="mobile_rental_from" class="ops-input" type="date" name="from_date" value="{{ $fromDate }}">
+                        </div>
+                        <div class="mobile-sheet-field">
+                            <label for="mobile_rental_to">To</label>
+                            <input id="mobile_rental_to" class="ops-input" type="date" name="to_date" value="{{ $toDate }}">
+                        </div>
                         <div class="mobile-sheet-field">
                             <label for="mobile_rental_status">Rental</label>
                             <select id="mobile_rental_status" class="ops-select" name="status">
@@ -939,7 +988,7 @@
                 <div class="empty-state">No rentals match this view right now. Adjust filters or create a new rental to keep operations moving.</div>
             @else
                 @if($canReadInvoices)
-                    <form id="rentalInvoiceBulkForm" method="GET" action="{{ route('invoices.bulk.print') }}" target="_blank" class="bulk-toolbar is-hidden">
+                    <form id="rentalInvoiceBulkForm" method="{{ $canManageBulkRecords ? 'GET' : 'POST' }}" action="{{ route($canManageBulkRecords ? 'invoices.bulk.print' : 'invoices.bulk.action') }}" target="{{ $canManageBulkRecords ? '_blank' : '_self' }}" class="bulk-toolbar is-hidden">
                         @csrf
                     <x-payment-submission-token />
                         <div>
@@ -948,8 +997,10 @@
                         </div>
                         <div class="bulk-actions">
                             <button type="button" class="ops-btn-light" data-rental-clear-selection>Clear</button>
-                            <button type="submit" class="ops-btn-light" data-rental-bulk-action="{{ route('invoices.bulk.print') }}" data-rental-bulk-method="GET" data-rental-bulk-target="_blank">Bulk PDF</button>
-                            <button type="submit" class="ops-btn-light" data-rental-bulk-action="{{ route('invoices.export.csv') }}" data-rental-bulk-method="GET" data-rental-bulk-target="_self">Export</button>
+                            @if($canManageBulkRecords)
+                                <button type="submit" class="ops-btn-light" data-rental-bulk-action="{{ route('invoices.bulk.print') }}" data-rental-bulk-method="GET" data-rental-bulk-target="_blank">Bulk PDF</button>
+                                <button type="submit" class="ops-btn-light" data-rental-bulk-action="{{ route('invoices.export.csv') }}" data-rental-bulk-method="GET" data-rental-bulk-target="_self">Export</button>
+                            @endif
                             <button type="submit" class="ops-btn-light" data-rental-bulk-action="{{ route('invoices.bulk.action') }}" data-rental-bulk-method="POST" data-rental-bulk-task="mark_paid" data-rental-bulk-target="_self">Mark Paid</button>
                             <button type="button" class="ops-btn-light" disabled title="Open individual rental rows to assign delivery">Assign Delivery</button>
                             <details class="ops-action-menu">

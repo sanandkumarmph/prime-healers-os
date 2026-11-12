@@ -19,9 +19,11 @@
             <p style="margin:0; max-width:900px; color:#64748b; font-size:16px;">Track vendor-supplied rentals and sales separately from in-house fulfilment. Reconcile customer revenue, vendor payable, gross margin, payment status, and operational fulfilment without exposing costs to unauthorized users.</p>
         </div>
         @if(auth()->user()?->hasPermission('vendor_reports.export'))
-            <a href="{{ route('vendor-orders.export.csv', request()->query()) }}" style="display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:10px 16px; border-radius:14px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:700;">
-                Export CSV
-            </a>
+            @can('manage-bulk-records')
+                <a href="{{ route('vendor-orders.export.csv', request()->query()) }}" style="display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:10px 16px; border-radius:14px; border:1px solid #cbd5e1; background:#ffffff; color:#0f172a; text-decoration:none; font-weight:700;">
+                    Export CSV
+                </a>
+            @endcan
         @endif
     </section>
 

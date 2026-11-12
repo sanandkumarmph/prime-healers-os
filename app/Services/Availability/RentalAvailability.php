@@ -63,19 +63,26 @@ class RentalAvailability
             throw ValidationException::withMessages(['lines' => 'Choose rental products from your organisation.']);
         }
         $rows = [];
+        $hasCylinders = \App\Models\Cylinder::hasTable();
         foreach ($products as $product) {
             $counts = ['ready_now' => 0, 'expected_back' => 0, 'reserved_later' => 0, 'committed' => 0, 'overdue' => 0, 'unavailable' => 0];
             $locationUnknown = ! $product->tracksRentalStock() && ($warehouseId || $this->cityScoped($user));
             if (! $locationUnknown && $product->tracksRentalStock()) {
                 $assets = Asset::where('organization_id', $user->organization_id)->where('product_id', $product->id)
                     ->where('asset_stage', Asset::STAGE_RENTAL_STOCK)->whereIn('warehouse_id', $warehouseIds)
+                    ->when($hasCylinders, fn ($q) => $q->with('cylinder'))
                     ->when($warehouseId, fn ($q) => $q->where('warehouse_id', $warehouseId))
                     ->when($this->cityScoped($user), fn ($q) => $q->whereIn('warehouse_id', $warehouseIds))->get();
                 // Do not hide inconsistent assignments: they block the unit instead of making it look available.
                 $assignments = RentalAsset::with('rental.rentalItems')->whereIn('asset_id', $assets->pluck('id'))
                     ->whereNull('returned_at')->get()->groupBy('asset_id');
                 foreach ($assets as $asset) {
-                    if ($asset->condition_status !== 'good' || ! in_array($asset->asset_status, ['available', 'reserved', 'rented'], true)) {
+                    if ($hasCylinders && $asset->cylinder && ($asset->cylinder->contents !== 'full'
+                        || $asset->cylinder->custody !== 'warehouse' || $asset->cylinder->reserved_for_rental_id)) {
+                        $counts['unavailable']++;
+                        continue;
+                    }
+                    if (!($asset->condition_status==='good' || ($hasCylinders && $asset->cylinder && $asset->condition_status==='new')) || ! in_array($asset->asset_status, ['available', 'reserved', 'rented'], true)) {
                         $counts['unavailable']++;
 
                         continue;

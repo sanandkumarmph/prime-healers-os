@@ -77,7 +77,7 @@ test('delivery and pickup signer acknowledgement works in the actual rendered wo
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     origin = `http://127.0.0.1:${server.address().port}`;
     t.after(() => new Promise(resolve => server.close(resolve)));
-    const browser = await puppeteer.launch({ headless: true, args: ['--disable-background-networking', '--no-first-run', ...(process.env.CI ? ['--no-sandbox'] : [])] });
+    const browser = await puppeteer.launch({ headless: true, args: ['--disable-background-networking', '--no-first-run'] });
     t.after(() => browser.close());
 
     async function pageFor(filename, width) {
@@ -200,10 +200,19 @@ test('delivery and pickup signer acknowledgement works in the actual rendered wo
                     await input(page, 'textarea[name="location_missing_reason"]', 'Synthetic GPS unavailable indoors.');
                     const image = await page.$eval('input[name="signature_data"]', el => el.value.split(',')[1]);
                     const upload = path.join(temporary, 'synthetic-photo.png'); fs.writeFileSync(upload, Buffer.from(image, 'base64'));
-                    for (const selector of (type === 'pickup' ? ['input[name="pickup_device_photos[]"]'] : ['input[name="delivery_device_photos[]"]', 'input[name="premises_photo"]'])) await (await page.$(selector)).uploadFile(upload);
+                    const photoInputs = type === 'pickup'
+                        ? ['input[name="pickup_device_photos[]"]']
+                        : ['input[name="delivery_device_photos[]"]', 'input[name="premises_photo"]'];
+                    for (const selector of photoInputs) await (await page.$(selector)).uploadFile(upload);
                     if (type === 'pickup') await page.$eval('[data-pickup-condition="good"]', el => el.click());
                     await page.$eval('input[name="completion_confirmed"]', el => { el.checked = true; el.dispatchEvent(new Event('change', { bubbles: true })); });
-                    await page.waitForFunction(() => document.querySelector('[data-review-item="photos"]').dataset.reviewReady === 'true');
+                    // Photo selection updates the review before compression clears native form validation.
+                    await page.waitForFunction(selectors =>
+                        document.querySelector('[data-review-item="photos"]').dataset.reviewReady === 'true'
+                        && selectors.every(selector => {
+                            const input = document.querySelector(selector);
+                            return input.files.length > 0 && input.dataset.preparingPhotos !== '1' && input.validity.valid;
+                        }), { timeout: 15000 }, photoInputs);
                     await page.$eval(panel + ' [data-workflow-next]', el => el.click());
                     assert.equal(await page.$eval('[data-review-signature-description]', el => el.clientWidth > 0 && el.scrollWidth <= el.clientWidth + 1), true);
                     await input(page, '[data-signature-signer-name]', 'Asha Devi');

@@ -3,6 +3,7 @@
 @section('content')
 @php
     $currentUser = auth()->user();
+    $canManageBulkRecords = $currentUser?->can('manage-bulk-records') ?? false;
     $canCreateCustomers = $currentUser?->canAccessModule('customers', 'create') ?? false;
     $canUpdateCustomers = $currentUser?->canAccessModule('customers', 'update') ?? false;
     $canDeleteCustomers = $currentUser?->canAccessModule('customers', 'delete') ?? false;
@@ -11,8 +12,11 @@
     $canReadSales = $currentUser?->canAccessModule('sales', 'read') ?? false;
     $canCreateSales = $currentUser?->canAccessModule('sales', 'create') ?? false;
     $canReadInvoices = $currentUser?->canAccessModule('invoices', 'read') ?? false;
+    $canReadActivity = $canReadRentals || $canReadSales || $canReadInvoices;
     $whatsAppEnabled = \App\Models\Customer::hasWhatsappNumberColumn();
     $statusEnabled = \App\Models\Customer::hasStatusColumn();
+    $hasCommunicationCenter = $currentUser && !$currentUser->isFinance()
+        && \Illuminate\Support\Facades\Route::has('communication-center.index');
 
     $queryFor = function (array $overrides = []) use ($search, $city, $state, $status, $createdDate, $fromDate, $toDate, $sortBy) {
         return array_filter(array_merge([
@@ -27,1454 +31,768 @@
         ], $overrides), fn ($value) => $value !== null && $value !== '');
     };
 
-    $whatsAppUrl = function ($customer) {
-        $number = \App\Support\WhatsAppHelper::resolveCustomerNumber($customer);
-
-        return \App\Support\WhatsAppHelper::chatUrl($number, $number ? "Hello {$customer->name}, this is a quick update from Prime Healers." : null);
-    };
-    $customerInitials = function (?string $name): string {
-        $parts = collect(preg_split('/\s+/', trim((string) $name)))->filter()->take(2)->map(fn ($part) => strtoupper(mb_substr($part, 0, 1)));
-        return $parts->isNotEmpty() ? $parts->implode('') : 'CU';
-    };
-    $mobileSortOptions = [
-        ['value' => 'latest', 'label' => 'Newest First'],
-        ['value' => 'oldest', 'label' => 'Oldest First'],
-        ['value' => 'name_asc', 'label' => 'Name A-Z'],
-        ['value' => 'name_desc', 'label' => 'Name Z-A'],
+    $sortOptions = [
+        'latest' => 'Newest first',
+        'oldest' => 'Oldest first',
+        'name_asc' => 'Name A–Z',
+        'name_desc' => 'Name Z–A',
     ];
-    $currentMobileSortLabel = collect($mobileSortOptions)->firstWhere('value', $sortBy)['label'] ?? 'Newest First';
-    $hasActiveFilters = filled($search) || filled($city) || filled($state) || filled($status) || filled($createdDate) || filled($fromDate) || filled($toDate) || $sortBy !== 'latest';
-    $activeFilterChips = collect([
-        filled($search) ? 'Search: ' . $search : null,
-        filled($city) ? 'City: ' . $city : null,
-        filled($state) ? 'State: ' . $state : null,
-        filled($status) ? 'Status: ' . ucfirst($status) : null,
-        filled($createdDate) ? 'Created: ' . $createdDate : null,
-        filled($fromDate) ? 'From: ' . $fromDate : null,
-        filled($toDate) ? 'To: ' . $toDate : null,
-        $sortBy !== 'latest' ? 'Sort: ' . $currentMobileSortLabel : null,
-    ])->filter()->values();
+    $singleLegacyDate = filled($createdDate) && $fromDate === $toDate;
+    $activeFilters = array_filter([
+        'search' => filled($search) ? 'Search: ' . $search : null,
+        'city' => filled($city) ? 'City: ' . $city : null,
+        'state' => filled($state) ? 'State: ' . $state : null,
+        'status' => filled($status) ? 'Status: ' . ucfirst($status) : null,
+        'created_date' => $singleLegacyDate ? 'Created: ' . $fromDate : null,
+        'from_date' => !$singleLegacyDate && filled($fromDate) ? 'From: ' . $fromDate : null,
+        'to_date' => !$singleLegacyDate && filled($toDate) ? 'To: ' . $toDate : null,
+        'sort_by' => $sortBy !== 'latest' ? 'Sort: ' . ($sortOptions[$sortBy] ?? $sortOptions['latest']) : null,
+    ]);
+    $hasActiveFilters = $activeFilters !== [];
+    $columnCount = 5 + (int) $canManageBulkRecords + (int) $canReadActivity;
+
+    $customerInitials = function (string $name): string {
+        return collect(preg_split('/\s+/', trim($name)))->filter()->take(2)
+            ->map(fn ($part) => mb_strtoupper(mb_substr($part, 0, 1)))->implode('') ?: 'CU';
+    };
 @endphp
 
 <style>
-    .customers-page { padding: 6px 0 18px; display: grid; gap: 10px; width: 100%; max-width: 1320px; min-width: 0; margin: 0 auto; box-sizing: border-box; }
-    .customers-shell { display: grid; gap: 12px; min-width: 0; }
-    .customers-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
-    .customers-title h1 { margin: 4px 0 0; font-size: 28px; line-height:1.05; letter-spacing:-0.04em; color: var(--ph-color-text); font-family: var(--ph-font-heading); }
-    .customers-title p { margin: 5px 0 0; color: var(--ph-color-text-soft); font-size: 12px; line-height:1.35; max-width:620px; }
-    .customers-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-    .ops-card {
-        background: var(--ph-color-surface);
-        border: 1px solid var(--ph-color-border);
-        border-radius: var(--ph-radius-lg);
-        box-shadow: var(--ph-shadow-soft);
-        min-width: 0;
-        max-width: 100%;
-    }
-    .ops-card-body { padding: 14px; min-width: 0; }
-    .desktop-filter-toggle summary {
-        list-style: none;
-        cursor: pointer;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+    .customers-page {
+        --directory-ink: #172944;
+        --directory-muted: #52657f;
+        --directory-line: #dce5ef;
+        --directory-soft: #f4f8fc;
+        --directory-blue: #174f8e;
+        display: grid;
         gap: 10px;
-        padding: 12px 16px;
-        color: var(--ph-color-text);
-        font-size: 15px;
-        font-weight: 800;
-        font-family: var(--ph-font-heading);
+        width: 100%;
+        max-width: 1460px;
+        min-width: 0;
+        margin: 0 auto;
+        color: var(--directory-ink);
     }
-    .desktop-filter-toggle summary::-webkit-details-marker { display: none; }
-    .desktop-filter-toggle summary span { color: var(--ph-color-text-soft); font-size: 12px; font-weight: 700; }
-    .ops-btn,
-    .ops-btn-secondary,
-    .ops-btn-light,
-    .ops-btn-danger,
-    .ops-btn-disabled {
+    .customers-page .customers-header {
+        display: grid;
+        grid-template: "title search actions" / auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px 16px;
+    }
+    .customers-header h1 { grid-area: title; }
+    .customers-page :is(.customer-search, .customers-actions, .customer-shortcuts, .customer-bulk-toolbar, .customer-status-links) {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        min-width: 0;
+    }
+    .customer-search { grid-area: search; }
+    .customer-search label { flex: 1; min-width: 0; }
+    .customers-actions { grid-area: actions; justify-content: flex-end; }
+    .customers-page :is(.customer-search input, .customer-filter-form input:not([type="hidden"]), .customer-filter-form select) {
+        box-sizing: border-box;
+        width: 100%;
+        min-width: 0;
+        min-height: 38px;
+        padding: 7px 10px;
+        border: 1px solid #becde0;
+        border-radius: 8px;
+        background: #fff;
+        color: var(--directory-ink);
+        font-size: 13px;
+    }
+    .customers-page :is(.ops-btn, .ops-btn-light, .customer-delete-selected) {
         display: inline-flex;
         align-items: center;
         justify-content: center;
         gap: 6px;
-        padding: 8px 12px;
-        border-radius: 10px;
-        font-size: 13px;
-        font-weight: 600;
-        text-decoration: none;
-        border: 1px solid transparent;
-        cursor: pointer;
-        line-height: 1.2;
-    }
-    .ops-btn { background: var(--ph-color-primary); color: #fff; border-color: var(--ph-color-primary); }
-    .ops-btn-secondary { background: var(--ph-color-primary); color: #fff; border-color: var(--ph-color-primary); }
-    .ops-btn-light { background: #fff; color: var(--ph-color-text); border-color: var(--ph-color-border-strong); }
-    .ops-btn-danger { background: var(--ph-color-danger); color: #fff; }
-    .ops-btn-disabled {
-        background: var(--ph-color-surface-soft);
-        color: var(--ph-color-text-faint);
-        border-color: var(--ph-color-border);
-        cursor: not-allowed;
-    }
-    .ops-form-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-        gap: 10px;
-        align-items: end;
-    }
-    .desktop-search-shell {
-        display:grid;
-        gap:8px;
-        padding:10px;
-        border:1px solid #dbe3ef;
-        border-radius:14px;
-        background:linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
-        box-shadow:var(--ph-shadow-soft);
-    }
-    .desktop-search-form {
-        display:grid;
-        grid-template-columns:minmax(0, 1fr) auto auto;
-        gap:8px;
-        align-items:end;
-    }
-    .desktop-search-field { display:grid; gap:6px; min-width:0; }
-    .desktop-search-field label {
-        font-size:11px;
-        font-weight:700;
-        color:var(--ph-color-text-soft);
-        text-transform:uppercase;
-        letter-spacing:.04em;
-        font-family:var(--ph-font-heading);
-    }
-    .desktop-filter-chip-row { display:flex; gap:8px; flex-wrap:wrap; }
-    .desktop-filter-chip {
-        display:inline-flex; align-items:center; min-height:30px; padding:6px 10px;
-        border-radius:999px; border:1px solid var(--ph-color-border); background:#fff; color:var(--ph-color-text); font-size:12px; font-weight:700;
-    }
-    .ops-field { display: grid; gap: 6px; }
-    .ops-field label {
-        font-size: 10px;
-        font-weight: 700;
-        color: var(--ph-color-text-soft);
-        text-transform: uppercase;
-        letter-spacing: .04em;
-        font-family: var(--ph-font-heading);
-    }
-    .ops-field input,
-    .ops-field select {
-        width: 100%;
-        min-height: 40px;
-        padding: 8px 11px;
-        border-radius: 10px;
-        border: 1px solid var(--ph-color-border-strong);
+        min-height: 36px;
+        padding: 7px 10px;
+        border: 1px solid #c7d6e6;
+        border-radius: 8px;
         background: #fff;
-        color: var(--ph-color-text);
-        font-size: 14px;
-    }
-    .ops-field input:focus,
-    .ops-field select:focus {
-        outline: none;
-        border-color: rgba(23, 119, 189, 0.55);
-        box-shadow: 0 0 0 3px rgba(23, 119, 189, 0.12);
-    }
-    .summary-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
-        gap: 10px;
-    }
-    .summary-box {
-        display: block;
-        padding: 16px;
-        border-radius: 18px;
-        border: 1px solid var(--ph-color-border);
-        background: #ffffff;
+        color: var(--directory-blue);
+        font-size: 13px;
+        font-weight: 650;
+        line-height: 1.2;
+        text-align: center;
         text-decoration: none;
-        color: inherit;
-        box-shadow: var(--ph-shadow-soft);
+        cursor: pointer;
     }
-    .summary-box span {
-        display: block;
-        font-size: 10px;
-        text-transform: uppercase;
-        letter-spacing: .04em;
-        color: var(--ph-color-text-soft);
-        font-weight: 700;
-        margin-bottom: 8px;
-        font-family: var(--ph-font-heading);
-    }
-    .summary-box strong {
-        font-size: 18px;
-        color: var(--ph-color-text);
-        line-height: 1;
-        font-family: var(--ph-font-heading);
-    }
-    .summary-box small {
-        display: block;
-        margin-top: 8px;
-        color: var(--ph-color-text-soft);
+    .customers-page .ops-btn { background: #0f75bd; border-color: #0f75bd; color: #fff; }
+    .customers-page .ops-btn:hover { background: #0b5e99; }
+    .customers-page .ops-btn-light:hover { background: var(--directory-soft); }
+    .customers-page .customer-delete-selected { color: #a52230; background: #fff5f6; border-color: #e7bec3; }
+    .customers-page :focus-visible { outline: 2px solid #2361ad; outline-offset: 2px; }
+    .customers-actions :is(a, summary) { white-space: nowrap; }
+    .customers-actions .phos-list-filter-toggle { display: flex; gap: 6px; width: auto; }
+    .customers-actions .phos-list-filter-toggle::after { content: "Filters"; }
+    .customer-export-action { width: 36px; flex: 0 0 36px; }
+    .customer-add-short { display: none; }
+    .customer-filter-form { display: grid; gap: 12px; }
+    .customer-filter-form .customer-filter-grid label {
+        display: grid;
+        gap: 4px;
         font-size: 12px;
+        font-weight: 650;
     }
-    .customers-table-wrap { overflow-x: auto; width: 100%; max-width: 100%; min-width: 0; }
-    .customers-table {
-        width: 100%;
-        border-collapse: separate;
-        border-spacing: 0;
-        min-width: 980px;
+    .customer-filter-actions { display: flex; gap: 8px; }
+    .customer-summary,
+    .customer-directory {
+        min-width: 0;
+        border: 1px solid var(--directory-line);
+        border-radius: 12px;
+        background: #fff;
     }
-    .customers-table th,
-    .customers-table td {
-        padding: 9px 8px;
-        border-bottom: 1px solid var(--ph-color-border);
-        vertical-align: middle;
+    .customer-summary {
+        display: flex;
+        flex-wrap: wrap;
+        overflow: hidden;
+        padding: 3px;
+        background: var(--directory-soft);
+    }
+    .customer-summary a {
+        flex: 1 1 auto;
+        display: inline-flex;
+        align-items: baseline;
+        justify-content: center;
+        gap: 6px;
+        padding: 7px 9px;
+        border-radius: 7px;
+        color: var(--directory-muted);
+        font-size: 12px;
+        text-decoration: none;
+    }
+    .customer-summary a:hover { background: #fff; color: var(--directory-blue); }
+    .customer-summary a:focus-visible { outline-offset: -2px; }
+    .customer-summary strong { color: var(--directory-ink); font-size: 16px; font-variant-numeric: tabular-nums; }
+    .customer-list-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 7px 12px;
+        padding: 9px 12px;
+        border-bottom: 1px solid var(--directory-line);
+    }
+    .customer-list-toolbar strong { color: var(--directory-ink); font-size: 13px; font-variant-numeric: tabular-nums; }
+    .customer-shortcuts { flex-wrap: wrap; }
+    .customer-status-links a {
+        display: inline-flex;
+        min-height: 30px;
+        align-items: center;
+        padding: 4px 8px;
+        border-radius: 6px;
+        color: var(--directory-muted);
+        font-size: 12px;
+        font-weight: 650;
+        text-decoration: none;
+    }
+    .customer-status-links a:hover,
+    .customer-status-links a[aria-current="page"] { background: #eaf3fc; color: var(--directory-blue); }
+    .customer-quick-links { position: relative; }
+    .customer-quick-links summary { color: var(--directory-blue); font-size: 12px; font-weight: 650; cursor: pointer; }
+    .customer-quick-links nav {
+        position: absolute;
+        right: 0;
+        top: calc(100% + 8px);
+        z-index: 85;
+        display: grid;
+        min-width: 156px;
+        padding: 5px;
+        border: 1px solid var(--directory-line);
+        border-radius: 9px;
+        background: #fff;
+        box-shadow: 0 10px 24px rgb(23 41 68 / 15%);
+    }
+    .customer-filter-chips { display: flex; flex-wrap: wrap; gap: 5px; width: 100%; }
+    .customer-filter-chips a {
+        max-width: 100%;
+        padding: 4px 7px;
+        border: 1px solid #d4e1f0;
+        border-radius: 6px;
+        color: var(--directory-blue);
+        background: var(--directory-soft);
+        font-size: 11px;
+        text-decoration: none;
+        overflow-wrap: anywhere;
+    }
+    .customer-filter-chips a:last-child { background: #fff; text-decoration: underline; }
+    .customers-page .customer-bulk-toolbar {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        padding: 7px 12px;
+        border-bottom: 1px solid var(--directory-line);
+        background: #eef5fd;
+    }
+    .customer-bulk-toolbar[hidden] { display: none !important; }
+    .customer-bulk-toolbar strong { font-size: 12px; }
+    .customers-table { width: 100%; table-layout: fixed; border-spacing: 0; border-collapse: separate; }
+    body.phos-list-page .customers-page .customers-table :is(th, td) {
+        padding: 8px 9px !important;
         text-align: left;
+        vertical-align: middle;
+        border-bottom: 1px solid var(--directory-line);
+    }
+    .customers-table thead th { background: var(--directory-soft); }
+    .customers-table .bulk-col { width: 36px; }
+    .customers-table .serial-col { width: 40px; color: var(--directory-muted); font-variant-numeric: tabular-nums; }
+    .customers-table .customer-contact-col { width: 22%; }
+    .customers-table .customer-location-col { width: 16%; }
+    .customers-table .customer-activity-col { width: 22%; }
+    .customers-table .customer-actions-col { width: 120px; }
+    body.phos-list-page .customers-page .customers-table th.customer-actions-col { text-align: right; padding-right: 15px !important; }
+    .customer-bulk-target {
+        display: inline-flex;
+        min-height: 28px;
+        align-items: center;
+        gap: 5px;
+        color: var(--directory-muted);
         font-size: 12px;
+        cursor: pointer;
     }
-    .customers-table th {
-        font-size: 10px;
-        text-transform: uppercase;
-        letter-spacing: .04em;
-        color: var(--ph-color-text-soft);
-        font-weight: 700;
-        background: var(--ph-color-surface-soft);
-        position: sticky;
-        top: 0;
-        font-family: var(--ph-font-heading);
-    }
-    .customers-table tr:hover td { background: #f7fbfe; }
-    .bulk-col {
-        width: 34px;
-        text-align: center !important;
-    }
-    .serial-col {
-        width: 56px;
-        text-align: center !important;
-        color: var(--ph-color-text-soft);
-        font-weight: 700;
-    }
-    .bulk-col input[type="checkbox"] {
+    .customers-page .customer-bulk-target input[type="checkbox"] {
+        appearance: auto;
+        box-sizing: border-box;
         width: 16px;
         height: 16px;
+        min-height: 16px !important;
+        margin: 0;
+        padding: 0;
+        border-radius: 2px;
+    }
+    .customers-table .customer-bulk-target { width: 24px; justify-content: center; }
+    .customers-table tbody tr:hover,
+    .customers-table tbody tr:has(.customer-bulk-check:checked) { background: #f7fbff; }
+    .customer-cell-identity { display: flex; align-items: flex-start; gap: 7px; min-width: 0; }
+    .customer-list-avatar {
+        flex: 0 0 28px;
+        height: 28px;
+        display: grid;
+        place-items: center;
+        border-radius: 8px;
+        background: #eaf3fc;
+        color: var(--directory-blue);
+        font-size: 11px;
+        font-weight: 750;
+    }
+    .customer-list-name { color: var(--directory-blue); font-size: 13px; font-weight: 750; text-decoration: none; }
+    .customer-list-name:hover { text-decoration: underline; }
+    .customer-list-name,
+    .customer-list-meta,
+    .customer-location-text { overflow-wrap: anywhere; }
+    .customer-list-meta { display: block; margin-top: 2px; color: var(--directory-muted); font-size: 11px; }
+    .customer-status {
+        display: inline-block;
+        padding: 1px 5px;
+        margin-top: 3px;
+        border-radius: 5px;
+        background: #ecf5ef;
+        color: #206043;
+        font-size: 10px;
+        text-transform: capitalize;
+    }
+    .customer-status.is-inactive { background: #f1f4f8; color: var(--directory-muted); }
+    .customer-contact { display: grid; gap: 2px; overflow-wrap: anywhere; }
+    .customer-contact a { color: var(--directory-blue); text-decoration: none; }
+    .customer-contact a:hover { text-decoration: underline; }
+    .customer-contact small { color: var(--directory-muted); font-size: 11px; }
+    .customer-activity-links { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; }
+    .customer-activity-links a {
+        display: inline-flex;
+        gap: 3px;
+        align-items: center;
+        padding: 2px 5px;
+        border-radius: 5px;
+        background: var(--directory-soft);
+        color: var(--directory-blue);
+        font-size: 11px;
+        white-space: nowrap;
+        text-decoration: none;
+    }
+    .customer-activity-links a:hover { background: #e5effb; text-decoration: underline; }
+    .customer-row-actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+    .customers-page :is(.customer-icon-action, .customer-action-menu summary) {
+        width: 29px;
+        height: 29px;
+        min-width: 29px;
+        min-height: 29px;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--directory-line);
+        border-radius: 7px;
+        background: #fff;
+        color: var(--directory-blue);
+        text-decoration: none;
         cursor: pointer;
     }
-    .bulk-actions {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
-    .bulk-actions strong {
-        color: var(--ph-color-text);
-        font-size: 13px;
-        font-family: var(--ph-font-heading);
-    }
-    .bulk-actions button:disabled {
-        opacity: .45;
-        cursor: not-allowed;
-    }
-    .customer-name {
-        font-size: 14px;
-        font-weight: 700;
-        color: var(--ph-color-text);
-        margin: 0 0 4px;
-        font-family: var(--ph-font-heading);
-    }
-    .customer-sub {
-        color: var(--ph-color-text-soft);
-        font-size: 12px;
-        margin: 0;
-    }
-    .pill {
-        display: inline-flex;
-        align-items: center;
-        padding: 3px 7px;
-        border-radius: 999px;
-        background: var(--ph-color-info-soft);
-        color: var(--ph-color-primary);
-        font-size: 10px;
-        font-weight: 700;
-        text-decoration: none;
-        white-space: nowrap;
-    }
-    .pill-muted {
-        background: var(--ph-color-surface-soft);
-        color: var(--ph-color-text-soft);
-    }
-    .count-stack { display: flex; flex-wrap: wrap; gap: 4px; }
-    .action-row { display: flex; flex-wrap: nowrap; gap: 5px; align-items:center; }
-    .customer-icon-action {
-        width:34px;
-        height:34px;
-        border-radius:12px;
-        border:1px solid var(--ph-color-border);
-        background:#fff;
-        color:var(--ph-color-text);
-        display:inline-grid;
-        place-items:center;
-        text-decoration:none;
-        box-shadow:var(--ph-shadow-soft);
-    }
-    .customer-icon-action svg { width:14px; height:14px; }
-    .customer-icon-action.is-primary { background:var(--ph-color-primary); border-color:var(--ph-color-primary); color:#fff; }
-    .customer-icon-action.is-whatsapp { background:var(--ph-color-success-soft); border-color:rgba(14,159,75,.18); color:var(--ph-color-success); }
-    .customer-action-menu { position:relative; display:inline-block; }
-    .customer-action-menu summary {
-        list-style:none; width:30px; height:30px; border-radius:10px; border:1px solid var(--ph-color-border);
-        background:#fff; color:var(--ph-color-text); display:grid; place-items:center; cursor:pointer; font-weight:900;
-        box-shadow:var(--ph-shadow-soft);
-    }
-    .customer-action-menu summary::-webkit-details-marker { display:none; }
-    .customer-action-menu[open] summary { background:var(--ph-color-info-soft); color:var(--ph-color-primary); border-color:rgba(23,119,189,.18); }
+    .customer-icon-action svg { width: 14px; height: 14px; }
+    .customers-page .customer-icon-action.is-whatsapp { color: #1a6742; background: #eef8f2; border-color: #cfe7d8; }
+    .customer-action-menu { position: relative; }
+    .customer-action-menu summary { list-style: none; font-weight: 800; }
+    .customer-action-menu summary::-webkit-details-marker { display: none; }
+    .customers-page :is(.customer-action-menu[open] summary, .customer-icon-action:hover) { background: #eaf3fc; }
+    .customers-table tr:has(.customer-action-menu[open]) { position: relative; z-index: 60; }
     .customer-action-panel {
-        position:absolute; right:0; top:34px; z-index:30; min-width:170px;
-        display:grid; gap:6px; padding:8px; border:1px solid var(--ph-color-border); border-radius:14px;
-        background:#fff; box-shadow:var(--ph-shadow-float);
-    }
-    .customer-action-link,
-    .customer-action-panel button {
-        display:flex; align-items:center; justify-content:flex-start; min-height:34px; padding:8px 10px;
-        border-radius:10px; border:1px solid var(--ph-color-border); background:#fff; color:var(--ph-color-text); text-decoration:none; font-size:12px; font-weight:700; cursor:pointer;
-    }
-    .customer-action-panel .danger {
-        color:var(--ph-color-danger);
-        background:var(--ph-color-danger-soft);
-        border-color:rgba(179,13,35,.18);
-    }
-    .mobile-chip-row,
-    .mobile-list-command,
-    .customer-mobile-list { display: none; }
-    .empty-state {
-        padding: 28px 18px;
-        text-align: center;
-        color: var(--ph-color-text-soft);
-        font-size: 14px;
-    }
-    .status-tag {
-        display: inline-flex;
-        align-items: center;
-        padding: 3px 7px;
-        border-radius: 999px;
-        font-size: 10px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: .03em;
-        background: var(--ph-color-success-soft);
-        color: var(--ph-color-success);
-    }
-    .status-tag.inactive {
-        background: var(--ph-color-surface-soft);
-        color: var(--ph-color-text-soft);
-    }
-    .section-title {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 8px;
-    }
-    .section-title h2 {
-        margin: 0;
-        font-size: 18px;
-        letter-spacing:-0.02em;
-        color: var(--ph-color-text);
-        font-family: var(--ph-font-heading);
-    }
-    .section-title p {
-        margin: 4px 0 0;
-        color: var(--ph-color-text-soft);
-        font-size: 12px;
-    }
-    .customers-title .rx-eyebrow { font-size: 10px; padding: 3px 8px; min-height: 0; }
-    .customers-actions .ops-btn,
-    .customers-actions .ops-btn-light { min-height: 36px; padding: 7px 12px; }
-    .customers-actions .customer-export-action { width:36px; min-width:36px; padding:0; }
-    .summary-box {
+        position: absolute;
+        z-index: 1;
+        right: 0;
+        top: calc(100% + 4px);
+        width: 168px;
+        max-height: min(65vh, 340px);
+        overflow: auto;
         display: grid;
-        grid-template-columns: 34px minmax(0, 1fr);
-        grid-template-areas: "icon label" "icon value" "icon note";
+        gap: 2px;
+        padding: 5px;
+        border: 1px solid var(--directory-line);
+        border-radius: 9px;
+        background: #fff;
+        box-shadow: 0 10px 24px rgb(23 41 68 / 15%);
+    }
+    .customer-action-menu.opens-up .customer-action-panel { top: auto; bottom: calc(100% + 4px); }
+    .customers-page :is(.customer-action-link, .customer-action-panel button, .customer-quick-links nav a) {
+        width: 100%;
+        min-height: 30px;
+        padding: 6px 8px;
+        display: flex;
         align-items: center;
-        column-gap: 10px;
-        min-height: 92px;
-        padding: 12px;
-        border-radius: 14px;
+        justify-content: flex-start;
+        gap: 6px;
+        border: 0;
+        border-radius: 6px;
+        background: #fff;
+        color: var(--directory-ink);
+        text-align: left;
+        text-decoration: none;
+        font-size: 12px;
+        cursor: pointer;
     }
-    .summary-box .rn-summary-icon {
-        grid-area: icon;
-        width: 32px;
-        height: 32px;
-        border-radius: 10px;
-        display: inline-grid;
-        place-items: center;
-        margin: 0;
-    }
-    .summary-box .rn-summary-icon svg { width: 17px; height: 17px; }
-    .summary-box > span:not(.rn-summary-icon) {
-        grid-area: label;
-        display: block;
-        margin: 0;
-        font-size: 10px;
-        line-height: 1.2;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .summary-box strong {
-        grid-area: value;
-        font-size: 26px;
-        line-height: .95;
-        margin-top: 2px;
-    }
-    .summary-box small {
-        grid-area: note;
-        margin-top: 2px;
-        font-size: 11px;
-        line-height: 1.2;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .rn-table-shell .ops-card-body { padding: 12px 14px; }
-    .rn-customer-block { gap: 8px; align-items: center; }
-    .rn-customer-avatar { width: 28px; height: 28px; border-radius: 8px; font-size: 11px; }
-    .rn-name-stack { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 6px; align-items:center; }
-    .rn-name-stack .title { grid-column:1; grid-row:1; font-size:12px; line-height:1.3; }
-    .rn-name-stack .meta { grid-column:1 / -1; grid-row:2; font-size:11px; line-height:1.3; }
-    .rn-name-stack .rn-badge { grid-column:2; grid-row:1; justify-self:end; }
-    .customers-filter-search { display:grid; gap:8px; min-width:0; }
-    .customers-filter-fields { margin-top:12px; padding-top:12px; border-top:1px solid var(--ph-color-border); min-width:0; }
-    .rn-badge { min-height: 18px; padding: 2px 7px !important; font-size: 9px !important; }
-    .pagination-wrap nav { margin-top: 4px; }
-    @media (max-width: 1200px) {
-        .customers-page { padding: 10px; }
-        .customers-table { min-width: 920px; }
-    }
-    @media (max-width: 820px) {
-        .customers-page { padding: 10px; }
-        .ops-form-grid { grid-template-columns: 1fr; }
-        .customers-actions { width: 100%; }
+    .customers-page :is(.customer-action-link, .customer-action-panel button, .customer-quick-links nav a):hover { background: var(--directory-soft); }
+    .customer-action-panel form { margin: 2px 0 0; padding-top: 3px; border-top: 1px solid var(--directory-line); }
+    .customers-page .customer-action-panel .danger { color: #a52230; }
+    .customer-list-empty { margin: 0; padding: 24px 12px; color: var(--directory-muted); text-align: center; }
+    .customer-page-links { padding: 9px 12px; }
+    .customer-list-alert { padding: 8px 12px; border-radius: 9px; background: #ecf5ef; color: #206043; font-size: 13px; }
+    .customer-list-alert.is-error { background: #fff1f2; color: #a52230; }
+    @media (max-width: 1040px) {
+        .customers-page .customers-header { grid-template: "title actions" "search search" / minmax(0, 1fr) auto; }
     }
     @media (max-width: 767px) {
-        .customers-page {
-            padding: 6px 0 18px;
-            gap: 8px;
-        }
-        .customers-shell {
-            gap: 8px;
-        }
-        .customers-header {
-            display: flex;
-        }
-        .desktop-filter-card,
-        .desktop-summary-grid {
-            display: none !important;
-        }
-        .desktop-search-shell { display:none; }
-        .customers-filter-search .desktop-search-form { grid-template-columns:1fr 1fr; }
-        .customers-filter-search .desktop-search-field { grid-column:1 / -1; }
-        .mobile-list-command {
-            display: grid;
-            gap: 6px;
-            padding: 7px;
-            border: 1px solid #dbe3ef;
-            border-radius: 14px;
-            background: #ffffff;
-            box-shadow: 0 8px 22px rgba(15,23,42,.04);
-            pointer-events: auto;
-        }
-        .mobile-customer-head {
-            display: none;
-            grid-template-columns: minmax(0, 1fr) auto;
-            align-items: center;
-            gap: 8px;
-        }
-        .mobile-customer-title {
-            display: grid;
-            gap: 1px;
-            min-width: 0;
-        }
-        .mobile-customer-title strong {
-            color: var(--ph-color-text);
-            font-family: var(--ph-font-heading);
-            font-size: 18px;
-            line-height: 1.05;
-            letter-spacing: -.03em;
-        }
-        .mobile-customer-title span {
-            color: var(--ph-color-text-soft);
-            font-size: 10px;
-            font-weight: 700;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .mobile-customer-add {
-            min-height: 34px;
-            padding: 7px 10px;
-            border-radius: 11px;
-            font-size: 12px;
-            white-space: nowrap;
-        }
-        .mobile-search-row {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr);
-            gap: 6px;
-        }
-        .mobile-search-row input {
-            width: 100%;
-            min-height: 38px;
-            border: 1px solid #cbd5e1;
-            border-radius: 12px;
-            padding: 8px 11px;
-            font-size: 15px;
-            box-sizing: border-box;
-        }
-        .mobile-stat-strip {
-            display: grid;
-            grid-auto-flow: column;
-            grid-auto-columns: minmax(108px, 1fr);
-            gap: 6px;
-            overflow-x: auto;
-            padding: 1px 1px 3px;
-            scrollbar-width: none;
-        }
-        .mobile-stat-strip::-webkit-scrollbar { display: none; }
-        .mobile-stat-strip a {
-            display: grid;
-            gap: 2px;
-            min-width: 0;
-            padding: 7px 8px;
-            border: 1px solid var(--ph-color-border);
-            border-radius: 12px;
-            background: var(--ph-color-surface-soft);
-            color: var(--ph-color-text);
-            text-decoration: none;
-        }
-        .mobile-stat-strip span {
-            color: var(--ph-color-text-soft);
-            font-size: 9px;
-            font-weight: 800;
-            letter-spacing: .05em;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            text-transform: uppercase;
-            white-space: nowrap;
-        }
-        .mobile-stat-strip strong {
-            font-size: 16px;
-            line-height: 1;
-        }
-        .mobile-filter-toggle {
-            position: relative;
-            z-index: 21;
-            border: 1px solid var(--ph-color-border);
-            border-radius: 12px;
-            background: var(--ph-color-surface-soft);
-            overflow: hidden;
-            pointer-events: auto;
-        }
-        .mobile-filter-toggle summary {
-            align-items: center;
-            color: var(--ph-color-text);
-            cursor: pointer;
-            display: flex;
-            font-size: 12px;
-            font-weight: 800;
-            justify-content: space-between;
-            list-style: none;
-            min-height: 38px;
-            padding: 8px 10px;
-            user-select: none;
-        }
-        .mobile-filter-toggle summary::-webkit-details-marker {
-            display: none;
-        }
-        .mobile-filter-body {
-            display: grid;
-            gap: 8px;
-            padding: 0 10px 10px;
-        }
-        .customers-shell > .mobile-chip-row {
-            display: none;
-        }
-        .mobile-chip-row {
-            display: flex;
-            gap: 8px;
-            overflow-x: auto;
-            padding: 2px 1px 4px;
-            scrollbar-width: none;
-        }
-        .mobile-chip-row::-webkit-scrollbar { display: none; }
-        .mobile-chip {
-            flex: 0 0 auto;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 30px;
-            padding: 6px 10px;
-            border-radius: 999px;
-            border: 1px solid var(--ph-color-border-strong);
-            background: #fff;
-            color: var(--ph-color-text);
-            text-decoration: none;
-            font-size: 10px;
-            font-weight: 800;
-        }
-        .mobile-chip.is-active { background: var(--ph-color-sidebar); color: #fff; border-color: var(--ph-color-sidebar); }
-        .customers-table-wrap { display: none; }
-        .rn-table-shell .ops-card-body {
-            padding: 8px;
-        }
-        .section-title {
-            margin-bottom: 8px;
-        }
-        .section-title > div:first-child {
-            display: none;
-        }
-        .bulk-actions {
-            position: sticky;
-            top: 94px;
-            z-index: 18;
-            display: none;
-            width: 100%;
-            justify-content: space-between;
-            padding: 7px;
-            border: 1px solid #c7d2fe;
-            border-radius: 13px;
-            background: #eef2ff;
-            box-shadow: 0 10px 22px rgba(79,70,229,.12);
-        }
-        .bulk-actions.is-active {
-            display: flex;
-        }
-        .bulk-actions strong {
-            font-size: 12px;
-        }
-        .bulk-actions .ops-btn-light,
-        .bulk-actions .ops-btn-danger {
-            min-height: 32px;
-            padding: 6px 9px;
-            border-radius: 10px;
-            font-size: 10px;
-        }
-        .customer-mobile-list {
-            display: grid;
-            gap: 7px;
-        }
-        .customer-mobile-card {
-            display: grid;
-            grid-template-columns: 28px 42px minmax(0, 1fr);
-            gap: 8px;
-            align-items: center;
-            min-width: 0;
-            padding: 8px;
-            border: 1px solid #dbe3ef;
-            border-radius: 14px;
-            background: #fff;
-            box-shadow: 0 8px 18px rgba(15,23,42,.035);
-            cursor: pointer;
-        }
-        .customer-mobile-card:focus-visible {
-            outline: 2px solid rgba(29, 78, 216, .26);
-            outline-offset: 2px;
-        }
-        .customer-mobile-select {
-            display: grid;
-            place-items: center;
-        }
-        .customer-mobile-select input {
-            width: 18px;
-            height: 18px;
-            margin: 0;
-        }
-        .customer-mobile-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 14px;
-            display: grid;
-            place-items: center;
-            color: #1d4ed8;
-            background: #eff6ff;
-            border: 1px solid #bfdbfe;
-            font-size: 13px;
-            font-weight: 900;
-            letter-spacing: .02em;
-            font-family: var(--ph-font-heading);
-        }
-        .customer-mobile-main {
-            display: grid;
-            gap: 5px;
-            min-width: 0;
-        }
-        .customer-mobile-line {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) auto;
-            align-items: start;
-            gap: 8px;
-            min-width: 0;
-        }
-        .customer-mobile-name {
-            display: block;
-            color: var(--ph-color-text);
-            font-family: var(--ph-font-heading);
-            font-size: 13.5px;
-            font-weight: 900;
-            line-height: 1.15;
-            text-decoration: none;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .customer-mobile-phone {
-            color: var(--ph-color-text-soft);
-            font-size: 11.5px;
-            font-weight: 700;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .customer-mobile-city {
-            color: #475569;
-            font-size: 10px;
-            line-height: 1.2;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .customer-mobile-metrics {
-            color: #64748b;
-            font-size: 10.5px;
-            font-weight: 800;
-            line-height: 1.2;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        .customer-mobile-actions {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .customer-mobile-actions .customer-icon-action,
-        .customer-mobile-actions .customer-action-menu summary {
-            width: 32px;
-            height: 32px;
-            border-radius: 11px;
-            box-shadow: none;
-        }
-        .customer-mobile-actions .customer-action-panel {
+        .customers-page { gap: 8px; }
+        .customers-page .customers-header { column-gap: 8px; }
+        .customers-actions .phos-list-filter-toggle::after { content: none; }
+        .customer-add-full { display: none; }
+        .customer-add-short { display: inline; }
+        .customer-list-toolbar { padding: 7px 9px; }
+        .customer-summary a { padding: 5px 6px; font-size: 11px; }
+        .customer-summary strong { font-size: 14px; }
+        .customers-table,
+        .customers-table tbody { display: block; }
+        .customers-table thead {
             position: absolute;
-            right: 0;
-            top: 36px;
-            min-width: 188px;
-            box-shadow: var(--ph-shadow-float);
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip-path: inset(50%);
         }
-        .pagination-wrap {
-            margin-top: 8px;
+        .customers-table .customer-mobile-card {
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr) auto;
+            align-items: start;
+            gap: 5px 7px;
+            padding: 8px 9px;
+            border-bottom: 1px solid var(--directory-line);
         }
+        body.phos-list-page .customers-page .customers-table td {
+            padding: 0 !important;
+            border: 0;
+            min-width: 0;
+        }
+        .customers-table .bulk-col { width: auto; grid-area: 1 / 1; }
+        .customers-table .customer-bulk-target { min-height: 34px; }
+        .customers-table .serial-col { width: auto; grid-area: 2 / 1; font-size: 11px; }
+        .customers-table .customer-identity-col { grid-area: 1 / 2; }
+        .customers-table .customer-actions-col { width: auto; grid-area: 1 / 3; }
+        .customers-table .customer-contact-col { width: auto; grid-area: 2 / 2 / auto / -1; }
+        .customers-table .customer-location-col { width: auto; grid-area: 3 / 2 / auto / -1; }
+        .customers-table .customer-activity-col { width: auto; grid-area: 4 / 2 / auto / -1; }
+        .customer-contact { display: flex; flex-wrap: wrap; gap: 2px 9px; }
+        .customer-location-col .customer-list-meta { display: inline; margin-left: 3px; }
+        .customers-page :is(.customer-icon-action, .customer-action-menu summary) { width: 34px; height: 34px; }
+        .customers-page .customer-search input { font-size: 16px; }
+        .customer-action-panel { width: 180px; }
+        .customers-page .customer-action-link, .customers-page .customer-action-panel button { min-height: 34px; }
     }
     @media (max-width: 360px) {
-        .customer-mobile-card { grid-template-columns: 20px 30px minmax(0, 1fr); gap: 6px; }
-        .customer-mobile-avatar { width: 30px; height: 30px; border-radius: 10px; font-size: 11px; }
-        .customer-mobile-phone { font-size: 10.5px; }
-    }
-    @media (max-width: 560px) {
-        .summary-grid { grid-template-columns: 1fr; }
+        .customer-list-avatar { display: none; }
+        .customers-actions { gap: 4px; }
     }
 </style>
 
 <div class="container customers-page" data-phos-compact-page="customers">
-    <div class="customers-shell">
-        <div class="customers-header phos-page-header">
-            <div class="customers-title">
-                <div class="rx-eyebrow">Customer CRM</div>
-                <h1>Customers</h1>
-                <p>Search and manage customer records.</p>
-            </div>
-            <div class="customers-actions">
+    <header class="customers-header phos-page-header">
+        <h1>Customers</h1>
+        <form method="GET" action="{{ route('customers.index') }}" class="customer-search" data-customer-search role="search">
+            @foreach($queryFor(['search' => null]) as $key => $value)
+                <input type="hidden" name="{{ $key }}" value="{{ $value }}">
+            @endforeach
+            <label>
+                <span class="sr-only">Search customer, phone, WhatsApp, city, state</span>
+                <input id="desktop-customer-search" type="search" name="search" value="{{ $search }}" placeholder="Name, phone or city">
+            </label>
+            <button type="submit" class="ops-btn-light">Search</button>
+        </form>
+        <div class="customers-actions">
+            @if($canManageBulkRecords)
                 <a href="{{ route('customers.export.csv', $queryFor()) }}" class="ops-btn-light customer-export-action" data-ph-action="download" title="Export CSV" aria-label="Export customers as CSV"><x-phos-action-icon name="download" label="Export CSV" /></a>
-                <x-phos-list-filter id="customers-list-filters" label="Filter customers" :active="$hasActiveFilters">
-                    <div class="customers-filter-search">
-                        <form method="GET" action="{{ route('customers.index') }}" class="desktop-search-form" data-phos-legacy-filter>
-                            @foreach(request()->except(['search', 'page']) as $key => $value)
-                                @if(is_scalar($value) && $value !== '')
-                                    <input type="hidden" name="{{ $key }}" value="{{ $value }}">
-                                @endif
-                            @endforeach
-                            <div class="desktop-search-field">
-                                <label for="desktop-customer-search">Search customers</label>
-                                <input id="desktop-customer-search" type="search" name="search" value="{{ $search }}" placeholder="Search customer, phone, WhatsApp, city, state">
-                            </div>
-                            <button type="submit" class="ops-btn-secondary">Search</button>
-                            <a href="{{ route('customers.index') }}" class="ops-btn-light" data-filter-clear="customers-index">Clear Filters</a>
-                        </form>
-                        @if($hasActiveFilters)
-                            <div class="desktop-filter-chip-row">
-                                @foreach($activeFilterChips as $chip)
-                                    <span class="desktop-filter-chip">{{ $chip }}</span>
+            @endif
+            <x-phos-list-filter id="customers-list-filters" label="Filter and sort customers" :active="$hasActiveFilters">
+                <form method="GET" action="{{ route('customers.index') }}" class="customer-filter-form" data-filter-panel data-filter-panel-key="customers-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}">
+                    @if(filled($createdDate))<input type="hidden" name="created_date" value="{{ $createdDate }}">@endif
+                    @if(!$statusEnabled && filled($status))<input type="hidden" name="status" value="{{ $status }}">@endif
+                    <div class="customer-filter-grid">
+                        <label for="search">Search
+                            <input id="search" type="search" name="search" value="{{ $search }}">
+                        </label>
+                        <label for="city">City
+                            <select id="city" name="city">
+                                <option value="">All cities</option>
+                                @foreach($cities as $cityOption)
+                                    <option value="{{ $cityOption }}" @selected($city === $cityOption)>{{ $cityOption }}</option>
                                 @endforeach
-                            </div>
-                        @endif
-                    </div>
-
-                    <div class="customers-filter-fields" data-filter-panel data-filter-panel-key="customers-index" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}">
-                        <div class="customers-filter-body">
-                            <form method="GET" action="{{ route('customers.index') }}" style="display:grid; gap:12px;">
-                                @if(filled($createdDate))<input type="hidden" name="created_date" value="{{ $createdDate }}">@endif
-                                <div class="ops-form-grid customer-filter-grid">
-                                    <div class="ops-field">
-                                        <label for="search">Search</label>
-                                        <input id="search" type="text" name="search" value="{{ $search }}" placeholder="Search customer, phone, WhatsApp, city, state">
-                                    </div>
-                                    <div class="ops-field">
-                                        <label for="city">City</label>
-                                        <select id="city" name="city">
-                                            <option value="">All cities</option>
-                                            @foreach($cities as $cityOption)
-                                                <option value="{{ $cityOption }}" {{ $city === $cityOption ? 'selected' : '' }}>{{ $cityOption }}</option>
-                                            @endforeach
-                                        </select>
-                                    </div>
-                                    <div class="ops-field">
-                                        <label for="state">State</label>
-                                        <select id="state" name="state">
-                                            <option value="">All states</option>
-                                            @foreach($states as $stateOption)
-                                                <option value="{{ $stateOption }}" {{ $state === $stateOption ? 'selected' : '' }}>{{ $stateOption }}</option>
-                                            @endforeach
-                                        </select>
-                                    </div>
-                                    @if($statusEnabled)
-                                        <div class="ops-field">
-                                            <label for="status">Status</label>
-                                            <select id="status" name="status">
-                                                <option value="">All</option>
-                                                <option value="active" {{ $status === 'active' ? 'selected' : '' }}>Active</option>
-                                                <option value="inactive" {{ $status === 'inactive' ? 'selected' : '' }}>Inactive</option>
-                                            </select>
-                                        </div>
-                                    @endif
-                                    <div class="ops-field">
-                                        <label for="from_date">From Date</label>
-                                        <input id="from_date" type="date" name="from_date" value="{{ $fromDate }}">
-                                    </div>
-                                    <div class="ops-field">
-                                        <label for="to_date">To Date</label>
-                                        <input id="to_date" type="date" name="to_date" value="{{ $toDate }}">
-                                    </div>
-                                    <div class="ops-field">
-                                        <label for="sort_by">Sort By</label>
-                                        <select id="sort_by" name="sort_by">
-                                            <option value="latest" {{ $sortBy === 'latest' ? 'selected' : '' }}>Newest First</option>
-                                            <option value="oldest" {{ $sortBy === 'oldest' ? 'selected' : '' }}>Oldest First</option>
-                                            <option value="name_asc" {{ $sortBy === 'name_asc' ? 'selected' : '' }}>Name A-Z</option>
-                                            <option value="name_desc" {{ $sortBy === 'name_desc' ? 'selected' : '' }}>Name Z-A</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                                    <button type="submit" class="ops-btn-secondary">Apply Filters</button>
-                                    <a href="{{ route('customers.index') }}" class="ops-btn-light" data-filter-clear="customers-index">Reset</a>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                </x-phos-list-filter>
-                @if($canCreateCustomers)
-                    <a href="{{ route('customers.create') }}" class="ops-btn">+ Add Customer</a>
-                @endif
-            </div>
-        </div>
-
-        <div class="mobile-chip-row" aria-label="Customer quick filters">
-            <a href="{{ route('customers.index') }}" class="mobile-chip {{ blank($status) && blank($city) && blank($state) ? 'is-active' : '' }}">All</a>
-            @if($statusEnabled)
-                <a href="{{ route('customers.index', $queryFor(['status' => 'active'])) }}" class="mobile-chip {{ $status === 'active' ? 'is-active' : '' }}">Active</a>
-                <a href="{{ route('customers.index', $queryFor(['status' => 'inactive'])) }}" class="mobile-chip {{ $status === 'inactive' ? 'is-active' : '' }}">Inactive</a>
-            @endif
-            @if($canReadRentals)
-                <a href="{{ route('rentals.index', ['status' => 'active']) }}" class="mobile-chip">Active Rentals</a>
-            @endif
-            @if($canReadInvoices)
-                <a href="{{ route('invoices.index', ['status' => 'unpaid']) }}" class="mobile-chip">Unpaid Invoices</a>
-            @endif
-        </div>
-
-        @if(session('success'))
-            <div class="ops-card">
-                <div class="ops-card-body" style="color:var(--ph-color-success); background:var(--ph-color-success-soft); border-radius:14px;">
-                    {{ session('success') }}
-                </div>
-            </div>
-        @endif
-
-        @if(session('error'))
-            <div class="ops-card">
-                <div class="ops-card-body" style="color:var(--ph-color-danger); background:var(--ph-color-danger-soft); border-radius:14px;">
-                    {{ session('error') }}
-                </div>
-            </div>
-        @endif
-
-        <div class="mobile-list-command" aria-label="Mobile customer controls">
-            <div class="mobile-customer-head">
-                <div class="mobile-customer-title">
-                    <strong>Customers</strong>
-                    <span>{{ number_format($totalCustomers) }} Customers{{ $canReadRentals ? ' - ' . number_format($activeRentals) . ' Active Rentals' : '' }}</span>
-                </div>
-                @if($canCreateCustomers)
-                    <a href="{{ route('customers.create') }}" class="ops-btn mobile-customer-add">+ Add</a>
-                @endif
-            </div>
-
-            <div class="mobile-search-tools">
-                <form method="GET" action="{{ route('customers.index') }}" class="mobile-search-row">
-                    @foreach(request()->except(['search', 'page']) as $key => $value)
-                        @if(is_scalar($value) && $value !== '')
-                            <input type="hidden" name="{{ $key }}" value="{{ $value }}">
-                        @endif
-                    @endforeach
-                    <input type="search" name="search" value="{{ $search }}" placeholder="Search customer, phone, city">
-                </form>
-
-                <div class="mobile-action-toolbar {{ $hasActiveFilters ? 'has-active-filters' : '' }}" aria-label="Mobile customer filters and sorting">
-                    <button type="button" class="mobile-toolbar-btn" data-phos-legacy-filter data-mobile-filter-open="customers-mobile-filters" data-filter-active="{{ $hasActiveFilters ? 'true' : 'false' }}" aria-label="Open customer filters">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16"/><path d="M7 12h10"/><path d="M10 18h4"/></svg>
-                        <span>Filter</span>
-                    </button>
-                    <div class="mobile-sort-anchor" data-mobile-sort-root>
-                        <button type="button" class="mobile-toolbar-btn" data-mobile-sort-trigger aria-label="Sort customers: {{ $currentMobileSortLabel }}">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m7 15 5 5 5-5"/><path d="M7 9 12 4l5 5"/></svg>
-                            <span>{{ $currentMobileSortLabel }}</span>
-                        </button>
-                        <div class="mobile-sort-popover" data-mobile-sort-menu hidden>
-                            @foreach($mobileSortOptions as $option)
-                                <a href="{{ route('customers.index', $queryFor(['sort_by' => $option['value']])) }}" class="mobile-sort-option {{ $sortBy === $option['value'] ? 'is-active' : '' }}">{{ $option['label'] }}</a>
-                            @endforeach
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="mobile-stat-strip" aria-label="Customer summary">
-                <a href="{{ route('customers.index', $queryFor()) }}"><span>Total</span><strong>{{ number_format($totalCustomers) }}</strong></a>
-                @if($canReadRentals)
-                    <a href="{{ route('rentals.index', ['status' => 'active']) }}"><span>Rentals</span><strong>{{ number_format($activeRentals) }}</strong></a>
-                @endif
-                @if($canReadInvoices)
-                    <a href="{{ route('invoices.index', ['status' => 'unpaid']) }}"><span>Invoices</span><strong>{{ number_format($totalInvoices) }}</strong></a>
-                @endif
-            </div>
-
-            <div class="mobile-chip-row" aria-label="Customer quick filters">
-                <a href="{{ route('customers.index') }}" class="mobile-chip {{ blank($status) && blank($city) && blank($state) ? 'is-active' : '' }}">All</a>
-                @if($statusEnabled)
-                    <a href="{{ route('customers.index', $queryFor(['status' => 'active'])) }}" class="mobile-chip {{ $status === 'active' ? 'is-active' : '' }}">Active</a>
-                    <a href="{{ route('customers.index', $queryFor(['status' => 'inactive'])) }}" class="mobile-chip {{ $status === 'inactive' ? 'is-active' : '' }}">Inactive</a>
-                @endif
-                @if($canReadRentals)
-                    <a href="{{ route('rentals.index', ['status' => 'active']) }}" class="mobile-chip">Active Rentals</a>
-                @endif
-                <a href="{{ route('customers.index', $queryFor(['search' => 'Business'])) }}" class="mobile-chip {{ $search === 'Business' ? 'is-active' : '' }}">Business</a>
-                <a href="{{ route('customers.index', $queryFor(['search' => 'Individual'])) }}" class="mobile-chip {{ $search === 'Individual' ? 'is-active' : '' }}">Individual</a>
-                <a href="{{ route('customers.index', $queryFor(['sort_by' => 'latest'])) }}" class="mobile-chip {{ $sortBy === 'latest' ? 'is-active' : '' }}">Recent</a>
-            </div>
-
-        </div>
-
-        <div id="customers-mobile-filters" class="mobile-filter-sheet" data-mobile-filter-sheet hidden>
-            <div class="mobile-filter-sheet-panel">
-                <div class="mobile-filter-sheet-header">
-                    <div>
-                        <h3>Customer Filters</h3>
-                        <p>Keep city, state, status, and date range controls easy to reach on mobile.</p>
-                    </div>
-                    <button type="button" class="mobile-filter-sheet-close" data-mobile-sheet-close="customers-mobile-filters" aria-label="Close filters">&times;</button>
-                </div>
-                <div class="mobile-filter-sheet-body">
-                    <form method="GET" action="{{ route('customers.index') }}" class="mobile-sheet-form">
-                        <input type="hidden" name="search" value="{{ $search }}">
-                        <input type="hidden" name="sort_by" value="{{ $sortBy }}">
-                        <div class="mobile-sheet-grid">
-                            <div class="mobile-sheet-field">
-                                <label for="mobile_city">City</label>
-                                <select id="mobile_city" name="city">
-                                    <option value="">All cities</option>
-                                    @foreach($cities as $cityOption)
-                                        <option value="{{ $cityOption }}" {{ $city === $cityOption ? 'selected' : '' }}>{{ $cityOption }}</option>
-                                    @endforeach
+                            </select>
+                        </label>
+                        <label for="state">State
+                            <select id="state" name="state">
+                                <option value="">All states</option>
+                                @foreach($states as $stateOption)
+                                    <option value="{{ $stateOption }}" @selected($state === $stateOption)>{{ $stateOption }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+                        @if($statusEnabled)
+                            <label for="status">Status
+                                <select id="status" name="status">
+                                    <option value="">All statuses</option>
+                                    <option value="active" @selected($status === 'active')>Active</option>
+                                    <option value="inactive" @selected($status === 'inactive')>Inactive</option>
                                 </select>
-                            </div>
-                            <div class="mobile-sheet-field">
-                                <label for="mobile_state">State</label>
-                                <select id="mobile_state" name="state">
-                                    <option value="">All states</option>
-                                    @foreach($states as $stateOption)
-                                        <option value="{{ $stateOption }}" {{ $state === $stateOption ? 'selected' : '' }}>{{ $stateOption }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-                            @if($statusEnabled)
-                                <div class="mobile-sheet-field">
-                                    <label for="mobile_status">Status</label>
-                                    <select id="mobile_status" name="status">
-                                        <option value="">All</option>
-                                        <option value="active" {{ $status === 'active' ? 'selected' : '' }}>Active</option>
-                                        <option value="inactive" {{ $status === 'inactive' ? 'selected' : '' }}>Inactive</option>
-                                    </select>
-                                </div>
-                            @endif
-                            <div class="mobile-sheet-field">
-                                <label for="mobile_from_date">From Date</label>
-                                <input id="mobile_from_date" type="date" name="from_date" value="{{ $fromDate }}">
-                            </div>
-                            <div class="mobile-sheet-field">
-                                <label for="mobile_to_date">To Date</label>
-                                <input id="mobile_to_date" type="date" name="to_date" value="{{ $toDate }}">
-                            </div>
-                        </div>
-                        <div class="mobile-sheet-actions">
-                            <button type="submit" class="ops-btn-secondary">Apply</button>
-                            <a href="{{ route('customers.index') }}" class="ops-btn-light">Reset</a>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <div class="summary-grid desktop-summary-grid">
-            <a href="{{ route('customers.index', $queryFor()) }}" class="summary-box rn-summary-link">
-                <span class="rn-summary-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><path d="M9.5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                </span>
-                <span>Total Customers</span>
-                <strong>{{ number_format($totalCustomers) }}</strong>
-                <small>Based on current filters</small>
-            </a>
-            @if($canReadRentals)
-            <a href="{{ route('rentals.index', $queryFor(['status' => 'active'])) }}" class="summary-box rn-summary-link">
-                <span class="rn-summary-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3v4"/><path d="M17 3v4"/><path d="M4 8h16"/><path d="M5 5h14a1 1 0 0 1 1 1v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1Z"/><path d="M8 12h4"/><path d="M8 16h8"/></svg>
-                </span>
-                <span>Active Rentals</span>
-                <strong>{{ number_format($activeRentals) }}</strong>
-                <small>Active rentals</small>
-            </a>
-            <a href="{{ route('rentals.index', $queryFor()) }}" class="summary-box rn-summary-link">
-                <span class="rn-summary-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="M4 18h10"/><path d="M4 6h16"/></svg>
-                </span>
-                <span>Total Rentals</span>
-                <strong>{{ number_format($totalRentals) }}</strong>
-                <small>Rental history</small>
-            </a>
-            @endif
-            @if($canReadSales)
-            <a href="{{ route('sales.index', $queryFor()) }}" class="summary-box rn-summary-link">
-                <span class="rn-summary-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6h15l-2 8H8L6 6Z"/><path d="M6 6 5 3H2"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg>
-                </span>
-                <span>Total Sales</span>
-                <strong>{{ number_format($totalSales) }}</strong>
-                <small>Sales</small>
-            </a>
-            @endif
-            @if($canReadInvoices)
-            <a href="{{ route('invoices.index', $queryFor()) }}" class="summary-box rn-summary-link">
-                <span class="rn-summary-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2V2Z"/><path d="M9 8h6"/><path d="M9 12h6"/><path d="M9 16h3"/></svg>
-                </span>
-                <span>Total Invoices</span>
-                <strong>{{ number_format($totalInvoices) }}</strong>
-                <small>Invoices</small>
-            </a>
-            @endif
-        </div>
-
-        <div class="ops-card rn-table-shell">
-            <div class="ops-card-body">
-                <form id="customerBulkExportForm" method="POST" action="{{ route('customers.bulk.export.csv') }}" style="display:none;">
-                    @csrf
-                </form>
-                @if($canDeleteCustomers)
-                    <form id="customerBulkDeleteForm" method="POST" action="{{ route('customers.bulk.delete') }}" style="display:none;">
-                        @csrf
-                        @method('DELETE')
-                    </form>
-                @endif
-
-                <div class="section-title">
-                    <div>
-                        <h2>Customer List</h2>
-                        <p>Manage customers, rentals, sales and invoices.</p>
-                    </div>
-                    <div class="bulk-actions">
-                        <strong><span id="customerSelectedCount">0</span> selected</strong>
-                        <button type="button" class="ops-btn-light" id="bulkCustomerExport" disabled>Export Selected CSV</button>
-                        @if($canDeleteCustomers)
-                            <button type="button" class="ops-btn-danger" id="bulkCustomerDelete" disabled>Delete Selected</button>
-                        @endif
-                    </div>
-                </div>
-
-                <div class="customer-mobile-list" aria-label="Mobile customer list">
-                    @forelse($customers as $customer)
-                        @php
-                            $customerWhatsapp = $whatsAppUrl($customer);
-                            $rowNumber = method_exists($customers, 'firstItem') && $customers->firstItem()
-                                ? $customers->firstItem() + $loop->index
-                                : $loop->iteration;
-                            $mobileMetrics = collect([
-                                $canReadRentals ? 'Rentals ' . number_format((int) ($customer->rentals_count ?? 0)) : null,
-                                $canReadSales ? 'Sales ' . number_format((int) ($customer->sales_count ?? 0)) : null,
-                                $canReadInvoices ? 'Invoices ' . number_format((int) ($customer->invoices_count ?? 0)) : null,
-                            ])->filter()->implode(' - ');
-                            $communicationHref = \Illuminate\Support\Facades\Route::has('communication-center.index')
-                                ? route('communication-center.index', ['search' => $customer->phone ?: $customer->name])
-                                : null;
-                        @endphp
-                        <article class="customer-mobile-card" data-href="{{ route('customers.show', $customer) }}" tabindex="0" role="link" aria-label="Open {{ $customer->name }}">
-                            <label class="customer-mobile-select" aria-label="Select {{ $customer->name }}">
-                                <input type="checkbox" class="customer-bulk-check" value="{{ $customer->id }}">
                             </label>
-                            <div class="customer-mobile-avatar" aria-hidden="true">{{ $customerInitials($customer->name) }}</div>
-                            <div class="customer-mobile-main">
-                                <div class="customer-mobile-line">
-                                    <div style="min-width:0;">
-                                        <a href="{{ route('customers.show', $customer) }}" class="customer-mobile-name">{{ $customer->name }}</a>
-                                        <div class="customer-mobile-phone">{{ $customer->phone ?: 'No phone' }}</div>
-                                    </div>
-                                    <div class="customer-mobile-actions">
-                                        @if($customer->phone)
-                                            <a href="tel:{{ preg_replace('/\D+/', '', $customer->phone) }}" class="customer-icon-action is-primary" data-ph-action="phone" title="Call {{ $customer->name }}" aria-label="Call {{ $customer->name }}">
-                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8l-1.3 1.3a16 16 0 0 0 6.4 6.4l1.3-1.3a2 2 0 0 1 1.8-.6l3 .5A2 2 0 0 1 22 16.9Z"/></svg>
-                                            </a>
-                                        @endif
-                                        @if($customerWhatsapp)
-                                            <a href="{{ $customerWhatsapp }}" target="_blank" class="customer-icon-action is-whatsapp" data-ph-action="whatsapp" title="WhatsApp {{ $customer->name }}" aria-label="WhatsApp {{ $customer->name }}">
-                                                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 11.4c0 4.7-3.9 8.6-8.8 8.6-1.5 0-3-.4-4.2-1.1L3 20l1.2-3.7A8.4 8.4 0 0 1 2.4 11.4C2.4 6.7 6.3 3 11.2 3 16.1 3 20 6.7 20 11.4Zm-4.8 2.2c-.2-.1-1.2-.6-1.4-.7s-.3-.1-.4.1-.5.7-.7.9-.3.2-.5.1a5.9 5.9 0 0 1-1.7-1c-.6-.5-1-1.2-1.1-1.4-.1-.2 0-.3.1-.4l.3-.4.2-.3v-.4c0-.1-.4-1.1-.6-1.6-.2-.4-.3-.4-.4-.4h-.4c-.1 0-.4 0-.6.3-.2.2-.8.8-.8 1.9s.8 2.1 1 2.3c.1.1 1.5 2.3 3.8 3.2.5.2 1 .4 1.3.5.6.2 1.2.2 1.7.1.5-.1 1.2-.5 1.4-1 .2-.5.2-1 .1-1Z"/></svg>
-                                            </a>
-                                        @endif
-                                        <details class="customer-action-menu">
-                                            <summary aria-label="More actions for {{ $customer->name }}">...</summary>
-                                            <div class="customer-action-panel">
-                                                <a href="{{ route('customers.show', $customer) }}" class="customer-action-link" data-ph-action="view"><x-phos-action-icon name="view" label="" />View Customer</a>
-                                                @if($canUpdateCustomers)
-                                                    <a href="{{ route('customers.edit', $customer) }}" class="customer-action-link" data-ph-action="edit"><x-phos-action-icon name="edit" label="" />Edit Customer</a>
-                                                @endif
-                                                @if($canReadRentals)
-                                                    <a href="{{ route('rentals.index', ['customer_id' => $customer->id]) }}" class="customer-action-link">Rental History</a>
-                                                @endif
-                                                @if($canReadSales)
-                                                    <a href="{{ route('sales.index', ['customer_id' => $customer->id]) }}" class="customer-action-link">Sales History</a>
-                                                @endif
-                                                @if($canReadInvoices)
-                                                    <a href="{{ route('invoices.index', ['customer_id' => $customer->id]) }}" class="customer-action-link">Invoice History</a>
-                                                @endif
-                                                @if($communicationHref)
-                                                    <a href="{{ $communicationHref }}" class="customer-action-link">Communication History</a>
-                                                @endif
-                                                @if($canDeleteCustomers)
-                                                    <form method="POST" action="{{ route('customers.destroy', $customer) }}" style="margin:0;" onsubmit="return confirm('Delete this customer? This will be blocked if dependencies exist.');">
-                                                        @csrf
-                                                        @method('DELETE')
-                                                        <button type="submit" class="danger">Delete</button>
-                                                    </form>
-                                                @endif
-                                            </div>
-                                        </details>
-                                    </div>
-                                </div>
-                                <div class="customer-mobile-city">{{ $customer->city ?: 'City not set' }}@if($customer->state) - {{ $customer->state }}@endif</div>
-                                <div class="customer-mobile-metrics">{{ $mobileMetrics ?: 'No linked activity yet' }}</div>
-                            </div>
-                        </article>
-                    @empty
-                        <div class="empty-state">No customers match this view yet. Try a broader filter or add a new customer.</div>
-                    @endforelse
-                </div>
+                        @endif
+                        <label for="from_date">Created from
+                            <input id="from_date" type="date" name="from_date" value="{{ $fromDate }}">
+                        </label>
+                        <label for="to_date">Created to
+                            <input id="to_date" type="date" name="to_date" value="{{ $toDate }}">
+                        </label>
+                        <label for="sort_by">Sort by
+                            <select id="sort_by" name="sort_by">
+                                @foreach($sortOptions as $value => $label)
+                                    <option value="{{ $value }}" @selected($sortBy === $value)>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+                    </div>
+                    <div class="customer-filter-actions">
+                        <button type="submit" class="ops-btn">Apply filters</button>
+                        <a href="{{ route('customers.index') }}" class="ops-btn-light" data-filter-clear="customers-index">Reset</a>
+                    </div>
+                </form>
+            </x-phos-list-filter>
+            @if($canCreateCustomers)
+                <a href="{{ route('customers.create') }}" class="ops-btn" aria-label="Add Customer"><span class="customer-add-full">Add Customer</span><span class="customer-add-short" aria-hidden="true">Add</span></a>
+            @endif
+        </div>
+    </header>
 
-                <div class="customers-table-wrap">
-                    <table class="customers-table">
-                        <thead>
-                            <tr>
-                                <th class="bulk-col">
-                                    <input type="checkbox" id="customerSelectAll" aria-label="Select all customers on this page">
-                                </th>
-                                <th class="serial-col">#</th>
-                                <th>Customer</th>
-                                <th>Phone</th>
-                                <th>WhatsApp</th>
-                                <th>Location</th>
-                                @if($canReadRentals)<th>Rentals</th>@endif
-                                @if($canReadSales)<th>Sales</th>@endif
-                                @if($canReadInvoices)<th>Invoices</th>@endif
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @forelse($customers as $customer)
-                                @php
-                                    $customerWhatsapp = $whatsAppUrl($customer);
-                                    $preferredWhatsapp = $customer->preferredWhatsAppNumber();
-                                    $rowNumber = method_exists($customers, 'firstItem') && $customers->firstItem()
-                                        ? $customers->firstItem() + $loop->index
-                                        : $loop->iteration;
-                                @endphp
-                                <tr>
-                                    <td class="bulk-col" data-label="Select">
-                                        <input type="checkbox" class="customer-bulk-check" value="{{ $customer->id }}" aria-label="Select {{ $customer->name }}">
-                                    </td>
-                                    <td class="serial-col" data-label="No.">{{ $rowNumber }}</td>
-                                    <td data-label="Customer">
-                                        <div class="rn-customer-block">
-                                            <div class="rn-customer-avatar">{{ $customerInitials($customer->name) }}</div>
-                                            <div class="rn-name-stack">
-                                                @if(\Illuminate\Support\Facades\Route::has('customers.show'))
-                                                    <a href="{{ route('customers.show', $customer) }}" class="title rn-record-link">{{ $customer->name }}</a>
-                                                @else
-                                                    <span class="title">{{ $customer->name }}</span>
-                                                @endif
-                                                <span class="meta">
-                                                    @if(!empty($customer->company_name))
-                                                        {{ $customer->company_name }}
-                                                    @elseif(!empty(trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? ''))))
-                                                        {{ trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? '')) }}
-                                                    @else
-                                                        Customer record
-                                                    @endif
-                                                </span>
-                                                @if($statusEnabled && !empty($customer->status))
-                                                    <span class="rn-badge {{ $customer->status === 'active' ? 'rn-badge-active' : 'rn-badge-muted' }}" style="width:max-content;">{{ $customer->status }}</span>
-                                                @endif
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td data-label="Phone">{{ $customer->phone ?: '-' }}</td>
-                                    <td data-label="WhatsApp" class="customer-mobile-whatsapp">
-                                        @if($whatsAppEnabled || $customer->phone)
-                                            <div style="display:grid; gap:6px;">
-                                                <span>{{ $preferredWhatsapp ?: '-' }}</span>
-                                                @if($customerWhatsapp)
-                                                    <a href="{{ $customerWhatsapp }}" target="_blank" class="pill">WhatsApp</a>
-                                                @else
-                                                    <span class="pill pill-muted">Not Available</span>
-                                                @endif
-                                            </div>
+    @if(session('success'))<div class="customer-list-alert" role="status">{{ session('success') }}</div>@endif
+    @if(session('error'))<div class="customer-list-alert is-error" role="alert">{{ session('error') }}</div>@endif
+
+    <nav class="customer-summary" aria-label="Customer totals for current filters" data-customer-summary>
+        <a href="{{ route('customers.index', $queryFor()) }}"><strong>{{ number_format($totalCustomers) }}</strong> Customers</a>
+        @if($canReadRentals)
+            <a href="{{ route('rentals.index', $queryFor(['status' => 'active'])) }}"><strong>{{ number_format($activeRentals) }}</strong> Active rentals</a>
+            <a href="{{ route('rentals.index', $queryFor()) }}"><strong>{{ number_format($totalRentals) }}</strong> Rentals</a>
+        @endif
+        @if($canReadSales)
+            <a href="{{ route('sales.index', $queryFor()) }}"><strong>{{ number_format($totalSales) }}</strong> Sales</a>
+        @endif
+        @if($canReadInvoices)
+            <a href="{{ route('invoices.index', $queryFor()) }}"><strong>{{ number_format($totalInvoices) }}</strong> Invoices</a>
+        @endif
+    </nav>
+
+    <section class="customer-directory" aria-labelledby="customer-directory-count" data-customer-directory>
+        <div class="customer-list-toolbar">
+            <strong id="customer-directory-count">
+                @if($customers->count())
+                    {{ number_format($customers->firstItem()) }}–{{ number_format($customers->lastItem()) }} of {{ number_format($totalCustomers) }} customers
+                @else
+                    {{ number_format($totalCustomers) }} customers
+                @endif
+            </strong>
+            <div class="customer-shortcuts">
+                @if($canManageBulkRecords && $customers->count())
+                    <label class="customer-bulk-target"><input type="checkbox" id="customerSelectAll">Select page</label>
+                @endif
+                @if($statusEnabled)
+                    <nav class="customer-status-links" aria-label="Customer status">
+                        <a href="{{ route('customers.index') }}" @if(!$hasActiveFilters) aria-current="page" @endif>All</a>
+                        <a href="{{ route('customers.index', $queryFor(['status' => 'active'])) }}" @if($status === 'active') aria-current="page" @endif>Active</a>
+                        <a href="{{ route('customers.index', $queryFor(['status' => 'inactive'])) }}" @if($status === 'inactive') aria-current="page" @endif>Inactive</a>
+                    </nav>
+                @endif
+                <details class="customer-quick-links">
+                    <summary>Quick links</summary>
+                    <nav aria-label="Customer shortcuts">
+                        @if($canReadRentals)<a href="{{ route('rentals.index', ['status' => 'active']) }}">Active Rentals</a>@endif
+                        @if($canReadInvoices)<a href="{{ route('invoices.index', ['status' => 'unpaid']) }}">Unpaid Invoices</a>@endif
+                        <a href="{{ route('customers.index', $queryFor(['search' => 'Business'])) }}">Search Business</a>
+                        <a href="{{ route('customers.index', $queryFor(['search' => 'Individual'])) }}">Search Individual</a>
+                        <a href="{{ route('customers.index', $queryFor(['sort_by' => 'latest'])) }}">Recent customers</a>
+                    </nav>
+                </details>
+            </div>
+            @if($hasActiveFilters)
+                <div class="customer-filter-chips" aria-label="Active filters">
+                    @foreach($activeFilters as $key => $filter)
+                        @php
+                            $withoutFilter = match ($key) {
+                                'created_date' => ['created_date' => null, 'from_date' => null, 'to_date' => null],
+                                'from_date', 'to_date' => ['created_date' => null, $key => null],
+                                default => [$key => null],
+                            };
+                        @endphp
+                        <a href="{{ route('customers.index', $queryFor($withoutFilter)) }}" aria-label="Remove {{ $filter }}">{{ $filter }} <span aria-hidden="true">×</span></a>
+                    @endforeach
+                    <a href="{{ route('customers.index') }}" data-filter-clear="customers-index">Clear all</a>
+                </div>
+            @endif
+        </div>
+        @if($canManageBulkRecords)
+            <form id="customerBulkExportForm" method="POST" action="{{ route('customers.bulk.export.csv') }}" hidden>@csrf</form>
+            @if($canDeleteCustomers)
+                <form id="customerBulkDeleteForm" method="POST" action="{{ route('customers.bulk.delete') }}" hidden>@csrf @method('DELETE')</form>
+            @endif
+            <div class="customer-bulk-toolbar" data-customer-bulk-toolbar hidden>
+                <strong role="status"><span id="customerSelectedCount">0</span> selected</strong>
+                <button type="button" class="ops-btn-light" id="bulkCustomerExport" disabled>Export Selected CSV</button>
+                @if($canDeleteCustomers)
+                    <button type="button" class="customer-delete-selected" id="bulkCustomerDelete" disabled>Delete Selected</button>
+                @endif
+            </div>
+        @endif
+
+        <table class="customers-table" role="table" aria-label="Customer list">
+            <thead role="rowgroup">
+                <tr role="row">
+                    @if($canManageBulkRecords)
+                        <th class="bulk-col" role="columnheader" scope="col" aria-label="Select"></th>
+                    @endif
+                    <th class="serial-col" role="columnheader" scope="col" aria-label="Row number">#</th>
+                    <th class="customer-identity-col" role="columnheader" scope="col">Customer</th>
+                    <th class="customer-contact-col" role="columnheader" scope="col">Contact</th>
+                    <th class="customer-location-col" role="columnheader" scope="col">Location</th>
+                    @if($canReadActivity)<th class="customer-activity-col" role="columnheader" scope="col">Activity</th>@endif
+                    <th class="customer-actions-col" role="columnheader" scope="col">Actions</th>
+                </tr>
+            </thead>
+            <tbody role="rowgroup">
+                @forelse($customers as $customer)
+                    @php
+                        $rowNumber = $customers->firstItem() + $loop->index;
+                        $customerUrl = route('customers.show', $customer);
+                        $waNumber = \App\Support\WhatsAppHelper::resolveCustomerNumber($customer);
+                        $customerWhatsapp = \App\Support\WhatsAppHelper::chatUrl($waNumber, $waNumber ? "Hello {$customer->name}, this is a quick update from Prime Healers." : null);
+                        $preferredWhatsapp = $customer->preferredWhatsAppNumber();
+                        $customerMeta = $customer->company_name ?: trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? ''));
+                    @endphp
+                    <tr class="customer-mobile-card" role="row" data-customer-href="{{ $customerUrl }}">
+                        @if($canManageBulkRecords)
+                            <td class="bulk-col" role="cell"><label class="customer-bulk-target"><input type="checkbox" class="customer-bulk-check" value="{{ $customer->id }}" aria-label="Select {{ $customer->name }}"></label></td>
+                        @endif
+                        <td class="serial-col" role="cell">{{ $rowNumber }}</td>
+                        <td class="customer-identity-col" role="cell">
+                            <div class="customer-cell-identity">
+                                <span class="customer-list-avatar" aria-hidden="true">{{ $customerInitials((string) $customer->name) }}</span>
+                                <div>
+                                    <a href="{{ $customerUrl }}" class="customer-list-name">{{ $customer->name }}</a>
+                                    @if($customerMeta && $customerMeta !== $customer->name)
+                                        <span class="customer-list-meta">{{ $customerMeta }}</span>
+                                    @endif
+                                    @if($statusEnabled && filled($customer->status))
+                                        <span class="customer-status {{ $customer->status === 'active' ? '' : 'is-inactive' }}">{{ $customer->status }}</span>
+                                    @endif
+                                </div>
+                            </div>
+                        </td>
+                        <td class="customer-contact-col" role="cell">
+                            <div class="customer-contact">
+                                <span><small>Phone</small> {{ $customer->phone ?: '—' }}</span>
+                                @if($whatsAppEnabled || $customer->phone)
+                                    <span><small>WhatsApp</small>
+                                        @if($customerWhatsapp)
+                                            <a href="{{ $customerWhatsapp }}" target="_blank" rel="noopener">{{ $preferredWhatsapp ?: 'Chat' }}</a>
                                         @else
-                                            -
+                                            {{ $preferredWhatsapp ?: '—' }} <small>Not available</small>
                                         @endif
-                                    </td>
-                                    <td data-label="Location">
-                                        <div>{{ $customer->city ?: '-' }}</div>
-                                        <div class="customer-sub">{{ $customer->state ?: '-' }}</div>
-                                    </td>
+                                    </span>
+                                @endif
+                            </div>
+                        </td>
+                        <td class="customer-location-col" role="cell">
+                            <span class="customer-location-text">{{ $customer->city ?: '—' }}</span>
+                            <span class="customer-list-meta">{{ $customer->state ?: '—' }}</span>
+                        </td>
+                        @if($canReadActivity)
+                            <td class="customer-activity-col" role="cell">
+                                <div class="customer-activity-links">
                                     @if($canReadRentals)
-                                    <td data-label="Rentals">
-                                        <div class="count-stack">
-                                            <a href="{{ route('rentals.index', ['customer_id' => $customer->id]) }}" class="pill">
-                                                Total {{ $customer->rentals_count ?? 0 }}
-                                            </a>
-                                            <a href="{{ route('rentals.index', ['customer_id' => $customer->id, 'status' => 'active']) }}" class="pill">
-                                                Active {{ $customer->active_rentals_count ?? 0 }}
-                                            </a>
-                                        </div>
-                                    </td>
+                                        <a href="{{ route('rentals.index', ['customer_id' => $customer->id]) }}">Rentals <strong>{{ $customer->rentals_count ?? 0 }}</strong></a>
+                                        <a href="{{ route('rentals.index', ['customer_id' => $customer->id, 'status' => 'active']) }}" aria-label="{{ $customer->active_rentals_count ?? 0 }} active rentals">Active <strong>{{ $customer->active_rentals_count ?? 0 }}</strong></a>
                                     @endif
                                     @if($canReadSales)
-                                    <td data-label="Sales">
-                                        <a href="{{ route('sales.index', ['customer_id' => $customer->id]) }}" class="pill">
-                                            {{ $customer->sales_count ?? 0 }} Sales
-                                        </a>
-                                    </td>
+                                        <a href="{{ route('sales.index', ['customer_id' => $customer->id]) }}">Sales <strong>{{ $customer->sales_count ?? 0 }}</strong></a>
                                     @endif
                                     @if($canReadInvoices)
-                                    <td data-label="Invoices">
-                                        <a href="{{ route('invoices.index', ['customer_id' => $customer->id]) }}" class="pill">
-                                            {{ $customer->invoices_count ?? 0 }} Invoices
-                                        </a>
-                                    </td>
+                                        <a href="{{ route('invoices.index', ['customer_id' => $customer->id]) }}">Invoices <strong>{{ $customer->invoices_count ?? 0 }}</strong></a>
                                     @endif
-                                    <td data-label="Actions">
-                                        <div class="action-row">
-                                            @if($customer->phone)
-                                                <a href="tel:{{ preg_replace('/\D+/', '', $customer->phone) }}" class="customer-icon-action is-primary" data-ph-action="phone" title="Call {{ $customer->name }}" aria-label="Call {{ $customer->name }}">
-                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 1.8l-1.3 1.3a16 16 0 0 0 6.4 6.4l1.3-1.3a2 2 0 0 1 1.8-.6l3 .5A2 2 0 0 1 22 16.9Z"/></svg>
-                                                </a>
-                                            @endif
-                                            @if($customerWhatsapp)
-                                                <a href="{{ $customerWhatsapp }}" target="_blank" class="customer-icon-action is-whatsapp" data-ph-action="whatsapp" title="WhatsApp {{ $customer->name }}" aria-label="WhatsApp {{ $customer->name }}">
-                                                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 11.4c0 4.7-3.9 8.6-8.8 8.6-1.5 0-3-.4-4.2-1.1L3 20l1.2-3.7A8.4 8.4 0 0 1 2.4 11.4C2.4 6.7 6.3 3 11.2 3 16.1 3 20 6.7 20 11.4Zm-4.8 2.2c-.2-.1-1.2-.6-1.4-.7s-.3-.1-.4.1-.5.7-.7.9-.3.2-.5.1a5.9 5.9 0 0 1-1.7-1c-.6-.5-1-1.2-1.1-1.4-.1-.2 0-.3.1-.4l.3-.4.2-.3v-.4c0-.1-.4-1.1-.6-1.6-.2-.4-.3-.4-.4-.4h-.4c-.1 0-.4 0-.6.3-.2.2-.8.8-.8 1.9s.8 2.1 1 2.3c.1.1 1.5 2.3 3.8 3.2.5.2 1 .4 1.3.5.6.2 1.2.2 1.7.1.5-.1 1.2-.5 1.4-1 .2-.5.2-1 .1-1Z"/></svg>
-                                                </a>
-                                            @endif
-                                            <details class="customer-action-menu">
-                                                <summary aria-label="More actions for {{ $customer->name }}">...</summary>
-                                                <div class="customer-action-panel">
-                                                    <a href="{{ route('customers.show', $customer) }}" class="customer-action-link" data-ph-action="view"><x-phos-action-icon name="view" label="" />View</a>
-                                                    @if($canUpdateCustomers)
-                                                        <a href="{{ route('customers.edit', $customer) }}" class="customer-action-link" data-ph-action="edit"><x-phos-action-icon name="edit" label="" />Edit</a>
-                                                    @endif
-                                                    @if($canCreateRentals)
-                                                        <a href="{{ route('rentals.create', ['customer_id' => $customer->id]) }}" class="customer-action-link">Create Rental</a>
-                                                    @endif
-                                                    @if($canCreateSales)
-                                                        <a href="{{ route('sales.create', ['customer_id' => $customer->id]) }}" class="customer-action-link">Create Sale</a>
-                                                    @endif
-                                                    @if($canReadInvoices)
-                                                        <a href="{{ route('invoices.index', ['customer_id' => $customer->id]) }}" class="customer-action-link">View Invoices</a>
-                                                    @endif
-                                                    @if($canDeleteCustomers)
-                                                        <form method="POST" action="{{ route('customers.destroy', $customer) }}" style="margin:0;" onsubmit="return confirm('Delete this customer? This will be blocked if dependencies exist.');">
-                                                            @csrf
-                                                            @method('DELETE')
-                                                            <button type="submit" class="danger">Delete</button>
-                                                        </form>
-                                                    @endif
-                                                </div>
-                                            </details>
-                                        </div>
-                                    </td>
-                                </tr>
-                            @empty
-                                <tr>
-                                    <td colspan="{{ 7 + ($canReadRentals ? 1 : 0) + ($canReadSales ? 1 : 0) + ($canReadInvoices ? 1 : 0) }}" class="empty-state">
-                                        No customers match this view yet. Try a broader filter or add a new customer to get started.
-                                    </td>
-                                </tr>
-                            @endforelse
-                        </tbody>
-                    </table>
-                </div>
-
-                <div class="pagination-wrap">
-                    {{ $customers->links() }}
-                </div>
-            </div>
-        </div>
-    </div>
+                                </div>
+                            </td>
+                        @endif
+                        <td class="customer-actions-col" role="cell">
+                            <div class="customer-row-actions">
+                                @if($customer->phone)
+                                    <a href="tel:{{ preg_replace('/\D+/', '', $customer->phone) }}" class="customer-icon-action is-primary" data-ph-action="phone" title="Call {{ $customer->name }}" aria-label="Call {{ $customer->name }}"><x-phos-action-icon name="phone" label="" /></a>
+                                @endif
+                                @if($customerWhatsapp)
+                                    <a href="{{ $customerWhatsapp }}" target="_blank" rel="noopener" class="customer-icon-action is-whatsapp" data-ph-action="whatsapp" title="WhatsApp {{ $customer->name }}" aria-label="WhatsApp {{ $customer->name }}">
+                                        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 11.4c0 4.7-3.9 8.6-8.8 8.6-1.5 0-3-.4-4.2-1.1L3 20l1.2-3.7A8.4 8.4 0 0 1 2.4 11.4C2.4 6.7 6.3 3 11.2 3 16.1 3 20 6.7 20 11.4Zm-4.8 2.2c-.2-.1-1.2-.6-1.4-.7s-.3-.1-.4.1-.5.7-.7.9-.3.2-.5.1a5.9 5.9 0 0 1-1.7-1c-.6-.5-1-1.2-1.1-1.4-.1-.2 0-.3.1-.4l.3-.4.2-.3v-.4c0-.1-.4-1.1-.6-1.6-.2-.4-.3-.4-.4-.4h-.4c-.1 0-.4 0-.6.3-.2.2-.8.8-.8 1.9s.8 2.1 1 2.3c.1.1 1.5 2.3 3.8 3.2.5.2 1 .4 1.3.5.6.2 1.2.2 1.7.1.5-.1 1.2-.5 1.4-1 .2-.5.2-1 .1-1Z"/></svg>
+                                    </a>
+                                @endif
+                                <details class="customer-action-menu">
+                                    <summary aria-label="More actions for {{ $customer->name }}">⋯</summary>
+                                    <div class="customer-action-panel">
+                                        <a href="{{ $customerUrl }}" class="customer-action-link" data-ph-action="view"><x-phos-action-icon name="view" label="" />View Customer</a>
+                                        @if($canUpdateCustomers)
+                                            <a href="{{ route('customers.edit', $customer) }}" class="customer-action-link" data-ph-action="edit"><x-phos-action-icon name="edit" label="" />Edit Customer</a>
+                                        @endif
+                                        @if($canCreateRentals)<a href="{{ route('rentals.create', ['customer_id' => $customer->id]) }}" class="customer-action-link">Create Rental</a>@endif
+                                        @if($canCreateSales)<a href="{{ route('sales.create', ['customer_id' => $customer->id]) }}" class="customer-action-link">Create Sale</a>@endif
+                                        @if($canReadRentals)<a href="{{ route('rentals.index', ['customer_id' => $customer->id]) }}" class="customer-action-link">Rental History</a>@endif
+                                        @if($canReadSales)<a href="{{ route('sales.index', ['customer_id' => $customer->id]) }}" class="customer-action-link">Sales History</a>@endif
+                                        @if($canReadInvoices)<a href="{{ route('invoices.index', ['customer_id' => $customer->id]) }}" class="customer-action-link">Invoice History</a>@endif
+                                        @if($hasCommunicationCenter)
+                                            <a href="{{ route('communication-center.index', ['search' => $customer->phone ?: $customer->name]) }}" class="customer-action-link">Communication History</a>
+                                        @endif
+                                        @if($canDeleteCustomers)
+                                            <form method="POST" action="{{ route('customers.destroy', $customer) }}" onsubmit="return confirm('Delete this customer? This will be blocked if dependencies exist.');">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="submit" class="danger">Delete</button>
+                                            </form>
+                                        @endif
+                                    </div>
+                                </details>
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <tr role="row"><td colspan="{{ $columnCount }}" role="cell"><p class="customer-list-empty">No customers match these filters.</p></td></tr>
+                @endforelse
+            </tbody>
+        </table>
+        @if($customers->hasPages())
+            <div class="customer-page-links">{{ $customers->links() }}</div>
+        @endif
+    </section>
 </div>
-@if($canCreateCustomers)
-    @include('partials.mobile-fab', ['href' => route('customers.create'), 'label' => 'Add Customer'])
-@endif
 
 <script>
     document.addEventListener('DOMContentLoaded', () => {
-        const selectAll = document.getElementById('customerSelectAll');
-        const checks = Array.from(document.querySelectorAll('.customer-bulk-check'));
-        const countLabel = document.getElementById('customerSelectedCount');
-        const exportButton = document.getElementById('bulkCustomerExport');
-        const deleteButton = document.getElementById('bulkCustomerDelete');
-        const exportForm = document.getElementById('customerBulkExportForm');
-        const deleteForm = document.getElementById('customerBulkDeleteForm');
-        const bulkActions = document.querySelector('.bulk-actions');
-        const mobileCards = Array.from(document.querySelectorAll('.customer-mobile-card[data-href]'));
+        const directory = document.querySelector('[data-customer-directory]');
+        const menus = [...directory.querySelectorAll('.customer-action-menu')];
+        const shortcuts = directory.querySelector('.customer-quick-links');
+        menus.forEach(menu => {
+            menu.addEventListener('toggle', () => {
+                menu.classList.remove('opens-up');
+                if (!menu.open) return;
 
-        const selectedIds = () => Array.from(new Set(checks
-            .filter((checkbox) => checkbox.checked)
-            .map((checkbox) => checkbox.value)));
+                const panel = menu.querySelector('.customer-action-panel');
+                const trigger = menu.querySelector('summary').getBoundingClientRect();
+                const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+                const below = viewportHeight - trigger.bottom;
+                const above = trigger.top;
+                if (below < panel.offsetHeight + 8 && above > below) menu.classList.add('opens-up');
+            });
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key !== 'Escape') return;
+            const openMenu = menus.find(menu => menu.open);
+            if (openMenu) openMenu.querySelector('summary').focus();
+            if (shortcuts.open) {
+                shortcuts.open = false;
+                if (shortcuts.contains(document.activeElement)) shortcuts.querySelector('summary').focus();
+            }
+        }, true);
+        document.addEventListener('click', event => {
+            if (shortcuts.open && !shortcuts.contains(event.target)) shortcuts.open = false;
+        });
+        const mobileLayout = window.matchMedia('(max-width: 767px)');
+        directory.addEventListener('click', event => {
+            const row = event.target.closest('[data-customer-href]');
+            if (mobileLayout.matches && row && !event.target.closest('a, button, input, label, details')) {
+                window.location.href = row.dataset.customerHref;
+            }
+        });
 
-        const clearFormIds = (form) => {
-            form.querySelectorAll('input[name="customer_ids[]"]').forEach((input) => input.remove());
-        };
+        const toolbar = directory.querySelector('[data-customer-bulk-toolbar]');
+        const selectAll = directory.querySelector('#customerSelectAll');
+        if (!toolbar || !selectAll) return;
+        const checks = [...directory.querySelectorAll('.customer-bulk-check')];
+        const countLabel = toolbar.querySelector('#customerSelectedCount');
+        const exportButton = toolbar.querySelector('#bulkCustomerExport');
+        const deleteButton = toolbar.querySelector('#bulkCustomerDelete');
+        const exportForm = directory.querySelector('#customerBulkExportForm');
+        const deleteForm = directory.querySelector('#customerBulkDeleteForm');
+        const selectedIds = () => checks.filter(check => check.checked).map(check => check.value);
 
-        const appendIds = (form, ids) => {
-            clearFormIds(form);
-            ids.forEach((id) => {
+        function refreshBulkState() {
+            const selected = selectedIds().length;
+            toolbar.hidden = selected === 0;
+            countLabel.textContent = selected;
+            exportButton.disabled = selected === 0;
+            if (deleteButton) deleteButton.disabled = selected === 0;
+            selectAll.checked = selected > 0 && selected === checks.length;
+            selectAll.indeterminate = selected > 0 && selected < checks.length;
+        }
+
+        function submitSelection(form, ids) {
+            form.querySelectorAll('input[name="customer_ids[]"]').forEach(input => input.remove());
+            ids.forEach(id => {
                 const input = document.createElement('input');
                 input.type = 'hidden';
                 input.name = 'customer_ids[]';
                 input.value = id;
-                form.appendChild(input);
+                form.append(input);
             });
-        };
+            form.submit();
+        }
 
-        const shouldIgnoreCardClick = (target) => !!target.closest('a, button, input, label, summary, details, form, select, textarea');
-
-        const refreshBulkState = () => {
-            const ids = selectedIds();
-            const hasSelection = ids.length > 0;
-
-            if (countLabel) {
-                countLabel.textContent = ids.length;
-            }
-
-            if (exportButton) {
-                exportButton.disabled = !hasSelection;
-            }
-
-            if (deleteButton) {
-                deleteButton.disabled = !hasSelection;
-            }
-
-            bulkActions?.classList.toggle('is-active', hasSelection);
-
-            if (selectAll) {
-                const allIds = Array.from(new Set(checks.map((checkbox) => checkbox.value)));
-                selectAll.checked = allIds.length > 0 && ids.length === allIds.length;
-                selectAll.indeterminate = ids.length > 0 && ids.length < allIds.length;
-            }
-        };
-
-        selectAll?.addEventListener('change', () => {
-            checks.forEach((checkbox) => {
-                checkbox.checked = selectAll.checked;
-            });
+        selectAll.addEventListener('change', () => {
+            checks.forEach(check => { check.checked = selectAll.checked; });
             refreshBulkState();
         });
-
-        checks.forEach((checkbox) => {
-            checkbox.addEventListener('change', refreshBulkState);
-        });
-
-        mobileCards.forEach((card) => {
-            const href = card.getAttribute('data-href');
-            if (!href) {
-                return;
-            }
-
-            card.addEventListener('click', (event) => {
-                if (shouldIgnoreCardClick(event.target)) {
-                    return;
-                }
-
-                window.location.href = href;
-            });
-
-            card.addEventListener('keydown', (event) => {
-                if (event.key !== 'Enter' && event.key !== ' ') {
-                    return;
-                }
-
-                if (shouldIgnoreCardClick(event.target)) {
-                    return;
-                }
-
-                event.preventDefault();
-                window.location.href = href;
-            });
-        });
-
-        exportButton?.addEventListener('click', () => {
+        checks.forEach(check => check.addEventListener('change', refreshBulkState));
+        exportButton.addEventListener('click', () => {
             const ids = selectedIds();
-            if (!ids.length || !exportForm) {
-                return;
-            }
-
-            appendIds(exportForm, ids);
-            exportForm.submit();
+            if (ids.length) submitSelection(exportForm, ids);
         });
-
         deleteButton?.addEventListener('click', () => {
             const ids = selectedIds();
-            if (!ids.length || !deleteForm) {
-                return;
+            if (ids.length && confirm('Delete ' + ids.length + ' selected customer(s)? Customers with linked records will be skipped.')) {
+                submitSelection(deleteForm, ids);
             }
-
-            if (!confirm(`Delete ${ids.length} selected customer(s)? Customers with rentals, sales, invoices, or payments will be skipped.`)) {
-                return;
-            }
-
-            appendIds(deleteForm, ids);
-            deleteForm.submit();
         });
-
         refreshBulkState();
     });
 </script>

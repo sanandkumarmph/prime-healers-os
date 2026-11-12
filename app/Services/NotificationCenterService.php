@@ -43,6 +43,8 @@ class NotificationCenterService
         }
 
         return $user->notifications()
+            ->reorder()
+            ->orderByRaw('CASE WHEN read_at IS NULL THEN 0 ELSE 1 END')
             ->latest()
             ->limit($limit)
             ->get()
@@ -160,6 +162,9 @@ class NotificationCenterService
         $city = $delivery->linkedCustomerCity();
         $typeLabel = $delivery->isPickup() ? 'pickup task' : 'delivery task';
         $message = trim($contactName . ($city ? ', ' . $city : ''));
+        if ($delivery->hasOrderCollection()) {
+            $message = ($message !== '' ? $message . ' · ' : '') . 'Collect ₹' . number_format($delivery->collection_amount_to_collect, 2);
+        }
 
         $this->notifyUser($recipient, [
             'type' => $delivery->isPickup() ? 'pickup_assigned' : 'delivery_assigned',
@@ -285,7 +290,7 @@ class NotificationCenterService
             'type' => $data['type'] ?? class_basename($notification->type),
             'title' => $data['title'] ?? 'Operational update',
             'message' => $data['message'] ?? 'A new update is available.',
-            'action_url' => $data['action_url'] ?? null,
+            'action_url' => url(\App\Support\LocalRedirect::path($data['action_url'] ?? null, route('notifications.index'))),
             'priority' => $data['priority'] ?? 'medium',
             'related_type' => $data['related_type'] ?? null,
             'related_id' => $data['related_id'] ?? null,

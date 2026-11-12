@@ -5,6 +5,8 @@ namespace Tests\Feature\Regression;
 use App\Models\ActivityLog;
 use App\Models\BusinessPartner;
 use App\Models\Customer;
+use App\Models\Organization;
+use App\Models\User;
 use App\Models\PartnerClient;
 use App\Models\Product;
 use App\Models\Rental;
@@ -76,8 +78,14 @@ class TimelineActivityRegressionTest extends TestCase
     {
         $customer = $this->makeCustomer();
         $product = $this->makeRentalProduct();
+        $admin = auth()->user();
+        $org = Organization::findOrFail($this->organizationId);
+        $owner = TestData::user($org, ['name' => 'Earlier shift owner', 'role' => User::ROLE_SALES]);
+        $creator = TestData::user($org, ['name' => 'Later shift creator', 'role' => User::ROLE_SALES]);
 
-        $this->post(route('rentals.store'), [
+        $this->actingAs($creator)->post(route('rentals.store'), [
+            'incentive_owner_id' => $owner->id,
+            'incentive_source' => 'incoming_phone',
             'customer_type' => 'direct_customer',
             'customer_id' => $customer->id,
             'customer_name' => $customer->displayName(),
@@ -97,7 +105,7 @@ class TimelineActivityRegressionTest extends TestCase
 
         $rental = Rental::query()->where('organization_id', $this->organizationId)->latest('id')->firstOrFail();
 
-        $this->post(route('rentals.notes.store', $rental), [
+        $this->actingAs($admin)->post(route('rentals.notes.store', $rental), [
             'note_type' => 'follow-up',
             'note' => 'Customer requested a callback before dispatch.',
         ])->assertRedirect();
@@ -109,15 +117,29 @@ class TimelineActivityRegressionTest extends TestCase
 
         $response->assertOk()
             ->assertSee('Customer requested a callback before dispatch.')
+            ->assertSee('<strong>Owner</strong> – Earlier shift owner', false)
+            ->assertSee('<strong>Created by</strong> – Later shift creator', false)
             ->assertDontSee('Rental created and invoice generated.');
+
+        $delivery = $rental->deliveries()->where('type', 'delivery')->sole();
+        $this->get(route('deliveries.show', $delivery))->assertOk()
+            ->assertSee('Operations History')
+            ->assertSee('<strong>Owner</strong> – Earlier shift owner', false)
+            ->assertSee('<strong>Created by</strong> – Later shift creator', false);
     }
 
     public function test_sale_timeline_loads_created_activity(): void
     {
         $customer = $this->makeCustomer();
         $product = $this->makeSaleProduct();
+        $reviewer = auth()->user();
+        $org = Organization::findOrFail($this->organizationId);
+        $owner = TestData::user($org, ['name' => 'Sale owner', 'role' => User::ROLE_SALES]);
+        $creator = TestData::user($org, ['name' => 'Sale creator', 'role' => User::ROLE_SALES]);
 
-        $this->post(route('sales.store'), [
+        $this->actingAs($creator)->post(route('sales.store'), [
+            'incentive_owner_id' => $owner->id,
+            'incentive_source' => 'incoming_phone',
             'customer_type' => 'direct_customer',
             'customer_id' => $customer->id,
             'sale_date' => '2026-05-18',
@@ -136,9 +158,16 @@ class TimelineActivityRegressionTest extends TestCase
 
         $sale = Sale::query()->where('organization_id', $this->organizationId)->latest('id')->firstOrFail();
 
+        // The reviewer can record attribution later without becoming the order creator.
+        \App\Models\OrderIncentiveAttribution::query()->where('organization_id', $this->organizationId)
+            ->where('order_type', 'sale')->where('order_id', $sale->id)
+            ->update(['recorded_by_user_id' => $reviewer->id]);
+
         $response = $this->get(route('sales.show', $sale));
 
         $response->assertOk()
+            ->assertSee('<strong>Owner</strong> – Sale owner', false)
+            ->assertSee('<strong>Created by</strong> – Sale creator', false)
             ->assertSee('Sale created and invoice generated.')
             ->assertSee($customer->displayName());
     }

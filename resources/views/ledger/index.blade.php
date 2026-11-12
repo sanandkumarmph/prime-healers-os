@@ -131,8 +131,12 @@
             </div>
         </div>
         <div class="ledger-actions">
-            <a class="ledger-btn" href="{{ route('ledger.export.csv', $query) }}">Export CSV</a>
-            <button class="ledger-btn primary" type="button" data-ledger-preview-open>Preview PDF</button>
+            @can('manage-bulk-records')
+                <a class="ledger-btn" href="{{ route('ledger.export.csv', $query) }}">Export CSV</a>
+            @endcan
+            @if($canExportLedgerPdf)
+                <button class="ledger-btn primary" type="button" data-ledger-preview-open>Preview PDF</button>
+            @endif
             <details class="ledger-menu">
                 <summary>More</summary>
                 <div class="ledger-menu-list">
@@ -140,7 +144,9 @@
                         <a href="{{ $context['url'] }}">Open {{ $context['type'] }}</a>
                     @endif
                     <a href="{{ route('ledger.index') }}">Global Ledger</a>
-                    <button type="button" onclick="window.print()">Print Page</button>
+                    @if($canExportLedgerPdf)
+                        <button type="button" onclick="window.print()">Print Page</button>
+                    @endif
                 </div>
             </details>
         </div>
@@ -272,6 +278,7 @@
         </aside>
     </div>
 </div>
+@if($canExportLedgerPdf)
 <div id="ledgerPdfPreviewModal" class="ledger-preview-modal" hidden aria-hidden="true">
     <section class="ledger-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="ledgerPdfPreviewTitle">
         <header class="ledger-preview-header">
@@ -293,6 +300,7 @@
         </footer>
     </section>
 </div>
+@endif
 
 <script>
     (() => {

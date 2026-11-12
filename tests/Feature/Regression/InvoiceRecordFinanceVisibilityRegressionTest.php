@@ -23,6 +23,7 @@ class InvoiceRecordFinanceVisibilityRegressionTest extends TestCase
         ]);
 
         $this->assertFalse($salesUser->canViewFinance());
+        $this->assertFalse($salesUser->canViewDues());
         $this->assertTrue($salesUser->canViewRecordFinance());
 
         $html = $this->actingAs($salesUser)
@@ -33,13 +34,20 @@ class InvoiceRecordFinanceVisibilityRegressionTest extends TestCase
         $this->assertStringContainsString($invoice->invoice_number, $html);
         $this->assertStringContainsString('&#8377;9,876.54', $html);
         $this->assertStringContainsString('&#8377;8,765.43', $html);
-        $this->assertStringContainsString('Outstanding', $html);
+        $this->assertStringNotContainsString('<span>Outstanding</span>', $html);
         $this->assertStringContainsString('Overdue', $html);
-        $this->assertStringContainsString('Largest Invoice', $html);
-        $this->assertStringContainsString('Average Invoice', $html);
-        $this->assertMatchesRegularExpression('/Collected Today<\/span><strong class="success">\s*Restricted\s*<\/strong>/s', $html);
-        $this->assertMatchesRegularExpression('/Collected Month<\/span><strong class="success">\s*Restricted\s*<\/strong>/s', $html);
+        $this->assertStringNotContainsString('Finance Summary', $html);
+        $this->assertStringNotContainsString('Largest Invoice', $html);
+        $this->assertStringNotContainsString('Average Invoice', $html);
+        $this->assertStringNotContainsString('Collected Today', $html);
+        $this->assertStringContainsString('Outstanding by Aging', $html);
+        $this->assertMatchesRegularExpression('/invoice-aging-donut[^>]*>\s*<strong>&#8377;8,765\.43<\/strong>/', $html);
+        $this->assertStringNotContainsString('Collected Month', $html);
         $this->assertStringNotContainsString('markPaidInvoice'.$invoice->id, $html);
+        if ($folder = getenv('PHOS_RENTAL_DETAIL_RENDER_DIR')) {
+            if (!is_dir($folder)) mkdir($folder, 0777, true);
+            file_put_contents($folder . '/invoice-sales-list.html', $html);
+        }
     }
 
     public function test_admin_operations_user_can_see_invoice_row_amount_and_balance(): void
@@ -60,6 +68,37 @@ class InvoiceRecordFinanceVisibilityRegressionTest extends TestCase
         $this->assertStringContainsString($invoice->invoice_number, $html);
         $this->assertStringContainsString('&#8377;9,876.54', $html);
         $this->assertStringContainsString('&#8377;8,765.43', $html);
+        $this->assertStringContainsString('<span>Outstanding</span>', $html);
+        $this->assertStringContainsString('Collected Month', $html);
+        $this->assertStringContainsString('Finance Summary', $html);
+    }
+
+    public function test_invoice_aging_respects_filters_dates_and_organization_across_pages(): void
+    {
+        [$invoice, $organization] = $this->invoiceFixture();
+        $sales = $this->userWithRole($organization, User::ROLE_SALES, ['invoices' => ['read']]);
+        $this->travelTo(now()->setTime(23, 59));
+        $invoice->update(['invoice_number' => 'AGE-BAL-30', 'due_date' => now()->subDays(30)->toDateString(), 'balance_amount' => 10.23]);
+        foreach ([31 => 20, 60 => 30, 61 => 40, 90 => 50, 91 => 60, -1 => 5, 0 => 4] as $days => $balance) {
+            $copy = $invoice->replicate();
+            $copy->forceFill(['invoice_number' => 'AGE-BAL-'.$days, 'due_date' => now()->subDays($days)->toDateString(),
+                'balance_amount' => $balance, 'payment_status' => $days > 0 ? 'overdue' : 'unpaid'])->save();
+        }
+        foreach (['paid', 'cancelled', 'foreign'] as $type) {
+            $copy = $invoice->replicate();
+            $copy->forceFill(['invoice_number' => 'AGE-BAL-'.$type,
+                'organization_id' => $type === 'foreign' ? TestData::organization()->id : $organization->id,
+                'payment_status' => $type === 'foreign' ? 'unpaid' : $type])->save();
+        }
+        $invoice->replicate()->forceFill(['invoice_number' => 'NOT-IN-FILTER', 'balance_amount' => 500])->save();
+
+        $expected = ['current' => 19.23, 'days_31_60' => 50.0, 'days_61_90' => 90.0, 'days_91_plus' => 60.0];
+        $this->actingAs($sales);
+        foreach ([1, 2] as $page) {
+            $response = $this->get(route('invoices.index', ['search' => 'AGE-BAL', 'per_page' => 1, 'page' => $page]))->assertOk();
+            $this->assertSame($expected, $response->viewData('invoiceAging'));
+            $response->assertSee('&#8377;219.23', false)->assertDontSee('Finance Summary');
+        }
     }
 
     public function test_vendor_invoice_reader_cannot_see_invoice_financial_values(): void

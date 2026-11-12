@@ -58,7 +58,9 @@ class PaymentSyncService
             ]);
         }
 
-        $payment = Payment::create($paymentData);
+        $payment = Payment::create($paymentData + array_intersect_key($validated, array_flip([
+            'collection_recipient', 'collection_vendor_key', 'collection_vendor_name',
+        ])));
         $invoice->refresh()->syncFinancialStatus();
 
         return $payment;

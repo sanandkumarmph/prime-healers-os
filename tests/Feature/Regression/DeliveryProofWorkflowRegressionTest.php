@@ -216,7 +216,7 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
             ->assertDontSeeText('I agree to return the product(s) in the same condition, subject to normal use.');
     }
 
-    public function test_delivery_team_can_operate_third_party_delivery_without_internal_owner(): void
+    public function test_admin_can_operate_third_party_delivery_without_an_internal_assignee(): void
     {
         $organization = TestData::organization();
         $deliveryUser = TestData::user($organization, [
@@ -236,7 +236,9 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
             'notes' => 'Third-party assignment with no internal owner',
         ]);
 
-        $this->get(route('deliveries.show', $delivery))
+        $this->get(route('deliveries.show', $delivery))->assertForbidden();
+        $this->actingAs(TestData::user($organization, ['role' => User::ROLE_ADMIN_OPERATIONS]))
+            ->get(route('deliveries.show', $delivery))
             ->assertOk()
             ->assertSeeText('Start Delivery')
             ->assertDontSeeText('only the assigned workflow owner can capture start or completion proof');
@@ -752,8 +754,11 @@ class DeliveryProofWorkflowRegressionTest extends TestCase
             ->assertSee(route('deliveries.proofs.view', [$delivery, $proof]), false);
 
         $this->actingAs($unauthorized)
+            ->get(route('deliveries.show', $delivery))->assertOk()
+            ->assertDontSee(route('deliveries.proofs.view', [$delivery, $proof]), false);
+        $this
             ->get(route('deliveries.proofs.view', [$delivery, $proof]))
-            ->assertRedirect($unauthorized->defaultRedirectPath());
+            ->assertForbidden();
     }
 
     public function test_delivery_team_cannot_upload_proof_for_other_organization_task(): void

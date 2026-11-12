@@ -46,6 +46,9 @@
         <textarea name="notes"></textarea>
     </p>
 
+    @if($paymentVendor = app(\App\Services\Deliveries\VendorCollectionAttribution::class)->forOrder($rental))
+        @include('deliveries.collection-recipient', ['collectionVendor' => $paymentVendor, 'required' => true])
+    @endif
     <button type="submit">Save Payment</button>
 </form>
 

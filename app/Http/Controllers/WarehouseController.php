@@ -44,6 +44,8 @@ class WarehouseController extends Controller
             'city' => 'nullable|string|max:255',
             'state' => 'nullable|string|max:255',
             'pincode' => 'nullable|string|max:20',
+            'latitude' => ['nullable', 'required_with:longitude', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'required_with:latitude', 'numeric', 'between:-180,180'],
             'is_active' => 'nullable|boolean',
         ];
     }

@@ -1,13 +1,20 @@
 <?php
 
-use App\Http\Controllers\{QuotationController, SalesWorkspaceController};
+use App\Http\Controllers\{QuotationController, RentalAgreementController, SalesWorkspaceController};
 use Illuminate\Support\Facades\Route;
 
 Route::get('/q/{quotation}/pdf', [QuotationController::class, 'publicPdf'])->middleware([\App\Http\Middleware\VerifyQuotationLink::class, 'throttle:30,1'])->name('quotation-share.pdf');
 Route::get('/q/{quotation}', [QuotationController::class, 'share'])->middleware([\App\Http\Middleware\VerifyQuotationLink::class, 'throttle:60,1'])->name('quotation-share.show');
 Route::post('/q/{quotation}', [QuotationController::class, 'respond'])->middleware([\App\Http\Middleware\VerifyQuotationLink::class, 'throttle:12,1'])->name('quotation-share.respond');
+Route::get('/rental-agreement/{agreement}', [RentalAgreementController::class, 'show'])->middleware([\App\Http\Middleware\VerifyQuotationLink::class, 'throttle:60,1'])->name('rental-agreement.show');
+Route::post('/rental-agreement/{agreement}', [RentalAgreementController::class, 'sign'])->middleware([\App\Http\Middleware\VerifyQuotationLink::class, 'throttle:12,1'])->name('rental-agreement.sign');
+Route::get('/rental-agreement/{agreement}/signed-copy', [RentalAgreementController::class, 'pdf'])->middleware([\App\Http\Middleware\VerifyQuotationLink::class, 'throttle:20,1'])->name('rental-agreement.pdf');
 
 Route::middleware(['auth'])->group(function () {
+    Route::post('/rentals/{rental}/agreement', [RentalAgreementController::class, 'reissue'])->middleware(['verified', 'module:rentals,update'])->name('rentals.agreement.reissue');
+    Route::post('/quotations/{quotation}/rental-agreement', [RentalAgreementController::class, 'issueForQuotation'])->name('quotations.rental-agreement.issue');
+    Route::post('/quotations/{quotation}/signature-exception', [RentalAgreementController::class, 'approveQuoteException'])->middleware('throttle:20,1')->name('quotations.signature-exception');
+    Route::post('/rentals/{rental}/signature-exception', [RentalAgreementController::class, 'approveRentalException'])->middleware(['verified', 'module:rentals,update', 'throttle:20,1'])->name('rentals.signature-exception');
     Route::get('/enquiries', [SalesWorkspaceController::class, 'index'])->name('enquiries.index');
     Route::get('/enquiries/create', [SalesWorkspaceController::class, 'create'])->name('enquiries.create');
     Route::post('/enquiries', [SalesWorkspaceController::class, 'store'])->name('enquiries.store');
@@ -21,6 +28,8 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/enquiries/{enquiry}/quotations/create', [QuotationController::class, 'create'])->name('quotations.create');
     Route::post('/enquiries/{enquiry}/quotations', [QuotationController::class, 'store'])->name('quotations.store');
     Route::get('/quotations/{quotation}', [QuotationController::class, 'show'])->name('quotations.show');
+    Route::get('/quotations/{quotation}/status', [QuotationController::class, 'status'])->whereNumber('quotation')->middleware('throttle:60,1')->name('quotations.status');
+    Route::get('/quotations/{quotation}/signed-agreement', [QuotationController::class, 'signedAgreement'])->whereNumber('quotation')->name('quotations.signed-agreement');
     Route::get('/quotations/{quotation}/edit', [QuotationController::class, 'edit'])->name('quotations.edit');
     Route::put('/quotations/{quotation}', [QuotationController::class, 'update'])->name('quotations.update');
     Route::post('/quotations/{quotation}/actions', [QuotationController::class, 'action'])->name('quotations.action');

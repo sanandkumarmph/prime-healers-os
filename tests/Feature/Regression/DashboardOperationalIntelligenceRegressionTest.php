@@ -590,7 +590,7 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
             ->assertDontSeeText('Collections This Month');
     }
 
-    public function test_finance_dashboard_can_access_dashboard_and_see_finance_summary(): void
+    public function test_finance_can_read_finance_reports_without_accessing_the_operational_dashboard(): void
     {
         $organization = TestData::organization();
         $financeRole = Role::create([
@@ -598,6 +598,7 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
             'name' => 'Finance User',
             'slug' => User::ROLE_FINANCE,
             'permissions' => [
+                'customers' => ['read'],
                 'invoices' => ['read', 'update'],
                 'payments' => ['read', 'create', 'update'],
             ],
@@ -612,18 +613,12 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
             'email_verified_at' => now(),
         ]);
 
-        $response = $this->actingAs($financeUser)->get(route('dashboard'));
-
-        $response->assertOk()
-            ->assertSeeText('Revenue Center')
-            ->assertSeeText('Revenue Mix')
-            ->assertSeeText('Cash Position')
-            ->assertSeeText('Invoice Health')
-            ->assertSeeText('Record Payment')
+        $this->actingAs($financeUser)->getJson(route('dashboard'))->assertForbidden();
+        $this->get(route('reports.index'))->assertOk()
+            ->assertSeeText('Revenue and collections')
+            ->assertDontSeeText('Record Payment')
             ->assertDontSeeText('Staff Workload')
-            ->assertDontSeeText('Business Partner Signals')
-            ->assertViewHas('dashboardVisibility', fn (array $visibility) => ! $visibility['inventory_intelligence'])
-            ->assertDontSeeText('Sales Pulse');
+            ->assertDontSeeText('Business Partner Signals');
     }
 
     public function test_dashboard_filters_recalculate_revenue_operations_and_vendor_performance(): void
@@ -632,14 +627,14 @@ class DashboardOperationalIntelligenceRegressionTest extends TestCase
         $financeRole = Role::create([
             'organization_id' => $organization->id,
             'name' => 'Vendor Finance User',
-            'slug' => User::ROLE_FINANCE,
+            'slug' => User::ROLE_ADMIN_OPERATIONS,
             'permissions' => [
                 'rentals' => ['read'],
                 'sales' => ['read'],
                 'invoices' => ['read'],
                 'payments' => ['read'],
                 'vendors' => ['read'],
-                '__special' => ['vendor_reports.view', 'vendor_costs.view'],
+                '__special' => ['vendor_reports.view', 'vendor_costs.view', 'finance.view_revenue'],
             ],
         ]);
 

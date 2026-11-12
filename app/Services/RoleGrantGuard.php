@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Access;
+namespace App\Services;
 
 use App\Models\Role;
 use App\Models\Organization;
@@ -11,6 +11,21 @@ use Illuminate\Support\Facades\DB;
 
 class RoleGrantGuard
 {
+    public function mayManage(User $actor, User|Role $target): bool
+    {
+        try {
+            $target instanceof User
+                ? $this->authorizeUserMutation($actor, $target)
+                : $this->authorizeRoleMutation($actor, $target);
+            return true;
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+            if ($exception->getStatusCode() !== 403) {
+                throw $exception;
+            }
+            return false;
+        }
+    }
+
     public function mutate(User $actor, string $module, string $action, Closure $change): mixed
     {
         $organizationId = (int) $actor->organization_id;
