@@ -153,8 +153,10 @@ jobs:
           PUPPETEER_EXECUTABLE_PATH: /usr/bin/google-chrome
           PHOS_ACTION_TIMESTAMPS_RENDER_DIR: ${{ runner.temp }}/phos-action-timestamps
 
-      - name: Render synthetic rental overview with long activity text
-        run: vendor/bin/pest tests/Feature/Regression/RentalDetailLayoutRegressionTest.php --do-not-cache-result
+      - name: Render synthetic rental overview and invoice list
+        run: >-
+          vendor/bin/pest tests/Feature/Regression/RentalDetailLayoutRegressionTest.php
+          tests/Feature/Regression/InvoiceRecordFinanceVisibilityRegressionTest.php --do-not-cache-result
         env:
           PHOS_RENTAL_DETAIL_RENDER_DIR: ${{ runner.temp }}/phos-rental-detail
 
