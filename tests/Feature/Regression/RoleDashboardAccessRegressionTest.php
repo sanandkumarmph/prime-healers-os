@@ -97,7 +97,7 @@ class RoleDashboardAccessRegressionTest extends TestCase
         $organization = TestData::organization();
         $owner = TestData::user($organization);
         $role = $this->role($organization->id, User::ROLE_SALES, [
-            'rentals' => ['read'], 'sales' => ['read'], 'deliveries' => ['read'],
+            'rentals' => ['read'], 'sales' => ['read'], 'invoices' => ['read'], 'deliveries' => ['read'],
         ]);
         $worker = TestData::user($organization, ['role_id' => $role->id, 'role' => $role->slug]);
 
@@ -105,8 +105,11 @@ class RoleDashboardAccessRegressionTest extends TestCase
         foreach ([route('roles.show', $role), route('users.show', $worker)] as $url) {
             $this->get($url)->assertOk()->assertSeeTextInOrder([
                 'Effective access',
+                'Enquiries', 'Company-wide',
+                'Quotations', 'Company-wide',
                 'Rental records', 'Company-wide',
                 'Sales orders', 'Company-wide',
+                'Invoices', 'Company-wide',
                 'Renewal Center', 'Eligible rentals across the company',
                 'Delivery tasks', 'Company-wide',
                 'Dashboard rentals and renewals', 'Own records · Rentals created by this user',

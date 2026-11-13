@@ -1401,6 +1401,7 @@
                             <option value="pickup" @selected($taskType === 'pickup')>Pickups</option>
                         </select>
                     </div>
+                    @unless($vendorBoard ?? false)
                     <div class="ops-filter-field">
                         <label for="ops_staff">Staff</label>
                         <select id="ops_staff" name="staff">
@@ -1451,6 +1452,7 @@
                             @endif
                         </select>
                     </div>
+                    @endunless
                     <div class="ops-filter-field">
                         <label for="ops_status">Status</label>
                         <select id="ops_status" name="status">
@@ -1704,6 +1706,7 @@
                                 </select>
                             </div>
                         @endif
+                        @unless($vendorBoard ?? false)
                         <div class="mobile-sheet-field">
                             <label for="mobile_task_staff">Staff</label>
                             <select id="mobile_task_staff" name="staff">
@@ -1746,6 +1749,7 @@
                                 @endif
                             </select>
                         </div>
+                        @endunless
                     </div>
                     <div class="mobile-sheet-actions">
                         <button type="submit" class="rn-btn-primary">Apply Filters</button>

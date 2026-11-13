@@ -77,9 +77,11 @@ class RentalTermsSharingTest extends TestCase
     {
         $quote=$this->quote();$url=route('quotations.rental-agreement.issue',$quote);
         $this->actingAs(TestData::user())->postJson($url)->assertNotFound();
-        $this->actingAs(TestData::user($this->admin->organization,['role'=>User::ROLE_SALES]))->postJson($url)->assertNotFound();
-        $this->actingAs($this->admin);$quote->update(['valid_until'=>now()->subDay()->toDateString()]);
-        $this->postJson($url)->assertConflict();$this->assertDatabaseCount('rental_agreements',0);
+        $this->actingAs(TestData::user($this->admin->organization,['role'=>User::ROLE_DELIVERY]))->postJson($url)->assertForbidden();
+        $this->actingAs(TestData::user($this->admin->organization,['role'=>User::ROLE_SALES]))
+            ->postJson($url)->assertOk();
+        $quote->update(['valid_until'=>now()->subDay()->toDateString()]);
+        $this->postJson($url)->assertConflict();$this->assertDatabaseCount('rental_agreements',1);
     }
 
     public function test_json_preparation_cannot_issue_for_a_draft_or_closed_enquiry(): void

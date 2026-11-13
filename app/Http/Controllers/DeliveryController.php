@@ -827,6 +827,10 @@ class DeliveryController extends Controller
     {
         $user = auth()->user();
 
+        if ($user?->isVendor()) {
+            return app(\App\Services\Deliveries\VendorWorkScope::class)->deliveries($query, $user);
+        }
+
         if ($user && $this->shouldRestrictToAssignedDeliveryTasks($user)) {
             $query->where('assigned_user_id', $user->id);
         }
@@ -1325,8 +1329,9 @@ class DeliveryController extends Controller
         $legacyDefault = $legacyBoardDefaults[$legacyBoard] ?? [];
 
         $currentUser = auth()->user();
+        $vendorBoard = $currentUser?->isVendor() ?? false;
         $deliveryFocusedBoard = $this->isDeliveryFocusedUser($currentUser);
-        $restrictedToAssignedTasks = $this->shouldRestrictToAssignedDeliveryTasks($currentUser);
+        $restrictedToAssignedTasks = $vendorBoard || $this->shouldRestrictToAssignedDeliveryTasks($currentUser);
         $defaultOwnershipFilter = $restrictedToAssignedTasks ? 'my' : 'all';
 
         $tab = strtolower((string) $request->query('tab', $legacyDefault['tab'] ?? 'all'));
@@ -1335,8 +1340,8 @@ class DeliveryController extends Controller
         $fromDate = trim((string) $request->query('from_date', ''));
         $toDate = trim((string) $request->query('to_date', ''));
         $taskType = strtolower((string) $request->query('task_type', $legacyDefault['task_type'] ?? ''));
-        $staffFilter = trim((string) $request->query('staff', ''));
-        $areaFilter = trim((string) $request->query('area', ''));
+        $staffFilter = $vendorBoard ? '' : trim((string) $request->query('staff', ''));
+        $areaFilter = $vendorBoard ? '' : trim((string) $request->query('area', ''));
         $statusFilter = strtolower((string) $request->query('status', $legacyDefault['status'] ?? ''));
         $workflowFilter = strtolower((string) $request->query('workflow', $legacyDefault['workflow'] ?? ''));
         $ownershipFilter = strtolower((string) $request->query('ownership', $defaultOwnershipFilter));
@@ -1694,13 +1699,13 @@ class DeliveryController extends Controller
             ->take(5)
             ->values();
 
-        $assignableUsers = $this->assignableUsers();
-        $assignableStaffMembers = $this->assignableStaffMembers();
-        $warehouseOptions = \App\Models\Warehouse::query()
+        $assignableUsers = $vendorBoard ? collect() : $this->assignableUsers();
+        $assignableStaffMembers = $vendorBoard ? collect() : $this->assignableStaffMembers();
+        $warehouseOptions = $vendorBoard ? collect() : \App\Models\Warehouse::query()
             ->where('organization_id', $this->orgId())
             ->orderBy('name')
             ->get(['id', 'name']);
-        $areaOptions = DB::table('customers')
+        $areaOptions = $vendorBoard ? collect() : DB::table('customers')
             ->where('organization_id', $this->orgId())
             ->whereNotNull('city')
             ->where('city', '!=', '')
@@ -1715,6 +1720,7 @@ class DeliveryController extends Controller
             : collect();
 
         return view('deliveries.index', compact(
+            'vendorBoard',
             'tab',
             'search',
             'selectedDate',
@@ -2082,7 +2088,7 @@ class DeliveryController extends Controller
             : null;
 
         $order = $delivery->sale ?? $delivery->rental;
-        $orderOwnership = $order && (int) $order->organization_id === (int) $delivery->organization_id
+        $orderOwnership = !auth()->user()->isVendor() && $order && (int) $order->organization_id === (int) $delivery->organization_id
             ? app(\App\Support\ActivityTimelineService::class)->orderOwnership($order)
             : null;
 
@@ -2103,6 +2109,7 @@ class DeliveryController extends Controller
 
     public function edit(Delivery $delivery)
     {
+        abort_if(auth()->user()->isVendor(), 403);
         $delivery = $this->scopedDelivery($delivery);
         $this->authorize('update', $delivery);
 
@@ -2135,6 +2142,7 @@ class DeliveryController extends Controller
 
     public function update(Request $request, Delivery $delivery)
     {
+        abort_if($request->user()->isVendor(), 403);
         $delivery = $this->scopedDelivery($delivery);
         $this->authorize('update', $delivery);
         $rental = $delivery->rental()->first();

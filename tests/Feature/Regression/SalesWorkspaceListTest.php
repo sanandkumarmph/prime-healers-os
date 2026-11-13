@@ -102,16 +102,16 @@ class SalesWorkspaceListTest extends TestCase
         }
     }
 
-    public function test_filters_cannot_widen_staff_scope_and_foreign_owner_names_are_not_listed(): void
+    public function test_staff_can_filter_company_enquiries_without_seeing_other_organizations(): void
     {
         $own = $this->enquiry(); $other = $this->enquiry(['owner_id'=>$this->admin->id]);
         $foreign = TestData::user(null,['name'=>'Foreign Owner Hidden']);
         $this->enquiry(['organization_id'=>$foreign->organization_id,'owner_id'=>$foreign->id]);
         $this->actingAs($this->sales);
-        $this->assertSame([$own->id],$this->ids(['focus'=>'all','source'=>'incoming_phone']));
-        $this->assertSame([],$this->ids(['owner_id'=>$this->admin->id,'focus'=>'all']));
-        $this->get(route('enquiries.index'))->assertDontSee('Foreign Owner Hidden')->assertDontSee('Business Direction');
-        $this->get(route('enquiries.show',$other))->assertNotFound();
+        $this->assertSame([$other->id,$own->id],$this->ids(['view'=>'enquiries','focus'=>'all','source'=>'incoming_phone']));
+        $this->assertSame([$other->id],$this->ids(['view'=>'enquiries','owner_id'=>$this->admin->id,'focus'=>'all']));
+        $this->get(route('enquiries.index',['view'=>'enquiries']))->assertDontSee('Foreign Owner Hidden')->assertDontSee('Business Direction');
+        $this->get(route('enquiries.show',$other))->assertOk();
         $this->assertSame([$other->id], $this->actingAs($this->admin)->ids(['mine'=>1]));
         $this->assertSame([$own->id], $this->ids(['mine'=>1,'owner_id'=>$this->sales->id]));
     }

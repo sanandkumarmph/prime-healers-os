@@ -31,6 +31,9 @@ class PickupCenterController extends Controller
     public function index(Request $request)
     {
         $this->authorize('viewAny', Delivery::class);
+        if ($request->user()->isVendor()) {
+            return redirect()->route('deliveries.index', ['board' => 'pickup_workload']);
+        }
 
         $today = now()->startOfDay();
         $tab = $this->normalizeTab((string) $request->get('tab', 'pickup_requested'));
@@ -281,6 +284,7 @@ class PickupCenterController extends Controller
 
     private function pickupDelivery(Delivery $delivery): Delivery
     {
+        abort_if(auth()->user()->isVendor(), 403);
         abort_if((int) $delivery->organization_id !== $this->orgId(), 404);
         abort_if($delivery->type !== 'pickup', 404);
 

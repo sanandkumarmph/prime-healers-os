@@ -26,7 +26,7 @@ class DashboardAssignedRecordsPrivacyRegressionTest extends TestCase
         $owner = TestData::user($organization);
         $otherAssignee = TestData::user($organization, ['role' => User::ROLE_DELIVERY]);
         $profiles = [];
-        foreach ([User::ROLE_DELIVERY, User::ROLE_VENDOR, User::ROLE_THIRD_PARTY] as $slug) {
+        foreach ([User::ROLE_DELIVERY, User::ROLE_THIRD_PARTY] as $slug) {
             $profiles['legacy_'.$slug] = TestData::user($organization, ['role' => $slug]);
         }
         foreach ([User::ROLE_DELIVERY, User::ROLE_DELIVERY_EXECUTIVE] as $slug) {

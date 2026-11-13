@@ -90,7 +90,7 @@ class SaleShowProfitabilityVisibilityRegressionTest extends TestCase
             ->assertDontSee('Gross Margin')
             ->assertDontSee('Margin %');
     }
-    public function test_vendor_sales_reader_cannot_see_sale_record_finance_amounts(): void
+    public function test_vendor_cannot_open_a_sale_even_with_a_saved_sales_grant(): void
     {
         [$sale, $organization] = $this->saleFixture();
         $vendorRole = Role::create([
@@ -110,11 +110,8 @@ class SaleShowProfitabilityVisibilityRegressionTest extends TestCase
         $this->assertFalse($vendorUser->canSeeSalesFinance());
 
         $this->actingAs($vendorUser)
-            ->get(route('sales.show', $sale))
-            ->assertOk()
-            ->assertSee('Hidden')
-            ->assertDontSee('13,000.00')
-            ->assertDontSee('Vendor Cost');
+            ->getJson(route('sales.show', $sale))
+            ->assertForbidden();
     }
 
     private function saleFixture(): array

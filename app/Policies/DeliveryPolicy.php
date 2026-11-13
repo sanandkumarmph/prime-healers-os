@@ -5,10 +5,15 @@ namespace App\Policies;
 use App\Models\Delivery;
 use App\Models\User;
 use App\Policies\Concerns\HandlesModuleAuthorization;
+use App\Services\Deliveries\VendorWorkScope;
 
 class DeliveryPolicy
 {
     use HandlesModuleAuthorization;
+
+    public function __construct(private VendorWorkScope $vendorWork)
+    {
+    }
 
     public function viewAny(User $user): bool
     {
@@ -19,12 +24,13 @@ class DeliveryPolicy
     {
         return $this->sameOrganization($user, $delivery)
             && $this->allowsModule($user, 'deliveries', 'read')
-            && (!$user->isDelivery() || (int) $delivery->assigned_user_id === (int) $user->id);
+            && (!$user->isDelivery() || (int) $delivery->assigned_user_id === (int) $user->id)
+            && (!$user->isVendor() || $this->vendorWork->assignedTo($user, $delivery));
     }
 
     public function create(User $user): bool
     {
-        return $this->allowsModule($user, 'deliveries', 'create');
+        return !$user->isVendor() && $this->allowsModule($user, 'deliveries', 'create');
     }
 
     public function update(User $user, Delivery $delivery): bool
@@ -35,7 +41,7 @@ class DeliveryPolicy
 
     public function delete(User $user, Delivery $delivery): bool
     {
-        return $this->sameOrganization($user, $delivery)
+        return !$user->isVendor() && $this->sameOrganization($user, $delivery)
             && $this->allowsDeliveryAction($user, $delivery, 'delete');
     }
 
@@ -43,6 +49,10 @@ class DeliveryPolicy
     {
         if (! $this->allowsModule($user, 'deliveries', $action)) {
             return false;
+        }
+
+        if ($user->isVendor()) {
+            return $this->vendorWork->assignedTo($user, $delivery);
         }
 
         if ($user->hasScope('assigned', 'deliveries')) {

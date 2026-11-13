@@ -7,6 +7,8 @@ use App\Models\AssetMovement;
 use App\Models\ActivityLog;
 use App\Models\BusinessPartner;
 use App\Models\Customer;
+use App\Models\CylinderJob;
+use App\Models\CylinderRefill;
 use App\Models\Delivery;
 use App\Models\FollowUp;
 use App\Models\Invoice;
@@ -36,6 +38,7 @@ use App\Services\Imports\ImportMatchSignatureService;
 use App\Services\Imports\RentalImportExecutor;
 use App\Services\DashboardVisibilityService;
 use App\Services\Deliveries\DeliveryWorkflowService;
+use App\Services\Deliveries\VendorWorkScope;
 use App\Services\Inventory\StockMovementRecorder;
 use App\Services\Metrics\CollectionMetricsService;
 use App\Services\Metrics\DashboardMetricsService;
@@ -844,13 +847,15 @@ class RentalController extends Controller
 
     private function applyRentalScope($query)
     {
-        // Rental lists are organization-level by default; user-specific views must stay explicit in the UI.
-        return $query;
+        $user = auth()->user();
+
+        return $user?->isVendor() ? app(VendorWorkScope::class)->rentals($query, $user) : $query;
     }
 
     private function scopedRental(Rental $rental): Rental
     {
         abort_if($rental->organization_id !== $this->orgId(), 403);
+        abort_if(auth()->user()?->isVendor(), 403);
 
         return $rental;
     }
@@ -3112,7 +3117,7 @@ class RentalController extends Controller
     {
         $query = Rental::query()->forOrganization($this->orgId());
 
-        if ($applyScope) {
+        if ($applyScope || auth()->user()?->isVendor()) {
             $query = $this->applyRentalScope($query);
         }
 
@@ -3953,7 +3958,7 @@ class RentalController extends Controller
     private function filteredRentalAggregateQuery(Request $request, bool $applyScope = true)
     {
         return $this->applyLifecycleFilters(
-            $applyScope
+            ($applyScope || auth()->user()?->isVendor())
                 ? $this->applyRentalScope(Rental::query()->forOrganization($this->orgId()))
                 : Rental::query()->forOrganization($this->orgId()),
             $request
@@ -4767,6 +4772,9 @@ class RentalController extends Controller
     public function dashboard(Request $request)
     {
         $currentUser = auth()->user();
+        if ($currentUser?->isVendor() && $currentUser->canAccessAssignedWork()) {
+            return redirect()->route('deliveries.index');
+        }
         abort_unless($currentUser?->canAccessDashboard(), 403);
 
         $dashboardVisibility = $this->dashboardVisibility()->forUser($currentUser);
@@ -6249,6 +6257,7 @@ class RentalController extends Controller
 
     public function exportDashboardCsv(Request $request)
     {
+        abort_if($request->user()?->isVendor(), 403);
         abort_unless($request->user()?->canAccessModule('rentals', 'read'), 403);
         $sortBy = trim((string) $request->get('sort_by', 'priority'));
         $query = $this->filteredRentalQuery($request, true);
@@ -6398,6 +6407,7 @@ class RentalController extends Controller
     public function availableAssets(Request $request)
     {
         $this->ensureRentalAccess();
+        abort_if($request->user()->isVendor(), 403);
 
         $validated = $request->validate([
             'product_id' => [
@@ -6484,6 +6494,13 @@ class RentalController extends Controller
     public function index(Request $request)
     {
         $this->authorize('viewAny', Rental::class);
+        if ($request->user()->isVendor()) {
+            $rentals = $this->applyRentalScope(Rental::query())
+                ->with(['product', 'customer', 'partnerClient'])
+                ->latest('id')->paginate(15);
+
+            return view('rentals.vendor-index', compact('rentals'));
+        }
 
         $search = trim((string) $request->get('search', ''));
         $status = (string) $request->get('status', '');
@@ -7300,8 +7317,25 @@ class RentalController extends Controller
 
     public function show(Request $request, Rental $rental)
     {
-        $rental = $this->scopedRental($rental);
         $this->authorize('view', $rental);
+        if ($request->user()->isVendor()) {
+            $rental->load(['product', 'customer', 'partnerClient']);
+            if ($this->hasRentalItemsTable()) {
+                $rental->load('rentalItems.product');
+            }
+            $user = $request->user();
+            $vendorWork = app(VendorWorkScope::class);
+            $tasks = $vendorWork->deliveries($rental->deliveries()->getQuery(), $user)
+                ->latest('scheduled_at')->get();
+            $hasRefillTasks = CylinderRefill::available()
+                && $vendorWork->cylinderTasks(CylinderRefill::query(), $user, $rental)->exists();
+            $cylinderJobs = Schema::hasTable('cylinder_jobs')
+                ? $vendorWork->cylinderTasks(CylinderJob::query(), $user, $rental)->latest('id')->get()
+                : collect();
+
+            return view('rentals.vendor-show', compact('rental', 'tasks', 'hasRefillTasks', 'cylinderJobs'));
+        }
+        $rental = $this->scopedRental($rental);
 
         $load = [
             'product',

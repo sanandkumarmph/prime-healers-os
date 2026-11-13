@@ -39,7 +39,7 @@ class RenewalCenterController extends Controller
     {
         $user = auth()->user();
 
-        if (!$user || !$user->canManageRentals()) {
+        if (!$user || $user->isVendor() || !$user->canManageRentals()) {
             abort(403, 'Unauthorized. Only admin or sales can manage rentals.');
         }
     }

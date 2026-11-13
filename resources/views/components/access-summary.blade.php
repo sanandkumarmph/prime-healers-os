@@ -7,23 +7,30 @@
         $subject->setRelation('assignedRole', $role);
     }
     $scopeLabels = ['all' => 'Organization', 'assigned' => 'Assigned work', 'self_created' => 'Own records'];
-    $isSalesRole = $subject->effective_role === \App\Models\User::ROLE_SALES;
     $dashboardAllowed = $subject->canAccessDashboard();
     $summaryRows = [
         'Account access' => $subject->hasActiveAccess() ? 'Enabled' : 'Blocked — inactive account or invalid role',
         'Dashboard' => $dashboardAllowed ? 'Allowed — role widgets and permissions apply' : 'Blocked',
     ];
-    if ($isSalesRole) {
+    if ($subject->isSalesTeam()) {
         $rentalAccess = $subject->canAccessModule('rentals', 'read');
         $summaryRows += [
+            'Enquiries' => $subject->canAccessModule('enquiries', 'read') ? 'Company-wide' : 'No access',
+            'Quotations' => $subject->canAccessModule('quotations', 'read') ? 'Company-wide' : 'No access',
             'Rental records' => $rentalAccess ? 'Company-wide' : 'No access',
             'Sales orders' => $subject->canAccessModule('sales', 'read') ? 'Company-wide' : 'No access',
-            'Renewal Center' => $rentalAccess ? 'Eligible rentals across the company' : 'No access',
+            'Invoices' => $subject->canAccessModule('invoices', 'read') ? 'Company-wide' : 'No access',
+            'Renewal Center' => $subject->canAccessRenewals() ? 'Eligible rentals across the company' : 'No access',
             'Delivery tasks' => $subject->canAccessModule('deliveries', 'read') ? 'Company-wide' : 'No access',
         ];
         if ($dashboardAllowed && $rentalAccess) {
             $summaryRows['Dashboard rentals and renewals'] = 'Own records · Rentals created by this user';
         }
+    } elseif ($subject->isVendor()) {
+        $summaryRows += [
+            'Rental records' => $subject->canAccessModule('rentals', 'read') ? 'Rentals linked to assigned tasks' : 'No access',
+            'Delivery tasks' => $subject->canAccessModule('deliveries', 'read') ? 'Assigned work' : 'No access',
+        ];
     } else {
         $summaryRows += [
             'Rental records' => $scopeLabels[$subject->scopeType('rentals')] ?? 'Role permissions',

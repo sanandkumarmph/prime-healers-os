@@ -95,6 +95,7 @@
         default => ucfirst(str_replace('_', ' ', $displayStatus)),
     };
     $canUpdateTask = auth()->user()?->can('update', $delivery) ?? false;
+    $canEditAssignment = $canUpdateTask && !auth()->user()->isVendor();
     $canDeleteTask = auth()->user()?->can('delete', $delivery) ?? false;
     $deliveryProofs = collect($deliveryProofs ?? []);
     $cancellationReasonOptions = $cancellationReasonOptions ?? [];
@@ -355,7 +356,7 @@
         ]);
     }
 
-    if ($canUpdateTask) {
+    if ($canEditAssignment) {
         $mobileQuickActions->push([
             'type' => 'link',
             'label' => 'Edit Assignment',
@@ -2754,7 +2755,7 @@
             @elseif($hasProofHistory)
                 <a href="#delivery-proof-history" class="detail-btn">View Proof</a>
             @endif
-            @if($canUpdateTask)
+            @if($canEditAssignment)
                 <a href="{{ route('deliveries.edit', $delivery) }}" class="detail-btn-secondary">Edit</a>
             @endif
         </div>
@@ -2836,7 +2837,7 @@
                         <a href="{{ route('deliveries.show', $delivery) }}#delivery-proof-history" data-open-proof-history>Proof History</a>
                     @endif
                     <a href="#activity-timeline">Operations History</a>
-                    @if($canUpdateTask)
+                    @if($canEditAssignment)
                         <a href="{{ route('deliveries.edit', $delivery) }}">Edit Assignment</a>
                     @endif
                     @if($canCancelTask)
