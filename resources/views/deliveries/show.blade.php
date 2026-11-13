@@ -1859,8 +1859,8 @@
             overscroll-behavior:none;
         }
         body.workflow-mobile-open [data-action-toast] {
-            --phos-action-toast-top:calc(68px + env(safe-area-inset-top, 0px));
-            --phos-action-toast-bottom:auto;
+            top:calc(68px + env(safe-area-inset-top, 0px));
+            bottom:auto !important;
         }
         .workflow-preview-shell { display:none; }
         .fieldops-task-shell {
