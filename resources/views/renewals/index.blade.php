@@ -282,6 +282,9 @@
         display: grid;
         gap: 6px;
     }
+    [data-renewal-pickup-method][hidden] {
+        display: none;
+    }
     .renewal-field label {
         font-size: 11px;
         font-weight: 700;
@@ -1390,6 +1393,8 @@
                                                 data-pickup-date="{{ optional($rental->end_date)->format('Y-m-d') ?: now()->toDateString() }}"
                                                 data-pickup-address="{{ collect([$rental->deliveryContactAddress(), $rental->deliveryContactCity(), $rental->deliveryContactState(), $rental->deliveryContactPincode()])->filter()->join(', ') }}"
                                                 data-pickup-notes="{{ $rental->deliveryContactNotes() ?? '' }}"
+                                                data-pickup-vendor-supplied="{{ (int) $rental->isVendorSupplied() }}"
+                                                data-pickup-vendor-company="{{ $rental->vendor_id }}"
                                             ><span class="renewal-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M10 17h4V5H2v12h3"/><path d="M14 8h4l4 4v5h-3"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg></span><span class="renewal-action-label">Pickup</span></button>
                                         @endif
 
@@ -1496,6 +1501,8 @@
                                     data-pickup-date="{{ optional($rental->end_date)->format('Y-m-d') ?: now()->toDateString() }}"
                                     data-pickup-address="{{ collect([$rental->deliveryContactAddress(), $rental->deliveryContactCity(), $rental->deliveryContactState(), $rental->deliveryContactPincode()])->filter()->join(', ') }}"
                                     data-pickup-notes="{{ $rental->deliveryContactNotes() ?? '' }}"
+                                    data-pickup-vendor-supplied="{{ (int) $rental->isVendorSupplied() }}"
+                                    data-pickup-vendor-company="{{ $rental->vendor_id }}"
                                 ><span class="renewal-action-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M10 17h4V5H2v12h3"/><path d="M14 8h4l4 4v5h-3"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg></span><span class="renewal-action-label">Pickup</span></button>
                             @endif
                             @if($rental->reminderContactPhone())
@@ -1619,7 +1626,6 @@
         </div>
         <form method="POST" data-pickup-form class="renewal-modal" style="box-shadow:none; width:100%; max-height:none; border-radius:0; background:transparent; grid-template-rows:1fr auto;">
             @csrf
-            <input type="hidden" name="pickup_method" value="internal_pickup">
             <div class="renewal-modal-body">
                 <div class="renewal-summary-strip">
                     <div><strong>Pickup Address:</strong> <span data-pickup-address></span></div>
@@ -1642,7 +1648,14 @@
                             </select>
                         </div>
                         <div class="renewal-field">
-                            <label for="pickup-assignment">Assign To</label>
+                            <label for="renewal-pickup-method">Pickup method</label>
+                            <select id="renewal-pickup-method" name="pickup_method" class="renewal-select" required>
+                                <option value="internal_pickup">Internal pickup</option>
+                                <option value="vendor_pickup">Vendor pickup</option>
+                            </select>
+                        </div>
+                        <div class="renewal-field" data-renewal-pickup-method="internal_pickup">
+                            <label for="pickup-assignment">Delivery staff</label>
                             <select id="pickup-assignment" name="assigned_user_id" class="renewal-select" required>
                                 <option value="">Choose delivery / operations executive</option>
                                 @if($assignableUsers->isNotEmpty())
@@ -1651,6 +1664,25 @@
                                     @endforeach
                                 @endif
                             </select>
+                        </div>
+                        <div class="renewal-field" data-renewal-pickup-method="vendor_pickup" hidden>
+                            <label for="renewal-pickup-vendor-company">Vendor company</label>
+                            <select id="renewal-pickup-vendor-company" name="vendor_id" class="renewal-select" disabled>
+                                <option value="">Choose vendor company</option>
+                                @foreach($pickupVendorCompanies as $company)
+                                    <option value="{{ $company->id }}">{{ $company->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="renewal-field" data-renewal-pickup-method="vendor_pickup" hidden>
+                            <label for="renewal-pickup-vendor-login">Vendor login</label>
+                            <select id="renewal-pickup-vendor-login" name="vendor_user_id" class="renewal-select" disabled aria-describedby="renewal-pickup-vendor-help">
+                                <option value="">Choose Vendor login</option>
+                                @foreach($vendorLoginOptions as $user)
+                                    <option value="{{ $user->id }}">{{ $user->name }}</option>
+                                @endforeach
+                            </select>
+                            <small id="renewal-pickup-vendor-help">The selected login can open and update this pickup on the Tasks Board.</small>
                         </div>
                         <div class="renewal-field" style="grid-column:1 / -1;">
                             <label for="pickup-notes">Pickup Notes</label>
@@ -1782,6 +1814,24 @@
 
         const pickupModal = document.getElementById('renewalPickupModal');
         const pickupForm = pickupModal?.querySelector('[data-pickup-form]');
+        const pickupMethod = pickupForm?.elements.namedItem('pickup_method');
+        const pickupVendorCompany = pickupForm?.elements.namedItem('vendor_id');
+        const pickupVendorLogin = pickupForm?.elements.namedItem('vendor_user_id');
+        let vendorSuppliedPickup = false;
+
+        const syncPickupAssignment = () => {
+            const method = pickupMethod.value;
+            pickupForm.querySelectorAll('[data-renewal-pickup-method]').forEach((panel) => {
+                const visible = panel.dataset.renewalPickupMethod === method;
+                panel.hidden = !visible;
+                panel.querySelector('select').disabled = !visible;
+            });
+            const vendorPickup = method === 'vendor_pickup';
+            pickupVendorCompany.required = vendorPickup;
+            pickupVendorLogin.required = vendorPickup && !vendorSuppliedPickup;
+            pickupVendorLogin.options[0].textContent = vendorSuppliedPickup ? 'Company only' : 'Choose a Vendor login';
+        };
+        pickupMethod?.addEventListener('change', syncPickupAssignment);
 
         document.querySelectorAll('[data-pickup-trigger]').forEach((button) => {
             button.addEventListener('click', () => {
@@ -1790,6 +1840,13 @@
                 pickupModal.querySelector('[data-pickup-date]').value = button.dataset.pickupDate || '';
                 pickupModal.querySelector('[data-pickup-notes]').value = button.dataset.pickupNotes || '';
                 pickupForm.action = button.dataset.action;
+                vendorSuppliedPickup = button.dataset.pickupVendorSupplied === '1';
+                pickupMethod.querySelector('option[value="internal_pickup"]').disabled = vendorSuppliedPickup;
+                pickupMethod.value = vendorSuppliedPickup ? 'vendor_pickup' : 'internal_pickup';
+                pickupVendorCompany.value = button.dataset.pickupVendorCompany || '';
+                pickupVendorLogin.value = '';
+                pickupForm.elements.namedItem('assigned_user_id').value = '';
+                syncPickupAssignment();
                 openModal(pickupModal);
             });
         });

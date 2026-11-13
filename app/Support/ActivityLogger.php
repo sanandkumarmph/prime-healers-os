@@ -62,6 +62,10 @@ class ActivityLogger
                 ->with('user');
 
             $user = auth()->user();
+            if ($user?->isVendor() && $subject instanceof Delivery) {
+                $query->where('delivery_id', $subject->id);
+            }
+
             if (!$user?->canAccessModule('payments', 'read')) {
                 $query->where('action', 'not like', 'payment.%');
             }

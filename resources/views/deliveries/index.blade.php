@@ -6,8 +6,8 @@
 
     $currentUser = auth()->user();
     $logisticsMetrics = app(\App\Services\Metrics\LogisticsMetricsService::class);
-    $taskProgressStatus = function ($delivery) use ($logisticsMetrics) {
-        if ($delivery->sale_id || $delivery->status === 'cancelled') {
+    $taskProgressStatus = function ($delivery) use ($logisticsMetrics, $vendorBoard) {
+        if ($vendorBoard || $delivery->sale_id || $delivery->status === 'cancelled') {
             return $delivery->status;
         }
         if ($logisticsMetrics->isEffectivelyCompleted($delivery)) {
@@ -1416,6 +1416,13 @@
                                     @endforeach
                                 </optgroup>
                             @endif
+                            @if($vendorLoginOptions->isNotEmpty())
+                                <optgroup label="Vendor Logins">
+                                    @foreach($vendorLoginOptions as $user)
+                                        <option value="user:{{ $user->id }}" @selected($staffFilter === 'user:' . $user->id)>{{ $user->name }}</option>
+                                    @endforeach
+                                </optgroup>
+                            @endif
                             @if($assignableStaffMembers->isNotEmpty())
                                 <optgroup label="Vendor Staff">
                                     @foreach($assignableStaffMembers as $staffMember)
@@ -1719,6 +1726,13 @@
                                         @endforeach
                                     </optgroup>
                                 @endif
+                                @if($vendorLoginOptions->isNotEmpty())
+                                    <optgroup label="Vendor Logins">
+                                        @foreach($vendorLoginOptions as $user)
+                                            <option value="user:{{ $user->id }}" @selected($staffFilter === 'user:' . $user->id)>{{ $user->name }}</option>
+                                        @endforeach
+                                    </optgroup>
+                                @endif
                                 @if($assignableStaffMembers->isNotEmpty())
                                     <optgroup label="Vendor Staff">
                                         @foreach($assignableStaffMembers as $staffMember)
@@ -1877,7 +1891,7 @@
                                         ?? $delivery->third_party_name
                                         ?? 'Unassigned';
                                     $assignedRole = $delivery->assignedUser
-                                        ? 'Delivery team'
+                                        ? ($delivery->assignment_type === 'vendor' ? 'Vendor login' : 'Delivery team')
                                         : ($delivery->assignedStaff
                                             ? ucwords(str_replace('_', ' ', $delivery->assignedStaff->assignment_role ?? 'vendor'))
                                             : ($delivery->assignment_type === 'third_party' ? 'Third party' : 'Unassigned'));
@@ -1938,8 +1952,12 @@
                                     </td>
                                     <td class="ops-col-order">
                                         <div class="ops-stack">
-                                            @if($isSaleTask && \Illuminate\Support\Facades\Route::has('sales.show') && $delivery->sale)
-                                                <a href="{{ route('sales.show', $delivery->sale) }}" class="ops-record-link">Sale #{{ $delivery->sale->id }}</a>
+                                            @if($isSaleTask && $delivery->sale)
+                                                @if(!$vendorBoard && \Illuminate\Support\Facades\Route::has('sales.show'))
+                                                    <a href="{{ route('sales.show', $delivery->sale) }}" class="ops-record-link">Sale #{{ $delivery->sale->id }}</a>
+                                                @else
+                                                    <strong>Sale #{{ $delivery->sale->id }}</strong>
+                                                @endif
                                             @elseif(!$isSaleTask && \Illuminate\Support\Facades\Route::has('rentals.show') && $delivery->rental)
                                                 <a href="{{ route('rentals.show', $delivery->rental) }}" class="ops-record-link">Rental #{{ $delivery->rental->id }}</a>
                                             @else
@@ -1962,7 +1980,7 @@
                                     </td>
                                     <td class="ops-col-customer">
                                         <div class="ops-stack">
-                                            @if(\Illuminate\Support\Facades\Route::has('customers.show') && $customerRecord)
+                                            @if(!$vendorBoard && \Illuminate\Support\Facades\Route::has('customers.show') && $customerRecord)
                                                 <a href="{{ route('customers.show', $customerRecord) }}" class="ops-record-link">{{ $customerName }}</a>
                                             @else
                                                 <strong>{{ $customerName }}</strong>
@@ -2073,7 +2091,7 @@
                                                     @if($canUpdateTask && !in_array($delivery->status, ['completed', 'cancelled'], true))
                                                         <a href="{{ route('deliveries.show', $delivery) }}#delivery-cancellation-section">Unable to complete</a>
                                                     @endif
-                                                    @if(!$assignedScopedDeliveryUser && $canUpdateTask && \Illuminate\Support\Facades\Route::has('deliveries.edit'))
+                                                    @if(!$vendorBoard && !$assignedScopedDeliveryUser && $canUpdateTask && \Illuminate\Support\Facades\Route::has('deliveries.edit'))
                                                         <a href="{{ route('deliveries.edit', $delivery) }}">Edit</a>
                                                     @endif
                                                     @if(!$assignedScopedDeliveryUser && $canDeleteTask && \Illuminate\Support\Facades\Route::has('deliveries.destroy'))
@@ -2239,7 +2257,7 @@
                                         @if($canUpdateTask && !in_array($delivery->status, ['completed', 'cancelled'], true))
                                             <a href="{{ route('deliveries.show', $delivery) }}#delivery-cancellation-section">Unable to complete</a>
                                         @endif
-                                        @if(!$assignedScopedDeliveryUser && $canUpdateTask && \Illuminate\Support\Facades\Route::has('deliveries.edit'))
+                                        @if(!$vendorBoard && !$assignedScopedDeliveryUser && $canUpdateTask && \Illuminate\Support\Facades\Route::has('deliveries.edit'))
                                             <a href="{{ route('deliveries.edit', $delivery) }}">Edit Assignment</a>
                                         @endif
                                         @if(!$assignedScopedDeliveryUser && $canDeleteTask && \Illuminate\Support\Facades\Route::has('deliveries.destroy'))

@@ -13,6 +13,7 @@ use App\Models\Rental;
 use App\Models\User;
 use App\Models\Warehouse;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\Support\TestData;
 use Tests\TestCase;
 
@@ -119,6 +120,54 @@ class PickupCenterRegressionTest extends TestCase
         $this->assertSame($deliveryUser->id, (int) $pickup->assigned_user_id);
         $this->assertSame('12:00-15:00', $pickup->pickup_time_slot);
         $this->assertSame('Pickup from security gate', $pickup->last_pickup_note);
+    }
+
+    public function test_vendor_pickup_can_be_assigned_and_reassigned_to_an_active_login(): void
+    {
+        $office = auth()->user();
+        $first = TestData::user($office->organization, ['role' => User::ROLE_VENDOR, 'name' => 'First Vendor Operator']);
+        $second = TestData::user($office->organization, ['role' => User::ROLE_VENDOR]);
+        $inactive = TestData::user($office->organization, ['role' => User::ROLE_VENDOR, 'is_active' => false]);
+        $foreign = TestData::user(null, ['role' => User::ROLE_VENDOR]);
+        $pickup = $this->makePickupTask(['assignment_type' => 'vendor', 'third_party_name' => 'Pickup Company']);
+        $payload = ['pickup_date' => now()->addDay()->toDateString()];
+        $start = fn () => [
+            'workflow_capture_form' => 1,
+            'location_latitude' => '12.971599',
+            'location_longitude' => '77.594566',
+            'location_accuracy' => '5',
+            'location_captured_at' => now()->toIso8601String(),
+            'workflow_submission_token' => (string) Str::uuid(),
+        ];
+
+        $this->get(route('pickup-center.index'))->assertOk()->assertSee('value="vendor-user:'.$first->id.'"', false)
+            ->assertDontSee('value="vendor-user:'.$inactive->id.'"', false)->assertDontSee('value="vendor-user:'.$foreign->id.'"', false);
+        foreach ([$office, $inactive, $foreign] as $ineligible) {
+            $this->postJson(route('pickup-center.assign', $pickup), $payload + ['assignment_target' => 'vendor-user:'.$ineligible->id])
+                ->assertUnprocessable()->assertJsonValidationErrors('assignment_target');
+        }
+        $this->post(route('pickup-center.assign', $pickup), $payload + ['assignment_target' => 'vendor-user:'.$first->id])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame($first->id, $pickup->fresh()->assigned_user_id);
+        $this->assertSame('Pickup Company', $pickup->fresh()->third_party_name);
+        $this->actingAs($first)->get(route('deliveries.show', $pickup))->assertOk();
+        $this->get(route('rentals.show', $pickup->rental))->assertOk();
+        $this->put(route('deliveries.in_progress', $pickup), $start())->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame('in_progress', $pickup->fresh()->status);
+
+        $this->actingAs($office)->post(route('pickup-center.reschedule', $pickup), $payload)->assertRedirect();
+        $this->assertSame($first->id, $pickup->fresh()->assigned_user_id);
+        $this->post(route('pickup-center.reschedule', $pickup), $payload + ['assignment_target' => 'vendor-user:'.$second->id])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame($second->id, $pickup->fresh()->assigned_user_id);
+        $this->assertSame('Pickup Company', $pickup->fresh()->third_party_name);
+        $this->actingAs($first)->get(route('deliveries.show', $pickup))->assertForbidden();
+        $this->get(route('rentals.show', $pickup->rental))->assertForbidden();
+        $this->putJson(route('deliveries.in_progress', $pickup), $start())->assertForbidden();
+        $this->actingAs($second)->get(route('deliveries.show', $pickup))->assertOk();
+        $this->get(route('rentals.show', $pickup->rental))->assertOk();
+        $this->put(route('deliveries.in_progress', $pickup), $start())->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame('in_progress', $pickup->fresh()->status);
     }
 
     public function test_failed_attempt_can_store_reason_and_reschedule(): void

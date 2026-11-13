@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Delivery;
 use App\Models\Staff;
 use App\Models\User;
+use App\Services\Deliveries\VendorLoginAssignments;
+use App\Services\Finance\OrganizationFinancialTransaction;
 use App\Services\Metrics\DashboardMetricsService;
 use App\Services\NotificationCenterService;
 use App\Support\ActivityLogger;
@@ -15,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class PickupCenterController extends Controller
 {
@@ -69,6 +72,8 @@ class PickupCenterController extends Controller
             'today' => $today,
             'assignableUsers' => $assignableUsers,
             'assignableStaff' => $assignableStaff,
+            'vendorLoginOptions' => $request->user()->hasScope('all', 'deliveries') && $request->user()->canAccessModule('deliveries', 'update')
+                ? app(VendorLoginAssignments::class)->options($this->orgId()) : collect(),
             'hasProofs' => $hasProofs,
             'failedReasonOptions' => Delivery::FAILED_ATTEMPT_REASONS,
             'activeFilters' => $this->activeFilters($request),
@@ -76,6 +81,12 @@ class PickupCenterController extends Controller
     }
 
     public function assign(Request $request, Delivery $delivery)
+    {
+        return app(OrganizationFinancialTransaction::class)->run($this->orgId(),
+            fn () => $this->assignPickup($request, $delivery->fresh() ?? abort(404)));
+    }
+
+    private function assignPickup(Request $request, Delivery $delivery)
     {
         $delivery = $this->pickupDelivery($delivery);
         $this->authorize('update', $delivery);
@@ -91,16 +102,13 @@ class PickupCenterController extends Controller
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        [$assignmentType, $assignedUserId, $assignedStaffId] = $this->resolveAssignmentTarget($validated['assignment_target']);
+        $assignment = $this->resolveAssignmentTarget($validated['assignment_target'], $delivery);
         $scheduledAt = Carbon::parse($validated['pickup_date'] . ' ' . $this->resolvePickupTimeSlot($validated['pickup_time_slot'] ?? null));
 
-        $update = [
+        $update = $assignment + [
             'status' => 'pending',
             'scheduled_at' => $scheduledAt,
-            'assignment_type' => $assignmentType,
-            'assigned_user_id' => $assignedUserId,
-            'assigned_staff_id' => $assignedStaffId,
-            'pickup_status' => $assignedUserId || $assignedStaffId ? 'assigned' : 'scheduled',
+            'pickup_status' => $assignment['assigned_user_id'] || $assignment['assigned_staff_id'] ? 'assigned' : 'scheduled',
             'pickup_time_slot' => $validated['pickup_time_slot'] ?? null,
             'failed_attempt_reason' => null,
             'failed_attempt_note' => null,
@@ -121,8 +129,8 @@ class PickupCenterController extends Controller
         ActivityLogger::log('pickup.assigned', $delivery->fresh(), [
             'scheduled_at' => $scheduledAt->toDateTimeString(),
             'pickup_time_slot' => $validated['pickup_time_slot'] ?? null,
-            'assigned_user_id' => $assignedUserId,
-            'assigned_staff_id' => $assignedStaffId,
+            'assigned_user_id' => $delivery->assigned_user_id,
+            'assigned_staff_id' => $delivery->assigned_staff_id,
             'notes' => $validated['notes'] ?? null,
         ], 'Pickup assigned from Pickup Center.');
 
@@ -197,6 +205,12 @@ class PickupCenterController extends Controller
 
     public function reschedule(Request $request, Delivery $delivery)
     {
+        return app(OrganizationFinancialTransaction::class)->run($this->orgId(),
+            fn () => $this->reschedulePickup($request, $delivery->fresh() ?? abort(404)));
+    }
+
+    private function reschedulePickup(Request $request, Delivery $delivery)
+    {
         $delivery = $this->pickupDelivery($delivery);
         $this->authorize('update', $delivery);
 
@@ -211,7 +225,6 @@ class PickupCenterController extends Controller
             'reason' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        [$assignmentType, $assignedUserId, $assignedStaffId] = $this->resolveAssignmentTarget((string) ($validated['assignment_target'] ?? ''));
         $scheduledAt = Carbon::parse($validated['pickup_date'] . ' ' . $this->resolvePickupTimeSlot($validated['pickup_time_slot'] ?? null));
 
         $update = [
@@ -222,10 +235,8 @@ class PickupCenterController extends Controller
             'pickup_time_slot' => $validated['pickup_time_slot'] ?? null,
         ];
 
-        if ($assignedUserId || $assignedStaffId || $assignmentType !== '') {
-            $update['assignment_type'] = $assignmentType === '' ? $delivery->assignment_type : $assignmentType;
-            $update['assigned_user_id'] = $assignedUserId;
-            $update['assigned_staff_id'] = $assignedStaffId;
+        if (filled($validated['assignment_target'] ?? null)) {
+            $update += $this->resolveAssignmentTarget($validated['assignment_target'], $delivery);
         }
 
         if (!empty($validated['reason'])) {
@@ -243,8 +254,8 @@ class PickupCenterController extends Controller
             'scheduled_at' => $scheduledAt->toDateTimeString(),
             'pickup_time_slot' => $validated['pickup_time_slot'] ?? null,
             'reason' => $validated['reason'] ?? null,
-            'assigned_user_id' => $assignedUserId,
-            'assigned_staff_id' => $assignedStaffId,
+            'assigned_user_id' => $delivery->assigned_user_id,
+            'assigned_staff_id' => $delivery->assigned_staff_id,
         ], 'Pickup rescheduled from Pickup Center.');
 
         return back()->with('success', 'Pickup rescheduled successfully.');
@@ -504,23 +515,34 @@ class PickupCenterController extends Controller
             ->get(['id', 'name', 'assignment_role', 'role']);
     }
 
-    private function resolveAssignmentTarget(string $assignmentTarget): array
+    private function resolveAssignmentTarget(string $assignmentTarget, Delivery $delivery): array
     {
-        $assignmentTarget = trim($assignmentTarget);
-
-        if (str_starts_with($assignmentTarget, 'user:')) {
-            $userId = (int) substr($assignmentTarget, 5);
-
-            abort_unless($this->userAssignableForInternalPickupId($userId), 422, 'Choose a delivery or operations executive for internal pickup.');
-
-            return ['delivery_team', $userId, null];
+        if (!preg_match('/\A(user|staff|vendor-user):([1-9][0-9]{0,9})\z/', $assignmentTarget, $matches)) {
+            throw ValidationException::withMessages(['assignment_target' => 'Choose an active pickup assignee.']);
         }
 
-        if (str_starts_with($assignmentTarget, 'staff:')) {
-            return ['vendor', null, (int) substr($assignmentTarget, 6)];
+        $id = (int) $matches[2];
+        $target = $matches[1];
+        $assignment = ['assigned_user_id' => null, 'assigned_staff_id' => null,
+            'third_party_name' => null, 'third_party_contact' => null, 'third_party_phone' => null];
+        if ($target === 'vendor-user') {
+            abort_unless(auth()->user()->hasScope('all', 'deliveries'), 403);
+            $user = app(VendorLoginAssignments::class)->resolve($this->orgId(), $id, 'assignment_target');
+            if ($delivery->assignment_type === 'vendor') {
+                $assignment = array_replace($assignment, $delivery->only(['assigned_staff_id', 'third_party_name', 'third_party_contact', 'third_party_phone']));
+            }
+            return ['assignment_type' => 'vendor', 'assigned_user_id' => $user->id] + $assignment;
         }
 
-        return ['delivery_team', null, null];
+        if ($target === 'user' && $this->userAssignableForInternalPickupId($id)) {
+            return ['assignment_type' => 'delivery_team', 'assigned_user_id' => $id] + $assignment;
+        }
+
+        if ($target === 'staff' && Staff::forOrganization($this->orgId())->eligibleForAssignments()->whereKey($id)->exists()) {
+            return ['assignment_type' => 'vendor', 'assigned_staff_id' => $id] + $assignment;
+        }
+
+        throw ValidationException::withMessages(['assignment_target' => 'Choose an active pickup assignee.']);
     }
 
     private function userAssignableForInternalPickupId(int $userId): bool

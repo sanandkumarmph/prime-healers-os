@@ -165,6 +165,7 @@
         ]
         : [
             'internal_pickup' => ['Internal Pickup', 'Assign delivery / operations.'],
+            'vendor_pickup' => ['Vendor Pickup', 'Assign a vendor login to return equipment to PH.'],
             'third_party_pickup' => ['Third Party Pickup', 'Courier returns equipment to PH.'],
             'customer_self_drop' => ['Customer Self Drop', 'Customer drops at PH for verification.'],
         ];
@@ -4889,6 +4890,16 @@
                                 <option value="{{ $vendor->id }}" @selected((string) old('vendor_id') === (string) $vendor->id)>{{ $vendor->name }}</option>
                             @endforeach
                         </select>
+                    </div>
+                    <div class="renewal-field renewal-span-2" data-pickup-method-panel="vendor_pickup">
+                        <label for="pickup_vendor_user_id">Vendor login{{ $isVendorSuppliedRental ? ' (optional)' : '' }}</label>
+                        <select name="vendor_user_id" id="pickup_vendor_user_id">
+                            <option value="">{{ $isVendorSuppliedRental ? 'Company only' : 'Choose a Vendor login' }}</option>
+                            @foreach(($vendorLoginOptions ?? collect()) as $vendorUser)
+                                <option value="{{ $vendorUser->id }}" @selected((int) old('vendor_user_id') === $vendorUser->id)>{{ $vendorUser->name }}</option>
+                            @endforeach
+                        </select>
+                        @error('vendor_user_id')<p role="alert">{{ $message }}</p>@enderror
                     </div>
                     <div class="renewal-field renewal-span-2" data-pickup-method-panel="third_party_pickup">
                         <label>Third Party Details</label>
