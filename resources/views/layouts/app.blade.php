@@ -980,7 +980,7 @@
 @if(session('success') || session('error') || session('status'))
     <div
         data-action-toast
-        style="position:fixed; right:18px; bottom:18px; z-index:1200; max-width:min(420px, calc(100vw - 36px)); padding:12px 14px; border-radius:14px; box-shadow:0 18px 42px rgba(15,23,42,0.22); font-size:13px; font-weight:700; line-height:1.4; color:{{ session('error') ? '#991b1b' : '#14532d' }}; background:{{ session('error') ? '#fef2f2' : '#ecfdf5' }}; border:1px solid {{ session('error') ? '#fecaca' : '#bbf7d0' }};">
+        style="position:fixed; right:18px; top:var(--phos-action-toast-top, auto); bottom:var(--phos-action-toast-bottom, 18px); z-index:1200; pointer-events:none; max-width:min(420px, calc(100vw - 36px)); padding:12px 14px; border-radius:14px; box-shadow:0 18px 42px rgba(15,23,42,0.22); font-size:13px; font-weight:700; line-height:1.4; color:{{ session('error') ? '#991b1b' : '#14532d' }}; background:{{ session('error') ? '#fef2f2' : '#ecfdf5' }}; border:1px solid {{ session('error') ? '#fecaca' : '#bbf7d0' }};">
         {{ session('error') ?: (session('success') ?: session('status')) }}
     </div>
 @endif

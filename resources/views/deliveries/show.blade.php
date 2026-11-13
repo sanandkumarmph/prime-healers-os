@@ -1858,6 +1858,10 @@
         body.workflow-mobile-open {
             overscroll-behavior:none;
         }
+        body.workflow-mobile-open [data-action-toast] {
+            --phos-action-toast-top:calc(68px + env(safe-area-inset-top, 0px));
+            --phos-action-toast-bottom:auto;
+        }
         .workflow-preview-shell { display:none; }
         .fieldops-task-shell {
             gap:8px;
