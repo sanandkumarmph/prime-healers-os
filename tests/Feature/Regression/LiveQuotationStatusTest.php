@@ -58,7 +58,8 @@ class LiveQuotationStatusTest extends TestCase
         foreach(['Private Person','9876543210','private@example.test','proof','signature=','signed-copy?'] as $private) $this->assertStringNotContainsString($private,$response->getContent());
         $after=[Enquiry::sole()->getRawOriginal(),Quotation::sole()->getRawOriginal(),RentalAgreement::sole()->getRawOriginal(),EnquiryActivity::count()];
         $this->assertSame($before,$after);Mail::assertNothingSent();
-        $this->actingAs(TestData::user($this->sales->organization,['role'=>User::ROLE_SALES]))->getJson(route('quotations.status',$this->quote))->assertNotFound();
+        $this->actingAs(TestData::user($this->sales->organization,['role'=>User::ROLE_SALES]))
+            ->getJson(route('quotations.status',$this->quote))->assertOk()->assertJsonPath('agreement_state','pending');
         $this->actingAs(TestData::user())->getJson(route('quotations.status',$this->quote))->assertNotFound();
         $this->actingAs(TestData::user($this->sales->organization,['role'=>User::ROLE_DELIVERY]))->getJson(route('quotations.status',$this->quote))->assertForbidden();
     }

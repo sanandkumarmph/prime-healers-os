@@ -65,13 +65,13 @@ class SalesAttentionQueueTest extends TestCase
         [$invalid,$q]=$this->entry('Changed exception','accepted');$this->agreement($q,false,true);$q->update(['snapshot'=>$q->snapshot+['changed_commercial_details'=>true]]);
         [$revised,$q]=$this->entry('Latest draft revision','accepted');$this->agreement($q,true);$q->update(['status'=>'superseded']);$q->replicate()->fill(['revision'=>2,'status'=>'draft'])->save();
         [$converted]=$this->entry('Converted excluded','converted');[$closed]=$this->entry('Closed excluded');$closed->update(['stage'=>'lost']);
-        [$other]=$this->entry('Other owner private');$other->update(['owner_id'=>TestData::user($this->sales->organization)->id]);
+        [$other]=$this->entry('Colleague enquiry');$other->update(['owner_id'=>TestData::user($this->sales->organization)->id]);
         [$foreign]=$this->entry('Other organization private');$foreign->update(['organization_id'=>TestData::organization()->id]);
         $before=[Enquiry::count(),Quotation::count(),RentalAgreement::count(),EnquiryFollowUp::count()];
-        $response=$this->page([],'attention')->assertViewHas('mode','attention')->assertSee('Needs attention')->assertDontSee('Other owner private')->assertDontSee('Other organization private');
+        $response=$this->page([],'attention')->assertViewHas('mode','attention')->assertSee('Needs attention')->assertSee('Colleague enquiry')->assertDontSee('Other organization private');
         $records=$response->viewData('records')->getCollection();$this->assertSame($ready->id,$records->first()->id);$this->assertSame($exception->id,$records->get(1)->id);
         foreach($records as $record){$this->assertSame($record->attention_key,$record->attention_action['key']);$this->assertTrue($record->attention_action['attention']);}
-        $this->assertNotContains($waiting->id,$records->pluck('id'));$this->assertNotContains($converted->id,$records->pluck('id'));$this->assertSame(14,$response->viewData('records')->total());
+        $this->assertNotContains($waiting->id,$records->pluck('id'));$this->assertNotContains($converted->id,$records->pluck('id'));$this->assertSame(15,$response->viewData('records')->total());
         foreach(SalesAttentionQueue::CATEGORIES as $category=>$label)if($category!=='all'){
             $page=$this->page(['view'=>'attention','attention'=>$category],'category-'.$category);
             $this->assertSame($page->viewData('attentionCounts')[$category],$page->viewData('records')->total());

@@ -161,7 +161,7 @@
             'label' => 'Main',
             'items' => [
                 ['key' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'dashboard', 'href' => $safeRoute('dashboard'), 'active' => request()->routeIs('dashboard', 'dashboard.compact'), 'visible' => $currentUser?->canAccessDashboard() ?? false],
-                ['key' => 'rentals', 'label' => 'Rentals', 'icon' => 'rentals', 'href' => $safeRoute('rentals.index'), 'active' => request()->routeIs('rentals.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('rentals', 'read') ?? false)],
+                ['key' => 'rentals', 'label' => $currentUser?->isVendor() ? 'Linked rentals' : 'Rentals', 'icon' => 'rentals', 'href' => $safeRoute('rentals.index'), 'active' => request()->routeIs('rentals.*'), 'visible' => (!$isDeliveryFacingMenuRole || $currentUser?->isVendor()) && ($currentUser?->canAccessModule('rentals', 'read') ?? false)],
                 ['key' => 'sales', 'label' => 'Sales', 'icon' => 'sales', 'href' => $safeRoute('sales.index'), 'active' => request()->routeIs('sales.*'), 'visible' => $currentUser?->canAccessModule('sales', 'read') ?? false],
                 ['key' => 'sales_workspace', 'label' => 'Sales workspace', 'icon' => 'sales', 'href' => $safeRoute('enquiries.index'), 'active' => request()->routeIs('enquiries.*', 'quotations.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('enquiries', 'read') ?? false)],
                 ['key' => 'customers', 'label' => 'Customers', 'icon' => 'customers', 'href' => $safeRoute('customers.index'), 'active' => request()->routeIs('customers.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('customers', 'read') ?? false)],
@@ -174,7 +174,7 @@
             'label' => 'Operations',
             'items' => [
                 ['key' => 'renewal_center', 'label' => 'Renewal Center', 'icon' => 'rentals', 'href' => $safeRoute('renewal-center.index'), 'active' => request()->routeIs('renewal-center.*'), 'visible' => !$isDeliveryFacingMenuRole && ($currentUser?->canAccessModule('rentals', 'read') ?? false)],
-                ['key' => 'pickup_center', 'label' => 'Pickup Center', 'icon' => 'pickup', 'href' => $safeRoute('pickup-center.index'), 'active' => request()->routeIs('pickup-center.*'), 'visible' => $currentUser?->canAccessModule('deliveries', 'read') ?? false],
+                ['key' => 'pickup_center', 'label' => 'Pickup Center', 'icon' => 'pickup', 'href' => $safeRoute('pickup-center.index'), 'active' => request()->routeIs('pickup-center.*'), 'visible' => !$currentUser?->isVendor() && ($currentUser?->canAccessModule('deliveries', 'read') ?? false)],
                 ['key' => 'communication_center', 'label' => 'Communication Center', 'icon' => 'customers', 'href' => $safeRoute('communication-center.index'), 'active' => request()->routeIs('communication-center.*'), 'visible' => (!$isDeliveryFacingMenuRole || $currentUser?->isDelivery()) && !$currentUser?->isFinance() && ($currentUser?->canAccessAnyModule(['rentals', 'sales', 'customers', 'deliveries', 'invoices'], 'read') ?? false)],
                 ['key' => 'delivery_asset_entry', 'label' => 'Add an asset', 'icon' => 'assets', 'href' => $safeRoute('deliveries.assets.create'), 'active' => request()->routeIs('deliveries.assets.*'), 'visible' => ($currentUser?->isDelivery() ?? false) && $currentUser->canAccessModule('deliveries', 'update')],
                 ['key' => 'tasks_board', 'label' => 'Tasks Board', 'icon' => 'deliveries', 'href' => $safeRoute('deliveries.index'), 'active' => request()->routeIs('deliveries.*') || request()->routeIs('pickups.*'), 'visible' => $currentUser?->canAccessModule('deliveries', 'read') ?? false],
@@ -980,7 +980,7 @@
 @if(session('success') || session('error') || session('status'))
     <div
         data-action-toast
-        style="position:fixed; right:18px; bottom:18px; z-index:1200; max-width:min(420px, calc(100vw - 36px)); padding:12px 14px; border-radius:14px; box-shadow:0 18px 42px rgba(15,23,42,0.22); font-size:13px; font-weight:700; line-height:1.4; color:{{ session('error') ? '#991b1b' : '#14532d' }}; background:{{ session('error') ? '#fef2f2' : '#ecfdf5' }}; border:1px solid {{ session('error') ? '#fecaca' : '#bbf7d0' }};">
+        style="position:fixed; right:18px; bottom:18px; z-index:1200; pointer-events:none; max-width:min(420px, calc(100vw - 36px)); padding:12px 14px; border-radius:14px; box-shadow:0 18px 42px rgba(15,23,42,0.22); font-size:13px; font-weight:700; line-height:1.4; color:{{ session('error') ? '#991b1b' : '#14532d' }}; background:{{ session('error') ? '#fef2f2' : '#ecfdf5' }}; border:1px solid {{ session('error') ? '#fecaca' : '#bbf7d0' }};">
         {{ session('error') ?: (session('success') ?: session('status')) }}
     </div>
 @endif

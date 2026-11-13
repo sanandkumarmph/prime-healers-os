@@ -27,6 +27,7 @@ class DeliveryCollectionController extends Controller
     public function show(Request $request, int $delivery, DeliveryCollectionService $service)
     {
         $task = $service->task($request->user(), $delivery);
+        abort_if($request->user()->isVendor() && !$task->collection_required, 403);
         $invoice = $service->invoice($task); $invoice->syncFinancialStatus();
         $version = $service->version($task, $invoice);
         $entries = DeliveryCollection::where('organization_id', $request->user()->organization_id)->where('delivery_id', $task->id)

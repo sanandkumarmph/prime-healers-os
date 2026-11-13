@@ -2,12 +2,15 @@
 
 namespace App\Services;
 
+use App\Models\CylinderRefill;
 use App\Models\Delivery;
 use App\Models\FollowUp;
 use App\Models\Payment;
 use App\Models\User;
 use App\Notifications\OperationalInAppNotification;
+use App\Services\Deliveries\VendorWorkScope;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\LengthAwarePaginator as Paginator;
@@ -24,13 +27,32 @@ class NotificationCenterService
         return $this->hasNotificationsTable ??= Schema::hasTable('notifications');
     }
 
+    private function visibleNotifications(User $user): MorphMany
+    {
+        $notifications = $user->notifications();
+        if (!$user->isVendor()) {
+            return $notifications;
+        }
+
+        $deliveries = app(VendorWorkScope::class)->deliveries(Delivery::query(), $user)->select('deliveries.id');
+        return $notifications->where(function ($query) use ($deliveries, $user) {
+            $query->where(fn ($task) => $task->where('data->related_type', Delivery::class)
+                ->whereIn('data->related_id', $deliveries));
+            if (CylinderRefill::available()) {
+                $query->orWhere(fn ($refill) => $refill->where('data->related_type', CylinderRefill::class)
+                    ->whereIn('data->related_id', CylinderRefill::query()->where('organization_id', $user->organization_id)
+                        ->where('assigned_user_id', $user->id)->select('id')));
+            }
+        });
+    }
+
     public function unreadCountFor(User $user): int
     {
         if (!$this->available()) {
             return 0;
         }
 
-        return (int) $user->unreadNotifications()->count();
+        return (int) $this->visibleNotifications($user)->whereNull('read_at')->count();
     }
 
     /**
@@ -42,7 +64,7 @@ class NotificationCenterService
             return collect();
         }
 
-        return $user->notifications()
+        return $this->visibleNotifications($user)
             ->reorder()
             ->orderByRaw('CASE WHEN read_at IS NULL THEN 0 ELSE 1 END')
             ->latest()
@@ -58,7 +80,7 @@ class NotificationCenterService
             return new Paginator([], 0, $perPage);
         }
 
-        return $user->notifications()
+        return $this->visibleNotifications($user)
             ->latest()
             ->paginate($perPage)
             ->through(fn (DatabaseNotification $notification) => $this->transform($notification));
@@ -70,7 +92,7 @@ class NotificationCenterService
             return false;
         }
 
-        $notification = $user->notifications()->whereKey($notificationId)->first();
+        $notification = $this->visibleNotifications($user)->whereKey($notificationId)->first();
 
         if (!$notification) {
             return false;
@@ -89,7 +111,7 @@ class NotificationCenterService
             return 0;
         }
 
-        return $user->unreadNotifications()->update([
+        return $this->visibleNotifications($user)->whereNull('read_at')->update([
             'read_at' => now(),
             'updated_at' => now(),
         ]);
@@ -113,7 +135,7 @@ class NotificationCenterService
             return 0;
         }
 
-        return $user->unreadNotifications()
+        return $this->visibleNotifications($user)->whereNull('read_at')
             ->whereIn('id', $ids->all())
             ->update([
                 'read_at' => now(),

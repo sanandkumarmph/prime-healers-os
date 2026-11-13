@@ -266,6 +266,7 @@ class DashboardWidgetRegistryService
             'operations',
             'operations_manager' => in_array($widgetKey, $leadershipWidgets, true),
             User::ROLE_SALES,
+            User::ROLE_SALES_2,
             User::ROLE_SALES_RENEWALS => in_array($widgetKey, $salesWidgets, true),
             User::ROLE_DELIVERY,
             User::ROLE_DELIVERY_EXECUTIVE,

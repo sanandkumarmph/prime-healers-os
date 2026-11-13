@@ -13,6 +13,7 @@ use App\Models\Role;
 use App\Models\Sale;
 use App\Services\Deliveries\DeliveryProofService;
 use App\Services\Deliveries\DeliveryWorkflowService;
+use App\Services\Deliveries\VendorLoginAssignments;
 use App\Services\Metrics\LogisticsMetricsService;
 use App\Services\NotificationCenterService;
 use App\Models\Staff;
@@ -827,6 +828,10 @@ class DeliveryController extends Controller
     {
         $user = auth()->user();
 
+        if ($user?->isVendor()) {
+            return app(\App\Services\Deliveries\VendorWorkScope::class)->deliveries($query, $user);
+        }
+
         if ($user && $this->shouldRestrictToAssignedDeliveryTasks($user)) {
             $query->where('assigned_user_id', $user->id);
         }
@@ -1285,6 +1290,42 @@ class DeliveryController extends Controller
         });
     }
 
+    private function canChooseVendorLogin(User $user): bool
+    {
+        return $this->hasAssignedUserColumn() && $this->hasAssignmentTypeColumn()
+            && !$user->hasScope('assigned', 'deliveries');
+    }
+
+    private function vendorLoginRules(Request $request): array
+    {
+        return [
+            'bail',
+            'nullable',
+            Rule::prohibitedIf($request->input('assignment_type') !== 'vendor' || !$this->canChooseVendorLogin($request->user())),
+            'integer',
+            app(VendorLoginAssignments::class)->rule($this->orgId()),
+        ];
+    }
+
+    private function taskAssigneeId(Request $request, array $validated, ?Delivery $delivery = null): ?int
+    {
+        $assignmentType = $request->input('assignment_type', 'delivery_team');
+        if ($assignmentType === 'delivery_team') {
+            return isset($validated['assigned_user_id']) ? (int) $validated['assigned_user_id'] : null;
+        }
+
+        if ($assignmentType !== 'vendor') {
+            return null;
+        }
+
+        $previousId = $delivery?->assignment_type === 'vendor' ? $delivery->assigned_user_id : null;
+        $vendorId = array_key_exists('vendor_user_id', $validated) && $this->canChooseVendorLogin($request->user())
+            ? $validated['vendor_user_id']
+            : $previousId;
+
+        return app(VendorLoginAssignments::class)->resolve($this->orgId(), $vendorId === null ? null : (int) $vendorId)?->id;
+    }
+
     private function syncAssignedAssetStatuses(Delivery $delivery): void
     {
         $this->deliveryWorkflowService()->syncAssignedAssetStatuses($this->orgId(), $delivery, $this->hasSaleColumn());
@@ -1325,8 +1366,9 @@ class DeliveryController extends Controller
         $legacyDefault = $legacyBoardDefaults[$legacyBoard] ?? [];
 
         $currentUser = auth()->user();
+        $vendorBoard = $currentUser?->isVendor() ?? false;
         $deliveryFocusedBoard = $this->isDeliveryFocusedUser($currentUser);
-        $restrictedToAssignedTasks = $this->shouldRestrictToAssignedDeliveryTasks($currentUser);
+        $restrictedToAssignedTasks = $vendorBoard || $this->shouldRestrictToAssignedDeliveryTasks($currentUser);
         $defaultOwnershipFilter = $restrictedToAssignedTasks ? 'my' : 'all';
 
         $tab = strtolower((string) $request->query('tab', $legacyDefault['tab'] ?? 'all'));
@@ -1335,8 +1377,8 @@ class DeliveryController extends Controller
         $fromDate = trim((string) $request->query('from_date', ''));
         $toDate = trim((string) $request->query('to_date', ''));
         $taskType = strtolower((string) $request->query('task_type', $legacyDefault['task_type'] ?? ''));
-        $staffFilter = trim((string) $request->query('staff', ''));
-        $areaFilter = trim((string) $request->query('area', ''));
+        $staffFilter = $vendorBoard ? '' : trim((string) $request->query('staff', ''));
+        $areaFilter = $vendorBoard ? '' : trim((string) $request->query('area', ''));
         $statusFilter = strtolower((string) $request->query('status', $legacyDefault['status'] ?? ''));
         $workflowFilter = strtolower((string) $request->query('workflow', $legacyDefault['workflow'] ?? ''));
         $ownershipFilter = strtolower((string) $request->query('ownership', $defaultOwnershipFilter));
@@ -1694,13 +1736,16 @@ class DeliveryController extends Controller
             ->take(5)
             ->values();
 
-        $assignableUsers = $this->assignableUsers();
-        $assignableStaffMembers = $this->assignableStaffMembers();
-        $warehouseOptions = \App\Models\Warehouse::query()
+        $assignableUsers = $vendorBoard ? collect() : $this->assignableUsers();
+        $assignableStaffMembers = $vendorBoard ? collect() : $this->assignableStaffMembers();
+        $vendorLoginOptions = !$restrictedToAssignedTasks && $this->canChooseVendorLogin($currentUser)
+            ? app(VendorLoginAssignments::class)->options($this->orgId())
+            : collect();
+        $warehouseOptions = $vendorBoard ? collect() : \App\Models\Warehouse::query()
             ->where('organization_id', $this->orgId())
             ->orderBy('name')
             ->get(['id', 'name']);
-        $areaOptions = DB::table('customers')
+        $areaOptions = $vendorBoard ? collect() : DB::table('customers')
             ->where('organization_id', $this->orgId())
             ->whereNotNull('city')
             ->where('city', '!=', '')
@@ -1715,6 +1760,7 @@ class DeliveryController extends Controller
             : collect();
 
         return view('deliveries.index', compact(
+            'vendorBoard',
             'tab',
             'search',
             'selectedDate',
@@ -1757,6 +1803,7 @@ class DeliveryController extends Controller
             'pendingCollections',
             'assignableUsers',
             'assignableStaffMembers',
+            'vendorLoginOptions',
             'warehouseOptions',
             'areaOptions',
             'refillTasks'
@@ -1796,10 +1843,12 @@ class DeliveryController extends Controller
 
         $assignableUsers = $this->assignableUsers();
         $assignableStaffMembers = $this->assignableStaffMembers();
+        $canChooseVendorLogin = $this->canChooseVendorLogin($request->user());
+        $vendorLoginOptions = $canChooseVendorLogin ? app(VendorLoginAssignments::class)->options($this->orgId()) : collect();
         $saleAssets = $this->availableSaleAssets($selectedSale);
         $cancellationReasonOptions = $this->cancellationReasonOptions();
 
-        return view('deliveries.create', compact('rentals', 'sales', 'selectedRentalId', 'selectedSaleId', 'selectedType', 'assignableUsers', 'assignableStaffMembers', 'hasSaleSupport', 'saleAssets', 'cancellationReasonOptions'));
+        return view('deliveries.create', compact('rentals', 'sales', 'selectedRentalId', 'selectedSaleId', 'selectedType', 'assignableUsers', 'assignableStaffMembers', 'canChooseVendorLogin', 'vendorLoginOptions', 'hasSaleSupport', 'saleAssets', 'cancellationReasonOptions'));
     }
 
     public function store(Request $request)
@@ -1839,6 +1888,7 @@ class DeliveryController extends Controller
 
         if ($this->hasAssignedUserColumn()) {
             $validationRules['assigned_user_id'] = ['nullable', $this->assignableUserRule()];
+            $validationRules['vendor_user_id'] = $this->vendorLoginRules($request);
         }
 
         if ($this->hasThirdPartyNameColumn()) {
@@ -1950,7 +2000,7 @@ class DeliveryController extends Controller
         }
 
         if ($this->hasAssignedUserColumn()) {
-            $data['assigned_user_id'] = $assignmentType === 'delivery_team' ? $request->assigned_user_id : null;
+            $data['assigned_user_id'] = $this->taskAssigneeId($request, $validated);
         }
 
         if ($this->hasThirdPartyNameColumn()) {
@@ -1969,6 +2019,13 @@ class DeliveryController extends Controller
 
         if ($this->hasAssignedStaffColumn()) {
             $data['assigned_staff_id'] = $assignmentType === 'vendor' ? $request->assigned_staff_id : null;
+        }
+
+        if ($this->hasPickupStatusColumn() && $assignmentType === 'vendor' && !empty($data['assigned_user_id'])) {
+            $data['pickup_status'] = $this->derivedPickupWorkflowStatus(
+                (string) $validated['type'], (string) $validated['status'], $validated['scheduled_at'] ?? null,
+                $assignmentType, $data['assigned_user_id'], $data['assigned_staff_id'] ?? null, null
+            );
         }
 
         if ($request->status === 'completed') {
@@ -2015,7 +2072,7 @@ class DeliveryController extends Controller
         $delivery = $this->scopedDelivery($delivery, false);
         $this->authorize('view', $delivery);
 
-        if ($delivery->type === 'pickup' && $delivery->status === 'completed' && $delivery->rental_id) {
+        if (!auth()->user()->isVendor() && $delivery->type === 'pickup' && $delivery->status === 'completed' && $delivery->rental_id) {
             $rental = Rental::query()
                 ->where('organization_id', $this->orgId())
                 ->find($delivery->rental_id);
@@ -2082,7 +2139,7 @@ class DeliveryController extends Controller
             : null;
 
         $order = $delivery->sale ?? $delivery->rental;
-        $orderOwnership = $order && (int) $order->organization_id === (int) $delivery->organization_id
+        $orderOwnership = !auth()->user()->isVendor() && $order && (int) $order->organization_id === (int) $delivery->organization_id
             ? app(\App\Support\ActivityTimelineService::class)->orderOwnership($order)
             : null;
 
@@ -2103,6 +2160,7 @@ class DeliveryController extends Controller
 
     public function edit(Delivery $delivery)
     {
+        abort_if(auth()->user()->isVendor(), 403);
         $delivery = $this->scopedDelivery($delivery);
         $this->authorize('update', $delivery);
 
@@ -2126,15 +2184,18 @@ class DeliveryController extends Controller
 
         $assignableUsers = $this->assignableUsers();
         $assignableStaffMembers = $this->assignableStaffMembers();
+        $canChooseVendorLogin = $this->canChooseVendorLogin(auth()->user());
+        $vendorLoginOptions = $canChooseVendorLogin ? app(VendorLoginAssignments::class)->options($this->orgId()) : collect();
         $selectedSale = $delivery->sale;
         $saleAssets = $this->availableSaleAssets($selectedSale);
         $cancellationReasonOptions = $this->cancellationReasonOptions();
 
-        return view('deliveries.edit', compact('delivery', 'rentals', 'sales', 'assignableUsers', 'assignableStaffMembers', 'hasSaleSupport', 'saleAssets', 'cancellationReasonOptions'));
+        return view('deliveries.edit', compact('delivery', 'rentals', 'sales', 'assignableUsers', 'assignableStaffMembers', 'canChooseVendorLogin', 'vendorLoginOptions', 'hasSaleSupport', 'saleAssets', 'cancellationReasonOptions'));
     }
 
     public function update(Request $request, Delivery $delivery)
     {
+        abort_if($request->user()->isVendor(), 403);
         $delivery = $this->scopedDelivery($delivery);
         $this->authorize('update', $delivery);
         $rental = $delivery->rental()->first();
@@ -2185,6 +2246,7 @@ class DeliveryController extends Controller
 
         if ($this->hasAssignedUserColumn()) {
             $validationRules['assigned_user_id'] = ['nullable', $this->assignableUserRule()];
+            $validationRules['vendor_user_id'] = $this->vendorLoginRules($request);
         }
 
         if ($this->hasThirdPartyNameColumn()) {
@@ -2326,7 +2388,7 @@ class DeliveryController extends Controller
         }
 
         if ($this->hasAssignedUserColumn()) {
-            $data['assigned_user_id'] = $assignmentType === 'delivery_team' ? $request->assigned_user_id : null;
+            $data['assigned_user_id'] = $this->taskAssigneeId($request, $validated, $delivery);
         }
 
         if ($this->hasThirdPartyNameColumn()) {
@@ -2344,7 +2406,8 @@ class DeliveryController extends Controller
         }
 
         if ($this->hasAssignedStaffColumn()) {
-            $data['assigned_staff_id'] = $assignmentType === 'vendor' ? $request->assigned_staff_id : null;
+            $previousStaffId = $delivery->assignment_type === 'vendor' ? $delivery->assigned_staff_id : null;
+            $data['assigned_staff_id'] = $assignmentType === 'vendor' ? $request->input('assigned_staff_id', $previousStaffId) : null;
         }
 
         if ($this->hasPickupStatusColumn()) {

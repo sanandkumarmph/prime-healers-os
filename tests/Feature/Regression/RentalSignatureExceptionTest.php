@@ -114,17 +114,19 @@ class RentalSignatureExceptionTest extends TestCase
         $this->assertSame(1,EnquiryActivity::where('type','quotation.signature_exception_approved')->count());
     }
 
-    public function test_other_staff_foreign_organizations_and_custom_non_sales_roles_cannot_approve(): void
+    public function test_company_sales_can_approve_a_colleagues_exception_with_evidence(): void
     {
         $quote=$this->quote();$input=$this->input($quote);$url=route('quotations.signature-exception',$quote);
-        $this->actingAs(TestData::user($this->sales->organization,['role'=>User::ROLE_SALES]))->post($url,$input)->assertNotFound();
+        $colleague = TestData::user($this->sales->organization, ['role' => User::ROLE_SALES]);
         $this->actingAs(TestData::user())->post($url,$input)->assertNotFound();
         $this->actingAs(TestData::user($this->sales->organization,['role'=>User::ROLE_FINANCE]))->post($url,$input)->assertForbidden();
         $role=Role::create(['organization_id'=>$this->sales->organization_id,'name'=>'Quote editor','slug'=>'quote_editor','is_active'=>true,
             'permissions'=>['enquiries'=>['read','update'],'quotations'=>['read','update']]]);
         $this->actingAs(TestData::user($this->sales->organization,['role_id'=>$role->id]))->post($url,$input)->assertForbidden();
-        $this->actingAs($this->admin)->post($url,$input)->assertSessionHasNoErrors();
-        $this->assertSame($this->admin->id,app(RentalAgreements::class)->quotation($quote)->exception_approval['approved_by_user_id']);
+        $this->actingAs($colleague)->postJson($url, array_replace($input, ['exception_reason' => '']))
+            ->assertUnprocessable()->assertJsonValidationErrors('exception_reason');
+        $this->post($url,$input)->assertSessionHasNoErrors();
+        $this->assertSame($colleague->id,app(RentalAgreements::class)->quotation($quote)->exception_approval['approved_by_user_id']);
     }
 
     public function test_revision_and_material_rental_changes_invalidate_exception(): void

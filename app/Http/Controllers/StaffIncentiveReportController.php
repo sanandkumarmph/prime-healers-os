@@ -39,7 +39,7 @@ class StaffIncentiveReportController extends Controller
         $row->booked_by_name = $users->get($row->creator_id)?->name;
 
         $row->suggested_staff_id = collect([$row->staff_id, $row->enquiry_owner_id, $row->converted_by_user_id, $row->creator_id])
-            ->first(fn ($id) => $users->get($id)?->effective_role === User::ROLE_SALES);
+            ->first(fn ($id) => in_array($users->get($id)?->effective_role, User::SALES_ROLE_SLUGS, true));
         if (!$row->attribution_id && $row->quotation_id) {
             $row->staff_id = $row->suggested_staff_id;
         }
@@ -93,7 +93,7 @@ class StaffIncentiveReportController extends Controller
         $eligible = $eligible->filter(fn ($row) => (!$staff || (int) $row->staff_id === $staff)
             && (!$source || $row->eligible_source === $source))
             ->sortByDesc('invoice_date')->values();
-        $salesRoster = $users->filter(fn (User $member) => $member->effective_role === User::ROLE_SALES);
+        $salesRoster = $users->filter(fn (User $member) => in_array($member->effective_role, User::SALES_ROLE_SLUGS, true));
         $bookedSales = $this->bookingCounts($organization, 'sale', $from, $to, $salesRoster->keys()->all());
         $bookedRentals = $this->bookingCounts($organization, 'rental', $from, $to, $salesRoster->keys()->all());
         $pendingByStaff = $review->pluck('suggested_staff_id')->filter()->countBy();

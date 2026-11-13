@@ -101,25 +101,16 @@ class InvoiceRecordFinanceVisibilityRegressionTest extends TestCase
         }
     }
 
-    public function test_vendor_invoice_reader_cannot_see_invoice_financial_values(): void
+    public function test_vendor_cannot_open_invoices_even_with_a_saved_invoice_grant(): void
     {
-        [$invoice, $organization] = $this->invoiceFixture();
+        [, $organization] = $this->invoiceFixture();
         $vendorUser = $this->userWithRole($organization, User::ROLE_VENDOR, [
             'invoices' => ['read'],
         ]);
 
         $this->assertFalse($vendorUser->canViewRecordFinance());
 
-        $html = $this->actingAs($vendorUser)
-            ->get(route('invoices.index'))
-            ->assertOk()
-            ->getContent();
-
-        $this->assertStringContainsString($invoice->invoice_number, $html);
-        $this->assertStringContainsString('Restricted', $html);
-        $this->assertStringNotContainsString('&#8377;9,876.54', $html);
-        $this->assertStringNotContainsString('&#8377;8,765.43', $html);
-        $this->assertStringNotContainsString('CGST &#8377;111.11', $html);
+        $this->actingAs($vendorUser)->getJson(route('invoices.index'))->assertForbidden();
     }
 
     public function test_payment_action_requires_payment_create_permission_even_when_record_finance_is_visible(): void

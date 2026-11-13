@@ -20,7 +20,8 @@ class CylinderServiceController extends Controller
         $jobs = CylinderJob::with(['rental', 'incoming.asset', 'outgoing.asset', 'assignee'])
             ->where('organization_id', $user->organization_id)
             ->when($request->filled('rental_id'), fn ($q) => $q->where('rental_id',$request->integer('rental_id')))
-            ->when($user->scopeType($module) !== 'all', fn ($q) => $q->where(fn ($a) => $a->where('assigned_user_id', $user->id)->orWhere('created_by_user_id', $user->id)))
+            ->when($user->isVendor(), fn ($q) => $q->where('assigned_user_id', $user->id))
+            ->when(!$user->isVendor() && $user->scopeType($module) !== 'all', fn ($q) => $q->where(fn ($a) => $a->where('assigned_user_id', $user->id)->orWhere('created_by_user_id', $user->id)))
             ->orderByRaw("case when status = 'open' then 0 else 1 end")->latest('id')->paginate(20);
         return view('cylinder-services.index', compact('jobs'));
     }

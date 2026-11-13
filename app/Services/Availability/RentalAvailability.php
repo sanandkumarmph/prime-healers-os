@@ -17,7 +17,7 @@ class RentalAvailability
 {
     public function authorize(User $user): void
     {
-        abort_unless($user->is_active && $user->organization()->where('is_active', true)->exists()
+        abort_unless(!$user->isVendor() && $user->is_active && $user->organization()->where('is_active', true)->exists()
             && ($user->canAccessModule('rentals', 'read')
                 || ($user->canAccessModule('enquiries', 'read') && $user->canAccessModule('quotations', 'create'))), 403);
     }

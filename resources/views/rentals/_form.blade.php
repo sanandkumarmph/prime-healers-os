@@ -146,6 +146,9 @@
     $selectedFulfilmentVendorId = (int) old('vendor_id', $isEdit ? ($rental->vendor_id ?? 0) : 0);
     $selectedDeliveryResponsibility = old('delivery_responsibility', $isEdit ? ($rental->delivery_responsibility ?? 'ph_internal_delivery') : 'ph_internal_delivery');
     $selectedPickupResponsibility = old('pickup_responsibility', $isEdit ? ($rental->pickup_responsibility ?? 'ph_internal_pickup') : 'ph_internal_pickup');
+    $selectedVendorUserId = $isEdit && $rental->deliveryRecord?->assignment_type === 'vendor'
+        && !in_array($rental->deliveryRecord->status, ['completed', 'cancelled'], true)
+        ? $rental->deliveryRecord->assigned_user_id : null;
     $selectedCityId = (int) old('city_id', 0);
     $thirdPartyDeliveryMembers = collect($staffMembers ?? collect())->filter(function ($staff) {
         return ($staff->effective_role ?? null) === 'third_party';
@@ -3352,6 +3355,18 @@
                 @if($selectedFulfilmentSource !== 'vendor_supplied')
                     @error('vendor_id')<span class="field-error">{{ $message }}</span>@enderror
                 @endif
+            </div>
+
+            <div class="rental-field rental-col-6{{ $hasFieldError('vendor_user_id') ? ' is-error' : '' }}" id="rentalVendorLoginField" style="{{ $selectedDeliveryAssignmentType === 'vendor' ? '' : 'display:none;' }}">
+                <label for="rental_vendor_user_id">Vendor login</label>
+                <select name="vendor_user_id" id="rental_vendor_user_id" @disabled($selectedDeliveryAssignmentType !== 'vendor')>
+                    <option value="">Company only</option>
+                    @foreach(($vendorLoginOptions ?? collect()) as $vendorUser)
+                        <option value="{{ $vendorUser->id }}" @selected((int) old('vendor_user_id', $selectedVendorUserId) === $vendorUser->id)>{{ $vendorUser->name }}</option>
+                    @endforeach
+                </select>
+                <small class="rental-helper">Assigns the delivery to this person's Tasks Board.</small>
+                @error('vendor_user_id')<span class="field-error">{{ $message }}</span>@enderror
             </div>
 
             <div class="rental-field {{ $isEdit ? 'rental-col-3' : 'rental-col-6' }}{{ $hasFieldError('delivery_staff_id') ? ' is-error' : '' }}" id="deliveryPartnerField">
@@ -8539,6 +8554,8 @@
         const originalVendorNodes = vendorSelect ? Array.from(vendorSelect.children).map((node) => node.cloneNode(true)) : [];
         const deliveryVendorField = document.getElementById('rentalDeliveryVendorField');
         const deliveryVendorSelect = document.getElementById('delivery_vendor_id');
+        const vendorLoginField = document.getElementById('rentalVendorLoginField');
+        const vendorLoginSelect = document.getElementById('rental_vendor_user_id');
         const originalDeliveryPartnerNodes = deliveryAssignmentSelect ? Array.from(deliveryAssignmentSelect.children).map((node) => node.cloneNode(true)) : [];
 
         function syncProductOptionLabels() {
@@ -8667,6 +8684,10 @@
             const chooseDeliveryVendor = assignmentType === 'vendor' && !isVendorSupplied;
             deliveryVendorField.style.display = chooseDeliveryVendor ? '' : 'none';
             deliveryVendorSelect.disabled = !chooseDeliveryVendor;
+            if (vendorLoginField && vendorLoginSelect) {
+                vendorLoginField.style.display = assignmentType === 'vendor' ? '' : 'none';
+                vendorLoginSelect.disabled = assignmentType !== 'vendor';
+            }
 
             const showPartnerField = assignmentType === 'ph_internal' || assignmentType === 'third_party';
             if (deliveryPartnerField) {

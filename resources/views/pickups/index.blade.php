@@ -331,6 +331,9 @@
                             @foreach($assignableUsers as $user)
                                 <option value="user:{{ $user->id }}" @selected(request('staff') === 'user:' . $user->id)>{{ $user->name }} ({{ Str::headline($user->role ?: 'user') }})</option>
                             @endforeach
+                            @foreach($vendorLoginOptions as $user)
+                                <option value="user:{{ $user->id }}" @selected(request('staff') === 'user:' . $user->id)>{{ $user->name }} (Vendor login)</option>
+                            @endforeach
                             @foreach($assignableStaff as $staffMember)
                                 <option value="staff:{{ $staffMember->id }}" @selected(request('staff') === 'staff:' . $staffMember->id)>{{ $staffMember->name }} (Vendor/Partner)</option>
                             @endforeach
@@ -559,6 +562,9 @@
                                                 @foreach($assignableUsers as $user)
                                                     <option value="user:{{ $user->id }}">{{ $user->name }} ({{ Str::headline($user->role ?: 'user') }})</option>
                                                 @endforeach
+                                                @foreach($vendorLoginOptions as $user)
+                                                    <option value="vendor-user:{{ $user->id }}">{{ $user->name }} (Vendor login)</option>
+                                                @endforeach
                                                 @foreach($assignableStaff as $staffMember)
                                                     <option value="staff:{{ $staffMember->id }}">{{ $staffMember->name }} (Vendor/Partner)</option>
                                                 @endforeach
@@ -618,6 +624,9 @@
                                                 <option value="">Keep current assignment</option>
                                                 @foreach($assignableUsers as $user)
                                                     <option value="user:{{ $user->id }}">{{ $user->name }} ({{ Str::headline($user->role ?: 'user') }})</option>
+                                                @endforeach
+                                                @foreach($vendorLoginOptions as $user)
+                                                    <option value="vendor-user:{{ $user->id }}">{{ $user->name }} (Vendor login)</option>
                                                 @endforeach
                                                 @foreach($assignableStaff as $staffMember)
                                                     <option value="staff:{{ $staffMember->id }}">{{ $staffMember->name }} (Vendor/Partner)</option>

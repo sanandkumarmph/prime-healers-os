@@ -13,6 +13,7 @@ use App\Models\Product;
 use App\Models\Rental;
 use App\Models\Sale;
 use App\Models\Vendor;
+use App\Services\Deliveries\VendorWorkScope;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -23,6 +24,22 @@ use Illuminate\Support\Facades\Schema;
 
 class GlobalSearchController extends Controller
 {
+    private function rentalSearchQuery(int $organizationId): Builder
+    {
+        $query = Rental::query()->forOrganization($organizationId);
+        $user = auth()->user();
+
+        return $user->isVendor() ? app(VendorWorkScope::class)->rentals($query, $user) : $query;
+    }
+
+    private function deliverySearchQuery(int $organizationId): Builder
+    {
+        $query = Delivery::query()->where('deliveries.organization_id', $organizationId);
+        $user = auth()->user();
+
+        return $user->isVendor() ? app(VendorWorkScope::class)->deliveries($query, $user) : $query;
+    }
+
     public function index(Request $request): View
     {
         $query = trim((string) $request->query('q', ''));
@@ -305,9 +322,8 @@ class GlobalSearchController extends Controller
     {
         $numericQuery = $this->numericQuery($query);
 
-        return Rental::query()
+        return $this->rentalSearchQuery($organizationId)
             ->with(['product:id,name,brand,model_name', 'customer:id,name,phone,email,whatsapp_number'])
-            ->where('organization_id', $organizationId)
             ->where(function (Builder $rentalQuery) use ($query, $numericQuery) {
                 $rentalQuery->where('customer_name', 'like', "%{$query}%")
                     ->orWhere('phone', 'like', "%{$query}%")
@@ -507,9 +523,8 @@ class GlobalSearchController extends Controller
     {
         $numericQuery = $this->numericQuery($query);
 
-        return Delivery::query()
+        return $this->deliverySearchQuery($organizationId)
             ->with(['rental.customer:id,name,phone,email,whatsapp_number', 'rental.product:id,name,brand,model_name', 'sale.customer:id,name,phone,email,whatsapp_number', 'sale.product:id,name,brand,model_name'])
-            ->where('organization_id', $organizationId)
             ->where('type', $type === 'pickup' ? 'pickup' : 'delivery')
             ->where(function (Builder $deliveryQuery) use ($query, $numericQuery) {
                 $deliveryQuery->where('notes', 'like', "%{$query}%")
@@ -672,9 +687,8 @@ class GlobalSearchController extends Controller
     {
         $numericQuery = $this->numericQuery($query);
 
-        return Rental::query()
+        return $this->rentalSearchQuery($organizationId)
             ->with(['product:id,name,brand,model_name', 'customer:id,name,phone,email,whatsapp_number'])
-            ->where('organization_id', $organizationId)
             ->where(function (Builder $rentalQuery) use ($query, $numericQuery) {
                 $rentalQuery->where('customer_name', 'like', "%{$query}%")
                     ->orWhere('phone', 'like', "%{$query}%")
@@ -804,14 +818,13 @@ class GlobalSearchController extends Controller
     {
         $numericQuery = $this->numericQuery($query);
 
-        return Delivery::query()
+        return $this->deliverySearchQuery($organizationId)
             ->with([
                 'rental.customer:id,name,phone,email,whatsapp_number',
                 'rental.product:id,name,brand,model_name',
                 'sale.customer:id,name,phone,email,whatsapp_number',
                 'sale.product:id,name,brand,model_name',
             ])
-            ->where('organization_id', $organizationId)
             ->where(function (Builder $deliveryQuery) use ($query, $numericQuery) {
                 $deliveryQuery->where('notes', 'like', "%{$query}%");
 

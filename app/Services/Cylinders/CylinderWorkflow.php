@@ -55,6 +55,11 @@ class CylinderWorkflow
         abort_unless($user->canAccessModule($module, $action), 403);
         if ($job) {
             abort_unless((int) $job->organization_id === (int) $user->organization_id, 404);
+            if ($user->isVendor()) {
+                abort_unless((int) $job->assigned_user_id === (int) $user->id, 404);
+
+                return;
+            }
             abort_unless($user->scopeType($module) === 'all' || in_array((int) $user->id,
                 [(int) $job->assigned_user_id, (int) $job->created_by_user_id], true), 404);
         }

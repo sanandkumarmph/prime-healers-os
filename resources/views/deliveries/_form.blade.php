@@ -24,6 +24,7 @@
     $selectedRentalValue = old('rental_id', $isEdit ? $delivery->rental_id : ($selectedRentalId ?? null));
     $selectedSaleValue = old('sale_id', $isEdit ? ($delivery->sale_id ?? null) : ($selectedSaleId ?? null));
     $selectedSaleAssetValue = old('sale_asset_id', $isEdit ? ($delivery->sale?->asset_id ?? null) : null);
+    $selectedVendorUserId = old('vendor_user_id', $isEdit && $delivery->assignment_type === 'vendor' ? $delivery->assigned_user_id : null);
     $hasSaleSupport = $hasSaleSupport ?? \Illuminate\Support\Facades\Schema::hasColumn('deliveries', 'sale_id');
     $saleAssetOptions = collect($saleAssets ?? collect())->map(function ($asset) {
         return [
@@ -316,6 +317,22 @@
                 <span style="font-size:11px; color:#94a3b8;">Use this when the assignment should go to a vendor or operational staff record.</span>
             </div>
 
+            @if($canChooseVendorLogin ?? false)
+                <div class="ops-field span-4 {{ $hasFieldError('vendor_user_id') ? 'is-error' : '' }}" id="vendor_login_block" style="{{ $selectedAssignmentType === 'vendor' ? '' : 'display:none;' }}">
+                    <label for="vendor_user_id">Vendor login</label>
+                    <select name="vendor_user_id" id="vendor_user_id" @disabled($selectedAssignmentType !== 'vendor')>
+                        <option value="">No vendor login assigned</option>
+                        @foreach($vendorLoginOptions as $vendorUser)
+                            <option value="{{ $vendorUser->id }}" @selected((int) $selectedVendorUserId === (int) $vendorUser->id)>{{ $vendorUser->name }}</option>
+                        @endforeach
+                    </select>
+                    @if($fieldError('vendor_user_id'))
+                        <div class="ops-field-error" role="alert">{{ $fieldError('vendor_user_id') }}</div>
+                    @endif
+                    <span style="font-size:11px; color:#64748b;">The selected vendor can open and update this task.</span>
+                </div>
+            @endif
+
             <div class="ops-field span-4 {{ $hasFieldError('scheduled_at') ? 'is-error' : '' }}">
                 <label for="scheduled_at">Scheduled At (IST)</label>
                 <input
@@ -457,9 +474,11 @@
         const assignmentTypeSelect = document.getElementById('assignment_type');
         const userBlock = document.getElementById('user_assignment_block');
         const staffBlock = document.getElementById('staff_assignment_block');
+        const vendorLoginBlock = document.getElementById('vendor_login_block');
         const thirdPartyBlock = document.getElementById('third_party_block');
         const userSelect = document.getElementById('assigned_user_id');
         const staffSelect = document.getElementById('assigned_staff_id');
+        const vendorLoginSelect = document.getElementById('vendor_user_id');
         const warehouseInfo = document.getElementById('warehouseInfo');
         const summaryType = document.getElementById('summaryType');
         const summaryAssignment = document.getElementById('summaryAssignment');
@@ -546,6 +565,11 @@
             userBlock.style.display = isDeliveryTeam ? 'flex' : 'none';
             staffBlock.style.display = isVendor ? 'flex' : 'none';
             thirdPartyBlock.style.display = isThirdParty ? 'block' : 'none';
+
+            if (vendorLoginBlock && vendorLoginSelect) {
+                vendorLoginBlock.style.display = isVendor ? 'flex' : 'none';
+                vendorLoginSelect.disabled = !isVendor;
+            }
 
             if (!isDeliveryTeam && userSelect) {
                 userSelect.value = '';

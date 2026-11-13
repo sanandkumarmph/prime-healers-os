@@ -567,7 +567,7 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
             'created_by_user_id' => $creatorColumns['sales_created_by_user_id'],
         ], fn ($value) => $value !== null));
 
-        $this->makeInvoice($organization->id, $customer->id, array_filter([
+        $rentalInvoice = $this->makeInvoice($organization->id, $customer->id, array_filter([
             'invoice_number' => 'INV-SCOPE-001',
             'rental_id' => $rentalOne->id,
             'subtotal' => 500,
@@ -651,6 +651,22 @@ class RoleScopedKpiConsistencyRegressionTest extends TestCase
             (int) (($superadminInvoices->viewData('invoiceStats')['totalInvoices'] ?? 0)),
             (int) (($salesUserInvoices->viewData('invoiceStats')['totalInvoices'] ?? 0))
         );
+
+        foreach ([User::ROLE_SALES, User::ROLE_SALES_2, User::ROLE_SALES_RENEWALS] as $slug) {
+            $role = Role::firstOrCreate(['organization_id' => $organization->id, 'slug' => $slug], [
+                'name' => $slug, 'is_active' => true,
+                'permissions' => Role::defaultSystemRoleTemplates()[$slug === User::ROLE_SALES_2 ? User::ROLE_SALES : $slug]['permissions'],
+            ]);
+            $worker = $slug === User::ROLE_SALES ? $salesUser : $this->salesUser($organization->id, $role->id, $slug.'@example.test');
+            $this->actingAs($worker);
+            $this->get(route('rentals.show', $rentalOne))->assertOk();
+            $this->get(route('sales.show', $saleOne))->assertOk();
+            $this->get(route('invoices.show', $rentalInvoice))->assertOk();
+            $this->get(route('renewal-center.index'))->assertOk()->assertSeeText('Renewal Center');
+            $this->assertTrue($worker->canAccessModule('enquiries', 'read'));
+            $this->assertTrue($worker->canAccessModule('quotations', 'read'));
+            $this->assertFalse($worker->canViewConsolidatedFinance());
+        }
     }
 
     private function deliveryTeamRole(int $organizationId): Role

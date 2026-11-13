@@ -68,9 +68,9 @@ class OrderStaffFilter
         return User::where('users.organization_id', $organization)
             ->whereRaw('users.id = '.$creator)
             ->where(function ($users) use ($organization) {
-                $users->where(fn ($legacy) => $legacy->whereNull('role_id')->where('role', User::ROLE_SALES))
+                $users->where(fn ($legacy) => $legacy->whereNull('role_id')->whereIn('role', User::SALES_ROLE_SLUGS))
                     ->orWhereHas('assignedRole', fn ($role) => $role->where('organization_id', $organization)
-                        ->where('slug', User::ROLE_SALES));
+                        ->whereIn('slug', User::SALES_ROLE_SLUGS));
             })->select('users.id')->toBase();
     }
 

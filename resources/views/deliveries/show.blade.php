@@ -2,6 +2,7 @@
 
 @section('content')
 @php
+    $vendorViewer = auth()->user()->isVendor();
     $isSaleTask = (bool) $delivery->sale_id;
     $linkedCustomerName = $delivery->linkedCustomerName();
     $linkedPhone = $delivery->linkedCustomerPhone();
@@ -12,7 +13,9 @@
     $linkedContactNotes = $delivery->linkedCustomerNotes();
     $rentalAssets = $delivery->rental?->activeRentalAssets ?? collect();
     $rentalSaleItems = $delivery->rental?->saleItems ?? collect();
-    $pickupRecord = $delivery->rental?->pickupRecord;
+    $pickupRecord = $vendorViewer
+        ? ($delivery->isPickup() ? $delivery : null)
+        : $delivery->rental?->pickupRecord;
     $pickupAssigned = $pickupRecord && $pickupRecord->status !== 'cancelled';
     $deliverySaleAssets = $delivery->type === 'delivery'
         ? $rentalSaleItems
@@ -25,7 +28,7 @@
         ?? $delivery->third_party_name
         ?? 'Not assigned';
     $assigneeRole = $delivery->assignedUser
-        ? 'Delivery Team'
+        ? ($delivery->assignment_type === 'vendor' ? 'Vendor login' : 'Delivery Team')
         : ($delivery->assignedStaff
             ? ucwords(str_replace('_', ' ', $delivery->assignedStaff->assignment_role ?? 'vendor'))
             : ($delivery->assignment_type === 'third_party' ? 'Third Party' : 'Unassigned'));
@@ -40,7 +43,9 @@
         || filled($delivery->third_party_phone);
     $displayStatus = $delivery->status;
 
-    if (!$isSaleTask && $delivery->rental) {
+    if ($vendorViewer && $displayStatus === 'completed') {
+        $displayStatus = $delivery->isPickup() ? 'picked_up' : 'delivered';
+    } elseif (!$vendorViewer && !$isSaleTask && $delivery->rental) {
         if ($delivery->type === 'delivery') {
             $rentalDeliveryStatus = $delivery->rental->deliveryStatus();
             $displayStatus = match (true) {
@@ -95,6 +100,7 @@
         default => ucfirst(str_replace('_', ' ', $displayStatus)),
     };
     $canUpdateTask = auth()->user()?->can('update', $delivery) ?? false;
+    $canEditAssignment = $canUpdateTask && !$vendorViewer;
     $canDeleteTask = auth()->user()?->can('delete', $delivery) ?? false;
     $deliveryProofs = collect($deliveryProofs ?? []);
     $cancellationReasonOptions = $cancellationReasonOptions ?? [];
@@ -355,7 +361,7 @@
         ]);
     }
 
-    if ($canUpdateTask) {
+    if ($canEditAssignment) {
         $mobileQuickActions->push([
             'type' => 'link',
             'label' => 'Edit Assignment',
@@ -1852,6 +1858,10 @@
         body.workflow-mobile-open {
             overscroll-behavior:none;
         }
+        body.workflow-mobile-open [data-action-toast] {
+            top:calc(68px + env(safe-area-inset-top, 0px));
+            bottom:auto !important;
+        }
         .workflow-preview-shell { display:none; }
         .fieldops-task-shell {
             gap:8px;
@@ -2754,7 +2764,7 @@
             @elseif($hasProofHistory)
                 <a href="#delivery-proof-history" class="detail-btn">View Proof</a>
             @endif
-            @if($canUpdateTask)
+            @if($canEditAssignment)
                 <a href="{{ route('deliveries.edit', $delivery) }}" class="detail-btn-secondary">Edit</a>
             @endif
         </div>
@@ -2829,14 +2839,14 @@
                     <a href="{{ route('deliveries.index') }}">Back to Tasks</a>
                     @if($delivery->rental_id)
                         <a href="{{ route('rentals.show', $delivery->rental_id) }}">View Rental</a>
-                    @elseif($delivery->sale_id)
+                    @elseif($delivery->sale_id && !$vendorViewer)
                         <a href="{{ route('sales.show', $delivery->sale_id) }}">View Sale</a>
                     @endif
                     @if($hasProofHistory)
                         <a href="{{ route('deliveries.show', $delivery) }}#delivery-proof-history" data-open-proof-history>Proof History</a>
                     @endif
                     <a href="#activity-timeline">Operations History</a>
-                    @if($canUpdateTask)
+                    @if($canEditAssignment)
                         <a href="{{ route('deliveries.edit', $delivery) }}">Edit Assignment</a>
                     @endif
                     @if($canCancelTask)
@@ -2927,6 +2937,7 @@
                     $deliveryReopenedDisplayFallback = $delivery->type === 'delivery'
                         && $delivery->status === 'pending'
                         && is_null($delivery->completed_at)
+                        && !$vendorViewer
                         && in_array($delivery->rental?->deliveryStatus(), ['completed', 'delivered'], true)
                         && $orderedQty > 0
                         && $deliveredQty >= $orderedQty;
@@ -2985,7 +2996,7 @@
                             $itemLifecycleStatuses->push('with_customer');
                         }
 
-                        if ($pendingPickupQty > 0) {
+                        if (!$vendorViewer && $pendingPickupQty > 0) {
                             $itemLifecycleStatuses->push(!$pickupAssigned ? 'pickup_not_assigned' : 'pickup_pending');
                         } elseif ($deliveredQty > 0 && $returnedQty === $deliveredQty) {
                             $itemLifecycleStatuses->push($hasAwaitingVerificationAsset ? 'awaiting_verification' : 'returned');

@@ -6,6 +6,7 @@ use App\Models\City;
 use App\Models\Customer;
 use App\Models\Delivery;
 use App\Models\Product;
+use App\Models\Rental;
 use App\Models\Role;
 use App\Models\Sale;
 use App\Models\Vendor;
@@ -94,7 +95,9 @@ class VendorFulfilmentRegressionTest extends TestCase
         $this->assertSame(3, (int) $product->fresh()->available_quantity);
         $this->assertSame($vendor->id, $rental->vendorOrderDetail->vendor_id);
         $this->assertSame('vendor_delivery', $rental->vendorOrderDetail->delivery_responsibility);
-        $this->assertDatabaseHas('deliveries', ['rental_id' => $rental->id, 'assignment_type' => 'vendor']);
+        $this->assertDatabaseHas('deliveries', [
+            'rental_id' => $rental->id, 'assignment_type' => 'vendor', 'assigned_user_id' => null,
+        ]);
         $this->assertDatabaseHas('follow_ups', [
             'assigned_user_id' => $collector->id, 'rental_id' => $rental->id,
             'invoice_id' => \App\Models\Invoice::where('rental_id', $rental->id)->sole()->id,
@@ -117,6 +120,87 @@ class VendorFulfilmentRegressionTest extends TestCase
         $this->assertDatabaseCount('payments', 0);
         $this->actingAs($collector)->get(route('communication-center.index'))
             ->assertOk()->assertSee('Payment on delivery for')->assertSee('Cash collection for');
+    }
+
+    public function test_rental_form_can_assign_replace_and_remove_vendor_delivery_login(): void
+    {
+        $organization = TestData::organization();
+        $admin = TestData::user($organization, ['role' => User::ROLE_SUPER_ADMIN]);
+        $first = TestData::user($organization, ['role' => User::ROLE_VENDOR, 'name' => 'First Rental Vendor Login']);
+        $second = TestData::user($organization, ['role' => User::ROLE_VENDOR, 'name' => 'Second Rental Vendor Login']);
+        $foreign = TestData::user(null, ['role' => User::ROLE_VENDOR, 'name' => 'Foreign Rental Vendor Login']);
+        $customer = $this->makeCustomer($organization->id);
+        $product = $this->makeRentalProduct($organization->id);
+        $vendor = $this->makeVendor($organization->id);
+        $payload = $this->rentalPayload($customer->id, $product->id, [
+            'delivery_assignment_type' => 'vendor',
+            'delivery_vendor_id' => $vendor->id,
+            'vendor_user_id' => $first->id,
+        ]);
+
+        $this->actingAs($admin)->get(route('rentals.create'))->assertOk()
+            ->assertSee('name="vendor_user_id"', false)->assertSeeText($first->name)->assertDontSeeText($foreign->name);
+        $this->postJson(route('rentals.store'), array_replace($payload, ['vendor_user_id' => $foreign->id]))
+            ->assertUnprocessable()->assertJsonValidationErrors('vendor_user_id');
+        $this->assertDatabaseCount('rentals', 0);
+
+        $this->post(route('rentals.store'), $payload)->assertSessionHasNoErrors();
+        $rental = Rental::sole();
+        $delivery = $rental->deliveries()->where('type', 'delivery')->sole();
+        $this->assertSame('vendor', $delivery->assignment_type);
+        $this->assertSame($first->id, $delivery->assigned_user_id);
+        $this->assertSame($vendor->id, $rental->vendorOrderDetail->vendor_id);
+        $this->get(route('rentals.edit', $rental))->assertOk()
+            ->assertSee('value="'.$first->id.'" selected>'.$first->name, false);
+        $this->actingAs($first)->get(route('deliveries.show', $delivery))->assertOk();
+        $this->get(route('rentals.show', $rental))->assertOk();
+        $this->actingAs($second)->get(route('deliveries.show', $delivery))->assertForbidden();
+
+        $this->actingAs($admin)->put(route('rentals.update', $rental), array_replace($payload, ['vendor_user_id' => $second->id]))
+            ->assertSessionHasNoErrors();
+        $this->assertSame($second->id, $delivery->fresh()->assigned_user_id);
+        $this->actingAs($first)->get(route('deliveries.show', $delivery))->assertForbidden();
+        $this->get(route('rentals.show', $rental))->assertForbidden();
+        $this->actingAs($second)->get(route('deliveries.show', $delivery))->assertOk();
+        $this->get(route('rentals.show', $rental))->assertOk();
+
+        $this->actingAs($admin)->put(route('rentals.update', $rental), array_replace($payload, ['vendor_user_id' => '']))
+            ->assertSessionHasNoErrors();
+        $this->assertNull($delivery->fresh()->assigned_user_id);
+        $this->assertSame('vendor', $delivery->fresh()->assignment_type);
+        $this->assertSame($vendor->id, $rental->fresh()->vendorOrderDetail->vendor_id);
+        $this->actingAs($second)->get(route('rentals.show', $rental))->assertForbidden();
+    }
+
+    public function test_rental_edit_preserves_a_scheduled_in_house_vendor_pickup(): void
+    {
+        $organization = TestData::organization();
+        $admin = TestData::user($organization, ['role' => User::ROLE_SUPER_ADMIN]);
+        $login = TestData::user($organization, ['role' => User::ROLE_VENDOR]);
+        $customer = $this->makeCustomer($organization->id);
+        $product = $this->makeRentalProduct($organization->id);
+        $vendor = $this->makeVendor($organization->id);
+        $payload = $this->rentalPayload($customer->id, $product->id);
+
+        $this->actingAs($admin)->post(route('rentals.store'), $payload)->assertSessionHasNoErrors();
+        $rental = Rental::sole();
+        $this->post(route('renewal-center.schedule-pickup', $rental), [
+            'pickup_method' => 'vendor_pickup',
+            'pickup_date' => now()->addDay()->toDateString(),
+            'vendor_id' => $vendor->id,
+            'vendor_user_id' => $login->id,
+        ])->assertSessionHasNoErrors();
+        $pickup = $rental->deliveries()->where('type', 'pickup')->sole();
+
+        unset($payload['pickup_responsibility']);
+        $this->put(route('rentals.update', $rental), $payload + ['notes' => 'Updated rental note'])
+            ->assertSessionHasNoErrors();
+        $this->assertSame('vendor_pickup', $rental->fresh()->pickup_responsibility);
+        $this->assertSame('vendor', $pickup->fresh()->assignment_type);
+        $this->assertSame($login->id, $pickup->fresh()->assigned_user_id);
+        $this->assertSame($vendor->name, $pickup->fresh()->third_party_name);
+        $this->actingAs($login)->get(route('deliveries.show', $pickup))->assertOk();
+        $this->get(route('rentals.show', $rental))->assertOk();
     }
 
     public function test_order_collection_creates_only_one_assigned_task_and_no_receipt(): void

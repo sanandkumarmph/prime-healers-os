@@ -123,17 +123,21 @@ class SalesWorkspaceTest extends TestCase
         $this->post(route('quotations.store', $e), $p)->assertSessionHasErrors('lines.0.product_id');
     }
 
-    public function test_assignment_and_role_scope_apply_to_lists_details_mutations_and_pdf(): void
+    public function test_sales_workspace_is_shared_within_the_company(): void
     {
         $q = $this->quote(); $e = $q->enquiry;
         $salesRole = $this->systemRole('sales');
         $sales = TestData::user($this->owner->organization, ['role_id' => $salesRole->id, 'role' => 'sales']);
-        $this->actingAs($sales)->get(route('enquiries.index'))->assertOk()->assertDontSee($e->subject);
-        $this->get(route('enquiries.show', $e))->assertNotFound(); $this->get(route('quotations.pdf', $q))->assertNotFound();
-        $this->post(route('enquiries.note', $e), ['note' => 'intrusion'])->assertNotFound();
-        $e->update(['owner_id' => $sales->id]);
+        $this->actingAs($sales)->get(route('enquiries.index', ['view' => 'enquiries']))->assertOk()->assertSee($e->subject);
         $this->get(route('enquiries.show', $e))->assertOk();
         $this->post(route('enquiries.note', $e), ['note' => 'Called customer'])->assertSessionHasNoErrors();
+        $this->get(route('quotations.pdf', $q))->assertOk();
+        $this->get(route('enquiries.edit', $e))->assertOk()->assertSee($this->owner->name);
+        $this->put(route('enquiries.update', $e), [
+            'name' => $e->name, 'subject' => $e->subject, 'source' => $e->source,
+            'owner_id' => $sales->id, 'lock_version' => $e->fresh()->lock_version,
+        ])->assertSessionHasErrors('owner_id');
+        $this->assertSame($this->owner->id, $e->fresh()->owner_id);
         $this->actingAs(TestData::user())->get(route('quotations.show', $q))->assertNotFound();
         $delivery = $this->systemRole('delivery');
         $this->actingAs(TestData::user($this->owner->organization, ['role_id' => $delivery->id, 'role' => 'delivery']))->get(route('enquiries.index'))->assertForbidden();
@@ -389,6 +393,67 @@ class SalesWorkspaceTest extends TestCase
         $this->actingAs($salesperson)->post($assign, $review + ['staff' => $salesperson->id])->assertForbidden();
     }
 
+    public function test_sales_and_sales2_can_convert_a_colleagues_quote_without_moving_the_enquiry_credit(): void
+    {
+        $organization = $this->owner->organization;
+        $sales = TestData::user($organization, ['name' => 'Day shift', 'role' => User::ROLE_SALES]);
+        $sales2Role = Role::create([
+            'organization_id' => $organization->id, 'name' => 'Sales2', 'slug' => User::ROLE_SALES_2,
+            'is_active' => true, 'permissions' => Role::defaultSystemRoleTemplates()[User::ROLE_SALES]['permissions'],
+        ]);
+        $sales2 = TestData::user($organization, ['name' => 'Evening shift', 'role_id' => $sales2Role->id]);
+
+        foreach (['rental' => [$sales2, $sales], 'sale' => [$sales, $sales2]] as $kind => [$owner, $closer]) {
+            $this->actingAs($owner);
+            $enquiry = $this->enquiry(['owner_id' => $owner->id, 'source' => 'incoming_phone']);
+            $this->post(route('quotations.store', $enquiry), $this->payload($kind))->assertSessionHasNoErrors();
+            $quote = $this->transition($this->transition($enquiry->quotations()->sole(), 'send'), 'accepted');
+
+            $this->actingAs($closer);
+            $response = $this->get(route($kind.'s.create', ['quotation_id' => $quote->id]))->assertOk();
+            $document = new \DOMDocument();
+            @$document->loadHTML($response->getContent());
+            $form = new \DOMXPath($document);
+            $this->assertSame($owner->name, $form->evaluate('string(//input[@id="incentive_owner_id" and @readonly]/@value)'));
+            $this->assertSame(0, $form->query('//*[@name="incentive_owner_id"]')->length);
+
+            $order = app(QuotationConversion::class)->prefill($quote);
+            if ($kind === 'rental') {
+                $order['delivery_assignment_type'] = 'customer_pickup';
+            }
+            $this->post(route($kind.'s.store'), $order + ['incentive_owner_id' => $closer->id])
+                ->assertSessionHasErrors('incentive_owner_id');
+            $this->assertSame('accepted', $quote->fresh()->status);
+            $this->assertDatabaseCount($kind.'s', 0);
+            $this->assertDatabaseMissing('order_incentive_attributions', ['order_type' => $kind]);
+            $this->post(route($kind.'s.store'), $order)->assertSessionHasNoErrors();
+            $this->assertSame($owner->id, $enquiry->fresh()->owner_id);
+            $this->assertSame($closer->id, $quote->fresh()->converted_by_user_id);
+            $this->assertDatabaseHas('order_incentive_attributions', [
+                'organization_id' => $organization->id, 'order_type' => $kind, 'order_id' => $quote->fresh()->order_id,
+                'sales_user_id' => $owner->id, 'closer_user_id' => $closer->id, 'source' => 'incoming_phone',
+            ]);
+        }
+
+        $this->actingAs($this->owner)->get(route('reports.staff-incentives'))->assertOk()
+            ->assertSee('Owner · 80%')->assertSee('Closer · 20%')
+            ->assertViewHas('bookedSales', fn ($counts) => $counts->get($sales2->id) == 1)
+            ->assertViewHas('bookedRentals', fn ($counts) => $counts->get($sales->id) == 1)
+            ->assertViewHas('staffTotals', fn ($totals) => $totals[$sales->id]['sale_revenue'] == 160
+                && $totals[$sales->id]['rental_revenue'] == 40 && $totals[$sales2->id]['sale_revenue'] == 40
+                && $totals[$sales2->id]['rental_revenue'] == 160);
+
+        DB::table('order_incentive_attributions')->where('order_type', 'sale')->update(['closer_user_id' => null]);
+        $this->get(route('reports.staff-incentives', ['staff' => $sales2->id, 'credit_kind' => 'sale']))
+            ->assertOk()->assertSee('Closer · 20%');
+        $this->get(route('sales.index', ['salesperson_id' => $sales2->id]))->assertOk()
+            ->assertViewHas('sales', fn ($rows) => $rows->total() === 1);
+
+        DB::table('order_incentive_attributions')->where('order_type', 'rental')->delete();
+        $this->get(route('reports.staff-incentives', ['staff' => $sales2->id, 'credit_kind' => 'rental']))
+            ->assertOk()->assertSee('Owner · 80%');
+    }
+
     public function test_sales_handoff_splits_incentive_and_keeps_bookings_with_the_creator(): void
     {
         $org = $this->owner->organization;
@@ -620,7 +685,7 @@ class SalesWorkspaceTest extends TestCase
         $this->assertSame('accepted', $q->fresh()->status);
     }
 
-    public function test_staff_response_requires_evidence_and_reassignment_removes_previous_owner_access(): void
+    public function test_staff_response_requires_evidence_and_a_colleague_can_record_it(): void
     {
         $q = $this->transition($this->quote(), 'send');
         $this->post(route('quotations.action', $q), ['action' => 'accepted', 'lock_version' => $q->lock_version])->assertSessionHasErrors('note');
@@ -630,8 +695,10 @@ class SalesWorkspaceTest extends TestCase
         $q->enquiry->update(['owner_id' => $a->id]);
         $this->actingAs($a)->get(route('quotations.show', $q))->assertOk();
         $q->enquiry->update(['owner_id' => $b->id]);
-        $this->get(route('quotations.show', $q))->assertNotFound();
-        $this->post(route('quotations.action', $q), ['action' => 'accepted', 'lock_version' => $q->lock_version, 'contact_name' => 'Asha', 'note' => 'Telephone'])->assertNotFound();
+        $this->get(route('quotations.show', $q))->assertOk();
+        $this->post(route('quotations.action', $q), ['action' => 'accepted', 'lock_version' => $q->lock_version, 'contact_name' => 'Asha', 'note' => 'Telephone'])->assertSessionHasNoErrors();
+        $this->assertSame('accepted', $q->fresh()->status);
+        $this->assertSame($b->id, $q->enquiry->fresh()->owner_id);
     }
 
     public function test_quoted_customer_and_product_cannot_be_deleted_even_after_enquiry_contact_changes(): void

@@ -25,13 +25,22 @@ class OrderIncentiveCredit
         return $salesStaff->has($owner) ? $owner : ($salesStaff->has($actor) ? $actor : null);
     }
 
+    public function handoffOwner(Request $request, Collection $salesStaff): ?int
+    {
+        $actor = $request->user();
+        $owner = (int) $request->attributes->get('conversion_quote')?->enquiry?->owner_id;
+
+        return $actor->isSales() && $owner !== (int) $actor->id && $salesStaff->has($owner) ? $owner : null;
+    }
+
     public function prepare(Request $request): array
     {
         $actor = $request->user();
         $quote = $request->attributes->get('conversion_quote');
         $salesStaff = $this->salesStaff($actor);
+        $handoffOwner = $this->handoffOwner($request, $salesStaff);
         $adminSelf = $actor->canViewConsolidatedFinance() && $request->integer('incentive_owner_id') === (int) $actor->id;
-        $owners = $salesStaff->keys()->all();
+        $owners = $handoffOwner === null ? $salesStaff->keys()->all() : [$handoffOwner];
         if ($actor->canViewConsolidatedFinance()) {
             $owners[] = $actor->id;
         }
@@ -39,9 +48,9 @@ class OrderIncentiveCredit
             'incentive_owner_id' => ['nullable', 'integer', Rule::in($owners)],
             'incentive_source' => ['nullable', Rule::requiredIf(!$adminSelf && !$quote && $request->filled('incentive_owner_id')
                 && $request->input('customer_type') !== 'business_partner'), Rule::in(array_keys(Enquiry::SOURCES))],
-        ]);
+        ], $handoffOwner === null ? [] : ['incentive_owner_id.in' => 'This order keeps the enquiry owner.']);
 
-        $owner = isset($data['incentive_owner_id']) ? (int) $data['incentive_owner_id'] : $this->defaultOwner($request, $salesStaff);
+        $owner = $handoffOwner ?? (isset($data['incentive_owner_id']) ? (int) $data['incentive_owner_id'] : $this->defaultOwner($request, $salesStaff));
         $source = $quote ? (string) $quote->enquiry->source : ($data['incentive_source'] ?? '');
         $source = Enquiry::incentiveSource($source) ?? (isset(Enquiry::SOURCES[$source]) ? $source : '');
 

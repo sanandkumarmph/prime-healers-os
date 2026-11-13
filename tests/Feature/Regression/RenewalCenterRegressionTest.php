@@ -265,7 +265,7 @@ class RenewalCenterRegressionTest extends TestCase
         ]);
     }
 
-    public function test_vendor_pickup_is_rejected_for_in_house_rentals(): void
+    public function test_vendor_pickup_for_in_house_rental_requires_a_vendor_login_and_keeps_return_verification(): void
     {
         $rental = $this->makeDirectCustomerRental([
             'end_date' => now()->toDateString(),
@@ -291,9 +291,30 @@ class RenewalCenterRegressionTest extends TestCase
             'type' => 'pickup',
             'assignment_type' => 'vendor',
         ]);
+
+        $login = TestData::user(auth()->user()->organization, ['role' => User::ROLE_VENDOR]);
+        $asset = $this->attachRentedAssetToRental($rental);
+        $this->get(route('renewal-center.index'))->assertOk()->assertSee('name="vendor_user_id"', false);
+        $this->from(route('renewal-center.index'))->post(route('renewal-center.schedule-pickup', $rental), [
+            'pickup_method' => 'vendor_pickup',
+            'pickup_date' => now()->toDateString(),
+            'vendor_id' => $vendor->id,
+            'vendor_user_id' => $login->id,
+        ])->assertRedirect(route('renewal-center.index'))->assertSessionHasNoErrors();
+
+        $pickup = Delivery::where('rental_id', $rental->id)->where('type', 'pickup')->sole();
+        $this->assertSame('vendor', $pickup->assignment_type);
+        $this->assertSame($login->id, $pickup->assigned_user_id);
+        $this->assertSame($vendor->name, $pickup->third_party_name);
+        $this->actingAs($login)->get(route('deliveries.show', $pickup))->assertOk();
+        $this->get(route('rentals.show', $rental))->assertOk();
+
+        app(\App\Services\Deliveries\DeliveryWorkflowService::class)
+            ->finalizePickupCompletionForRental($this->organizationId, $rental->fresh(), now()->toDateTimeString(), $pickup->id);
+        $this->assertSame(Asset::STATUS_AWAITING_VERIFICATION, $asset->fresh()->asset_status);
     }
 
-    public function test_pickup_modal_hides_vendor_pickup_for_in_house_rentals(): void
+    public function test_pickup_modal_offers_vendor_login_for_in_house_rentals(): void
     {
         $rental = $this->makeDirectCustomerRental([
             'fulfilment_source' => 'in_house',
@@ -304,7 +325,8 @@ class RenewalCenterRegressionTest extends TestCase
             ->assertSeeText('Internal Pickup')
             ->assertSeeText('Third Party Pickup')
             ->assertSeeText('Customer Self Drop')
-            ->assertDontSeeText('Vendor Pickup')
+            ->assertSeeText('Vendor Pickup')
+            ->assertSee('name="vendor_user_id"', false)
             ->assertSee('data-default-pickup-method="internal_pickup"', false)
             ->assertSee('max-height:min(90vh, calc(100dvh - 120px))', false);
     }

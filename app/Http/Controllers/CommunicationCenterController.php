@@ -227,7 +227,7 @@ class CommunicationCenterController extends Controller
             || $user->isAdminOperations()
             || $user->canAccessAnyModule(['rentals', 'sales', 'customers', 'deliveries', 'invoices'], 'read');
 
-        abort_unless($allowed && !$user->isFinance(), 403);
+        abort_unless($allowed && !$user->isFinance() && !$user->isVendor(), 403);
     }
 
     private function orgId(): int

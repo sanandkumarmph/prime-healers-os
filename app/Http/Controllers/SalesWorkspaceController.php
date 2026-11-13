@@ -76,24 +76,30 @@ class SalesWorkspaceController extends Controller
 
     private function form(?Enquiry $enquiry = null)
     {
-        $owners = $this->workspace->owners();
+        $user = auth()->user();
+        $ownerLocked = $user->isSalesTeam();
+        $fixedOwner = $ownerLocked ? ($enquiry ? $enquiry->owner : $user) : null;
+        $owners = $ownerLocked ? collect() : $this->workspace->owners();
         $customers = $this->workspace->customers();
-        return view('sales-workspace.enquiry-form', compact('enquiry', 'owners', 'customers'));
+        return view('sales-workspace.enquiry-form', compact('enquiry', 'owners', 'customers', 'ownerLocked', 'fixedOwner'));
     }
 
     public function create() { abort_unless(auth()->user()->canAccessModule('enquiries', 'create'), 403); return $this->form(); }
     public function edit(int $enquiry) { return $this->form($this->workspace->enquiry($enquiry, 'update')); }
 
-    private function input(Request $request): array
+    private function input(Request $request, ?Enquiry $enquiry = null): array
     {
-        $org = $request->user()->organization_id;
+        $user = $request->user();
+        $ownerIds = $user->isSalesTeam()
+            ? [$enquiry ? $enquiry->owner_id : $user->id]
+            : $this->workspace->owners()->pluck('id')->all();
         $data = $request->validate(['name' => 'required|string|max:255', 'salutation' => ['nullable', Rule::in(Enquiry::SALUTATIONS)], 'subject' => 'required|string|max:255',
             'phone' => 'nullable|string|max:40', 'email' => 'nullable|email|max:255', 'requirements' => 'nullable|string|max:5000',
             'intent' => 'nullable|in:rental,sale',
             'source' => ['required', 'string', Rule::in(array_keys(Enquiry::SOURCES))],
-            'owner_id' => ['required', 'integer', Rule::in($this->workspace->owners()->pluck('id')->all())],
-            'customer_id' => ['nullable', 'integer', Rule::exists('customers', 'id')->where('organization_id', $org)]]);
-        if ($request->user()->scopeType('enquiries') !== 'all' && (int) $data['owner_id'] !== $request->user()->id) abort(403);
+            'owner_id' => [$ownerIds === [null] ? 'nullable' : 'required', 'integer', Rule::in($ownerIds)],
+            'customer_id' => ['nullable', 'integer', Rule::exists('customers', 'id')->where('organization_id', $user->organization_id)]]);
+        if ($user->scopeType('enquiries') !== 'all' && (int) $data['owner_id'] !== $user->id) abort(403);
         return $data;
     }
 
@@ -112,10 +118,11 @@ class SalesWorkspaceController extends Controller
 
     public function update(Request $request, int $enquiry)
     {
-        $enquiry = $this->workspace->enquiry($enquiry, 'update'); $data = $this->input($request);
+        $enquiry = $this->workspace->enquiry($enquiry, 'update'); $data = $this->input($request, $enquiry);
         $this->workspace->atomic($enquiry->organization_id, function () use ($enquiry, $request, $data) {
             $e = $this->workspace->locked($enquiry); $this->workspace->version($e, $request);
             abort_if($e->closed(), 409, 'Reopen this enquiry before editing.');
+            abort_if($request->user()->isSalesTeam() && (int) ($data['owner_id'] ?? null) !== (int) $e->owner_id, 409);
             $oldOwner = $e->owner?->name ?? 'Unassigned';
             $e->update($data + ['lock_version' => $e->lock_version + 1]);
             $e->unsetRelation('owner');

@@ -191,10 +191,7 @@ class DashboardVisibilityService
 
     public function isSalesFocused(?User $user): bool
     {
-        return ($user?->hasActiveAccess() ?? false) && in_array($user->effective_role, [
-            User::ROLE_SALES,
-            User::ROLE_SALES_RENEWALS,
-        ], true);
+        return $user?->isSalesTeam() ?? false;
     }
 
     private function isLeadership(User $user): bool

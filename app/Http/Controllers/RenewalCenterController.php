@@ -10,6 +10,8 @@ use App\Models\Staff;
 use App\Models\User;
 use App\Models\Vendor;
 use App\Services\Deliveries\DeliveryWorkflowService;
+use App\Services\Deliveries\VendorLoginAssignments;
+use App\Services\Finance\OrganizationFinancialTransaction;
 use App\Services\Metrics\DashboardMetricsService;
 use App\Support\ActivityLogger;
 use App\Support\WhatsAppHelper;
@@ -39,7 +41,7 @@ class RenewalCenterController extends Controller
     {
         $user = auth()->user();
 
-        if (!$user || !$user->canManageRentals()) {
+        if (!$user || $user->isVendor() || !$user->canManageRentals()) {
             abort(403, 'Unauthorized. Only admin or sales can manage rentals.');
         }
     }
@@ -448,6 +450,8 @@ class RenewalCenterController extends Controller
             'products' => $this->productsForFilter(),
             'assignableUsers' => $this->assignableUsers(),
             'assignableStaff' => $this->assignableStaffMembers(),
+            'pickupVendorCompanies' => Vendor::forOrganization($this->orgId())->where('is_active', true)->orderBy('name')->get(['id', 'name']),
+            'vendorLoginOptions' => app(VendorLoginAssignments::class)->options($this->orgId()),
             'activeFilters' => $activeFilters,
             'today' => $today,
         ]);
@@ -510,6 +514,12 @@ class RenewalCenterController extends Controller
         $this->ensureRentalAccess();
         abort_if((int) $rental->organization_id !== $this->orgId(), 404);
 
+        return app(OrganizationFinancialTransaction::class)->run($this->orgId(),
+            fn () => $this->scheduleRentalPickup($request, $rental->fresh() ?? abort(404)));
+    }
+
+    private function scheduleRentalPickup(Request $request, Rental $rental)
+    {
         $validated = $request->validate([
             'pickup_method' => ['required', Rule::in(['internal_pickup', 'vendor_pickup', 'third_party_pickup', 'customer_self_drop'])],
             'pickup_date' => ['required', 'date'],
@@ -517,6 +527,7 @@ class RenewalCenterController extends Controller
             'pickup_notes' => ['nullable', 'string', 'max:500'],
             'assigned_user_id' => ['nullable', 'integer'],
             'vendor_id' => ['nullable', 'integer'],
+            'vendor_user_id' => ['nullable', 'integer', 'min:1', 'prohibited_unless:pickup_method,vendor_pickup'],
             'third_party_provider' => ['nullable', 'string', 'max:120'],
             'third_party_tracking_number' => ['nullable', 'string', 'max:120'],
             'third_party_contact_person' => ['nullable', 'string', 'max:120'],
@@ -527,10 +538,10 @@ class RenewalCenterController extends Controller
         $pickupMethod = (string) $validated['pickup_method'];
         $isVendorSupplied = $rental->isVendorSupplied();
 
-        if (!$isVendorSupplied && $pickupMethod === 'vendor_pickup') {
+        if (!$isVendorSupplied && $pickupMethod === 'vendor_pickup' && empty($validated['vendor_user_id'])) {
             return redirect()
                 ->back()
-                ->withErrors(['pickup_method' => 'Vendor pickup is available only for vendor-supplied rentals.'])
+                ->withErrors(['pickup_method' => 'Choose a Vendor login for an in-house rental pickup.'])
                 ->withInput();
         }
 
@@ -633,6 +644,7 @@ class RenewalCenterController extends Controller
             $vendor = Vendor::query()
                 ->where('organization_id', $this->orgId())
                 ->whereKey((int) ($validated['vendor_id'] ?? 0))
+                ->where('is_active', true)
                 ->first();
 
             if (!$vendor) {
@@ -644,6 +656,9 @@ class RenewalCenterController extends Controller
 
             $assignmentType = 'vendor';
             $thirdPartyName = $vendor->name;
+            $thirdPartyContact = $vendor->contact_person;
+            $thirdPartyPhone = $vendor->phone;
+            $assignedUserId = app(VendorLoginAssignments::class)->resolve($this->orgId(), $validated['vendor_user_id'] ?? null)?->id;
         } elseif ($pickupMethod === 'third_party_pickup') {
             if (blank($validated['third_party_provider'] ?? null)) {
                 return redirect()

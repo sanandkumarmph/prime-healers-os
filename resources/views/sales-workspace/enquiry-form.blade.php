@@ -25,7 +25,22 @@
                 @endif
                 @error('source')<p class="sw-muted" role="alert">{{ $message }}</p>@enderror
             </div>
-            <div class="sw-field"><label for="owner_id">Assigned to *</label><select name="owner_id" id="owner_id" required>@foreach($owners as $owner)@if(auth()->user()->scopeType('enquiries') === 'all' || $owner->id === auth()->id())<option value="{{ $owner->id }}" @selected((int)old('owner_id',$enquiry?->owner_id ?? auth()->id())===$owner->id)>{{ $owner->name }}{{ $owner->id===auth()->id() ? ' (me)' : '' }}</option>@endif @endforeach</select></div>
+            <div class="sw-field">
+                <label for="owner_id">Assigned to *</label>
+                @if($ownerLocked)
+                    <input type="hidden" name="owner_id" value="{{ $fixedOwner?->id }}">
+                    <input id="owner_id" value="{{ $fixedOwner?->name ?? 'Unassigned' }}{{ $fixedOwner?->id === auth()->id() ? ' (me)' : '' }}" readonly>
+                @else
+                    <select name="owner_id" id="owner_id" required>
+                        @foreach($owners as $owner)
+                            @if(auth()->user()->scopeType('enquiries') === 'all' || $owner->id === auth()->id())
+                                <option value="{{ $owner->id }}" @selected((int) old('owner_id', $enquiry?->owner_id ?? auth()->id()) === $owner->id)>{{ $owner->name }}{{ $owner->id === auth()->id() ? ' (me)' : '' }}</option>
+                            @endif
+                        @endforeach
+                    </select>
+                @endif
+                @error('owner_id')<p class="sw-muted" role="alert">{{ $message }}</p>@enderror
+            </div>
             <div class="sw-field sw-full"><label for="subject">What do they need? *</label><input id="subject" name="subject" value="{{ old('subject',$enquiry?->subject) }}" required maxlength="255" placeholder="e.g. Oxygen concentrator for one month"></div>
         </div>
         <details @if($errors->any() || $enquiry) open @endif>

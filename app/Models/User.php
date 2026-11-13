@@ -21,7 +21,9 @@ class User extends Authenticatable
     public const ROLE_SUPER_ADMIN = 'super_admin';
     public const ROLE_ADMIN_OPERATIONS = 'admin_operations';
     public const ROLE_SALES = 'sales';
+    public const ROLE_SALES_2 = 'sales2';
     public const ROLE_SALES_RENEWALS = 'sales_renewals';
+    public const SALES_ROLE_SLUGS = [self::ROLE_SALES, self::ROLE_SALES_2];
     public const ROLE_DELIVERY = 'delivery';
     public const ROLE_VENDOR = 'vendor';
     public const ROLE_FINANCE = 'finance';
@@ -81,7 +83,7 @@ class User extends Authenticatable
 
     public function isSales(): bool
     {
-        return $this->hasActiveAccess() && $this->effective_role === self::ROLE_SALES;
+        return $this->matchesLegacyRoles(self::SALES_ROLE_SLUGS);
     }
 
     public function isFinance(): bool
@@ -92,6 +94,11 @@ class User extends Authenticatable
     public function isSalesRenewals(): bool
     {
         return $this->hasActiveAccess() && $this->effective_role === self::ROLE_SALES_RENEWALS;
+    }
+
+    public function isSalesTeam(): bool
+    {
+        return $this->isSales() || $this->isSalesRenewals();
     }
 
     public function isDelivery(): bool
@@ -135,6 +142,8 @@ class User extends Authenticatable
             && $this->matchesLegacyRoles([
                 self::ROLE_SUPER_ADMIN,
                 self::ROLE_ADMIN_OPERATIONS,
+                self::ROLE_SALES,
+                self::ROLE_SALES_2,
                 self::ROLE_SALES_RENEWALS,
             ]);
     }
@@ -142,7 +151,7 @@ class User extends Authenticatable
     public function canPlanDeliveryRoutes(): bool
     {
         return $this->canAccessModule('deliveries', 'read')
-            && ($this->isSales() || $this->isSalesRenewals() || $this->isDelivery() || $this->canViewConsolidatedFinance());
+            && ($this->isSalesTeam() || $this->isDelivery() || $this->canViewConsolidatedFinance());
     }
 
     public function canAccessAssignedWork(): bool
@@ -194,6 +203,7 @@ class User extends Authenticatable
         return $this->matchesLegacyRoles([
             self::ROLE_ADMIN_OPERATIONS,
             self::ROLE_SALES,
+            self::ROLE_SALES_2,
             self::ROLE_SALES_RENEWALS,
             self::ROLE_OPERATIONS_EXECUTIVE,
             'admin',
@@ -203,9 +213,7 @@ class User extends Authenticatable
 
     public function canSeeLimitedDashboardCards(): bool
     {
-        return $this->matchesLegacyRoles([
-            self::ROLE_SALES,
-            self::ROLE_SALES_RENEWALS,
+        return $this->isSalesTeam() || $this->matchesLegacyRoles([
             self::ROLE_DELIVERY,
             self::ROLE_VENDOR,
         ]) || $this->canAccessAnyModule(['rentals', 'sales', 'deliveries'], 'read');
@@ -267,9 +275,9 @@ class User extends Authenticatable
         }
 
         if (in_array($module, ['enquiries', 'quotations'], true)
-            && $this->isSales() && $this->assignedRole?->allows('sales', 'read')
+            && $this->isSalesTeam() && $this->assignedRole?->allows('sales', 'read')
             && !array_key_exists($module, $this->assignedRole->permissions ?? [])) {
-            return in_array($action, ['read', 'create', 'update'], true);
+            return $action === 'read' || ($this->isSales() && in_array($action, ['create', 'update'], true));
         }
 
         if ($this->hasStandardAdminAccess() && isset(Role::MODULES[$module])) {
@@ -298,6 +306,15 @@ class User extends Authenticatable
 
         if ($this->isFinance() && $module !== 'dashboard') {
             return $this->hasModulePermission($module, $action);
+        }
+
+        if ($this->isVendor()) {
+            if ($module === 'rentals' && $action === 'read') {
+                return $this->canAccessModule('deliveries', 'read');
+            }
+            if ($module !== 'deliveries' || !in_array($action, ['read', 'update'], true)) {
+                return false;
+            }
         }
 
         if ($module === 'dashboard') {
@@ -516,7 +533,7 @@ class User extends Authenticatable
             'dashboard' => fn () => $this->canAccessDashboard() && ($this->hasPermission('dashboard.main') || $this->hasModulePermission('dashboard', 'read') || ($this->assignedRole?->permissions['__dashboard'] ?? 'auto') === 'allow'),
             'inventory.dashboard' => fn () => $this->canAccessDashboard() && $this->hasPermission('dashboard.inventory'),
             'enquiries.index' => fn () => $this->canAccessModule('enquiries', 'read'),
-            'rentals.index' => fn () => $this->canAccessModule('rentals', 'read'),
+            'rentals.index' => fn () => !$this->isVendor() && $this->canAccessModule('rentals', 'read'),
             'deliveries.index' => fn () => $this->canAccessModule('deliveries', 'read'),
             'sales.index' => fn () => $this->canAccessModule('sales', 'read'),
             'invoices.index' => fn () => $this->canAccessModule('invoices', 'read'),
@@ -574,7 +591,7 @@ class User extends Authenticatable
             return false;
         }
 
-        if ($this->isFinance()) {
+        if ($this->isFinance() || $this->isVendor()) {
             return false;
         }
 
@@ -621,6 +638,9 @@ class User extends Authenticatable
     private function legacyRoleAllows(string $module, string $action): bool
     {
         if (in_array($module, ['enquiries', 'quotations'], true)) {
+            if ($this->isSalesRenewals()) {
+                return $action === 'read';
+            }
             return in_array($this->effective_role, [self::ROLE_SUPER_ADMIN, self::ROLE_ADMIN_OPERATIONS, self::ROLE_SALES, 'admin'], true)
                 && in_array($action, ['read', 'create', 'update'], true);
         }
@@ -829,12 +849,16 @@ class User extends Authenticatable
 
     private function roleScopeMatrix(): array
     {
+        $salesScopes = ['default' => 'self_created', 'enquiries' => 'all', 'quotations' => 'all',
+            'rentals' => 'self_created', 'invoices' => 'self_created'];
+
         return [
             self::ROLE_SUPER_ADMIN => ['default' => 'all'],
             self::ROLE_ADMIN_OPERATIONS => ['default' => 'all'],
             self::ROLE_FINANCE => ['default' => 'all', 'invoices' => 'all', 'payments' => 'all'],
-            self::ROLE_SALES => ['default' => 'self_created', 'rentals' => 'self_created', 'invoices' => 'self_created'],
-            self::ROLE_SALES_RENEWALS => ['default' => 'self_created', 'rentals' => 'self_created', 'invoices' => 'self_created'],
+            self::ROLE_SALES => $salesScopes,
+            self::ROLE_SALES_2 => $salesScopes,
+            self::ROLE_SALES_RENEWALS => $salesScopes,
             self::ROLE_SERVICE => ['default' => 'assigned', 'rentals' => 'assigned', 'deliveries' => 'assigned'],
             self::ROLE_OPERATIONS_EXECUTIVE => ['default' => 'assigned', 'rentals' => 'assigned', 'deliveries' => 'assigned'],
             self::ROLE_DELIVERY => ['default' => 'assigned', 'deliveries' => 'assigned', 'rentals' => 'assigned'],
